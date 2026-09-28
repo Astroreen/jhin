@@ -7,6 +7,7 @@ environment:
   sdk: ^3.10.0
 
 dependencies:
+  crypto: ^3.0.7
   fl_chart: ^1.2.0
   flutter:
     sdk: flutter
@@ -16,6 +17,7 @@ dependencies:
   path_provider: ^2.1.6
   provider: ^6.1.5+1
   shared_preferences: ^2.5.5
+  web: ^1.1.1
 
 dev_dependencies:
   flutter_lints: ^6.0.0
