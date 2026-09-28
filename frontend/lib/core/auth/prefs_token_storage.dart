@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'token_storage.dart';
@@ -8,11 +10,12 @@ import 'token_storage.dart';
 /// браузерной изоляции.
 class PrefsTokenStorage implements TokenStorage {
   PrefsTokenStorage({Future<SharedPreferences> Function()? loader})
-      : _loader = loader ?? SharedPreferences.getInstance;
+    : _loader = loader ?? SharedPreferences.getInstance;
 
   static const _tokenKey = 'jhin.deviceToken';
   static const _serverUrlKey = 'jhin.serverUrl';
   static const _fingerprintKey = 'jhin.pinnedFingerprint';
+  static const _accountKey = 'jhin.account';
 
   final Future<SharedPreferences> Function() _loader;
 
@@ -64,10 +67,36 @@ class PrefsTokenStorage implements TokenStorage {
   }
 
   @override
+  Future<StoredAccount?> readAccount() async {
+    final raw = (await _loader()).getString(_accountKey);
+    if (raw == null) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return StoredAccount.fromJson(decoded);
+      }
+    } on FormatException {
+      // повреждённое значение — считаем, что аккаунта нет
+    } on TypeError {
+      // неожиданные типы полей — то же
+    }
+    return null;
+  }
+
+  @override
+  Future<void> writeAccount(StoredAccount account) async {
+    final prefs = await _loader();
+    await prefs.setString(_accountKey, jsonEncode(account.toJson()));
+  }
+
+  @override
   Future<void> clearAll() async {
     final prefs = await _loader();
     await prefs.remove(_tokenKey);
     await prefs.remove(_serverUrlKey);
     await prefs.remove(_fingerprintKey);
+    await prefs.remove(_accountKey);
   }
 }

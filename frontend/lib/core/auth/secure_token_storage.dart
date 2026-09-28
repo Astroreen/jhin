@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'token_storage.dart';
@@ -17,7 +19,7 @@ abstract interface class SecureStore {
 /// Реальный бэкенд: `flutter_secure_storage` (Keychain/Keystore/libsecret).
 class FlutterSecureStore implements SecureStore {
   FlutterSecureStore([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
 
@@ -38,11 +40,12 @@ class FlutterSecureStore implements SecureStore {
 /// [TokenStorage] поверх [SecureStore] (mobile/desktop).
 class SecureTokenStorage implements TokenStorage {
   SecureTokenStorage({SecureStore? store})
-      : _store = store ?? FlutterSecureStore();
+    : _store = store ?? FlutterSecureStore();
 
   static const _tokenKey = 'jhin_deviceToken';
   static const _serverUrlKey = 'jhin_serverUrl';
   static const _fingerprintKey = 'jhin_pinnedFingerprint';
+  static const _accountKey = 'jhin_account';
 
   final SecureStore _store;
 
@@ -75,6 +78,29 @@ class SecureTokenStorage implements TokenStorage {
 
   @override
   Future<void> clearPinnedFingerprint() => _store.delete(key: _fingerprintKey);
+
+  @override
+  Future<StoredAccount?> readAccount() async {
+    final raw = await _store.read(key: _accountKey);
+    if (raw == null) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return StoredAccount.fromJson(decoded);
+      }
+    } on FormatException {
+      // повреждённое значение — считаем, что аккаунта нет
+    } on TypeError {
+      // неожиданные типы полей — то же
+    }
+    return null;
+  }
+
+  @override
+  Future<void> writeAccount(StoredAccount account) =>
+      _store.write(key: _accountKey, value: jsonEncode(account.toJson()));
 
   @override
   Future<void> clearAll() => _store.deleteAll();

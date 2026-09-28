@@ -57,13 +57,25 @@ Future<void> exercise(TokenStorage storage) async {
   await storage.clearPinnedFingerprint();
   expect(await storage.readPinnedFingerprint(), isNull);
 
+  expect(await storage.readAccount(), isNull);
+  await storage.writeAccount(
+    const StoredAccount(accountId: 'acc-1', accountName: 'alice'),
+  );
+  final account = await storage.readAccount();
+  expect(account?.accountId, 'acc-1');
+  expect(account?.accountName, 'alice');
+
   await storage.writeToken('t');
   await storage.writeServerUrl('https://hub');
   await storage.writePinnedFingerprint(fingerprint);
+  await storage.writeAccount(
+    const StoredAccount(accountId: 'acc-2', accountName: 'bob'),
+  );
   await storage.clearAll();
   expect(await storage.readToken(), isNull);
   expect(await storage.readServerUrl(), isNull);
   expect(await storage.readPinnedFingerprint(), isNull);
+  expect(await storage.readAccount(), isNull);
 }
 
 void main() {
