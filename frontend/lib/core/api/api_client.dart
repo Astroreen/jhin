@@ -285,7 +285,8 @@ abstract interface class ApiClient {
   /// `POST /admin/reload` — 202 restarting / 503 `restart manually` (dev-режим).
   Future<ReloadAck> reload();
 
-  /// `GET /ui/manifest` (T32); пока может отдавать 404 — тогда null.
+  /// `GET /ui/manifest` (T32); пока эндпоинта нет — null (404, либо 401:
+  /// backend маскирует 404 unmapped-путей через ERROR-dispatch → unauthorized).
   Future<Map<String, dynamic>?> getUiManifest();
 
   /// Закрывает http-клиент (вызывать при уничтожении приложения).
@@ -446,7 +447,10 @@ class HttpApiClient implements ApiClient {
   @override
   Future<Map<String, dynamic>?> getUiManifest() async {
     final response = await _send('GET', '/ui/manifest');
-    if (response.statusCode == 404) {
+    // 404 — эндпоинта нет (до T32). 401 — тот же смысл: backend отдаёт
+    // {"error":"unauthorized"} на любой unmapped-путь (stateless security +
+    // ERROR-dispatch маскирует 404). Nullable-манифест — не повод падать.
+    if (response.statusCode == 404 || response.statusCode == 401) {
       return null;
     }
     _ensureSuccess(response);

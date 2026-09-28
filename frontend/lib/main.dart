@@ -6,6 +6,7 @@ import 'core/jhin_client.dart';
 import 'core/state/session_store.dart';
 import 'screens/connect_screen.dart';
 import 'screens/sessions_screen.dart';
+import 'screens/settings_screen.dart';
 
 void main() {
   runApp(const JhinApp());
@@ -75,6 +76,24 @@ class _ConnectGateState extends State<_ConnectGate> {
   JhinClient? _client;
   EnrollResult? _result;
 
+  /// Выход: signOut (токен/пин/storage, если ещё не очищен) + закрыть клиента
+  /// + гейт на ConnectScreen (стек стирается сменой home).
+  Future<void> _handleSignOut(JhinClient client,
+      {bool alreadySignedOut = false}) async {
+    if (!alreadySignedOut) {
+      await client.signOut();
+    }
+    client.close();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _client = null;
+      _result = null;
+    });
+    widget.onDisconnected();
+  }
+
   @override
   Widget build(BuildContext context) {
     final client = _client;
@@ -92,17 +111,19 @@ class _ConnectGateState extends State<_ConnectGate> {
     }
     return SessionsScreen(
       accountName: result.accountName,
-      onSignOut: () async {
-        await client.signOut();
-        client.close();
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _client = null;
-          _result = null;
-        });
-        widget.onDisconnected();
+      onSignOut: () => _handleSignOut(client),
+      onOpenSettings: () {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => SettingsScreen(
+              client: client,
+              // Settings уже очистил токен (signOut) и стек навигации.
+              onSignedOut: () {
+                _handleSignOut(client, alreadySignedOut: true);
+              },
+            ),
+          ),
+        );
       },
     );
   }

@@ -14,10 +14,14 @@ class SessionsScreen extends StatefulWidget {
     super.key,
     required this.accountName,
     required this.onSignOut,
+    this.onOpenSettings,
   });
 
   final String accountName;
   final Future<void> Function() onSignOut;
+
+  /// Открытие Settings (T31); null — кнопка скрыта (тесты без навигации).
+  final VoidCallback? onOpenSettings;
 
   @override
   State<SessionsScreen> createState() => _SessionsScreenState();
@@ -46,6 +50,13 @@ class _SessionsScreenState extends State<SessionsScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: () => store.loadSessions(),
           ),
+          if (widget.onOpenSettings != null)
+            IconButton(
+              key: const Key('btn-settings'),
+              icon: const Icon(Icons.settings),
+              tooltip: 'Настройки',
+              onPressed: widget.onOpenSettings,
+            ),
           IconButton(
             key: const Key('btn-sign-out'),
             icon: const Icon(Icons.logout),

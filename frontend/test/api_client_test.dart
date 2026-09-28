@@ -288,6 +288,11 @@ void main() {
       reply({'error': 'not_found'}, status: 404);
       expect(await client.getUiManifest(), isNull);
     });
+
+    test('getUiManifest() → 401 (unmapped-путь backend\'а) тоже null', () async {
+      reply({'error': 'unauthorized'}, status: 401);
+      expect(await client.getUiManifest(), isNull);
+    });
   });
 
   group('ошибки → ApiClientException', () {
