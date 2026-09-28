@@ -1,0 +1,24 @@
+# devenv / direnv
+.devenv*
+.direnv/
+
+# Gradle
+.gradle_home/
+build/
+
+# Flutter / Dart
+.dart_tool/
+dist/
+
+# IDE
+.idea/
+*.iml
+
+# Runtime data
+*.db
+secrets/
+keystore/
+.env/
+
+# Служебное (планирование, не часть продукта)
+.sisyphus/
