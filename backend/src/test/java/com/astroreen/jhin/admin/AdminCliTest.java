@@ -54,7 +54,7 @@ class AdminCliTest {
         JdbcClient jdbcClient = JdbcClient.create(dataSource);
         accounts = new AccountService(jdbcClient, writeQueue);
         enrollments = new EnrollmentService(jdbcClient, writeQueue);
-        devices = new DeviceService(jdbcClient, writeQueue);
+        devices = new DeviceService(jdbcClient, writeQueue, event -> {});
         outBuffer = new ByteArrayOutputStream();
         errBuffer = new ByteArrayOutputStream();
         cli = new AdminCli(

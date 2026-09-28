@@ -1,6 +1,7 @@
 package com.astroreen.jhin.core.accounts;
 
 import com.astroreen.jhin.core.db.WriteQueue;
+import com.astroreen.jhin.core.sse.DeviceRevokedEvent;
 import java.security.SecureRandom;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -11,6 +12,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
@@ -36,12 +38,14 @@ public class DeviceService {
 
     private final JdbcClient jdbcClient;
     private final WriteQueue writeQueue;
+    private final ApplicationEventPublisher eventPublisher;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Autowired
-    public DeviceService(JdbcClient jdbcClient, WriteQueue writeQueue) {
+    public DeviceService(JdbcClient jdbcClient, WriteQueue writeQueue, ApplicationEventPublisher eventPublisher) {
         this.jdbcClient = jdbcClient;
         this.writeQueue = writeQueue;
+        this.eventPublisher = eventPublisher;
     }
 
     public IssuedDevice issueDevice(String accountId, String deviceName) {
@@ -86,7 +90,11 @@ public class DeviceService {
     }
 
     public boolean revokeDevice(String deviceId) {
-        return await(writeQueue.submit(() -> jdbcClient.sql(SQL_REVOKE).param(deviceId).update())) == 1;
+        boolean revoked = await(writeQueue.submit(() -> jdbcClient.sql(SQL_REVOKE).param(deviceId).update())) == 1;
+        if (revoked) {
+            eventPublisher.publishEvent(new DeviceRevokedEvent(deviceId));
+        }
+        return revoked;
     }
 
     public List<DevicePrincipal> listDevices(String accountId) {
