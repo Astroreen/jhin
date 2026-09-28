@@ -9,6 +9,10 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -27,6 +31,8 @@ public class EventLogService {
     private final JdbcClient jdbcClient;
     private final WriteQueue writeQueue;
     private final ObjectMapper objectMapper;
+    private final ConcurrentHashMap<String, CopyOnWriteArrayList<Subscription>> subscriptions =
+            new ConcurrentHashMap<>();
 
     @Autowired
     public EventLogService(
@@ -57,6 +63,38 @@ public class EventLogService {
         return jdbcClient.sql(SQL_MAX_SEQ).param(sessionId).query(EventLogService::mapSeq).single();
     }
 
+    /**
+     * Подписка на новые события сессии. Уведомление приходит строго после успешной записи
+     * (seq уже назначен) и в порядке seq — с потока {@link WriteQueue}. Контракт слушателя:
+     * не блокировать и не бросать (исключение проглатывается и не ломает append).
+     */
+    public EventSubscription subscribe(String sessionId, Consumer<Event> listener) {
+        Subscription subscription = new Subscription(sessionId, listener);
+        subscriptions
+                .computeIfAbsent(sessionId, id -> new CopyOnWriteArrayList<>())
+                .add(subscription);
+        return subscription;
+    }
+
+    /** Живых подписок на все сессии (для контроля утечек). */
+    public int subscriptionCount() {
+        return subscriptions.values().stream().mapToInt(List::size).sum();
+    }
+
+    private void notifyListeners(Event event) {
+        List<Subscription> listeners = subscriptions.get(event.sessionId());
+        if (listeners == null) {
+            return;
+        }
+        for (Subscription subscription : listeners) {
+            try {
+                subscription.listener.accept(event);
+            } catch (Exception ignored) {
+                // контракт: сломанный слушатель не ломает append и не мешает остальным
+            }
+        }
+    }
+
     private Event appendNow(String sessionId, String type, Map<String, Object> payload)
             throws JsonProcessingException {
         long seq = latestSeq(sessionId) + 1;
@@ -70,7 +108,9 @@ public class EventLogService {
                 .param(type)
                 .param(payloadJson)
                 .update();
-        return new Event(sessionId, seq, ts, type, parsePayload(payloadJson));
+        Event event = new Event(sessionId, seq, ts, type, parsePayload(payloadJson));
+        notifyListeners(event);
+        return event;
     }
 
     private Event mapRow(ResultSet rs, int rowNum) throws SQLException {
@@ -96,6 +136,33 @@ public class EventLogService {
             return parsePayload(payloadJson);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Corrupt event payload: " + payloadJson, e);
+        }
+    }
+
+    private final class Subscription implements EventSubscription {
+
+        private final String sessionId;
+        private final Consumer<Event> listener;
+        private final AtomicBoolean active = new AtomicBoolean(true);
+
+        Subscription(String sessionId, Consumer<Event> listener) {
+            this.sessionId = sessionId;
+            this.listener = listener;
+        }
+
+        @Override
+        public void unsubscribe() {
+            if (active.compareAndSet(true, false)) {
+                subscriptions.computeIfPresent(sessionId, (id, listeners) -> {
+                    listeners.remove(this);
+                    return listeners.isEmpty() ? null : listeners;
+                });
+            }
+        }
+
+        @Override
+        public boolean isActive() {
+            return active.get();
         }
     }
 }

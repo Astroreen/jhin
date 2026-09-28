@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
@@ -149,5 +150,58 @@ class EventLogServiceTest {
         assertThat(appended.payload()).isNull();
         assertThat(stored.payload()).isNull();
         assertThat(stored.payloadAsMap()).isNull();
+    }
+
+    @Test
+    void subscribersReceiveAppendedEventsInOrderAndUnsubscribedStop() throws Exception {
+        List<Event> first = new CopyOnWriteArrayList<>();
+        List<Event> second = new CopyOnWriteArrayList<>();
+        EventSubscription sub1 = eventLog.subscribe("s1", first::add);
+        EventSubscription sub2 = eventLog.subscribe("s1", second::add);
+        assertThat(eventLog.subscriptionCount()).isEqualTo(2);
+
+        eventLog.append("s1", EventTypes.USER_MESSAGE, Map.of("n", 1)).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        eventLog.append("s1", EventTypes.TEXT_DELTA, Map.of("n", 2)).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        eventLog.append("other", EventTypes.TEXT_DELTA, Map.of("n", 9)).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+        // append() завершается после уведомления слушателей — без ожиданий
+        assertThat(first).extracting(Event::seq).containsExactly(1L, 2L);
+        assertThat(first).extracting(Event::type).containsExactly(EventTypes.USER_MESSAGE, EventTypes.TEXT_DELTA);
+        assertThat(first.get(0).payloadAsMap()).containsEntry("n", 1);
+        assertThat(second).extracting(Event::seq).containsExactly(1L, 2L);
+
+        sub1.unsubscribe();
+        assertThat(sub1.isActive()).isFalse();
+        assertThat(sub2.isActive()).isTrue();
+        assertThat(eventLog.subscriptionCount()).isEqualTo(1);
+
+        eventLog.append("s1", EventTypes.TEXT_DELTA, Map.of("n", 3)).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        assertThat(first).hasSize(2);
+        assertThat(second).extracting(Event::seq).containsExactly(1L, 2L, 3L);
+
+        sub2.unsubscribe();
+        sub2.unsubscribe();
+        assertThat(sub2.isActive()).isFalse();
+        assertThat(eventLog.subscriptionCount()).isZero();
+
+        eventLog.append("s1", EventTypes.TEXT_DELTA, Map.of("n", 4)).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        assertThat(second).hasSize(3);
+    }
+
+    @Test
+    void listenerFailureDoesNotBreakAppendAndOtherListenersStillFire() throws Exception {
+        eventLog.subscribe("s1", event -> {
+            throw new IllegalStateException("boom");
+        });
+        List<Event> received = new CopyOnWriteArrayList<>();
+        eventLog.subscribe("s1", received::add);
+
+        Event appended =
+                eventLog.append("s1", EventTypes.ERROR, Map.of("k", "v")).get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+        assertThat(appended.seq()).isEqualTo(1);
+        assertThat(appended.payloadAsMap()).containsEntry("k", "v");
+        assertThat(received).extracting(Event::seq).containsExactly(1L);
+        assertThat(eventLog.latestSeq("s1")).isEqualTo(1);
     }
 }

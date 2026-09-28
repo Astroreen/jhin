@@ -76,6 +76,11 @@ public class SseStreamService {
         registry.unregister(deviceId, sink);
     }
 
+    /** Потоков с активными таймерами (для контроля утечек). */
+    public int activeStreamCount() {
+        return tasksBySink.size();
+    }
+
     @EventListener
     public void onDeviceRevoked(DeviceRevokedEvent event) {
         tasksBySink.forEach((sink, tasks) -> {
