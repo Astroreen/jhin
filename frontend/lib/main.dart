@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'core/api/api_client.dart';
 import 'core/jhin_client.dart';
+import 'core/state/manifest_store.dart';
 import 'core/state/session_store.dart';
 import 'screens/connect_screen.dart';
 import 'screens/sessions_screen.dart';
@@ -14,7 +15,8 @@ void main() {
 
 /// Корневое приложение Jhin: Connect → Sessions → Chat (Navigator).
 ///
-/// [SessionStore] живёт в [MaterialApp.builder] — доступен всем роутам.
+/// [SessionStore] и [ManifestStore] живут в [MaterialApp.builder] — доступны
+/// всем роутам.
 class JhinApp extends StatefulWidget {
   const JhinApp({super.key});
 
@@ -24,6 +26,7 @@ class JhinApp extends StatefulWidget {
 
 class _JhinAppState extends State<JhinApp> {
   SessionStore? _store;
+  ManifestStore? _manifestStore;
 
   @override
   Widget build(BuildContext context) {
@@ -34,12 +37,16 @@ class _JhinAppState extends State<JhinApp> {
       ),
       builder: (context, child) {
         final store = _store;
-        if (store == null) {
+        final manifestStore = _manifestStore;
+        if (store == null || manifestStore == null) {
           return child!;
         }
         return ChangeNotifierProvider<SessionStore>.value(
           value: store,
-          child: child!,
+          child: ChangeNotifierProvider<ManifestStore>.value(
+            value: manifestStore,
+            child: child!,
+          ),
         );
       },
       home: _ConnectGate(
@@ -49,12 +56,21 @@ class _JhinAppState extends State<JhinApp> {
             events: (id, {fromSeq}) =>
                 client.sessionEvents(id, fromSeq: fromSeq),
           );
-          setState(() => _store = store);
+          final manifestStore = ManifestStore(api: client.api);
+          setState(() {
+            _store = store;
+            _manifestStore = manifestStore;
+          });
           store.loadSessions();
+          manifestStore.refresh();
         },
         onDisconnected: () {
           _store?.dispose();
-          setState(() => _store = null);
+          _manifestStore?.dispose();
+          setState(() {
+            _store = null;
+            _manifestStore = null;
+          });
         },
       ),
     );
@@ -113,10 +129,12 @@ class _ConnectGateState extends State<_ConnectGate> {
       accountName: result.accountName,
       onSignOut: () => _handleSignOut(client),
       onOpenSettings: () {
+        final manifestStore = context.read<ManifestStore>();
         Navigator.of(context).push(
           MaterialPageRoute<void>(
             builder: (_) => SettingsScreen(
               client: client,
+              manifestStore: manifestStore,
               // Settings уже очистил токен (signOut) и стек навигации.
               onSignedOut: () {
                 _handleSignOut(client, alreadySignedOut: true);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api/api_client.dart';
 import '../core/jhin_client.dart';
+import '../core/state/manifest_store.dart';
 
 /// DI-точка: паузы reload-flow (смерть/подъём backend'а). В widget-тестах
 /// подменяется на мгновенную — иначе pending-таймеры в FakeAsync.
@@ -15,9 +16,9 @@ typedef DelayFn = Future<void> Function(Duration duration);
 /// удалить и создать заново. Delete — с confirm.
 ///
 /// Reload: `POST /admin/reload` → 202 → пауза (процесс падает ~2с) → опрос
-/// `GET /health` до успеха → перечитать провайдеров + nullable
-/// `GET /ui/manifest` (пока 404 — норм, T32). 503 `restart manually` (dev) →
-/// сообщение «вручную».
+/// `GET /health` до успеха → перечитать провайдеров + `GET /ui/manifest`
+/// (результат кладётся в [manifestStore], если он передан). 503 `restart
+/// manually` (dev) → сообщение «вручную».
 ///
 /// Устройство: fingerprint TOFU-пина из trustStore (95 chars) или «Не
 /// закреплён» (web/TOFU) + «Забыть токен» → `JhinClient.signOut()` → очистка
@@ -27,6 +28,7 @@ class SettingsScreen extends StatefulWidget {
     super.key,
     required this.client,
     required this.onSignedOut,
+    this.manifestStore,
     this.delay,
   });
 
@@ -37,6 +39,10 @@ class SettingsScreen extends StatefulWidget {
   /// Вызывается после signOut и очистки стека навигации. Должен перевести
   /// приложение на ConnectScreen (токен уже очищен).
   final VoidCallback onSignedOut;
+
+  /// Куда класть перечитанный UI-манифест после reload (T32). Опционален:
+  /// без него запрос всё равно уходит, результат отбрасывается.
+  final ManifestStore? manifestStore;
 
   /// Паузы reload-flow (тесты подменяют на `(_) async {}`).
   final DelayFn? delay;
@@ -303,8 +309,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     await _loadProviders();
     try {
-      // 404 → null — нормально до T32 (manifest ещё не отдаётся).
-      await widget.client.api.getUiManifest();
+      // 404/401 → null — нормально (манифест опционален).
+      final manifest = await widget.client.api.getUiManifest();
+      widget.manifestStore?.updateFrom(manifest);
     } on Exception {
       // reload удался, манифест опционален.
     }

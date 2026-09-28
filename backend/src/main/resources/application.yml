@@ -5,3 +5,4 @@ server:
 jhin:
   home: ${JHIN_HOME:${user.home}/.jhin}
   role: hub
+  version: 0.1.0
