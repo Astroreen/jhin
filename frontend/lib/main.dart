@@ -1,17 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'core/api/api_client.dart';
 import 'core/jhin_client.dart';
+import 'core/state/session_store.dart';
 import 'screens/connect_screen.dart';
+import 'screens/sessions_screen.dart';
 
 void main() {
   runApp(const JhinApp());
 }
 
-/// Корневое приложение Jhin (T28): стартует с [ConnectScreen], после enroll —
-/// домашняя заглушка (экраны сессий — T29+).
-class JhinApp extends StatelessWidget {
+/// Корневое приложение Jhin: Connect → Sessions → Chat (Navigator).
+///
+/// [SessionStore] живёт в [MaterialApp.builder] — доступен всем роутам.
+class JhinApp extends StatefulWidget {
   const JhinApp({super.key});
+
+  @override
+  State<JhinApp> createState() => _JhinAppState();
+}
+
+class _JhinAppState extends State<JhinApp> {
+  SessionStore? _store;
 
   @override
   Widget build(BuildContext context) {
@@ -20,14 +31,41 @@ class JhinApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: const _ConnectGate(),
+      builder: (context, child) {
+        final store = _store;
+        if (store == null) {
+          return child!;
+        }
+        return ChangeNotifierProvider<SessionStore>.value(
+          value: store,
+          child: child!,
+        );
+      },
+      home: _ConnectGate(
+        onConnected: (client, result) {
+          final store = SessionStore(
+            api: client.api,
+            events: (id, {fromSeq}) =>
+                client.sessionEvents(id, fromSeq: fromSeq),
+          );
+          setState(() => _store = store);
+          store.loadSessions();
+        },
+        onDisconnected: () {
+          _store?.dispose();
+          setState(() => _store = null);
+        },
+      ),
     );
   }
 }
 
-/// Переключает ConnectScreen ↔ домашнюю заглушку по факту подключения.
+/// Переключает ConnectScreen ↔ SessionsScreen по факту подключения.
 class _ConnectGate extends StatefulWidget {
-  const _ConnectGate();
+  const _ConnectGate({required this.onConnected, required this.onDisconnected});
+
+  final ConnectCallback onConnected;
+  final VoidCallback onDisconnected;
 
   @override
   State<_ConnectGate> createState() => _ConnectGateState();
@@ -48,10 +86,11 @@ class _ConnectGateState extends State<_ConnectGate> {
             _client = client;
             _result = result;
           });
+          widget.onConnected(client, result);
         },
       );
     }
-    return _HomeStub(
+    return SessionsScreen(
       accountName: result.accountName,
       onSignOut: () async {
         await client.signOut();
@@ -63,32 +102,8 @@ class _ConnectGateState extends State<_ConnectGate> {
           _client = null;
           _result = null;
         });
+        widget.onDisconnected();
       },
-    );
-  }
-}
-
-/// Домашняя заглушка до появления экранов сессий (T29).
-class _HomeStub extends StatelessWidget {
-  const _HomeStub({required this.accountName, required this.onSignOut});
-
-  final String accountName;
-  final Future<void> Function() onSignOut;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Jhin')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text('Connected as $accountName'),
-            const SizedBox(height: 16),
-            ElevatedButton(onPressed: onSignOut, child: const Text('Sign out')),
-          ],
-        ),
-      ),
     );
   }
 }
