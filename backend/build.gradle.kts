@@ -35,6 +35,7 @@ dependencies {
     // LangChain4j — версии моделей берём из BOM, коннекторы фиксируем явно.
     implementation("dev.langchain4j:langchain4j-anthropic")
     implementation("dev.langchain4j:langchain4j-open-ai")
+    implementation("dev.langchain4j:langchain4j-google-ai-gemini")
     implementation("dev.langchain4j:langchain4j-mcp:1.20.1-beta30")
 
     // MCP Java SDK — используем только как клиент (правило: MCP-сервер не в MVP).
