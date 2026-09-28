@@ -4,6 +4,7 @@
 
 # Gradle
 .gradle_home/
+.gradle/
 build/
 
 # Flutter / Dart
