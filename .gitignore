@@ -18,7 +18,7 @@ dist/
 *.db
 secrets/
 keystore/
-.env/
+.env
 
 # Служебное (планирование, не часть продукта)
 .sisyphus/
