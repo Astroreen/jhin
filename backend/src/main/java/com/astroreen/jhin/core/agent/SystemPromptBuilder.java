@@ -12,6 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.springframework.stereotype.Service;
 
 /**
@@ -54,7 +56,15 @@ public class SystemPromptBuilder {
     private final List<PromptInterceptor> interceptors;
 
     public SystemPromptBuilder(List<PromptInterceptor> interceptors) {
-        this.interceptors = List.copyOf(interceptors);
+        this.interceptors = new CopyOnWriteArrayList<>(Objects.requireNonNull(interceptors, "interceptors"));
+    }
+
+    /**
+     * Плагины (T25), аддитивный шов: интерцептор добавляется в КОНЕЦ списка — применяется после
+     * built-in и после ранее зарегистрированных плагинов (порядок загрузки jar). Потокобезопасно.
+     */
+    public void register(PromptInterceptor interceptor) {
+        interceptors.add(Objects.requireNonNull(interceptor, "interceptor"));
     }
 
     /**

@@ -11,7 +11,9 @@ import com.astroreen.jhin.core.tools.spi.ToolResultTransformer;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -37,8 +39,8 @@ public class ToolRegistry {
             List<ToolProvider> providers,
             List<ToolCallGuard> guards,
             List<ToolResultTransformer> transformers) {
-        this.guards = List.copyOf(guards);
-        this.transformers = List.copyOf(transformers);
+        this.guards = new CopyOnWriteArrayList<>(Objects.requireNonNull(guards, "guards"));
+        this.transformers = new CopyOnWriteArrayList<>(Objects.requireNonNull(transformers, "transformers"));
         providers.forEach(this::register);
     }
 
@@ -52,6 +54,22 @@ public class ToolRegistry {
             }
             tools.put(name, definition);
         }
+    }
+
+    /**
+     * Плагины (T25), аддитивный шов: guard добавляется в КОНЕЦ цепочки (плагины после built-in),
+     * порядок между плагинами — порядок загрузки jar. Регистрация потокобезопасна.
+     */
+    public void register(ToolCallGuard guard) {
+        guards.add(Objects.requireNonNull(guard, "guard"));
+    }
+
+    /**
+     * Плагины (T25), аддитивный шов: трансформер добавляется в КОНЕЦ цепочки (плагины после
+     * built-in), порядок между плагинами — порядок загрузки jar. Регистрация потокобезопасна.
+     */
+    public void register(ToolResultTransformer transformer) {
+        transformers.add(Objects.requireNonNull(transformer, "transformer"));
     }
 
     public synchronized List<ToolDefinition> all() {
