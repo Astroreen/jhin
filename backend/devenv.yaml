@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
+#
+# Окружение backend'а (Java 21 + Gradle). См. devenv.nix в этом каталоге.
+inputs:
+  nixpkgs:
+    url: github:cachix/devenv-nixpkgs/rolling

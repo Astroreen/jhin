@@ -1,25 +1,37 @@
 # devenv / direnv
 .devenv*
 .direnv/
+devenv.local.nix
+devenv.local.yaml
 
-# Gradle
+# Gradle / JVM (собранные артефакты)
 .gradle_home/
 .gradle/
 build/
+bin/
+*.class
 
 # Flutter / Dart
 .dart_tool/
 dist/
+coverage/
 
-# IDE
+# IDE — личная конфигурация, не часть продукта (settings.json ещё и генерируется devenv'ом)
 .idea/
 *.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Runtime data
 *.db
+*.log
 secrets/
 keystore/
 .env
+.env.*
 
 # Служебное (планирование, не часть продукта)
 .sisyphus/

@@ -1,8 +1,12 @@
 { pkgs, lib, ... }:
 
-# Dev-окружение frontend'а Jhin: Flutter + JDK 17 (тулинг Android).
+# Dev-окружение frontend'а Jhin: Flutter + JDK 17 (тулинг Android) + Linux-desktop.
 # Продукт САМ nix не требует — devenv нужен только для удобной разработки.
 # Версии Flutter/Dart и инструментов зафиксированы в devenv.lock.
+#
+# Для «объединённого» окружения всего монорепо (Flutter + Java 21 сразу) см. ../devenv.nix.
+# Настройки VSCode для корня монорепо генерируются там же; .vscode/ внутри frontend/
+# нужен только если открывать frontend/ как отдельный workspace.
 {
   packages = with pkgs; [
     flutter
@@ -39,6 +43,7 @@
     }:${builtins.getEnv "LD_LIBRARY_PATH"}";
   };
 
+  # Java-модуль devenv здесь не нужен: JDK 17 ставится напрямую из packages.
   languages.java.enable = false;
   dotenv.enable = true;
 
@@ -52,10 +57,11 @@
     # Прописываем JDK в flutter config — нужно для android-сборок
     flutter config --jdk-dir ${pkgs.jdk17.home} > /dev/null 2>&1
 
-    # Локальные настройки VS Code. Единственный источник правды — этот файл:
-    # Flutter/Dart SDK и JDK берутся из devenv.lock, поэтому после
-    # `devenv update nixpkgs` настройки автоматически указывают на новые версии.
-    # Файл перезаписывается только при изменении, чтобы не дёргать окно VS Code.
+    # Локальные настройки VS Code для случая, когда открыт именно frontend/.
+    # Единственный источник правды для этого файла — этот devenv.nix: Flutter/Dart SDK
+    # и JDK берутся из devenv.lock, поэтому после `devenv update nixpkgs` настройки
+    # автоматически указывают на новые версии. Для корня монорепо аналог генерирует
+    # ../devenv.nix. Файл перезаписывается только при изменении, чтобы не дёргать окно VS Code.
     mkdir -p .vscode
     settings_tmp=$(mktemp)
     cat > "$settings_tmp" <<EOF
