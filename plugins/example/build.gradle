@@ -1,9 +1,9 @@
 plugins {
-    java
+    id 'java'
 }
 
-group = "com.astroreen"
-version = "0.1.0"
+group = 'com.astroreen'
+version = '0.1.0'
 
 java {
     toolchain {
@@ -21,10 +21,10 @@ java {
 // их не видит. Порядок сборки: сначала backend (cd backend && ./gradlew bootJar jar),
 // потом этот проект.
 dependencies {
-    compileOnly(files("../../backend/build/libs/jhin-backend-0.1.0-SNAPSHOT-plain.jar"))
+    compileOnly(files('../../backend/build/libs/jhin-backend-0.1.0-SNAPSHOT-plain.jar'))
 }
 
 // Gradle wrapper здесь не нужен: это dev-артефакт, сборка — `gradle jar` из окружения.
 tasks.jar {
-    archiveBaseName.set("jhin-example-plugin")
+    archiveBaseName = 'jhin-example-plugin'
 }

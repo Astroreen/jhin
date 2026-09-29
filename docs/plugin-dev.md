@@ -172,11 +172,11 @@ cp build/libs/jhin-example-plugin-0.1.0.jar "${JHIN_HOME:-$HOME/.jhin}/plugins/"
 # рестарт: POST /admin/reload или запуск java -jar заново
 ```
 
-Ключевые правила `build.gradle.kts` (см. [`plugins/example/build.gradle.kts`](../plugins/example/build.gradle.kts)):
+Ключевые правила `build.gradle` (см. [`plugins/example/build.gradle`](../plugins/example/build.gradle)):
 
-```kotlin
+```groovy
 dependencies {
-    compileOnly(files("../../backend/build/libs/jhin-backend-0.1.0-SNAPSHOT-plain.jar"))
+    compileOnly(files('../../backend/build/libs/jhin-backend-0.1.0-SNAPSHOT-plain.jar'))
 }
 ```
 

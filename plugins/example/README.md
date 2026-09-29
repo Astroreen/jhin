@@ -38,14 +38,14 @@ zip) с SPI-контрактами: именно он нужен плагину 
 Результат: `plugins/example/build/libs/jhin-example-plugin-0.1.0.jar`.
 
 Gradle wrapper для плагина не нужен — это dev-артефакт, собирается `gradle jar` из окружения
-(свой `settings.gradle.kts` + `build.gradle.kts`, Java 21 toolchain). Daemon JVM зафиксирован
+(свой `settings.gradle` + `build.gradle`, Java 21 toolchain). Daemon JVM зафиксирован
 на Java 21 (`gradle/gradle-daemon-jvm.properties`) — иначе на JDK с 4-компонентным
 `java.version` (NixOS) Kotlin DSL Gradle падает в `JavaVersion.parse`. JDK 21 Gradle ищет
 стандартно (JAVA_HOME, PATH) и через `JDK21_HOME` (`gradle.properties`); если не найден —
 `JDK21_HOME=/path/to/jdk-21 gradle jar`. Аварийный запас на совсем старом Gradle без daemon
 JVM criteria — wrapper backend (Gradle 9.8.0): `../../backend/gradlew jar`.
 
-В `build.gradle.kts` backend-jar подключён **`compileOnly`** (`files("../../backend/build/libs/*-plain.jar")`) —
+В `build.gradle` backend-jar подключён **`compileOnly`** (`files("../../backend/build/libs/*-plain.jar")`) —
 классы SPI не пакуются в plugin-jar (иначе `ServiceLoader` увидит дубли интерфейсов и плагин
 не загрузится; fat jar `jhin-backend-*.jar` для этого не годится — его классы лежат под
 `BOOT-INF/classes`, javac их не видит). Других зависимостей у плагина нет: только JDK + SPI ядра.

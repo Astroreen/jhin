@@ -42,7 +42,7 @@ public interface LlmProviderFactory { String format(); ChatModel create(Provider
 ├── README.md
 ├── backend/               # Java 21 + Spring Boot + SQLite
 │   ├── devenv.nix         # dev-окружение (продукт nix НЕ требует)
-│   ├── build.gradle.kts   # bootJar, fat jar
+│   ├── build.gradle       # bootJar, fat jar
 │   └── src/main/java/com/astroreen/jhin/...
 ├── frontend/              # Flutter: Android APK + Linux desktop + Web
 │   ├── devenv.nix
