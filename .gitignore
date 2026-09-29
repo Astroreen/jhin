@@ -36,5 +36,5 @@ keystore/
 .env
 .env.*
 
-# Служебное (планирование, не часть продукта)
+# Service files (planning artifacts, not part of the product)
 .sisyphus/
