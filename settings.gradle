@@ -5,14 +5,15 @@ includeBuild 'sdk'
 includeBuild 'kernel'
 
 // Eleven plugin builds, each publishing its own jar (see T4 module skeletons).
-includeBuild 'plugins/sessions'
-includeBuild 'plugins/security'
-includeBuild 'plugins/llm'
-includeBuild 'plugins/llm-builtin'
-includeBuild 'plugins/agent'
-includeBuild 'plugins/tools-builtin'
-includeBuild 'plugins/mcp'
-includeBuild 'plugins/ui-kit'
-includeBuild 'plugins/ui-default'
-includeBuild 'plugins/reload'
-includeBuild 'plugins/example'
+// Build names are prefixed so task addressing reads :jhin-plugin-<name>:<task>.
+includeBuild('plugins/sessions') { name = 'jhin-plugin-sessions' }
+includeBuild('plugins/security') { name = 'jhin-plugin-security' }
+includeBuild('plugins/llm') { name = 'jhin-plugin-llm' }
+includeBuild('plugins/llm-builtin') { name = 'jhin-plugin-llm-builtin' }
+includeBuild('plugins/agent') { name = 'jhin-plugin-agent' }
+includeBuild('plugins/tools-builtin') { name = 'jhin-plugin-tools-builtin' }
+includeBuild('plugins/mcp') { name = 'jhin-plugin-mcp' }
+includeBuild('plugins/ui-kit') { name = 'jhin-plugin-ui-kit' }
+includeBuild('plugins/ui-default') { name = 'jhin-plugin-ui-default' }
+includeBuild('plugins/reload') { name = 'jhin-plugin-reload' }
+includeBuild('plugins/example') { name = 'jhin-plugin-example' }

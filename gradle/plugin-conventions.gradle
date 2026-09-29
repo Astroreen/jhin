@@ -1,0 +1,67 @@
+// Shared build conventions for every jhin plugin module.
+// Applied from plugins/<name>/build.gradle via:
+//   apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
+apply plugin: 'java'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    compileOnly 'com.astroreen:jhin-sdk:0.2.0-SNAPSHOT'
+    testImplementation 'com.astroreen:jhin-sdk:0.2.0-SNAPSHOT'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.assertj:assertj-core:3.27.3'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// Fat jar: bundle the plugin's runtime dependencies, but keep the parts the
+// kernel already provides (jhin-sdk, slf4j-*, jackson-*) out of the archive.
+jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from {
+        configurations.runtimeClasspath.findAll { f ->
+            !(f.name.startsWith('jhin-sdk') || f.name.startsWith('slf4j-') || f.name.startsWith('jackson-'))
+        }.collect { f ->
+            f.isDirectory() ? f : zipTree(f)
+        }
+    } {
+        exclude 'META-INF/*.SF'
+        exclude 'META-INF/*.DSA'
+        exclude 'META-INF/*.RSA'
+        exclude 'META-INF/INDEX.LIST'
+    }
+}
+
+// Standalone task, deliberately NOT wired into the jar/build graph: a plugin
+// module compiles without a manifest; only packaging/QA invokes this check.
+tasks.register('validateManifest') {
+    group = 'verification'
+    description = 'Validates src/main/resources/jhin-plugin.json (standalone, not part of jar/build).'
+    doLast {
+        def manifestFile = file('src/main/resources/jhin-plugin.json')
+        if (!manifestFile.exists()) {
+            throw new GradleException("Missing src/main/resources/jhin-plugin.json in $projectDir")
+        }
+        def parsed
+        try {
+            parsed = new groovy.json.JsonSlurper().parse(manifestFile)
+        } catch (Exception e) {
+            throw new GradleException("src/main/resources/jhin-plugin.json is not valid JSON: ${e.message}")
+        }
+        if (!(parsed instanceof Map)) {
+            throw new GradleException('src/main/resources/jhin-plugin.json must be a JSON object')
+        }
+        println "OK: src/main/resources/jhin-plugin.json is a valid JSON object"
+    }
+}

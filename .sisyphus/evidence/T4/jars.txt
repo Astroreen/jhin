@@ -1,0 +1,11 @@
+plugins/agent/build/libs/jhin-plugin-agent-0.2.0.jar
+plugins/example/build/libs/jhin-plugin-example-0.2.0.jar
+plugins/llm/build/libs/jhin-plugin-llm-0.2.0.jar
+plugins/llm-builtin/build/libs/jhin-plugin-llm-builtin-0.2.0.jar
+plugins/mcp/build/libs/jhin-plugin-mcp-0.2.0.jar
+plugins/reload/build/libs/jhin-plugin-reload-0.2.0.jar
+plugins/security/build/libs/jhin-plugin-security-0.2.0.jar
+plugins/sessions/build/libs/jhin-plugin-sessions-0.2.0.jar
+plugins/tools-builtin/build/libs/jhin-plugin-tools-builtin-0.2.0.jar
+plugins/ui-default/build/libs/jhin-plugin-ui-default-0.2.0.jar
+plugins/ui-kit/build/libs/jhin-plugin-ui-kit-0.2.0.jar

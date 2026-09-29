@@ -1,0 +1,10 @@
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :sdk:generateMetadataFileForMavenPublication
+> Task :sdk:generatePomFileForMavenPublication
+> Task :sdk:publishMavenPublicationToMavenLocal
+> Task :sdk:publishToMavenLocal
+
+BUILD SUCCESSFUL in 1s
+5 actionable tasks: 3 executed, 2 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html

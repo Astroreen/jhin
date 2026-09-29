@@ -1,1 +1,9 @@
-// Scaffolded in T3; filled in T4.
+// Jhin plugin module: sessions (scaffolded in T4, logic lands in later tasks).
+apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
+
+group = 'com.astroreen'
+version = '0.2.0'
+
+base {
+    archivesName = 'jhin-plugin-sessions'
+}

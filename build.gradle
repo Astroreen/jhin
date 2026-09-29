@@ -18,3 +18,12 @@ tasks.register('clean') {
     description = 'Cleans all included builds.'
     dependsOn gradle.includedBuilds*.task(':clean')
 }
+
+// Delegate `build` to every included build so `./gradlew build` builds everything.
+// Without this the bare `build` selector does not reach included builds (and
+// even collides with the built-in `buildEnvironment` task name abbreviation).
+tasks.register('build') {
+    group = 'build'
+    description = 'Builds all included builds.'
+    dependsOn gradle.includedBuilds*.task(':build')
+}

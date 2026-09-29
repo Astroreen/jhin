@@ -1,0 +1,40 @@
+> Task :jhin-plugin-ui-kit:testClasses UP-TO-DATE
+> Task :jhin-plugin-reload:jar
+> Task :jhin-plugin-sessions:test NO-SOURCE
+> Task :jhin-plugin-reload:assemble
+> Task :jhin-plugin-sessions:check UP-TO-DATE
+> Task :jhin-plugin-sessions:build
+> Task :jhin-plugin-agent:jar
+> Task :jhin-plugin-llm:test NO-SOURCE
+> Task :jhin-plugin-llm:check UP-TO-DATE
+> Task :jhin-plugin-llm:build
+> Task :jhin-plugin-ui-kit:test NO-SOURCE
+> Task :jhin-plugin-ui-kit:check UP-TO-DATE
+> Task :jhin-plugin-ui-kit:build
+> Task :jhin-plugin-agent:assemble
+> Task :jhin-plugin-reload:compileTestJava NO-SOURCE
+> Task :jhin-plugin-reload:testClasses UP-TO-DATE
+> Task :jhin-plugin-reload:test NO-SOURCE
+> Task :jhin-plugin-agent:compileTestJava NO-SOURCE
+> Task :jhin-plugin-reload:check UP-TO-DATE
+> Task :jhin-plugin-agent:testClasses UP-TO-DATE
+> Task :jhin-plugin-reload:build
+> Task :jhin-plugin-agent:test NO-SOURCE
+> Task :jhin-plugin-agent:check UP-TO-DATE
+> Task :jhin-plugin-agent:build
+> Task :kernel:compileJava
+> Task :kernel:classes
+> Task :kernel:resolveMainClassName
+> Task :kernel:bootJar
+> Task :kernel:jar
+> Task :kernel:assemble
+> Task :kernel:compileTestJava NO-SOURCE
+> Task :kernel:testClasses UP-TO-DATE
+> Task :kernel:test NO-SOURCE
+> Task :kernel:check UP-TO-DATE
+> Task :kernel:build
+> Task :build
+
+BUILD SUCCESSFUL in 6s
+28 actionable tasks: 28 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html

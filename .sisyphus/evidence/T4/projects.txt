@@ -1,0 +1,38 @@
+
+> Task :projects
+
+Projects:
+
+------------------------------------------------------------
+Root project 'jhin'
+------------------------------------------------------------
+
+Location: /home/astroreen/Documents/jhin
+
+Project hierarchy:
+
+Root project 'jhin'
+No sub-projects
+
+Included builds:
+
++--- Included build ':sdk'
++--- Included build ':kernel'
++--- Included build ':jhin-plugin-sessions'
++--- Included build ':jhin-plugin-security'
++--- Included build ':jhin-plugin-llm'
++--- Included build ':jhin-plugin-llm-builtin'
++--- Included build ':jhin-plugin-agent'
++--- Included build ':jhin-plugin-tools-builtin'
++--- Included build ':jhin-plugin-mcp'
++--- Included build ':jhin-plugin-ui-kit'
++--- Included build ':jhin-plugin-ui-default'
++--- Included build ':jhin-plugin-reload'
+\--- Included build ':jhin-plugin-example'
+
+To see a list of the tasks of a project, run gradlew <project-path>:tasks
+For example, try running gradlew :tasks
+
+BUILD SUCCESSFUL in 525ms
+1 actionable task: 1 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
