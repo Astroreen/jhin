@@ -1,5 +1,7 @@
 # JHIN — MVP Plan
 
+> **SUPERSEDED (2026-09-29)** by `.sisyphus/plans/jhin-plugin-first-plan.md`. Kept for history. Do not execute.
+
 **Дата:** 2026-09-28 · **Статус:** одобрено юзером (ответы m0024) · **Исполнитель:** отдельная worker-сессия (`/start-work`)
 
 ---
