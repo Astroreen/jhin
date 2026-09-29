@@ -1,0 +1,5 @@
+$ rg -c "jhin.core" -g '!.sisyphus/**' . || echo "no legacy refs"
+no legacy refs
+
+$ rg -n "com.astroreen.jhin.core" --glob '!.sisyphus/**' .
+no matches (exit 1)
