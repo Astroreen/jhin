@@ -1,7 +1,8 @@
 { pkgs, config, ... }:
 
-# Dev-окружение backend'а Jhin: Java 21 + Gradle.
+# Dev-окружение backend'а Jhin: Java 21 + Gradle 9.
 # Продукт САМ nix не требует (fat jar + gradle wrapper) — devenv нужен только для удобной разработки.
+# Для «объединённого» окружения всего монорепо (Java + Flutter сразу) см. ../devenv.nix.
 let
   jdk = pkgs.openjdk21;
 in
@@ -31,11 +32,16 @@ in
     LOCALE_ARCHIVE = "${pkgs.glibcLocales}/lib/locale/locale-archive";
   };
 
-  scripts.start.exec = "gradle bootRun";
-  scripts.test.exec = "gradle test";
+  # Через wrapper: версия Gradle зафиксирована в gradle/wrapper/gradle-wrapper.properties,
+  # а PATH-овый `gradle` из nixpkgs нужен лишь как fallback.
+  scripts = {
+    start.exec = "./gradlew bootRun";
+    test.exec = "./gradlew test";
+    build.exec = "./gradlew build";
+  };
 
   enterShell = ''
-    echo "Jhin backend devenv"
+    echo "Jhin backend devenv (Java 21, Gradle wrapper)"
     java -version
   '';
 }
