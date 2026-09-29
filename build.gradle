@@ -1,0 +1,20 @@
+// Root composite build.
+//
+// This root build has no sources of its own: it only coordinates the
+// included builds (sdk, kernel, plugins/*) declared in settings.gradle.
+
+// Placeholder for the final packaging task; real logic lands in T44.
+tasks.register('dist') {
+    group = 'build'
+    description = 'Assembles the final distributable jhin fat jar (implemented in T44).'
+    doLast {
+        println 'dist: placeholder task, packaging logic added in T44'
+    }
+}
+
+// Delegate `clean` to every included build so `./gradlew clean` cleans everything.
+tasks.register('clean') {
+    group = 'build'
+    description = 'Cleans all included builds.'
+    dependsOn gradle.includedBuilds*.task(':clean')
+}

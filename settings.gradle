@@ -1,0 +1,18 @@
+rootProject.name = 'jhin'
+
+// Standalone builds shared across all plugin modules (see T4).
+includeBuild 'sdk'
+includeBuild 'kernel'
+
+// Eleven plugin builds, each publishing its own jar (see T4 module skeletons).
+includeBuild 'plugins/sessions'
+includeBuild 'plugins/security'
+includeBuild 'plugins/llm'
+includeBuild 'plugins/llm-builtin'
+includeBuild 'plugins/agent'
+includeBuild 'plugins/tools-builtin'
+includeBuild 'plugins/mcp'
+includeBuild 'plugins/ui-kit'
+includeBuild 'plugins/ui-default'
+includeBuild 'plugins/reload'
+includeBuild 'plugins/example'
