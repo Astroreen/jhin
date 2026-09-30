@@ -5,6 +5,21 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'expr.dart';
+import 'primitives/button.dart';
+import 'primitives/card.dart';
+import 'primitives/checkbox.dart';
+import 'primitives/container.dart';
+import 'primitives/divider.dart';
+import 'primitives/dropdown.dart';
+import 'primitives/form.dart';
+import 'primitives/input.dart';
+import 'primitives/markdown.dart';
+import 'primitives/nav.dart';
+import 'primitives/screen.dart';
+import 'primitives/slider.dart';
+import 'primitives/spacer.dart';
+import 'primitives/switch.dart';
+import 'primitives/text.dart';
 import 'render_context.dart';
 import 'ui_node.dart';
 import 'ui_state.dart';
@@ -18,28 +33,29 @@ import 'ui_state.dart';
 class UiRegistry {
   UiRegistry([Map<String, UiBuilder>? builders]) : _builders = {...?builders};
 
-  /// The fixed 25-primitive catalog (D-10).
+  /// The fixed 25-primitive catalog (D-10). Batch-1 primitives live in
+  /// `primitives/`; the batch-2 builders are still local (T24).
   factory UiRegistry.standard() {
     final registry = UiRegistry();
     registry._builders.addAll({
-      'screen': _buildScreen,
-      'nav': _buildNav,
-      'container': _buildContainer,
-      'card': _buildCard,
-      'text': _buildText,
-      'markdown': _buildMarkdown,
-      'button': _buildButton,
-      'input': _buildInput,
-      'dropdown': _buildDropdown,
-      'checkbox': _buildCheckbox,
-      'switch': _buildSwitch,
-      'slider': _buildSlider,
-      'form': _buildForm,
+      'screen': buildScreen,
+      'nav': buildNav,
+      'container': buildContainer,
+      'card': buildCard,
+      'text': buildText,
+      'markdown': buildMarkdown,
+      'button': buildButton,
+      'input': buildInput,
+      'dropdown': buildDropdown,
+      'checkbox': buildCheckbox,
+      'switch': buildSwitch,
+      'slider': buildSlider,
+      'form': buildForm,
       'list': _buildList,
       'stream_view': _buildStreamView,
       'table': _buildTable,
-      'divider': _buildDivider,
-      'spacer': _buildSpacer,
+      'divider': buildDivider,
+      'spacer': buildSpacer,
       'progress': _buildProgress,
       'image': _buildImage,
       'figure': _buildFigure,
@@ -123,7 +139,7 @@ typedef UiBuilder = Widget Function(
     BuildContext context, UiNode node, RenderContext ctx);
 
 // ---------------------------------------------------------------------------
-// Universal helpers
+// Shared helpers (used by the primitives and the batch-2 builders)
 // ---------------------------------------------------------------------------
 
 /// Parses `#RRGGBB`, `#AARRGGBB`, `0xFFRRGGBB` or an int color.
@@ -170,6 +186,32 @@ EdgeInsets? parsePadding(Object? value) {
   return null;
 }
 
+/// Visible fallback for a node whose required props are missing or
+/// malformed (§8.3 degrade rule): a muted box, never an empty frame.
+Widget degradedBox(BuildContext context, String message) {
+  final theme = Theme.of(context);
+  return Container(
+    padding: const EdgeInsets.all(8),
+    decoration: BoxDecoration(
+      color: theme.hoverColor,
+      borderRadius: BorderRadius.circular(4),
+    ),
+    child: Text(message, style: TextStyle(color: theme.disabledColor)),
+  );
+}
+
+/// Current value of a stateful field node: the live [UiState] value, or the
+/// node's `value` prop, which is seeded into the state on first use so
+/// actions, forms and `include` merges see what the widget displays (§8.4).
+Object? fieldValue(RenderContext ctx, UiNode node) {
+  final id = node.id;
+  final initial = node.props['value'];
+  if (id == null) return initial;
+  if (ctx.state.values.containsKey(id)) return ctx.state[id];
+  if (initial != null) ctx.state.seedValue(id, initial);
+  return initial;
+}
+
 Widget _unsupportedCard(BuildContext context, String type, String? reason) {
   final theme = Theme.of(context);
   return Card(
@@ -194,7 +236,7 @@ Widget _unsupportedCard(BuildContext context, String type, String? reason) {
   );
 }
 
-List<Widget> _buildChildren(
+List<Widget> buildChildren(
     BuildContext context, UiNode node, RenderContext ctx,
     {bool flexAware = false}) {
   return [
@@ -209,7 +251,7 @@ List<Widget> _buildChildren(
   ];
 }
 
-List<Widget> _buildNodeList(
+List<Widget> buildNodeList(
     BuildContext context, RenderContext ctx, List<Object?>? raw) {
   return [
     if (raw != null)
@@ -217,10 +259,10 @@ List<Widget> _buildNodeList(
   ];
 }
 
-Map<String, dynamic>? _asMap(Object? value) =>
+Map<String, dynamic>? asMap(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : null;
 
-IconData? _iconFor(String? name) {
+IconData? iconFor(String? name) {
   switch (name) {
     case 'menu':
       return Icons.menu;
@@ -265,393 +307,13 @@ IconData? _iconFor(String? name) {
 }
 
 // ---------------------------------------------------------------------------
-// The 25 primitives (§8.3)
+// Batch-2 primitives (§8.3): list, stream_view, table, progress, image,
+// figure, chart_line, chart_bar, chart_pie, drawer — still local, extracted
+// in T24.
 // ---------------------------------------------------------------------------
 
-Widget _buildScreen(BuildContext context, UiNode node, RenderContext ctx) {
-  final title = node.stringProp('title');
-  final appBar = node.props['appBar'];
-  final body = node.props['body'];
-  final floatingAction = node.props['floatingAction'];
-  return Scaffold(
-    appBar: (title != null && title.isNotEmpty) || appBar is Map
-        ? AppBar(
-            title: title != null && title.isNotEmpty
-                ? Text(title)
-                : ctx.build(context, UiNode.fromJson(appBar)),
-          )
-        : null,
-    body: body == null
-        ? null
-        : SafeArea(child: ctx.build(context, UiNode.fromJson(body))),
-    floatingActionButton: floatingAction == null
-        ? null
-        : ctx.build(context, UiNode.fromJson(floatingAction)),
-  );
-}
-
-Widget _buildNav(BuildContext context, UiNode node, RenderContext ctx) {
-  final kind = node.stringProp('kind') ?? 'tabs';
-  final items = node.listProp('items') ?? const [];
-  final buttons = <Widget>[];
-  for (final item in items) {
-    final map = _asMap(item);
-    final label = map?['label'];
-    if (label is! String) continue;
-    final icon =
-        _iconFor(map?['icon'] is String ? map!['icon'] as String : null);
-    final screen = map?['screen'];
-    final onTap = screen is String ? () => ctx.navigate(screen) : null;
-    if (kind == 'drawer') {
-      buttons.add(ListTile(
-        leading: icon == null ? null : Icon(icon),
-        title: Text(label),
-        onTap: onTap,
-      ));
-    } else if (icon == null) {
-      buttons.add(TextButton(onPressed: onTap, child: Text(label)));
-    } else {
-      buttons.add(TextButton.icon(
-          onPressed: onTap, icon: Icon(icon), label: Text(label)));
-    }
-  }
-  if (kind == 'drawer') {
-    return Column(mainAxisSize: MainAxisSize.min, children: buttons);
-  }
-  return SingleChildScrollView(
-    scrollDirection: Axis.horizontal,
-    child: Row(children: buttons),
-  );
-}
-
-Widget _buildContainer(BuildContext context, UiNode node, RenderContext ctx) {
-  final direction = node.stringProp('direction') == 'row'
-      ? Axis.horizontal
-      : Axis.vertical;
-  final children = _buildChildren(context, node, ctx, flexAware: true);
-  final gap = node.numProp('gap')?.toDouble();
-  final spaced = gap == null || gap <= 0
-      ? children
-      : <Widget>[
-          for (var i = 0; i < children.length; i++) ...[
-            if (i > 0)
-              direction == Axis.horizontal
-                  ? SizedBox(width: gap)
-                  : SizedBox(height: gap),
-            children[i],
-          ],
-        ];
-  Widget result = direction == Axis.horizontal
-      ? Row(
-          mainAxisAlignment: _mainAlign(node.stringProp('align')),
-          crossAxisAlignment: _crossAlign(node.stringProp('align')),
-          children: spaced,
-        )
-      : Column(
-          mainAxisAlignment: _mainAlign(node.stringProp('align')),
-          crossAxisAlignment: _crossAlign(node.stringProp('align')),
-          mainAxisSize: MainAxisSize.min,
-          children: spaced,
-        );
-  if (node.boolProp('scroll') == true) {
-    result = SingleChildScrollView(child: result);
-  }
-  return result;
-}
-
-MainAxisAlignment _mainAlign(String? align) {
-  switch (align) {
-    case 'start':
-      return MainAxisAlignment.start;
-    case 'end':
-      return MainAxisAlignment.end;
-    case 'center':
-      return MainAxisAlignment.center;
-    case 'spaceBetween':
-      return MainAxisAlignment.spaceBetween;
-  }
-  return MainAxisAlignment.start;
-}
-
-CrossAxisAlignment _crossAlign(String? align) {
-  switch (align) {
-    case 'center':
-      return CrossAxisAlignment.center;
-    case 'end':
-      return CrossAxisAlignment.end;
-    case 'stretch':
-      return CrossAxisAlignment.stretch;
-  }
-  return CrossAxisAlignment.start;
-}
-
-Widget _buildCard(BuildContext context, UiNode node, RenderContext ctx) {
-  final title = node.stringProp('title');
-  return Card(
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (title != null && title.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(title,
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ..._buildChildren(context, node, ctx),
-        ],
-      ),
-    ),
-  );
-}
-
-Widget _buildText(BuildContext context, UiNode node, RenderContext ctx) {
-  final text = node.stringProp('text') ?? '';
-  final style = node.stringProp('style') ?? 'body';
-  final theme = Theme.of(context);
-  TextStyle? base;
-  switch (style) {
-    case 'h1':
-      base = theme.textTheme.headlineMedium;
-    case 'h2':
-      base = theme.textTheme.headlineSmall;
-    case 'h3':
-      base = theme.textTheme.titleLarge;
-    case 'caption':
-      base = theme.textTheme.bodySmall;
-    case 'mono':
-      base = theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace');
-    default:
-      base = theme.textTheme.bodyMedium;
-  }
-  final color = parseColor(node.props['color']);
-  return Text(
-    text,
-    style: base?.copyWith(
-      fontWeight: node.boolProp('bold') == true ? FontWeight.bold : null,
-      color: color,
-    ),
-  );
-}
-
-Widget _buildMarkdown(BuildContext context, UiNode node, RenderContext ctx) {
-  // No markdown dependency (AGENTS.md rule 3): rendered as plain text.
-  return Text(node.stringProp('text') ?? '');
-}
-
-Widget _buildButton(BuildContext context, UiNode node, RenderContext ctx) {
-  final label = node.stringProp('label') ?? '';
-  final style = node.stringProp('style') ?? 'primary';
-  final icon = _iconFor(node.stringProp('icon'));
-  final action = _asMap(node.props['action']);
-  final confirm = node.stringProp('confirm');
-  void onPressed() {
-    if (action == null) return;
-    if (confirm != null && confirm.isNotEmpty) {
-      ctx.confirm(confirm, () => ctx.dispatch(action));
-    } else {
-      ctx.dispatch(action);
-    }
-  }
-
-  final iconWidget = icon == null ? null : Icon(icon);
-  switch (style) {
-    case 'secondary':
-      return iconWidget == null
-          ? OutlinedButton(onPressed: onPressed, child: Text(label))
-          : OutlinedButton.icon(
-              onPressed: onPressed, icon: iconWidget, label: Text(label));
-    case 'danger':
-      final danger = ElevatedButton.styleFrom(
-          foregroundColor: Theme.of(context).colorScheme.onError,
-          backgroundColor: Theme.of(context).colorScheme.error);
-      return iconWidget == null
-          ? ElevatedButton(
-              style: danger, onPressed: onPressed, child: Text(label))
-          : ElevatedButton.icon(
-              style: danger,
-              onPressed: onPressed,
-              icon: iconWidget,
-              label: Text(label));
-    case 'text':
-      return iconWidget == null
-          ? TextButton(onPressed: onPressed, child: Text(label))
-          : TextButton.icon(
-              onPressed: onPressed, icon: iconWidget, label: Text(label));
-    default:
-      return iconWidget == null
-          ? ElevatedButton(onPressed: onPressed, child: Text(label))
-          : ElevatedButton.icon(
-              onPressed: onPressed, icon: iconWidget, label: Text(label));
-  }
-}
-
-class _InputField extends StatefulWidget {
-  const _InputField({required this.node, required this.ctx});
-
-  final UiNode node;
-  final RenderContext ctx;
-
-  @override
-  State<_InputField> createState() => _InputFieldState();
-}
-
-class _InputFieldState extends State<_InputField> {
-  late final TextEditingController _controller;
-
-  String get _id => widget.node.id ?? '';
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(
-        text: widget.ctx.state[_id]?.toString() ??
-            widget.node.stringProp('value') ??
-            '');
-  }
-
-  @override
-  void didUpdateWidget(_InputField old) {
-    super.didUpdateWidget(old);
-    final current = widget.ctx.state[_id]?.toString() ?? '';
-    if (current != _controller.text) {
-      _controller.text = current;
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final node = widget.node;
-    final multiline = node.boolProp('multiline') == true;
-    return TextField(
-      controller: _controller,
-      obscureText: node.boolProp('obscure') == true,
-      maxLines: multiline ? 5 : 1,
-      keyboardType: multiline ? TextInputType.multiline : _keyboard(node.stringProp('keyboard')),
-      decoration: InputDecoration(
-        labelText: node.stringProp('label'),
-        hintText: node.stringProp('placeholder'),
-        errorText: widget.ctx.state.errorFor(_id),
-      ),
-      onChanged: (value) => widget.ctx.setState(_id, value),
-    );
-  }
-
-  static TextInputType _keyboard(String? name) {
-    switch (name) {
-      case 'number':
-        return TextInputType.number;
-      case 'email':
-        return TextInputType.emailAddress;
-      case 'phone':
-        return TextInputType.phone;
-      case 'url':
-        return TextInputType.url;
-    }
-    return TextInputType.text;
-  }
-}
-
-Widget _buildInput(BuildContext context, UiNode node, RenderContext ctx) {
-  return _InputField(node: node, ctx: ctx);
-}
-
-Widget _buildDropdown(BuildContext context, UiNode node, RenderContext ctx) {
-  final id = node.id ?? '';
-  final items = <DropdownMenuItem<Object?>>[];
-  for (final raw in node.listProp('items') ?? const []) {
-    final map = _asMap(raw);
-    if (map == null) continue;
-    items.add(DropdownMenuItem<Object?>(
-      value: map['value'],
-      child: Text('${map['label'] ?? map['value'] ?? ''}'),
-    ));
-  }
-  final current = ctx.state[id] ?? node.props['value'];
-  final action = _asMap(node.props['action']);
-  return DropdownButtonFormField<Object?>(
-    initialValue: current,
-    items: items,
-    decoration: InputDecoration(labelText: node.stringProp('label')),
-    onChanged: (value) {
-      ctx.setState(id, value);
-      if (action != null) ctx.dispatch(action);
-    },
-  );
-}
-
-Widget _buildCheckbox(BuildContext context, UiNode node, RenderContext ctx) {
-  final id = node.id ?? '';
-  return CheckboxListTile(
-    value: ctx.state[id] == true,
-    title: Text(node.stringProp('label') ?? ''),
-    onChanged: (value) => ctx.setState(id, value == true),
-  );
-}
-
-Widget _buildSwitch(BuildContext context, UiNode node, RenderContext ctx) {
-  final id = node.id ?? '';
-  return SwitchListTile(
-    value: ctx.state[id] == true,
-    title: Text(node.stringProp('label') ?? ''),
-    onChanged: (value) => ctx.setState(id, value),
-  );
-}
-
-Widget _buildSlider(BuildContext context, UiNode node, RenderContext ctx) {
-  final id = node.id ?? '';
-  final min = node.numProp('min')?.toDouble() ?? 0;
-  final max = node.numProp('max')?.toDouble() ?? 1;
-  final step = node.numProp('step')?.toDouble();
-  final raw = ctx.state[id] ?? node.props['value'];
-  final value = (raw is num ? raw.toDouble() : min).clamp(min, max);
-  final label = node.stringProp('label');
-  return Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      if (label != null && label.isNotEmpty) Text(label),
-      Slider(
-        value: value,
-        min: min,
-        max: max,
-        divisions: step == null || step <= 0 ? null : ((max - min) / step).round(),
-        onChanged: (next) => ctx.setState(id, next),
-      ),
-    ],
-  );
-}
-
-Widget _buildForm(BuildContext context, UiNode node, RenderContext ctx) {
-  final fields = _buildNodeList(context, ctx, node.listProp('fields'));
-  final submit = _asMap(node.props['submit']);
-  final label = submit?['label'];
-  final action = _asMap(submit?['action']);
-  return Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      ...fields,
-      if (submit != null)
-        ElevatedButton(
-          onPressed:
-              action == null ? null : () => ctx.dispatch(action),
-          child: Text(label is String ? label : 'Submit'),
-        ),
-    ],
-  );
-}
-
 Widget _buildList(BuildContext context, UiNode node, RenderContext ctx) {
-  final children = _buildNodeList(context, ctx, node.listProp('items'));
+  final children = buildNodeList(context, ctx, node.listProp('items'));
   final column = Column(
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -696,7 +358,7 @@ class _StreamViewState extends State<_StreamView> {
   void _onEvent(Map<String, dynamic> event) {
     if (!mounted) return;
     setState(() {
-      final node = _asMap(event['node']);
+      final node = asMap(event['node']);
       if (node != null) {
         if (widget.node.stringProp('mode') == 'replace') {
           _items
@@ -711,10 +373,10 @@ class _StreamViewState extends State<_StreamView> {
         }
         return;
       }
-      final patch = _asMap(event['patch']);
+      final patch = asMap(event['patch']);
       if (patch != null) {
         final id = patch['id'];
-        final props = _asMap(patch['props']);
+        final props = asMap(patch['props']);
         if (id is String && props != null) {
           var matched = false;
           for (var i = 0; i < _items.length; i++) {
@@ -785,7 +447,7 @@ Widget _buildTable(BuildContext context, UiNode node, RenderContext ctx) {
   final flexes = <int>[];
   final headers = <String>[];
   for (final raw in columns) {
-    final map = _asMap(raw);
+    final map = asMap(raw);
     headers.add('${map?['label'] ?? ''}');
     final width = map?['width'];
     flexes.add(width is num && width > 0 ? width.round() : 1);
@@ -820,12 +482,6 @@ Widget _buildTable(BuildContext context, UiNode node, RenderContext ctx) {
     ],
   );
 }
-
-Widget _buildDivider(BuildContext context, UiNode node, RenderContext ctx) =>
-    const Divider(height: 1);
-
-Widget _buildSpacer(BuildContext context, UiNode node, RenderContext ctx) =>
-    SizedBox(height: node.numProp('size')?.toDouble() ?? 8);
 
 Widget _buildProgress(BuildContext context, UiNode node, RenderContext ctx) {
   final value = node.numProp('value')?.toDouble();
@@ -874,7 +530,8 @@ Widget _buildImage(BuildContext context, UiNode node, RenderContext ctx) {
 }
 
 Widget _buildFigure(BuildContext context, UiNode node, RenderContext ctx) {
-  final color = parseColor(node.props['color']) ?? Theme.of(context).disabledColor;
+  final color =
+      parseColor(node.props['color']) ?? Theme.of(context).disabledColor;
   final width = node.numProp('width')?.toDouble() ?? 64;
   final height = node.numProp('height')?.toDouble() ?? 64;
   switch (node.stringProp('shape')) {
@@ -928,7 +585,7 @@ List<Map<String, dynamic>> _chartItems(UiNode node) {
   for (final source in [node.listProp('items'), node.listProp('series')]) {
     if (source == null) continue;
     for (final raw in source) {
-      final map = _asMap(raw);
+      final map = asMap(raw);
       if (map != null) out.add(map);
     }
   }
@@ -979,7 +636,8 @@ class _LineChartPainter extends CustomPainter {
       ..color = const Color(0xFF9E9E9E)
       ..strokeWidth = 1;
     canvas.drawLine(Offset.zero, Offset(0, size.height), axis);
-    canvas.drawLine(Offset(0, size.height), Offset(size.width, size.height), axis);
+    canvas.drawLine(
+        Offset(0, size.height), Offset(size.width, size.height), axis);
     for (final line in series) {
       if (line.points.length < 2) continue;
       var min = line.points.first;
@@ -1092,7 +750,7 @@ Widget _buildDrawer(BuildContext context, UiNode node, RenderContext ctx) {
             child: Text(title,
                 style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
-        ..._buildChildren(context, node, ctx),
+        ...buildChildren(context, node, ctx),
       ],
     ),
   );
