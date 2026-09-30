@@ -1,0 +1,11 @@
+--- config.json (trailing comma) ---
+{
+  "demo": {
+    "a": "b",
+  }
+}
+--- ConfigStore.load(home) ---
+threw com.astroreen.jhin.kernel.config.ConfigException
+message: malformed config.json at line 4, column 3
+caused by com.fasterxml.jackson.core.JsonParseException: Unexpected character ('}' (code 125)): was expecting double-quote to start field name
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 4, column: 3]

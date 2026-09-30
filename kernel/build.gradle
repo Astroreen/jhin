@@ -1,4 +1,4 @@
-// Jhin kernel: the host process that loads plugins and runs the agent.
+// Jhin kernel: the host process that loads plugins and keeps the local state.
 // No spring-boot-starter-security and no langchain4j here (MVP rules).
 plugins {
     id 'java'
@@ -24,6 +24,25 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.xerial:sqlite-jdbc:3.50.1.0'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.assertj:assertj-core:3.27.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+// The Boot BOM manages a newer JUnit line and a different AssertJ than the
+// versions pinned above; import the matching JUnit BOM and pin AssertJ so one
+// aligned stack wins.
+dependencyManagement {
+    imports {
+        mavenBom 'org.junit:junit-bom:5.11.4'
+    }
+    dependencies {
+        dependency 'org.assertj:assertj-core:3.27.3'
+    }
 }
 
 springBoot {

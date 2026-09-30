@@ -1,0 +1,31 @@
+> Task :kernel:processResources UP-TO-DATE
+> Task :kernel:processTestResources NO-SOURCE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :kernel:compileJava
+> Task :kernel:classes
+> Task :kernel:compileTestJava
+> Task :kernel:testClasses
+> Task :kernel:test
+
+BUILD SUCCESSFUL in 1s
+6 actionable tasks: 3 executed, 3 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
+
+per-case results:
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#missingFileYieldsEmptyConfiguration() ... ok
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#flattensNestedKeysAndStringifiesScalars(Path) ... ok
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#trailingCommaThrowsNamingLineAndColumn() ... ok
+com.astroreen.jhin.kernel.config.ConfigStoreTest: tests=3 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.config.ConfigViewTest#mapsEnvNameForNamespacedSection() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#defaultBeatsMissingSources() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#envBeatsFile() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#typedGettersParseOrFallBack() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#fileBeatsDefault() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#allResolvesEveryKey() ... ok
+com.astroreen.jhin.kernel.config.ConfigViewTest: tests=6 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.config.JhinHomeTest#createsLayoutWithOwnerOnlyPermissions(Path) ... ok
+  com.astroreen.jhin.kernel.config.JhinHomeTest#secondResolveKeepsLayout(Path) ... ok
+com.astroreen.jhin.kernel.config.JhinHomeTest: tests=2 failures=0 errors=0 skipped=0

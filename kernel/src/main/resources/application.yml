@@ -1,0 +1,9 @@
+spring:
+  main:
+    banner-mode: off
+server:
+  servlet:
+    register-default-servlet: false
+logging:
+  file:
+    name: ${JHIN_HOME:${user.home}/.jhin}/logs/jhin.log
