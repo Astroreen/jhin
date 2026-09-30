@@ -1,0 +1,1 @@
+{"status":"ok","kernel":"0.2.0","api":1,"plugins":[{"id":"jhin.security","version":"0.2.0","name":"Security"},{"id":"jhin.sessions","version":"0.2.0","name":"Sessions"}],"failed":[]}

@@ -1,0 +1,2 @@
+bouncycastle class entries: 7785
+sqlite class entries: 0

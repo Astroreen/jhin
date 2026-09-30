@@ -1,0 +1,2 @@
+JHIN_HOME=/tmp/t28-home.S6Zq35
+JHIN_BUNDLED_PLUGINS=/tmp/t28-bundled.Glzg6n

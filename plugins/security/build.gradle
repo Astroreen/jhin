@@ -9,6 +9,13 @@ base {
 }
 
 dependencies {
+    // Bundled into the plugin jar (implementation is part of runtimeClasspath
+    // and the jar task inlines it): BouncyCastle builds the self-signed TLS
+    // certificate of TlsKeyStoreGenerator. bcpkix pulls bcutil transitively;
+    // all three are inlined by the fat-jar rule of plugin-conventions.gradle.
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.86'
+    implementation 'org.bouncycastle:bcpkix-jdk18on:1.86'
+
     // Test-only: the harness drives a real SQLite database. Stays out of the
     // plugin jar (testImplementation is not part of runtimeClasspath).
     testImplementation 'org.xerial:sqlite-jdbc:3.50.1.0'

@@ -1,0 +1,5 @@
+The T28 plan pins the HTTPS listener to port 8443, but 8443 is occupied on
+this QA machine (per the task context). The kernel therefore runs with
+--server.port=18443 and every request of this script goes to
+https://localhost:18443. Behavior under test is unchanged: the listener is
+HTTPS because the security plugin registers a TlsProvider.

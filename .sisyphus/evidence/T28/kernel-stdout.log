@@ -1,0 +1,28 @@
+> Task :kernel:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 621ms
+6 actionable tasks: 6 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
+00:03:42.147 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-security-0.2.0.jar (845cf8474ed93b2fde25adca396242c0ac7ab7758fd5a3a4ec0a9c24373cfad4)
+00:03:42.169 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-sessions-0.2.0.jar (8b870d58298807ba73d2410df4f70d335c6009a35a50f76d716b94c76458e990)
+00:03:42.628 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
+00:03:42.666 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log and routes published
+2026-10-01T00:03:43.093+03:00  INFO 2448524 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 2448524 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-01T00:03:43.094+03:00  INFO 2448524 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-01T00:03:43.582+03:00  INFO 2448524 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18443 (https)
+2026-10-01T00:03:43.592+03:00  INFO 2448524 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-01T00:03:43.592+03:00  INFO 2448524 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-01T00:03:43.608+03:00  INFO 2448524 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 482 ms
+2026-10-01T00:03:43.894+03:00  INFO 2448524 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18443], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
+2026-10-01T00:03:43.902+03:00  INFO 2448524 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (https) with context path '/'
+2026-10-01T00:03:43.911+03:00  INFO 2448524 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.158 seconds (process running for 2.182)
+2026-10-01T00:03:46.314+03:00  INFO 2448524 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-01T00:03:46.316+03:00  INFO 2448524 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
