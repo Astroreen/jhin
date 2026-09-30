@@ -1,0 +1,10 @@
+{
+  "id": "jhin.security",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "name": "Security",
+  "description": "Accounts, device tokens and single-use enrollment codes: passwordless authentication for the hub.",
+  "mainClass": "com.astroreen.jhin.plugin.security.SecurityPlugin",
+  "exports": ["com.astroreen.jhin.plugin.security.api"],
+  "requires": []
+}

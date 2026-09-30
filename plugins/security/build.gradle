@@ -7,3 +7,10 @@ version = '0.2.0'
 base {
     archivesName = 'jhin-plugin-security'
 }
+
+dependencies {
+    // Test-only: the harness drives a real SQLite database. Stays out of the
+    // plugin jar (testImplementation is not part of runtimeClasspath).
+    testImplementation 'org.xerial:sqlite-jdbc:3.50.1.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+}
