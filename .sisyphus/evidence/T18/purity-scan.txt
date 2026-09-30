@@ -1,0 +1,9 @@
+T18 — kernel purity scan: QA evidence
+cmd: grep -rniwE 'tool|session|agent|message|provider|enroll|account|device|llm|prompt|workdir|hub|worker|role' kernel/src/main/java kernel/src/main/resources
+(whole-word, case-insensitive)
+
+kernel/src/main/java/com/astroreen/jhin/kernel/KernelRoutes.java:117:        payload.put("message", "This server has no UI plugin installed.");
+grep exit=0
+
+one hit: the plan-mandated bootstrap JSON key in KernelRoutes.java:117 (pre-existing, whitelisted since T14)
+T18 adds kernel/{KernelBoot,KernelInfoImpl,cli/CliDispatcher}.java and edits KernelMain, StreamConfig, FilterPipeline, loader/PluginLifecycle — zero new hits

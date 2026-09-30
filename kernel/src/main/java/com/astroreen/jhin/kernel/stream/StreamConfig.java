@@ -3,10 +3,13 @@
  *
  * <p>Registers the stream registry as the singleton that answers the SDK
  * stream contract and the kernel's SSE hand-off seam; the web wiring looks
- * the hand-off up as a bean and installs it in the response writer.
+ * the hand-off up as a bean and installs it in the response writer. While a
+ * boot runs, the registry the boot already filled is served as the pre-built
+ * singleton; outside the server path a fresh empty one is created instead.
  */
 package com.astroreen.jhin.kernel.stream;
 
+import com.astroreen.jhin.kernel.KernelBoot;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -21,6 +24,7 @@ public class StreamConfig {
      */
     @Bean
     public StreamRegistryImpl streamRegistry() {
-        return new StreamRegistryImpl();
+        KernelBoot boot = KernelBoot.active();
+        return (boot != null) ? boot.streams() : new StreamRegistryImpl();
     }
 }

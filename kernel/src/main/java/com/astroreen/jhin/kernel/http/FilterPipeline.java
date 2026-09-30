@@ -46,6 +46,16 @@ public final class FilterPipeline {
     }
 
     /**
+     * Whether no filter is registered at all. Called once at startup by the
+     * security check of the boot sequence.
+     *
+     * @return {@code true} while the pipeline holds no filter
+     */
+    public boolean isEmpty() {
+        return entries.isEmpty();
+    }
+
+    /**
      * Runs the filters that apply to the request around one terminal link (the
      * matched route handler). Filters are selected by
      * {@link FilterSpec#pathPrefix()} and ordered by {@code (order, pluginId)};

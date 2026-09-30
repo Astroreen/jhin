@@ -19,6 +19,7 @@
  */
 package com.astroreen.jhin.kernel.loader;
 
+import com.astroreen.jhin.kernel.KernelInfoImpl;
 import com.astroreen.jhin.kernel.config.ConfigStore;
 import com.astroreen.jhin.kernel.config.ConfigViewImpl;
 import com.astroreen.jhin.kernel.db.Database;
@@ -27,7 +28,6 @@ import com.astroreen.jhin.kernel.db.MigrationBookkeeper;
 import com.astroreen.jhin.kernel.http.HttpRegistryImpl;
 import com.astroreen.jhin.kernel.services.ServiceRegistryImpl;
 import com.astroreen.jhin.kernel.stream.StreamRegistryImpl;
-import com.astroreen.jhin.sdk.ApiVersion;
 import com.astroreen.jhin.sdk.JhinPlugin;
 import com.astroreen.jhin.sdk.KernelInfo;
 import com.astroreen.jhin.sdk.PluginException;
@@ -53,7 +53,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,9 +63,6 @@ public final class PluginLifecycle {
     /** Owner-only permission bits applied to per-plugin data directories. */
     private static final Set<PosixFilePermission> OWNER_ONLY =
             PosixFilePermissions.fromString("rwx------");
-
-    /** Identity of the kernel shown by the built-in kernel facts. */
-    private static final String KERNEL_VERSION = "0.2.0";
 
     private final Path home;
     private final ConfigStore config;
@@ -89,7 +85,8 @@ public final class PluginLifecycle {
     private boolean stopped;
 
     /**
-     * Creates a lifecycle over the shared kernel pieces, with the built-in * minimal kernel facts.
+     * Creates a lifecycle over the shared kernel pieces, with the kernel
+     * facts of {@link KernelInfoImpl}.
      *
      * @param home        the installation root ({@code JHIN_HOME})
      * @param config      the parsed {@code config.json}
@@ -106,9 +103,8 @@ public final class PluginLifecycle {
     }
 
     /**
-     * Creates a lifecycle over the shared kernel pieces. The factory is the * seam through which the full kernel facts (T18's {@code KernelInfoImpl})
-     * replace the built-in minimal ones: it receives the registry of the load
-     * pass, so {@link KernelInfo#plugins()} can report the started plugins as * they come.
+     * Creates a lifecycle over the shared kernel pieces. The factory is the * seam through which the boot sequence supplies the kernel facts
+     * ({@link KernelInfoImpl}): it receives the registry of the load pass, so * {@link KernelInfo#plugins()} can report the started plugins as * they come.
      *
      * @param home             the installation root ({@code JHIN_HOME})
      * @param config           the parsed {@code config.json}
@@ -118,7 +114,7 @@ public final class PluginLifecycle {
      * @param streams          the shared stream registry
      * @param kernelLoader     the loader sharing the contract classes with plugins
      * @param kernelInfoFactory builds the kernel facts for every context, or
-     *                         {@code null} for the built-in minimal ones
+     *                         {@code null} for {@link KernelInfoImpl}
      */
     public PluginLifecycle(Path home, ConfigStore config, Database database,
             ServiceRegistryImpl services, HttpRegistryImpl http, StreamRegistryImpl streams,
@@ -131,7 +127,8 @@ public final class PluginLifecycle {
         this.http = Objects.requireNonNull(http, "http");
         this.streams = Objects.requireNonNull(streams, "streams");
         this.kernelLoader = Objects.requireNonNull(kernelLoader, "kernelLoader");
-        this.kernelInfoFactory = (kernelInfoFactory != null) ? kernelInfoFactory : this::basicKernelInfo;
+        this.kernelInfoFactory = (kernelInfoFactory != null)
+                ? kernelInfoFactory : registry -> new KernelInfoImpl(home, registry);
     }
 
     /**
@@ -387,11 +384,6 @@ public final class PluginLifecycle {
         }
     }
 
-    /** The built-in minimal kernel facts, backed by the load-pass registry. */
-    private KernelInfo basicKernelInfo(PluginRegistry registry) {
-        return new BasicKernelInfo(KERNEL_VERSION, home, registry);
-    }
-
     /**
      * One started plugin together with what its context collected.
      *
@@ -486,44 +478,6 @@ public final class PluginLifecycle {
         private String owner() {
             String owner = currentOwner.get();
             return owner == null ? HOST_OWNER : owner;
-        }
-    }
-
-    /** Minimal kernel facts: fixed identity, live plugin list from the registry. */
-    private static final class BasicKernelInfo implements KernelInfo {
-
-        private final String version;
-        private final Path home;
-        private final Supplier<List<Loaded>> plugins;
-
-        private BasicKernelInfo(String version, Path home, PluginRegistry registry) {
-            this(version, home, registry::loadedPlugins);
-        }
-
-        private BasicKernelInfo(String version, Path home, Supplier<List<Loaded>> plugins) {
-            this.version = version;
-            this.home = home;
-            this.plugins = plugins;
-        }
-
-        @Override
-        public String version() {
-            return version;
-        }
-
-        @Override
-        public int apiVersion() {
-            return ApiVersion.CURRENT;
-        }
-
-        @Override
-        public Path home() {
-            return home;
-        }
-
-        @Override
-        public List<Loaded> plugins() {
-            return plugins.get();
         }
     }
 }

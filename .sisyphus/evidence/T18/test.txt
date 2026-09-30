@@ -1,0 +1,20 @@
+T18 — kernel suite + bootJar: QA evidence
+cmd: ./gradlew :kernel:test :kernel:bootJar --rerun-tasks (repo root, JDK 21)
+
+> Task :kernel:processResources
+> Task :kernel:processTestResources NO-SOURCE
+> Task :sdk:compileJava
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes
+> Task :sdk:jar
+> Task :kernel:compileJava
+> Task :kernel:classes
+> Task :kernel:resolveMainClassName
+> Task :kernel:bootJar
+> Task :kernel:compileTestJava
+> Task :kernel:testClasses
+> Task :kernel:test
+BUILD SUCCESSFUL in 24s
+
+tests=99 failures=0 errors=0 (93 existing + 6 new CliDispatcherTest)
+-rw-r--r-- 1 astroreen users 36712235 Sep 30 11:51 kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar

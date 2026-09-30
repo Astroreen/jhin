@@ -1,0 +1,9 @@
+T18 — cli with no plugins: QA evidence
+cmd: JHIN_HOME=/tmp/opencode/t18-cli-home java -jar kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar cli
+(plan names dist/jhin-kernel-0.2.0.jar; dist/ assembly is T44 — the bootJar output is used instead)
+
+--- stdout:
+11:50:16.487 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+no commands registered
+--- stderr:
+--- exit=2

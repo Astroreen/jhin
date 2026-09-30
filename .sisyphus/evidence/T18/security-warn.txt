@@ -1,0 +1,13 @@
+T18 — security WARN (D-8 verbatim): QA evidence
+cmd: scripts/qa/run-kernel.sh .sisyphus/evidence/T18 --server.port=18443  (JHIN_HOME=/tmp/opencode/t18-home, fresh empty home, killed with SIGTERM after boot)
+cmd: rg -q 'SECURITY: no HTTP filter registered' kernel.log
+
+2:11:49:42.075 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+3:11:49:42.077 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18443. Install a security plugin.
+10:2026-09-30T11:49:43.257+03:00  INFO 1453571 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (http) with context path '/'
+11:2026-09-30T11:49:43.264+03:00  INFO 1453571 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.088 seconds (process running for 1.579)
+
+rg exit=0 (match found)
+
+note: 8443/8080 are occupied by a system service on this machine, so the listener runs on 18443
+and the WARN shows the ACTUAL address:port in use (0.0.0.0:18443).
