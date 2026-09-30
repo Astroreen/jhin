@@ -1,0 +1,1 @@
+seeded device row id=t29-qa-device-0001 account_id=738c2b90-5ec6-4efd-a91f-49de08b0d562 name=qa-device (row shape of EnrollmentServiceImpl.redeem; redeem needs the T28 HTTP route)

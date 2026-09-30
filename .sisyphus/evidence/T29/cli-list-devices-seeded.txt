@@ -1,0 +1,4 @@
+23:38:06.383 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-security-0.2.0.jar: already seeded and unchanged
+23:38:06.529 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands registered
+ID                                   NAME         ACCOUNT      LAST SEEN            STATUS
+t29-qa-device-0001                   qa-device    alice        2026-09-30T20:38:06Z active

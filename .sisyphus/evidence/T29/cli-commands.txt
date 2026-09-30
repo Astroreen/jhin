@@ -1,0 +1,6 @@
+23:38:03.677 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-security-0.2.0.jar (4049a2b16a88b1ebb71d93c0426d929d95a1d30ebe72dde5f95a2e6e2f6e884c)
+23:38:03.860 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands registered
+create-account  <name>  create an account
+create-enrollment  <account>  issue a single-use enrollment code (account id or name)
+list-devices  [account]  list enrolled devices (all, or one account by id or name)
+revoke-device  <deviceId>  revoke a device by id

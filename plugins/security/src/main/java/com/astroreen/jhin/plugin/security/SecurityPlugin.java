@@ -19,7 +19,8 @@ public final class SecurityPlugin implements JhinPlugin {
 
     /**
      * Applies the schema migrations and publishes the account directory, the
-     * enrollment service and the device service.
+     * enrollment service and the device service, then registers the admin CLI
+     * commands.
      *
      * @param ctx this plugin's context, valid for the whole plugin lifetime
      */
@@ -33,6 +34,7 @@ public final class SecurityPlugin implements JhinPlugin {
         ctx.services().publish(AccountDirectory.class, accounts);
         ctx.services().publish(EnrollmentServiceImpl.class, enrollment);
         ctx.services().publish(DeviceServiceImpl.class, devices);
-        ctx.log().info("security plugin started: accounts, enrollment and devices published");
+        new SecurityCli(accounts, enrollment, devices).register(ctx.cli());
+        ctx.log().info("security plugin started: accounts, enrollment and devices published, cli commands registered");
     }
 }
