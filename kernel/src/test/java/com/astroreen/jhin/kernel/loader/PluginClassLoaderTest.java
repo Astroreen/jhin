@@ -19,22 +19,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeSet;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
-import java.util.stream.Stream;
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class PluginClassLoaderTest {
 
-    private static final JavaCompiler COMPILER = ToolProvider.getSystemJavaCompiler();
-
-    /** Names of every generated fixture jar; copied to the evidence dir in QA. */
-    private static final List<String> FIXTURES = new ArrayList<>();
+    /** Shared fixture jar builder; created lazily against the temp work dir. */
+    private static FixtureJars fixtures;
 
     @TempDir
     static Path work;
@@ -43,7 +35,7 @@ class PluginClassLoaderTest {
     static void writeFixtureList() throws IOException {
         Path out = Path.of("build", "t11-fixtures.txt");
         Files.createDirectories(out.getParent());
-        Files.write(out, FIXTURES.stream().sorted().toList());
+        Files.write(out, fixtures == null ? List.of() : fixtures.built());
     }
 
     // (1) exported dependency class loads and is identical across loaders
@@ -228,10 +220,7 @@ class PluginClassLoaderTest {
     }
 
     private static String classSource(String pkg, String simpleName, String marker) {
-        return "package " + pkg + ";\n"
-                + "public class " + simpleName + " {\n"
-                + "    public static String marker() { return \"" + marker + "\"; }\n"
-                + "}\n";
+        return FixtureJars.classSource(pkg, simpleName, marker);
     }
 
     private static String markerOf(Class<?> type) throws ReflectiveOperationException {
@@ -252,51 +241,19 @@ class PluginClassLoaderTest {
         return texts;
     }
 
-    private static Path emptyJar(String name) throws IOException {
-        return jarOf(name, Map.of(), Map.of());
+    private static FixtureJars fixtures() {
+        if (fixtures == null) {
+            fixtures = new FixtureJars(work);
+        }
+        return fixtures;
     }
 
-    /**
-     * Builds one fixture jar: compiles the given sources in memory and packs
-     * the resulting class entries plus the plain resources into a jar under
-     * the temp work dir. No external binaries involved.
-     */
+    private static Path emptyJar(String name) throws IOException {
+        return fixtures().emptyJar(name);
+    }
+
     private static Path jarOf(String name, Map<String, String> sources, Map<String, String> resources)
             throws IOException {
-        Path srcDir = work.resolve(name + "-src");
-        Path clsDir = work.resolve(name + "-classes");
-        List<String> args = new ArrayList<>(List.of("-d", clsDir.toString()));
-        for (String fqcn : new TreeSet<>(sources.keySet())) {
-            Path file = srcDir.resolve(fqcn.replace('.', '/') + ".java");
-            Files.createDirectories(file.getParent());
-            Files.writeString(file, sources.get(fqcn));
-            args.add(file.toString());
-        }
-        if (!sources.isEmpty()) {
-            int exit = COMPILER.run(null, null, Files.newOutputStream(work.resolve(name + "-javac.txt")), 
-                    args.toArray(String[]::new));
-            assertThat(exit).as("javac exit for " + name).isZero();
-        }
-        Path jar = work.resolve(name + ".jar");
-        try (JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar))) {
-            if (Files.isDirectory(clsDir)) {
-                try (Stream<Path> walk = Files.walk(clsDir)) {
-                    for (Path entry : walk.filter(Files::isRegularFile).sorted().toList()) {
-                        out.putNextEntry(new JarEntry(
-                                clsDir.relativize(entry).toString().replace(java.io.File.separatorChar, '/')));
-                        out.write(Files.readAllBytes(entry));
-                        out.closeEntry();
-                    }
-                }
-            }
-            for (String path : new TreeSet<>(resources.keySet())) {
-                out.putNextEntry(new JarEntry(path));
-                out.write(resources.get(path).getBytes(StandardCharsets.UTF_8));
-                out.closeEntry();
-            }
-        }
-        FIXTURES.add(name + ".jar classes=" + new TreeSet<>(sources.keySet())
-                + " resources=" + new TreeSet<>(resources.keySet()));
-        return jar;
+        return fixtures().jarOf(name, sources, resources);
     }
 }
