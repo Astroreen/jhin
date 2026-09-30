@@ -1,0 +1,96 @@
+T12 — Service registry: QA evidence
+cmd: ./gradlew :kernel:test --rerun-tasks (repo root, composite build, JDK 21)
+
+> Task :kernel:processResources
+> Task :kernel:processTestResources NO-SOURCE
+> Task :sdk:compileJava
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes
+> Task :sdk:jar
+> Task :kernel:compileJava
+> Task :kernel:classes
+> Task :kernel:compileTestJava
+> Task :kernel:testClasses
+> Task :kernel:test
+
+BUILD SUCCESSFUL in 6s
+6 actionable tasks: 6 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
+GRADLE_EXIT=0
+
+per-case results (kernel/build/test-results/test):
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#missingFileYieldsEmptyConfiguration() ... ok
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#flattensNestedKeysAndStringifiesScalars(Path) ... ok
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#trailingCommaThrowsNamingLineAndColumn() ... ok
+com.astroreen.jhin.kernel.config.ConfigStoreTest: tests=3 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.config.ConfigViewTest#mapsEnvNameForNamespacedSection() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#defaultBeatsMissingSources() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#envBeatsFile() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#typedGettersParseOrFallBack() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#fileBeatsDefault() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#allResolvesEveryKey() ... ok
+com.astroreen.jhin.kernel.config.ConfigViewTest: tests=6 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.config.JhinHomeTest#createsLayoutWithOwnerOnlyPermissions(Path) ... ok
+  com.astroreen.jhin.kernel.config.JhinHomeTest#secondResolveKeepsLayout(Path) ... ok
+com.astroreen.jhin.kernel.config.JhinHomeTest: tests=2 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.db.MigrationBookkeeperTest#bootstrapsKernelSchemaVersion(Path) ... ok
+  com.astroreen.jhin.kernel.db.MigrationBookkeeperTest#appliesTwoVersionsThenSecondApplyIsNoOp(Path) ... ok
+  com.astroreen.jhin.kernel.db.MigrationBookkeeperTest#appliesVersionsInAscendingOrderEvenWhenGivenUnsorted(Path) ... ok
+com.astroreen.jhin.kernel.db.MigrationBookkeeperTest: tests=3 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#refusesUnprefixedCreateIndex() ... ok
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#refusesUnprefixedCreateTable() ... ok
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#acceptsPrefixedTargets() ... ok
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#computesPrefixFromPluginId() ... ok
+com.astroreen.jhin.kernel.db.MigrationGuardTest: tests=4 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.db.WriteQueueTest#serializesTwoHundredConcurrentWrites(Path) ... ok
+  com.astroreen.jhin.kernel.db.WriteQueueTest#unwrapsUncheckedFailureFromQueuedTask() ... ok
+  com.astroreen.jhin.kernel.db.WriteQueueTest#unwrapsSqlFailureFromQueuedTask() ... ok
+com.astroreen.jhin.kernel.db.WriteQueueTest: tests=3 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#failsOnUnsatisfiableVersionRange() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#cascadesFailureThroughNonOptionalRequirementOnly() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#failsEveryPluginInCycleNamingTheCyclePath() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#ordersDiamondWithOptionalEdgeDeterministically() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#failsOnMissingRequirement() ... ok
+com.astroreen.jhin.kernel.loader.DependencyGraphTest: tests=5 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#parseAllKeepsHigherSemverNumerically() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#parseAllDropsRejectedJars() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#rejectsWrongApiVersionWithExactReason() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#rejectsUnreadableJson() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#acceptsValidManifest() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#rejectsInvalidFieldNamingIt() ... ok
+com.astroreen.jhin.kernel.loader.ManifestParserTest: tests=6 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#duplicateExportResolvesInTopologicalOrderAndWarns() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#closeIsIdempotent() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#exportedDependencyClassIsIdenticalAcrossLoaders() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#sharedContractClassComesFromKernelLoader() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#ownClassShadowsNonExportedDependencyClass() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#nonExportedDependencyClassThrowsListingVisibleExports() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#kernelInternalClassIsNotVisible() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#getResourcesSeesOwnAndExportedDependencyResourcesOnly() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#transitiveExportsAreVisibleThroughTheDependencyChain() ... ok
+com.astroreen.jhin.kernel.loader.PluginClassLoaderTest: tests=9 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#skipsJarWithoutManifestEntry() ... ok
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#listsJarsSortedByFileName() ... ok
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#readsManifestTextFromJarRoot() ... ok
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#skipsBrokenZip() ... ok
+com.astroreen.jhin.kernel.loader.PluginScannerTest: tests=4 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#publishersByPluginRecordsAttribution() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#duplicateNamedQualifierThrowsNamingBothPlugins() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#duplicatePublicationThrowsNamingBothPlugins() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#unattributedPublicationIsAttributedToTheHost() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#findAllKeepsPublicationOrderAndFindReturnsTheFirst() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#lookupsAreLiveAndFindAllIsASnapshot() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#findRespectsQualifiers() ... ok
+com.astroreen.jhin.kernel.services.ServiceRegistryImplTest: tests=7 failures=0 errors=0 skipped=0
+
+total: tests=52 failures=0 errors=0 skipped=0
+GRADLE_EXIT=0 (BUILD SUCCESSFUL)
+
+duplicate-error excerpt (ServiceRegistryImplTest#duplicatePublicationThrowsNamingBothPlugins):
+  duplicate-error: com.astroreen.jhin.sdk.PluginException: duplicate publication of com.astroreen.jhin.kernel.services.ServiceRegistryImplTest$Greeter already published by plugin demo.one, attempted by plugin demo.two
+duplicate-error excerpt (ServiceRegistryImplTest#duplicateNamedQualifierThrowsNamingBothPlugins):
+  duplicate-error-alt: com.astroreen.jhin.sdk.PluginException: duplicate publication of com.astroreen.jhin.kernel.services.ServiceRegistryImplTest$Greeter#alt already published by plugin demo.one, attempted by plugin demo.three
+
+attribution design: ThreadLocal currentPublisher set by public attributedTo(String pluginId, Runnable);
+nested calls restore the outer id; publishes outside any block attributed to HOST_PUBLISHER 'kernel';
+diagnostics accessor: publishersByPlugin() -> Map<String, List<String>> (plugin id -> 'type' or 'type#qualifier').
