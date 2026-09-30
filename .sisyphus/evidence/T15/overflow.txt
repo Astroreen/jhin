@@ -1,0 +1,16 @@
+T15 — SSE buffer overflow failure demo: QA evidence
+cmd: ./gradlew :kernel:test --tests 'com.astroreen.jhin.kernel.stream.SseIntegrationTest' (case bufferOverflowClosesConnectionAndWarnsNamingTheTopic)
+
+T15 — SSE buffer overflow: WARN excerpt
+scenario: 2000 events published while the consumer is stalled by the preamble
+
+WARN excerpt:
+  sse buffer overflow on topic ovf; closing connection
+
+asserted: exactly one WARN naming the topic; topic dropped; connection closed (EOF)
+
+live console line captured by logback ListAppender on com.astroreen.jhin.kernel.stream.Topic:
+  2026-09-30 ... WARN ... sse buffer overflow on topic ovf; closing connection
+
+assertions held: exactly one WARN naming the topic; topic ovf dropped from the registry;
+connection closed (client read to EOF, no event frames delivered)
