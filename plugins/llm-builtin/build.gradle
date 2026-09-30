@@ -1,4 +1,4 @@
-// Jhin plugin module: llm-builtin (scaffolded in T4, logic lands in later tasks).
+// Jhin plugin module: llm-builtin (the three deletable built-in LLM factories).
 apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
 
 group = 'com.astroreen'
@@ -6,4 +6,30 @@ version = '0.2.0'
 
 base {
     archivesName = 'jhin-plugin-llm-builtin'
+}
+
+dependencies {
+    // Compiled against the factory SPI of the jhin.llm plugin and resolved at
+    // runtime through its manifest exports (plugin-to-plugin class sharing):
+    // LlmProviderFactory, ProviderConfig and the LangChain4j chat/message
+    // types come from the jhin.llm class loader. compileOnly keeps the llm jar
+    // out of this plugin's archive.
+    compileOnly 'com.astroreen:jhin-plugin-llm:0.2.0'
+    testImplementation 'com.astroreen:jhin-plugin-llm:0.2.0'
+
+    // Bundled into the plugin jar (implementation is part of runtimeClasspath
+    // and the jar task inlines it): the three provider integrations this
+    // plugin exists for. The BOM pins the whole LangChain4j line.
+    // langchain4j-core is deliberately NOT declared directly: it arrives
+    // transitively and at runtime the shared types resolve via the jhin.llm
+    // exports.
+    implementation platform('dev.langchain4j:langchain4j-bom:1.20.1')
+    implementation 'dev.langchain4j:langchain4j-anthropic'
+    implementation 'dev.langchain4j:langchain4j-open-ai'
+    implementation 'dev.langchain4j:langchain4j-google-ai-gemini'
+
+    // Test-only: unit tests need the JUnit platform launcher at runtime.
+    // Stays out of the plugin jar (testRuntimeOnly is not part of
+    // runtimeClasspath).
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }

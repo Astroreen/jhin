@@ -1,0 +1,2 @@
+JHIN_HOME=/tmp/t31-home.TvQvKT
+JHIN_BUNDLED_PLUGINS=/tmp/t31-bundled.jUd6WG

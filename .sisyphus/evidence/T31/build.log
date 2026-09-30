@@ -1,0 +1,21 @@
+> Task :kernel:processResources UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:processResources UP-TO-DATE
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:classes UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:jar UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 607ms
+12 actionable tasks: 12 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
