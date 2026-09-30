@@ -1,0 +1,100 @@
+=== T25 — Sessions plugin: schema, API, store ===
+date: 2026-09-30
+scope: plugins/sessions (new plugin module code + tests + manifest)
+kernel/sdk/frontend sources: untouched
+
+=== ./gradlew :jhin-plugin-sessions:build ===
+exit=0
+BUILD SUCCESSFUL
+compileJava + processResources + jar + compileTestJava + test + check
+
+=== plugin test suite (build/test-results/test) ===
+EventLogConcurrencyTest   tests=1  skipped=0 failures=0 errors=0
+  - fiveHundredConcurrentAppendsProduceGapFreeSequences
+EventLogTest              tests=3  skipped=0 failures=0 errors=0
+  - appendPersistsThenPublishesToSessionTopic
+  - listReturnsEventsAfterTheGivenSeq
+  - appendToUnknownSessionThrowsAndWritesNothing   (failure case)
+SessionStoreTest          tests=10 skipped=0 failures=0 errors=0
+  - createGeneratesIdAndDefaults
+  - createWithoutAccountUsesLocalAccount
+  - createRejectsBlankArguments
+  - getReturnsCreatedSession
+  - getWithAccountIsScopedToOwner
+  - listReturnsAllAndScopedViews
+  - patchUpdatesOnlyGivenFieldsAndBumpsUpdatedAt
+  - patchWithAccountIsScopedToOwner
+  - patchWithoutChangesReturnsCurrentSession
+  - deleteRemovesSessionAndIsScoped
+total new tests: 14, failures=0, errors=0
+
+=== acceptance criterion ===
+EventLogConcurrencyTest: 500 concurrent appends across 5 sessions under 5
+threads (round-robin, 20 appends per session per thread) -> per-session
+sequences exactly 1..100, no gaps, no duplicates; 500 StreamEvents published.
+Failure case: append to unknown session id -> PluginException, row count of
+jhin_sessions_events unchanged, nothing published.
+
+=== ./gradlew :jhin-plugin-sessions:validateManifest ===
+exit=0
+OK: src/main/resources/jhin-plugin.json is a valid JSON object
+BUILD SUCCESSFUL
+
+=== ./gradlew :jhin-plugin-sessions:jar ===
+exit=0
+BUILD SUCCESSFUL
+artifact: plugins/sessions/build/libs/jhin-plugin-sessions-0.2.0.jar (17193 bytes)
+
+jar content checks:
+- unzip -l | grep -i sqlite  -> EMPTY (sqlite-jdbc is testImplementation only,
+  never bundled into the plugin jar)
+- jhin-plugin.json present
+- exported api classes present:
+    com/astroreen/jhin/plugin/sessions/api/EventLog.class
+    com/astroreen/jhin/plugin/sessions/api/EventRecord.class
+    com/astroreen/jhin/plugin/sessions/api/EventType.class
+    com/astroreen/jhin/plugin/sessions/api/Session.class
+    com/astroreen/jhin/plugin/sessions/api/SessionStore.class
+    com/astroreen/jhin/plugin/sessions/api/SessionStore$Patch.class
+- impl classes present:
+    com/astroreen/jhin/plugin/sessions/SessionsPlugin.class
+    com/astroreen/jhin/plugin/sessions/SessionStoreImpl.class
+    com/astroreen/jhin/plugin/sessions/EventLogImpl.class
+    com/astroreen/jhin/plugin/sessions/Migrations.class
+- total classes: 10
+
+=== ./gradlew :kernel:test --rerun-tasks ===
+exit=0
+BUILD SUCCESSFUL
+kernel suite (build/test-results/test): tests=101 skipped=0 failures=0 errors=0
+-> kernel untouched and green.
+
+=== migration V1 (applied via ctx.db().migrate) ===
+jhin_sessions_sessions(id TEXT PRIMARY KEY, account_id TEXT, title TEXT,
+  workdir TEXT, model TEXT, provider_id TEXT, status TEXT, created_at INT,
+  updated_at INT)
+jhin_sessions_events(session_id TEXT, seq INT, ts INT, type TEXT, payload TEXT,
+  PRIMARY KEY(session_id, seq))
+jhin_sessions_runs(id TEXT PRIMARY KEY, session_id TEXT, status TEXT,
+  started_at INT, ended_at INT, error TEXT)   -- schema-only, agent plugin later
+indexes: jhin_sessions_events_ts_idx ON jhin_sessions_events(ts),
+         jhin_sessions_runs_session_idx ON jhin_sessions_runs(session_id)
+all targets carry the mandatory jhin_sessions_ prefix.
+
+=== harness note ===
+Self-contained test harness under src/test (TestDbAccess + RecordingStreamRegistry):
+real SQLite file per test behind the DbAccess contract; reads on the caller
+thread against fresh connections, writes serialized on one executor thread
+(kernel WriteQueue semantics); unchecked exceptions propagate unchanged,
+SQLException wrapped in PluginException (DbAccessImpl semantics). Chosen over
+wiring kernel Database/WriteQueue so plugin tests depend only on the SDK — the
+artifact plugins actually see at runtime — and need no kernel coupling in
+plugins/sessions/build.gradle.
+
+=== build.gradle change (documented) ===
+plugins/sessions/build.gradle gained a dependencies block:
+  testImplementation 'org.xerial:sqlite-jdbc:<same version as kernel/build.gradle>'
+  testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+(test-only: sqlite stays out of the runtimeClasspath, hence out of the jar;
+launcher needed by Gradle 9 test execution, matching jupiter 5.11.4 from
+gradle/plugin-conventions.gradle)
