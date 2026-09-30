@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jhin/core/api/jhin_transport.dart';
+import 'package:jhin/core/sse/sse_stream.dart';
 import 'package:jhin/core/tls/tls_trust.dart';
 
 /// In-memory [JhinTransport] test double: scripted bootstrap / health
@@ -65,7 +66,10 @@ class FakeTransport implements JhinTransport {
   }
 
   @override
-  Stream<Map<String, dynamic>> sse(String path) {
+  Stream<Map<String, dynamic>> sse(
+    String path, {
+    void Function(SseConnectionStatus status)? onStatus,
+  }) {
     calls.add('sse:$path');
     throw UnimplementedError('not scripted in FakeTransport');
   }

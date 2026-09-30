@@ -175,7 +175,11 @@ class JhinTransport {
   ///
   /// Reconnects with exponential backoff capped at 30 seconds and resumes via
   /// `Last-Event-ID`; 4xx and [CertificateMismatch] are fatal stream errors.
-  Stream<Map<String, dynamic>> sse(String path) {
+  /// [onStatus] reports the connection lifecycle (for UI indicators).
+  Stream<Map<String, dynamic>> sse(
+    String path, {
+    void Function(SseConnectionStatus status)? onStatus,
+  }) {
     final headers = <String, String>{
       'Accept': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -187,6 +191,7 @@ class JhinTransport {
       open: _sseOpener,
       headers: headers,
       retryPolicy: _retryPolicy,
+      onStatus: onStatus,
     );
   }
 

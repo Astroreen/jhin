@@ -217,7 +217,7 @@ class SduiRuntime extends ChangeNotifier
       patch: (id, props) => unawaited(patch(id, props)),
       navigate: (screen) => unawaited(navigate(screen)),
       dispatch: dispatcher.dispatch,
-      openStream: (topic) => transport.sse(topic),
+      openStream: (topic, {onStatus}) => transport.sse(topic, onStatus: onStatus),
       runDirectives: _executor.execute,
       confirm: _showConfirm,
     );

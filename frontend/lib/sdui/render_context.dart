@@ -1,8 +1,17 @@
 import 'package:flutter/widgets.dart';
 
+import '../core/sse/sse_stream.dart';
 import 'ui_node.dart';
 import 'ui_registry.dart';
 import 'ui_state.dart';
+
+/// Opens the SSE stream of a `stream_view` topic (§8.6): one JSON object per
+/// event; [onStatus] reports the connection lifecycle so the view can show
+/// a subtle reconnect indicator.
+typedef OpenStream = Stream<Map<String, dynamic>> Function(
+  String topic, {
+  void Function(SseConnectionStatus status)? onStatus,
+});
 
 /// Per-screen rendering context handed to [UiRegistry] builders.
 ///
@@ -45,7 +54,7 @@ class RenderContext {
   final Future<void> Function(Map<String, dynamic> action) dispatch;
 
   /// Opens the SSE stream of a `stream_view` topic (§8.6).
-  final Stream<Map<String, dynamic>> Function(String topic) openStream;
+  final OpenStream openStream;
 
   /// Runs a client-directive list (§8.5) — used by SSE events.
   final Future<void> Function(List<dynamic> directives) runDirectives;

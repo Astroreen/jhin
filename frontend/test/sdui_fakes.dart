@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:jhin/core/api/jhin_transport.dart';
+import 'package:jhin/core/sse/sse_stream.dart';
 import 'package:jhin/sdui/render_context.dart';
 import 'package:jhin/sdui/ui_registry.dart';
 import 'package:jhin/sdui/ui_state.dart';
@@ -81,8 +82,12 @@ class ScriptedTransport implements JhinTransport {
   }
 
   @override
-  Stream<Map<String, dynamic>> sse(String path) {
+  Stream<Map<String, dynamic>> sse(
+    String path, {
+    void Function(SseConnectionStatus status)? onStatus,
+  }) {
     calls.add(ScriptedCall('SSE', path, null));
+    onStatus?.call(SseConnectionStatus.connected);
     return streamFor(path).stream;
   }
 
@@ -121,7 +126,7 @@ RenderContext testRenderContext(UiState state) => RenderContext(
       patch: (id, props) {},
       navigate: (screen) {},
       dispatch: (action) async {},
-      openStream: (topic) => const Stream.empty(),
+      openStream: (topic, {onStatus}) => const Stream.empty(),
       runDirectives: (directives) async {},
       confirm: (message, onConfirm) {},
     );

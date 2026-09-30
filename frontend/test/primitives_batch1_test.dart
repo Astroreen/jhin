@@ -44,7 +44,7 @@ class _Harness {
         dispatched.add(Map<String, dynamic>.from(action));
         return dispatcher.dispatch(action);
       },
-      openStream: (topic) => const Stream.empty(),
+      openStream: (topic, {onStatus}) => const Stream.empty(),
       runDirectives: (directives) async {},
       confirm: (message, onConfirm) => _wake(),
     );
