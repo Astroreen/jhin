@@ -1,0 +1,51 @@
+T30 — LLM framework plugin (Phase 6, jhin.llm) — QA evidence
+Date: 2026-10-01
+Repo: /home/astroreen/Documents/jhin (main)
+
+== Gate ==
+Command: ./gradlew :jhin-plugin-llm:build :jhin-plugin-llm:validateManifest :kernel:test --rerun-tasks
+Exit code: 0 (BUILD SUCCESSFUL, 12 actionable tasks: 12 executed)
+validateManifest: OK: src/main/resources/jhin-plugin.json is a valid JSON object
+
+== Test counts ==
+jhin-plugin-llm: 12 tests, 0 failures, 0 errors (all new)
+  - ProviderRegistryTest: 5 tests (createListGetDeleteLifecycle,
+    createValidatesConfigThroughTheFactory,
+    unknownFormatThrowsNamedErrorListingAvailableFormats,
+    formatsAreSortedAndDiscoveredLive, accountsAreIsolated)
+  - ProviderRoutesTest: 7 tests (postReturnsMetadataOnlyWithTheDocumentedFieldSet,
+    postNamesTheMissingField, postUnknownFormatIsA400ListingAvailableFormats,
+    getAndDeleteUnknownIdAre404, formatsListTheRegisteredFactories,
+    getNeverContainsTheApiKey, principalScopesTheAccount)
+kernel: 101 tests, 0 failures, 0 errors (20 test classes, unchanged)
+
+== Unknown-format failure case ==
+Test: ProviderRegistryTest.unknownFormatThrowsNamedErrorListingAvailableFormats
+Wire code: unknown_format (httpStatus 400)
+Message (asserted equal): no factory for 'anthropic'; available: [fake]
+Route mapping asserted in ProviderRoutesTest.postUnknownFormatIsA400ListingAvailableFormats:
+POST /providers with format "anthropic" and no llm-builtin installed -> 400
+body contains "error":"unknown_format" and the same message.
+
+== DTO field-set assertion ==
+Test: ProviderRoutesTest.postReturnsMetadataOnlyWithTheDocumentedFieldSet
+POST /providers (format=fake, apiKey=<sentinel>, model=m1, baseUrl=https://llm.example)
+-> 201, serialized JSON key set equals the ProviderRecord record-component set exactly:
+   [id, accountId, format, model, baseUrl, createdAt]
+The table has exactly one more column (the api key); it is omitted by design so
+serialized route responses stay metadata-only. Companion proof:
+ProviderRoutesTest.getNeverContainsTheApiKey — GET /providers/{id} body is asserted
+NOT to contain the api key sentinel string that was POSTed.
+
+== Jar contents check ==
+plugins/llm/build/libs/jhin-plugin-llm-0.2.0.jar
+  - dev/langchain4j/** classes: 645 present (bundled langchain4j-core 1.20.1 via BOM)
+  - sqlite classes (org/sqlite, sqlite): 0 (test-only dependency, stays out)
+  - org/slf4j/** and com/fasterxml/jackson/**: 0 (provided by the kernel)
+  - jhin-plugin.json and com/astroreen/jhin/plugin/llm/** present
+
+== Notes ==
+- Migration V1 column list copied verbatim from the plan DDL line via shell
+  extraction (sed) into Migrations.java and ProviderRegistryImpl.java.
+- sqlite-jdbc test dependency line copied from plugins/sessions/build.gradle
+  via shell extraction (identical version, test-only).

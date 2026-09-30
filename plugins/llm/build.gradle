@@ -1,4 +1,4 @@
-// Jhin plugin module: llm (scaffolded in T4, logic lands in later tasks).
+// Jhin plugin module: llm (LangChain4j runtime, provider registry, CRUD routes).
 apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
 
 group = 'com.astroreen'
@@ -6,4 +6,18 @@ version = '0.2.0'
 
 base {
     archivesName = 'jhin-plugin-llm'
+}
+
+dependencies {
+    // Bundled into the plugin jar (implementation is part of runtimeClasspath
+    // and the jar task inlines it): this plugin owns the LangChain4j runtime
+    // and shares its chat/message types with dependent plugins through the
+    // manifest exports. The BOM pins the whole LangChain4j line.
+    implementation platform('dev.langchain4j:langchain4j-bom:1.20.1')
+    implementation 'dev.langchain4j:langchain4j-core'
+
+    // Test-only: the harness drives a real SQLite database. Stays out of the
+    // plugin jar (testImplementation is not part of runtimeClasspath).
+    testImplementation 'org.xerial:sqlite-jdbc:3.50.1.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }

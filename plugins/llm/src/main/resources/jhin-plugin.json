@@ -1,0 +1,10 @@
+{
+  "id": "jhin.llm",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "name": "LLM",
+  "description": "LangChain4j runtime, LLM provider factory SPI and the provider registry with CRUD routes.",
+  "mainClass": "com.astroreen.jhin.plugin.llm.LlmPlugin",
+  "exports": ["com.astroreen.jhin.plugin.llm.api", "dev.langchain4j.model.chat", "dev.langchain4j.data.message"],
+  "requires": []
+}
