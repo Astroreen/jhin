@@ -1,0 +1,2 @@
+kernel/src/main/java/com/astroreen/jhin/kernel/KernelRoutes.java:117:        payload.put("message", "This server has no UI plugin installed.");
+grep exit=0: matches listed above (whole-word, case-insensitive; only the plan-mandated bootstrap key)

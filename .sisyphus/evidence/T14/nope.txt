@@ -1,0 +1,4 @@
+GET /nope
+status=404
+---- body (exact):
+{"error":"not_found","message":"no plugin serves GET /nope"}
