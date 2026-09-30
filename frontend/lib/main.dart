@@ -7,10 +7,11 @@ import 'boot/sdui_host.dart';
 import 'core/api/jhin_transport.dart';
 import 'core/auth/app_storage.dart';
 import 'core/tls/tls_trust.dart';
+import 'sdui/sdui_runtime.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const JhinApp());
+  runApp(const JhinApp(createRenderer: createSduiRuntime));
 }
 
 /// Builds the transport bound to one stored profile: base URL, TOFU-pinned
@@ -19,6 +20,44 @@ JhinTransport createProfileTransport(ServerProfile profile) => JhinTransport(
       baseUrl: Uri.parse(profile.url),
       trustStore: TrustStore(pinnedFingerprint: profile.certFingerprint),
       token: profile.token,
+    );
+
+/// Per-profile dependencies of the [RendererFactory].
+class RendererEnv {
+  const RendererEnv({
+    required this.storage,
+    required this.profile,
+    required this.transport,
+    required this.createTransport,
+    required this.onOpenProfiles,
+  });
+
+  /// Profile storage the runtime persists tokens and caches into.
+  final AppStorage storage;
+
+  /// The active profile the runtime is bound to.
+  final ServerProfile profile;
+
+  /// Transport bound to [profile].
+  final JhinTransport transport;
+
+  /// Transport factory used after `setServerUrl` rewrites the URL.
+  final JhinTransport Function(ServerProfile profile) createTransport;
+
+  /// Opens the client-owned profile surface (`openProfiles` directive).
+  final VoidCallback onOpenProfiles;
+}
+
+/// Creates the screen renderer for one profile (the T22 seam of [SduiHost]).
+typedef RendererFactory = ScreenRenderer Function(RendererEnv env);
+
+/// T22 wiring: the SDUI runtime renders server-driven screens (§8).
+ScreenRenderer createSduiRuntime(RendererEnv env) => SduiRuntime(
+      transport: env.transport,
+      storage: env.storage,
+      profile: env.profile,
+      createTransport: env.createTransport,
+      onOpenProfiles: env.onOpenProfiles,
     );
 
 /// App shell (§8.1): empty profile list → [ServerProfilesScreen] in
@@ -45,8 +84,8 @@ class JhinApp extends StatefulWidget {
   final ServerProbe? probe;
 
   /// Screen renderer factory for the bootstrap host; defaults to
-  /// [GenericScreenRenderer] until the T22 runtime lands.
-  final ScreenRenderer Function()? createRenderer;
+  /// [createSduiRuntime] — the T22 SDUI runtime (§8).
+  final RendererFactory? createRenderer;
 
   @override
   State<JhinApp> createState() => _JhinAppState();
@@ -58,11 +97,13 @@ class _JhinAppState extends State<JhinApp> {
   late final JhinTransport Function(ServerProfile) _createTransport =
       widget.createTransport ?? createProfileTransport;
   late final ServerProbe _probe = widget.probe ?? probeServer;
-  late final ScreenRenderer Function() _createRenderer =
-      widget.createRenderer ?? (() => const GenericScreenRenderer());
+  late final RendererFactory _createRenderer =
+      widget.createRenderer ?? createSduiRuntime;
 
   ServerProfile? _active;
   bool _ready = false;
+  ScreenRenderer? _renderer;
+  String? _rendererProfileId;
 
   @override
   void initState() {
@@ -87,12 +128,13 @@ class _JhinAppState extends State<JhinApp> {
 
   @override
   Widget build(BuildContext context) {
+    final active = _active;
     return MaterialApp(
       title: 'Jhin',
       navigatorKey: _navigatorKey,
       home: !_ready
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-          : _active == null
+          : active == null
               ? ServerProfilesScreen(
                   storage: _storage,
                   probe: _probe,
@@ -101,14 +143,33 @@ class _JhinAppState extends State<JhinApp> {
                   onProfilesChanged: _reload,
                 )
               : SduiHost(
-                  key: ValueKey(_active!.id),
-                  profile: _active!,
+                  key: ValueKey(active.id),
+                  profile: active,
                   storage: _storage,
-                  transport: _createTransport(_active!),
-                  renderer: _createRenderer(),
+                  transport: _createTransport(active),
+                  renderer: _rendererFor(active),
                   onOpenProfiles: _openProfiles,
                 ),
     );
+  }
+
+  /// Builds — and memoizes — the renderer of one profile. The runtime is
+  /// stateful (screen stack, local state), so it must survive app rebuilds
+  /// and only be recreated when the active profile changes.
+  ScreenRenderer _rendererFor(ServerProfile profile) {
+    if (_renderer == null || _rendererProfileId != profile.id) {
+      final old = _renderer;
+      if (old is SduiRuntime) old.dispose();
+      _renderer = _createRenderer(RendererEnv(
+        storage: _storage,
+        profile: profile,
+        transport: _createTransport(profile),
+        createTransport: _createTransport,
+        onOpenProfiles: _openProfiles,
+      ));
+      _rendererProfileId = profile.id;
+    }
+    return _renderer!;
   }
 
   void _switchTo(ServerProfile profile) {
