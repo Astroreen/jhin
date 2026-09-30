@@ -1,0 +1,94 @@
+T10 — Manifest parsing and dependency graph: QA evidence
+cmd: ./gradlew :kernel:test --rerun-tasks (repo root, composite build, JDK 21)
+
+> Task :kernel:processResources
+> Task :kernel:processTestResources NO-SOURCE
+> Task :sdk:compileJava
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes
+> Task :sdk:jar
+> Task :kernel:compileJava
+> Task :kernel:classes
+> Task :kernel:compileTestJava
+> Task :kernel:testClasses
+> Task :kernel:test
+
+BUILD SUCCESSFUL in 6s
+6 actionable tasks: 6 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
+GRADLE_EXIT=0
+
+per-case results (kernel/build/test-results/test):
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#missingFileYieldsEmptyConfiguration() ... ok
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#flattensNestedKeysAndStringifiesScalars(Path) ... ok
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#trailingCommaThrowsNamingLineAndColumn() ... ok
+com.astroreen.jhin.kernel.config.ConfigStoreTest: tests=3 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.config.ConfigViewTest#mapsEnvNameForNamespacedSection() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#defaultBeatsMissingSources() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#envBeatsFile() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#typedGettersParseOrFallBack() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#fileBeatsDefault() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#allResolvesEveryKey() ... ok
+com.astroreen.jhin.kernel.config.ConfigViewTest: tests=6 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.config.JhinHomeTest#createsLayoutWithOwnerOnlyPermissions(Path) ... ok
+  com.astroreen.jhin.kernel.config.JhinHomeTest#secondResolveKeepsLayout(Path) ... ok
+com.astroreen.jhin.kernel.config.JhinHomeTest: tests=2 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.db.MigrationBookkeeperTest#bootstrapsKernelSchemaVersion(Path) ... ok
+  com.astroreen.jhin.kernel.db.MigrationBookkeeperTest#appliesTwoVersionsThenSecondApplyIsNoOp(Path) ... ok
+  com.astroreen.jhin.kernel.db.MigrationBookkeeperTest#appliesVersionsInAscendingOrderEvenWhenGivenUnsorted(Path) ... ok
+com.astroreen.jhin.kernel.db.MigrationBookkeeperTest: tests=3 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#refusesUnprefixedCreateIndex() ... ok
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#refusesUnprefixedCreateTable() ... ok
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#acceptsPrefixedTargets() ... ok
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#computesPrefixFromPluginId() ... ok
+com.astroreen.jhin.kernel.db.MigrationGuardTest: tests=4 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.db.WriteQueueTest#serializesTwoHundredConcurrentWrites(Path) ... ok
+  com.astroreen.jhin.kernel.db.WriteQueueTest#unwrapsUncheckedFailureFromQueuedTask() ... ok
+  com.astroreen.jhin.kernel.db.WriteQueueTest#unwrapsSqlFailureFromQueuedTask() ... ok
+com.astroreen.jhin.kernel.db.WriteQueueTest: tests=3 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#failsOnUnsatisfiableVersionRange() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#cascadesFailureThroughNonOptionalRequirementOnly() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#failsEveryPluginInCycleNamingTheCyclePath() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#ordersDiamondWithOptionalEdgeDeterministically() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#failsOnMissingRequirement() ... ok
+com.astroreen.jhin.kernel.loader.DependencyGraphTest: tests=5 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#parseAllKeepsHigherSemverNumerically() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#parseAllDropsRejectedJars() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#rejectsWrongApiVersionWithExactReason() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#rejectsUnreadableJson() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#acceptsValidManifest() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#rejectsInvalidFieldNamingIt() ... ok
+com.astroreen.jhin.kernel.loader.ManifestParserTest: tests=6 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#skipsJarWithoutManifestEntry() ... ok
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#listsJarsSortedByFileName() ... ok
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#readsManifestTextFromJarRoot() ... ok
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#skipsBrokenZip() ... ok
+com.astroreen.jhin.kernel.loader.PluginScannerTest: tests=4 failures=0 errors=0 skipped=0
+
+case counts per class:
+  DependencyGraphTest  tests=5 failures=0 errors=0 skipped=0
+  ManifestParserTest   tests=6 failures=0 errors=0 skipped=0
+  PluginScannerTest    tests=4 failures=0 errors=0 skipped=0
+  (whole kernel suite: 36 tests, 0 failures)
+
+acceptance: deterministic order for fixed input set
+  DependencyGraphTest#ordersDiamondWithOptionalEdgeDeterministically
+  exact 6-node order asserted: core, extra, left, right, apex, side
+
+acceptance: every failure carries a human-readable reason
+  DependencyGraphTest#failsOnMissingRequirement
+  DependencyGraphTest#failsOnUnsatisfiableVersionRange
+  DependencyGraphTest#failsEveryPluginInCycleNamingTheCyclePath
+  DependencyGraphTest#cascadesFailureThroughNonOptionalRequirementOnly
+
+reason-string excerpts (verbatim, asserted with isEqualTo):
+  missing dep:        plugin bbb requires ccc >=1.0.0, found none
+  unsatisfiable range: plugin aaa requires bbb 2.0.0, found 1.0.0
+  3-node cycle:       dependency cycle: cyc.a -> cyc.b -> cyc.c -> cyc.a
+  cascade:            dependency bbb failed
+  apiVersion gate:    plugin demo.one targets api 2, kernel provides 1
+
+exit codes:
+  ./gradlew :kernel:test --rerun-tasks ... GRADLE_EXIT=0
+  kernel purity word-scan over kernel/src/main (whole word, case-insensitive:
+  tool session agent message provider enroll account device llm prompt workdir hub worker role) ... PURITY_SCAN_EXIT=0 (no matches)
