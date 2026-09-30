@@ -1,148 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-
-import 'core/api/api_client.dart';
-import 'core/jhin_client.dart';
-import 'core/state/manifest_store.dart';
-import 'core/state/session_store.dart';
-import 'screens/connect_screen.dart';
-import 'screens/sessions_screen.dart';
-import 'screens/settings_screen.dart';
 
 void main() {
   runApp(const JhinApp());
 }
 
-/// Корневое приложение Jhin: Connect → Sessions → Chat (Navigator).
+/// Transport-only shell placeholder.
 ///
-/// [SessionStore] и [ManifestStore] живут в [MaterialApp.builder] — доступны
-/// всем роутам.
-class JhinApp extends StatefulWidget {
+/// The v1 product UI is gone; the server-profile surface and the SDUI boot
+/// host replace this in T21. Keep this file compiling and product-neutral.
+class JhinApp extends StatelessWidget {
   const JhinApp({super.key});
-
-  @override
-  State<JhinApp> createState() => _JhinAppState();
-}
-
-class _JhinAppState extends State<JhinApp> {
-  SessionStore? _store;
-  ManifestStore? _manifestStore;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Jhin',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+      home: const Scaffold(
+        body: Center(child: Text('Jhin')),
       ),
-      builder: (context, child) {
-        final store = _store;
-        final manifestStore = _manifestStore;
-        if (store == null || manifestStore == null) {
-          return child!;
-        }
-        return ChangeNotifierProvider<SessionStore>.value(
-          value: store,
-          child: ChangeNotifierProvider<ManifestStore>.value(
-            value: manifestStore,
-            child: child!,
-          ),
-        );
-      },
-      home: _ConnectGate(
-        onConnected: (client, result) {
-          final store = SessionStore(
-            api: client.api,
-            events: (id, {fromSeq}) =>
-                client.sessionEvents(id, fromSeq: fromSeq),
-          );
-          final manifestStore = ManifestStore(api: client.api);
-          setState(() {
-            _store = store;
-            _manifestStore = manifestStore;
-          });
-          store.loadSessions();
-          manifestStore.refresh();
-        },
-        onDisconnected: () {
-          _store?.dispose();
-          _manifestStore?.dispose();
-          setState(() {
-            _store = null;
-            _manifestStore = null;
-          });
-        },
-      ),
-    );
-  }
-}
-
-/// Переключает ConnectScreen ↔ SessionsScreen по факту подключения.
-class _ConnectGate extends StatefulWidget {
-  const _ConnectGate({required this.onConnected, required this.onDisconnected});
-
-  final ConnectCallback onConnected;
-  final VoidCallback onDisconnected;
-
-  @override
-  State<_ConnectGate> createState() => _ConnectGateState();
-}
-
-class _ConnectGateState extends State<_ConnectGate> {
-  JhinClient? _client;
-  EnrollResult? _result;
-
-  /// Выход: signOut (токен/пин/storage, если ещё не очищен) + закрыть клиента
-  /// + гейт на ConnectScreen (стек стирается сменой home).
-  Future<void> _handleSignOut(JhinClient client,
-      {bool alreadySignedOut = false}) async {
-    if (!alreadySignedOut) {
-      await client.signOut();
-    }
-    client.close();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _client = null;
-      _result = null;
-    });
-    widget.onDisconnected();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final client = _client;
-    final result = _result;
-    if (client == null || result == null) {
-      return ConnectScreen(
-        onConnected: (client, result) {
-          setState(() {
-            _client = client;
-            _result = result;
-          });
-          widget.onConnected(client, result);
-        },
-      );
-    }
-    return SessionsScreen(
-      accountName: result.accountName,
-      onSignOut: () => _handleSignOut(client),
-      onOpenSettings: () {
-        final manifestStore = context.read<ManifestStore>();
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => SettingsScreen(
-              client: client,
-              manifestStore: manifestStore,
-              // Settings уже очистил токен (signOut) и стек навигации.
-              onSignedOut: () {
-                _handleSignOut(client, alreadySignedOut: true);
-              },
-            ),
-          ),
-        );
-      },
     );
   }
 }

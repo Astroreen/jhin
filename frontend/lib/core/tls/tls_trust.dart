@@ -2,15 +2,15 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
-/// Формат SHA-256-фингерпринта сертификата: 32 байта hex UPPERCASE парами через `:`,
-/// ровно 95 символов (`^([0-9A-F]{2}:){31}[0-9A-F]{2}$`). Совпадает с форматом
-/// `TLS fingerprint (SHA-256)` в логах backend'а (SHA-256 от DER-кодировки).
+/// SHA-256 certificate fingerprint format: 32 bytes hex UPPERCASE in colon
+/// pairs, exactly 95 characters (`^([0-9A-F]{2}:){31}[0-9A-F]{2}$`). Matches
+/// the `TLS fingerprint (SHA-256)` lines in backend logs (SHA-256 over DER).
 final RegExp fingerprintFormat = RegExp(r'^([0-9A-F]{2}:){31}[0-9A-F]{2}$');
 
-/// true, если [value] — валидный фингерпринт в формате [fingerprintFormat].
+/// True when [value] is a valid fingerprint in [fingerprintFormat].
 bool isValidFingerprint(String value) => fingerprintFormat.hasMatch(value);
 
-/// Форматирует сырые байты дайджеста (32 байта SHA-256) в строку-фингерпринт.
+/// Formats raw digest bytes (32 bytes of SHA-256) as a colon fingerprint.
 String formatFingerprint(List<int> digest) {
   final buffer = StringBuffer();
   for (var i = 0; i < digest.length; i++) {
@@ -22,28 +22,20 @@ String formatFingerprint(List<int> digest) {
   return buffer.toString();
 }
 
-/// SHA-256-фингерпринт DER-кодировки сертификата.
+/// SHA-256 fingerprint of a certificate's DER encoding.
 ///
-/// SPIKE (Dart 3.13, `dart:io`): `X509Certificate` имеет геттер `der`
-/// (`Uint8List get der`) — DER-байты доступны напрямую, PEM-парсинг не нужен:
-/// ```dart
-/// badCertificateCallback: (cert, host, port) =>
-///     trustStore.verify(certFingerprint(cert.der));
-/// ```
-/// На web сертификат недоступен JS'у — функция используется только на IO-платформах.
+/// IO platforms read DER straight off `dart:io` `X509Certificate.der`; web
+/// never sees the peer certificate, so this helper is IO-only in practice.
 String certFingerprint(Uint8List der) =>
     formatFingerprint(sha256.convert(der).bytes);
 
-/// TOFU-хранилище пина TLS-сертификата сервера.
+/// TOFU store for the server TLS certificate fingerprint.
 ///
-/// Состояния:
-///  * не запинен — [verify] принимает любой peer (TOFU) и запоминает его
-///    как [pendingFingerprint] (для показа пользователю в T28/T31);
-///  * запинен — [verify] принимает только точное совпадение; несовпадение
-///    → `false` и [rejectedFingerprint] (отказ, возможен MITM).
-///
-/// Пин живёт памяти; персистентность — через `TokenStorage.pinnedFingerprint`
-/// (см. `JhinClient.pinCertificate`).
+/// States:
+///  * unpinned — [verify] accepts any peer (TOFU) and remembers it as
+///    [pendingFingerprint] until the caller pins it;
+///  * pinned — [verify] accepts an exact match only; a mismatch returns
+///    `false` and records [rejectedFingerprint].
 class TrustStore {
   TrustStore({String? pinnedFingerprint}) {
     if (pinnedFingerprint != null) {
@@ -55,20 +47,21 @@ class TrustStore {
   String? _pending;
   String? _rejected;
 
-  /// Текущий пин или null (TOFU-режим).
+  /// The pinned fingerprint, or null in TOFU mode.
   String? get pinnedFingerprint => _pinned;
 
-  /// Последний неподтверждённый peer (TOFU до `pin()`), иначе null.
+  /// The last unpinned peer seen (TOFU before `pin()`), else null.
   String? get pendingFingerprint => _pending;
 
-  /// Последний отклонённый из-за несовпадения с пином peer, иначе null.
+  /// The last peer rejected for mismatching the pin, else null.
   String? get rejectedFingerprint => _rejected;
 
   bool get isPinned => _pinned != null;
 
-  /// Проверка peer-фингерпринта при рукопожатии (badCertificateCallback).
+  /// Checks a peer fingerprint during the TLS handshake.
   ///
-  /// true — соединение принимается; false — отклоняется (несовпадение с пином).
+  /// Returns true when the connection may proceed; false when the peer
+  /// mismatches the pin (the handshake must fail).
   bool verify(String fingerprint) {
     _rejected = null;
     final pinned = _pinned;
@@ -83,7 +76,7 @@ class TrustStore {
     return false;
   }
 
-  /// Пинит [fingerprint] (формат валидируется) и сбрасывает pending.
+  /// Pins [fingerprint] (format validated) and clears pending/rejected state.
   void pin(String fingerprint) {
     if (!isValidFingerprint(fingerprint)) {
       throw ArgumentError.value(
@@ -94,7 +87,7 @@ class TrustStore {
     _rejected = null;
   }
 
-  /// Снимает пин и всю историю (выход, смена сервера, отказ пользователя).
+  /// Drops the pin and all history (sign-out, server change, user refusal).
   void clear() {
     _pinned = null;
     _pending = null;
@@ -102,19 +95,20 @@ class TrustStore {
   }
 }
 
-/// Отказ TLS-рукопожатия из-за несовпадения с пином: соединение не принимается,
-/// возможен MITM. Фатальна для SSE-транспорта (не ретраится).
-class TlsPinMismatchException implements Exception {
-  const TlsPinMismatchException({this.fingerprint, this.pinnedFingerprint});
+/// Blocking TLS failure: the peer certificate does not match the pinned
+/// fingerprint (possible MITM). The UI must surface it as a blocking error
+/// with a "trust new certificate" confirmation before any retry.
+class CertificateMismatch implements Exception {
+  const CertificateMismatch({this.presented, this.pinned});
 
-  /// Фингерпринт предъявленного (отклонённого) сертификата.
-  final String? fingerprint;
+  /// Fingerprint of the rejected peer certificate, when known.
+  final String? presented;
 
-  /// Ожидаемый пин.
-  final String? pinnedFingerprint;
+  /// The expected pinned fingerprint, when one is set.
+  final String? pinned;
 
   @override
   String toString() =>
-      'TlsPinMismatchException: peer fingerprint $fingerprint does not match '
-      'pinned $pinnedFingerprint — connection rejected (possible MITM)';
+      'CertificateMismatch: peer fingerprint $presented does not match '
+      'pinned $pinned — connection rejected (possible MITM)';
 }

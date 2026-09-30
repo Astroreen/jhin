@@ -1,0 +1,17 @@
+=== flutter build web ===
+Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 7736 bytes (99.5% reduction). Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
+Compiling lib/main.dart for the Web...                             19.0s
+✓ Built build/web
+flutter build web exit: 0
+=== flutter build linux ===
+Building Linux application...                                   
+✓ Built build/linux/x64/release/bundle/jhin
+flutter build linux exit: 0
+=== flutter analyze ===
+Analyzing frontend...                                           
+No issues found! (ran in 0.6s)
+flutter analyze exit: 0
+=== flutter test ===
+00:00 +15: /home/astroreen/Documents/jhin/frontend/test/transport_test.dart: TransportTest X-Jhin-Client version matches the pubspec semver
+00:00 +16: All tests passed!
+flutter test exit: 0

@@ -1,11 +1,11 @@
 import 'dart:convert';
 
-/// Одно событие `text/event-stream`.
+/// One `text/event-stream` frame.
 ///
-/// [id] — seq события (`id:` фрейм; null, если строки id не было);
-/// [type] — имя события (`event:`, дефолт `message`); [data] — payload
-/// `data:` (склейка нескольких data-строк через `\n`) как JSON-объект
-/// (null, если не JSON-объект или пустой).
+/// [id] — event id (`id:` frame; null when absent); [type] — event name
+/// (`event:`, defaults to `message`); [data] — the `data:` payload (several
+/// `data:` lines joined with `\n`) decoded as a JSON object (null when the
+/// payload is empty or not a JSON object).
 class SseEvent {
   const SseEvent({required this.id, required this.type, required this.data});
 
@@ -42,23 +42,23 @@ class SseEvent {
   }
 }
 
-/// Чистый парсер `text/event-stream` (без IO).
+/// Pure `text/event-stream` parser (no IO).
 ///
-/// Кормить построчно ([addLine]) или чанками декодированного текста
-/// ([addChunk], умеет резать фреймы по границам чанков). Blank line — конец
-/// события; `: comment` (heartbeat `: keepalive`) игнорируется; неизвестные
-/// поля и кривые значения игнорируются юзательски (никогда не бросает).
+/// Feed it lines ([addLine]) or decoded text chunks ([addChunk], splits frames
+/// across chunk boundaries). A blank line dispatches the event; `: comment`
+/// (heartbeat `: keepalive`) is ignored; unknown fields and malformed values
+/// are ignored leniently (never throws).
 ///
-/// Формат фрейма (backend): `id: <seq>\nevent: <type>\nevent: <type>\ndata: <json>\n\n`.
+/// Backend frame format: `id: <seq>\nevent: <type>\ndata: <json>\n\n`.
 class SseParser {
   String _buffer = '';
   int? _id;
   String? _type;
   String? _data;
 
-  /// Разбирает одну строку без завершающего перевода строки.
+  /// Parses one line without its trailing newline.
   ///
-  /// Возвращает событие, если строка закрыла фрейм (blank line), иначе null.
+  /// Returns the event when the line closes a frame (blank line), else null.
   SseEvent? addLine(String line) {
     if (line.isEmpty) {
       return _dispatch();
@@ -101,10 +101,10 @@ class SseParser {
     return null;
   }
 
-  /// Кормит чанк декодированного текста; возвращает события, закрытые в нём.
+  /// Feeds a chunk of decoded text; returns the events it closed.
   ///
-  /// Неполная последняя строка (и висящий `\r` на границе чанка) остаётся в
-  /// буфере до следующего чанка/закрытия.
+  /// An incomplete trailing line (and a dangling `\r` on a chunk boundary)
+  /// stays buffered until the next chunk or [flush].
   List<SseEvent> addChunk(String chunk) {
     _buffer += chunk;
     final events = <SseEvent>[];
@@ -115,7 +115,7 @@ class SseParser {
       }
       var skip = 1;
       if (_buffer.codeUnitAt(index) == 0x0D) {
-        // `\r` в конце буфера может оказаться половиной `\r\n` — ждём чанк.
+        // A `\r` at the end of the buffer may be half of `\r\n` — wait.
         if (index + 1 >= _buffer.length) {
           break;
         }
@@ -133,9 +133,9 @@ class SseParser {
     return events;
   }
 
-  /// Дозакрывает поток: добирает последнюю строку без перевода строки и
-  /// незакрытый фрейм (backend всегда закрывает фреймы blank line'ом — на
-  /// практике не требуется, API симметрично addChunk).
+  /// Closes the stream: picks up a final line without a newline and any
+  /// unclosed frame (the backend always ends frames with a blank line, so in
+  /// practice this is rarely needed; the API mirrors [addChunk]).
   SseEvent? flush() {
     if (_buffer.isNotEmpty) {
       var line = _buffer;
@@ -170,7 +170,7 @@ class SseParser {
     _id = null;
     _type = null;
     if (data == null) {
-      // Спека SSE: без data-полей событие не диспатчится.
+      // SSE spec: an event without data fields is not dispatched.
       return null;
     }
     final type = (rawType == null || rawType.isEmpty) ? 'message' : rawType;

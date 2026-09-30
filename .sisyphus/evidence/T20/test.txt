@@ -1,0 +1,18 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/profile_store_test.dart
+00:00 +0: /home/astroreen/Documents/jhin/frontend/test/profile_store_test.dart: ProfileStoreTest add stores profiles without touching the active id
+00:00 +1: /home/astroreen/Documents/jhin/frontend/test/profile_store_test.dart: ProfileStoreTest switch persists activeProfileId across instances
+00:00 +2: /home/astroreen/Documents/jhin/frontend/test/profile_store_test.dart: ProfileStoreTest remove drops the profile, its token and the active id
+00:00 +3: /home/astroreen/Documents/jhin/frontend/test/profile_store_test.dart: ProfileStoreTest tokens live in the secure backend, not in the profile JSON
+00:00 +4: /home/astroreen/Documents/jhin/frontend/test/profile_store_test.dart: ProfileStoreTest update replaces fields and persists them
+00:00 +5: /home/astroreen/Documents/jhin/frontend/test/transport_test.dart: TransportTest health parses the §6 payload
+00:00 +6: /home/astroreen/Documents/jhin/frontend/test/transport_test.dart: TransportTest health normalizes a trailing slash in the probed url
+00:00 +7: /home/astroreen/Documents/jhin/frontend/test/transport_failure_test.dart: TransportFailureTest getJson 500 surfaces the status code and the body
+00:00 +8: /home/astroreen/Documents/jhin/frontend/test/transport_failure_test.dart: TransportFailureTest getJson 500 surfaces the status code and the body
+00:00 +9: /home/astroreen/Documents/jhin/frontend/test/transport_failure_test.dart: TransportFailureTest getJson 500 surfaces the status code and the body
+00:00 +10: /home/astroreen/Documents/jhin/frontend/test/transport_failure_test.dart: TransportFailureTest getJson 500 surfaces the status code and the body
+00:00 +11: /home/astroreen/Documents/jhin/frontend/test/transport_test.dart: TransportTest sse drops non-object payloads and keeps the rest
+00:00 +12: /home/astroreen/Documents/jhin/frontend/test/transport_failure_test.dart: TransportFailureTest postJson 500 surfaces the status code and the body
+00:00 +13: /home/astroreen/Documents/jhin/frontend/test/transport_test.dart: TransportTest every request carries X-Jhin-Client
+00:00 +14: /home/astroreen/Documents/jhin/frontend/test/transport_test.dart: TransportTest every request carries X-Jhin-Client
+00:00 +15: /home/astroreen/Documents/jhin/frontend/test/transport_test.dart: TransportTest X-Jhin-Client version matches the pubspec semver
+00:00 +16: All tests passed!
