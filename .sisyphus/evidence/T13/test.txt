@@ -1,0 +1,130 @@
+T13 — HTTP registry, route table, filter pipeline: QA evidence
+cmd: ./gradlew :kernel:test --rerun-tasks (repo root, composite build, JDK 21)
+
+> Task :kernel:processResources
+> Task :kernel:processTestResources NO-SOURCE
+> Task :sdk:compileJava
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes
+> Task :sdk:jar
+> Task :kernel:compileJava
+> Task :kernel:classes
+> Task :kernel:compileTestJava
+> Task :kernel:testClasses
+> Task :kernel:test
+
+BUILD SUCCESSFUL in 6s
+6 actionable tasks: 6 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
+
+GRADLE_EXIT=0
+
+per-case results (kernel/build/test-results/test):
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#missingFileYieldsEmptyConfiguration() ... ok
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#flattensNestedKeysAndStringifiesScalars(Path) ... ok
+  com.astroreen.jhin.kernel.config.ConfigStoreTest#trailingCommaThrowsNamingLineAndColumn() ... ok
+com.astroreen.jhin.kernel.config.ConfigStoreTest: tests=3 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.config.ConfigViewTest#mapsEnvNameForNamespacedSection() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#defaultBeatsMissingSources() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#envBeatsFile() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#typedGettersParseOrFallBack() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#fileBeatsDefault() ... ok
+  com.astroreen.jhin.kernel.config.ConfigViewTest#allResolvesEveryKey() ... ok
+com.astroreen.jhin.kernel.config.ConfigViewTest: tests=6 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.config.JhinHomeTest#createsLayoutWithOwnerOnlyPermissions(Path) ... ok
+  com.astroreen.jhin.kernel.config.JhinHomeTest#secondResolveKeepsLayout(Path) ... ok
+com.astroreen.jhin.kernel.config.JhinHomeTest: tests=2 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.db.MigrationBookkeeperTest#bootstrapsKernelSchemaVersion(Path) ... ok
+  com.astroreen.jhin.kernel.db.MigrationBookkeeperTest#appliesTwoVersionsThenSecondApplyIsNoOp(Path) ... ok
+  com.astroreen.jhin.kernel.db.MigrationBookkeeperTest#appliesVersionsInAscendingOrderEvenWhenGivenUnsorted(Path) ... ok
+com.astroreen.jhin.kernel.db.MigrationBookkeeperTest: tests=3 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#refusesUnprefixedCreateIndex() ... ok
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#refusesUnprefixedCreateTable() ... ok
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#acceptsPrefixedTargets() ... ok
+  com.astroreen.jhin.kernel.db.MigrationGuardTest#computesPrefixFromPluginId() ... ok
+com.astroreen.jhin.kernel.db.MigrationGuardTest: tests=4 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.db.WriteQueueTest#serializesTwoHundredConcurrentWrites(Path) ... ok
+  com.astroreen.jhin.kernel.db.WriteQueueTest#unwrapsUncheckedFailureFromQueuedTask() ... ok
+  com.astroreen.jhin.kernel.db.WriteQueueTest#unwrapsSqlFailureFromQueuedTask() ... ok
+com.astroreen.jhin.kernel.db.WriteQueueTest: tests=3 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.http.FilterPipelineTest#runsFiltersInOrderThenTerminalHandler() ... ok
+  com.astroreen.jhin.kernel.http.FilterPipelineTest#shortCircuitStopsChainAndHandlerNeverRuns() ... ok
+  com.astroreen.jhin.kernel.http.FilterPipelineTest#orderTiesBreakByPluginId() ... ok
+  com.astroreen.jhin.kernel.http.FilterPipelineTest#pathPrefixSelectsMatchingFiltersOnly() ... ok
+com.astroreen.jhin.kernel.http.FilterPipelineTest: tests=4 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.http.HttpRegistryImplTest#fallbackRegistrationIsReplacedSilentlyByAPluginRoute() ... ok
+  com.astroreen.jhin.kernel.http.HttpRegistryImplTest#registrationsOutsideAttributionAreOwnedByTheKernel() ... ok
+  com.astroreen.jhin.kernel.http.HttpRegistryImplTest#registrationsInsideAttributionAreOwnedByTheCallingPlugin() ... ok
+  com.astroreen.jhin.kernel.http.HttpRegistryImplTest#tlsIsFirstWinsAndRecordsTheOwningPlugin() ... ok
+com.astroreen.jhin.kernel.http.HttpRegistryImplTest: tests=4 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.http.RouteTableTest#pluginRouteSilentlyReplacesFallbackRoute() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#capturesSinglePathParam() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#unknownPathResolvesToNotFound() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#samePathUnderDifferentMethodsMatchesEachMethod() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#paramTemplateUnderOtherMethodResolvesToMethodNotAllowed() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#literalPreferenceIsLeftToRightAtFirstDifferingSegment() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#capturesMultiplePathParams() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#knownPathWithOtherMethodResolvesToMethodNotAllowed() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#duplicateNonFallbackRegistrationThrowsWithExactConflictText() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#matchesExactLiteralPath() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#literalSegmentBeatsParamSegment() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#matchesRootPath() ... ok
+  com.astroreen.jhin.kernel.http.RouteTableTest#paramBranchBacktracksWhenLiteralBranchDeadEnds() ... ok
+com.astroreen.jhin.kernel.http.RouteTableTest: tests=13 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#failsOnUnsatisfiableVersionRange() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#cascadesFailureThroughNonOptionalRequirementOnly() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#failsEveryPluginInCycleNamingTheCyclePath() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#ordersDiamondWithOptionalEdgeDeterministically() ... ok
+  com.astroreen.jhin.kernel.loader.DependencyGraphTest#failsOnMissingRequirement() ... ok
+com.astroreen.jhin.kernel.loader.DependencyGraphTest: tests=5 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#parseAllKeepsHigherSemverNumerically() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#parseAllDropsRejectedJars() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#rejectsWrongApiVersionWithExactReason() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#rejectsUnreadableJson() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#acceptsValidManifest() ... ok
+  com.astroreen.jhin.kernel.loader.ManifestParserTest#rejectsInvalidFieldNamingIt() ... ok
+com.astroreen.jhin.kernel.loader.ManifestParserTest: tests=6 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#duplicateExportResolvesInTopologicalOrderAndWarns() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#closeIsIdempotent() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#exportedDependencyClassIsIdenticalAcrossLoaders() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#sharedContractClassComesFromKernelLoader() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#ownClassShadowsNonExportedDependencyClass() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#nonExportedDependencyClassThrowsListingVisibleExports() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#kernelInternalClassIsNotVisible() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#getResourcesSeesOwnAndExportedDependencyResourcesOnly() ... ok
+  com.astroreen.jhin.kernel.loader.PluginClassLoaderTest#transitiveExportsAreVisibleThroughTheDependencyChain() ... ok
+com.astroreen.jhin.kernel.loader.PluginClassLoaderTest: tests=9 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#skipsJarWithoutManifestEntry() ... ok
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#listsJarsSortedByFileName() ... ok
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#readsManifestTextFromJarRoot() ... ok
+  com.astroreen.jhin.kernel.loader.PluginScannerTest#skipsBrokenZip() ... ok
+com.astroreen.jhin.kernel.loader.PluginScannerTest: tests=4 failures=0 errors=0 skipped=0
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#publishersByPluginRecordsAttribution() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#duplicateNamedQualifierThrowsNamingBothPlugins() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#duplicatePublicationThrowsNamingBothPlugins() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#unattributedPublicationIsAttributedToTheHost() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#findAllKeepsPublicationOrderAndFindReturnsTheFirst() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#lookupsAreLiveAndFindAllIsASnapshot() ... ok
+  com.astroreen.jhin.kernel.services.ServiceRegistryImplTest#findRespectsQualifiers() ... ok
+com.astroreen.jhin.kernel.services.ServiceRegistryImplTest: tests=7 failures=0 errors=0 skipped=0
+
+total: tests=73 failures=0 errors=0 skipped=0
+GRADLE_EXIT=0 (BUILD SUCCESSFUL)
+
+conflict message excerpt (RouteTableTest#duplicateNonFallbackRegistrationThrowsWithExactConflictText):
+  conflict-error: com.astroreen.jhin.sdk.PluginException: route conflict: GET /x already owned by demo.one
+
+route rules under test (RouteTable + RouteMatcher):
+  index: method -> segment count -> entries (registration order); exact segment count.
+  precedence: literal segment beats {param} per segment, left to right, with
+    backtracking (param branch tried when the literal branch dead-ends deeper).
+  404 / 405 discrimination: no path match -> NOT_FOUND; path matches a template
+    of another method only -> METHOD_NOT_ALLOWED.
+  duplicate non-fallback (method, path) -> PluginException, exact text above.
+  fallback entry replaced silently by the next registration of the same pair.
+
+filter rules under test (FilterPipeline):
+  run order: ascending (FilterSpec.order, pluginId); selection by pathPrefix
+    ("/" matches all, otherwise path.startsWith(prefix)); terminal link = route
+    handler; a filter that does not call proceed short-circuits and later filters
+    and the handler never run.
