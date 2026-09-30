@@ -1,0 +1,12 @@
+ok: build green: kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar + plugins/sessions/build/libs/jhin-plugin-sessions-0.2.0.jar
+ok: kernel started (pid 2322535, home /tmp/t26-home.bJRuik)
+ok: health 200, lists jhin.sessions as the only plugin
+ok: POST /sessions -> 201, id 9385e738-ec7b-4a7f-ab2f-45385334c529
+ok: 5 events appended via the QA helper route, seq 1..5
+ok: stream captured 5 events in seq order 1 2 3 4 5, duplicates: 0
+ok: resume fromSeq=3 -> exactly seq 4 5
+ok: GET /sessions/nope -> 404 with not_found
+ok: POST /sessions {} -> 400 naming workdir
+ok: sessions plugin build green with 27 tests
+ok: kernel tests green with 101 tests
+ok: evidence staged with git add -f: .sisyphus/evidence/T26

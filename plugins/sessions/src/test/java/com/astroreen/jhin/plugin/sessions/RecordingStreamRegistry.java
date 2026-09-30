@@ -1,7 +1,9 @@
 /**
  * Recording {@link StreamRegistry} fake for plugin tests: captures every
- * published event per topic and fans out to subscribed sinks. The SSE builder
- * is not exercised by unit tests and throws {@link UnsupportedOperationException}.
+ * published event per topic and every SSE request (topic and preamble) and
+ * fans out to subscribed sinks. The returned SSE response is a plain
+ * {@code 200}; tests replay the captured preamble against their own writer to
+ * observe what the route writes.
  */
 package com.astroreen.jhin.plugin.sessions;
 
@@ -19,8 +21,12 @@ import java.util.function.Consumer;
 
 final class RecordingStreamRegistry implements StreamRegistry {
 
+    /** One captured {@link #sse(String, SsePreamble)} call. */
+    record SseRequest(String topic, SsePreamble preamble) {}
+
     private final Map<String, List<StreamEvent>> published = new ConcurrentHashMap<>();
     private final Map<String, List<Consumer<StreamEvent>>> subscribers = new ConcurrentHashMap<>();
+    private final List<SseRequest> sseRequests = new CopyOnWriteArrayList<>();
 
     @Override
     public void publish(String topic, StreamEvent event) {
@@ -32,13 +38,23 @@ final class RecordingStreamRegistry implements StreamRegistry {
 
     @Override
     public HttpResponse sse(String topic, SsePreamble preamble) {
-        throw new UnsupportedOperationException("sse is not exercised by unit tests");
+        sseRequests.add(new SseRequest(topic, preamble));
+        return HttpResponse.empty(200);
     }
 
     @Override
     public Subscription subscribe(String topic, Consumer<StreamEvent> sink) {
         subscribers.computeIfAbsent(topic, key -> new CopyOnWriteArrayList<>()).add(sink);
         return () -> subscribers.getOrDefault(topic, List.of()).remove(sink);
+    }
+
+    /**
+     * Every SSE request seen so far, in call order.
+     *
+     * @return the captured topic and preamble pairs
+     */
+    List<SseRequest> sseRequests() {
+        return List.copyOf(sseRequests);
     }
 
     /**

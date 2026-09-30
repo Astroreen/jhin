@@ -1,0 +1,19 @@
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-sessions:processTestResources NO-SOURCE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:assemble UP-TO-DATE
+> Task :jhin-plugin-sessions:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-sessions:testClasses UP-TO-DATE
+> Task :jhin-plugin-sessions:test UP-TO-DATE
+> Task :jhin-plugin-sessions:check UP-TO-DATE
+> Task :jhin-plugin-sessions:build UP-TO-DATE
+
+BUILD SUCCESSFUL in 494ms
+7 actionable tasks: 7 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html

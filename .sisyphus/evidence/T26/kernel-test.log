@@ -1,0 +1,18 @@
+> Task :kernel:processResources
+> Task :kernel:processTestResources NO-SOURCE
+> Task :sdk:compileJava
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes
+> Task :sdk:jar
+> Task :kernel:compileJava
+> Task :kernel:classes
+> Task :kernel:compileTestJava
+> Task :kernel:testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+2026-09-30T22:36:59.806+03:00  INFO 2323603 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-09-30T22:37:00.008+03:00  INFO 2323603 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+> Task :kernel:test
+
+BUILD SUCCESSFUL in 24s
+6 actionable tasks: 6 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html

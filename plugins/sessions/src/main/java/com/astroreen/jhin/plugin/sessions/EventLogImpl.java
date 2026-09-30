@@ -114,7 +114,15 @@ final class EventLogImpl implements EventLog {
         return "sessions/" + sessionId;
     }
 
-    private static Map<String, Object> body(EventRecord record) {
+    /**
+     * The wire body of one event: {@code seq}, {@code ts}, {@code type} and
+     * {@code payload}. Shared with the SSE route so replay frames and live
+     * frames have the exact same shape.
+     *
+     * @param record the event
+     * @return the body map published on the topic and written to SSE frames
+     */
+    static Map<String, Object> body(EventRecord record) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("seq", record.seq());
         body.put("ts", record.ts());
