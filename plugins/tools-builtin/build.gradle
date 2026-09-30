@@ -7,3 +7,14 @@ version = '0.2.0'
 base {
     archivesName = 'jhin-plugin-tools-builtin'
 }
+
+dependencies {
+    // Compiled against the tool SPI of the jhin.agent plugin and resolved at
+    // runtime through its manifest exports (plugin-to-plugin class sharing):
+    // ToolProvider, ToolDefinition and the rest of
+    // com.astroreen.jhin.plugin.agent.api come from the jhin.agent class
+    // loader. compileOnly keeps the agent jar out of this plugin's archive;
+    // the coordinates resolve through composite build substitution of the
+    // included plugins/agent build.
+    compileOnly 'com.astroreen:jhin-plugin-agent:0.2.0'
+}

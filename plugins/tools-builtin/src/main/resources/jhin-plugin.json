@@ -1,0 +1,10 @@
+{
+  "id": "jhin.tools-builtin",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "name": "Tools Built-in",
+  "description": "The built-in tool set (bash, read, write, edit, find, grep, ls) contributed to jhin.agent; placeholder until T34.",
+  "mainClass": "com.astroreen.jhin.plugin.toolsbuiltin.ToolsPlugin",
+  "exports": [],
+  "requires": [{"id": "jhin.agent", "versionRange": ">=0.2.0", "optional": false}]
+}

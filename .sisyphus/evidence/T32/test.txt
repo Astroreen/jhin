@@ -1,0 +1,62 @@
+=== T32 evidence ===
+
+--- happy QA: ./gradlew :jhin-plugin-tools-builtin:compileJava ---
+> Task :jhin-plugin-agent:processResources
+> Task :sdk:compileJava
+> Task :jhin-plugin-agent:compileJava
+> Task :jhin-plugin-agent:classes
+> Task :jhin-plugin-agent:jar
+> Task :jhin-plugin-tools-builtin:compileJava
+
+BUILD SUCCESSFUL in 550ms
+5 actionable tasks: 5 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
+
+--- failure QA: ./gradlew :jhin-plugin-agent:test ---
+> Task :jhin-plugin-agent:processResources
+> Task :kernel:processResources
+> Task :jhin-plugin-agent:processTestResources NO-SOURCE
+> Task :sdk:compileJava
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes
+> Task :sdk:jar
+> Task :jhin-plugin-agent:compileJava
+> Task :jhin-plugin-agent:classes
+> Task :kernel:compileJava
+> Task :kernel:classes
+> Task :kernel:jar
+> Task :jhin-plugin-agent:compileTestJava
+> Task :jhin-plugin-agent:testClasses
+> Task :jhin-plugin-agent:test
+
+BUILD SUCCESSFUL in 1s
+9 actionable tasks: 9 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
+
+--- test counts ---
+AgentExportsTest (plugins/agent): 3 tests, 0 failures, 0 errors, 0 skipped
+tests="3" skipped="0" failures="0" errors="0"
+kernel: 101 tests, 0 failures, 0 errors, 0 skipped
+tests="101" skipped="0" failures="0" errors="0"
+
+--- exact ClassNotFoundException message asserted (AgentExportsTest) ---
+plugin jhin.scratch cannot see com.astroreen.jhin.plugin.agent.AgentPlugin; visible exports: com.astroreen.jhin.plugin.agent.api
+asserted three ways: exact equality on the cause CNFE of the scratch-consumer load,
+hasMessageContaining(plugin, jhin.scratch, AgentPlugin), and exact equality on the
+direct loadClass CNFE of the non-exported class through the kernel PluginClassLoader.
+
+--- gate: ./gradlew :jhin-plugin-agent:build :jhin-plugin-tools-builtin:build :kernel:test --rerun-tasks ---
+
+BUILD SUCCESSFUL in 24s
+15 actionable tasks: 15 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
+
+--- validateManifest ---
+OK: src/main/resources/jhin-plugin.json is a valid JSON object
+OK: src/main/resources/jhin-plugin.json is a valid JSON object
+BUILD SUCCESSFUL in 438ms
+
+--- composite dependency declarations ---
+plugins/tools-builtin/build.gradle: compileOnly 'com.astroreen:jhin-plugin-agent:0.2.0' (composite substitution)
+plugins/agent/build.gradle: testImplementation('com.astroreen:kernel:0.2.0-SNAPSHOT') { transitive = false } (composite substitution; transitive=false because kernel deps carry no standalone versions)
+kernel/build.gradle tweak: added group = 'com.astroreen' (build-file only, kernel/src untouched)
