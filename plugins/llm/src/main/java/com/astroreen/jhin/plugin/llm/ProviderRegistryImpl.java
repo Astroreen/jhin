@@ -15,6 +15,7 @@ import com.astroreen.jhin.plugin.llm.api.ProviderException;
 import com.astroreen.jhin.plugin.llm.api.ProviderRecord;
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
 import com.astroreen.jhin.sdk.db.DbAccess;
+import dev.langchain4j.model.chat.ChatModel;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -129,6 +130,34 @@ final class ProviderRegistryImpl implements ProviderRegistry {
                 .distinct()
                 .sorted()
                 .toList();
+    }
+
+    @Override
+    public ChatModel modelFor(String accountId, String providerId) {
+        requireText(accountId, "accountId");
+        requireText(providerId, "providerId");
+        return db.read(connection -> {
+            String format;
+            ProviderConfig cfg;
+            try (PreparedStatement query = connection.prepareStatement(
+                    "SELECT format, api_key_enc, model, base_url"
+                            + " FROM jhin_llm_providers WHERE id = ? AND account_id = ?")) {
+                query.setString(1, providerId);
+                query.setString(2, accountId);
+                try (ResultSet rs = query.executeQuery()) {
+                    if (!rs.next()) {
+                        throw new ProviderException(ProviderException.CODE_NOT_FOUND, 404,
+                                "provider " + providerId + " not found");
+                    }
+                    format = rs.getString("format");
+                    cfg = new ProviderConfig(
+                            rs.getString("api_key_enc"),
+                            rs.getString("model"),
+                            rs.getString("base_url"));
+                }
+            }
+            return resolveFactory(format).create(cfg);
+        });
     }
 
     private LlmProviderFactory resolveFactory(String format) {

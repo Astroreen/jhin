@@ -7,10 +7,13 @@
  *
  * <p>The scratch consumer is the compiled test helper
  * {@code com.scratch.ScratchTool}, which imports and extends the
- * non-exported entry point {@code AgentPlugin}; T33 extends this test to
- * reference {@code com.astroreen.jhin.plugin.agent.AgentLoop} the same way.
- * The expected failure text is the one {@code PluginClassLoader} produces:
- * {@code plugin <id> cannot see <class>; visible exports: <packages>}.
+ * non-exported entry point {@code AgentPlugin} and references
+ * {@code AgentLoop} in a method signature (T33 references
+ * {@code com.astroreen.jhin.plugin.agent.AgentLoop} the way the plan originally
+ * named it); T33 extends this test with the direct {@code AgentLoop}
+ * assertion. The expected failure text is the one {@code PluginClassLoader}
+ * produces: {@code plugin <id> cannot see <class>; visible exports:
+ * <packages>}.
  */
 package com.astroreen.jhin.plugin.agent;
 
@@ -35,12 +38,18 @@ class AgentExportsTest {
 
     private static final String API_PACKAGE = "com.astroreen.jhin.plugin.agent.api";
     private static final String AGENT_PLUGIN_CLASS = "com.astroreen.jhin.plugin.agent.AgentPlugin";
+    private static final String AGENT_LOOP_CLASS = "com.astroreen.jhin.plugin.agent.AgentLoop";
     private static final String SCRATCH_CLASS = "com.scratch.ScratchTool";
     private static final String CONSUMER_PLUGIN_ID = "jhin.scratch";
 
     /** The exact production message the kernel class loader throws. */
     private static final String EXPECTED_CNFE = "plugin " + CONSUMER_PLUGIN_ID
             + " cannot see " + AGENT_PLUGIN_CLASS
+            + "; visible exports: " + API_PACKAGE;
+
+    /** The same production message for the non-exported agent loop. */
+    private static final String EXPECTED_CNFE_LOOP = "plugin " + CONSUMER_PLUGIN_ID
+            + " cannot see " + AGENT_LOOP_CLASS
             + "; visible exports: " + API_PACKAGE;
 
     @TempDir
@@ -88,6 +97,16 @@ class AgentExportsTest {
         assertThatThrownBy(() -> consumerLoader.loadClass(AGENT_PLUGIN_CLASS))
                 .isInstanceOf(ClassNotFoundException.class)
                 .hasMessage(EXPECTED_CNFE);
+    }
+
+    // (4) the same boundary for the agent loop the plan originally named
+    @Test
+    void nonExportedAgentLoopThrowsTheProductionCnfe() throws Exception {
+        openLoaders();
+        assertThatThrownBy(() -> consumerLoader.loadClass(AGENT_LOOP_CLASS))
+                .isInstanceOf(ClassNotFoundException.class)
+                .hasMessage(EXPECTED_CNFE_LOOP)
+                .hasMessageContaining("plugin", CONSUMER_PLUGIN_ID, "AgentLoop");
     }
 
     /**

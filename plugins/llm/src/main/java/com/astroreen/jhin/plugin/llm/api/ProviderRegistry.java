@@ -5,9 +5,14 @@
  *
  * <p>Access is always scoped to one account. Without a security plugin every
  * caller is the single implicit account {@link #LOCAL_ACCOUNT}.
+ *
+ * <p>Added in T33: {@link #modelFor(String, String)} — the agent plugin needs
+ * the live {@link dev.langchain4j.model.chat.ChatModel} behind a stored
+ * provider id, and the api key must never leave this plugin.
  */
 package com.astroreen.jhin.plugin.llm.api;
 
+import dev.langchain4j.model.chat.ChatModel;
 import java.util.List;
 import java.util.Optional;
 
@@ -86,4 +91,25 @@ public interface ProviderRegistry {
      * @return the registered factory formats, sorted
      */
     List<String> formats();
+
+    /**
+     * Builds the live chat model behind one stored provider id. The api key is
+     * read here and handed straight to the matching
+     * {@link LlmProviderFactory}; it never crosses this interface. The factory
+     * is resolved live (first-wins by format), so a factory plugin installed
+     * later is honoured without a registry restart. Added in T33 for the agent
+     * plugin, which mints the model of the session provider at run start.
+     *
+     * @param accountId  the owning account
+     * @param providerId the stored provider id
+     * @return a fresh chat model for the provider configuration
+     * @throws IllegalArgumentException when {@code accountId} or
+     *                                  {@code providerId} is null or blank
+     * @throws ProviderException        with code
+     *                                  {@link ProviderException#CODE_NOT_FOUND}
+     *                                  when the provider is unknown or foreign,
+     *                                  or {@link ProviderException#CODE_UNKNOWN_FORMAT}
+     *                                  when no registered factory matches
+     */
+    ChatModel modelFor(String accountId, String providerId);
 }

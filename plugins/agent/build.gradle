@@ -1,4 +1,4 @@
-// Jhin plugin module: agent (scaffolded in T4, logic lands in later tasks).
+// Jhin plugin module: agent (agent loop, prompt assembly and run lifecycle).
 apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
 
 group = 'com.astroreen'
@@ -9,19 +9,28 @@ base {
 }
 
 dependencies {
+    // Compiled against the exported API of the jhin.sessions and jhin.llm
+    // plugins and resolved at runtime through their manifest exports
+    // (plugin-to-plugin class sharing): SessionStore/EventLog and the llm
+    // registry plus the LangChain4j chat/message/tool types come from those
+    // plugins' class loaders. compileOnly keeps both jars out of this
+    // plugin's archive; the coordinates resolve through composite build
+    // substitution of the included plugins/sessions and plugins/llm builds.
+    // LangChain4j is deliberately never bundled into the agent jar.
+    compileOnly 'com.astroreen:jhin-plugin-sessions:0.2.0'
+    compileOnly 'com.astroreen:jhin-plugin-llm:0.2.0'
+
     // The kernel's real PluginClassLoader under test (AgentExportsTest drives
     // the production export-scoped loading): composite substitution of the
-    // included kernel build. kernel/build.gradle gained a group line so the
-    // coordinates com.astroreen:kernel:0.2.0-SNAPSHOT resolve to that build.
-    // transitive = false: kernel's own dependencies carry no versions of
-    // their own (the Spring Boot dependency-management plugin pins them only
-    // inside the kernel build) and the test needs none of them —
-    // PluginClassLoader only touches the JDK and slf4j, which arrives through
-    // jhin-sdk.
+    // included kernel build. transitive = false: kernel's own dependencies
+    // carry no versions of their own and the test needs none of them.
     testImplementation('com.astroreen:kernel:0.2.0-SNAPSHOT') { transitive = false }
 
-    // Test-only: unit tests need the JUnit platform launcher at runtime.
-    // Stays out of the plugin jar (testRuntimeOnly is not part of
-    // runtimeClasspath).
+    // Test-only: the tests drive a real SQLite database (run ledger) and the
+    // fakes implement the sessions/llm API and the LangChain4j ChatModel
+    // interface. Stays out of the plugin jar.
+    testImplementation 'com.astroreen:jhin-plugin-sessions:0.2.0'
+    testImplementation 'com.astroreen:jhin-plugin-llm:0.2.0'
+    testImplementation 'org.xerial:sqlite-jdbc:3.50.1.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }

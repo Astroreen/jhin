@@ -1,0 +1,117 @@
+=== T33 evidence ===
+
+--- happy QA: AgentLoopTest.fullRunEmitsTheEventSequenceInOrder ---
+in-process fake ChatModel (scripted: first turn requests the "echo" tool call,
+second turn returns the final text) + a fake tool; asserts the exact event type
+sequence in order:
+
+  run_start, message_start, text_delta, tool_use, tool_result,
+  message_start, text_delta, message_end, run_end
+
+result: PASSED (0 failures)
+
+--- failure QA (a): a guard that blocks yields tool_result error:true text "Blocked:" ---
+AgentLoopTest.guardBlockYieldsBlockedToolResult: PASSED
+  assertThat(toolResult).containsEntry("error", true);
+  assertThat(String.valueOf(toolResult.get("content")))
+          .startsWith("Blocked: ")
+          .isEqualTo("Blocked: policy says no");
+  assertThat(executedCalls).isEmpty();          // the tool body never ran
+AgentLoopTest.guardExceptionBlocksTheCall: PASSED
+  a throwing guard counts as block: content equals "Blocked: guard exploded"
+
+--- failure QA (b): PromptInterceptor veto -> single error event and no model call ---
+AgentLoopTest.promptInterceptorVetoEmitsSingleErrorAndSkipsTheModel: PASSED
+  assertThat(failure).isEqualTo("not allowed today");
+  assertThat(model.callCount()).isZero();
+  assertThat(events.types("s1")).containsExactly(EventType.RUN_START, EventType.ERROR);
+  assertThat(events.types("s1")).filteredOn(type -> type == EventType.ERROR).hasSize(1);
+AgentLoopTest.nullReturningInterceptorAbortsTheRun: PASSED
+  a null-returning interceptor aborts the same way (run_start + one error)
+
+--- failure QA (c): resolvePath escape throws ---
+AgentLoopTest.resolvePathRejectsEscape: PASSED
+  assertThatThrownBy(() -> ctx.resolvePath("../../etc/passwd"))
+          .isInstanceOf(ToolException.class)
+          .hasMessage("Path goes outside of workspace");
+AgentLoopTest.resolvePathRejectsSymlinkEscape: PASSED
+  a symlink inside the workdir pointing outside throws the same exact message
+AgentLoopTest.resolvePathConfinesInsideTheWorkspace: PASSED
+
+--- guard and transformer chains observable ---
+AgentLoopTest.throwingTransformerIsSkippedAndResultSurvives: PASSED
+  the throwing transformer ran (observed) and was skipped; the next transformer's
+  rewrite is the tool_result content: "rewritten: echoed: hi"
+AgentLoopTest.loneThrowingTransformerLeavesTheResultUnchanged: PASSED
+AgentLoopTest.promptCompositionReachesTheModel: PASSED
+  the composed system prompt reaches the model: base prompt + "## Echo (echo)" +
+  promptSnippet + promptGuidelines
+AgentLoopTest.replaysCompletedPriorTurnsIntoTheConversation: PASSED
+  ConversationBuilder: only completed prior turns become messages
+
+--- run lifecycle ---
+RunServiceTest (4 tests): PASSED
+  secondStartWhileRunningIsRejected - second POST .../messages -> RunException run_active (409-style)
+  startAppendsTheUserMessageFirst - user_message event exists before the loop starts
+  cancelFlipsTheFlagAndIsNotFoundWithoutActiveRun - isCancelled observed; row cancelled/"cancelled";
+    later cancel -> RunException no_active_run (404-style)
+  failedRunIsRecordedAsError - row error/<failure text>
+RunRecoveryTest (2 tests): PASSED
+  staleRunningRowsAreMarkedErrorInterrupted - status error, error text "interrupted" (exact);
+    finished rows untouched
+  recoveryIsIdempotent
+MessageRoutesTest (7 tests): PASSED
+  400 invalid_request "text is required" | 404 not_found | 202 {"runId"} | 409 run_active |
+  404 no_active_run | 404 not_found (cancel, unknown session) | 204 (cancel honoured)
+
+--- export boundary (T32 AgentExportsTest extended with AgentLoop) ---
+AgentExportsTest (4 tests): PASSED
+  exported api shared across the boundary; scratch consumer load fails naming AgentPlugin;
+  NEW: direct AgentLoop lookup throws the production message
+  plugin jhin.scratch cannot see com.astroreen.jhin.plugin.agent.AgentLoop; visible exports: com.astroreen.jhin.plugin.agent.api
+
+--- event payload shapes (documented on AgentLoop) ---
+run_start {"runId"} | message_start {"role":"assistant"} | text_delta {"text"} |
+tool_use {"id","name","arguments"} | tool_result {"id","name","content"[,"structured"],"error"} |
+message_end {"text"} | run_end {"runId"} | error {"message"} |
+user_message {"text"} (appended by RunService) | ephemeral tool_update {"runId","text"} (ToolContext.publish)
+
+--- llm exports extended (T33-driven) ---
+kept:  com.astroreen.jhin.plugin.llm.api, dev.langchain4j.model.chat, dev.langchain4j.data.message
+added: dev.langchain4j.agent.tool          (ToolExecutionRequest, ToolSpecification - tool calling)
+       dev.langchain4j.model.chat.request  (ChatRequest, request parameters, json schemas)
+       dev.langchain4j.model.chat.response (ChatResponse - reading the AiMessage/tool requests)
+       dev.langchain4j.model.output        (FinishReason/TokenUsage in ChatResponse signatures)
+reason: the agent crosses the plugin boundary with these types when it builds tool
+specifications and reads tool requests; export matching is package-or-subpackage.
+llm api addition: ProviderRegistry.modelFor(accountId, providerId) - the live ChatModel
+for a stored provider id (the api key stays inside jhin.llm). Account-scoped on purpose:
+no caller may mint models from a foreign provider's credentials.
+
+--- test counts ---
+AgentLoopTest (plugins/agent): 12 tests, 0 failures, 0 errors, 0 skipped
+RunServiceTest (plugins/agent): 4 tests, 0 failures, 0 errors, 0 skipped
+RunRecoveryTest (plugins/agent): 2 tests, 0 failures, 0 errors, 0 skipped
+MessageRoutesTest (plugins/agent): 7 tests, 0 failures, 0 errors, 0 skipped
+AgentExportsTest (plugins/agent): 4 tests, 0 failures, 0 errors, 0 skipped
+agent total: 29 tests (T32 had 3; 26 new), 0 failures, 0 errors, 0 skipped
+kernel: 101 tests, 0 failures, 0 errors, 0 skipped
+llm: 12 tests, 0 failures, 0 errors, 0 skipped
+llm-builtin: 14 tests, 0 failures, 0 errors, 0 skipped
+
+--- gate: ./gradlew :jhin-plugin-agent:build :jhin-plugin-llm:build :jhin-plugin-tools-builtin:build :kernel:test --rerun-tasks ---
+
+BUILD SUCCESSFUL in 24s
+23 actionable tasks: 23 executed
+
+--- extra suite (llm exports changed): ./gradlew :jhin-plugin-llm-builtin:test --rerun-tasks ---
+
+BUILD SUCCESSFUL (14 tests, 0 failures)
+
+--- composite dependency declarations ---
+plugins/agent/build.gradle: compileOnly/testImplementation 'com.astroreen:jhin-plugin-sessions:0.2.0'
+plugins/agent/build.gradle: compileOnly/testImplementation 'com.astroreen:jhin-plugin-llm:0.2.0'
+  (composite substitution; LangChain4j never bundled into the agent jar - compileOnly only)
+plugins/agent/build.gradle: testImplementation 'org.xerial:sqlite-jdbc:<same version as sessions>'
+  (run-ledger tests against a real SQLite file; the jhin_sessions_runs DDL is provisioned by
+   the tests exactly as the sessions migration does - the documented cross-plugin interplay)
