@@ -1,0 +1,2 @@
+JHIN_HOME=/tmp/e2e-empty-home.UCODOq
+JHIN_BUNDLED_PLUGINS=/tmp/e2e-empty-bundled.n43Z0b

@@ -1,0 +1,42 @@
+T45 QA: end-to-end — the empty server serves nothing
+evidence dir: .sisyphus/evidence/T45
+ok: jq and java present
+STEP 1: build the kernel boot jar
+ok: build green: kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar
+STEP 2: boot the empty kernel (fresh JHIN_HOME, empty bundled plugin dir)
+> Task :kernel:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 665ms
+6 actionable tasks: 6 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
+10:58:04.491 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+10:58:04.495 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18443. Install a security plugin.
+2026-10-01T10:58:04.931+03:00  INFO 3385579 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3385579 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-01T10:58:04.933+03:00  INFO 3385579 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-01T10:58:05.424+03:00  INFO 3385579 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18443 (http)
+2026-10-01T10:58:05.431+03:00  INFO 3385579 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-01T10:58:05.432+03:00  INFO 3385579 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-01T10:58:05.447+03:00  INFO 3385579 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 480 ms
+2026-10-01T10:58:05.632+03:00  INFO 3385579 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (http) with context path '/'
+2026-10-01T10:58:05.638+03:00  INFO 3385579 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.046 seconds (process running for 1.52)
+ok: kernel up on http://localhost:18443 (pid 3385579, home /tmp/e2e-empty-home.Z4xsS4)
+STEP 3: capture the three answers
+STEP 4: assert the four properties of the empty server
+ok: health: 200 with zero plugins listed
+ok: bootstrap: empty:true with zero plugins
+ok: sessions: 404 (no product route)
+ok: log: D-8 security warning (SECURITY + filter)
+STEP 5: graceful shutdown (SIGTERM + wait)
+2026-10-01T10:58:06.084+03:00  INFO 3385579 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-01T10:58:06.088+03:00  INFO 3385579 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+ok: kernel stopped on SIGTERM and was reaped with wait (rc 143)
+T45 QA green: empty server serves nothing (health 0 plugins, bootstrap empty:true, /sessions 404, security warning)
+exit code: 0

@@ -1,0 +1,8 @@
+$ env -u CHROME_EXECUTABLE flutter test integration_test/empty_server_test.dart --dart-define=E2E_BASE_URL=http://localhost:18443
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/integration_test/empty_server_test.dart
+Building Linux application...                                   
+✓ Built build/linux/x64/debug/bundle/jhin
+00:00 +0: empty server renders the empty state and no product screen
+00:30 +1: (tearDownAll)
+00:30 +1: All tests passed!
+exit code: 0
