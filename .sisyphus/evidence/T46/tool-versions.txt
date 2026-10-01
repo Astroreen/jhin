@@ -1,0 +1,2 @@
+jq: jq-1.8.2
+java: openjdk version "21.0.12.1" 2026-08-18

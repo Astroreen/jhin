@@ -1,0 +1,24 @@
+T46 phase 2 transcript: the agent turn after deleting jhin-plugin-tools-builtin
+
+setup:
+  removed $JHIN_HOME/plugins/jhin-plugin-tools-builtin-*.jar (home has 10 jars)
+  restarted the host, health no longer lists jhin.tools-builtin (plugins: 10)
+  second message: {text:"do the work again"} -> runId 56080262-32d6-4697-b7f4-019b6320346e
+
+captured events (type per line, fromSeq=9):
+  user_message
+  run_start
+  message_start
+  text_delta
+  message_end
+  run_end
+
+assertions:
+  message_end present: 1
+  run_end present: 1
+  tool_use present: 0
+  tool_result present: 0
+  harness observed tool count (kernel-2.log): 0
+
+conclusion: the turn completes (message_end, run_end) with NO tool_use.
+The agent runs with zero tools after the tools plugin jar was deleted.

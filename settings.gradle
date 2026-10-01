@@ -4,7 +4,7 @@ rootProject.name = 'jhin'
 includeBuild 'sdk'
 includeBuild 'kernel'
 
-// Eleven plugin builds, each publishing its own jar (see T4 module skeletons).
+// Twelve plugin builds, each publishing its own jar (see T4 module skeletons).
 // Build names are prefixed so task addressing reads :jhin-plugin-<name>:<task>.
 includeBuild('plugins/sessions') { name = 'jhin-plugin-sessions' }
 includeBuild('plugins/security') { name = 'jhin-plugin-security' }
@@ -17,3 +17,4 @@ includeBuild('plugins/ui-kit') { name = 'jhin-plugin-ui-kit' }
 includeBuild('plugins/ui-default') { name = 'jhin-plugin-ui-default' }
 includeBuild('plugins/reload') { name = 'jhin-plugin-reload' }
 includeBuild('plugins/example') { name = 'jhin-plugin-example' }
+includeBuild('plugins/qa-mock-llm') { name = 'jhin-plugin-qa-mock-llm' }

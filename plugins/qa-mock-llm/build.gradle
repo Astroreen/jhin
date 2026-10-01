@@ -1,0 +1,25 @@
+// Jhin plugin module: qa-mock-llm (the QA harness mock provider factory).
+apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
+
+group = 'com.astroreen'
+version = '0.2.0'
+
+base {
+    archivesName = 'jhin-plugin-qa-mock-llm'
+}
+
+dependencies {
+    // Compiled against the factory SPI of the jhin.llm plugin and resolved at
+    // runtime through its manifest exports (plugin-to-plugin class sharing):
+    // LlmProviderFactory, ProviderConfig and the LangChain4j chat/message/tool
+    // types come from the jhin.llm class loader. compileOnly keeps the llm jar
+    // out of this plugin's archive; the coordinates resolve through composite
+    // build substitution of the included plugins/llm build.
+    compileOnly 'com.astroreen:jhin-plugin-llm:0.2.0'
+    testImplementation 'com.astroreen:jhin-plugin-llm:0.2.0'
+
+    // Test-only: unit tests need the JUnit platform launcher at runtime.
+    // Stays out of the plugin jar (testRuntimeOnly is not part of
+    // runtimeClasspath).
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+}

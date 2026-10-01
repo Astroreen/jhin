@@ -1,0 +1,21 @@
+11:54:57.180 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-agent-0.2.0.jar: already seeded and unchanged
+11:54:57.189 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-llm-0.2.0.jar: already seeded and unchanged
+11:54:57.194 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-llm-builtin-0.2.0.jar: already seeded and unchanged
+11:54:57.197 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-mcp-0.2.0.jar: already seeded and unchanged
+11:54:57.197 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-qa-mock-llm-0.2.0.jar: already seeded and unchanged
+11:54:57.198 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-reload-0.2.0.jar: already seeded and unchanged
+11:54:57.204 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-security-0.2.0.jar: already seeded and unchanged
+11:54:57.205 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-sessions-0.2.0.jar: already seeded and unchanged
+11:54:57.206 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-tools-builtin-0.2.0.jar: already seeded and unchanged
+11:54:57.206 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-ui-default-0.2.0.jar: already seeded and unchanged
+11:54:57.207 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-ui-kit-0.2.0.jar: already seeded and unchanged
+11:54:57.352 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
+11:54:57.355 [main] WARN plugin.jhin.qa-mock-llm -- qa-mock-llm is a QA harness (format mock); never ship this jar in a release bundle
+11:54:57.410 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
+11:54:57.414 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log and routes published
+11:54:57.422 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
+11:54:57.423 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-bundle-home.W4jZio/mcp.json; no MCP servers to start
+11:54:57.426 [main] INFO plugin.jhin.tools-builtin -- jhin.tools-builtin started: 8 tools: ls, write, read, edit, edit-diff, find, grep, bash
+11:54:57.434 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action and stream routes registered
+issued enrollment code for qa (id: a8717b43-ea88-4208-b32f-c6cd277ac7da), valid until 2026-10-01T09:04:57.438Z
+code: DY6MGKQX432BR3KH6OHLRPH7VY

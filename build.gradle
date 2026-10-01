@@ -11,7 +11,8 @@
 // under dist/:
 //
 //   dist/jhin-kernel-0.2.0.jar   kernel boot jar, renamed for the bundle
-//   dist/plugins-default/*.jar   the ten default plugins (never the example)
+//   dist/plugins-default/*.jar   the ten default plugins (never the example
+//                                and never the qa-mock-llm harness)
 //   dist/frontend/web/           flutter build web --release
 //   dist/frontend/linux/         flutter build linux --release bundle
 //   dist/frontend/jhin.apk       flutter build apk --release
@@ -29,9 +30,10 @@
 // the log and in MANIFEST.txt.
 // ---------------------------------------------------------------------------
 
-// The ten default plugins shipped in the bundle. The example plugin is built
-// with the rest (it must stay compilable) but is deliberately never copied:
-// the distribution carries the default plugins only.
+// The ten default plugins shipped in the bundle. The example plugin and the
+// qa-mock-llm QA harness are built with the rest (they must stay compilable)
+// but are deliberately never copied: the distribution carries the default
+// plugins only.
 def defaultPluginBuilds = [
     'jhin-plugin-sessions',
     'jhin-plugin-security',
@@ -45,6 +47,7 @@ def defaultPluginBuilds = [
     'jhin-plugin-reload',
 ]
 def examplePluginBuild = 'jhin-plugin-example'
+def qaMockPluginBuild = 'jhin-plugin-qa-mock-llm'
 
 // Finds the single jar a plugin build produced, ignoring the classifier jars
 // Gradle may also write into build/libs (-plain, -sources, -javadoc).
@@ -77,11 +80,11 @@ tasks.register('dist') {
 
     // Backend artifacts: the SDK is published first so the included builds
     // resolve it from mavenLocal when they are built standalone, then the
-    // kernel boot jar and every plugin jar (the example included — it is
-    // built, never shipped).
+    // kernel boot jar and every plugin jar (the example and the qa-mock-llm
+    // harness included — both are built, never shipped).
     dependsOn gradle.includedBuild('sdk').task(':publishToMavenLocal')
     dependsOn gradle.includedBuild('kernel').task(':bootJar')
-    (defaultPluginBuilds + [examplePluginBuild]).each { name ->
+    (defaultPluginBuilds + [examplePluginBuild, qaMockPluginBuild]).each { name ->
         dependsOn gradle.includedBuild(name).task(':jar')
     }
 
@@ -106,7 +109,7 @@ tasks.register('dist') {
         def kernelDest = new File(distDir, "jhin-kernel-${kernelVersion}.jar")
         java.nio.file.Files.copy(kernelJar.toPath(), kernelDest.toPath())
 
-        // --- default plugin jars (never the example) --------------------
+        // --- default plugin jars (never the example or qa-mock-llm) -----
         def shippedPlugins = []
         defaultPluginBuilds.each { name ->
             def shortName = name - 'jhin-plugin-'
@@ -202,7 +205,8 @@ tasks.register('dist') {
 
         // --- hard guards ------------------------------------------------
         // The bundle must carry the kernel jar, the default plugin jars and
-        // run.sh — and the example plugin must appear nowhere inside it.
+        // run.sh — and neither the example plugin nor the qa-mock-llm QA
+        // harness may appear anywhere inside it.
         def missing = []
         if (!kernelDest.isFile()) {
             missing << kernelDest.name
@@ -221,13 +225,13 @@ tasks.register('dist') {
         def offenders = []
         distDir.eachFileRecurse { f ->
             def rel = distDir.toPath().relativize(f.toPath()).toString()
-            if (rel.contains('example')) {
+            if (rel.contains('example') || rel.contains('qa-mock')) {
                 offenders << rel
             }
         }
         if (!offenders.isEmpty()) {
             throw new GradleException(
-                "dist: the example plugin must not ship, found: ${offenders}")
+                "dist: the example and qa-mock-llm plugins must not ship, found: ${offenders}")
         }
 
         // --- README.md (generated) --------------------------------------

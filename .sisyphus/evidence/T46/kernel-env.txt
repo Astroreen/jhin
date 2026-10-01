@@ -1,0 +1,4 @@
+JHIN_HOME=/tmp/e2e-bundle-home.W4jZio
+JHIN_BUNDLED_PLUGINS=/tmp/e2e-bundle-bundled.4Q6uEd
+workdir=/tmp/e2e-bundle-work.ysYeu7
+JHIN_LLM_BUILTIN_QA=unset (only jhin.qa-mock-llm serves format mock)

@@ -1,0 +1,21 @@
+T46 failure-mode evidence: the deletability contrast (phase 2 IS the failure mode)
+
+run WITH the tools plugin (phase 1, full bundle):
+  events: user_message run_start message_start tool_use tool_result message_start text_delta message_end run_end 
+  tool_use events: 1
+  tool-written file: /tmp/e2e-bundle-work.ysYeu7/qa-mock-output.txt (present)
+
+run WITHOUT the tools plugin (phase 2, jar deleted):
+  events: user_message run_start message_start text_delta message_end run_end 
+  tool_use events: 0
+  harness observed tool count: 0
+
+contrast check: a run WITH tools observed tool_use while the run WITHOUT tools did not
+ok: contrast verified (with tools -> tool_use, without tools -> none)
+
+mutated expectation demonstration (deliberate):
+  mutated check: the without-tools run must show tool_use
+FAIL: mutated expectation violated: the without-tools run shows no tool_use
+  (expected: the mutated check fails; this is the demonstration)
+exit code: 1
+contrast check exit code: 0

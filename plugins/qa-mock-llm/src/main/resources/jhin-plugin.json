@@ -1,0 +1,10 @@
+{
+  "id": "jhin.qa-mock-llm",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "name": "QA Mock LLM",
+  "description": "QA harness: a deterministic scripted mock provider (format mock) for end-to-end runs. Never ships in the release bundle.",
+  "mainClass": "com.astroreen.jhin.plugin.qamockllm.QaMockLlmPlugin",
+  "exports": [],
+  "requires": [{"id": "jhin.llm", "versionRange": ">=0.2.0", "optional": false}]
+}

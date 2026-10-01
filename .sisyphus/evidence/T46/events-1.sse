@@ -1,0 +1,27 @@
+event: user_message
+data: {"seq":1,"ts":1790844897747,"type":"user_message","payload":"{\"text\":\"do the work\"}"}
+
+event: run_start
+data: {"seq":2,"ts":1790844897789,"type":"run_start","payload":"{\"runId\":\"f8c7bf65-d18d-411c-8913-4c896b117dc0\"}"}
+
+event: message_start
+data: {"seq":3,"ts":1790844897829,"type":"message_start","payload":"{\"role\":\"assistant\"}"}
+
+event: tool_use
+data: {"seq":4,"ts":1790844897862,"type":"tool_use","payload":"{\"id\":\"qa-mock-call-1\",\"name\":\"write\",\"arguments\":\"{\\\"path\\\":\\\"qa-mock-output.txt\\\",\\\"content\\\":\\\"written by the jhin.qa-mock-llm harness\\\"}\"}"}
+
+event: tool_result
+data: {"seq":5,"ts":1790844897888,"type":"tool_result","payload":"{\"id\":\"qa-mock-call-1\",\"name\":\"write\",\"content\":\"Wrote 39 bytes, 1 line(s)\",\"structured\":\"{\\\"kind\\\":\\\"card\\\",\\\"title\\\":\\\"write\\\",\\\"rows\\\":[{\\\"label\\\":\\\"path\\\",\\\"value\\\":\\\"qa-mock-output.txt\\\"},{\\\"label\\\":\\\"bytes\\\",\\\"value\\\":\\\"39\\\"},{\\\"label\\\":\\\"lines\\\",\\\"value\\\":\\\"1\\\"}]}\",\"error\":false}"}
+
+event: message_start
+data: {"seq":6,"ts":1790844897911,"type":"message_start","payload":"{\"role\":\"assistant\"}"}
+
+event: text_delta
+data: {"seq":7,"ts":1790844897934,"type":"text_delta","payload":"{\"text\":\"Done.\"}"}
+
+event: message_end
+data: {"seq":8,"ts":1790844897956,"type":"message_end","payload":"{\"text\":\"Done.\"}"}
+
+event: run_end
+data: {"seq":9,"ts":1790844897977,"type":"run_end","payload":"{\"runId\":\"f8c7bf65-d18d-411c-8913-4c896b117dc0\"}"}
+
