@@ -1,0 +1,22 @@
+Deliberate failure demo: the same check against a mutated copy of
+AGENTS.md in which 'plugins/example/README.md' was replaced with
+the wrong path 'docs/nonexistent.md' (the real AGENTS.md is untouched).
+
+$ python3 check_paths.py /tmp/opencode/AGENTS-mutated.md .
+OK  kernel/src/test/java/com/astroreen/jhin/kernel/KernelPurityTest.java
+OK  plugins/example/src/main/resources/jhin-plugin.json
+OK  sdk/src/main/java/com/astroreen/jhin/sdk/JhinPlugin.java
+OK  plugins/sessions/
+OK  plugins/security/
+OK  plugins/llm/
+OK  plugins/llm-builtin/
+OK  plugins/agent/
+OK  plugins/tools-builtin/
+OK  plugins/mcp/
+OK  plugins/ui-kit/
+OK  plugins/ui-default/
+OK  plugins/reload/
+OK  plugins/example/
+MISSING  docs/nonexistent.md
+1 missing path(s)
+exit=1
