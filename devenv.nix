@@ -1,22 +1,26 @@
 { pkgs, lib, ... }:
 
-# «Объединённое» dev-окружение всего монорепозитория Jhin.
+# Jhin v2 — kernel + plugins composite (Java 21 / Gradle 9, Flutter + JDK 17)
 #
-# Зачем: редактор и терминал часто открыты в корне репо (VSCode → /Documents/jhin),
-# и хочется сразу иметь оба тулчейна — Java 21 + Gradle (backend) и
-# Flutter + JDK 17 + Android (frontend) — без перехода в подпроект.
+# Combined dev environment for the whole Jhin monorepo.
 #
-# backend/ и frontend/ сохраняют собственные devenv.nix для узкой работы.
-# Тулчейны здесь намеренно описаны заново: env-переменные подпроектов конфликтуют
-# (JAVA_HOME, LD_LIBRARY_PATH, GRADLE_OPTS), поэтому «слияние через imports» дало бы
-# ошибки Nix-модулей. Единый источник для этого корня — этот файл.
+# Why: the editor and the terminal are usually open at the repository root
+# (VSCode -> /Documents/jhin), and both toolchains are wanted right away -
+# Java 21 + Gradle (sdk, kernel, plugins) and Flutter + JDK 17 + Android
+# (frontend) - without stepping into a subproject.
+#
+# The toolchains are intentionally re-declared here instead of merging via
+# imports: the environments would conflict on variables (JAVA_HOME,
+# LD_LIBRARY_PATH, GRADLE_OPTS), so module merging would produce Nix module
+# errors. This file is the single source for the root shell.
 let
   jdk21 = pkgs.openjdk21;
   jdk17 = pkgs.jdk17;
 in
 {
-  # Backend: Java 21 + Gradle 9. `languages.java` сам выставляет JAVA_HOME=jdk21,
-  # поэтому в корне `gradle`/`java` — это 21 (удобно для backend).
+  # Java 21 + Gradle 9 for the composite build (sdk, kernel, plugins/*).
+  # `languages.java` sets JAVA_HOME=jdk21 itself, so `gradle`/`java` in the
+  # root shell are the 21 toolchain.
   languages.java = {
     enable = true;
     jdk.package = jdk21;
@@ -27,7 +31,7 @@ in
   };
 
   packages = with pkgs; [
-    # Frontend: Flutter/Dart + Android/Linux-desktop тулинг (см. frontend/devenv.nix).
+    # Frontend: Flutter/Dart + Android/Linux-desktop tooling.
     flutter
     jdk17
     android-tools
@@ -38,7 +42,7 @@ in
     gtk3
     pcre
     libsecret
-    # Общие dev-утилиты монорепо.
+    # Shared monorepo dev utilities.
     git
     jq
     curl
@@ -47,15 +51,16 @@ in
   env = {
     JDK21_HOME = jdk21.home;
 
-    # Flutter Android-сборки (см. frontend/devenv.nix).
+    # Flutter Android builds (SDK location on the dev machine).
     ANDROID_HOME = "${builtins.getEnv "HOME"}/Android/Sdk";
     ANDROID_SDK_ROOT = "${builtins.getEnv "HOME"}/Android/Sdk";
     ANDROID_EMULATOR_USE_SYSTEM_LIBS = "1";
     GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=${pkgs.aapt}/bin/aapt2 -Dandroid.cmake.path=${pkgs.cmake}/bin/cmake -Dorg.gradle.java.installations.auto-detect=false -Dorg.gradle.java.installations.auto-download=false -Dorg.gradle.java.installations.paths=${jdk17.home},${jdk21.home}";
     GRADLE_USER_HOME = "${builtins.getEnv "PWD"}/.gradle_home";
 
-    # nix-ld — чтобы нативные бинарники (JVM, нативные либы из maven-зависимостей и т.п.)
-    # находили динамический линкер и системные библиотеки вне NixOS FHS.
+    # nix-ld: native binaries (the JVM, native libraries from Maven
+    # dependencies and so on) need the dynamic linker and system libraries
+    # outside the NixOS FHS.
     NIX_LD = "${pkgs.stdenv.cc}/nix-support/dynamic-linker";
     NIX_LD_LIBRARY_PATH = lib.makeLibraryPath [
       pkgs.stdenv.cc.cc.lib
@@ -74,16 +79,81 @@ in
   };
 
   scripts = {
-    backend-run.exec = "cd backend && ./gradlew bootRun";
-    backend-test.exec = "cd backend && ./gradlew test";
-    backend-build.exec = "cd backend && ./gradlew build";
+    # Jhin composite build (sdk + kernel + plugins/*): the root Gradle
+    # wrapper drives every included build (see settings.gradle).
+    jhin-build.exec = "./gradlew build";
+    jhin-test.exec = ''
+      # Runs `test` in every build of the composite in one Gradle invocation.
+      # The root project has no sources and no `test` task of its own, so the
+      # standard test entry is the `test` task of each included build (the
+      # list mirrors settings.gradle).
+      test_tasks=":sdk:test :kernel:test :jhin-plugin-sessions:test :jhin-plugin-security:test :jhin-plugin-llm:test :jhin-plugin-llm-builtin:test :jhin-plugin-agent:test :jhin-plugin-tools-builtin:test :jhin-plugin-mcp:test :jhin-plugin-ui-kit:test :jhin-plugin-ui-default:test :jhin-plugin-reload:test :jhin-plugin-example:test"
+      ./gradlew $test_tasks
+    '';
+    jhin-dist.exec = "./gradlew dist";
+    jhin-run.exec = ''
+      # Runs the kernel. Prefers the distributable fat jar; until the dist
+      # task packs one, falls back to the Gradle boot jar.
+      jar=$(ls dist/jhin-kernel-*.jar 2>/dev/null | grep -v -- '-plain\.jar$' | head -1)
+      if [ -z "$jar" ]; then
+        ./gradlew :kernel:bootJar || exit 1
+        jar=$(ls kernel/build/libs/kernel-*.jar 2>/dev/null | grep -v -- '-plain\.jar$' | head -1)
+      fi
+      if [ -z "$jar" ] || [ ! -f "$jar" ]; then
+        echo "jhin-run: kernel jar not found" >&2
+        exit 1
+      fi
+      exec java -jar "$jar" "$@"
+    '';
+    jhin-cli.exec = ''
+      # Runs a kernel CLI subcommand: java -jar <kernel.jar> cli "$@".
+      exec jhin-run cli "$@"
+    '';
+    jhin-plugin.exec = ''
+      # Builds one plugin jar and installs it into the JHIN_HOME plugins
+      # directory. Usage: jhin-plugin <name>, where <name> is the directory
+      # under plugins/ (for example `jhin-plugin example`).
+      if [ "$#" -lt 1 ]; then
+        echo "usage: jhin-plugin <plugin-name>" >&2
+        exit 2
+      fi
+      if [ ! -d "plugins/$1" ]; then
+        echo "jhin-plugin: unknown plugin '$1': no such directory plugins/$1" >&2
+        exit 1
+      fi
+      ./gradlew ":jhin-plugin-$1:jar" || exit 1
+      home_plugins="''${JHIN_HOME:-$HOME/.jhin}/plugins"
+      mkdir -p "$home_plugins"
+      cp plugins/"$1"/build/libs/*.jar "$home_plugins"/
+    '';
+    jhin-home-reset.exec = ''
+      # Wipes and recreates a throwaway JHIN_HOME (default: ~/.jhin).
+      home="''${JHIN_HOME:-$HOME/.jhin}"
+      if [ -z "$home" ] || [ "$home" = "/" ] || [ "$home" = "$HOME" ]; then
+        echo "jhin-home-reset: refusing to wipe '$home'" >&2
+        exit 1
+      fi
+      printf "jhin-home-reset: delete '%s' and recreate it empty? [y/N] " "$home"
+      read -r answer || answer=""
+      case "$answer" in
+        y|Y|yes|YES) ;;
+        *) echo "jhin-home-reset: aborted"; exit 1 ;;
+      esac
+      rm -rf "$home"
+      mkdir -p "$home/plugins"
+      echo "jhin-home-reset: reset '$home'"
+    '';
+
+    # Flutter frontend (unchanged).
     frontend-run.exec = "cd frontend && flutter run";
     frontend-runp.exec = "cd frontend && flutter run -d linux";
     frontend-runr.exec = "cd frontend && flutter run -d web-server --web-port 8080";
 
     generate-vscode-settings.exec = ''
-      # Генерируем .vscode/settings.json с актуальными nix store-путями.
-    # VSCode читает его как workspace-настройки; файл в .gitignore (пути меняются при update).
+      # Generates .vscode/settings.json with the current nix store paths.
+    # VSCode reads it as workspace settings; the file is .gitignore-d (the
+    # paths change on every update). Written idempotently (mktemp + cmp -s):
+    # the file is replaced only when the content differs.
     mkdir -p .vscode
     settings_tmp=$(mktemp)
     cat > "$settings_tmp" <<EOF
@@ -109,6 +179,7 @@ in
     "**/archetype-resources/**",
     "**/META-INF/maven/**",
     "**/build/**",
+    "**/dist/**",
     "**/.devenv/**",
     "**/.direnv/**",
     "**/.gradle/**",
@@ -129,14 +200,15 @@ EOF
   };
 
   enterShell = ''
-    # Android-сборкам Flutter нужен JDK 17 (не 21) — фиксируем его в конфиге Flutter.
-    # Делается в enterShell (не eval-time), чтобы не трогать глобальный конфиг при каждом eval.
+    # Flutter Android builds need JDK 17 (not 21) - pin it in the Flutter
+    # config. Done in enterShell (not at eval time) so the global config is
+    # not touched on every evaluation.
     flutter config --jdk-dir ${jdk17.home} > /dev/null 2>&1
 
     # Devenv scripts
     generate-vscode-settings
 
-    echo "Jhin monorepo devenv (Java 21 + Gradle 9, Flutter + JDK 17, Android tools)"
+    echo "Jhin v2 — kernel + plugins composite (Java 21 / Gradle 9, Flutter + JDK 17)"
     java -version
     flutter --version | head -n 1
   '';

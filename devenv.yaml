@@ -1,7 +1,8 @@
 # yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
 #
-# Объединённое окружение всего монорепо Jhin (см. devenv.nix в этом каталоге).
-# backend/ и frontend/ имеют собственные devenv.yaml для узкой работы внутри подпроекта.
+# Combined dev environment for the whole Jhin monorepo (see devenv.nix in
+# this directory): the sdk + kernel + plugins composite build and the Flutter
+# frontend share one shell.
 inputs:
   nixpkgs:
     url: github:cachix/devenv-nixpkgs/rolling

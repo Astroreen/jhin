@@ -1,6 +1,0 @@
-# yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
-#
-# Окружение frontend'а (Flutter + JDK 17 + Android). См. devenv.nix в этом каталоге.
-inputs:
-  nixpkgs:
-    url: github:cachix/devenv-nixpkgs/rolling
