@@ -1,14 +1,330 @@
 // Root composite build.
 //
 // This root build has no sources of its own: it only coordinates the
-// included builds (sdk, kernel, plugins/*) declared in settings.gradle.
+// included builds (sdk, kernel, plugins/*) declared in settings.gradle and
+// assembles the release bundle with `dist` (see below).
 
-// Placeholder for the final packaging task; real logic lands in T44.
+// ---------------------------------------------------------------------------
+// dist — the release bundle
+//
+// `./gradlew dist` builds every artifact a user installs and assembles it
+// under dist/:
+//
+//   dist/jhin-kernel-0.2.0.jar   kernel boot jar, renamed for the bundle
+//   dist/plugins-default/*.jar   the ten default plugins (never the example)
+//   dist/frontend/web/           flutter build web --release
+//   dist/frontend/linux/         flutter build linux --release bundle
+//   dist/frontend/jhin.apk       flutter build apk --release
+//   dist/run.sh                  restart loop (copied from deploy/run.sh)
+//   dist/README.md               install and first-run instructions
+//   dist/MANIFEST.txt            size and SHA-256 per artifact
+//
+// Every Flutter step degrades instead of failing the release. Each step is
+// guarded by an availability check — `flutter` on PATH plus the toolchain the
+// target needs (Android SDK for the apk, cmake/ninja/pkg-config and a C
+// compiler for the Linux desktop bundle) — and a step whose toolchain is
+// missing, or whose build cannot produce the artifact, logs a WARN and the
+// bundle simply omits that client. A CI image without the Android SDK still
+// gets a green build and a complete host bundle; every omission is loud in
+// the log and in MANIFEST.txt.
+// ---------------------------------------------------------------------------
+
+// The ten default plugins shipped in the bundle. The example plugin is built
+// with the rest (it must stay compilable) but is deliberately never copied:
+// the distribution carries the default plugins only.
+def defaultPluginBuilds = [
+    'jhin-plugin-sessions',
+    'jhin-plugin-security',
+    'jhin-plugin-llm',
+    'jhin-plugin-llm-builtin',
+    'jhin-plugin-agent',
+    'jhin-plugin-tools-builtin',
+    'jhin-plugin-mcp',
+    'jhin-plugin-ui-kit',
+    'jhin-plugin-ui-default',
+    'jhin-plugin-reload',
+]
+def examplePluginBuild = 'jhin-plugin-example'
+
+// Finds the single jar a plugin build produced, ignoring the classifier jars
+// Gradle may also write into build/libs (-plain, -sources, -javadoc).
+def findModuleJar = { File libsDir ->
+    def jars = libsDir.listFiles()?.findAll { f ->
+        f.isFile() && f.name.endsWith('.jar') &&
+            !f.name.contains('-plain') &&
+            !f.name.contains('-sources') &&
+            !f.name.contains('-javadoc')
+    } ?: []
+    if (jars.size() != 1) {
+        throw new GradleException(
+            "expected exactly one jar in ${libsDir}, found: ${jars*.name}")
+    }
+    jars[0]
+}
+
+// True when `tool` is an executable on PATH (used for the toolchain guards).
+def onPath = { String tool ->
+    def path = System.getenv('PATH') ?: ''
+    path.split(File.pathSeparator).any { dir ->
+        def f = new File(dir, tool)
+        f.isFile() && f.canExecute()
+    }
+}
+
 tasks.register('dist') {
     group = 'build'
-    description = 'Assembles the final distributable jhin fat jar (implemented in T44).'
+    description = 'Assembles the release bundle under dist/ (kernel, default plugins, clients).'
+
+    // Backend artifacts: the SDK is published first so the included builds
+    // resolve it from mavenLocal when they are built standalone, then the
+    // kernel boot jar and every plugin jar (the example included — it is
+    // built, never shipped).
+    dependsOn gradle.includedBuild('sdk').task(':publishToMavenLocal')
+    dependsOn gradle.includedBuild('kernel').task(':bootJar')
+    (defaultPluginBuilds + [examplePluginBuild]).each { name ->
+        dependsOn gradle.includedBuild(name).task(':jar')
+    }
+
     doLast {
-        println 'dist: placeholder task, packaging logic added in T44'
+        def distDir = file('dist')
+        def frontendDir = file('frontend')
+        def skipped = []
+
+        // Fresh tree every run: a stale artifact must never leak into a release.
+        if (distDir.exists()) {
+            distDir.deleteDir()
+        }
+        new File(distDir, 'plugins-default').mkdirs()
+        new File(distDir, 'frontend').mkdirs()
+
+        // --- kernel boot jar, renamed for the bundle --------------------
+        def kernelJar = findModuleJar(file('kernel/build/libs'))
+        def kernelVersion = kernelJar.name
+            .replaceFirst(/^kernel-/, '')
+            .replaceFirst(/\.jar$/, '')
+            .replaceFirst(/-SNAPSHOT$/, '')
+        def kernelDest = new File(distDir, "jhin-kernel-${kernelVersion}.jar")
+        java.nio.file.Files.copy(kernelJar.toPath(), kernelDest.toPath())
+
+        // --- default plugin jars (never the example) --------------------
+        def shippedPlugins = []
+        defaultPluginBuilds.each { name ->
+            def shortName = name - 'jhin-plugin-'
+            def jar = findModuleJar(file("plugins/${shortName}/build/libs"))
+            def dest = new File(distDir, "plugins-default/${jar.name}")
+            java.nio.file.Files.copy(jar.toPath(), dest.toPath())
+            shippedPlugins << dest.name
+        }
+
+        // --- restart loop and generated README --------------------------
+        def runSh = new File(distDir, 'run.sh')
+        java.nio.file.Files.copy(file('deploy/run.sh').toPath(), runSh.toPath())
+        runSh.setExecutable(true)
+
+        // --- Flutter clients, availability-guarded ----------------------
+        // Runs one `flutter build` and returns true when the artifact was
+        // produced. Missing toolchain and a failed build both degrade to a
+        // WARN plus an omitted artifact (see the header comment).
+        def runFlutter = { List<String> args, String label, Closure<String> unavailable ->
+            if (!onPath('flutter')) {
+                def why = 'flutter is not on PATH'
+                logger.warn("dist: ${label} skipped — ${why}")
+                skipped << "${label} (${why})"
+                return false
+            }
+            def why = unavailable()
+            if (why != null) {
+                logger.warn("dist: ${label} skipped — ${why}")
+                skipped << "${label} (${why})"
+                return false
+            }
+            def command = ['flutter'] + args
+            logger.lifecycle("dist: ${command.join(' ')} (in ${frontendDir})")
+            def process = new ProcessBuilder(command)
+                .directory(frontendDir)
+                .redirectErrorStream(true)
+                .start()
+            process.inputStream.eachLine { line -> logger.lifecycle(line) }
+            def exit = process.waitFor()
+            if (exit != 0) {
+                why = "'${command.join(' ')}' failed with exit code ${exit}"
+                logger.warn("dist: ${label} skipped — ${why}")
+                skipped << "${label} (${why})"
+                return false
+            }
+            true
+        }
+
+        def copyTree = { File from, File to ->
+            to.mkdirs()
+            from.eachFileRecurse { f ->
+                def rel = f.path.substring(from.path.length() + 1)
+                def dest = new File(to, rel)
+                if (f.isDirectory()) {
+                    dest.mkdirs()
+                } else {
+                    dest.parentFile.mkdirs()
+                    java.nio.file.Files.copy(f.toPath(), dest.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                }
+            }
+        }
+
+        // Web: needs only flutter.
+        if (runFlutter(['build', 'web', '--release'], 'frontend web bundle', { null })) {
+            copyTree(new File(frontendDir, 'build/web'), new File(distDir, 'frontend/web'))
+        }
+
+        // Linux desktop: needs the desktop toolchain.
+        if (runFlutter(['build', 'linux', '--release'], 'frontend linux bundle', {
+                if (!onPath('cmake') || !onPath('ninja') || !onPath('pkg-config')) {
+                    return 'cmake, ninja and pkg-config are required for the linux target'
+                }
+                if (!onPath('clang') && !onPath('gcc') && !onPath('cc')) {
+                    return 'a C compiler is required for the linux target'
+                }
+                null
+            })) {
+            copyTree(new File(frontendDir, 'build/linux/x64/release/bundle'),
+                new File(distDir, 'frontend/linux'))
+        }
+
+        // Android: needs an Android SDK.
+        if (runFlutter(['build', 'apk', '--release'], 'frontend apk', {
+                def sdk = ['ANDROID_SDK_ROOT', 'ANDROID_HOME']
+                    .collect { System.getenv(it) }
+                    .find { it != null && new File(it).isDirectory() }
+                sdk == null ? 'no Android SDK (ANDROID_SDK_ROOT / ANDROID_HOME)' : null
+            })) {
+            def apk = new File(frontendDir, 'build/app/outputs/flutter-apk/app-release.apk')
+            java.nio.file.Files.copy(apk.toPath(), new File(distDir, 'frontend/jhin.apk').toPath())
+        }
+
+        // --- hard guards ------------------------------------------------
+        // The bundle must carry the kernel jar, the default plugin jars and
+        // run.sh — and the example plugin must appear nowhere inside it.
+        def missing = []
+        if (!kernelDest.isFile()) {
+            missing << kernelDest.name
+        }
+        shippedPlugins.each { name ->
+            if (!new File(distDir, "plugins-default/${name}").isFile()) {
+                missing << "plugins-default/${name}"
+            }
+        }
+        if (!runSh.isFile()) {
+            missing << 'run.sh'
+        }
+        if (!missing.isEmpty()) {
+            throw new GradleException("dist: bundle is incomplete, missing: ${missing}")
+        }
+        def offenders = []
+        distDir.eachFileRecurse { f ->
+            def rel = distDir.toPath().relativize(f.toPath()).toString()
+            if (rel.contains('example')) {
+                offenders << rel
+            }
+        }
+        if (!offenders.isEmpty()) {
+            throw new GradleException(
+                "dist: the example plugin must not ship, found: ${offenders}")
+        }
+
+        // --- README.md (generated) --------------------------------------
+        def readme = """\
+# Jhin — release bundle
+
+This directory is a self-contained Jhin release: the host process, the
+default plugins and the clients. Copy it anywhere; the only requirement for
+the host is a Java 21 runtime.
+
+## Layout
+
+    jhin-kernel-${kernelVersion}.jar   the host process
+    plugins-default/        default plugin jars, seeded into the home on start
+    frontend/linux/         Linux desktop client (release bundle)
+    frontend/web/           web client (static files)
+    frontend/jhin.apk       Android client
+    run.sh                  restart loop around the kernel jar
+    MANIFEST.txt            size and SHA-256 per artifact
+
+## Install and first run
+
+1. Copy this directory somewhere permanent, for example to /opt/jhin.
+2. Start the host:
+
+       ./run.sh
+
+   The script runs the kernel jar in a restart loop (exit code 0 means
+   "restart requested", for example after POST /admin/reload; any other exit
+   is restarted the same way). `java -jar ${kernelDest.name}` runs the host
+   once, without the loop. Extra arguments (for example --server.port=8443)
+   are passed to the kernel.
+3. The data directory is JHIN_HOME (default ~/.jhin): data/jhin.db, plugins/,
+   keystore/, logs/. On first start the jars in plugins-default/ are seeded
+   into \$JHIN_HOME/plugins/ — a copy you modified yourself is never
+   overwritten — and the listener comes up on https://0.0.0.0:8443. With the
+   security plugin loaded a self-signed certificate is generated into
+   keystore/ and its SHA-256 fingerprint is logged for pinning.
+4. Open a client and enter the server URL on the profile screen (for example
+   https://host:8443). The client probes GET /_jhin/health, fetches
+   GET /_jhin/bootstrap and renders what the server sent.
+
+## Clients
+
+- Linux desktop: frontend/linux/jhin
+- Web: serve frontend/web/ with any static file server and open index.html
+- Android: install frontend/jhin.apk
+
+## Empty by default
+
+A fresh install shows no product UI until plugins are installed: a bare
+kernel serves exactly GET /_jhin/health and GET /_jhin/bootstrap (empty:
+true). The plugin jars in plugins-default/ carry the product; delete any jar
+to remove its feature and restart (or POST /admin/reload) to apply.
+
+More documentation — architecture, plugin development, the server-driven UI —
+ships with the source tree under docs/.
+"""
+        new File(distDir, 'README.md').text = readme
+
+        // --- MANIFEST.txt: size and SHA-256 per artifact ----------------
+        def sha256 = { File f ->
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            f.withInputStream { input ->
+                byte[] buffer = new byte[65536]
+                int read
+                while ((read = input.read(buffer)) > 0) {
+                    digest.update(buffer, 0, read)
+                }
+            }
+            digest.digest().encodeHex().toString()
+        }
+        def manifestLines = []
+        distDir.eachFileRecurse { f ->
+            if (f.isFile() && f.name != 'MANIFEST.txt') {
+                manifestLines << [distDir.toPath().relativize(f.toPath()).toString(), f]
+            }
+        }
+        manifestLines.sort { it[0] }
+        def manifest = new StringBuilder()
+        manifest.append('# Jhin release bundle manifest (generated by ./gradlew dist)\n')
+        manifest.append('# <sha256>  <size-in-bytes>  <path-relative-to-dist>\n')
+        manifestLines.each { rel, f ->
+            manifest.append("${sha256(f)}  ${f.length()}  ${rel}\n")
+        }
+        if (!skipped.isEmpty()) {
+            manifest.append('# omitted artifacts (steps skipped with WARN):\n')
+            skipped.each { manifest.append("#   - ${it}\n") }
+        }
+        new File(distDir, 'MANIFEST.txt').text = manifest.toString()
+
+        // --- summary ----------------------------------------------------
+        logger.lifecycle('dist: assembled dist/')
+        manifestLines.each { rel, f -> logger.lifecycle("dist:   ${rel} (${f.length()} bytes)") }
+        skipped.each { logger.lifecycle("dist:   WARN omitted: ${it}") }
+        logger.lifecycle('dist: manifest:')
+        manifest.toString().split('\n').each { logger.lifecycle("dist:   ${it}") }
     }
 }
 

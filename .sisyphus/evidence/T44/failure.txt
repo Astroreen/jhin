@@ -1,0 +1,18 @@
+# T44 failure demo — 'jhin-plugin-example' must appear NOWHERE in the dist listing.
+#
+# 1) Negative check against the real dist listing: rg -q finds nothing (rc 1).
+# 2) Deliberate failure: the same assertion against a listing that DOES contain
+#    the example jar must fail and name the problem (proof the check is not vacuous).
+
+$ find dist -type f | sort > /tmp/dist-listing.txt
+rc=0
+
+$ rg -q 'jhin-plugin-example' /tmp/dist-listing.txt
+rc=1
+(no output: no match — the example plugin is absent from the bundle; assertion passes)
+
+# --- deliberate check failure (fake listing with the example jar) ---
+$ assert_no_example_plugin /tmp/dist-listing-with-example.txt
+ASSERT FAILED: jhin-plugin-example present in the distribution listing
+33:dist/plugins-default/jhin-plugin-example-0.2.0.jar
+rc=2

@@ -7,8 +7,10 @@
 # and restarted the same way (the same policy as systemd Restart=always).
 #
 # Usage: deploy/run.sh [kernel.jar] [kernel-args...]
-# The jar path defaults to the boot jar built under kernel/build/libs; extra
-# arguments (for example --server.port=8443) are passed to the kernel.
+# The jar path defaults to the kernel jar next to this script (distribution
+# layout, where run.sh sits beside jhin-kernel-*.jar) or to the boot jar built
+# under kernel/build/libs; extra arguments (for example --server.port=8443)
+# are passed to the kernel.
 set -u
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -16,7 +18,10 @@ if [ $# -ge 1 ]; then
   jar=$1
   shift
 else
-  jar=$(ls "$script_dir/../kernel/build/libs"/kernel-*.jar 2>/dev/null | grep -v -- '-plain\.jar$' | head -1)
+  jar=$(ls "$script_dir"/jhin-kernel-*.jar 2>/dev/null | head -1)
+  if [ -z "${jar:-}" ]; then
+    jar=$(ls "$script_dir/../kernel/build/libs"/kernel-*.jar 2>/dev/null | grep -v -- '-plain\.jar$' | head -1)
+  fi
 fi
 if [ -z "${jar:-}" ] || [ ! -f "$jar" ]; then
   echo "kernel jar not found; pass its path as the first argument" >&2
