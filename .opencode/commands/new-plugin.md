@@ -1,0 +1,1 @@
+../command/new-plugin.md

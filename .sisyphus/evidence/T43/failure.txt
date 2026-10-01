@@ -1,0 +1,72 @@
+T43 QA failure: bad exports entry fails the kernel manifest validation
+
+NOTE: the standalone gradle task :jhin-plugin-<name>:validateManifest checks
+src/main/resources/jhin-plugin.json for JSON well-formedness only (documented in
+docs/plugin-dev.md section 7). The load-time field rules — including every
+exports entry — are enforced by the kernel manifest validation
+(PluginManifest.validate / ManifestParser.parse), which this demo runs in both
+forms: standalone against the SDK, and inside a booted kernel.
+
+STEP 1: throwaway manifest whose exports entry references a package that does not exist
+exports entry: com.astroreen.jhin.plugin.qa-demo.api
+  - the plugin's real package is com.astroreen.jhin.plugin.qademo (see the skill's
+    naming table: dashes are dropped), so ...plugin.qa-demo.api is not any package
+    that exists; Java package segments cannot contain dashes in the first place.
+{
+  "id": "jhin.qa-demo",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "name": "QaDemo",
+  "description": "throwaway failure demo: bad exports entry",
+  "mainClass": "com.astroreen.jhin.plugin.qademo.QaDemoPlugin",
+  "exports": ["com.astroreen.jhin.plugin.qa-demo.api"],
+  "requires": []
+}
+
+STEP 2: kernel manifest validation standalone (PluginManifest.validate)
+driver: java --class-path sdk/build/libs/jhin-sdk-0.2.0-SNAPSHOT.jar /tmp/opencode/ValidateManifest.java
+manifest id: jhin.qa-demo
+manifest exports: [com.astroreen.jhin.plugin.qa-demo.api]
+problems: 1
+exports[0] 'com.astroreen.jhin.plugin.qa-demo.api' is not a qualified Java package name
+validate driver exit code: 0
+ok: PluginManifest.validate refuses the manifest: exports[0] 'com.astroreen.jhin.plugin.qa-demo.api' is not a qualified Java package name
+
+STEP 3: the same manifest inside a throwaway jar, loaded by a booted kernel
+ok: kernel started (pid 3315309) with only the bad jar installed
+health http code: 200
+{"status":"ok","kernel":"0.2.0","api":1,"plugins":[],"failed":[]}
+ok: kernel dropped the jar at manifest validation (health lists 0 plugins)
+ok: kernel stopped
+kernel.log excerpt (manifest validation of the bad jar):
+10:11:10.067 [main] ERROR com.astroreen.jhin.kernel.loader.ManifestParser -- skipping /tmp/t43-fail-home.0CvVxY/plugins/jhin-plugin-qa-demo-bad.jar: exports[0] 'com.astroreen.jhin.plugin.qa-demo.api' is not a qualified Java package name
+
+full kernel.log:
+10:11:10.067 [main] ERROR com.astroreen.jhin.kernel.loader.ManifestParser -- skipping /tmp/t43-fail-home.0CvVxY/plugins/jhin-plugin-qa-demo-bad.jar: exports[0] 'com.astroreen.jhin.plugin.qa-demo.api' is not a qualified Java package name
+10:11:10.071 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+10:11:10.073 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18443. Install a security plugin.
+2026-10-01T10:11:10.472+03:00  INFO 3315309 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3315309 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-01T10:11:10.473+03:00  INFO 3315309 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-01T10:11:10.942+03:00  INFO 3315309 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18443 (http)
+2026-10-01T10:11:10.950+03:00  INFO 3315309 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-01T10:11:10.950+03:00  INFO 3315309 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-01T10:11:10.966+03:00  INFO 3315309 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 458 ms
+2026-10-01T10:11:11.163+03:00  INFO 3315309 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (http) with context path '/'
+2026-10-01T10:11:11.170+03:00  INFO 3315309 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.022 seconds (process running for 1.614)
+2026-10-01T10:11:11.741+03:00  INFO 3315309 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-01T10:11:11.744+03:00  INFO 3315309 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+
+STEP 4: remove the throwaway files
+ok: throwaway manifest, jar, driver and temp homes removed
+
+STEP 5: zero-trace verification
+git status --short:
+?? .opencode/
+qa-demo mentions in tracked files:
+(none)
+qa-demo mentions in untracked non-ignored files:
+(none)
+ok: repo holds zero traces of the throwaway manifest outside the evidence directory
+
+T43 QA failure: ALL CHECKS PASSED
+exit code: 0

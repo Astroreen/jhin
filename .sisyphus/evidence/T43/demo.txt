@@ -1,0 +1,84 @@
+T43 QA demo: scaffold jhin.qa-demo with the jhin-plugin skill checklist
+skill: .opencode/skill/jhin-plugin/SKILL.md ; template: .opencode/skill/jhin-plugin/template/
+intake answers: id=jhin.qa-demo name=QaDemo pkg=com.astroreen.jhin.plugin.qademo module=qa-demo route=GET /qa-demo/ping
+
+STEP 1: render template/** (SKILL.md section 5 render recipe)
+plugins/qa-demo/build.gradle
+plugins/qa-demo/settings.gradle
+plugins/qa-demo/src/main/java/com/astroreen/jhin/plugin/qademo/package-info.java
+plugins/qa-demo/src/main/java/com/astroreen/jhin/plugin/qademo/QaDemoPlugin.java
+plugins/qa-demo/src/main/java/com/astroreen/jhin/plugin/qademo/Routes.java
+plugins/qa-demo/src/main/resources/jhin-plugin.json
+plugins/qa-demo/src/test/java/com/astroreen/jhin/plugin/qademo/FakeHttpRequest.java
+plugins/qa-demo/src/test/java/com/astroreen/jhin/plugin/qademo/FakePluginContext.java
+plugins/qa-demo/src/test/java/com/astroreen/jhin/plugin/qademo/QaDemoPluginTest.java
+ok: template rendered into plugins/qa-demo (placeholders substituted, description filled from intake Q1)
+STEP 2: wire the root settings.gradle (SKILL.md section 4)
+includeBuild('plugins/reload') { name = 'jhin-plugin-reload' }
+includeBuild('plugins/example') { name = 'jhin-plugin-example' }
+includeBuild('plugins/qa-demo') { name = 'jhin-plugin-qa-demo' }
+ok: includeBuild added
+STEP 3: tests + jar (SKILL.md section 10)
+> Task :jhin-plugin-qa-demo:processTestResources NO-SOURCE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-qa-demo:compileJava
+> Task :jhin-plugin-qa-demo:classes
+> Task :jhin-plugin-qa-demo:jar
+> Task :jhin-plugin-qa-demo:compileTestJava
+> Task :jhin-plugin-qa-demo:testClasses
+> Task :jhin-plugin-qa-demo:test
+
+BUILD SUCCESSFUL in 1s
+7 actionable tasks: 5 executed, 2 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html
+gradle exit code: 0
+test results (happy + failure cases must be green):
+<?xml version="1.0" encoding="UTF-8"?><testsuite name="com.astroreen.jhin.plugin.qademo.QaDemoPluginTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-10-01T07:12:22.739Z" hostname="server" time="0.119">
+
+tests: 2 failures: 0
+ok: build green, jar: plugins/qa-demo/build/libs/jhin-plugin-qa-demo-0.2.0.jar
+STEP 4: install into a fresh temp JHIN_HOME and boot the kernel on port 18443
+JHIN_HOME=/tmp/t43-demo-home.Tn4r2l
+JHIN_BUNDLED_PLUGINS=/tmp/t43-demo-bundled.xrsodv
+jar=plugins/qa-demo/build/libs/jhin-plugin-qa-demo-0.2.0.jar
+ok: kernel started (pid 3318488)
+health http code: 200
+{"status":"ok","kernel":"0.2.0","api":1,"plugins":[{"id":"jhin.qa-demo","version":"0.2.0","name":"QaDemo"}],"failed":[]}ok: GET /_jhin/health -> 200 and lists jhin.qa-demo
+STEP 5: curl the route
+route http code: 200
+{"greeting":"ping","ok":true,"plugin":"jhin.qa-demo"}
+ok: GET /qa-demo/ping -> 200 with the plugin identity
+blank-name http code: 400
+{"error":"invalid_name","message":"name must not be blank"}
+ok: GET /qa-demo/ping?name= -> 400 invalid_name (the plugin's failure case, live)
+STEP 6: shut the kernel down (SIGTERM + wait)
+ok: kernel stopped
+kernel.log of the demo run:
+10:12:24.509 [main] INFO plugin.jhin.qa-demo -- jhin.qa-demo started
+10:12:24.513 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+10:12:24.516 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18443. Install a security plugin.
+2026-10-01T10:12:25.058+03:00  INFO 3318488 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3318488 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-01T10:12:25.061+03:00  INFO 3318488 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-01T10:12:25.749+03:00  INFO 3318488 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18443 (http)
+2026-10-01T10:12:25.759+03:00  INFO 3318488 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-01T10:12:25.759+03:00  INFO 3318488 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-01T10:12:25.781+03:00  INFO 3318488 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 659 ms
+2026-10-01T10:12:26.051+03:00  INFO 3318488 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (http) with context path '/'
+2026-10-01T10:12:26.066+03:00  INFO 3318488 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.443 seconds (process running for 2.188)
+2026-10-01T10:12:26.612+03:00  INFO 3318488 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-01T10:12:26.617+03:00  INFO 3318488 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+STEP 7: remove every trace of the throwaway plugin
+ok: plugins/qa-demo removed, settings.gradle reverted, temp homes removed
+STEP 8: zero-trace verification
+git status --short:
+?? .opencode/
+files named *qa-demo* outside .git:
+(none)
+qa-demo mentions in tracked files:
+(none)
+qa-demo mentions in untracked non-ignored files:
+(none)
+ok: repo holds zero traces of jhin.qa-demo outside the evidence directory
+
+T43 QA demo: ALL CHECKS PASSED
+exit code: 0

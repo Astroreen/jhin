@@ -1,0 +1,10 @@
+{
+  "id": "__PLUGIN_ID__",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "name": "__PLUGIN_NAME__",
+  "description": "__PLUGIN_NAME__ — describe what this plugin does in one sentence.",
+  "mainClass": "__PKG__.__PLUGIN_NAME__Plugin",
+  "exports": [],
+  "requires": []
+}
