@@ -1,0 +1,114 @@
+=== T34 evidence ===
+
+--- happy QA: ToolsSuiteTest in a temp workdir (content + structured shape each) ---
+lsListsEntriesWithNameTypeAndSize: PASSED
+  content: 'dir  sub/', 'file a.txt  5', 'file .gitignore', no 'b.log' (.gitignore-aware)
+  structured: {kind:"card", title:"ls", rows:[{label,value}...]} - rows path/entries/truncated + one per entry
+  entries=3 (sub/, a.txt, .gitignore), truncated=false
+writeCreatesFileAndReturnsCard: PASSED
+  content: "Wrote 12 bytes, 2 line(s)"; file on disk "hello\nworld\n"
+  structured card rows: path=notes.txt, bytes=12, lines=2
+readReturnsNumberedTextAndCard: PASSED
+  content: "   1| hello\n   2| world" (numbered lines, width 4)
+  structured card rows: path, lines=2, total=2; ctx.readPaths() marks the file
+editReplacesLiteralAndReturnsCard: PASSED
+  content: "replaced 1 occurrence(s)"; file becomes "hello jhin\n"
+  structured card rows: path, replacements=1
+editDiffReturnsUnifiedDiffAndCard: PASSED
+  content: "--- a/hello.txt", "+++ b/hello.txt", "+hello jhin" (java-diff-utils, 3 context lines)
+  file on disk unchanged ("hello world\n"); structured card rows: path, diffLines=5
+findListsGlobMatches: PASSED
+  content: "a.txt\nsub/b.txt" (glob *.txt, name match at any depth, sorted)
+  structured card rows: pattern, path, limitReached=false, one row per hit (label=path, value=type)
+grepFindsMatchesAndCard: PASSED
+  content: "a.txt:1: hello jhin" (grep -n style; glob filter *.txt hides b.md)
+  structured card rows: pattern, matches=1, limitReached=false, linesTruncated=false, row a.txt:1="hello jhin"
+bashEchoReturnsOutputAndCard: PASSED
+  content: "hi" (sh -c "echo hi", stdout merged arrival-order)
+  structured card rows: command="echo hi", exitCode=0, durationMs=<long >= 0>
+  bash echo structured shape (the documented card family):
+    {"kind":"card","title":"bash","rows":[
+      {"label":"command","value":"echo hi"},
+      {"label":"exitCode","value":"0"},
+      {"label":"durationMs","value":"<ms>"}]}
+every happy result asserted through assertCard(): structured parses to a Map with
+kind="card", a non-blank title and rows = list of {label:String, value:String} pairs
+(ONE documented shape family in FileToolSupport.Structured; the read-image payload is
+the documented second kind: {"kind":"image", title, mimeType, data:<base64>}).
+
+--- failure QA (5 exact stable messages) ---
+readMissingFileFails: PASSED
+  ToolResult.error, content == "File not found: missing.txt"
+editWithoutPriorReadFails: PASSED
+  ToolResult.error, content == "Read the file first before editing"
+  (ToolContext.hasRead gate; the file on disk is unchanged)
+writeOutsideWorkdirFails: PASSED
+  ToolResult.error, content == "Path goes outside of workspace"
+  (ctx.resolvePath -> PathSandbox REAL confinement in the temp workdir; the tool
+   catches ToolException and returns it - ONE behaviour, documented: no tool throws)
+grepInvalidRegexFails: PASSED
+  ToolResult.error, content == "Invalid pattern: Unclosed group"
+  (pattern "(" -> PatternSyntaxException.getDescription(), JDK-stable text)
+bashNonZeroExitFails: PASSED
+  ToolResult.error, content == "Command failed with exit code 3"
+  (command "exit 3"; captured output is appended after the marker line when present)
+
+--- bonus assertions ---
+editWithoutMatchFails: PASSED     == "No matches found for oldString"
+editAmbiguousMatchFails: PASSED   == "oldString is ambiguous: found 2 matches; add context or set replaceAll=true"
+readImageReturnsImagePayload: PASSED  structured {kind:"image", title:"pic.png", mimeType:"image/png", data:base64}
+cancelledRunFailsFast: PASSED     == "cancelled" (ctx.cancel() before the bash run)
+
+--- registration condition (powershell Windows-only) ---
+ToolsRegistrationTest.linuxOsNameRegistersEightToolsWithoutPowershell: PASSED
+  buildTools("Linux 6.8.0") -> exactly [ls, write, read, edit, edit-diff, find, grep, bash]
+ToolsRegistrationTest.windowsOsNameRegistersNineToolsWithPowershell: PASSED
+  buildTools("Windows 11") -> the eight + "powershell"
+ToolsRegistrationTest.isWindowsPredicate: PASSED
+  osName.startsWith("Windows"): Windows 11 / Windows Server 2022 true; Linux / Mac OS X / "" false
+ToolsRegistrationTest.currentHostRegistrationMatchesOsName: PASSED
+  this machine (os.name=Linux): 8 tools, no powershell
+how it is tested: ToolsPlugin.buildTools(String osName) + ToolsPlugin.isWindows(String)
+are package-private with an INJECTABLE os name (no System property mutation);
+ToolsPlugin.start passes System.getProperty("os.name",""). Count/absence asserted
+directly; no powershell execution test runs on Linux (unit-test of the condition only).
+
+--- test counts ---
+ToolsSuiteTest (plugins/tools-builtin): 17 tests, 0 failures, 0 errors, 0 skipped
+ToolsRegistrationTest (plugins/tools-builtin): 4 tests, 0 failures, 0 errors, 0 skipped
+PathSandboxTest (plugins/tools-builtin): 9 tests, 0 failures, 0 errors, 0 skipped
+GitIgnoreTest (plugins/tools-builtin): 19 tests, 0 failures, 0 errors, 0 skipped
+tools-builtin total: 49 tests (T32 placeholder had 0; 49 new), 0 failures, 0 errors, 0 skipped
+kernel: 101 tests, 0 failures, 0 errors, 0 skipped
+
+--- gate: ./gradlew :jhin-plugin-tools-builtin:build :kernel:test --rerun-tasks ---
+BUILD SUCCESSFUL in 24s
+20 actionable tasks: 20 executed
+
+--- gate: ./gradlew :jhin-plugin-tools-builtin:validateManifest ---
+OK: src/main/resources/jhin-plugin.json is a valid JSON object
+
+--- jar content check: plugins/tools-builtin/build/libs/jhin-plugin-tools-builtin-0.2.0.jar ---
+com/github/difflib (java-diff-utils) classes: 49 - PRESENT (DiffUtils.class seen)
+org/zeroturnaround (zt-exec) classes: 61 - PRESENT (ProcessExecutor.class seen)
+sqlite classes: 0 - ABSENT (as required)
+ToolsPlugin.class + jhin-plugin.json packaged.
+
+--- library versions (current stable per repo1.maven.org maven-metadata) ---
+io.github.java-diff-utils:java-diff-utils:4.17   (release/latest; the task's "1.15.0" example
+  does not exist for this artifact - versions are 4.x)
+org.zeroturnaround:zt-exec:1.13.0                (release/latest)
+
+--- design notes ---
+one ToolProvider (private named BuiltinToolsProvider inside ToolsPlugin) publishes the
+whole set; ToolInvoker resolves it live via services().findAll(ToolProvider.class).
+structured card family documented on FileToolSupport; built only by
+FileToolSupport.Structured (card/image), asserted by assertCard() in ToolsSuiteTest.
+error contract: every failure returns ToolResult.error with a stable message; tools
+catch ToolException (arg validation + sandbox escapes) - the 5 failure assertions all
+observe returned errors, never throws.
+edit-diff uses the same unique-match rule as edit (ambiguous -> same stable error) so a
+previewed edit always matches what edit would do.
+bash runs 'sh -c' explicitly (zero external binaries in tools; zt-exec is bundled
+library code); powershell runs 'powershell -NoProfile -NonInteractive -Command' and is
+registered only when os.name starts with "Windows".

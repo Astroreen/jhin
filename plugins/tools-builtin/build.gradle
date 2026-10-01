@@ -1,4 +1,4 @@
-// Jhin plugin module: tools-builtin (scaffolded in T4, logic lands in later tasks).
+// Jhin plugin module: tools-builtin (the built-in tool set contributed to jhin.agent).
 apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
 
 group = 'com.astroreen'
@@ -17,4 +17,16 @@ dependencies {
     // the coordinates resolve through composite build substitution of the
     // included plugins/agent build.
     compileOnly 'com.astroreen:jhin-plugin-agent:0.2.0'
+
+    // java-diff-utils - unified diff generation for the edit-diff tool
+    // (pure Java, bundled into the plugin jar by the conventions).
+    implementation 'io.github.java-diff-utils:java-diff-utils:4.17'
+
+    // zt-exec - process execution wrapper for the bash/powershell tools
+    // (bundled into the plugin jar by the conventions).
+    implementation 'org.zeroturnaround:zt-exec:1.13.0'
+
+    // Tests execute the real tool definitions against the exported agent SPI.
+    testImplementation 'com.astroreen:jhin-plugin-agent:0.2.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }
