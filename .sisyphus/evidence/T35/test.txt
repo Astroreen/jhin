@@ -1,0 +1,69 @@
+=== T35 evidence ===
+
+gate: ./gradlew :jhin-plugin-mcp:build :kernel:test --rerun-tasks -> exit 0
+  BUILD SUCCESSFUL in 24s (jhin-plugin-mcp:build + kernel:test, --rerun-tasks)
+  kernel:test: 20 suites, 101 testcases, failures=0 errors=0
+  jhin-plugin-mcp:test: McpServiceTest, 5 tests, 0 failures
+  validateManifest: OK: src/main/resources/jhin-plugin.json is a valid JSON object
+  jar jhin-plugin-mcp-0.2.0.jar: 400 io/modelcontextprotocol entries (MCP SDK
+  classes present), 0 sqlite entries; jackson-* stripped per conventions
+  (Jackson 2 shared with the kernel loader), mcp-json-jackson2 binding +
+  its META-INF/services providers bundled
+
+--- happy QA: McpServiceTest with the v1-style echo-server fixture script ---
+echo_server.py is a test resource only (src/test/resources, never packaged
+into the plugin jar - the no-external-binaries rule applies to the product;
+this fixture is a standard test resource), Python 3 stdlib-only newline-
+delimited JSON-RPC over stdio implementing initialize / ping / tools/list /
+tools/call for one tool "echo" that returns its "message" argument unchanged
+and writes its pid to a pidfile on startup.
+
+McpServiceTest > echoServerToolIsRegisteredAndEchoes(Path) PASSED
+  echo.name() == "mcp__echo-server__echo"                    (name prefix contract)
+  echo.description() contains "Echo"                          (mapped from the MCP tool schema)
+  echo.parametersSchema() contains "message"                  (inputSchema serialized as JSON text)
+  echo.promptSnippet() contains "echo-server", "MCP server"   (snippet names its origin server)
+  execute({message: "hello t35"}) -> error=false, content == "hello t35"   (execute echoes)
+  fixture pid alive while connected; plugin.stop() -> awaitExit(pid): process exited
+  (stop() closed the transport; the SDK destroys the spawned stdio process)
+
+McpServiceTest > brokenServerDoesNotBlockHealthyServers(Path) PASSED
+  mixed mcp.json (broken + echo-server): provider.tools() hasSize(1) ->
+  mcp__echo-server__echo; execute({message: "still alive"}) -> content ==
+  "still alive"; stop() -> fixture process exited. The failed server did not
+  block the healthy one.
+
+--- failure QA: non-existent command leaves the plugin started, ERROR, zero tools ---
+McpServiceTest > brokenServerIsSkippedWithErrorAndZeroTools(Path) PASSED
+  mcp.json -> {"mcpServers": {"broken": {"command": "definitely-not-a-real-command-xyz", "args": []}}}
+  plugin.start(ctx) does not throw - the plugin stays started and publishes its ToolProvider
+  published ToolProvider.tools() isEmpty()                   (zero tools registered)
+  errorMessages() anyMatch: contains "broken" and "definitely-not-a-real-command-xyz"
+  (logback ListAppender on the plugin logger of the fake PluginContext - the same
+  log-capture pattern the kernel tests use; the ERROR line is
+  "mcp server 'broken' failed to start and was skipped: RuntimeException: Failed to
+  start process with command: [definitely-not-a-real-command-xyz] <- IOException:
+  Exec failed, error: 2 (No such file or directory)")
+
+--- config contract (bonus, both green) ---
+McpServiceTest > missingMcpJsonIsANoOp(Path) PASSED
+  no mcp.json -> start() publishes nothing; INFO "no configuration ... no MCP servers to start"
+McpServiceTest > malformedMcpJsonFailsPluginStart(Path) PASSED
+  "{ not json" -> start() throws PluginException whose message names mcp.json
+  (documented split: structural config problems fail start(); runtime connection
+  failures skip just that server with an ERROR)
+
+--- mcp.json schema (documented in McpConfig Javadoc) ---
+{"mcpServers": {"<name>": {
+  "command": "...", "args": [...], "env": {...},          // transport "stdio"
+  "transport": "stdio" | "sse",                            // optional, inferred
+  "url": "http://host:port/sse"                            // transport "sse"
+}}}
+(mcpServers wrapper optional - a bare name->server map is accepted as well)
+
+--- SDK ---
+io.modelcontextprotocol.sdk:mcp:2.0.1 (current stable on Maven Central)
++ mcp-json-jackson2:2.0.1 binding (the default mcp-json-jackson3 is excluded:
+the kernel shares only com.fasterxml.jackson with plugins and the jar
+conventions strip jackson-* jars, so Jackson 3 would be missing at kernel
+runtime; see plugins/mcp/build.gradle)

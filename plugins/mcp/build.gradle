@@ -1,4 +1,5 @@
-// Jhin plugin module: mcp (scaffolded in T4, logic lands in later tasks).
+// Jhin plugin module: mcp (Model Context Protocol client: remote tools from
+// user-declared MCP servers).
 apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
 
 group = 'com.astroreen'
@@ -6,4 +7,38 @@ version = '0.2.0'
 
 base {
     archivesName = 'jhin-plugin-mcp'
+}
+
+dependencies {
+    // Compiled against the tool SPI of the jhin.agent plugin and resolved at
+    // runtime through its manifest exports (plugin-to-plugin class sharing):
+    // ToolProvider, ToolDefinition and the rest of
+    // com.astroreen.jhin.plugin.agent.api come from the jhin.agent class
+    // loader. compileOnly keeps the agent jar out of this plugin's archive;
+    // the coordinates resolve through composite build substitution of the
+    // included plugins/agent build.
+    compileOnly 'com.astroreen:jhin-plugin-agent:0.2.0'
+
+    // The official Java MCP SDK, current stable on Maven Central: 2.0.1.
+    // The `mcp` artifact is the SDK aggregator over mcp-core plus a JSON
+    // binding. The default binding mcp-json-jackson3 is excluded and replaced
+    // by mcp-json-jackson2 below: the kernel's plugin class loader shares
+    // only com.fasterxml.jackson (Jackson 2) with plugins (kernel
+    // PluginClassLoader SHARED_PREFIXES) and the jar conventions keep
+    // jackson-* jars out of this archive, so the Jackson 3 (tools.jackson)
+    // binding would have no classes at kernel runtime. The Jackson 2 binding
+    // resolves through the shared kernel loader instead.
+    implementation('io.modelcontextprotocol.sdk:mcp:2.0.1') {
+        exclude group: 'io.modelcontextprotocol.sdk', module: 'mcp-json-jackson3'
+    }
+    // Jackson 2 JSON binding of the MCP SDK (ServiceLoader McpJsonMapper /
+    // JsonSchemaValidator providers for mcp-core).
+    implementation 'io.modelcontextprotocol.sdk:mcp-json-jackson2:2.0.1'
+
+    // Tests exercise the real ToolProvider SPI and a real stdio MCP server
+    // fixture process; they capture the plugin's ERROR log with the same
+    // logback ListAppender pattern the kernel tests use.
+    testImplementation 'com.astroreen:jhin-plugin-agent:0.2.0'
+    testImplementation 'ch.qos.logback:logback-classic:1.5.38'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }

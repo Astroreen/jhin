@@ -1,0 +1,10 @@
+{
+  "id": "jhin.mcp",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "name": "MCP",
+  "description": "Model Context Protocol client: starts the user-declared MCP servers of mcp.json and contributes their remote tools to jhin.agent.",
+  "mainClass": "com.astroreen.jhin.plugin.mcp.McpPlugin",
+  "exports": [],
+  "requires": [{"id": "jhin.agent", "versionRange": ">=0.2.0", "optional": false}]
+}
