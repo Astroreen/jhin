@@ -1,0 +1,3 @@
+event: example_status
+data: {"note":"example_status"}
+

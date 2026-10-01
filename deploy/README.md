@@ -1,18 +1,45 @@
-# Запуск Jhin как сервиса
+# Running Jhin as a service
 
-Общая информация по запуску и quickstart — в [README.md](../README.md). Здесь: сервисный запуск, рестарт-луп `/admin/reload`, TLS/проксирование, бэкап, обновление.
+Quickstart and product overview live in the top-level [README.md](../README.md).
+This page covers service deployment: running the kernel jar, the restart loop
+for `POST /admin/reload`, the systemd unit example and the data directory.
 
-## Запуск jar
+## Requirements
+
+A Java 21 runtime. Nothing else: the kernel is one fat jar and every tool is
+pure Java.
+
+## 1. Plain jar run
 
 ```bash
-java -jar jhin-backend-0.1.0-SNAPSHOT.jar
+java -jar kernel-0.2.0-SNAPSHOT.jar
 ```
 
-Каталог данных — `JHIN_HOME` (дефолт `~/.jhin`): `jhin.db`, `keystore/`, `plugins/`, `mcp.json`. TLS — самоподписанный, генерируется при первом старте (фингерпринт в логе).
+Useful arguments: `--server.port=8443` (listening port) and the Spring-style
+`--key=value` overrides for any kernel property. The data directory is
+`JHIN_HOME` (default `~/.jhin`): `data/jhin.db`, `plugins/`, `keystore/`,
+`logs/`. With the `jhin.security` plugin loaded the listener speaks HTTPS
+with a self-signed certificate generated into `keystore/` on first start (the
+SHA-256 fingerprint is logged for pinning).
 
-## systemd
+## 2. Restart loop: deploy/run.sh
 
-Generic unit для Linux (`User=jhin` или любой юзер с правами на `JHIN_HOME`):
+```bash
+./deploy/run.sh /opt/jhin/kernel-0.2.0-SNAPSHOT.jar --server.port=8443
+```
+
+The script runs the jar in a loop and starts it again one second after any
+exit. **Exit code 0 means "restart requested"**: `POST /admin/reload` (plugin
+`jhin.reload`) answers `202 {"status":"restarting"}`, waits 300 ms so the
+response reaches the client, then exits the JVM with code 0 — the loop brings
+the host back up with a freshly loaded plugin set. Any other exit code is a
+crash and is restarted the same way. The jar path defaults to the boot jar
+under `kernel/build/libs/` when omitted; extra arguments are passed to the
+kernel.
+
+## 3. systemd
+
+Example unit ([jhin.service](jhin.service)):
 
 ```ini
 [Unit]
@@ -20,56 +47,65 @@ Description=Jhin hub
 After=network.target
 
 [Service]
-User=jhin
+Type=simple
+# set the service account below (and give it JHIN_HOME)
 Environment=JHIN_HOME=/var/lib/jhin
-ExecStart=/usr/bin/java -jar /opt/jhin/jhin-backend-0.1.0-SNAPSHOT.jar
+ExecStart=/usr/bin/java -jar /opt/jhin/kernel-0.2.0-SNAPSHOT.jar
 Restart=always
+RestartSec=1
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Каталог `/var/lib/jhin` создайте заранее и отдайте юзеру сервиса. `Restart=always` обязателен, если вы планируете `/admin/reload` (см. ниже).
+Create `/var/lib/jhin` up front and hand it to the service account.
+`Restart=always` is what services `/admin/reload`: after the clean exit the
+unit starts the process again. systemd adds supervision (journal, limits,
+crash recovery); `run.sh` only restarts. Both honour the reload contract.
 
-## /admin/reload и рестарт-луп
+## /admin/reload contract
 
-`POST /admin/reload` (Bearer-токен) — graceful restart: активные runs переводятся в `INTERRUPTED`, SSE-стримы закрываются, процесс делает `System.exit(0)` через `jhin.reload.exit-delay-millis` (2000 мс). Сам процесс **не перезапускается** — нужен внешний рестартер:
+`POST /admin/reload` (plugin `jhin.reload`, no requirements):
 
-- **systemd** (`Restart=always`) — обычный выбор: юнит сам поднимет процесс после выхода.
-- **`deploy/run.sh`** — минимальный рестарт-луп без systemd:
+1. Responds `202` with body `{"status":"restarting"}` immediately.
+2. After 300 ms exits the JVM with code 0 (the exit is armed only after the
+   host finished starting, so a request racing the boot is deferred to
+   startup completion).
+3. The external restarter (run.sh loop or systemd) starts a new process.
 
-  ```bash
-  ./run.sh /opt/jhin/jhin-backend-0.1.0-SNAPSHOT.jar
-  ```
+Clients survive the restart: SSE streams reconnect and resume from their last
+`seq`, so the gap is invisible in the UI.
 
-  Скрипт запускает jar и через 1 секунду после любого выхода запускает снова.
+## Installing plugins
 
-Разница: systemd даёт supervision (журнал, лимиты, рестарт после крашей), `run.sh` — только «поднять снова»; оба варианта обслуживают `/admin/reload`. SSE-клиенты при рестарте реконнектятся сами (resume по `fromSeq`), разрыва не видят.
+Plugin jars live in `$JHIN_HOME/plugins/`. Either copy them there yourself:
 
-## TLS и проксирование
+```bash
+cp jhin-plugin-example-0.2.0.jar ~/.jhin/plugins/
+```
 
-Hub по умолчанию работает с самоподписанным сертификатом: `keystore/server.p12` + `keystore/server.p12.password` (0600) в `$JHIN_HOME`, SHA-256-фингерпринт пишется в лог (`AA:BB:…`, 95 символов) и пинится клиентами при первом подключении (TOFU).
+or ship them in the distribution bundle (`JHIN_BUNDLED_PLUGINS` or a
+`plugins-default/` directory next to the kernel jar): the kernel seeds the
+bundle into the home plugin directory on start and leaves user-installed
+files alone. A restart (or `/admin/reload`) loads any new jar. The
+`jhin.example` plugin README shows the full build-and-install flow.
 
-**Свой сертификат/keystore через `server.ssl.*` в MVP не поддерживается.** Два варианта:
+## Backup
 
-1. Оставить самоподписанный серт и раздать фингерпринт клиентам (io-клиенты пинят его; web полагается на решения браузера).
-2. **Escape hatch** `server.ssl.enabled=false` — hub поднимается на обычном HTTP за reverse-proxy с терминацией TLS (Traefik, nginx). Reverse-proxy в MVP не входит, но ставить hub за него осознанно можно: туннель/VPN/localhost — ваша зона ответственности.
+Back up two things from `$JHIN_HOME`:
 
-## Бэкап
+1. `data/jhin.db` — with the process stopped, copy the file; while running,
+   use `sqlite3 $JHIN_HOME/data/jhin.db ".backup '/backup/jhin.db'"` (the WAL
+   companions `jhin.db-wal` / `jhin.db-shm` belong to the live process).
+2. `keystore/` — separately and always: losing it regenerates the
+   certificate on next start and pinned clients will refuse the new one.
 
-Данные живут в `$JHIN_HOME`; бэкапить нужно две вещи:
+## Upgrades
 
-1. **`jhin.db`** (+ файлы `jhin.db-wal` / `jhin.db-shm`, если процесс жив — SQLite в режиме WAL):
-   - остановить сервис и скопировать `jhin.db*`, либо
-   - при живом процессе — через sqlite3: `sqlite3 $JHIN_HOME/jhin.db ".backup '/backup/jhin.db'"`.
-2. **`keystore/`** (`server.p12` + `server.p12.password`) — отдельно и обязательно: при потере keystore следующий старт сгенерирует новый серт, клиенты с TOFU-pinningом откажутся подключаться.
+1. Stop the service.
+2. Replace the jar.
+3. Start the service.
 
-Таблицы БД: `accounts`, `devices`, `enrollment_codes`, `sessions`, `events`, `runs`, `providers`, `workers`. Токены устройств и enrollment-коды в БД — только SHA-256-хеши; `api_key` провайдеров — plaintext-ом (см. раздел безопасности README).
-
-## Обновление
-
-1. Остановить сервис.
-2. Заменить jar на новую версию.
-3. Запустить сервис.
-
-Миграции схемы идемпотентны (версия схемы в БД, `V*.sql` применяются по порядку) — повторный старт ничего не ломает. `JHIN_HOME` не пересоздаётся; файлы данных и keystore остаются на месте.
+Schema migrations are idempotent (applied versions are recorded in
+`data/jhin.db`), so a restart on the same `JHIN_HOME` is always safe; data and
+keystore stay in place.

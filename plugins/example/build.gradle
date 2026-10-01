@@ -1,4 +1,6 @@
-// Jhin plugin module: example (scaffolded in T4, logic lands in later tasks).
+// Jhin plugin module: example (the copy-paste reference plugin showing every
+// SDK extension surface: route, CLI command, migration, stream publisher and
+// an optional tool provider).
 apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
 
 group = 'com.astroreen'
@@ -6,4 +8,18 @@ version = '0.2.0'
 
 base {
     archivesName = 'jhin-plugin-example'
+}
+
+dependencies {
+    // Compiled against the tool SPI of the jhin.agent plugin and resolved at
+    // runtime through its manifest exports (same pattern as jhin.mcp): the
+    // ExampleToolProvider class is loaded only when the jhin.agent API probe
+    // succeeds, so the agent jar stays out of this archive (compileOnly) and
+    // the plugin starts cleanly when jhin.agent is absent.
+    compileOnly 'com.astroreen:jhin-plugin-agent:0.2.0'
+
+    // Tests drive the real registration path with the agent SPI on the class
+    // path and assert the contributed tool through the recording registries.
+    testImplementation 'com.astroreen:jhin-plugin-agent:0.2.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }

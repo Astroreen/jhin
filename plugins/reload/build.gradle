@@ -1,4 +1,4 @@
-// Jhin plugin module: reload (scaffolded in T4, logic lands in later tasks).
+// Jhin plugin module: reload (POST /admin/reload -> delayed exit(0)).
 apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
 
 group = 'com.astroreen'
@@ -6,4 +6,8 @@ version = '0.2.0'
 
 base {
     archivesName = 'jhin-plugin-reload'
+}
+
+dependencies {
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }

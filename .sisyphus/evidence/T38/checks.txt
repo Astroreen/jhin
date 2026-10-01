@@ -1,0 +1,15 @@
+ok: jq, java and sqlite3 present
+ok: gate green (reload: 4 example: 6 kernel: 101 )
+ok: build green: kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar + reload, example, sessions, llm, agent jars
+ok: run.sh loop up: run.sh pid 3112696, java pid 3112703, jhin.reload loaded
+ok: POST /admin/reload -> 202 {"status":"restarting"}
+ok: restart observed: java pid 3112703 -> 3112893, health answers again
+ok: stage 1 stopped (SIGTERM + wait)
+ok: stage 2a up and down without the example plugin
+ok: example jar installed into /tmp/t38-home.Qm5d0G/plugins/ (user-install path)
+ok: restarted with jhin.example and jhin.agent loaded
+ok: surface 1 (route): 200 with tools=1 and events>=1 ({"topic":"example/events","tools":1,"plugin":"jhin.example","events":2})
+ok: surface 4 (stream): example_status observed live on the SSE endpoint
+ok: surface 2 (CLI): example-hello exited 0 and greeted
+ok: surface 3 (migration): jhin_example_notes exists with 4 recorded event(s)
+ok: surface 5 (tools): jhin.example loaded without jhin.agent, route reports {"plugin":"jhin.example","events":2,"topic":"example/events","tools":0}
