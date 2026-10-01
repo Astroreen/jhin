@@ -1,9 +1,15 @@
 /**
  * Entry point of the default SDUI plugin: resolves the session services of
  * {@code jhin.sessions}, detects which optional integrations are loaded,
- * assembles the default screens, the action map and the four routes and
+ * assembles the default screens, the action table and the four routes and
  * registers them. {@code GET /_jhin/bootstrap} replaces the kernel fallback on
  * the same path silently (a plugin route always supersedes a fallback).
+ *
+ * <p>The optional integrations (jhin.security, jhin.llm, jhin.agent,
+ * jhin.reload) are detected once at start through the {@link Integrations}
+ * probes and flow into every screen and handler as the {@link Features}
+ * snapshot: an absent plugin means an absent screen, an action that answers
+ * with an explanatory toast and no reference to its API classes.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -13,25 +19,49 @@ import com.astroreen.jhin.sdk.JhinPlugin;
 import com.astroreen.jhin.sdk.PluginContext;
 import com.astroreen.jhin.sdk.PluginException;
 import com.astroreen.jhin.sdk.http.RouteSpec;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 public final class UiPlugin implements JhinPlugin {
 
-    /** API class of the security plugin, probed for the entry decision. */
-    private static final String SECURITY_API = "com.astroreen.jhin.plugin.security.api.Principal";
+    /** API class of the security plugin, probed for the enroll surface. */
+    private static final String SECURITY_API =
+            "com.astroreen.jhin.plugin.security.api.EnrollmentService";
 
-    /** API class of the LLM plugin, probed for the providers screen. */
+    /** API class of the LLM plugin, probed for the providers surface. */
     private static final String LLM_API = "com.astroreen.jhin.plugin.llm.api.ProviderRegistry";
+
+    /** API class of the agent plugin, probed for the run actions. */
+    private static final String AGENT_API = "com.astroreen.jhin.plugin.agent.api.RunService";
+
+    /** Plugin id of the reload plugin, which exports no API class to probe. */
+    private static final String RELOAD_ID = "jhin.reload";
+
+    /** Class-name probe of the optional integrations; injectable for tests. */
+    private final Predicate<String> probe;
 
     private StreamRoute streamRoute;
 
+    /** Production constructor: probes the class path of this plugin. */
+    public UiPlugin() {
+        this(Integrations::present);
+    }
+
+    /**
+     * Test constructor: probes through the supplied predicate instead of the
+     * class path, so the degradation paths run deterministically.
+     *
+     * @param probe class name to presence
+     */
+    UiPlugin(Predicate<String> probe) {
+        this.probe = probe;
+    }
+
     /**
      * Publishes nothing and registers the bootstrap, screen, action and stream
-     * routes. Optional integrations degrade: without the security plugin the
-     * entry screen is the session list, without the LLM plugin there is no
-     * providers screen.
+     * routes. Optional integrations degrade: without the security plugin there
+     * is no enroll screen, without the LLM plugin no providers screen, without
+     * the agent plugin the run actions answer with a toast.
      *
      * @param ctx this plugin's context, valid for the whole plugin lifetime
      */
@@ -41,22 +71,20 @@ public final class UiPlugin implements JhinPlugin {
                 .orElseThrow(() -> new PluginException("jhin.sessions did not publish SessionStore"));
         EventLog events = ctx.services().find(EventLog.class)
                 .orElseThrow(() -> new PluginException("jhin.sessions did not publish EventLog"));
-        boolean securityPresent = Integrations.present(SECURITY_API);
-        boolean llmPresent = Integrations.present(LLM_API);
+        Features features = new Features(
+                probe.test(SECURITY_API),
+                probe.test(LLM_API),
+                probe.test(AGENT_API),
+                Integrations.loaded(ctx.kernel(), RELOAD_ID));
 
-        ScreenRegistry screens = new Screens(store, llmPresent);
+        ScreenRegistry screens = new Screens(store, ctx.services(), ctx.kernel(), features);
         CapabilityTailor tailor = new CapabilityTailor(events);
         streamRoute = new StreamRoute(store, events, ctx.streams());
         ctx.onShutdown(streamRoute::shutdown);
+        Map<String, ActionRoute.ActionHandler> handlers =
+                Actions.build(store, ctx.services(), features);
 
-        Map<String, ActionRoute.ActionHandler> handlers = new LinkedHashMap<>();
-        handlers.put("enroll", (req, payload) -> List.of(Directives.toast(
-                securityPresent
-                        ? "Cannot enroll this device right now."
-                        : "This server has no security plugin installed.",
-                "info")));
-
-        BootstrapRoute bootstrap = new BootstrapRoute(screens, securityPresent, tailor);
+        BootstrapRoute bootstrap = new BootstrapRoute(screens, features.security(), tailor);
         ScreenRoute screen = new ScreenRoute(screens, tailor);
         ActionRoute action = new ActionRoute(handlers);
         ctx.http().route(new RouteSpec("GET", "/_jhin/bootstrap", bootstrap::handle));

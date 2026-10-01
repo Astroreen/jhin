@@ -6,8 +6,9 @@
  * material — plus the admin CLI commands.
  *
  * <p>HTTP contributions (all registered before the listener starts):
- * filter {@code jhin.security.enroll-rate} on {@code /enroll} (order 50),
- * route {@code POST /enroll}, filter {@code jhin.security.bearer} on every
+ * filter {@code jhin.security.enroll-rate} on {@code /enroll} and on the SDUI
+ * action {@code /ui/action/enroll} (order 50, one shared counter), route
+ * {@code POST /enroll}, filter {@code jhin.security.bearer} on every
  * path (order 100) and the {@link TlsProvider} that switches the server to
  * HTTPS. No passwords, no JWT, no OAuth — just accounts, single-use
  * enrollment codes and revocable device tokens stored as SHA-256 digests.
@@ -15,6 +16,7 @@
 package com.astroreen.jhin.plugin.security;
 
 import com.astroreen.jhin.plugin.security.api.AccountDirectory;
+import com.astroreen.jhin.plugin.security.api.EnrollmentService;
 import com.astroreen.jhin.sdk.JhinPlugin;
 import com.astroreen.jhin.sdk.PluginContext;
 import com.astroreen.jhin.sdk.http.FilterSpec;
@@ -39,11 +41,15 @@ public final class SecurityPlugin implements JhinPlugin {
         EnrollmentServiceImpl enrollment = new EnrollmentServiceImpl(ctx.db(), clock);
         DeviceServiceImpl devices = new DeviceServiceImpl(ctx.db(), clock);
         ctx.services().publish(AccountDirectory.class, accounts);
+        ctx.services().publish(EnrollmentService.class, enrollment);
         ctx.services().publish(EnrollmentServiceImpl.class, enrollment);
         ctx.services().publish(DeviceServiceImpl.class, devices);
         new SecurityCli(accounts, enrollment, devices).register(ctx.cli());
+        RateLimitFilter enrollRate = new RateLimitFilter(clock);
         ctx.http().filter(new FilterSpec(RateLimitFilter.ID, "/enroll",
-                RateLimitFilter.ORDER, new RateLimitFilter(clock)));
+                RateLimitFilter.ORDER, enrollRate));
+        ctx.http().filter(new FilterSpec(RateLimitFilter.ID + ".ui",
+                BearerFilter.UI_ENROLL_PATH, RateLimitFilter.ORDER, enrollRate));
         ctx.http().route(new RouteSpec("POST", EnrollRoute.PATH,
                 new EnrollRoute(enrollment)::handle));
         ctx.http().filter(new FilterSpec(BearerFilter.ID, "/",

@@ -154,7 +154,7 @@ class MessageRoutesTest {
     }
 
     private MessageRoutes routes(Function<RunContext, String> loop) {
-        RunService runs = new RunService(db, new FakeEventLog(), new RecordingStreamRegistry(),
+        RunServiceImpl runs = new RunServiceImpl(db, new FakeEventLog(), new RecordingStreamRegistry(),
                 loop, LoggerFactory.getLogger("test"));
         return new MessageRoutes(sessions, runs);
     }

@@ -54,4 +54,14 @@ class LlmBuiltinPluginTest {
         assertThat(services.find(LlmProviderFactory.class, "gemini"))
                 .containsInstanceOf(GeminiFactory.class);
     }
+
+    @Test
+    void qaFlagPublishesTheMockFactoryAsWell() {
+        new LlmBuiltinPlugin().start(
+                new FakePluginContext(services, java.util.Map.of("qa", "true")));
+
+        assertThat(services.findAll(LlmProviderFactory.class)).hasSize(4);
+        assertThat(services.find(LlmProviderFactory.class, "mock"))
+                .containsInstanceOf(MockFactory.class);
+    }
 }

@@ -9,7 +9,7 @@ package com.astroreen.jhin.plugin.security;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
-import com.astroreen.jhin.plugin.security.EnrollmentServiceImpl.RedeemResult;
+import com.astroreen.jhin.plugin.security.api.EnrollmentService;
 import com.astroreen.jhin.plugin.security.api.SecurityException;
 import com.astroreen.jhin.sdk.cli.CliCommandSpec;
 import java.io.ByteArrayOutputStream;
@@ -108,7 +108,7 @@ class SecurityCliTest {
         String issued = issuedCode();
         assertThat(issued).isNotBlank();
         assertThat(countOccurrences(stdout(), issued)).isEqualTo(1);
-        RedeemResult result = enrollment.redeem(issued, "qa-laptop");
+        EnrollmentService.Redeemed result = enrollment.redeem(issued, "qa-laptop");
         assertThat(result.token()).isNotBlank();
     }
 
@@ -172,7 +172,7 @@ class SecurityCliTest {
     void revokeDeviceConfirmsAndMarksServiceCreatedDevice() {
         run("create-account", List.of("alice"));
         String accountId = accounts.findByName("alice").orElseThrow().id();
-        RedeemResult result = enrollment.redeem(
+        EnrollmentService.Redeemed result = enrollment.redeem(
                 enrollment.issue(accountId).code(), "qa-laptop");
         String deviceId = result.principal().deviceId();
         resetStreams();

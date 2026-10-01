@@ -25,7 +25,7 @@
  */
 package com.astroreen.jhin.plugin.security;
 
-import com.astroreen.jhin.plugin.security.EnrollmentServiceImpl.RedeemResult;
+import com.astroreen.jhin.plugin.security.api.EnrollmentService;
 import com.astroreen.jhin.plugin.security.api.Principal;
 import com.astroreen.jhin.plugin.security.api.SecurityException;
 import com.astroreen.jhin.sdk.http.HttpRequest;
@@ -71,7 +71,7 @@ final class EnrollRoute {
             return badRequest("deviceName must not be null or blank");
         }
         try {
-            RedeemResult result = enrollment.redeem(body.code(), body.deviceName());
+            EnrollmentService.Redeemed result = enrollment.redeem(body.code(), body.deviceName());
             return HttpResponse.json(200, payload(result));
         } catch (SecurityException refused) {
             return HttpResponse.error(refused.httpStatus(), refused.code(), refused.getMessage());
@@ -79,7 +79,7 @@ final class EnrollRoute {
     }
 
     /** The success payload: the raw token, shown exactly once. */
-    private static Map<String, String> payload(RedeemResult result) {
+    private static Map<String, String> payload(EnrollmentService.Redeemed result) {
         Principal principal = result.principal();
         Map<String, String> payload = new LinkedHashMap<>();
         payload.put("token", result.token());

@@ -1,7 +1,8 @@
 /**
  * Minimal {@link com.astroreen.jhin.sdk.PluginContext} fake for entry-point
- * tests: only the service registry answers (the recorder under test), every
- * other accessor fails the test the moment the plugin touches it.
+ * tests: the service registry (the recorder under test) and the configuration
+ * section answer, every other accessor fails the test the moment the plugin
+ * touches it.
  */
 package com.astroreen.jhin.plugin.llm.builtin;
 
@@ -16,6 +17,8 @@ import com.astroreen.jhin.sdk.http.HttpRegistry;
 import com.astroreen.jhin.sdk.stream.StreamRegistry;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,9 +27,15 @@ final class FakePluginContext implements PluginContext {
     private static final Logger LOG = LoggerFactory.getLogger(FakePluginContext.class);
 
     private final ServiceRegistry services;
+    private final Map<String, String> configValues;
 
     FakePluginContext(ServiceRegistry services) {
+        this(services, Map.of());
+    }
+
+    FakePluginContext(ServiceRegistry services, Map<String, String> configValues) {
         this.services = services;
+        this.configValues = Map.copyOf(configValues);
     }
 
     @Override
@@ -48,7 +57,7 @@ final class FakePluginContext implements PluginContext {
 
     @Override
     public ConfigView config() {
-        throw new UnsupportedOperationException("config is not used by LlmBuiltinPlugin");
+        return new FakeConfig(configValues);
     }
 
     @Override
@@ -89,5 +98,42 @@ final class FakePluginContext implements PluginContext {
     @Override
     public void onShutdown(Runnable hook) {
         throw new UnsupportedOperationException("onShutdown is not used by LlmBuiltinPlugin");
+    }
+
+    /** Configuration resolving the supplied values and honouring defaults. */
+    private record FakeConfig(Map<String, String> values) implements ConfigView {
+
+        @Override
+        public Optional<String> get(String key) {
+            return Optional.ofNullable(values.get(key));
+        }
+
+        @Override
+        public String get(String key, String def) {
+            return values.getOrDefault(key, def);
+        }
+
+        @Override
+        public int getInt(String key, int def) {
+            String value = values.get(key);
+            return (value == null) ? def : Integer.parseInt(value);
+        }
+
+        @Override
+        public long getLong(String key, long def) {
+            String value = values.get(key);
+            return (value == null) ? def : Long.parseLong(value);
+        }
+
+        @Override
+        public boolean getBool(String key, boolean def) {
+            String value = values.get(key);
+            return (value == null) ? def : Boolean.parseBoolean(value);
+        }
+
+        @Override
+        public Map<String, String> all() {
+            return values;
+        }
     }
 }

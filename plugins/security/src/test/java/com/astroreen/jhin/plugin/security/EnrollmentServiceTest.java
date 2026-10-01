@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.astroreen.jhin.plugin.security.EnrollmentServiceImpl.IssuedCode;
-import com.astroreen.jhin.plugin.security.EnrollmentServiceImpl.RedeemResult;
+import com.astroreen.jhin.plugin.security.api.EnrollmentService;
 import com.astroreen.jhin.plugin.security.api.Principal;
 import com.astroreen.jhin.plugin.security.api.SecurityException;
 import java.nio.file.Path;
@@ -57,7 +57,7 @@ class EnrollmentServiceTest {
         assertThat(issued.accountId()).isEqualTo(accountId);
         assertThat(issued.expiresAt()).isEqualTo(clock.millis() + EnrollmentServiceImpl.TTL_MILLIS);
 
-        RedeemResult result = enrollment.redeem(issued.code(), "qa-laptop");
+        EnrollmentService.Redeemed result = enrollment.redeem(issued.code(), "qa-laptop");
 
         assertThat(result.token()).isNotBlank();
         Principal principal = devices.verify(result.token());
@@ -108,7 +108,7 @@ class EnrollmentServiceTest {
         IssuedCode issued = enrollment.issue(accountId);
         String typed = " " + issued.code().toLowerCase().replaceAll("(.{4})(?=.)", "$1-") + "= ";
 
-        RedeemResult result = enrollment.redeem(typed, "qa-laptop");
+        EnrollmentService.Redeemed result = enrollment.redeem(typed, "qa-laptop");
 
         assertThat(devices.verify(result.token()).accountId()).isEqualTo(accountId);
     }

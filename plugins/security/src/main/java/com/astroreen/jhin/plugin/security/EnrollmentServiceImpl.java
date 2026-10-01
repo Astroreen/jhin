@@ -15,6 +15,7 @@
  */
 package com.astroreen.jhin.plugin.security;
 
+import com.astroreen.jhin.plugin.security.api.EnrollmentService;
 import com.astroreen.jhin.plugin.security.api.Principal;
 import com.astroreen.jhin.plugin.security.api.SecurityException;
 import com.astroreen.jhin.sdk.db.DbAccess;
@@ -25,7 +26,7 @@ import java.sql.SQLException;
 import java.time.Clock;
 import java.util.UUID;
 
-final class EnrollmentServiceImpl {
+final class EnrollmentServiceImpl implements EnrollmentService {
 
     /** Enrollment code TTL: 10 minutes. */
     static final long TTL_MILLIS = 10 * 60 * 1000L;
@@ -115,7 +116,8 @@ final class EnrollmentServiceImpl {
      *                                   {@code code_expired} (HTTP 410) when its
      *                                   TTL has passed
      */
-    RedeemResult redeem(String code, String deviceName) {
+    @Override
+    public EnrollmentService.Redeemed redeem(String code, String deviceName) {
         requireText(code, "code");
         requireText(deviceName, "deviceName");
         String canonical = canonicalize(code);
@@ -177,7 +179,8 @@ final class EnrollmentServiceImpl {
                 insert.setLong(6, now);
                 insert.executeUpdate();
             }
-            return new RedeemResult(token, new Principal(accountId, accountName, deviceId));
+            return new EnrollmentService.Redeemed(
+                    token, new Principal(accountId, accountName, deviceId));
         });
     }
 
@@ -211,15 +214,5 @@ final class EnrollmentServiceImpl {
      *                  strictly before this instant
      */
     record IssuedCode(String code, String accountId, long expiresAt) {
-    }
-
-    /**
-     * The outcome of a successful redemption: the raw device token (never
-     * stored, shown once) and the principal of the enrolled device.
-     *
-     * @param token     the raw device token, 256 bits rendered as hex
-     * @param principal the enrolled device principal
-     */
-    record RedeemResult(String token, Principal principal) {
     }
 }

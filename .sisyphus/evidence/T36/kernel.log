@@ -1,18 +1,18 @@
-05:48:27.487 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-sessions-0.2.0.jar (8b870d58298807ba73d2410df4f70d335c6009a35a50f76d716b94c76458e990)
-05:48:27.510 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-ui-default-0.2.0.jar (eba1a13574b79a73741f2edf54f87e61b395d3d8bf730f3a7793d3f789003cb1)
-05:48:27.531 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-ui-kit-0.2.0.jar (ee57a9cf2696bd9999a5d2fb163a595f0b690ed3d9f7ecc74c682b28578c7947)
-05:48:27.718 [main] WARN plugin.jhin.sessions -- QA helper enabled (JHIN_SESSIONS_QA): POST /sessions/{id}/events appends one event
-05:48:27.719 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log and routes published
-05:48:27.725 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action and stream routes registered
-05:48:27.726 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
-05:48:27.728 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18443. Install a security plugin.
-2026-10-01T05:48:28.154+03:00  INFO 2931701 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 2931701 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
-2026-10-01T05:48:28.155+03:00  INFO 2931701 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
-2026-10-01T05:48:28.622+03:00  INFO 2931701 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18443 (http)
-2026-10-01T05:48:28.638+03:00  INFO 2931701 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
-2026-10-01T05:48:28.638+03:00  INFO 2931701 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
-2026-10-01T05:48:28.655+03:00  INFO 2931701 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 462 ms
-2026-10-01T05:48:28.865+03:00  INFO 2931701 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (http) with context path '/'
-2026-10-01T05:48:28.873+03:00  INFO 2931701 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.064 seconds (process running for 1.784)
-2026-10-01T05:48:37.280+03:00  INFO 2931701 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
-2026-10-01T05:48:37.383+03:00  INFO 2931701 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+07:13:41.009 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-sessions-0.2.0.jar (8b870d58298807ba73d2410df4f70d335c6009a35a50f76d716b94c76458e990)
+07:13:41.033 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-ui-default-0.2.0.jar (575f8cffec6d62964b907d8a57292fa39a5e86fe1d29c777618822d923ddb328)
+07:13:41.054 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-ui-kit-0.2.0.jar (ee57a9cf2696bd9999a5d2fb163a595f0b690ed3d9f7ecc74c682b28578c7947)
+07:13:41.228 [main] WARN plugin.jhin.sessions -- QA helper enabled (JHIN_SESSIONS_QA): POST /sessions/{id}/events appends one event
+07:13:41.228 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log and routes published
+07:13:41.237 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action and stream routes registered
+07:13:41.238 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+07:13:41.241 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18443. Install a security plugin.
+2026-10-01T07:13:41.674+03:00  INFO 3051846 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3051846 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-01T07:13:41.675+03:00  INFO 3051846 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-01T07:13:42.151+03:00  INFO 3051846 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18443 (http)
+2026-10-01T07:13:42.164+03:00  INFO 3051846 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-01T07:13:42.164+03:00  INFO 3051846 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-01T07:13:42.184+03:00  INFO 3051846 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 473 ms
+2026-10-01T07:13:42.398+03:00  INFO 3051846 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (http) with context path '/'
+2026-10-01T07:13:42.405+03:00  INFO 3051846 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.081 seconds (process running for 1.786)
+2026-10-01T07:13:50.731+03:00  INFO 3051846 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-01T07:13:50.834+03:00  INFO 3051846 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete

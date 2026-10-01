@@ -4,8 +4,9 @@
  * <p>Registered from {@link SecurityPlugin#start} as filter
  * {@code jhin.security.bearer} on every path, in order {@value #ORDER} (after
  * the enrollment rate limit). Requests in the allow-list — {@code GET
- * /_jhin/health}, {@code GET /_jhin/bootstrap}, {@code POST /enroll} and any
- * {@code OPTIONS} pre-flight — proceed unauthenticated; every other request
+ * /_jhin/health}, {@code GET /_jhin/bootstrap}, {@code POST /enroll}, {@code
+ * POST /ui/action/enroll} and any {@code OPTIONS} pre-flight — proceed
+ * unauthenticated; every other request
  * must carry {@code Authorization: Bearer <token>} (the scheme match is
  * case-insensitive). A valid token resolves the {@link Principal} through
  * {@link DeviceServiceImpl#verify(String)}, stores it under
@@ -52,6 +53,13 @@ final class BearerFilter implements HttpFilter {
 
     /** Allow-listed enrollment route path. */
     static final String ENROLL_PATH = "/enroll";
+
+    /**
+     * Allow-listed SDUI enrollment action path: the user-interface face of
+     * {@link #ENROLL_PATH}. It redeems a single-use code exactly like the
+     * enrollment route and must be reachable before a device token exists.
+     */
+    static final String UI_ENROLL_PATH = "/ui/action/enroll";
 
     /** Minimum interval between two liveness updates of one device. */
     static final long TOUCH_INTERVAL_MILLIS = 60_000L;
@@ -103,8 +111,9 @@ final class BearerFilter implements HttpFilter {
 
     /**
      * Whether a request is on the allow-list and may pass unauthenticated.
-     * Exactly four cases: {@code GET /_jhin/health}, {@code GET
-     * /_jhin/bootstrap}, {@code POST /enroll} and any {@code OPTIONS}.
+     * Exactly five cases: {@code GET /_jhin/health}, {@code GET
+     * /_jhin/bootstrap}, {@code POST /enroll}, {@code POST
+     * /ui/action/enroll} and any {@code OPTIONS}.
      *
      * @param method the request method
      * @param path   the request path
@@ -115,7 +124,7 @@ final class BearerFilter implements HttpFilter {
             return true;
         }
         if ("POST".equals(method)) {
-            return ENROLL_PATH.equals(path);
+            return ENROLL_PATH.equals(path) || UI_ENROLL_PATH.equals(path);
         }
         return "GET".equals(method)
                 && (HEALTH_PATH.equals(path) || BOOTSTRAP_PATH.equals(path));

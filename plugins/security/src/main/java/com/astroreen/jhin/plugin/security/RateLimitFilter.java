@@ -3,8 +3,10 @@
  * over the enrollment endpoint.
  *
  * <p>Registered from {@link SecurityPlugin#start} as filter
- * {@code jhin.security.enroll-rate} on the {@code /enroll} path prefix, in
- * order {@value #ORDER} (before bearer authentication). At most
+ * {@code jhin.security.enroll-rate} on the {@code /enroll} path prefix and as
+ * {@code jhin.security.enroll-rate.ui} on the SDUI action {@code
+ * /ui/action/enroll}, in order {@value #ORDER} (before bearer authentication);
+ * both registrations share one counter. At most
  * {@value #MAX_ATTEMPTS} requests per {@code remoteAddr} are forwarded to the
  * route within any {@value #WINDOW_MILLIS} millisecond window; the
  * {@value #MAX_ATTEMPTS} + 1st is rejected with {@code 429} and the SDK error

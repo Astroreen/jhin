@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.astroreen.jhin.plugin.security.EnrollmentServiceImpl.RedeemResult;
+import com.astroreen.jhin.plugin.security.api.EnrollmentService;
 import com.astroreen.jhin.plugin.security.api.Principal;
 import com.astroreen.jhin.plugin.security.api.SecurityException;
 import java.nio.file.Path;
@@ -47,7 +47,7 @@ class DeviceServiceTest {
 
     @Test
     void verifyReturnsPrincipalOfEnrolledDevice() {
-        RedeemResult result = enrollment.redeem(
+        EnrollmentService.Redeemed result = enrollment.redeem(
                 enrollment.issue(accountId).code(), "qa-laptop");
 
         Principal principal = devices.verify(result.token());
@@ -59,7 +59,7 @@ class DeviceServiceTest {
 
     @Test
     void revokeRejectsTokenWithForbidden() {
-        RedeemResult result = enrollment.redeem(
+        EnrollmentService.Redeemed result = enrollment.redeem(
                 enrollment.issue(accountId).code(), "qa-laptop");
 
         assertThat(devices.revoke(result.principal().deviceId())).isTrue();
@@ -90,7 +90,7 @@ class DeviceServiceTest {
 
     @Test
     void touchUpdatesLastSeenAt() {
-        RedeemResult result = enrollment.redeem(
+        EnrollmentService.Redeemed result = enrollment.redeem(
                 enrollment.issue(accountId).code(), "qa-laptop");
 
         assertThat(devices.touch(result.principal().deviceId())).isTrue();

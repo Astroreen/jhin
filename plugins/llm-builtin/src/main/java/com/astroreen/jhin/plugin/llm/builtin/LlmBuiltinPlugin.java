@@ -16,6 +16,12 @@
  * memory keeps it gone) and {@code GET /providers/formats} returns
  * {@code []} — no built-in factory remains, only those other plugin jars
  * publish.
+ *
+ * <p>QA helper: when the {@code qa} configuration flag is on (environment
+ * variable {@code JHIN_LLM_BUILTIN_QA}, strictly {@code true}/{@code false})
+ * a fourth factory — the deterministic {@code mock} format of
+ * {@link MockFactory} — is published so a QA run can exercise the whole
+ * message flow without a network endpoint. Off by default.
  */
 package com.astroreen.jhin.plugin.llm.builtin;
 
@@ -27,7 +33,8 @@ public final class LlmBuiltinPlugin implements JhinPlugin {
 
     /**
      * Publishes the three built-in provider factories to the cross-plugin
-     * service registry, each under its format as the service qualifier.
+     * service registry, each under its format as the service qualifier, plus
+     * the {@code mock} factory while the {@code qa} flag is on.
      *
      * @param ctx this plugin's context, valid for the whole plugin lifetime
      */
@@ -39,5 +46,11 @@ public final class LlmBuiltinPlugin implements JhinPlugin {
                 OpenAiFactory.FORMAT, new OpenAiFactory());
         ctx.services().publish(LlmProviderFactory.class,
                 GeminiFactory.FORMAT, new GeminiFactory());
+        if (ctx.config().getBool("qa", false)) {
+            ctx.services().publish(LlmProviderFactory.class,
+                    MockFactory.FORMAT, new MockFactory());
+            ctx.log().warn("QA helper enabled (JHIN_LLM_BUILTIN_QA):"
+                    + " the mock provider factory is registered");
+        }
     }
 }

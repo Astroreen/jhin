@@ -1,9 +1,12 @@
+> Task :jhin-plugin-ui-default:processResources
+> Task :jhin-plugin-llm:processResources
 > Task :jhin-plugin-ui-kit:processResources
+> Task :jhin-plugin-ui-default:processTestResources NO-SOURCE
 > Task :jhin-plugin-sessions:processResources
+> Task :jhin-plugin-security:processResources
 > Task :jhin-plugin-ui-kit:processTestResources NO-SOURCE
 > Task :jhin-plugin-sessions:processTestResources NO-SOURCE
-> Task :jhin-plugin-ui-default:processResources
-> Task :jhin-plugin-ui-default:processTestResources NO-SOURCE
+> Task :jhin-plugin-agent:processResources
 > Task :kernel:processResources
 > Task :kernel:processTestResources NO-SOURCE
 > Task :sdk:compileJava
@@ -12,18 +15,19 @@
 > Task :sdk:jar
 > Task :jhin-plugin-ui-kit:compileJava
 > Task :jhin-plugin-ui-kit:classes
+> Task :jhin-plugin-llm:compileJava
+> Task :jhin-plugin-llm:classes
 > Task :jhin-plugin-ui-kit:jar
 > Task :jhin-plugin-ui-kit:assemble
 > Task :jhin-plugin-sessions:compileJava
 > Task :jhin-plugin-sessions:classes
 > Task :jhin-plugin-sessions:jar
 > Task :jhin-plugin-sessions:assemble
+> Task :jhin-plugin-security:compileJava
+> Task :jhin-plugin-security:classes
+> Task :jhin-plugin-llm:jar
 > Task :jhin-plugin-ui-kit:compileTestJava
 > Task :jhin-plugin-ui-kit:testClasses
-> Task :jhin-plugin-ui-default:compileJava
-> Task :jhin-plugin-ui-default:classes
-> Task :jhin-plugin-ui-default:jar
-> Task :jhin-plugin-ui-default:assemble
 > Task :kernel:compileJava
 > Task :kernel:classes
 
@@ -32,13 +36,21 @@ Note: /home/astroreen/Documents/jhin/plugins/sessions/src/test/java/com/astroree
 Note: Recompile with -Xlint:unchecked for details.
 
 > Task :jhin-plugin-sessions:testClasses
-> Task :jhin-plugin-ui-default:compileTestJava
-> Task :jhin-plugin-ui-default:testClasses
+> Task :jhin-plugin-agent:compileJava
+> Task :jhin-plugin-agent:classes
+> Task :jhin-plugin-agent:jar
 > Task :kernel:compileTestJava
 > Task :kernel:testClasses
 > Task :jhin-plugin-ui-kit:test
 > Task :jhin-plugin-ui-kit:check
 > Task :jhin-plugin-ui-kit:build
+> Task :jhin-plugin-security:jar
+> Task :jhin-plugin-ui-default:compileJava
+> Task :jhin-plugin-ui-default:classes
+> Task :jhin-plugin-ui-default:jar
+> Task :jhin-plugin-ui-default:assemble
+> Task :jhin-plugin-ui-default:compileTestJava
+> Task :jhin-plugin-ui-default:testClasses
 > Task :jhin-plugin-ui-default:test
 > Task :jhin-plugin-ui-default:check
 > Task :jhin-plugin-ui-default:build
@@ -46,12 +58,12 @@ OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader clas
 > Task :jhin-plugin-sessions:test
 > Task :jhin-plugin-sessions:check
 > Task :jhin-plugin-sessions:build
-2026-10-01T05:49:05.681+03:00  INFO 2932710 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
-2026-10-01T05:49:05.883+03:00  INFO 2932710 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+2026-10-01T07:14:19.651+03:00  INFO 3052969 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-01T07:14:19.853+03:00  INFO 3052969 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
 > Task :kernel:test
 
 [Incubating] Problems report is available at: file:///home/astroreen/Documents/jhin/build/reports/problems/problems-report.html
 
 BUILD SUCCESSFUL in 28s
-21 actionable tasks: 21 executed
+30 actionable tasks: 30 executed
 Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.1.0/userguide/configuration_cache_enabling.html

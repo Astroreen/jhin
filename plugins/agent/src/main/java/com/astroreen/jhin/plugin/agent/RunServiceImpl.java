@@ -24,6 +24,7 @@
  */
 package com.astroreen.jhin.plugin.agent;
 
+import com.astroreen.jhin.plugin.agent.api.RunService;
 import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.EventType;
 import com.astroreen.jhin.plugin.sessions.api.Session;
@@ -42,7 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import org.slf4j.Logger;
 
-final class RunService {
+final class RunServiceImpl implements RunService {
 
     static final String STATUS_RUNNING = "running";
     static final String STATUS_DONE = "done";
@@ -57,8 +58,8 @@ final class RunService {
     private final ExecutorService executor;
     private final ConcurrentHashMap<String, RunContext> active = new ConcurrentHashMap<>();
 
-    RunService(DbAccess db, EventLog events, StreamRegistry streams,
-               Function<RunContext, String> loop, Logger log) {
+    RunServiceImpl(DbAccess db, EventLog events, StreamRegistry streams,
+                   Function<RunContext, String> loop, Logger log) {
         this.db = db;
         this.events = events;
         this.streams = streams;
@@ -78,7 +79,8 @@ final class RunService {
      * @throws RunException with code {@link RunException#CODE_RUN_ACTIVE} when
      *                      the session already has an active run
      */
-    String start(Session session, String text) {
+    @Override
+    public String start(Session session, String text) {
         String sessionId = session.id();
         String runId = UUID.randomUUID().toString();
         ToolContextImpl toolContext = new ToolContextImpl(
@@ -110,7 +112,8 @@ final class RunService {
      * @throws RunException with code {@link RunException#CODE_NO_ACTIVE_RUN}
      *                      when the session has no active run
      */
-    void cancel(String sessionId) {
+    @Override
+    public void cancel(String sessionId) {
         RunContext ctx = active.get(sessionId);
         if (ctx == null) {
             throw new RunException(RunException.CODE_NO_ACTIVE_RUN, 404,

@@ -267,7 +267,8 @@ final class EventFrames {
     }
 
     private static UiNode errorNode(Map<String, Object> payload, long seq) {
-        String message = textOf(payload);
+        Object reported = payload.get("message");
+        String message = (reported != null) ? String.valueOf(reported) : textOf(payload);
         UiNode text = textNode("ev-" + seq + "-msg", message, "body", false, DANGER);
         return Ui.card().id("ev-" + seq).title("Error").child(text).build();
     }

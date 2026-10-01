@@ -6,16 +6,18 @@
  * <p>Starting wires the whole pipeline: {@link SystemPromptBuilder} with its
  * {@code PromptInterceptor} chain, {@link ConversationBuilder}, the streaming
  * {@link AgentLoop}, {@link ToolInvoker} (guard chain &rarr; execute &rarr;
- * transformer chain) and {@link RunService} behind {@code POST
+ * transformer chain) and {@link RunServiceImpl} behind {@code POST
  * /sessions/{id}/messages} and {@code POST /sessions/{id}/cancel}, with
  * {@link RunRecovery} clearing stale {@code running} ledger rows first. The
  * sessions, llm and tool SPI services are resolved through the cross-plugin
  * service registry; a missing dependency fails the start with a clear error.
- * Nothing else is registered — no service is published by this plugin.
+ * The run lifecycle is published as {@link RunService} so a user-interface
+ * plugin can start and cancel runs with the route semantics.
  */
 package com.astroreen.jhin.plugin.agent;
 
 import com.astroreen.jhin.plugin.agent.api.PromptInterceptor;
+import com.astroreen.jhin.plugin.agent.api.RunService;
 import com.astroreen.jhin.plugin.agent.api.ToolCallGuard;
 import com.astroreen.jhin.plugin.agent.api.ToolProvider;
 import com.astroreen.jhin.plugin.agent.api.ToolResultTransformer;
@@ -53,7 +55,8 @@ public class AgentPlugin implements JhinPlugin {
                 () -> services.findAll(PromptInterceptor.class));
         ConversationBuilder conversations = new ConversationBuilder(events);
         AgentLoop loop = new AgentLoop(events, prompts, conversations, invoker, providers, ctx.log());
-        RunService runs = new RunService(ctx.db(), events, ctx.streams(), loop::run, ctx.log());
+        RunServiceImpl runs = new RunServiceImpl(ctx.db(), events, ctx.streams(), loop::run, ctx.log());
+        ctx.services().publish(RunService.class, runs);
         new RunRecovery(ctx.db(), ctx.log()).recover();
         MessageRoutes routes = new MessageRoutes(sessions, runs);
         ctx.http().route(new RouteSpec("POST", "/sessions/{id}/messages", routes::messages));

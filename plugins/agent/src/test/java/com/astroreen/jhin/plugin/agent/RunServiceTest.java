@@ -33,7 +33,7 @@ class RunServiceTest {
     private FakeEventLog events;
     private RecordingStreamRegistry streams;
     private Session session;
-    private RunService runs;
+    private RunServiceImpl runs;
 
     @BeforeEach
     void setUp() {
@@ -53,7 +53,7 @@ class RunServiceTest {
     void secondStartWhileRunningIsRejected() throws Exception {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        RunService service = service(ctx -> {
+        RunServiceImpl service = service(ctx -> {
             started.countDown();
             await(release);
             return null;
@@ -76,7 +76,7 @@ class RunServiceTest {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         List<EventType> atRunStart = new ArrayList<>();
-        RunService service = service(ctx -> {
+        RunServiceImpl service = service(ctx -> {
             atRunStart.addAll(events.types("s1"));
             started.countDown();
             await(release);
@@ -96,7 +96,7 @@ class RunServiceTest {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         AtomicBoolean observed = new AtomicBoolean();
-        RunService service = service(ctx -> {
+        RunServiceImpl service = service(ctx -> {
             started.countDown();
             await(release);
             observed.set(ctx.isCancelled());
@@ -121,7 +121,7 @@ class RunServiceTest {
     void failedRunIsRecordedAsError() throws Exception {
         CountDownLatch started = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
-        RunService service = service(ctx -> {
+        RunServiceImpl service = service(ctx -> {
             started.countDown();
             await(release);
             return "boom";
@@ -135,11 +135,11 @@ class RunServiceTest {
         assertThat(row(runId)).containsEntry("status", "error").containsEntry("error", "boom");
     }
 
-    private RunService service(java.util.function.Function<RunContext, String> loop) {
-        return new RunService(db, events, streams, loop, LoggerFactory.getLogger("test"));
+    private RunServiceImpl service(java.util.function.Function<RunContext, String> loop) {
+        return new RunServiceImpl(db, events, streams, loop, LoggerFactory.getLogger("test"));
     }
 
-    private String awaitSecondStart(RunService service, String text) throws Exception {
+    private String awaitSecondStart(RunServiceImpl service, String text) throws Exception {
         for (int i = 0; i < 100; i++) {
             try {
                 String runId = service.start(session, text);

@@ -1,5 +1,5 @@
 /**
- * Bearer filter coverage: the four allow-list cases pass unauthenticated,
+ * Bearer filter coverage: the five allow-list cases pass unauthenticated,
  * a missing or unknown token is a uniform {@code 401 unauthorized}, a revoked
  * device is {@code 403 forbidden}, a valid token stores the principal and
  * proceeds, and the liveness update is throttled to one per minute per device.
@@ -8,7 +8,7 @@ package com.astroreen.jhin.plugin.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.astroreen.jhin.plugin.security.EnrollmentServiceImpl.RedeemResult;
+import com.astroreen.jhin.plugin.security.api.EnrollmentService;
 import com.astroreen.jhin.plugin.security.api.Principal;
 import com.astroreen.jhin.plugin.security.api.SecurityAttributes;
 import com.astroreen.jhin.sdk.http.FilterChain;
@@ -70,6 +70,7 @@ class BearerFilterTest {
                 {"GET", "/_jhin/health"},
                 {"GET", "/_jhin/bootstrap"},
                 {"POST", "/enroll"},
+                {"POST", "/ui/action/enroll"},
                 {"OPTIONS", "/sessions"},
         };
         for (String[] entry : allowed) {
@@ -164,7 +165,7 @@ class BearerFilterTest {
 
     private String enroll(String deviceName) {
         EnrollmentServiceImpl.IssuedCode issued = enrollment.issue(accountId);
-        RedeemResult result = enrollment.redeem(issued.code(), deviceName);
+        EnrollmentService.Redeemed result = enrollment.redeem(issued.code(), deviceName);
         return result.token();
     }
 

@@ -1,0 +1,21 @@
+ok: jq present (jq-1.8.2)
+ok: build green: kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar + seven plugin jars
+ok: cli seeded account alice and one enrollment code
+ok: kernel started (pid 3048432, home /tmp/t37-home.2M7bdB)
+ok: health lists sessions, ui-kit, ui, security, llm, llm-builtin and agent
+ok: enroll -> 200 with setToken and navigate:sessions
+ok: create-session -> 200, chat:4da6e632-bc76-42a2-bde3-3d297f2da184
+ok: providers screen lists the mock format in its dropdown
+ok: mock provider 66fbad39-c0bc-4392-a823-050cb424055d created and attached to session 4da6e632-bc76-42a2-bde3-3d297f2da184
+ok: send -> 200 with an empty directive list
+ok: stream: 2 echo patch frame(s) and the user message node
+ok: cancel -> Run cancelled on a live run, no active run when idle
+ok: no provider: error toast on the action, error node on the stream (1 frame(s))
+ok: plugins screen renders the table with the loaded plugins
+ok: settings screen: clearToken and openProfiles present
+ok: spent enrollment code answers with one error toast
+ok: kernel stopped on SIGTERM and was reaped with wait
+ok: minimal bundle: no connect/providers screens, enroll answers with a toast
+ok: minimal kernel stopped on SIGTERM and was reaped with wait
+ok: gate green: ui-kit=10 ui-default=61 sessions=27 security=48 agent=29 llm=12 llm-builtin=19 kernel=101
+ok: evidence staged with git add -f: .sisyphus/evidence/T37

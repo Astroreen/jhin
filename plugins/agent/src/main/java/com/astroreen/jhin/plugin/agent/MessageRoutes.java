@@ -15,6 +15,7 @@
  */
 package com.astroreen.jhin.plugin.agent;
 
+import com.astroreen.jhin.plugin.agent.api.RunService;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
 import com.astroreen.jhin.sdk.PluginException;

@@ -3,7 +3,7 @@
  * tool context that carries workdir confinement, read tracking and the
  * cancellation flag.
  *
- * <p>One instance exists per run, created by {@link RunService} before the
+ * <p>One instance exists per run, created by {@link RunServiceImpl} before the
  * loop starts and kept in the active-run map until the run finishes. The
  * cancel route flips {@link #cancel()}; the loop and the tool bodies observe
  * it through {@link #isCancelled()}.

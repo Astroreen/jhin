@@ -26,7 +26,8 @@ final class ScreenRoute {
     }
 
     /**
-     * Renders one screen of the registry.
+     * Renders one screen of the registry, including the dynamic ids the
+     * bootstrap does not inline.
      *
      * @param req the request carrying the {@code id} path capture
      * @return {@code {"id":…,"node":…}} or a {@code 404} named
@@ -35,11 +36,11 @@ final class ScreenRoute {
     HttpResponse handle(HttpRequest req) {
         String id = req.pathParams().getOrDefault("id", "");
         Optional<String> account = account(req);
-        Supplier<UiNode> screen = registry.screens(account).get(id);
-        if (screen == null) {
+        Optional<Supplier<UiNode>> screen = registry.screen(id, account);
+        if (screen.isEmpty()) {
             return HttpResponse.error(404, "unknown_screen", "no screen with id " + id);
         }
-        UiNode node = tailor.tailor(screen.get(), req.client());
+        UiNode node = tailor.tailor(screen.get().get(), req.client());
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("id", id);
         body.put("node", node.toJson());

@@ -1,1 +1,1 @@
-connect,sessions
+sessions,settings,plugins

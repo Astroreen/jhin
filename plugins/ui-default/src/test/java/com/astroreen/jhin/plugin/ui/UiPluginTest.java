@@ -1,8 +1,8 @@
 /**
  * Plugin wiring: the four routes land in the HTTP registry, the session
- * services resolve from the cross-plugin registry and the plugin starts and
- * degrades with every optional integration absent (the probe classes are not
- * on this classpath).
+ * services resolve from the cross-plugin registry and the plugin degrades
+ * with every optional integration absent (the probe predicate stands in for
+ * the class-name probe so both worlds run deterministically).
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -16,12 +16,15 @@ import com.astroreen.jhin.sdk.json.Json;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class UiPluginTest {
+
+    /** Probe resolving nothing: the runtime without any optional plugin. */
+    private static final Predicate<String> NONE = name -> false;
 
     @TempDir
     Path tmp;
@@ -30,29 +33,23 @@ class UiPluginTest {
     private FakePluginContext context;
     private UiPlugin plugin;
 
-    @BeforeEach
-    void setUp() {
-        db = TestDbAccess.open(tmp);
-        RecordingStreamRegistry streams = new RecordingStreamRegistry();
-        FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
-        new com.astroreen.jhin.plugin.sessions.SessionsPlugin()
-                .start(new FakePluginContext(tmp, "jhin.sessions", db, streams, services));
-        services.find(SessionStore.class).orElseThrow();
-        services.find(EventLog.class).orElseThrow();
-        context = new FakePluginContext(tmp, "jhin.ui", db, streams, services);
-        plugin = new UiPlugin();
-        plugin.start(context);
-    }
-
     @AfterEach
     void tearDown() {
-        plugin.stop();
-        context.runShutdownHooks();
-        db.close();
+        if (plugin != null) {
+            plugin.stop();
+        }
+        if (context != null) {
+            context.runShutdownHooks();
+        }
+        if (db != null) {
+            db.close();
+        }
     }
 
     @Test
     void registersTheFourRoutes() {
+        start(NONE);
+
         List<RouteSpec> routes = context.routes();
 
         assertThat(routes).extracting(RouteSpec::method, RouteSpec::path)
@@ -65,22 +62,28 @@ class UiPluginTest {
 
     @Test
     void bootstrapDegradesWithEveryOptionalIntegrationAbsent() throws Exception {
-        RouteSpec bootstrap = context.routes().stream()
-                .filter(route -> route.path().equals("/_jhin/bootstrap"))
-                .findFirst().orElseThrow();
-        FakeHttpRequest req = new FakeHttpRequest("GET", "/_jhin/bootstrap", Map.of(), Map.of(), "");
+        start(NONE);
 
-        HttpResponse response = bootstrap.handler().handle(req);
+        Map<String, Object> payload = Json.readMap(new String(bootstrap().body()));
 
-        assertThat(response.status()).isEqualTo(200);
-        String body = new String(response.body());
-        Map<String, Object> payload = Json.readMap(body);
         assertThat(payload).containsEntry("entry", "sessions");
-        assertThat(body).doesNotContain("providers");
+        assertThat(payload.get("screens").toString()).doesNotContain("connect");
+        assertThat(payload.get("screens").toString()).doesNotContain("providers");
+    }
+
+    @Test
+    void bootstrapEntryIsConnectWhenSecurityIsPresent() throws Exception {
+        start(name -> name.endsWith("api.EnrollmentService"));
+
+        Map<String, Object> payload = Json.readMap(new String(bootstrap().body()));
+
+        assertThat(payload).containsEntry("entry", "connect");
+        assertThat(payload.get("screens").toString()).contains("connect");
     }
 
     @Test
     void actionDispatchIsWiredThroughTheRegistry() throws Exception {
+        start(NONE);
         RouteSpec action = context.routes().stream()
                 .filter(route -> route.path().equals("/ui/action/{name}"))
                 .findFirst().orElseThrow();
@@ -94,5 +97,29 @@ class UiPluginTest {
         List<?> client = (List<?>) payload.get("client");
         assertThat(client).hasSize(1);
         assertThat(client.get(0).toString()).contains("toast");
+    }
+
+    /** Starts the sessions and the UI plugin against one shared harness. */
+    private void start(Predicate<String> probe) {
+        db = TestDbAccess.open(tmp);
+        RecordingStreamRegistry streams = new RecordingStreamRegistry();
+        FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
+        new com.astroreen.jhin.plugin.sessions.SessionsPlugin()
+                .start(new FakePluginContext(tmp, "jhin.sessions", db, streams, services));
+        services.find(SessionStore.class).orElseThrow();
+        services.find(EventLog.class).orElseThrow();
+        context = new FakePluginContext(tmp, "jhin.ui", db, streams, services);
+        plugin = new UiPlugin(probe);
+        plugin.start(context);
+    }
+
+    private HttpResponse bootstrap() throws Exception {
+        RouteSpec bootstrap = context.routes().stream()
+                .filter(route -> route.path().equals("/_jhin/bootstrap"))
+                .findFirst().orElseThrow();
+        FakeHttpRequest req = new FakeHttpRequest("GET", "/_jhin/bootstrap", Map.of(), Map.of(), "");
+        HttpResponse response = bootstrap.handler().handle(req);
+        assertThat(response.status()).isEqualTo(200);
+        return response;
     }
 }

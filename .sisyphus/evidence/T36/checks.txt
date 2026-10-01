@@ -1,16 +1,16 @@
 ok: jq present (jq-1.8.2)
 ok: build green: kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar + three plugin jars
-ok: kernel started (pid 2931701, home /tmp/t36-home.kDfcKo)
+ok: kernel started (pid 3051846, home /tmp/t36-home.2CoT5L)
 ok: health 200, lists jhin.sessions, jhin.ui-kit and jhin.ui
-ok: POST /sessions -> 201, id 1330225f-df9a-49ed-9645-322b2b5c69f4
-ok: bootstrap: empty=false, entry=sessions, screens=2
+ok: POST /sessions -> 201, id c05dfabe-23b0-4cba-8bba-11c198559dcd
+ok: bootstrap: empty=false, entry=sessions, screens=3
 ok: GET /ui/screen/sessions -> 200 with id=sessions and a node
 ok: POST /ui/action/nope -> 404 with unknown_action
 ok: fallbacks keys: ["error","offline"]
 ok: full caps: one stream_view node and one openUrl op in the payload
 ok: caps=: no stream_view nodes, no openUrl/setToken ops, 2 list snapshot(s)
 ok: stream: 4 frames (2 node, 2 patch), replay + live, no duplicates
-ok: no providers screen in the payload (screens: connect,sessions)
+ok: no providers screen in the payload (screens: sessions,settings,plugins)
 ok: kernel stopped on SIGTERM and was reaped with wait
-ok: gate green: ui-kit=10 ui-default=30 sessions=27 kernel=101
+ok: gate green: ui-kit=10 ui-default=61 sessions=27 kernel=101
 ok: evidence staged with git add -f: .sisyphus/evidence/T36

@@ -1,12 +1,16 @@
 /**
  * Optional-integration detection: the UI plugin declares its optional
  * dependencies in the manifest and must degrade when they are absent, so
- * presence is resolved by class name instead of a compile-time reference. The
- * named classes come from the exported API packages of the optional plugins
- * and are visible here exactly when that plugin is loaded (plugin-to-plugin
- * class sharing); anything else means the integration is not there.
+ * presence is resolved without a compile-time reference.
+ *
+ * <p>Two probes: {@link #present} resolves an exported API class by name —
+ * visible exactly when the plugin that exports it is loaded (plugin-to-plugin
+ * class sharing) — and {@link #loaded} checks the kernel's plugin-id list for
+ * a plugin that exports no API class of its own (like {@code jhin.reload}).
  */
 package com.astroreen.jhin.plugin.ui;
+
+import com.astroreen.jhin.sdk.KernelInfo;
 
 final class Integrations {
 
@@ -26,5 +30,17 @@ final class Integrations {
         } catch (ClassNotFoundException | LinkageError e) {
             return false;
         }
+    }
+
+    /**
+     * Whether a plugin with the given id started in the current load pass.
+     * Called for optional plugins that export no API class to probe.
+     *
+     * @param kernel   the running kernel's facts
+     * @param pluginId the manifest id to look for
+     * @return {@code true} when the plugin is loaded
+     */
+    static boolean loaded(KernelInfo kernel, String pluginId) {
+        return kernel.plugins().stream().anyMatch(plugin -> pluginId.equals(plugin.id()));
     }
 }

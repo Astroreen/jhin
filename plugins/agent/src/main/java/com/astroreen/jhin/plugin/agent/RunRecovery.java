@@ -35,10 +35,10 @@ final class RunRecovery {
             try (PreparedStatement update = connection.prepareStatement(
                     "UPDATE jhin_sessions_runs SET status = ?, ended_at = ?, error = ?"
                             + " WHERE status = ?")) {
-                update.setString(1, RunService.STATUS_ERROR);
+                update.setString(1, RunServiceImpl.STATUS_ERROR);
                 update.setLong(2, System.currentTimeMillis());
                 update.setString(3, STALE_ERROR_TEXT);
-                update.setString(4, RunService.STATUS_RUNNING);
+                update.setString(4, RunServiceImpl.STATUS_RUNNING);
                 int stale = update.executeUpdate();
                 if (stale > 0) {
                     log.warn("recovered {} run(s) left running: marked error: {}", stale,

@@ -125,6 +125,7 @@ class StreamRouteTest {
         assertThat(nodeType(frames.get(9))).isEqualTo("card");
         assertThat(nodeOf(frames.get(9)).get("title")).isEqualTo("Error");
         assertThat(Json.write(nodeOf(frames.get(9)))).contains("#E53935");
+        assertThat(Json.write(nodeOf(frames.get(9)))).contains("boom");
     }
 
     @Test

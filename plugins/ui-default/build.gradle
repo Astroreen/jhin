@@ -10,18 +10,27 @@ base {
 }
 
 dependencies {
-    // Compiled against the UI building blocks of jhin.ui-kit and the session
-    // API of jhin.sessions, both resolved at runtime through their manifest
-    // exports (plugin-to-plugin class sharing). compileOnly keeps both jars
-    // out of this plugin's archive; the coordinates resolve through composite
-    // build substitution of the included plugin builds.
+    // Compiled against the UI building blocks of jhin.ui-kit, the session
+    // API of jhin.sessions and the exported API of the optional integrations
+    // jhin.security, jhin.llm and jhin.agent, all resolved at runtime through
+    // their manifest exports (plugin-to-plugin class sharing). compileOnly
+    // keeps every jar out of this plugin's archive; the coordinates resolve
+    // through composite build substitution of the included plugin builds.
     compileOnly 'com.astroreen:jhin-plugin-ui-kit:0.2.0'
     compileOnly 'com.astroreen:jhin-plugin-sessions:0.2.0'
+    compileOnly 'com.astroreen:jhin-plugin-security:0.2.0'
+    compileOnly 'com.astroreen:jhin-plugin-llm:0.2.0'
+    compileOnly 'com.astroreen:jhin-plugin-agent:0.2.0'
 
     // Tests drive the real ui-kit builder and the real sessions plugin against
-    // a SQLite-backed harness, so both modules are on the test classpath.
+    // a SQLite-backed harness, so both modules are on the test classpath; the
+    // optional API jars are there so the tests can build the typed handlers
+    // and screens against fakes.
     testImplementation 'com.astroreen:jhin-plugin-ui-kit:0.2.0'
     testImplementation 'com.astroreen:jhin-plugin-sessions:0.2.0'
+    testImplementation 'com.astroreen:jhin-plugin-security:0.2.0'
+    testImplementation 'com.astroreen:jhin-plugin-llm:0.2.0'
+    testImplementation 'com.astroreen:jhin-plugin-agent:0.2.0'
     testImplementation 'org.xerial:sqlite-jdbc:3.50.1.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }
