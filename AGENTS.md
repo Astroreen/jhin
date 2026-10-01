@@ -143,7 +143,7 @@ The old v1 backend is gone. The repository is a composite Gradle build:
 ├── frontend/                Flutter SDUI runtime (Android / Linux / Web)
 ├── deploy/                  restart loop, systemd example, run notes
 ├── scripts/qa/              QA scripts
-├── docs/                    architecture, plugin development, SDUI (T42)
+├── docs/                    architecture, plugin development, SDUI (T42), VSCode troubleshooting
 └── .opencode/               plugin-authoring skill and command (T43)
 ```
 
