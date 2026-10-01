@@ -31,6 +31,12 @@ dependencies {
     testImplementation 'com.astroreen:jhin-plugin-security:0.2.0'
     testImplementation 'com.astroreen:jhin-plugin-llm:0.2.0'
     testImplementation 'com.astroreen:jhin-plugin-agent:0.2.0'
+    // Explicit LangChain4j coordinates for the test fakes: the classes above
+    // only arrive packaged into the fat jhin-plugin-llm project jar, and the
+    // JDT Gradle build server does not expose classes that come from a
+    // project artifact alone. testCompileOnly keeps them unbundled.
+    testCompileOnly platform('dev.langchain4j:langchain4j-bom:1.20.1')
+    testCompileOnly 'dev.langchain4j:langchain4j-core'
     testImplementation 'org.xerial:sqlite-jdbc:3.50.1.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }

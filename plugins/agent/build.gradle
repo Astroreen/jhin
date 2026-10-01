@@ -20,6 +20,14 @@ dependencies {
     compileOnly 'com.astroreen:jhin-plugin-sessions:0.2.0'
     compileOnly 'com.astroreen:jhin-plugin-llm:0.2.0'
 
+    // Explicit LangChain4j coordinates on the compile classpath: the classes
+    // above only arrive packaged into the fat jhin-plugin-llm project jar,
+    // and the JDT Gradle build server does not expose classes that come from
+    // a project artifact alone. compileOnly keeps the jar unbundled, exactly
+    // as before (runtime types still resolve via the jhin.llm exports).
+    compileOnly platform('dev.langchain4j:langchain4j-bom:1.20.1')
+    compileOnly 'dev.langchain4j:langchain4j-core'
+
     // The kernel's real PluginClassLoader under test (AgentExportsTest drives
     // the production export-scoped loading): composite substitution of the
     // included kernel build. transitive = false: kernel's own dependencies
@@ -31,6 +39,10 @@ dependencies {
     // interface. Stays out of the plugin jar.
     testImplementation 'com.astroreen:jhin-plugin-sessions:0.2.0'
     testImplementation 'com.astroreen:jhin-plugin-llm:0.2.0'
+    // Same explicit LangChain4j coordinates for the test sources (the test
+    // classpath does not inherit compileOnly); still not bundled anywhere.
+    testCompileOnly platform('dev.langchain4j:langchain4j-bom:1.20.1')
+    testCompileOnly 'dev.langchain4j:langchain4j-core'
     testImplementation 'org.xerial:sqlite-jdbc:3.50.1.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }

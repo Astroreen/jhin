@@ -18,6 +18,16 @@ dependencies {
     compileOnly 'com.astroreen:jhin-plugin-llm:0.2.0'
     testImplementation 'com.astroreen:jhin-plugin-llm:0.2.0'
 
+    // Explicit LangChain4j coordinates on the compile classpath: the classes
+    // above only arrive packaged into the fat jhin-plugin-llm project jar,
+    // and the JDT Gradle build server does not expose classes that come from
+    // a project artifact alone. compileOnly/testCompileOnly keep the jar
+    // unbundled (runtime types still resolve via the jhin.llm exports).
+    compileOnly platform('dev.langchain4j:langchain4j-bom:1.20.1')
+    compileOnly 'dev.langchain4j:langchain4j-core'
+    testCompileOnly platform('dev.langchain4j:langchain4j-bom:1.20.1')
+    testCompileOnly 'dev.langchain4j:langchain4j-core'
+
     // Test-only: unit tests need the JUnit platform launcher at runtime.
     // Stays out of the plugin jar (testRuntimeOnly is not part of
     // runtimeClasspath).
