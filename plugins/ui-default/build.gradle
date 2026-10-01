@@ -1,4 +1,5 @@
-// Jhin plugin module: ui-default (scaffolded in T4, logic lands in later tasks).
+// Jhin plugin module: ui-default (the default SDUI plugin: bootstrap, screen,
+// action and stream endpoints).
 apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
 
 group = 'com.astroreen'
@@ -6,4 +7,21 @@ version = '0.2.0'
 
 base {
     archivesName = 'jhin-plugin-ui-default'
+}
+
+dependencies {
+    // Compiled against the UI building blocks of jhin.ui-kit and the session
+    // API of jhin.sessions, both resolved at runtime through their manifest
+    // exports (plugin-to-plugin class sharing). compileOnly keeps both jars
+    // out of this plugin's archive; the coordinates resolve through composite
+    // build substitution of the included plugin builds.
+    compileOnly 'com.astroreen:jhin-plugin-ui-kit:0.2.0'
+    compileOnly 'com.astroreen:jhin-plugin-sessions:0.2.0'
+
+    // Tests drive the real ui-kit builder and the real sessions plugin against
+    // a SQLite-backed harness, so both modules are on the test classpath.
+    testImplementation 'com.astroreen:jhin-plugin-ui-kit:0.2.0'
+    testImplementation 'com.astroreen:jhin-plugin-sessions:0.2.0'
+    testImplementation 'org.xerial:sqlite-jdbc:3.50.1.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }

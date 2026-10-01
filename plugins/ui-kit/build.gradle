@@ -1,4 +1,4 @@
-// Jhin plugin module: ui-kit (scaffolded in T4, logic lands in later tasks).
+// Jhin plugin module: ui-kit (API-only UI building blocks: UiNode, Ui).
 apply from: "${rootDir}/../../gradle/plugin-conventions.gradle"
 
 group = 'com.astroreen'
@@ -6,4 +6,10 @@ version = '0.2.0'
 
 base {
     archivesName = 'jhin-plugin-ui-kit'
+}
+
+dependencies {
+    // Unit tests need the JUnit platform launcher at runtime. Stays out of the
+    // plugin jar (testRuntimeOnly is not part of runtimeClasspath).
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }

@@ -1,0 +1,1 @@
+{"id":"sessions","node":{"type":"screen","title":"Sessions","body":{"type":"container","direction":"column","gap":12,"padding":16,"children":[{"type":"text","text":"Sessions","style":"h2"},{"type":"list","items":[{"type":"card","title":"t36","children":[{"type":"text","text":"/tmp","style":"mono"}]}]},{"type":"list","id":"activity","items":["No activity yet."]}]}}}

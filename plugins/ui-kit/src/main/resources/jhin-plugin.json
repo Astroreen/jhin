@@ -1,0 +1,10 @@
+{
+  "id": "jhin.ui-kit",
+  "version": "0.2.0",
+  "apiVersion": 1,
+  "name": "UI Kit",
+  "description": "API-only UI building blocks: UiNode and the Ui fluent builder over the SDUI primitive catalog.",
+  "mainClass": "com.astroreen.jhin.plugin.uikit.UiKitPlugin",
+  "exports": ["com.astroreen.jhin.plugin.uikit"],
+  "requires": []
+}

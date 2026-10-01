@@ -1,0 +1,12 @@
+event: frame
+data: {"node":{"type":"text","text":"hello","id":"ev-1","style":"body","bold":true}}
+
+event: frame
+data: {"node":{"type":"text","text":"","id":"msg-2","style":"body"}}
+
+event: frame
+data: {"patch":{"id":"msg-2","props":{"text":"Hi"}}}
+
+event: frame
+data: {"patch":{"id":"msg-2","props":{"text":"Hi"}}}
+
