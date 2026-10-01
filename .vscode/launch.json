@@ -1,0 +1,54 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Kernel: Debug",
+      "type": "java",
+      "request": "launch",
+      "mainClass": "com.astroreen.jhin.kernel.KernelMain",
+      "projectName": "kernel",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "shortenCommandLine": "argfile",
+      "env": {
+        "PATH": "${env:HOME}/.nix-profile/bin:${env:PATH}"
+      }
+    },
+    {
+      "name": "Kernel: Attach (:5005)",
+      "type": "java",
+      "request": "attach",
+      "hostName": "localhost",
+      "port": 5005
+    },
+    {
+      "name": "Frontend: Debug Linux",
+      "type": "dart",
+      "request": "launch",
+      "program": "frontend/lib/main.dart",
+      "deviceId": "linux"
+    },
+    {
+      "name": "Frontend: Debug Web (:8080)",
+      "type": "dart",
+      "request": "launch",
+      "program": "frontend/lib/main.dart",
+      "deviceId": "web-server",
+      "toolArgs": ["--web-port=8080"]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full Stack: Kernel + Linux UI",
+      "configurations": [
+        "Kernel: Debug",
+        "Frontend: Debug Linux"
+      ],
+      "stopAllOnExit": true,
+      "presentation": {
+        "group": "fullstack",
+        "order": 1
+      }
+    }
+  ]
+}

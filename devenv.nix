@@ -149,11 +149,18 @@ in
     frontend-runp.exec = "cd frontend && flutter run -d linux";
     frontend-runr.exec = "cd frontend && flutter run -d web-server --web-port 8080";
 
-    generate-vscode-settings.exec = ''
-      # Generates .vscode/settings.json with the current nix store paths.
+    # Generates .vscode/settings.json for the root composite build (T41).
     # VSCode reads it as workspace settings; the file is .gitignore-d (the
     # paths change on every update). Written idempotently (mktemp + cmp -s):
     # the file is replaced only when the content differs.
+    #
+    # The Java importer is pointed at the root composite: the workspace root
+    # is a Gradle composite (settings.gradle with the sdk, kernel and eleven
+    # plugin included builds), so java.import.gradle.enabled imports that one
+    # root build and everything it includes. java.import.exclusions keeps
+    # build outputs (**/dist/**, **/.gradle_home/**) and the Flutter tree
+    # (**/frontend/**) out of the Java importer.
+    generate-vscode-settings.exec = ''
     mkdir -p .vscode
     settings_tmp=$(mktemp)
     cat > "$settings_tmp" <<EOF

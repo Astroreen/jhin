@@ -1,0 +1,17 @@
+# T41 QA - launch.json path assertions
+# The paths the launch configurations name must exist:
+#   com.astroreen.jhin.kernel.KernelMain -> kernel/src/main/java/com/astroreen/jhin/kernel/KernelMain.java
+#   frontend/lib/main.dart (program of both Frontend configurations)
+# Validator: parse launch.json with jq, then assert every .program file
+# and the .mainClass source file exist (FQN dots mapped to a path under
+# kernel/src/main/java).
+#
+$ bash /tmp/opencode/t41-validate.sh .vscode/launch.json
+ok: .vscode/launch.json parses as JSON
+ok: program exists: frontend/lib/main.dart
+ok: program exists: frontend/lib/main.dart
+ok: mainClass com.astroreen.jhin.kernel.KernelMain -> kernel/src/main/java/com/astroreen/jhin/kernel/KernelMain.java
+exit: 0
+#
+$ test -f kernel/src/main/java/com/astroreen/jhin/kernel/KernelMain.java && test -f frontend/lib/main.dart
+exit: 0

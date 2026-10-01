@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "redhat.java",
+    "vscjava.vscode-java-pack",
+    "vscjava.vscode-gradle",
+    "dgileadi.java-decompiler",
+    "dart-code.dart-code",
+    "dart-code.flutter",
+    "mkhl.direnv",
+    "jnoortheen.nix-ide"
+  ]
+}
