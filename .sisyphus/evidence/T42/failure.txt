@@ -1,0 +1,36 @@
+== T42 failure QA: mutated snippet must fail compilation ==
+
+Mutation (outside docs/, real docs untouched):
+  source:  /tmp/opencode/t42/plugin-dev-mutated.md  (copy of docs/plugin-dev.md)
+  change:  RouteExample.greet calls req.nonexistentMethod() instead of req.pathParams()
+
+$ python3 scripts/docs-check/extract_snippets.py -o scripts/docs-check/build/extracted-mutated /tmp/opencode/t42/plugin-dev-mutated.md
+/tmp/opencode/t42/plugin-dev-mutated.md: 12 java block(s)
+  block 01 (line 76) -> RouteExample.java [compilation unit]
+  block 02 (line 106) -> FilterTlsExample.java [compilation unit]
+  block 03 (line 152) -> MigrationExample.java [compilation unit]
+  block 04 (line 211) -> StreamPreambleExample.java [compilation unit]
+  block 05 (line 269) -> CliExample.java [compilation unit]
+  block 06 (line 301) -> GreetingApi.java [compilation unit]
+  block 07 (line 311) -> GreetingPlugin.java [compilation unit]
+  block 08 (line 346) -> ConsumerPlugin.java [compilation unit]
+  block 09 (line 410) -> ToolProviderExample.java [compilation unit]
+  block 10 (line 473) -> GuardExample.java [compilation unit]
+  block 11 (line 498) -> TransformerExample.java [compilation unit]
+  block 12 (line 523) -> InterceptorExample.java [compilation unit]
+total: 12 java block(s), 0 wrapped, written to scripts/docs-check/build/extracted-mutated
+extract exit: 0
+
+$ JHIN_SNIPPETS_DIR=build/extracted-mutated ./gradlew -p scripts/docs-check compileJava --console=plain
+/home/astroreen/Documents/jhin/scripts/docs-check/build/extracted-mutated/RouteExample.java:17: error: cannot find symbol
+        String name = req.nonexistentMethod().getOrDefault("name", "world");
+                         ^
+  symbol:   method nonexistentMethod()
+  location: variable req of type HttpRequest
+1 error
+Execution failed for task ':compileJava'.
+> Compilation failed; see the compiler output below.
+  /home/astroreen/Documents/jhin/scripts/docs-check/build/extracted-mutated/RouteExample.java:17: error: cannot find symbol
+
+compileJava exit: 1 (expected failure)
+error names: cannot find symbol / method nonexistentMethod()

@@ -1,0 +1,13 @@
+// Standalone QA build for the documentation snippets (T42).
+// Deliberately NOT part of the root composite build: it exists only to compile
+// the ```java blocks extracted from the docs by extract_snippets.py.
+rootProject.name = 'jhin-docs-check'
+
+// The plugin contract the snippets compile against.
+includeBuild '../../sdk'
+
+// The agent SPI (ToolProvider, ToolCallGuard, ...) plus the builds its own
+// compile-only dependencies substitute from.
+includeBuild '../../plugins/agent'
+includeBuild '../../plugins/sessions'
+includeBuild '../../plugins/llm'

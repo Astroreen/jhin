@@ -1,0 +1,9 @@
+== T42 cyrillic check (docs must be English) ==
+
+$ rg -c '[А-Яа-я]' docs/ README.md
+(no output above: 0 files with matches)
+rg exit: 1 (no matches)
+
+$ rg -o '[А-Яа-я]' docs/ README.md | wc -l
+0
+cyrillic count: 0
