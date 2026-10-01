@@ -1,0 +1,21 @@
+T44 web interop tear-off fix — QA evidence
+Date: 2026-10-01
+Base: 6959431 build: assemble the release bundle with a dist task
+
+DIFF (frontend/lib/core/sse/sse_client_web.dart:23)
+-  headers.forEach(requestHeaders.append);
++  headers.forEach((name, value) => requestHeaders.append(name, value));
+
+Other interop tear-offs in frontend/lib: NONE.
+(sse_client_io.dart:26 `headers.forEach(request.headers.set)` is dart:io —
+legal tear-off, left untouched by design.)
+
+QA
+1. cd frontend && flutter analyze        -> exit 0 (No issues found)
+2. flutter build web --release           -> exit 0 (Built build/web)
+3. flutter test                          -> exit 0 (All tests passed! 135)
+4. ./gradlew dist (repo root)            -> exit 0 (BUILD SUCCESSFUL)
+   dist/frontend/web/ ships: index.html, main.dart.js, flutter.js,
+   flutter_bootstrap.js, flutter_service_worker.js, canvaskit/*, icons/*,
+   manifest.json, version.json, favicon.png — all listed in regenerated
+   dist/MANIFEST. dist/ is gitignored; nothing of it committed.

@@ -20,7 +20,7 @@ Future<Stream<List<int>>> _open(
   Map<String, String> headers = const {},
 }) async {
   final requestHeaders = web.Headers();
-  headers.forEach(requestHeaders.append);
+  headers.forEach((name, value) => requestHeaders.append(name, value));
   final abort = web.AbortController();
   final response = await web.window
       .fetch(
