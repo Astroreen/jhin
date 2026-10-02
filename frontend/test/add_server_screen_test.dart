@@ -89,13 +89,126 @@ void main() {
       await tester.tap(find.byKey(const Key('connect-button')));
       await tester.pumpAndSettle();
 
-      expect(probed, hasLength(1));
+      expect(probed,
+          ['https://down.example:8443', 'http://down.example:8443']);
       expect(done, isFalse);
       final errorText =
           tester.widget<Text>(find.byKey(const Key('connect-error'))).data;
       expect(errorText, contains('connection refused'));
       expect(await storage.readProfiles(), isEmpty);
       expect(await storage.readActiveProfileId(), isNull);
+    });
+
+    testWidgets('https failure falls back to http and asks before storing an '
+        'insecure profile', (tester) async {
+      ServerProfile? done;
+      await tester.pumpWidget(wrap(AddServerScreen(
+        storage: storage,
+        probe: (url) async {
+          probed.add(url);
+          if (url.startsWith('https://')) {
+            throw Exception('HandshakeException: WRONG_VERSION_NUMBER');
+          }
+          return ProbeResult(health: okHealth, certFingerprint: null);
+        },
+        onDone: (profile) => done = profile,
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.byKey(const Key('url-field')), 'https://home.example:8444');
+      await tester.tap(find.byKey(const Key('connect-button')));
+      await tester.pumpAndSettle();
+
+      expect(probed, ['https://home.example:8444', 'http://home.example:8444']);
+      expect(find.text('Insecure connection'), findsOneWidget);
+      expect(await storage.readProfiles(), isEmpty);
+
+      await tester.tap(find.byKey(const Key('insecure-continue')));
+      await tester.pumpAndSettle();
+
+      expect(done, isNotNull);
+      final profiles = await storage.readProfiles();
+      expect(profiles, hasLength(1));
+      expect(profiles.single.url, 'http://home.example:8444');
+      expect(profiles.single.certFingerprint, isNull);
+      expect(await storage.readActiveProfileId(), profiles.single.id);
+    });
+
+    testWidgets('cancelling the insecure prompt stores nothing', (tester) async {
+      await tester.pumpWidget(wrap(AddServerScreen(
+        storage: storage,
+        probe: (url) async {
+          probed.add(url);
+          if (url.startsWith('https://')) {
+            throw Exception('HandshakeException: WRONG_VERSION_NUMBER');
+          }
+          return ProbeResult(health: okHealth, certFingerprint: null);
+        },
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.byKey(const Key('url-field')), 'https://home.example:8444');
+      await tester.tap(find.byKey(const Key('connect-button')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('insecure-cancel')));
+      await tester.pumpAndSettle();
+
+      expect(await storage.readProfiles(), isEmpty);
+      expect(await storage.readActiveProfileId(), isNull);
+    });
+
+    testWidgets('http failure falls back to https without prompting',
+        (tester) async {
+      ServerProfile? done;
+      await tester.pumpWidget(wrap(AddServerScreen(
+        storage: storage,
+        probe: (url) async {
+          probed.add(url);
+          if (url.startsWith('http://')) {
+            throw Exception('connection closed');
+          }
+          return ProbeResult(health: okHealth, certFingerprint: 'EE:FF');
+        },
+        onDone: (profile) => done = profile,
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.byKey(const Key('url-field')), 'http://home.example:8444');
+      await tester.tap(find.byKey(const Key('connect-button')));
+      await tester.pumpAndSettle();
+
+      expect(probed, ['http://home.example:8444', 'https://home.example:8444']);
+      expect(find.text('Insecure connection'), findsNothing);
+      expect(done, isNotNull);
+      final profiles = await storage.readProfiles();
+      expect(profiles.single.url, 'https://home.example:8444');
+      expect(profiles.single.certFingerprint, 'EE:FF');
+    });
+
+    testWidgets('both schemes failing shows a TLS hint', (tester) async {
+      await tester.pumpWidget(wrap(AddServerScreen(
+        storage: storage,
+        probe: (url) async {
+          probed.add(url);
+          throw Exception('HandshakeException: WRONG_VERSION_NUMBER');
+        },
+      )));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+          find.byKey(const Key('url-field')), 'https://down.example:8444');
+      await tester.tap(find.byKey(const Key('connect-button')));
+      await tester.pumpAndSettle();
+
+      expect(probed, hasLength(2));
+      final errorText =
+          tester.widget<Text>(find.byKey(const Key('connect-error'))).data;
+      expect(errorText, contains('TLS handshake failed'));
+      expect(await storage.readProfiles(), isEmpty);
     });
 
     testWidgets('invalid url is rejected inline without probing',
