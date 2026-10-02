@@ -26,6 +26,13 @@ in
     jdk.package = jdk21;
     gradle = {
       enable = true;
+      # `pkgs.gradle_9` is only the `gradle` CLI convenience binary for this
+      # shell - every real build goes through `./gradlew`, which pins its
+      # own distribution per gradle-wrapper.properties (root and
+      # frontend/android are both pinned to 9.3.1; AGP 9.1.0 in
+      # frontend/android requires Gradle >=9.3.1, so that is the floor for
+      # the whole repo). Keep this package on the same 9.x line so a stray
+      # `gradle` invocation doesn't spin up yet another daemon version.
       package = pkgs.gradle_9;
     };
   };
