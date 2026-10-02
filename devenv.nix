@@ -16,6 +16,13 @@
 let
   jdk21 = pkgs.openjdk21;
   jdk17 = pkgs.jdk17;
+
+  # Kernel listener port. The kernel resolves the port as
+  # JHIN_KERNEL_PORT (this variable) > config.json `kernel.port` > 8443,
+  # so this is the highest-precedence knob short of a `--server.port`
+  # argument. 8443 collides with the Nextcloud AIO mastercontainer on this
+  # machine, hence the 8444 default here.
+  jhinPort = "8444";
 in
 {
   # Java 21 + Gradle 9 for the composite build (sdk, kernel, plugins/*).
@@ -57,6 +64,9 @@ in
 
   env = {
     JDK21_HOME = jdk21.home;
+
+    # Kernel listener port (see the `jhinPort` binding above).
+    JHIN_KERNEL_PORT = jhinPort;
 
     # Flutter Android builds (SDK location on the dev machine).
     ANDROID_HOME = "${builtins.getEnv "HOME"}/Android/Sdk";

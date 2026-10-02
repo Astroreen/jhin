@@ -95,7 +95,9 @@ The boot sequence of `KernelBoot` runs in ten steps; steps 1–7 are covered by
 1. Resolve `JHIN_HOME` (default `~/.jhin`) and materialize its owner-only
    subdirectories (`data/`, `plugins/`, `keystore/`, `logs/`).
 2. Load `config.json` and build the kernel's own configuration view from the
-   `kernel` section (listener `address` and `port` live there).
+   `kernel` section (listener `address` and `port` live there). Each key
+   resolves as environment variable > `config.json` > default: the port is
+   read from `JHIN_KERNEL_PORT`, then `kernel.port`, then `8443`.
 3. Open the shared SQLite file and its write queue.
 4. Apply the kernel migrations (the `_jhin_*` tables).
 5. Seed the bundled plugin jars into the home plugin directory (decision table
@@ -109,8 +111,8 @@ The boot sequence of `KernelBoot` runs in ten steps; steps 1–7 are covered by
    listener speaks plain HTTP; when no filter is registered the host logs
    `SECURITY: no HTTP filter registered — this server is fully open …`.
 9. Start the web server on the configured address and port (default
-   `0.0.0.0:8443`) with the collected registries supplied as pre-built
-   singletons.
+   `0.0.0.0:8443`; a `--server.port` argument overrides the resolved port)
+   with the collected registries supplied as pre-built singletons.
 10. Run the `onStarted` hooks once the listener is up. On shutdown, stop
     everything in reverse order: `onShutdown` hooks and `stop()` in reverse
     load order, then the stream registry, then the database with its write
