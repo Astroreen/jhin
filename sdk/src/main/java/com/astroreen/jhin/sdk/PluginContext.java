@@ -59,6 +59,24 @@ public interface PluginContext {
     com.astroreen.jhin.sdk.stream.StreamRegistry streams();
 
     /**
+     * The scheduler seam for deferred and periodic work. Called to run
+     * one-shot or repeating work on the host-owned executor; see
+     * {@link com.astroreen.jhin.sdk.sched.SchedulerRegistry} for the runtime
+     * contract (a duplicate name replaces the previous task, cancel is
+     * idempotent, a throwing task is logged and swallowed, everything is
+     * dropped at host shutdown).
+     *
+     * <p>A default method keeps contexts compiled against earlier revisions
+     * of this interface loadable — the plugin contract level stays at
+     * {@link ApiVersion#CURRENT}; a context that does not implement the seam
+     * throws {@link UnsupportedOperationException} on first use.
+     */
+    default com.astroreen.jhin.sdk.sched.SchedulerRegistry sched() {
+        throw new UnsupportedOperationException(
+                "sched() is not available on this context implementation");
+    }
+
+    /**
      * CLI extension registry. Called when the plugin adds host commands.
      */
     com.astroreen.jhin.sdk.cli.CliRegistry cli();

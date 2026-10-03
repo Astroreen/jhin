@@ -1,0 +1,20 @@
+T52 task-failure evidence
+
+--- health after the throwing task ran for ~2 s ---
+{"status":"ok","kernel":"0.2.0","api":1,"plugins":[{"id":"jhin.reload","version":"0.2.0","name":"Reload"},{"id":"jhin.sched-failure","version":"0.1.0","name":"Sched failure probe"}],"failed":[]}
+--- kernel log lines about the failing task ---
+19:56:31.884 [jhin-sched-1] WARN com.astroreen.jhin.kernel.sched.SchedulerRegistryImpl -- task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:32.185+03:00  WARN 318666 --- [   jhin-sched-1] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:32.484+03:00  WARN 318666 --- [   jhin-sched-1] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:32.784+03:00  WARN 318666 --- [   jhin-sched-2] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:33.084+03:00  WARN 318666 --- [   jhin-sched-2] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:33.384+03:00  WARN 318666 --- [   jhin-sched-2] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:33.684+03:00  WARN 318666 --- [   jhin-sched-2] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:33.984+03:00  WARN 318666 --- [   jhin-sched-2] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:34.284+03:00  WARN 318666 --- [   jhin-sched-2] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:34.584+03:00  WARN 318666 --- [   jhin-sched-2] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:34.884+03:00  WARN 318666 --- [   jhin-sched-2] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:35.184+03:00  WARN 318666 --- [   jhin-sched-2] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+2026-10-03T19:56:35.484+03:00  WARN 318666 --- [   jhin-sched-2] c.a.j.k.sched.SchedulerRegistryImpl      : task sched-failure failed: java.lang.RuntimeException: deliberate task failure
+--- the host answered 200 after the failures ---
+"status":"ok"

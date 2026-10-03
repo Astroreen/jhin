@@ -187,9 +187,9 @@ public final class KernelBoot implements AutoCloseable {
 
     /**
      * Closes everything this boot owns in the shutdown order of step 10: the
-     * plugin life cycle (on-shutdown hooks, {@code stop()} and the class
-     * loaders), the stream registry, then the database with its write queue.
-     * Idempotent.
+     * plugin life cycle (on-shutdown hooks, {@code stop()}, the scheduler
+     * join and the class loaders), the stream registry, then the database
+     * with its write queue. Idempotent.
      */
     @Override
     public void close() {

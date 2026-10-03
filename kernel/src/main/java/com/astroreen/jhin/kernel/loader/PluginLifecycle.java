@@ -15,7 +15,9 @@
  * through the context are collected and run later: {@link #runStartedHooks()}
  * in load order once the host is up, and on {@link #shutdown()} first the
  * on-shutdown hooks (load order), then {@code stop()} in reverse load order,
- * then the loaders — every step guarded so one failure cannot abort the rest.
+ * then the scheduler join (every scheduled task cancelled, the shared
+ * executor joined with a bounded wait), then the loaders — every step guarded
+ * so one failure cannot abort the rest.
  */
 package com.astroreen.jhin.kernel.loader;
 
@@ -26,6 +28,7 @@ import com.astroreen.jhin.kernel.db.Database;
 import com.astroreen.jhin.kernel.db.DbAccessImpl;
 import com.astroreen.jhin.kernel.db.MigrationBookkeeper;
 import com.astroreen.jhin.kernel.http.HttpRegistryImpl;
+import com.astroreen.jhin.kernel.sched.SchedulerRegistryImpl;
 import com.astroreen.jhin.kernel.services.ServiceRegistryImpl;
 import com.astroreen.jhin.kernel.stream.StreamRegistryImpl;
 import com.astroreen.jhin.sdk.JhinPlugin;
@@ -74,6 +77,12 @@ public final class PluginLifecycle {
     private final ClassLoader kernelLoader;
     private final Function<PluginRegistry, KernelInfo> kernelInfoFactory;
     private final CommandBook commandBook = new CommandBook();
+
+    /**
+     * The shared scheduler seam handed to every context, created with the
+     * life cycle (host start) and joined during {@link #shutdown()}.
+     */
+    private final SchedulerRegistryImpl scheduler = new SchedulerRegistryImpl();
 
     /** Started plugins in load order. */
     private final List<Started> started = new ArrayList<>();
@@ -227,7 +236,11 @@ public final class PluginLifecycle {
 
     /**
      * Stops everything this lifecycle owns: the on-shutdown hooks in load * order, then {@link JhinPlugin#stop()} in reverse load order, then the
-     * class loaders in reverse load order. Every step is guarded so one * failure cannot abort the rest. Idempotent.
+     * scheduler join (tasks cancelled, executor joined with a bounded wait),
+     * then the class loaders in reverse load order — the scheduler dies
+     * before the loaders so a still-running task never touches a closed
+     * loader. Every step is guarded so one failure cannot abort the rest.
+     * Idempotent.
      */
     public void shutdown() {
         synchronized (started) {
@@ -254,9 +267,20 @@ public final class PluginLifecycle {
                 log.warn("stop of {} failed: {}", entry.id(), reasonOf(failure), failure);
             }
         }
+        scheduler.close();
         for (int i = started.size() - 1; i >= 0; i--) {
             closeQuietly(started.get(i).loader(), started.get(i).id());
         }
+    }
+
+    /**
+     * The shared scheduler seam handed to every context. Package-private for
+     * the shutdown tests.
+     *
+     * @return the shared scheduler registry
+     */
+    SchedulerRegistryImpl scheduler() {
+        return scheduler;
     }
 
     /**
@@ -295,7 +319,7 @@ public final class PluginLifecycle {
                 new ConfigViewImpl(id, config.section(id)),
                 services, http,
                 new DbAccessImpl(id, database, bookkeeper),
-                streams, commandBook,
+                streams, scheduler, commandBook,
                 kernelInfo);
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(loader);

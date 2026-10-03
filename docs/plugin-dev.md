@@ -47,7 +47,7 @@ fences below carry the compilable minimal variants.
 ## 2. PluginContext reference
 
 `JhinPlugin.start(PluginContext ctx)` receives the context once; it stays valid
-for the whole plugin lifetime. All twelve accessors, in the order they appear
+for the whole plugin lifetime. All thirteen accessors, in the order they appear
 in `sdk/src/main/java/com/astroreen/jhin/sdk/PluginContext.java`:
 
 | Method | Returns | What it is for |
@@ -60,6 +60,7 @@ in `sdk/src/main/java/com/astroreen/jhin/sdk/PluginContext.java`:
 | `http()` | `HttpRegistry` | routes, filters and TLS registration |
 | `db()` | `DbAccess` | migrations plus `read` / `write` work units over the shared SQLite schema |
 | `streams()` | `StreamRegistry` | publish events, subscribe, serve SSE with a replay preamble |
+| `sched()` | `SchedulerRegistry` | one-shot and periodic work on the host executor; see section 3.6 |
 | `cli()` | `CliRegistry` | host subcommands (`java -jar <kernel.jar> cli <name> …`) |
 | `kernel()` | `KernelInfo` | host facts: versions, home, loaded plugins |
 | `onStarted(Runnable)` | `void` | hook running once the HTTP server is listening |
@@ -287,6 +288,56 @@ public final class CliExample {
 Dispatched as `java -jar <kernel.jar> cli greet world`: plugins are loaded and
 `start()` runs, but the HTTP server never boots; the handler's return value is
 the process exit code.
+
+### 3.6 Scheduled work
+
+`ctx.sched()` hands your plugin the host scheduler: one shared executor for
+every plugin, created at host start (two daemon threads named
+`jhin-sched-1`/`jhin-sched-2`; the pool size is a host constant). Tasks are
+described by `com.astroreen.jhin.sdk.sched.TaskSpec` and identified by a name
+that is unique per host.
+
+```java
+package com.example.jhin;
+
+import com.astroreen.jhin.sdk.JhinPlugin;
+import com.astroreen.jhin.sdk.PluginContext;
+import com.astroreen.jhin.sdk.sched.TaskSpec;
+
+public final class SchedExample implements JhinPlugin {
+
+    @Override
+    public void start(PluginContext ctx) {
+        // one-shot: runs exactly once, 500 ms from now
+        ctx.sched().schedule(TaskSpec.oneShot("warmup", 500, this::warmUp));
+
+        // periodic: first run after 1 s, then every 30 s
+        ctx.sched().schedule(TaskSpec.periodic("sweep", 1_000, 30_000, this::sweep));
+    }
+
+    private void warmUp() { /* deferred work */ }
+
+    private void sweep() { /* repeating work */ }
+}
+```
+
+Semantics:
+
+- **Duplicate names replace.** Scheduling a name that is already taken cancels
+  the previous task and installs yours. `ctx.sched().names()` lists the
+  currently scheduled names.
+- **`cancel(name)` is idempotent.** It returns `true` when a scheduled task
+  was cancelled and `false` for an unknown or already-cancelled name; it never
+  throws. A currently running run is not interrupted — only its future runs
+  are dropped.
+- **A throwing task never kills the host.** The exception is logged (host log
+  line `task <name> failed: …`) and swallowed: a periodic task keeps its
+  schedule after a throwing run, a one-shot that throws is simply done.
+- **Shutdown drops everything.** During host shutdown the scheduler stops
+  accepting work after your `onShutdown` hooks and `stop()` have run, cancels
+  every task and joins the executor with a bounded wait of 5 seconds before
+  forcing the interrupt. Nothing you scheduled survives a restart; keep
+  durable state in the database, not in the schedule.
 
 ## 4. Plugin-to-plugin API recipe
 

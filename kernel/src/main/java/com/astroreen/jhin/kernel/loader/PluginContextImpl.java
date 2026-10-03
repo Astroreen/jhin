@@ -8,7 +8,8 @@
  * registry's {@code attributedTo} block, so route conflicts and refused
  * duplicate publications name the plugin, and the CLI view records the owner
  * in the shared command book. The stream view delegates to the shared stream
- * registry, whose contract carries no owner. Hooks registered through
+ * registry and the scheduler view to the shared scheduler registry, whose
+ * contracts carry no owner. Hooks registered through
  * {@link #onStarted(Runnable)} and {@link #onShutdown(Runnable)} are collected
  * here for {@link PluginLifecycle} to run at the right moments.
  */
@@ -29,6 +30,7 @@ import com.astroreen.jhin.sdk.http.FilterSpec;
 import com.astroreen.jhin.sdk.http.HttpRegistry;
 import com.astroreen.jhin.sdk.http.RouteSpec;
 import com.astroreen.jhin.sdk.http.TlsProvider;
+import com.astroreen.jhin.sdk.sched.SchedulerRegistry;
 import com.astroreen.jhin.sdk.stream.SsePreamble;
 import com.astroreen.jhin.sdk.stream.StreamEvent;
 import com.astroreen.jhin.sdk.stream.StreamRegistry;
@@ -55,6 +57,7 @@ public final class PluginContextImpl implements PluginContext {
     private final ServiceRegistry services;
     private final HttpRegistry http;
     private final StreamRegistry streams;
+    private final SchedulerRegistry scheduler;
     private final CliRegistry cli;
     private final KernelInfo kernel;
     private final List<Runnable> startedHooks = new ArrayList<>();
@@ -72,12 +75,14 @@ public final class PluginContextImpl implements PluginContext {
      * @param httpRegistry  the shared HTTP registry
      * @param db            database access bound to the plugin's table prefix
      * @param streamRegistry the shared stream registry
+     * @param schedulerRegistry the shared scheduler seam (one host executor)
      * @param commandBook   the shared CLI command book
      * @param kernel        the kernel facts handed to the plugin
      */
     PluginContextImpl(PluginManifest manifest, Logger log, Path dataDir, ConfigView config,
             ServiceRegistryImpl serviceRegistry, HttpRegistryImpl httpRegistry, DbAccess db,
-            StreamRegistryImpl streamRegistry, PluginLifecycle.CommandBook commandBook,
+            StreamRegistryImpl streamRegistry, SchedulerRegistry schedulerRegistry,
+            PluginLifecycle.CommandBook commandBook,
             KernelInfo kernel) {
         this.manifest = Objects.requireNonNull(manifest, "manifest");
         this.log = Objects.requireNonNull(log, "log");
@@ -87,6 +92,7 @@ public final class PluginContextImpl implements PluginContext {
         this.services = new ServicesFacade(serviceRegistry);
         this.http = new HttpFacade(httpRegistry);
         this.streams = new StreamsFacade(streamRegistry);
+        this.scheduler = Objects.requireNonNull(schedulerRegistry, "schedulerRegistry");
         this.cli = new CliFacade(commandBook);
         this.kernel = Objects.requireNonNull(kernel, "kernel");
     }
@@ -129,6 +135,17 @@ public final class PluginContextImpl implements PluginContext {
     @Override
     public StreamRegistry streams() {
         return streams;
+    }
+
+    /**
+     * The scheduler seam: the shared registry, its contract carries no owner
+     * (task names are unique per host, not per plugin).
+     *
+     * @return the shared scheduler registry
+     */
+    @Override
+    public SchedulerRegistry sched() {
+        return scheduler;
     }
 
     @Override
