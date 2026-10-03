@@ -5,6 +5,6 @@
   "name": "UI Kit",
   "description": "API-only UI building blocks: UiNode and the Ui fluent builder over the SDUI primitive catalog.",
   "mainClass": "com.astroreen.jhin.plugin.uikit.UiKitPlugin",
-  "exports": ["com.astroreen.jhin.plugin.uikit"],
+  "exports": ["com.astroreen.jhin.plugin.uikit", "com.astroreen.jhin.plugin.uikit.has"],
   "requires": []
 }

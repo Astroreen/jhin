@@ -1,0 +1,1 @@
+{"type":"screen","id":"s1","visible":true,"padding":8,"flex":1,"when":"showHint","title":"Sessions","appBar":{"type":"text","text":"bar"},"body":{"type":"container","direction":"column","gap":8,"align":"center","scroll":true,"children":[{"type":"text","text":"Sign in","style":"h2","bold":true,"color":"#112233"},"string child"]},"floatingAction":{"type":"button","label":"Go"}}

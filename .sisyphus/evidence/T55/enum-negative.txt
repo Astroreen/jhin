@@ -1,0 +1,55 @@
+T55 enum-negative probe — unknown literals throw at build time
+
+  ok: container().clip("nope") -> IllegalArgumentException: unknown clip literal: nope; expected one of antiAlias, antiAliasWithSaveLayer, hardEdge, none, softEdge
+  ok: container().clipBehavior("nope") -> IllegalArgumentException: unknown clipBehavior literal: nope; expected one of antiAlias, antiAliasWithSaveLayer, hardEdge, none, softEdge
+  ok: container().borderStyle("dashed") -> IllegalArgumentException: unknown borderStyle literal: dashed; expected one of none, solid
+  ok: container().align("middle") -> IllegalArgumentException: unknown align literal: middle; expected one of bottomCenter, bottomLeft, bottomRight, center, centerLeft, centerRight, topCenter, topLeft, topRight
+  ok: container().borderRadius("nope") -> IllegalArgumentException: borderRadius string must be a $radius token reference, got: nope
+  ok: container().shadow("nope") -> IllegalArgumentException: shadow string must be a token reference, got: nope
+  ok: container().direction("grid") -> IllegalArgumentException: unknown direction literal: grid; expected one of column, row
+  ok: container().fit("expand") -> IllegalArgumentException: unknown fit literal: expand; expected one of loose, tight
+  ok: container().mainAxisSize("nope") -> IllegalArgumentException: unknown mainAxisSize literal: nope; expected one of max, min
+  ok: container().mainAxisAlignment("nope") -> IllegalArgumentException: unknown mainAxisAlignment literal: nope; expected one of center, end, spaceAround, spaceBetween, spaceEvenly, start
+  ok: container().crossAxisAlignment("nope") -> IllegalArgumentException: unknown crossAxisAlignment literal: nope; expected one of baseline, center, end, start, stretch
+  ok: container().textDirection("nope") -> IllegalArgumentException: unknown textDirection literal: nope; expected one of ltr, rtl
+  ok: container().verticalDirection("nope") -> IllegalArgumentException: unknown verticalDirection literal: nope; expected one of down, up
+  ok: container().textBaseline("nope") -> IllegalArgumentException: unknown textBaseline literal: nope; expected one of alphabetic, ideographic
+  ok: container().overflow("nope") -> IllegalArgumentException: unknown overflow literal: nope; expected one of clip, ellipsis, fade, visible
+  ok: container().cursor("pointer") -> IllegalArgumentException: unknown cursor literal: pointer; expected one of alias, allScroll, cell, click, contextMenu, copy, forbidden, grab, grabbing, help, move, noDrop, none, precise, progress, resizeLeftRight, resizeUpDown, system, text, wait, zoomIn, zoomOut
+  ok: text().fontStyle("bold") -> IllegalArgumentException: unknown fontStyle literal: bold; expected one of italic, normal
+  ok: text().textAlign("nope") -> IllegalArgumentException: unknown textAlign literal: nope; expected one of center, end, justify, left, right, start
+  ok: text().textDecoration("strike") -> IllegalArgumentException: unknown textDecoration literal: strike; expected one of lineThrough, none, overline, underline
+  ok: text().textOverflow("nope") -> IllegalArgumentException: unknown textOverflow literal: nope; expected one of clip, ellipsis, fade, visible
+  ok: text().style("headline") -> IllegalArgumentException: unknown style literal: headline; expected one of body, caption, h1, h2, h3, mono, small
+  ok: text().textWidthBasis("nope") -> IllegalArgumentException: unknown textWidthBasis literal: nope; expected one of character, longestLine, parent
+  ok: button().style("nope") -> IllegalArgumentException: unknown style literal: nope; expected one of danger, primary, secondary, text
+  ok: progress().kind("nope") -> IllegalArgumentException: unknown kind literal: nope; expected one of circular, linear
+  ok: streamView().mode("nope") -> IllegalArgumentException: unknown mode literal: nope; expected one of append, replace
+  ok: image().fit("nope") -> IllegalArgumentException: unknown fit literal: nope; expected one of contain, cover, fill, fitHeight, fitWidth, none, scaleDown
+  ok: figure().shape("square") -> IllegalArgumentException: unknown shape literal: square; expected one of circle, rectangle, triangle
+  ok: nav().kind("menu") -> IllegalArgumentException: unknown kind literal: menu; expected one of bottom, drawer, rail, sidebar, tabs
+  ok: spacer().axis("diagonal") -> IllegalArgumentException: unknown axis literal: diagonal; expected one of horizontal, vertical
+  ok: form().autovalidateMode("nope") -> IllegalArgumentException: unknown autovalidateMode literal: nope; expected one of always, disabled, onUserInteraction
+  ok: input().keyboardType("nope") -> IllegalArgumentException: unknown keyboardType literal: nope; expected one of email, multiline, number, phone, text, url, visiblePassword
+  ok: input().keyboard("nope") -> IllegalArgumentException: unknown keyboard literal: nope; expected one of email, multiline, number, phone, text, url, visiblePassword
+  ok: input().textInputAction("nope") -> IllegalArgumentException: unknown textInputAction literal: nope; expected one of continueAction, done, go, join, newline, next, none, previous, route, search, send, unspecified
+  ok: input().textCapitalization("nope") -> IllegalArgumentException: unknown textCapitalization literal: nope; expected one of characters, none, sentences, words
+  ok: input().maxLengthEnforcement("nope") -> IllegalArgumentException: unknown maxLengthEnforcement literal: nope; expected one of enforced, none, truncateAfterCompositionEnds
+  ok: input().border("dashed") -> IllegalArgumentException: unknown border literal: dashed; expected one of none, outline, underline
+  ok: input().mouseCursor("pointer") -> IllegalArgumentException: unknown mouseCursor literal: pointer; expected one of alias, allScroll, cell, click, contextMenu, copy, forbidden, grab, grabbing, help, move, noDrop, none, precise, progress, resizeLeftRight, resizeUpDown, system, text, wait, zoomIn, zoomOut
+  ok: UiTokens.gradient(type=nope) -> IllegalArgumentException: unknown gradient.type literal: nope; expected one of linear, radial, sweep
+  ok: container().clip(null) -> IllegalArgumentException: unknown clip literal: null; expected one of antiAlias, antiAliasWithSaveLayer, hardEdge, none, softEdge
+  ok: container().clip("antiAlias") accepted
+  ok: container().mainAxisAlignment("spaceBetween") accepted
+  ok: container().borderRadius("$radius.lg") accepted
+  ok: text().style("caption") accepted
+  ok: nav().kind("sidebar") accepted
+  ok: image().fit("scaleDown") accepted
+  ok: input().border("outline") accepted
+  ok: UiTokens.gradient(type=linear) accepted
+  ok: UiTokens.spacing.md() == $spacing.md
+  ok: UiTokens.color.accent() == $color.accent
+  ok: UiTokens.radius.lg() == $radius.lg
+  ok: UiTokens.motion.fast() == $motion.fast
+  ok: escape hatch emits madeUpProp
+escape hatch: set("madeUpProp", 1) emitted — flagged as unstable, 0 occurrences expected in prop-keys.txt

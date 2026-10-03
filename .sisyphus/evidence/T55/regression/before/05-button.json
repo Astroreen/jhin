@@ -1,0 +1,1 @@
+{"type":"button","label":"Enroll","style":"primary","action":{"name":"enroll","method":"POST","path":"/ui/action/enroll"},"icon":"check","confirm":"Sure?"}
