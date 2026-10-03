@@ -1,0 +1,8 @@
+ok: :sdk:test green (BUILD SUCCESSFUL, transcript in test.txt)
+ok: parse-matrix.txt written (full X-Jhin-Client matrix, all expectations ok)
+ok: full header parses all four fields (api=2, version=1.4.0, schema=3, caps=[sse, stream])
+ok: negative.txt written (garbage fallbacks + scheduler contract probes)
+ok: garbage falls back to api=1/schema=1 and cancel("missing") is a false no-op
+ok: --fail probes passed: fallbacks and idempotent cancel hold
+ok: --fail probe: wrong expectation tripped as intended (see failprobe.txt)
+FAIL: --fail mode: intentional failure-path exit

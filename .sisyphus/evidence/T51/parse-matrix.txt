@@ -1,0 +1,58 @@
+T51 parse matrix — ClientInfo.parse(X-Jhin-Client)
+format: header -> api=<int> version='<str>' schema=<int> caps=<set>
+
+header: <absent>                               -> api=1 version='' schema=1 caps=[]
+  ok: <absent>: api
+  ok: <absent>: version
+  ok: <absent>: schema
+  ok: <absent>: caps
+header: ""                                     -> api=1 version='' schema=1 caps=[]
+  ok: "": api
+  ok: "": version
+  ok: "": schema
+  ok: "": caps
+header: "api=2; version=1.4.0; schema=3; caps=sse,stream" -> api=2 version='1.4.0' schema=3 caps=[stream, sse]
+  ok: "api=2; version=1.4.0; schema=3; caps=sse,stream": api
+  ok: "api=2; version=1.4.0; schema=3; caps=sse,stream": version
+  ok: "api=2; version=1.4.0; schema=3; caps=sse,stream": schema
+  ok: "api=2; version=1.4.0; schema=3; caps=sse,stream": caps
+header: "api=2"            (partial)           -> api=2 version='' schema=1 caps=[]
+  ok: "api=2"            (partial): api
+  ok: "api=2"            (partial): version
+  ok: "api=2"            (partial): schema
+  ok: "api=2"            (partial): caps
+header: "api=abc; schema=xyz" (garbage)        -> api=1 version='' schema=1 caps=[]
+  ok: "api=abc; schema=xyz" (garbage): api
+  ok: "api=abc; schema=xyz" (garbage): version
+  ok: "api=abc; schema=xyz" (garbage): schema
+  ok: "api=abc; schema=xyz" (garbage): caps
+header: "api=2; foo=bar"     (unknown key)     -> api=2 version='' schema=1 caps=[]
+  ok: "api=2; foo=bar"     (unknown key): api
+  ok: "api=2; foo=bar"     (unknown key): version
+  ok: "api=2; foo=bar"     (unknown key): schema
+  ok: "api=2; foo=bar"     (unknown key): caps
+header: ";;"                (empty segments)   -> api=1 version='' schema=1 caps=[]
+  ok: ";;"                (empty segments): api
+  ok: ";;"                (empty segments): version
+  ok: ";;"                (empty segments): schema
+  ok: ";;"                (empty segments): caps
+header: "api=2;"            (trailing separator) -> api=2 version='' schema=1 caps=[]
+  ok: "api=2;"            (trailing separator): api
+  ok: "api=2;"            (trailing separator): version
+  ok: "api=2;"            (trailing separator): schema
+  ok: "api=2;"            (trailing separator): caps
+header: "api=2;;version=1.4.0;;schema=3;;caps=sse" -> api=2 version='1.4.0' schema=3 caps=[sse]
+  ok: "api=2;;version=1.4.0;;schema=3;;caps=sse": api
+  ok: "api=2;;version=1.4.0;;schema=3;;caps=sse": version
+  ok: "api=2;;version=1.4.0;;schema=3;;caps=sse": schema
+  ok: "api=2;;version=1.4.0;;schema=3;;caps=sse": caps
+header: "api=-5; schema=-5"  (non-positive)    -> api=1 version='' schema=1 caps=[]
+  ok: "api=-5; schema=-5"  (non-positive): api
+  ok: "api=-5; schema=-5"  (non-positive): version
+  ok: "api=-5; schema=-5"  (non-positive): schema
+  ok: "api=-5; schema=-5"  (non-positive): caps
+header: "caps=SSE , Stream"  (case folding)    -> api=1 version='' schema=1 caps=[stream, sse]
+  ok: "caps=SSE , Stream"  (case folding): api
+  ok: "caps=SSE , Stream"  (case folding): version
+  ok: "caps=SSE , Stream"  (case folding): schema
+  ok: "caps=SSE , Stream"  (case folding): caps
