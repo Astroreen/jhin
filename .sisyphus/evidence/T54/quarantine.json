@@ -1,0 +1,31 @@
+{
+  "original": {
+    "schema": 9,
+    "app": "9.9.9",
+    "writtenAt": "2026-10-03T09:30:00Z",
+    "data": {
+      "profiles": [
+        {
+          "id": "future-1",
+          "label": "Future"
+        }
+      ],
+      "extra": true
+    }
+  },
+  "copy": {
+    "schema": 9,
+    "app": "9.9.9",
+    "writtenAt": "2026-10-03T09:30:00Z",
+    "data": {
+      "profiles": [
+        {
+          "id": "future-1",
+          "label": "Future"
+        }
+      ],
+      "extra": true
+    }
+  },
+  "quarantineList": []
+}

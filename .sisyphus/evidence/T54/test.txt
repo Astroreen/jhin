@@ -1,0 +1,36 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart
+00:00 +0: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner rules (docs/updates.md §3) rule 1: a key without an envelope is legacy schema 1 — wrapped and migrated
+00:00 +1: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner rules (docs/updates.md §3) rule 2: steps apply in list order (ordered)
+00:00 +2: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
+00:00 +3: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
+00:00 +4: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
+00:00 +5: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
+00:00 +6: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
+00:00 +7: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
+00:00 +8: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
+00:00 +9: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
+00:00 +10: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
+00:00 +11: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) step 2→3 seeds keybindings without clobbering an existing file
+00:00 +12: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures a schema-9 blob is quarantined and the original survives
+00:00 +13: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures a schema-9 blob is quarantined and the original survives
+00:00 +14: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) a quarantined key migrates on a later healthy run and leaves the list
+00:00 +15: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) a backup left behind by a crash is restored before migrating
+00:00 +16: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) a fresh store is seeded and the run never throws
+00:00 +17: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope encode/decode round-trips a map payload
+00:00 +18: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope encode/decode round-trips list, string and null payloads
+00:00 +19: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope a JSON array without an envelope is legacy schema 1
+00:00 +20: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope a non-JSON raw string is legacy schema 1 carrying the raw value
+00:00 +21: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope a JSON object without schema/data is legacy schema 1
+00:00 +22: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope malformed JSON never throws and degrades to legacy
+00:00 +23: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope null means the key is absent
+00:00 +24: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope an envelope with a non-int schema degrades to legacy
+00:00 +25: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoreKeys bookkeeping keys are recognized
+00:00 +26: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoreKeys quarantine copy keys carry the schema
+00:00 +27: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) profiles are written enveloped at the current schema
+00:00 +28: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) activeProfileId is written enveloped and reads back
+00:00 +29: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) a legacy bare-string activeProfileId still reads
+00:00 +30: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) a legacy un-enveloped profiles blob still reads with identical values
+00:00 +31: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) malformed stored JSON never throws out of the store API
+00:00 +32: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) the secure backend is never enveloped
+00:00 +33: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) readData/writeData give every non-secure key the enveloped path
+00:00 +34: All tests passed!

@@ -4,15 +4,26 @@ import 'boot/add_server_screen.dart';
 import 'boot/screen_renderer.dart';
 import 'boot/server_profiles_screen.dart';
 import 'boot/sdui_host.dart';
+import 'boot/version_gate.dart';
 import 'core/api/jhin_transport.dart';
 import 'core/auth/app_storage.dart';
 import 'core/tls/tls_trust.dart';
 import 'design/theme.dart';
 import 'sdui/sdui_runtime.dart';
+import 'store/migrations/migration_runner.dart';
+import 'store/migrations/store_migrations.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const JhinApp(createRenderer: createSduiRuntime));
+  final storage = AppStorage();
+  // Rule 5 (docs/updates.md §3): the migration runner runs before anything
+  // reads state — the report is awaited before JhinApp builds.
+  final migration = await MigrationRunner().run(storage);
+  runApp(JhinApp(
+    storage: storage,
+    migration: migration,
+    createRenderer: createSduiRuntime,
+  ));
 }
 
 /// Builds the transport bound to one stored profile: base URL, TOFU-pinned
@@ -80,6 +91,7 @@ class JhinApp extends StatefulWidget {
     this.createTransport,
     this.probe,
     this.createRenderer,
+    this.migration,
   });
 
   /// Profile storage; defaults to the platform-backed [AppStorage].
@@ -94,6 +106,10 @@ class JhinApp extends StatefulWidget {
   /// Screen renderer factory for the bootstrap host; defaults to
   /// [createSduiRuntime] — the T22 SDUI runtime (§8).
   final RendererFactory? createRenderer;
+
+  /// The migration report `main()` awaited before building (§3 rule 5);
+  /// drives the version-gate banner for newer-schema quarantines.
+  final MigrationReport? migration;
 
   @override
   State<JhinApp> createState() => _JhinAppState();
@@ -113,6 +129,15 @@ class _JhinAppState extends State<JhinApp> {
   ScreenRenderer? _renderer;
   String? _rendererProfileId;
 
+  /// The minimum schema the server contract requires (§3 rule 6), extracted
+  /// from the bootstrap payload's `contract` block; null until one arrives.
+  int? _minSchema;
+
+  /// Dismissal state of the two version-gate surfaces (per session; the
+  /// quarantined data itself is never destroyed).
+  bool _newerDismissed = false;
+  bool _requiredDismissed = false;
+
   /// The generated design (§1): the ThemeData pair + tokens. Starts at the
   /// built-in defaults and is regenerated whenever a bootstrap payload
   /// arrives (via [RendererEnv.onTheme]).
@@ -120,12 +145,18 @@ class _JhinAppState extends State<JhinApp> {
 
   /// Regenerates the design from a bootstrap payload. The runtime fires
   /// this during build (the host hands the payload to the renderer), so the
-  /// rebuild is deferred past the current frame.
+  /// rebuild is deferred past the current frame. Also extracts the
+  /// contract's `minSchema` for the version gate (§3 rule 6).
   void _applyTheme(Map<String, dynamic> payload) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() {
         _design = JhinTheme.fromBootstrap(payload);
+        final contract = payload['contract'];
+        if (contract is Map) {
+          final minSchema = contract['minSchema'];
+          if (minSchema is int) _minSchema = minSchema;
+        }
       });
     });
   }
@@ -154,6 +185,43 @@ class _JhinAppState extends State<JhinApp> {
   @override
   Widget build(BuildContext context) {
     final active = _active;
+    final minSchema = _minSchema;
+    final updateRequired =
+        minSchema != null && StoreMigrations.current < minSchema;
+    final newerKeys = widget.migration?.newerQuarantined ?? const <String>[];
+    final showNewerBanner = newerKeys.isNotEmpty && !_newerDismissed;
+
+    Widget home;
+    if (!_ready) {
+      home = const Scaffold(body: Center(child: CircularProgressIndicator()));
+    } else if (updateRequired && !_requiredDismissed) {
+      // Rule 6: the "update required" surface — client-owned chrome, never
+      // destructive ("Continue anyway" proceeds on defaults).
+      home = VersionGate(
+        mode: VersionGateMode.updateRequired,
+        onDiskSchema: StoreMigrations.current,
+        minSchema: minSchema,
+        onDismiss: () => setState(() => _requiredDismissed = true),
+      );
+    } else if (active == null) {
+      home = ServerProfilesScreen(
+        storage: _storage,
+        probe: _probe,
+        addFirst: true,
+        onSwitch: _switchTo,
+        onProfilesChanged: _reload,
+      );
+    } else {
+      home = SduiHost(
+        key: ValueKey(active.id),
+        profile: active,
+        storage: _storage,
+        transport: _createTransport(active),
+        renderer: _rendererFor(active),
+        onOpenProfiles: _openProfiles,
+      );
+    }
+
     return MaterialApp(
       title: 'Jhin',
       navigatorKey: _navigatorKey,
@@ -164,24 +232,20 @@ class _JhinAppState extends State<JhinApp> {
         design: _design,
         child: child ?? const SizedBox.shrink(),
       ),
-      home: !_ready
-          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-          : active == null
-              ? ServerProfilesScreen(
-                  storage: _storage,
-                  probe: _probe,
-                  addFirst: true,
-                  onSwitch: _switchTo,
-                  onProfilesChanged: _reload,
-                )
-              : SduiHost(
-                  key: ValueKey(active.id),
-                  profile: active,
-                  storage: _storage,
-                  transport: _createTransport(active),
-                  renderer: _rendererFor(active),
-                  onOpenProfiles: _openProfiles,
-                ),
+      home: showNewerBanner
+          ? Scaffold(
+              body: Column(
+                children: [
+                  VersionGate(
+                    mode: VersionGateMode.newerVersion,
+                    quarantinedKeys: newerKeys,
+                    onDismiss: () => setState(() => _newerDismissed = true),
+                  ),
+                  Expanded(child: home),
+                ],
+              ),
+            )
+          : home,
     );
   }
 

@@ -1,0 +1,3 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart
+00:00 +0: MigrationRunner rules (docs/updates.md §3) rule 4: one failing key quarantines itself; other keys still migrate
+00:00 +1: All tests passed!

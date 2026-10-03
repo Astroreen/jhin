@@ -1,6 +1,7 @@
-import 'dart:convert';
 import 'dart:math' as math;
 
+import '../../store/migrations/store_migrations.dart';
+import '../../store/versioned_store.dart';
 import 'prefs_store.dart';
 import 'secure_store.dart';
 import 'string_store.dart';
@@ -92,34 +93,76 @@ class AppStorage {
       : _prefs = prefs ?? PrefsStringStore(),
         _secrets = secrets ?? SecureStringStore();
 
-  static const _profilesKey = 'jhin.profiles';
-  static const _activeProfileKey = 'jhin.activeProfileId';
+  static const _profilesKey = StoreKeys.profiles;
+  static const _activeProfileKey = StoreKeys.activeProfileId;
   static const _tokenKeyPrefix = 'jhin.profileToken.';
 
   final StringStore _prefs;
   final StringStore _secrets;
   final math.Random _random = math.Random();
 
+  /// Raw access to the non-secure backend — the migration runner's channel
+  /// for backups (`migration.backup:<key>`), quarantine copies and
+  /// enveloped commits (docs/updates.md §3). Raw values are stored verbatim.
+  Future<String?> readRaw(String key) => _prefs.read(key);
+
+  Future<void> writeRaw(String key, String value) => _prefs.write(key, value);
+
+  Future<void> deleteKey(String key) => _prefs.delete(key);
+
+  /// Writes [data] enveloped at the current schema (docs/updates.md §1).
+  /// Every non-secure key goes through this — profiles,
+  /// `activeProfileId`, `sessionState:<profileId>`, `appearance`,
+  /// `keybindings`, `commands.paletteHistory`, `migration.quarantine`.
+  /// The secure backend is never enveloped.
+  Future<void> writeEnvelope(
+    String key,
+    Object? data, {
+    int? schema,
+    String? app,
+  }) =>
+      _prefs.write(
+        key,
+        encodeStoredValue(
+          schema: schema ?? StoreMigrations.current,
+          app: app ?? kJhinAppVersion,
+          data: data,
+        ),
+      );
+
+  /// Reads [key]'s enveloped payload (or its legacy schema-1 value); null
+  /// when the key is absent. Malformed values never throw — they surface as
+  /// the raw legacy string.
+  Future<Object?> readData(String key) async =>
+      decodeStoredValue(await _prefs.read(key))?.data;
+
   /// All stored profiles (tokens hydrated from the secure backend).
+  /// Malformed stored values degrade to an empty list — never throws.
   Future<List<ServerProfile>> readProfiles() async {
     final raw = await _prefs.read(_profilesKey);
     if (raw == null || raw.isEmpty) {
       return const [];
     }
-    final decoded = jsonDecode(raw);
-    if (decoded is! List) {
+    try {
+      final data = decodeStoredValue(raw)?.data;
+      final items = data is List ? data : const [];
+      final profiles = <ServerProfile>[];
+      for (final item in items) {
+        if (item is! Map<String, dynamic>) {
+          continue;
+        }
+        try {
+          final profile = ServerProfile.fromJson(item);
+          final token = await _secrets.read(_tokenKeyPrefix + profile.id);
+          profiles.add(token == null ? profile : profile.copyWith(token: token));
+        } catch (_) {
+          // Malformed profile entry: skip it, never throw out of the store.
+        }
+      }
+      return profiles;
+    } catch (_) {
       return const [];
     }
-    final profiles = <ServerProfile>[];
-    for (final item in decoded) {
-      if (item is! Map<String, dynamic>) {
-        continue;
-      }
-      final profile = ServerProfile.fromJson(item);
-      final token = await _secrets.read(_tokenKeyPrefix + profile.id);
-      profiles.add(token == null ? profile : profile.copyWith(token: token));
-    }
-    return profiles;
   }
 
   /// Appends a new profile and persists it. Does not change the active
@@ -164,22 +207,39 @@ class AppStorage {
     }
   }
 
-  /// The active profile id, or null when none is selected.
-  Future<String?> readActiveProfileId() => _prefs.read(_activeProfileKey);
+  /// The active profile id, or null when none is selected. Reads both the
+  /// enveloped form and the legacy bare-string form; broken-JSON garbage
+  /// degrades to null — never throws.
+  Future<String?> readActiveProfileId() async {
+    final raw = await _prefs.read(_activeProfileKey);
+    final stored = decodeStoredValue(raw);
+    if (stored == null) return null;
+    if (!stored.hasEnvelope && raw != null && _looksLikeBrokenJson(raw)) {
+      return null;
+    }
+    final data = stored.data;
+    return data is String && data.isNotEmpty ? data : null;
+  }
 
-  /// Selects the active profile (persisted); null clears the selection.
+  /// Legacy bare-string values never start with a JSON structural char;
+  /// anything that does is broken JSON, not an id.
+  static bool _looksLikeBrokenJson(String raw) {
+    final first = raw.trimLeft().isEmpty ? '' : raw.trimLeft()[0];
+    return first == '{' || first == '[';
+  }
+
+  /// Selects the active profile (persisted enveloped); null clears it.
   Future<void> setActiveProfileId(String? id) async {
     if (id == null) {
       await _prefs.delete(_activeProfileKey);
       return;
     }
-    await _prefs.write(_activeProfileKey, id);
+    await writeEnvelope(_activeProfileKey, id);
   }
 
   Future<void> _saveProfiles(List<ServerProfile> profiles) async {
-    final encoded =
-        jsonEncode([for (final p in profiles) p.toJson(includeToken: false)]);
-    await _prefs.write(_profilesKey, encoded);
+    await writeEnvelope(
+        _profilesKey, [for (final p in profiles) p.toJson(includeToken: false)]);
   }
 
   Future<void> _writeToken(ServerProfile profile) async {

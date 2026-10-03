@@ -1,0 +1,2 @@
+$ grep -n "await MigrationRunner().run" frontend/lib/main.dart
+21:  final migration = await MigrationRunner().run(storage);
