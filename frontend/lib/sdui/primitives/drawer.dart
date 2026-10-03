@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -10,19 +11,20 @@ import '../ui_registry.dart';
 /// panel degrades to a visible placeholder instead of an empty frame.
 Widget buildDrawer(BuildContext context, UiNode node, RenderContext ctx) {
   final title = node.stringProp('title');
+  final tokens = JhinDesignScope.of(context).tokens;
   return Container(
     decoration: BoxDecoration(
       border: Border.all(color: Theme.of(context).dividerColor),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(tokens.radius.sm),
     ),
-    padding: const EdgeInsets.all(12),
+    padding: EdgeInsets.all(tokens.spacing.md),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (title != null && title.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: EdgeInsets.only(bottom: tokens.spacing.sm),
             child: Text(title,
                 style: const TextStyle(fontWeight: FontWeight.bold)),
           ),

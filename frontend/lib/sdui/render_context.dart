@@ -73,12 +73,15 @@ class RenderContext {
   final VoidCallback? onBack;
 
   /// Builds one node with patch overlays applied; every node goes through
-  /// the registry so `when`, interpolation and per-node error isolation
-  /// apply uniformly.
-  Widget build(BuildContext context, UiNode node) {
+  /// the registry so `when`, interpolation, `$token` resolution and
+  /// per-node error isolation apply uniformly.
+  ///
+  /// [flexParent] marks the node as a direct child of a `Flex`, enabling
+  /// the universal `flex`/`fit` wrap (§2.3 step 14).
+  Widget build(BuildContext context, UiNode node, {bool flexParent = false}) {
     final overlay = patches[node.id];
     final resolved =
         overlay == null ? node : node.copyWithProps(overlay);
-    return registry.build(context, resolved, this);
+    return registry.build(context, resolved, this, flexParent: flexParent);
   }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/widgets.dart';
 
+import '../design/theme.dart';
+
 /// Renders a bootstrap payload — or a standalone node — into widgets.
 ///
 /// This is the seam to the T22 SDUI runtime. T21 ships only
@@ -41,14 +43,14 @@ class GenericScreenRenderer implements ScreenRenderer {
         }
       }
     }
-    return _render(node ?? const {'type': 'text', 'text': ''});
+    return _render(context, node ?? const {'type': 'text', 'text': ''});
   }
 
   @override
   Widget buildNode(BuildContext context, Map<String, dynamic> node) =>
-      _render(_asMap(node) ?? const {'type': 'text', 'text': ''});
+      _render(context, _asMap(node) ?? const {'type': 'text', 'text': ''});
 
-  Widget _render(Map<String, dynamic> node) {
+  Widget _render(BuildContext context, Map<String, dynamic> node) {
     final children = <Widget>[];
     final title = node['title'];
     if (title is String && title.isNotEmpty) {
@@ -67,7 +69,7 @@ class GenericScreenRenderer implements ScreenRenderer {
       final value = node[key];
       final child = _asMap(value);
       if (child != null) {
-        children.add(_render(child));
+        children.add(_render(context, child));
       } else if (value is String && value.isNotEmpty) {
         children.add(Text(value));
       }
@@ -78,7 +80,7 @@ class GenericScreenRenderer implements ScreenRenderer {
         for (final item in value) {
           final child = _asMap(item);
           if (child != null) {
-            children.add(_render(child));
+            children.add(_render(context, child));
           } else if (item is String && item.isNotEmpty) {
             children.add(Text(item));
           }
@@ -87,7 +89,8 @@ class GenericScreenRenderer implements ScreenRenderer {
     }
     return SingleChildScrollView(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding:
+            EdgeInsets.all(JhinDesignScope.of(context).tokens.spacing.md),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

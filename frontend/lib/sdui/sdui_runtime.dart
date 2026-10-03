@@ -8,6 +8,7 @@ import '../boot/screen_renderer.dart';
 import '../core/api/jhin_transport.dart';
 import '../core/auth/app_storage.dart';
 import '../core/tls/tls_trust.dart';
+import '../design/theme.dart';
 import 'action_dispatcher.dart';
 import 'directives.dart';
 import 'render_context.dart';
@@ -32,6 +33,7 @@ class SduiRuntime extends ChangeNotifier
     this.createTransport,
     this.onOpenProfiles,
     this.onOpenUrl,
+    this.onTheme,
     UiRegistry? registry,
   }) : registry = registry ?? UiRegistry.standard() {
     final cached = profile?.cachedScreens;
@@ -59,6 +61,12 @@ class SduiRuntime extends ChangeNotifier
 
   /// Opens external URLs (`openUrl`); default is a no-op debug log.
   final void Function(String url)? onOpenUrl;
+
+  /// Fired whenever a bootstrap payload is ingested, so the app shell can
+  /// regenerate its theme from the payload's `theme`/`tokens`/`density`
+  /// (§1). May be called during build — the receiver must defer any
+  /// setState past the frame.
+  final void Function(Map<String, dynamic> payload)? onTheme;
 
   /// Primitive registry used for every node (§8.3).
   final UiRegistry registry;
@@ -152,6 +160,7 @@ class SduiRuntime extends ChangeNotifier
     }
     final toast = _toastText;
     if (toast != null) {
+      final tokens = JhinDesignScope.of(context).tokens;
       children.add(Positioned(
         left: 16,
         right: 16,
@@ -161,7 +170,7 @@ class SduiRuntime extends ChangeNotifier
           borderRadius: BorderRadius.circular(8),
           color: _toastColor(context, _toastStyle),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: EdgeInsets.all(tokens.spacing.md),
             child: Text(toast, style: const TextStyle(color: Colors.white)),
           ),
         ),
@@ -245,6 +254,9 @@ class SduiRuntime extends ChangeNotifier
       if (signature == _hostSignature) return;
       _hostSignature = signature;
     }
+    // The theme wire (§1): the app shell regenerates its ThemeData pair
+    // from the payload's `theme`/`tokens`/`density`.
+    onTheme?.call(payload);
     final endpoint = payload['screenEndpoint'];
     _screenEndpoint =
         endpoint is String && endpoint.isNotEmpty ? endpoint : null;

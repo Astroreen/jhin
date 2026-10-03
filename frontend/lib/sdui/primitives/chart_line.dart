@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -31,9 +32,9 @@ Widget buildChartLine(BuildContext context, UiNode node, RenderContext ctx) {
       chartLegend([
         for (final line in series) MapEntry(line.label, line.color),
       ]),
-      const SizedBox(height: 8),
+      SizedBox(height: JhinDesignScope.of(context).tokens.spacing.sm),
       SizedBox(
-        height: 160,
+        height: JhinDesignScope.of(context).tokens.chartHeight,
         child: CustomPaint(painter: LineChartPainter(series)),
       ),
     ],

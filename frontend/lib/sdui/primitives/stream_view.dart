@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/sse/sse_stream.dart';
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -194,12 +195,13 @@ class _StreamViewState extends State<_StreamView> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = JhinDesignScope.of(context).tokens;
     final children = <Widget>[
       if (_items.isEmpty)
         _empty(context)
       else
         ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 240),
+          constraints: BoxConstraints(maxHeight: tokens.streamListHeight),
           child: ListView.builder(
             controller: _scroll,
             shrinkWrap: true,

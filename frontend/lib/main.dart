@@ -7,6 +7,7 @@ import 'boot/sdui_host.dart';
 import 'core/api/jhin_transport.dart';
 import 'core/auth/app_storage.dart';
 import 'core/tls/tls_trust.dart';
+import 'design/theme.dart';
 import 'sdui/sdui_runtime.dart';
 
 void main() {
@@ -30,6 +31,7 @@ class RendererEnv {
     required this.transport,
     required this.createTransport,
     required this.onOpenProfiles,
+    this.onTheme,
   });
 
   /// Profile storage the runtime persists tokens and caches into.
@@ -46,6 +48,11 @@ class RendererEnv {
 
   /// Opens the client-owned profile surface (`openProfiles` directive).
   final VoidCallback onOpenProfiles;
+
+  /// Fired on every ingested bootstrap payload so the app shell can
+  /// regenerate its theme from the payload's `theme`/`tokens`/`density`
+  /// (§1). May fire during build; the receiver defers past the frame.
+  final void Function(Map<String, dynamic> payload)? onTheme;
 }
 
 /// Creates the screen renderer for one profile (the T22 seam of [SduiHost]).
@@ -58,6 +65,7 @@ ScreenRenderer createSduiRuntime(RendererEnv env) => SduiRuntime(
       profile: env.profile,
       createTransport: env.createTransport,
       onOpenProfiles: env.onOpenProfiles,
+      onTheme: env.onTheme,
     );
 
 /// App shell (§8.1): empty profile list → [ServerProfilesScreen] in
@@ -105,6 +113,23 @@ class _JhinAppState extends State<JhinApp> {
   ScreenRenderer? _renderer;
   String? _rendererProfileId;
 
+  /// The generated design (§1): the ThemeData pair + tokens. Starts at the
+  /// built-in defaults and is regenerated whenever a bootstrap payload
+  /// arrives (via [RendererEnv.onTheme]).
+  JhinTheme _design = JhinTheme.fallback();
+
+  /// Regenerates the design from a bootstrap payload. The runtime fires
+  /// this during build (the host hands the payload to the renderer), so the
+  /// rebuild is deferred past the current frame.
+  void _applyTheme(Map<String, dynamic> payload) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _design = JhinTheme.fromBootstrap(payload);
+      });
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -132,6 +157,13 @@ class _JhinAppState extends State<JhinApp> {
     return MaterialApp(
       title: 'Jhin',
       navigatorKey: _navigatorKey,
+      theme: _design.light,
+      darkTheme: _design.dark,
+      themeMode: _design.themeMode,
+      builder: (context, child) => JhinDesignScope(
+        design: _design,
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: !_ready
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : active == null
@@ -166,6 +198,7 @@ class _JhinAppState extends State<JhinApp> {
         transport: _createTransport(profile),
         createTransport: _createTransport,
         onOpenProfiles: _openProfiles,
+        onTheme: _applyTheme,
       ));
       _rendererProfileId = profile.id;
     }

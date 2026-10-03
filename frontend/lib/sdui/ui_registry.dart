@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../design/theme.dart';
+import '../design/tokens.dart';
 import 'expr.dart';
 import 'primitives/button.dart';
 import 'primitives/card.dart';
@@ -33,9 +35,11 @@ import 'ui_state.dart';
 /// Maps a node `type` to its widget builder (§8.3).
 ///
 /// [build] wraps every node with the universal semantics: `when` / `visible`
-/// hiding, `${…}` interpolation of string props, `padding`, and per-node
-/// error isolation — one bad node never kills the screen. An unknown type
-/// renders the muted `Unsupported UI element: <type>` card and never throws.
+/// hiding, `${…}` interpolation of string props, `$token` resolution
+/// (§2.2), the universal prop surface in the fixed wrapping order of §2.3,
+/// and per-node error isolation — one bad node never kills the screen. An
+/// unknown type renders the muted `Unsupported UI element: <type>` card and
+/// never throws.
 class UiRegistry {
   UiRegistry([Map<String, UiBuilder>? builders]) : _builders = {...?builders};
 
@@ -80,7 +84,18 @@ class UiRegistry {
 
   /// Builds one node. Applies the universal fields, then the type builder,
   /// isolating any failure to this node.
-  Widget build(BuildContext context, UiNode node, RenderContext ctx) {
+  ///
+  /// [flexParent] marks the node as a direct child of a `Flex` (row,
+  /// column, …): only then are `flex`/`fit` honored (§2.3 step 14) —
+  /// Flutter requires flex children to be direct children of a Flex, and
+  /// the client never crashes on server content, so a `flex` elsewhere
+  /// degrades silently.
+  Widget build(
+    BuildContext context,
+    UiNode node,
+    RenderContext ctx, {
+    bool flexParent = false,
+  }) {
     if (node.isUnsupported) {
       return _unsupportedCard(context, node.type, node.error);
     }
@@ -95,18 +110,119 @@ class UiRegistry {
     if (builder == null) {
       return _unsupportedCard(context, node.type, null);
     }
-    final interpolated = _interpolateNode(node, ctx);
+    final design = JhinDesignScope.of(context);
+    var prepared = _interpolateNode(node, ctx);
+    prepared = _resolveNodeTokens(prepared, design.tokens);
     Widget result;
     try {
-      result = builder(context, interpolated, ctx);
+      result = builder(context, prepared, ctx);
     } catch (error) {
       debugPrint('Jhin SDUI: failed to render "${node.type}": $error');
       return _unsupportedCard(context, node.type, '$error');
     }
-    final padding = parsePadding(interpolated.props['padding']);
+    return _applyUniversal(
+      context,
+      prepared,
+      result,
+      design,
+      ctx,
+      flexParent: flexParent,
+    );
+  }
+
+  /// The universal prop surface (§2.1), applied in the fixed wrapping order
+  /// of §2.3: text style → DecoratedBox → Padding(padding) →
+  /// ConstrainedBox → AspectRatio → Opacity → Transform → Clip → Align →
+  /// Tooltip → gesture → Semantics → Flexible/Expanded → Padding(margin).
+  ///
+  /// Deterministic and tested; every step degrades silently on malformed
+  /// props (§2.4).
+  static Widget _applyUniversal(
+    BuildContext context,
+    UiNode node,
+    Widget primitive,
+    JhinTheme design,
+    RenderContext ctx, {
+    required bool flexParent,
+  }) {
+    final tokens = design.tokens;
+    var result = primitive;
+
+    // 2. text style (text-bearing nodes).
+    final styling = _textStyling(node);
+    result = _applyTextStyle(result, styling);
+    final textBearing = result is Text;
+
+    // 3. DecoratedBox (color/gradient/border/borderRadius/shadow).
+    final decoration = _decoration(node, textBearing: textBearing);
+    if (decoration != null) {
+      result = DecoratedBox(decoration: decoration, child: result);
+    }
+
+    // 4. Padding (padding).
+    final padding = parsePadding(node.props['padding'], tokens: tokens);
     if (padding != null) {
       result = Padding(padding: padding, child: result);
     }
+
+    // 5. ConstrainedBox (min/max/w/h). On a text-bearing node `height` is
+    // the line-height multiple (consumed by the text style above), not a
+    // box constraint.
+    final constraints = _constraints(node, textBearing: textBearing);
+    if (constraints != null) {
+      result = ConstrainedBox(constraints: constraints, child: result);
+    }
+
+    // 6. AspectRatio.
+    final ratio = node.numProp('aspectRatio');
+    if (ratio != null && ratio > 0) {
+      result = AspectRatio(aspectRatio: ratio.toDouble(), child: result);
+    }
+
+    // 7. Opacity.
+    final opacity = node.numProp('opacity');
+    if (opacity != null && opacity != 1) {
+      result = Opacity(
+        opacity: opacity.toDouble().clamp(0.0, 1.0),
+        child: result,
+      );
+    }
+
+    // 8. Transform.
+    final transform = _transform(node.props['transform']);
+    if (transform != null) {
+      result = Transform(transform: transform, child: result);
+    }
+
+    // 9. Clip.
+    result = _applyClip(result, node, tokens);
+
+    // 10. Align (`alignment` is accepted as an alias).
+    final alignment =
+        _alignment(node.props['align'] ?? node.props['alignment']);
+    if (alignment != null) {
+      result = Align(alignment: alignment, child: result);
+    }
+
+    // 11. Tooltip.
+    final tooltip = node.stringProp('tooltip');
+    if (tooltip != null && tooltip.isNotEmpty) {
+      result = Tooltip(message: tooltip, child: result);
+    }
+
+    // 12. gesture wrapper.
+    result = _applyGesture(context, node, result, ctx);
+
+    // 13. Semantics.
+    result = _applySemantics(result, node);
+
+    // 14 + 15. Flexible/Expanded (flex/fit) and Padding(margin).
+    result = _applyFlexAndMargin(
+      result,
+      node,
+      tokens: tokens,
+      flexParent: flexParent,
+    );
     return result;
   }
 
@@ -140,6 +256,632 @@ class UiRegistry {
   static const Set<String> _interpolationExempt = {'id', 'when', 'pattern'};
 }
 
+// ---------------------------------------------------------------------------
+// $token resolution (§2.2)
+// ---------------------------------------------------------------------------
+
+/// Props whose string value is content, not a token reference: a leading
+/// `$` in a text/label/title is literal content (a price, a mention), and
+/// resolving it could only degrade the node. Structural props resolve.
+const Set<String> _tokenExempt = {
+  'id',
+  'when',
+  'pattern',
+  'text',
+  'label',
+  'title',
+  'subtitle',
+  'message',
+  'placeholder',
+  'hint',
+};
+
+/// Resolves `$token` string props client-side (§2.2): `$spacing.md` → 12,
+/// `$color.accent` → the palette color, … An unknown or failed lookup keeps
+/// the literal string and the node still renders — never throws.
+UiNode _resolveNodeTokens(UiNode node, JhinTokens tokens) {
+  final props = <String, dynamic>{};
+  node.props.forEach((key, value) {
+    props[key] =
+        _tokenExempt.contains(key) ? value : _resolveTokenValue(value, tokens);
+  });
+  return UiNode(type: node.type, props: props, children: node.children);
+}
+
+Object? _resolveTokenValue(Object? value, JhinTokens tokens) {
+  if (value is String) {
+    if (!value.startsWith('\$')) return value;
+    return tokens.resolveToken(value) ?? value;
+  }
+  if (value is Map) {
+    return {
+      for (final entry in value.entries)
+        entry.key: _tokenExempt.contains('${entry.key}')
+            ? entry.value
+            : _resolveTokenValue(entry.value, tokens),
+    };
+  }
+  if (value is List) {
+    return [for (final item in value) _resolveTokenValue(item, tokens)];
+  }
+  return value;
+}
+
+// ---------------------------------------------------------------------------
+// Universal prop application (§2.1 / §2.3)
+// ---------------------------------------------------------------------------
+
+/// Text-style props of one node (§2.1 Text group), or null when none is
+/// set.
+class _TextStyling {
+  const _TextStyling({
+    this.style,
+    this.textAlign,
+    this.overflow,
+    this.maxLines,
+    this.softWrap,
+  });
+
+  final TextStyle? style;
+  final TextAlign? textAlign;
+  final TextOverflow? overflow;
+  final int? maxLines;
+  final bool? softWrap;
+}
+
+_TextStyling? _textStyling(UiNode node) {
+  final style = _textStyle(node);
+  final overflow = _textOverflow(node.stringProp('textOverflow')) ??
+      (node.boolProp('ellipsis') == true ? TextOverflow.ellipsis : null);
+  final textAlign = _textAlign(node.stringProp('textAlign'));
+  final maxLines = node.numProp('maxLines')?.round();
+  final softWrap = node.boolProp('softWrap');
+  if (style == null &&
+      overflow == null &&
+      textAlign == null &&
+      maxLines == null &&
+      softWrap == null) {
+    return null;
+  }
+  return _TextStyling(
+    style: style,
+    textAlign: textAlign,
+    overflow: overflow,
+    maxLines: maxLines,
+    softWrap: softWrap,
+  );
+}
+
+TextStyle? _textStyle(UiNode node) {
+  final fontFamily = node.stringProp('fontFamily');
+  final fontSize = node.numProp('fontSize')?.toDouble();
+  final fontWeight = _fontWeight(node.props['fontWeight']);
+  final fontStyle = _fontStyle(node.stringProp('fontStyle'));
+  final letterSpacing = node.numProp('letterSpacing')?.toDouble();
+  final wordSpacing = node.numProp('wordSpacing')?.toDouble();
+  final height = node.numProp('height')?.toDouble();
+  final decoration = _textDecoration(node.stringProp('textDecoration'));
+  if (fontFamily == null &&
+      fontSize == null &&
+      fontWeight == null &&
+      fontStyle == null &&
+      letterSpacing == null &&
+      wordSpacing == null &&
+      height == null &&
+      decoration == null) {
+    return null;
+  }
+  return TextStyle(
+    fontFamily: fontFamily,
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    fontStyle: fontStyle,
+    letterSpacing: letterSpacing,
+    wordSpacing: wordSpacing,
+    height: height,
+    decoration: decoration,
+  );
+}
+
+/// `fontWeight` 100–900 (§2.1); anything else degrades to null.
+FontWeight? _fontWeight(Object? value) {
+  if (value is! num || value < 100 || value > 900) return null;
+  final index = ((value - 100) / 100).round().clamp(0, FontWeight.values.length - 1);
+  return FontWeight.values[index];
+}
+
+FontStyle? _fontStyle(String? value) {
+  switch (value) {
+    case 'normal':
+      return FontStyle.normal;
+    case 'italic':
+      return FontStyle.italic;
+  }
+  return null;
+}
+
+TextDecoration? _textDecoration(String? value) {
+  switch (value) {
+    case 'none':
+      return TextDecoration.none;
+    case 'underline':
+      return TextDecoration.underline;
+    case 'overline':
+      return TextDecoration.overline;
+    case 'lineThrough':
+      return TextDecoration.lineThrough;
+  }
+  return null;
+}
+
+TextAlign? _textAlign(String? value) {
+  switch (value) {
+    case 'left':
+      return TextAlign.left;
+    case 'right':
+      return TextAlign.right;
+    case 'center':
+      return TextAlign.center;
+    case 'justify':
+      return TextAlign.justify;
+    case 'start':
+      return TextAlign.start;
+    case 'end':
+      return TextAlign.end;
+  }
+  return null;
+}
+
+TextOverflow? _textOverflow(String? value) {
+  switch (value) {
+    case 'clip':
+      return TextOverflow.clip;
+    case 'fade':
+      return TextOverflow.fade;
+    case 'ellipsis':
+      return TextOverflow.ellipsis;
+    case 'visible':
+      return TextOverflow.visible;
+  }
+  return null;
+}
+
+/// Applies the text style (§2.3 step 2): on a plain [Text] the style is
+/// merged into the widget (the universal props win over the primitive's
+/// named style); on any other widget the style becomes the ambient
+/// [DefaultTextStyle] for text descendants.
+Widget _applyTextStyle(Widget widget, _TextStyling? styling) {
+  if (styling == null) return widget;
+  if (widget is Text && widget.data != null) {
+    return Text(
+      widget.data!,
+      style: widget.style == null
+          ? styling.style
+          : widget.style!.merge(styling.style),
+      textAlign: styling.textAlign ?? widget.textAlign,
+      softWrap: styling.softWrap ?? widget.softWrap,
+      maxLines: styling.maxLines ?? widget.maxLines,
+      overflow: styling.overflow ?? widget.overflow,
+    );
+  }
+  if (styling.style != null) {
+    return DefaultTextStyle.merge(style: styling.style, child: widget);
+  }
+  return widget;
+}
+
+/// The `DecoratedBox` decoration (§2.3 step 3): `color`, `gradient`,
+/// `border`+`borderWidth`+`borderStyle`, `borderRadius`, `shadow`.
+///
+/// On a text-bearing node `color` is the legacy level-1 text color
+/// (consumed by the primitive) and is not painted as a background.
+Decoration? _decoration(UiNode node, {required bool textBearing}) {
+  final color = textBearing ? null : _asColor(node.props['color']);
+  final gradient = _gradient(node.props['gradient']);
+  final borderRadius = _borderRadius(node.props['borderRadius']);
+  final border = _border(node);
+  final shadow = _shadow(node.props['shadow']);
+  if (color == null &&
+      gradient == null &&
+      borderRadius == null &&
+      border == null &&
+      shadow == null) {
+    return null;
+  }
+  return BoxDecoration(
+    color: color,
+    gradient: gradient,
+    border: border,
+    borderRadius: borderRadius,
+    boxShadow: shadow == null ? null : [shadow],
+  );
+}
+
+/// A [Color] passthrough over [parseColor]: a resolved `$color.*` token
+/// arrives as a [Color], a literal as a hex string.
+Color? _asColor(Object? value) {
+  if (value is Color) return value;
+  return parseColor(value);
+}
+
+Border? _border(UiNode node) {
+  final color = _asColor(node.props['border']);
+  if (color == null) return null;
+  final style = node.stringProp('borderStyle') == 'none'
+      ? BorderStyle.none
+      : BorderStyle.solid;
+  return Border.all(
+    color: color,
+    width: node.numProp('borderWidth')?.toDouble() ?? 1.0,
+    style: style,
+  );
+}
+
+BorderRadius? _borderRadius(Object? value) {
+  final radius = value is num ? value.toDouble() : null;
+  if (radius == null) return null;
+  return BorderRadius.circular(radius);
+}
+
+BoxShadow? _shadow(Object? value) {
+  if (value is num) {
+    // An `$elevation.*` token (or bare number): blur and offset follow the
+    // elevation value.
+    final elevation = value.toDouble();
+    return BoxShadow(blurRadius: elevation, offset: Offset(0, elevation));
+  }
+  if (value is! Map) return null;
+  final map = Map<String, dynamic>.from(value);
+  final blur = map['blur'];
+  final spread = map['spread'];
+  final offset = map['offset'];
+  final dx = offset is List && offset.isNotEmpty && offset[0] is num
+      ? (offset[0] as num).toDouble()
+      : 0.0;
+  final dy = offset is List && offset.length > 1 && offset[1] is num
+      ? (offset[1] as num).toDouble()
+      : 0.0;
+  return BoxShadow(
+    color: _asColor(map['color']) ?? Colors.black26,
+    blurRadius: blur is num ? blur.toDouble() : 0,
+    spreadRadius: spread is num ? spread.toDouble() : 0,
+    offset: Offset(dx, dy),
+  );
+}
+
+Gradient? _gradient(Object? value) {
+  if (value is! Map) return null;
+  final map = Map<String, dynamic>.from(value);
+  final rawColors = map['colors'];
+  if (rawColors is! List) return null;
+  final colors = [
+    for (final item in rawColors)
+      if (_asColor(item) case final Color color) color,
+  ];
+  if (colors.length < 2) return null;
+  final rawStops = map['stops'];
+  List<double>? stops;
+  if (rawStops is List &&
+      rawStops.length == colors.length &&
+      rawStops.every((stop) => stop is num)) {
+    stops = [for (final stop in rawStops) (stop as num).toDouble()];
+  }
+  final begin = _alignment(map['begin']) ?? Alignment.centerLeft;
+  final end = _alignment(map['end']) ?? Alignment.centerRight;
+  switch (map['type']) {
+    case 'radial':
+      return RadialGradient(colors: colors, stops: stops);
+    case 'sweep':
+      return SweepGradient(colors: colors, stops: stops);
+    case 'linear':
+    case null:
+      return LinearGradient(
+          colors: colors, stops: stops, begin: begin, end: end);
+  }
+  return null;
+}
+
+/// Alignment literals (`topLeft` … `bottomRight`) or a `[x, y]` pair;
+/// anything else degrades to null.
+Alignment? _alignment(Object? value) {
+  if (value is String) {
+    switch (value) {
+      case 'topLeft':
+        return Alignment.topLeft;
+      case 'topCenter':
+        return Alignment.topCenter;
+      case 'topRight':
+        return Alignment.topRight;
+      case 'centerLeft':
+        return Alignment.centerLeft;
+      case 'center':
+        return Alignment.center;
+      case 'centerRight':
+        return Alignment.centerRight;
+      case 'bottomLeft':
+        return Alignment.bottomLeft;
+      case 'bottomCenter':
+        return Alignment.bottomCenter;
+      case 'bottomRight':
+        return Alignment.bottomRight;
+    }
+    return null;
+  }
+  if (value is List &&
+      value.length == 2 &&
+      value[0] is num &&
+      value[1] is num) {
+    return Alignment((value[0] as num).toDouble(), (value[1] as num).toDouble());
+  }
+  return null;
+}
+
+/// The `ConstrainedBox` constraints (§2.3 step 5). `width`/`height` set
+/// tight extents; explicit min/max win over them. A non-normalized set
+/// (max < min) degrades to no constraints.
+BoxConstraints? _constraints(UiNode node, {required bool textBearing}) {
+  final width = node.numProp('width')?.toDouble();
+  // On a text-bearing node `height` is the line-height multiple, not a box
+  // constraint.
+  final height = textBearing ? null : node.numProp('height')?.toDouble();
+  var minWidth = node.numProp('minWidth')?.toDouble();
+  var maxWidth = node.numProp('maxWidth')?.toDouble();
+  var minHeight = node.numProp('minHeight')?.toDouble();
+  var maxHeight = node.numProp('maxHeight')?.toDouble();
+  if (width == null &&
+      height == null &&
+      minWidth == null &&
+      maxWidth == null &&
+      minHeight == null &&
+      maxHeight == null) {
+    return null;
+  }
+  if (width != null) {
+    minWidth = width;
+    maxWidth = width;
+  }
+  if (height != null) {
+    minHeight = height;
+    maxHeight = height;
+  }
+  if (node.numProp('minWidth') != null) minWidth = node.numProp('minWidth')!.toDouble();
+  if (node.numProp('maxWidth') != null) maxWidth = node.numProp('maxWidth')!.toDouble();
+  if (node.numProp('minHeight') != null) minHeight = node.numProp('minHeight')!.toDouble();
+  if (node.numProp('maxHeight') != null) maxHeight = node.numProp('maxHeight')!.toDouble();
+  final minW = minWidth ?? 0.0;
+  final maxW = maxWidth ?? double.infinity;
+  final minH = minHeight ?? 0.0;
+  final maxH = maxHeight ?? double.infinity;
+  if (minW > maxW || minH > maxH) return null;
+  return BoxConstraints(
+    minWidth: minW,
+    maxWidth: maxW,
+    minHeight: minH,
+    maxHeight: maxH,
+  );
+}
+
+/// The `Transform` (§2.3 step 8): a 16-number column-major matrix, or
+/// `{translate: [x,y,z]?, rotate?: rad, scale?: [x,y]}` (applied in that
+/// order). Anything else degrades to no transform.
+Matrix4? _transform(Object? value) {
+  if (value is List && value.length == 16 && value.every((item) => item is num)) {
+    final matrix = Matrix4.identity();
+    final storage = matrix.storage;
+    for (var i = 0; i < 16; i++) {
+      storage[i] = (value[i] as num).toDouble();
+    }
+    return matrix;
+  }
+  if (value is! Map) return null;
+  final map = Map<String, dynamic>.from(value);
+  final matrix = Matrix4.identity();
+  final translate = map['translate'];
+  if (translate is List &&
+      translate.length >= 2 &&
+      translate.length <= 3 &&
+      translate.every((item) => item is num)) {
+    matrix.translateByDouble(
+      (translate[0] as num).toDouble(),
+      (translate[1] as num).toDouble(),
+      translate.length > 2 ? (translate[2] as num).toDouble() : 0,
+      1,
+    );
+  }
+  final rotate = map['rotate'];
+  if (rotate is num) matrix.rotateZ(rotate.toDouble());
+  final scale = map['scale'];
+  if (scale is List &&
+      scale.length == 2 &&
+      scale.every((item) => item is num)) {
+    matrix.scaleByDouble(
+        (scale[0] as num).toDouble(), (scale[1] as num).toDouble(), 1, 1);
+  }
+  return matrix;
+}
+
+/// The `clip` (§2.3 step 9): `hardEdge` clips rectangularly, the rounded
+/// variants clip with the node's `borderRadius` (default `$radius.sm`).
+/// `none` and unknown values degrade to no clip.
+Widget _applyClip(Widget result, UiNode node, JhinTokens tokens) {
+  switch (node.stringProp('clip')) {
+    case 'hardEdge':
+      return ClipRect(clipBehavior: Clip.hardEdge, child: result);
+    case 'softEdge':
+    case 'antiAlias':
+    case 'antiAliasWithSaveLayer':
+      final behavior = node.stringProp('clip') == 'antiAliasWithSaveLayer'
+          ? Clip.antiAliasWithSaveLayer
+          : Clip.antiAlias;
+      final radius = _borderRadius(node.props['borderRadius']) ??
+          BorderRadius.circular(tokens.radius.sm);
+      return ClipRRect(borderRadius: radius, clipBehavior: behavior, child: result);
+    default:
+      return result;
+  }
+}
+
+/// The gesture wrapper (§2.3 step 12): `InkWell` when the node sits on a
+/// Material surface, `GestureDetector` otherwise. `action`/`onTap` drive
+/// the tap, `onLongPress` the long press, `confirm` shows a dialog first,
+/// `enabled: false` drops the interaction entirely (layout is kept).
+Widget _applyGesture(
+  BuildContext context,
+  UiNode node,
+  Widget result,
+  RenderContext ctx,
+) {
+  if (node.boolProp('enabled') == false) return result;
+  final action = asMap(node.props['action']) ?? asMap(node.props['onTap']);
+  final rawLongPress = asMap(node.props['onLongPress']);
+  if (action == null && rawLongPress == null) return result;
+  void tap() {
+    if (action == null) return;
+    final confirm = node.stringProp('confirm');
+    if (confirm != null && confirm.isNotEmpty) {
+      ctx.confirm(confirm, () => ctx.dispatch(action));
+    } else {
+      ctx.dispatch(action);
+    }
+  }
+
+  void longPress() {
+    if (rawLongPress != null) ctx.dispatch(rawLongPress);
+  }
+
+  final cursor = _mouseCursor(node.stringProp('cursor'));
+  final onMaterial = context.findAncestorWidgetOfExactType<Material>() != null;
+  if (onMaterial) {
+    return InkWell(
+      onTap: action == null ? null : tap,
+      onLongPress: rawLongPress == null ? null : longPress,
+      mouseCursor: cursor,
+      child: result,
+    );
+  }
+  // GestureDetector has no cursor of its own; a MouseRegion carries it.
+  return MouseRegion(
+    cursor: cursor ?? MouseCursor.defer,
+    child: GestureDetector(
+      onTap: action == null ? null : tap,
+      onLongPress: rawLongPress == null ? null : longPress,
+      child: result,
+    ),
+  );
+}
+
+MouseCursor? _mouseCursor(String? value) {
+  switch (value) {
+    case 'system':
+      return SystemMouseCursors.basic;
+    case 'none':
+      return SystemMouseCursors.none;
+    case 'click':
+      return SystemMouseCursors.click;
+    case 'text':
+      return SystemMouseCursors.text;
+    case 'forbidden':
+      return SystemMouseCursors.forbidden;
+    case 'grab':
+      return SystemMouseCursors.grab;
+    case 'grabbing':
+      return SystemMouseCursors.grabbing;
+    case 'wait':
+      return SystemMouseCursors.wait;
+    case 'precise':
+      return SystemMouseCursors.precise;
+    case 'allScroll':
+      return SystemMouseCursors.allScroll;
+    case 'resizeUpDown':
+      return SystemMouseCursors.resizeUpDown;
+    case 'resizeLeftRight':
+      return SystemMouseCursors.resizeLeftRight;
+    case 'alias':
+      return SystemMouseCursors.alias;
+    case 'cell':
+      return SystemMouseCursors.cell;
+    case 'contextMenu':
+      return SystemMouseCursors.contextMenu;
+    case 'copy':
+      return SystemMouseCursors.copy;
+    case 'help':
+      return SystemMouseCursors.help;
+    case 'move':
+      return SystemMouseCursors.move;
+    case 'noDrop':
+      return SystemMouseCursors.noDrop;
+    case 'progress':
+      return SystemMouseCursors.progress;
+    case 'zoomIn':
+      return SystemMouseCursors.zoomIn;
+    case 'zoomOut':
+      return SystemMouseCursors.zoomOut;
+  }
+  return null;
+}
+
+/// The `Semantics` wrapper (§2.3 step 13).
+Widget _applySemantics(Widget result, UiNode node) {
+  final label = node.stringProp('semanticsLabel');
+  final hint = node.stringProp('semanticsHint');
+  final value = node.stringProp('semanticsValue');
+  final exclude = node.boolProp('excludeSemantics') == true;
+  if (label == null && hint == null && value == null && !exclude) {
+    return result;
+  }
+  return Semantics(
+    label: label,
+    hint: hint,
+    value: value,
+    excludeSemantics: exclude,
+    child: result,
+  );
+}
+
+/// Steps 14 + 15 of §2.3: `Flexible`/`Expanded` (`flex`/`fit`) and
+/// `Padding(margin)`.
+///
+/// Flex wrapping only happens when [flexParent] marks the node as a direct
+/// child of a `Flex` — elsewhere `flex`/`fit` degrade silently (Flutter
+/// requires flex children to be direct Flex children; the client never
+/// crashes on server content). When a flex wrap applies, the margin sits
+/// INSIDE the flex wrapper: the documented order puts `Padding(margin)`
+/// outside, but an `Expanded` under a `Padding` is a hard Flutter layout
+/// error, and the client never crashes on server content.
+Widget _applyFlexAndMargin(
+  Widget result,
+  UiNode node, {
+  required JhinTokens tokens,
+  required bool flexParent,
+}) {
+  final margin = parsePadding(node.props['margin'], tokens: tokens);
+  final flex = flexParent ? node.numProp('flex')?.round() : null;
+  final fit = flexParent ? _flexFit(node.stringProp('fit')) : null;
+  if (flex == null && fit == null) {
+    return margin == null ? result : Padding(padding: margin, child: result);
+  }
+  final withMargin =
+      margin == null ? result : Padding(padding: margin, child: result);
+  if (flex != null && fit == FlexFit.loose) {
+    return Flexible(flex: flex, fit: FlexFit.loose, child: withMargin);
+  }
+  if (flex != null) return Expanded(flex: flex, child: withMargin);
+  if (fit == FlexFit.loose) {
+    return Flexible(fit: FlexFit.loose, child: withMargin);
+  }
+  return Expanded(child: withMargin);
+}
+
+FlexFit? _flexFit(String? value) {
+  switch (value) {
+    case 'loose':
+      return FlexFit.loose;
+    case 'tight':
+      return FlexFit.tight;
+  }
+  return null;
+}
+
 /// Widget builder of one primitive.
 typedef UiBuilder = Widget Function(
     BuildContext context, UiNode node, RenderContext ctx);
@@ -148,8 +890,10 @@ typedef UiBuilder = Widget Function(
 // Shared helpers (used by the primitives)
 // ---------------------------------------------------------------------------
 
-/// Parses `#RRGGBB`, `#AARRGGBB`, `0xFFRRGGBB` or an int color.
+/// Parses `#RRGGBB`, `#AARRGGBB`, `0xFFRRGGBB` or an int color. A resolved
+/// `$color.*` token arrives as a [Color] and passes through unchanged.
 Color? parseColor(Object? value) {
+  if (value is Color) return value;
   if (value is int) return Color(value);
   if (value is String) {
     var text = value.trim();
@@ -168,14 +912,32 @@ Color? parseColor(Object? value) {
   return null;
 }
 
-/// Parses a universal `padding`: a number, or a 1-4 number list (CSS order).
-EdgeInsets? parsePadding(Object? value) {
+/// Parses a universal `padding`/`margin` (§2.1): a number, a 1-4 number
+/// list (CSS order: `[all]`, `[v,h]`, `[t,h,b]`, `[t,r,b,l]`), or a
+/// `{top,right,bottom,left}` map. Each component may be a `$token`
+/// reference, resolved through [tokens]; an unresolvable component degrades
+/// the whole padding to null (the node renders unpadded, never crashes).
+EdgeInsets? parsePadding(Object? value, {JhinTokens? tokens}) {
+  double? component(Object? item) {
+    if (item is num) return item.toDouble();
+    if (item is String && tokens != null) {
+      final resolved = tokens.resolveToken(item);
+      if (resolved is num) return resolved.toDouble();
+    }
+    return null;
+  }
+
   if (value is num) return EdgeInsets.all(value.toDouble());
+  if (value is String) {
+    final resolved = component(value);
+    return resolved == null ? null : EdgeInsets.all(resolved);
+  }
   if (value is List && value.isNotEmpty && value.length <= 4) {
     final sides = <double>[];
     for (final item in value) {
-      if (item is! num) return null;
-      sides.add(item.toDouble());
+      final side = component(item);
+      if (side == null) return null;
+      sides.add(side);
     }
     switch (sides.length) {
       case 1:
@@ -189,6 +951,26 @@ EdgeInsets? parsePadding(Object? value) {
         return EdgeInsets.fromLTRB(sides[3], sides[0], sides[1], sides[2]);
     }
   }
+  if (value is Map) {
+    final map = Map<String, dynamic>.from(value);
+    var invalid = false;
+    double? side(String key) {
+      if (!map.containsKey(key)) return null;
+      final parsed = component(map[key]);
+      if (parsed == null) invalid = true;
+      return parsed;
+    }
+
+    final top = side('top');
+    final right = side('right');
+    final bottom = side('bottom');
+    final left = side('left');
+    if (invalid) return null;
+    if (top == null && right == null && bottom == null && left == null) {
+      return null;
+    }
+    return EdgeInsets.fromLTRB(left ?? 0, top ?? 0, right ?? 0, bottom ?? 0);
+  }
   return null;
 }
 
@@ -196,11 +978,12 @@ EdgeInsets? parsePadding(Object? value) {
 /// malformed (§8.3 degrade rule): a muted box, never an empty frame.
 Widget degradedBox(BuildContext context, String message) {
   final theme = Theme.of(context);
+  final tokens = JhinDesignScope.of(context).tokens;
   return Container(
-    padding: const EdgeInsets.all(8),
+    padding: EdgeInsets.all(tokens.spacing.sm),
     decoration: BoxDecoration(
       color: theme.hoverColor,
-      borderRadius: BorderRadius.circular(4),
+      borderRadius: BorderRadius.circular(tokens.radius.sm),
     ),
     child: Text(message, style: TextStyle(color: theme.disabledColor)),
   );
@@ -220,9 +1003,10 @@ Object? fieldValue(RenderContext ctx, UiNode node) {
 
 Widget _unsupportedCard(BuildContext context, String type, String? reason) {
   final theme = Theme.of(context);
+  final tokens = JhinDesignScope.of(context).tokens;
   return Card(
     child: Padding(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(tokens.spacing.md),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,10 +1032,9 @@ List<Widget> buildChildren(
   return [
     for (final child in node.children)
       if (flexAware && child.numProp('flex') != null)
-        Expanded(
-          flex: child.numProp('flex')!.round(),
-          child: ctx.build(context, child),
-        )
+        // The universal flex wrap (§2.3 step 14) applies inside the
+        // registry — the child is a direct Flex child here.
+        ctx.build(context, child, flexParent: true)
       else if (expandTypes != null && expandTypes.contains(child.type))
         Expanded(child: ctx.build(context, child))
       else
