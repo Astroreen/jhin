@@ -52,6 +52,26 @@ class RouteTableTest {
     }
 
     @Test
+    void percentDecodesCapturedPathParam() {
+        RouteSpec route = new RouteSpec("GET", "/ui/screen/{id}", handler("screen"));
+        table.register(route, "demo.one");
+
+        RouteMatcher.Resolution res = matcher.resolve("GET", "/ui/screen/chat%3Aabc");
+        assertThat(res.status()).isEqualTo(RouteMatcher.Status.MATCHED);
+        assertThat(res.route()).isSameAs(route);
+        assertThat(res.pathParams()).containsExactlyInAnyOrderEntriesOf(Map.of("id", "chat:abc"));
+    }
+
+    @Test
+    void keepsLiteralPlusInCapturedPathParam() {
+        RouteSpec route = new RouteSpec("GET", "/items/{id}", handler("one"));
+        table.register(route, "demo.one");
+
+        RouteMatcher.Resolution res = matcher.resolve("GET", "/items/a+b");
+        assertThat(res.pathParams()).containsExactlyInAnyOrderEntriesOf(Map.of("id", "a+b"));
+    }
+
+    @Test
     void capturesMultiplePathParams() {
         RouteSpec route = new RouteSpec("GET", "/items/{id}/events/{seq}", handler("multi"));
         table.register(route, "demo.one");

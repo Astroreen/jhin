@@ -11,6 +11,8 @@
 package com.astroreen.jhin.kernel.http;
 
 import com.astroreen.jhin.sdk.http.RouteSpec;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -139,7 +141,12 @@ public final class RouteMatcher {
         return matched != null ? matched : match(param, requestSegments, depth + 1);
     }
 
-    /** Collects the {@code {name}} captures of the matched entry, left to right. */
+    /**
+     * Collects the {@code {name}} captures of the matched entry, left to right.
+     * Each capture is percent-decoded, so a client that encodes reserved path
+     * characters (a colon in {@code chat%3A<id>}, for example) sees the value
+     * it sent.
+     */
     private static Map<String, String> paramsOf(RouteTable.Entry entry,
             List<String> requestSegments) {
         Map<String, String> params = new LinkedHashMap<>();
@@ -148,10 +155,24 @@ public final class RouteMatcher {
             String templateSegment = templateSegments.get(i);
             if (isParam(templateSegment)) {
                 params.put(templateSegment.substring(1, templateSegment.length() - 1),
-                        requestSegments.get(i));
+                        decodePathSegment(requestSegments.get(i)));
             }
         }
         return Collections.unmodifiableMap(params);
+    }
+
+    /**
+     * Percent-decodes one captured path segment as UTF-8. A literal {@code +}
+     * stays a plus: it is escaped before decoding so the segment is decoded
+     * with path semantics, not form semantics. A malformed escape is returned
+     * unchanged rather than failing the whole request.
+     */
+    private static String decodePathSegment(String segment) {
+        try {
+            return URLDecoder.decode(segment.replace("+", "%2B"), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return segment;
+        }
     }
 
     /** Whether one template segment is a whole-segment {@code {name}} capture. */
