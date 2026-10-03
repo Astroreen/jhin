@@ -143,6 +143,57 @@ in
       mkdir -p "$home_plugins"
       cp plugins/"$1"/build/libs/*.jar "$home_plugins"/
     '';
+    jhin-link.exec = ''
+      # Builds every plugin jar and symlinks it into the JHIN_HOME plugins
+      # directory, so a rebuild is picked up without copying. The template
+      # (example) and QA harness (qa-mock-llm) are skipped: neither is part
+      # of the product, and example republishes tools-builtin's ToolProvider.
+      # Usage: jhin-link
+      home_plugins="''${JHIN_HOME:-$HOME/.jhin}/plugins"
+      mkdir -p "$home_plugins"
+
+      set --
+      for dir in plugins/*/; do
+        name=$(basename "$dir")
+        [ -f "$dir/build.gradle" ] || continue
+        if [ "$name" = "example" ] || [ "$name" = "qa-mock-llm" ]; then
+          continue
+        fi
+        set -- "$@" ":jhin-plugin-$name:jar"
+      done
+      if [ "$#" -eq 0 ]; then
+        echo "jhin-link: no plugin builds found under plugins/" >&2
+        exit 1
+      fi
+      ./gradlew "$@" || exit 1
+
+      for dir in plugins/*/; do
+        name=$(basename "$dir")
+        [ -f "$dir/build.gradle" ] || continue
+        if [ "$name" = "example" ] || [ "$name" = "qa-mock-llm" ]; then
+          continue
+        fi
+        jar=$(ls "$dir"/build/libs/*.jar 2>/dev/null | grep -v -- '-plain\.jar$' | head -1 || true)
+        if [ -z "$jar" ]; then
+          echo "jhin-link: no jar built for $name" >&2
+          continue
+        fi
+        ln -sfn "$(realpath "$jar")" "$home_plugins/$(basename "$jar")"
+        echo "linked $(basename "$jar") -> $jar"
+      done
+
+      # Prune stale symlinks for plugins this script no longer links (the
+      # template and QA harness), keeping real files untouched.
+      for stale in "$home_plugins"/*.jar; do
+        [ -L "$stale" ] || continue
+        case "$(basename "$stale")" in
+          jhin-plugin-example-*|jhin-plugin-qa-mock-llm-*)
+            rm -f "$stale"
+            echo "unlinked $(basename "$stale")"
+            ;;
+        esac
+      done
+    '';
     jhin-home-reset.exec = ''
       # Wipes and recreates a throwaway JHIN_HOME (default: ~/.jhin).
       home="''${JHIN_HOME:-$HOME/.jhin}"

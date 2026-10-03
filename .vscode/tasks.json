@@ -69,6 +69,15 @@
       "problemMatcher": []
     },
     {
+      "label": "jhin: link plugins",
+      "type": "shell",
+      "command": "export JAVA_HOME=\"$(dirname \"$(dirname \"$(readlink -f .devenv/profile/bin/java)\")\")\" && export JDK21_HOME=\"$JAVA_HOME\" && export PATH=\"$JAVA_HOME/bin:$PATH\" && home_plugins=\"${JHIN_HOME:-$HOME/.jhin}/plugins\" && mkdir -p \"$home_plugins\" && set -- && for dir in plugins/*/; do name=$(basename \"$dir\"); [ -f \"$dir/build.gradle\" ] || continue; if [ \"$name\" = \"example\" ] || [ \"$name\" = \"qa-mock-llm\" ]; then continue; fi; set -- \"$@\" \":jhin-plugin-$name:jar\"; done && ./gradlew \"$@\" && for dir in plugins/*/; do name=$(basename \"$dir\"); [ -f \"$dir/build.gradle\" ] || continue; if [ \"$name\" = \"example\" ] || [ \"$name\" = \"qa-mock-llm\" ]; then continue; fi; jar=$(ls \"$dir\"/build/libs/*.jar 2>/dev/null | grep -v -- '-plain\\.jar$' | head -1 || true); [ -n \"$jar\" ] || continue; ln -sfn \"$(realpath \"$jar\")\" \"$home_plugins/$(basename \"$jar\")\"; echo \"linked $(basename \"$jar\")\"; done && for stale in \"$home_plugins\"/*.jar; do [ -L \"$stale\" ] || continue; case \"$(basename \"$stale\")\" in jhin-plugin-example-*|jhin-plugin-qa-mock-llm-*) rm -f \"$stale\"; echo \"unlinked $(basename \"$stale\")\";; esac; done",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "build",
+      "description": "Build every plugin jar and symlink it into the JHIN_HOME plugins directory (mirrors the jhin-link devenv script).",
+      "problemMatcher": []
+    },
+    {
       "label": "cli: create-account",
       "type": "shell",
       "command": "export JAVA_HOME=\"$(dirname \"$(dirname \"$(readlink -f .devenv/profile/bin/java)\")\")\" && export JDK21_HOME=\"$JAVA_HOME\" && export PATH=\"$JAVA_HOME/bin:$PATH\" && java -jar \"$(ls kernel/build/libs/kernel-*.jar | grep -v -- '-plain\\.jar$' | head -1)\" cli create-account \"${input:account}\"",
