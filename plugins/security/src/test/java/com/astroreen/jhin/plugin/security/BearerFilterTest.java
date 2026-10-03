@@ -1,8 +1,10 @@
 /**
- * Bearer filter coverage: the five allow-list cases pass unauthenticated,
- * a missing or unknown token is a uniform {@code 401 unauthorized}, a revoked
- * device is {@code 403 forbidden}, a valid token stores the principal and
- * proceeds, and the liveness update is throttled to one per minute per device.
+ * Bearer filter coverage: the five allow-list cases pass without a token and
+ * with no principal, an allow-listed request carrying a valid token still
+ * stores the principal, a missing or unknown token is a uniform {@code 401
+ * unauthorized}, a revoked device is {@code 403 forbidden}, a valid token
+ * stores the principal and proceeds, and the liveness update is throttled to
+ * one per minute per device.
  */
 package com.astroreen.jhin.plugin.security;
 
@@ -81,6 +83,33 @@ class BearerFilterTest {
             assertThat(proceeded.get()).as("%s %s proceeded", entry[0], entry[1]).isSameAs(request);
             assertThat(request.attribute(SecurityAttributes.PRINCIPAL)).isEmpty();
         }
+    }
+
+    @Test
+    void allowListedRequestWithValidTokenStillSetsPrincipal() throws Exception {
+        String token = enroll("qa-allow-list");
+
+        FakeHttpRequest request = new FakeHttpRequest("GET", "/_jhin/bootstrap",
+                Map.of("Authorization", "Bearer " + token), "127.0.0.1", "");
+        HttpResponse response = filter.filter(request, chain);
+
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(proceeded.get()).isSameAs(request);
+        Principal principal = (Principal) request.attribute(SecurityAttributes.PRINCIPAL).orElseThrow();
+        assertThat(principal.accountId()).isEqualTo(accountId);
+        assertThat(principal.deviceId()).isEqualTo(devices.list(null).get(0).id());
+    }
+
+    @Test
+    void allowListedRequestWithUnknownTokenProceedsUnauthenticated() throws Exception {
+        FakeHttpRequest request = new FakeHttpRequest("GET", "/_jhin/bootstrap",
+                Map.of("Authorization", "Bearer deadbeef"), "127.0.0.1", "");
+
+        HttpResponse response = filter.filter(request, chain);
+
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(proceeded.get()).isSameAs(request);
+        assertThat(request.attribute(SecurityAttributes.PRINCIPAL)).isEmpty();
     }
 
     @Test

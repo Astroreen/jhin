@@ -5,10 +5,13 @@
  * {@code jhin.security.bearer} on every path, in order {@value #ORDER} (after
  * the enrollment rate limit). Requests in the allow-list — {@code GET
  * /_jhin/health}, {@code GET /_jhin/bootstrap}, {@code POST /enroll}, {@code
- * POST /ui/action/enroll} and any {@code OPTIONS} pre-flight — proceed
- * unauthenticated; every other request
- * must carry {@code Authorization: Bearer <token>} (the scheme match is
- * case-insensitive). A valid token resolves the {@link Principal} through
+ * POST /ui/action/enroll} and any {@code OPTIONS} pre-flight — never demand a
+ * token; every other request must carry {@code Authorization: Bearer <token>}
+ * (the scheme match is case-insensitive). Authentication is opportunistic on
+ * the allow-list: when a valid token is present it is resolved exactly as on a
+ * protected path, so {@code GET /_jhin/bootstrap} can pick the authenticated
+ * entry screen; a missing or unusable token simply proceeds unauthenticated.
+ * A valid token resolves the {@link Principal} through
  * {@link DeviceServiceImpl#verify(String)}, stores it under
  * {@link SecurityAttributes#PRINCIPAL} for the downstream routes and records
  * device liveness through {@link DeviceServiceImpl#touch(String)}, throttled
@@ -77,9 +80,10 @@ final class BearerFilter implements HttpFilter {
     }
 
     /**
-     * Authenticates one request: allow-listed requests pass through, all
-     * others must present a bearer token that resolves to an active device.
-     * Called by the kernel on every request before the route handler.
+     * Authenticates one request: a valid bearer token always resolves and
+     * stores the principal (allow-listed path or not); allow-listed requests
+     * proceed without one, every other request is rejected. Called by the
+     * kernel on every request before the route handler.
      *
      * @param req   the request
      * @param chain the remainder of the chain
@@ -88,17 +92,21 @@ final class BearerFilter implements HttpFilter {
      */
     @Override
     public HttpResponse filter(HttpRequest req, FilterChain chain) throws Exception {
-        if (isAllowed(req.method(), req.path())) {
-            return chain.proceed(req);
-        }
+        boolean allowed = isAllowed(req.method(), req.path());
         String token = bearerToken(req.headers().get(AUTHORIZATION_HEADER));
         if (token == null) {
-            return unauthorized();
+            return allowed ? chain.proceed(req) : unauthorized();
         }
         Principal principal;
         try {
             principal = devices.verify(token);
         } catch (SecurityException denied) {
+            if (allowed) {
+                // An allow-listed request with an unusable token is still
+                // served unauthenticated: bootstrap falls back to the connect
+                // screen and enrollment proceeds without a device.
+                return chain.proceed(req);
+            }
             if (SecurityException.CODE_FORBIDDEN.equals(denied.code())) {
                 return HttpResponse.error(403, SecurityException.CODE_FORBIDDEN, denied.getMessage());
             }
