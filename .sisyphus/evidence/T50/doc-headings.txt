@@ -1,0 +1,26 @@
+# headings of docs/sdui.md
+1:# Jhin SDUI contract (level 2)
+26:## 1. Bootstrap payload
+156:## 2. Node model
+163:### 2.1 Universal props
+260:### 2.2 Token references
+271:### 2.3 Fixed wrapping order
+292:### 2.4 Degradation rules
+301:### 2.5 Primitive catalog
+323:### 2.6 Per-primitive props
+756:## 3. Action protocol
+803:## 4. Client directives
+836:## 5. Streams and frames
+871:## 6. Client capabilities and schema negotiation
+921:## 7. Expression subset
+940:## 8. Caching and payload versioning
+966:## Appendix A. Contract level 1
+# headings of docs/updates.md
+1:# Jhin data-upgrade system
+11:## 1. Persisted-key envelope
+50:## 2. StoreMigration API
+72:## 3. The six runner rules
+97:## 4. Downgrade and quarantine behavior
+116:## 5. Schema steps
+125:## 6. How to add a migration step
+144:## 7. Server-side data

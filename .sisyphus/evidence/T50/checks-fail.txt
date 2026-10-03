@@ -1,0 +1,11 @@
+ok: docs present: docs/sdui.md, docs/updates.md
+ok: doc-headings.txt written (16 headings in sdui.md)
+ok: prop-key-list.txt written (266 distinct prop keys)
+ok: syntax.txt written (bash -n clean over all QA scripts)
+ok: markdown table rows in docs/sdui.md: 575 (> 120)
+ok: undo occurrences in docs/sdui.md: 6 (>= 3)
+ok: all contract prop keys documented in docs/sdui.md (256 keys checked)
+ok: docs/updates.md: envelope example, six runner rules and quarantine documented
+ok: negotiation header, level-1 appendix and downgrade table present
+ok: --fail probes passed: envelope findable, bogus rule name has 0 hits
+FAIL: --fail probe: thisPropKeyDoesNotExist is not documented in docs/sdui.md (intentional failure-path evidence)
