@@ -232,13 +232,20 @@ void main() {
       expect(plain.style?.fontSize, theme.textTheme.bodyMedium?.fontSize);
     });
 
-    testWidgets('markdown renders its text as plain text', (tester) async {
+    testWidgets('markdown renders inline markup as rich text spans',
+        (tester) async {
       await _pumpNode(tester, {
         'type': 'markdown',
         'text': '**bold** _it_',
       });
 
-      expect(find.text('**bold** _it_'), findsOneWidget);
+      expect(find.text('**bold** _it_'), findsNothing);
+      final rich = tester.widget<Text>(
+          find.byWidgetPredicate((w) => w is Text && w.textSpan != null));
+      final spans = (rich.textSpan! as TextSpan).children!.cast<TextSpan>();
+      expect(spans.map((s) => s.text), ['bold', ' ', 'it']);
+      expect(spans[0].style?.fontWeight, FontWeight.w700);
+      expect(spans[2].style?.fontStyle, FontStyle.italic);
     });
 
     testWidgets('divider renders a rule', (tester) async {

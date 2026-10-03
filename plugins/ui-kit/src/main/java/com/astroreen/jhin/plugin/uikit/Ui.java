@@ -145,6 +145,21 @@ public final class Ui {
         return new MarkdownBuilder(text);
     }
 
+    /** A mixed-style inline run: {@code rich_text}(spans). */
+    public static RichTextBuilder richText() {
+        return new RichTextBuilder();
+    }
+
+    /** One {@code rich_text} span spec: {@code {text, style?, action?, tooltip?}}. */
+    public static SpanBuilder span(String text) {
+        return new SpanBuilder(text);
+    }
+
+    /** A code block: {@code code_block}(code, language?, wrap?, copyable?, maxLines?, lineNumbers?). */
+    public static CodeBlockBuilder codeBlock(String code) {
+        return new CodeBlockBuilder(code);
+    }
+
     /** A button: {@code button}(label, style?, action?, icon?, confirm?). */
     public static ButtonBuilder button(String label) {
         return new ButtonBuilder(label);
@@ -1028,6 +1043,130 @@ public final class Ui {
         /** Whether fences get syntax highlighting. */
         public MarkdownBuilder syntax(boolean value) {
             props.put("syntax", value);
+            return this;
+        }
+    }
+
+    /**
+     * The spec builder of one {@code rich_text} span ({@code {text, style?,
+     * action?, tooltip?}}): see {@link Ui#span(String)}. Finished with
+     * {@link #build()}, the spec is appended through
+     * {@link RichTextBuilder#span(Map)}.
+     */
+    public static final class SpanBuilder {
+
+        private final Map<String, Object> spec = new LinkedHashMap<>();
+
+        private SpanBuilder(String text) {
+            spec.put("text", text);
+        }
+
+        /** The span style typography token: {@code h1}, {@code h2}, {@code h3}, {@code body}, {@code small}, {@code caption} or {@code mono}; validated. */
+        public SpanBuilder style(String token) {
+            spec.put("style", UiEnums.require("style", token, UiEnums.TEXT_STYLE));
+            return this;
+        }
+
+        /** The span style as a TextStyle map. */
+        public SpanBuilder style(Map<String, Object> value) {
+            spec.put("style", value);
+            return this;
+        }
+
+        /** The tappable span action (an unknown action drops the action and keeps the text). */
+        public SpanBuilder action(Map<String, Object> value) {
+            spec.put("action", value);
+            return this;
+        }
+
+        /** The span tooltip. */
+        public SpanBuilder tooltip(String value) {
+            spec.put("tooltip", value);
+            return this;
+        }
+
+        /** The finished span spec, in insertion order. */
+        public Map<String, Object> build() {
+            return new LinkedHashMap<>(spec);
+        }
+    }
+
+    /** {@code rich_text}(spans) — inline spans of {@code {text, style?, action?, tooltip?}}. */
+    public static final class RichTextBuilder extends NodeBuilder<RichTextBuilder> {
+
+        private RichTextBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "rich_text";
+        }
+
+        /** Appends one plain-text span. */
+        public RichTextBuilder span(String text) {
+            Map<String, Object> spec = new LinkedHashMap<>();
+            spec.put("text", text);
+            spans().add(spec);
+            return this;
+        }
+
+        /** Appends one span spec ({@link Ui#span(String)} builds one). */
+        public RichTextBuilder span(Map<String, Object> spec) {
+            spans().add(new LinkedHashMap<>(spec));
+            return this;
+        }
+
+        private List<Object> spans() {
+            @SuppressWarnings("unchecked")
+            List<Object> spans = (List<Object>) props.computeIfAbsent("spans", key -> new ArrayList<>());
+            return spans;
+        }
+    }
+
+    /**
+     * {@code code_block}(code, language?, wrap?, copyable?, maxLines?,
+     * lineNumbers?) — a monospace code block with an optional language label,
+     * copy affordance (clipboard + toast), wrap toggle, line limit and line
+     * numbers (docs/sdui.md section 2.6).
+     */
+    public static final class CodeBlockBuilder extends NodeBuilder<CodeBlockBuilder> {
+
+        private CodeBlockBuilder(String code) {
+            props.put("code", code);
+        }
+
+        @Override
+        String type() {
+            return "code_block";
+        }
+
+        /** The language label (any string; an unknown language is just a label). */
+        public CodeBlockBuilder language(String value) {
+            props.put("language", value);
+            return this;
+        }
+
+        /** Whether long lines wrap. */
+        public CodeBlockBuilder wrap(boolean value) {
+            props.put("wrap", value);
+            return this;
+        }
+
+        /** Whether the copy affordance is shown (copies via clipboard + toast). */
+        public CodeBlockBuilder copyable(boolean value) {
+            props.put("copyable", value);
+            return this;
+        }
+
+        /** The line limit. */
+        public CodeBlockBuilder maxLines(int value) {
+            props.put("maxLines", value);
+            return this;
+        }
+
+        /** Whether line numbers are shown. */
+        public CodeBlockBuilder lineNumbers(boolean value) {
+            props.put("lineNumbers", value);
             return this;
         }
     }

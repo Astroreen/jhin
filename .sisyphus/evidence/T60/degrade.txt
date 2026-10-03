@@ -1,0 +1,30 @@
+T60 degrade evidence — §2.4: the client never crashes on server content
+
+=== unbalanced markdown fence degrades to plain text ===
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch5_test.dart
+00:00 +0: degrades (§2.4) unbalanced markdown fence degrades to plain text
+00:00 +1: All tests passed!
+=== an unbalanced markdown fence renders as plain text without a crash ===
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch5_test.dart
+00:00 +0: degrades (§2.4) an unbalanced markdown fence renders as plain text without a crash
+00:00 +1: All tests passed!
+=== unknown markdown construct degrades to text ===
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch5_test.dart
+00:00 +0: degrades (§2.4) unknown markdown construct degrades to text
+00:00 +1: All tests passed!
+=== an unknown markdown construct renders as text without a crash ===
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch5_test.dart
+00:00 +0: degrades (§2.4) an unknown markdown construct renders as text without a crash
+00:00 +1: All tests passed!
+=== a rich_text span with an unknown action drops the action but keeps the text ===
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch5_test.dart
+00:00 +0: rich_text (§2.6) a rich_text span with an unknown action drops the action but keeps the text
+00:00 +1: All tests passed!
+=== an unknown rich_text span field is ignored ===
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch5_test.dart
+00:00 +0: rich_text (§2.6) an unknown rich_text span field is ignored
+00:00 +1: All tests passed!
+=== code_block with unknown language just labels it ===
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch5_test.dart
+00:00 +0: code_block (§2.6) code_block with unknown language just labels it
+00:00 +1: All tests passed!

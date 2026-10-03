@@ -1,5 +1,32 @@
 import 'package:flutter/foundation.dart';
 
+/// The directive `op` names this client honours (§4) — exactly the ops
+/// [DirectiveExecutor] runs (`undo` is a server-side lifecycle action, §3,
+/// answered with directives, never sent as an inline one). Used to tell a
+/// dispatchable inline action from an unknown one (`rich_text` span
+/// actions).
+const Set<String> kDirectiveOps = {
+  'navigate',
+  'back',
+  'replace',
+  'refresh',
+  'reloadBootstrap',
+  'setToken',
+  'clearToken',
+  'setServerUrl',
+  'openProfiles',
+  'toast',
+  'dialog',
+  'dismissDialog',
+  'setState',
+  'patch',
+  'setScreen',
+  'openUrl',
+};
+
+/// Whether [op] names a directive this client knows (§4).
+bool isKnownDirectiveOp(String op) => kDirectiveOps.contains(op);
+
 /// Side-effect sink of the client directives (§8.5), implemented by the
 /// SDUI runtime. Every method maps 1:1 to one directive `op`.
 abstract interface class DirectiveHost {

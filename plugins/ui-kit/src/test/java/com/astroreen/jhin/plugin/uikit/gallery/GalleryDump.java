@@ -1,7 +1,7 @@
 /**
- * Fixture generator for the golden gallery harness (T57): builds &gt;=80
+ * Fixture generator for the golden gallery harness (T57): builds &gt;=84
  * {@link UiNode} fixtures through the real {@link Ui} builders, covering all
- * 40 current primitives ({@code BuilderProbe.BUILDERS}) with a basic and a
+ * 42 current primitives ({@code BuilderProbe.BUILDERS}) with a basic and a
  * prop-heavy variant each, and emits them as a generated Dart list consumed
  * by {@code frontend/test/gallery/golden_test.dart}.
  *
@@ -46,9 +46,10 @@ class GalleryDump {
     private static final Path COVERAGE_OUTPUT =
             Path.of("build", "gallery", "coverage.txt").toAbsolutePath().normalize();
 
-    /** The 40 current primitives (the 25 of T57, the T58 layout set and the T59 stack/wrap/grid/scroll set). */
+    /** The 42 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set and the T60 rich_text/code_block text set). */
     private static final List<String> EXPECTED_PRIMITIVES = List.of(
-            "screen", "nav", "container", "card", "text", "markdown", "button", "input",
+            "screen", "nav", "container", "card", "text", "markdown", "rich_text",
+            "code_block", "button", "input",
             "dropdown", "checkbox", "switch", "slider", "form", "list", "stream_view",
             "table", "divider", "spacer", "progress", "image", "figure", "chart_line",
             "chart_bar", "chart_pie", "drawer",
@@ -176,6 +177,10 @@ class GalleryDump {
                 .fontSize(18).fontWeight(600).letterSpacing(0.5).wordSpacing(1.0)
                 .textAlign("center").textDecoration("underline").textOverflow("ellipsis")
                 .maxLines(2).softWrap(true)
+                .strutStyle(entry("size", 18, "height", 1.4, "leading", 2))
+                .textWidthBasis("longestLine")
+                .locale("en-US")
+                .selectionColor("#FF00FF")
                 .build()));
 
         // markdown
@@ -184,6 +189,31 @@ class GalleryDump {
                 .build()));
         all.add(new Fixture("fixture-markdown-propheavy", heavy(
                 Ui.markdown("# Prop Heavy\n\n- one\n- two\n\nSome **bold** text."), "markdown-propheavy")
+                .build()));
+
+        // rich_text
+        all.add(new Fixture("fixture-rich_text-basic", Ui.richText()
+                .id("fixture-rich_text-basic")
+                .span("Hello ")
+                .span(Ui.span("world").style("h3").build())
+                .build()));
+        all.add(new Fixture("fixture-rich_text-propheavy", heavy(Ui.richText(), "rich_text-propheavy")
+                .span("plain ")
+                .span(Ui.span("bold").style(entry("fontWeight", 700)).build())
+                .span(Ui.span("link").action(action("open-docs")).tooltip("docs").build())
+                .textAlign("center")
+                .build()));
+
+        // code_block
+        all.add(new Fixture("fixture-code_block-basic", Ui.codeBlock("System.out.println(1);")
+                .id("fixture-code_block-basic")
+                .language("java")
+                .copyable(true)
+                .build()));
+        all.add(new Fixture("fixture-code_block-propheavy", heavy(
+                Ui.codeBlock("line one\nline two\nline three"), "code_block-propheavy")
+                .language("text")
+                .wrap(true).copyable(true).maxLines(2).lineNumbers(true)
                 .build()));
 
         // button
@@ -611,7 +641,7 @@ class GalleryDump {
     void dumpGallery() throws IOException {
         List<Fixture> all = fixtures();
 
-        assertThat(all).hasSizeGreaterThanOrEqualTo(80);
+        assertThat(all).hasSizeGreaterThanOrEqualTo(84);
 
         Map<String, Integer> perType = new TreeMap<>();
         for (Fixture f : all) {

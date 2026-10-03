@@ -13,6 +13,7 @@ import 'primitives/chart_bar.dart';
 import 'primitives/chart_line.dart';
 import 'primitives/chart_pie.dart';
 import 'primitives/checkbox.dart';
+import 'primitives/code_block.dart';
 import 'primitives/column.dart';
 import 'primitives/container.dart';
 import 'primitives/divider.dart';
@@ -31,6 +32,7 @@ import 'primitives/markdown.dart';
 import 'primitives/nav.dart';
 import 'primitives/positioned.dart';
 import 'primitives/progress.dart';
+import 'primitives/rich_text.dart';
 import 'primitives/row.dart';
 import 'primitives/screen.dart';
 import 'primitives/scroll.dart';
@@ -69,6 +71,8 @@ class UiRegistry {
       'card': buildCard,
       'text': buildText,
       'markdown': buildMarkdown,
+      'rich_text': buildRichText,
+      'code_block': buildCodeBlock,
       'button': buildButton,
       'input': buildInput,
       'dropdown': buildDropdown,
@@ -215,11 +219,14 @@ class UiRegistry {
     result = _applyTextStyle(result, styling);
     // Whether `color` is the legacy text color and `height` the line-height
     // multiple (§2.1 Text group) instead of the Box-group background color
-    // and box constraint: only text-bearing primitives (`text`, `markdown`)
-    // qualify — a `box`/`container` whose built widget is a bare `Text`
-    // child passthrough still paints `color` as its own background.
-    final textBearing =
-        result is Text && (node.type == 'text' || node.type == 'markdown');
+    // and box constraint: only text-bearing primitives (`text`, `markdown`,
+    // `rich_text`) qualify — a `box`/`container` whose built widget is a
+    // bare `Text` child passthrough still paints `color` as its own
+    // background, and `code_block` paints `color` as the code box
+    // background.
+    final textBearing = node.type == 'text' ||
+        node.type == 'markdown' ||
+        node.type == 'rich_text';
 
     // 3. DecoratedBox (color/gradient/border/borderRadius/shadow).
     final decoration = _decoration(node, textBearing: textBearing);
@@ -401,7 +408,12 @@ class _TextStyling {
 
 _TextStyling? _textStyling(UiNode node) {
   final style = _textStyle(node);
+  // `overflow` is the accepted alias of `textOverflow` on text-bearing
+  // primitives (§2.1); on flex nodes the same key is the child overflow.
+  final textBearing =
+      node.type == 'text' || node.type == 'markdown' || node.type == 'rich_text';
   final overflow = _textOverflow(node.stringProp('textOverflow')) ??
+      (textBearing ? _textOverflow(node.stringProp('overflow')) : null) ??
       (node.boolProp('ellipsis') == true ? TextOverflow.ellipsis : null);
   final textAlign = _textAlign(node.stringProp('textAlign'));
   final maxLines = node.numProp('maxLines')?.round();
@@ -516,22 +528,55 @@ TextOverflow? _textOverflow(String? value) {
   return null;
 }
 
-/// Applies the text style (§2.3 step 2): on a plain [Text] the style is
-/// merged into the widget (the universal props win over the primitive's
-/// named style); on any other widget the style becomes the ambient
-/// [DefaultTextStyle] for text descendants.
+/// Applies the text style (§2.3 step 2): on a [Text] the style is merged
+/// into the widget (the universal props win over the primitive's named
+/// style); on any other widget the style becomes the ambient
+/// [DefaultTextStyle] for text descendants. Every other [Text] parameter —
+/// `strutStyle`, `locale`, `textWidthBasis`, `selectionColor`, the
+/// `Text.rich` spans of `rich_text`, … — is preserved across the rebuild.
 Widget _applyTextStyle(Widget widget, _TextStyling? styling) {
   if (styling == null) return widget;
-  if (widget is Text && widget.data != null) {
+  if (widget is Text && (widget.data != null || widget.textSpan != null)) {
+    final style = widget.style == null
+        ? styling.style
+        : widget.style!.merge(styling.style);
+    final textAlign = styling.textAlign ?? widget.textAlign;
+    final softWrap = styling.softWrap ?? widget.softWrap;
+    final maxLines = styling.maxLines ?? widget.maxLines;
+    final overflow = styling.overflow ?? widget.overflow;
+    if (widget.textSpan != null) {
+      return Text.rich(
+        widget.textSpan!,
+        style: style,
+        textAlign: textAlign,
+        softWrap: softWrap,
+        maxLines: maxLines,
+        overflow: overflow,
+        strutStyle: widget.strutStyle,
+        textDirection: widget.textDirection,
+        locale: widget.locale,
+        textScaler: widget.textScaler,
+        semanticsLabel: widget.semanticsLabel,
+        textWidthBasis: widget.textWidthBasis,
+        textHeightBehavior: widget.textHeightBehavior,
+        selectionColor: widget.selectionColor,
+      );
+    }
     return Text(
       widget.data!,
-      style: widget.style == null
-          ? styling.style
-          : widget.style!.merge(styling.style),
-      textAlign: styling.textAlign ?? widget.textAlign,
-      softWrap: styling.softWrap ?? widget.softWrap,
-      maxLines: styling.maxLines ?? widget.maxLines,
-      overflow: styling.overflow ?? widget.overflow,
+      style: style,
+      textAlign: textAlign,
+      softWrap: softWrap,
+      maxLines: maxLines,
+      overflow: overflow,
+      strutStyle: widget.strutStyle,
+      textDirection: widget.textDirection,
+      locale: widget.locale,
+      textScaler: widget.textScaler,
+      semanticsLabel: widget.semanticsLabel,
+      textWidthBasis: widget.textWidthBasis,
+      textHeightBehavior: widget.textHeightBehavior,
+      selectionColor: widget.selectionColor,
     );
   }
   if (styling.style != null) {

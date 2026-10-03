@@ -104,6 +104,17 @@ class UiNode {
     return UiNode(type: type, props: merged, children: kids, error: error);
   }
 
+  /// The wire shape of this node: `{"type": …, …props…, "children": […]}`
+  /// with nested nodes converted recursively (the inverse of [fromJson]).
+  Map<String, dynamic> toJson() {
+    return {
+      'type': type,
+      ...props,
+      if (children.isNotEmpty)
+        'children': [for (final child in children) child.toJson()],
+    };
+  }
+
   /// This node plus every nested node: `children` and node-like values inside
   /// props (`body`, `fields`, `items`, table `rows`, …).
   List<UiNode> flatten() {

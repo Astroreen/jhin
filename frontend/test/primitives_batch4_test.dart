@@ -354,7 +354,7 @@ void main() {
       expect(find.text('item 0'), findsOneWidget);
       expect(find.text('item 9999'), findsNothing);
 
-      await tester.drag(find.byType(ListView), const Offset(0, -200000));
+      await tester.drag(find.byType(ListView), const Offset(0, -300000));
       await tester.pumpAndSettle();
       expect(find.text('item 9999'), findsOneWidget);
     });

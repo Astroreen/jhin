@@ -38,6 +38,8 @@ final class BuilderProbe {
         BUILDERS.put(Ui.CardBuilder.class, Ui::card);
         BUILDERS.put(Ui.TextBuilder.class, () -> Ui.text("probe"));
         BUILDERS.put(Ui.MarkdownBuilder.class, () -> Ui.markdown("probe"));
+        BUILDERS.put(Ui.RichTextBuilder.class, Ui::richText);
+        BUILDERS.put(Ui.CodeBlockBuilder.class, () -> Ui.codeBlock("probe"));
         BUILDERS.put(Ui.ButtonBuilder.class, () -> Ui.button("probe"));
         BUILDERS.put(Ui.InputBuilder.class, () -> Ui.input("probe"));
         BUILDERS.put(Ui.DropdownBuilder.class, () -> Ui.dropdown("probe"));

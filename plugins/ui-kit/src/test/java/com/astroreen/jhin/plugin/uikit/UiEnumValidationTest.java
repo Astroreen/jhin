@@ -103,6 +103,23 @@ class UiEnumValidationTest {
         assertThatThrownBy(() -> Ui.text("x").textWidthBasis("nope")).isInstanceOf(IllegalArgumentException.class);
     }
 
+    // --- T60 text set ---
+
+    @Test
+    void richTextSpanStyleValidatesTheTypographyTokens() {
+        for (String literal : List.of("h1", "h2", "h3", "body", "small", "caption", "mono")) {
+            assertThatCode(() -> Ui.span("x").style(literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.span("x").style("headline")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void spanTextStyleMapsStayPassthrough() {
+        Map<String, Object> style = Map.of("fontWeight", 700);
+        assertThatCode(() -> Ui.richText().span(Ui.span("x").style(style).build()))
+                .doesNotThrowAnyException();
+    }
+
     // --- Flex group ---
 
     @Test

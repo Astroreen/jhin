@@ -218,9 +218,11 @@ A `padding`/`margin` value is a num, `[all]`, `[vertical,horizontal]`,
 | Text | `ellipsis` | bool | — | shorthand for `textOverflow: ellipsis` |
 
 Text-style props apply when the built widget is text-bearing; on non-text
-nodes they are ignored. The legacy level-1 text props `style` (`h1/h2/h3/body/
-small/caption/mono` typography token; `caption` maps to `small`), `bold`,
-`italic` and `color` remain accepted on text-bearing primitives.
+nodes they are ignored. On text-bearing primitives `overflow` is accepted as
+an alias of `textOverflow`. The legacy level-1 text props `style`
+(`h1/h2/h3/body/small/caption/mono` typography token; `caption` maps to
+`small`), `bold`, `italic` and `color` remain accepted on text-bearing
+primitives.
 
 | Group | Prop | Type | Default | Meaning |
 |-------|------|------|---------|---------|
@@ -449,7 +451,7 @@ Text primitives:
 | `text` | `italic` | bool | `false` | italic |
 | `text` | `color` | color | — | text color |
 | `text` | `strutStyle` | object | — | `{size?, height?, leading?}` |
-| `text` | `textWidthBasis` | `parent`/`longestLine`/`character` | `parent` | width basis |
+| `text` | `textWidthBasis` | `parent`/`longestLine`/`character` | `parent` | width basis (`character` has no Flutter counterpart and degrades to `parent`) |
 | `text` | `locale` | string | — | BCP-47 tag |
 | `text` | `selectionColor` | color | — | selection color |
 | `rich_text` | `spans` | span array | — | inline spans, see the span table below |
@@ -461,6 +463,36 @@ Text primitives:
 | `code_block` | `wrap` | bool | `false` | wrap long lines |
 | `code_block` | `copyable` | bool | `false` | copy affordance (copies via clipboard + toast) |
 | `code_block` | `maxLines` | int | — | line limit |
+| `code_block` | `lineNumbers` | bool | `false` | show line numbers |
+
+Markdown block mapping (`markdown` parses its `text` and renders the mapped
+nodes through the normal primitive pipeline):
+
+| Markdown | Node |
+|----------|------|
+| paragraph (plain) | `text` |
+| paragraph with inline markup | `rich_text` (spans: link → `action: {op: openUrl, value: href}`, `strong` → `fontWeight: 700`, `em` → `fontStyle: italic`, inline code → `fontFamily: $font.mono`) |
+| heading `#`…`###` | `text` (`style: h1`…`h3`) |
+| heading `####`…`######` | `text` (`style: h3`) |
+| fenced / indented code | `code_block` (`code`, `language` from the info string) |
+| bullet / ordered list | `list` (`items`; ordered items carry their `1.` prefix; nested lists nest inside a `container` item) |
+| blockquote | `card` (`children` = the mapped inner blocks) |
+| table | `table` (`columns`, `rows`) |
+| thematic break | `divider` |
+| image | `image` (`src`, `semanticsLabel` from the alt text; splits out of its paragraph) |
+
+Markdown degrades (§2.4 — the client never crashes on server content):
+
+- an unbalanced (unclosed) fenced code block degrades the whole `markdown`
+  node to a single plain `text` carrying the raw source;
+- unsupported or malformed blocks — HTML blocks, footnote definitions and
+  references, definition lists, unknown elements — degrade to plain `text`
+  (their text content; an HTML block keeps its raw source);
+- unknown inline elements flatten to their plain text;
+- `syntax: true` is accepted but syntax highlighting is not implemented in
+  this MVP — fences render as a plain `code_block`;
+- `codeBlockStyle` is accepted; the contract defines no literal set yet, so
+  every value renders the default `code_block` look.
 
 Control primitives:
 

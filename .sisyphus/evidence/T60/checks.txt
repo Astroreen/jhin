@@ -1,0 +1,22 @@
+ok: frontend suite green (scripts/qa/flutter-test.sh; transcript in test.txt)
+ok: ui-kit module suite green (conformance/lattice/enum/regression/GalleryDump; appended to test.txt)
+ok: markdown-tree.txt written: fixture + mapped primitive tree recorded
+ok: degrade.txt written: unbalanced fence -> text, unknown constructs -> text, unknown span action/field drop cleanly, unknown language labels only
+ok: clipboard.txt written: Clipboard.setData carries the exact source and the toast fires
+ok: golden delta recorded: 160 -> 168 PNGs, 8 new, 10 updated baselines
+ok: golden regeneration is idempotent (checksums identical; transcript in goldens.txt)
+ok: enum-negative.txt written: Ui.text().overflow/.textWidthBasis/.style, Ui.span().style and the universal enums of rich_text/code_block throw at build time
+ok: no flutter_markdown dependency in frontend/pubspec.yaml
+ok: markdown package resolved at 7.3.1 (constraint ^7.2.2)
+happy exit code 0
+ok: frontend suite green (scripts/qa/flutter-test.sh; transcript in test.txt)
+ok: ui-kit module suite green (conformance/lattice/enum/regression/GalleryDump; appended to test.txt)
+ok: markdown-tree.txt written: fixture + mapped primitive tree recorded
+ok: degrade.txt written: unbalanced fence -> text, unknown constructs -> text, unknown span action/field drop cleanly, unknown language labels only
+ok: clipboard.txt written: Clipboard.setData carries the exact source and the toast fires
+ok: golden delta recorded: 160 -> 168 PNGs, 8 new, 10 updated baselines
+ok: golden regeneration is idempotent (checksums identical; transcript in goldens.txt)
+ok: --fail probes passed: every unknown literal throws, documented literals pass
+ok: --fail probe: wrong expectation tripped as intended (the builder throws; appended to enum-negative.txt)
+--fail exit code 1 (intentional failure-path exit)
+FAIL: --fail mode: intentional failure-path exit

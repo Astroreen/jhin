@@ -1,0 +1,79 @@
+T60 markdown mapping — the fixture and the primitive tree it maps to
+(docs/sdui.md §2.6 'Markdown block mapping'; assertions in
+ test/primitives_batch5_test.dart 'markdown fixture renders the expected primitive tree')
+
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch5_test.dart
+00:00 +0: markdown mapping (§2.6) markdown fixture renders the expected primitive tree
+T60_MARKDOWN_FIXTURE_BEGIN
+# Title One
+
+Intro paragraph with a [link](https://example.com/x) and **bold**.
+
+## Sub two
+
+### Sub three
+
+- alpha
+- beta
+  - nested one
+  - nested two
+
+1. first
+2. second
+
+```java
+public class A {}
+```
+
+> quoted line
+
+| Name | Path |
+|------|------|
+| a    | b    |
+
+![alt text](https://example.invalid/i.png)
+
+<div>raw html block</div>
+
+A footnote ref[^note] here.
+
+[^note]: the note text
+
+---
+
+Done.
+
+T60_MARKDOWN_FIXTURE_END
+T60_MARKDOWN_TREE_BEGIN
+text "Title One" style=h1
+rich_text spans=5
+  span "Intro paragraph with a "
+  span "link" action={op: openUrl, value: https://example.com/x} style={textDecoration: underline, color: $color.accent}
+  span " and "
+  span "bold" style={fontWeight: 700}
+  span "."
+text "Sub two" style=h2
+text "Sub three" style=h3
+list items=2
+  text "alpha" style=body
+  container
+    text "beta" style=body
+    list items=2
+      text "nested one" style=body
+      text "nested two" style=body
+list items=2
+  text "1. first" style=body
+  text "2. second" style=body
+code_block language=java code="public class A {}"
+card children=1
+  text "quoted line" style=body
+table columns=2 rows=1
+image src=https://example.invalid/i.png alt=alt text
+text "<div>raw html block</div>" style=body
+text "A footnote ref1 here." style=body
+divider
+text "Done." style=body
+text "the note text ↩" style=body
+
+T60_MARKDOWN_TREE_END
+00:00 +1: All tests passed!

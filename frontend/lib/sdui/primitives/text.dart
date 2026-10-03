@@ -1,41 +1,46 @@
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
+import 'text_common.dart';
 
-/// `text` (§8.3): `text`, `style: h1|h2|h3|body|caption|mono`, `bold?`,
-/// `color?` (`#RRGGBB`, `#AARRGGBB`, `0xFFRRGGBB` or int).
+/// `text` (§2.6): `text` (required), `style` typography token
+/// (`h1`/`h2`/`h3`/`body`/`small`/`caption`/`mono`; `caption` maps to
+/// `small`), `bold`, `italic`, `color`, `strutStyle`
+/// (`{size?, height?, leading?}`), `textWidthBasis`
+/// (`parent`/`longestLine`/`character`), `locale` (BCP-47) and
+/// `selectionColor`. The universal Text group (`fontFamily`…`textOverflow`,
+/// `maxLines`, `softWrap`, `ellipsis`) is applied by the registry (§2.3
+/// step 2) on top of the built style.
 ///
-/// A missing `text` prop degrades to a visible placeholder.
+/// A missing `text` prop degrades to a visible placeholder; an unknown
+/// `style` token degrades to the default `body` (§2.4).
 Widget buildText(BuildContext context, UiNode node, RenderContext ctx) {
   final text = node.stringProp('text');
   if (text == null) {
     return degradedBox(context, 'Missing text');
   }
-  final style = node.stringProp('style') ?? 'body';
-  final theme = Theme.of(context);
-  TextStyle? base;
-  switch (style) {
-    case 'h1':
-      base = theme.textTheme.headlineMedium;
-    case 'h2':
-      base = theme.textTheme.headlineSmall;
-    case 'h3':
-      base = theme.textTheme.titleLarge;
-    case 'caption':
-      base = theme.textTheme.bodySmall;
-    case 'mono':
-      base = theme.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace');
-    default:
-      base = theme.textTheme.bodyMedium;
+  final design = JhinDesignScope.of(context);
+  var style = typographyStyle(node.stringProp('style'), design.tokens) ??
+      design.tokens.typography.body;
+  if (node.boolProp('bold') == true) {
+    style = style.copyWith(fontWeight: FontWeight.bold);
+  }
+  if (node.boolProp('italic') == true) {
+    style = style.copyWith(fontStyle: FontStyle.italic);
   }
   final color = parseColor(node.props['color']);
+  if (color != null) {
+    style = style.copyWith(color: color);
+  }
   return Text(
     text,
-    style: base?.copyWith(
-      fontWeight: node.boolProp('bold') == true ? FontWeight.bold : null,
-      color: color,
-    ),
+    style: style,
+    strutStyle: parseStrutStyle(node.props['strutStyle']),
+    textWidthBasis: parseTextWidthBasis(node.stringProp('textWidthBasis')),
+    locale: parseLocale(node.stringProp('locale')),
+    selectionColor: parseColor(node.props['selectionColor']),
   );
 }
