@@ -1,0 +1,30 @@
+T58 flaky Map.of fixture-order fix
+
+The regression fixtures 21-chart_bar.json and 22-chart_pie.json were
+recaptured (2 fixture files changed): chart series/item maps were
+built with Map.of, whose small-map implementation randomizes
+iteration order per JVM run (hash-flooding mitigation), so the
+byte-identical fixture check flaked across runs. The fixtures now use
+the insertion-ordered entry() helper (LinkedHashMap), same as
+GalleryDump. 20-chart_line.json never flaked: its series maps are
+single-key maps, whose Map.of order is deterministic.
+
+GalleryDump idempotency probe (two runs must produce a byte-identical
+frontend/test/gallery/gallery_nodes.dart):
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processTestResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-kit:test
+
+BUILD SUCCESSFUL in 1s
+7 actionable tasks: 1 executed, 6 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+
+(probe idempotent: gallery_nodes.dart byte-identical across runs)

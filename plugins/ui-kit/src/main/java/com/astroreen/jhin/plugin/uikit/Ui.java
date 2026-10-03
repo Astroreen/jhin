@@ -240,6 +240,56 @@ public final class Ui {
         return new DrawerBuilder();
     }
 
+    /** A decorated layout box: {@code box}(child?, children?, direction?, shape?, alignment?) — the layout superset of {@code container}. */
+    public static BoxBuilder box() {
+        return new BoxBuilder();
+    }
+
+    /** A horizontal flex: {@code row}(children) — all layout props come from the universal Flex group. */
+    public static RowBuilder row() {
+        return new RowBuilder();
+    }
+
+    /** A vertical flex: {@code column}(children) — all layout props come from the universal Flex group. */
+    public static ColumnBuilder column() {
+        return new ColumnBuilder();
+    }
+
+    /** The explicit, axis-parametrized flex primitive: {@code flex}(direction, children). */
+    public static FlexBuilder flex(String direction) {
+        return new FlexBuilder(direction);
+    }
+
+    /** {@code expanded}(flex?, child) — {@code flex} is inherited from the universal Flex group (default {@code 1} client-side). */
+    public static ExpandedBuilder expanded() {
+        return new ExpandedBuilder();
+    }
+
+    /** {@code flexible}(flex?, fit?, child) — {@code flex}/{@code fit} are inherited from the universal Flex group. */
+    public static FlexibleBuilder flexible() {
+        return new FlexibleBuilder();
+    }
+
+    /** {@code sized_box}(width?, height?, child?) — {@code width}/{@code height} are inherited from the universal Box group. */
+    public static SizedBoxBuilder sizedBox() {
+        return new SizedBoxBuilder();
+    }
+
+    /** {@code align}(align?, child) — {@code align} is inherited from the universal Box group (default {@code center} client-side). */
+    public static AlignBuilder align() {
+        return new AlignBuilder();
+    }
+
+    /** {@code center}(child) — shorthand for {@code align: center}. */
+    public static CenterBuilder center() {
+        return new CenterBuilder();
+    }
+
+    /** {@code aspect_ratio}(aspectRatio, child?) — the explicit standalone form of the universal {@code aspectRatio}, wrapping a {@code child} slot. */
+    public static AspectRatioBuilder aspectRatio(double aspectRatio) {
+        return new AspectRatioBuilder(aspectRatio);
+    }
+
     /**
      * Base of every builder: the universal optional fields of docs/sdui.md
      * section 2.1 (Meta, Box, Text, Flex, Interaction/A11y groups) through
@@ -2139,6 +2189,235 @@ public final class Ui {
         /** The drawer title. */
         public DrawerBuilder title(String value) {
             props.put("title", value);
+            return this;
+        }
+    }
+
+    /** {@code box}(child?, children?, direction?, shape?, alignment?) — the layout superset of {@code container}; decoration comes from the universal Box group. */
+    public static final class BoxBuilder extends NodeBuilder<BoxBuilder> {
+
+        private BoxBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "box";
+        }
+
+        /** The single child node. */
+        public BoxBuilder child(UiNode node) {
+            props.put("child", node);
+            return this;
+        }
+
+        /** The single child as a string (the text shorthand). */
+        public BoxBuilder child(String text) {
+            props.put("child", text);
+            return this;
+        }
+
+        /** Multiple children, laid out per {@link com.astroreen.jhin.plugin.uikit.has.HasFlex#direction} when more than one. */
+        public BoxBuilder children(List<Object> nodes) {
+            props.put("children", nodes);
+            return this;
+        }
+
+        /** The decoration shape: {@code rectangle} or {@code circle}; validated. */
+        public BoxBuilder shape(String value) {
+            props.put("shape", UiEnums.require("shape", value, UiEnums.BOX_SHAPE));
+            return this;
+        }
+
+        /** The alignment prop, documented as an alias of the universal {@code align}; validated. */
+        public BoxBuilder alignment(String value) {
+            props.put("alignment", UiEnums.require("alignment", value, UiEnums.ALIGNMENT));
+            return this;
+        }
+    }
+
+    /** {@code row}(children) — all layout props come from the universal Flex group. */
+    public static final class RowBuilder extends ParentBuilder<RowBuilder> {
+
+        private RowBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "row";
+        }
+    }
+
+    /** {@code column}(children) — all layout props come from the universal Flex group. */
+    public static final class ColumnBuilder extends ParentBuilder<ColumnBuilder> {
+
+        private ColumnBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "column";
+        }
+    }
+
+    /** {@code flex}(direction, children) — the explicit, axis-parametrized form of {@code row}/{@code column}. */
+    public static final class FlexBuilder extends ParentBuilder<FlexBuilder> {
+
+        private FlexBuilder(String direction) {
+            direction(direction);
+        }
+
+        @Override
+        String type() {
+            return "flex";
+        }
+    }
+
+    /** {@code expanded}(flex?, child). */
+    public static final class ExpandedBuilder extends NodeBuilder<ExpandedBuilder> {
+
+        private ExpandedBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "expanded";
+        }
+
+        /** The child node. */
+        public ExpandedBuilder child(UiNode node) {
+            props.put("child", node);
+            return this;
+        }
+
+        /** The child as a string (the text shorthand). */
+        public ExpandedBuilder child(String text) {
+            props.put("child", text);
+            return this;
+        }
+    }
+
+    /** {@code flexible}(flex?, fit?, child). */
+    public static final class FlexibleBuilder extends NodeBuilder<FlexibleBuilder> {
+
+        private FlexibleBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "flexible";
+        }
+
+        /** The child node. */
+        public FlexibleBuilder child(UiNode node) {
+            props.put("child", node);
+            return this;
+        }
+
+        /** The child as a string (the text shorthand). */
+        public FlexibleBuilder child(String text) {
+            props.put("child", text);
+            return this;
+        }
+    }
+
+    /** {@code sized_box}(width?, height?, child?). */
+    public static final class SizedBoxBuilder extends NodeBuilder<SizedBoxBuilder> {
+
+        private SizedBoxBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "sized_box";
+        }
+
+        /** The child node. */
+        public SizedBoxBuilder child(UiNode node) {
+            props.put("child", node);
+            return this;
+        }
+
+        /** The child as a string (the text shorthand). */
+        public SizedBoxBuilder child(String text) {
+            props.put("child", text);
+            return this;
+        }
+    }
+
+    /** {@code align}(align?, child). */
+    public static final class AlignBuilder extends NodeBuilder<AlignBuilder> {
+
+        private AlignBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "align";
+        }
+
+        /** The child node. */
+        public AlignBuilder child(UiNode node) {
+            props.put("child", node);
+            return this;
+        }
+
+        /** The child as a string (the text shorthand). */
+        public AlignBuilder child(String text) {
+            props.put("child", text);
+            return this;
+        }
+    }
+
+    /** {@code center}(child). */
+    public static final class CenterBuilder extends NodeBuilder<CenterBuilder> {
+
+        private CenterBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "center";
+        }
+
+        /** The child node. */
+        public CenterBuilder child(UiNode node) {
+            props.put("child", node);
+            return this;
+        }
+
+        /** The child as a string (the text shorthand). */
+        public CenterBuilder child(String text) {
+            props.put("child", text);
+            return this;
+        }
+    }
+
+    /**
+     * {@code aspect_ratio}(aspectRatio, child?) — the explicit standalone form
+     * of the universal {@code aspectRatio} (docs/sdui.md section 2.1 Box
+     * group), wrapping a {@code child} slot instead of this node's own
+     * rendering.
+     */
+    public static final class AspectRatioBuilder extends NodeBuilder<AspectRatioBuilder> {
+
+        private AspectRatioBuilder(double aspectRatio) {
+            aspectRatio(aspectRatio);
+        }
+
+        @Override
+        String type() {
+            return "aspect_ratio";
+        }
+
+        /** The child node. */
+        public AspectRatioBuilder child(UiNode node) {
+            props.put("child", node);
+            return this;
+        }
+
+        /** The child as a string (the text shorthand). */
+        public AspectRatioBuilder child(String text) {
+            props.put("child", text);
             return this;
         }
     }

@@ -39,6 +39,15 @@ class UiRegressionTest {
         return action;
     }
 
+    /** Deterministic insertion-ordered map; {@code Map.of} iteration order is randomized per JVM run. */
+    private static Map<String, Object> orderedMap(Object... pairs) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            map.put((String) pairs[i], pairs[i + 1]);
+        }
+        return map;
+    }
+
     /**
      * One node per builder, every setter that existed before the T55 refactor
      * exercised exactly once. The order of the list is the fixture numbering.
@@ -131,11 +140,11 @@ class UiRegressionTest {
 
         nodes.add(Ui.figure().shape("rectangle").color("#112233").width(10).height(20).build());
 
-        nodes.add(Ui.chartLine().series(List.of(Map.of("label", "l"), Map.of("values", List.of(1, 2)))).build());
+        nodes.add(Ui.chartLine().series(List.of(orderedMap("label", "l"), orderedMap("values", List.of(1, 2)))).build());
 
-        nodes.add(Ui.chartBar().items(List.of(Map.of("label", "a", "value", 1))).build());
+        nodes.add(Ui.chartBar().items(List.of(orderedMap("label", "a", "value", 1))).build());
 
-        nodes.add(Ui.chartPie().items(List.of(Map.of("label", "a", "value", 2))).build());
+        nodes.add(Ui.chartPie().items(List.of(orderedMap("label", "a", "value", 2))).build());
 
         nodes.add(Ui.drawer().title("Drawer").child(Ui.text("d").build()).build());
 

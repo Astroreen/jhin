@@ -1,0 +1,15 @@
+ok: frontend suite green (scripts/qa/flutter-test.sh; transcript in test.txt)
+ok: ui-kit module suite green (conformance/lattice/enum/regression/GalleryDump; appended to test.txt)
+ok: golden delta recorded: 100 -> 140 PNGs, 40 new + 2 updated baselines
+ok: golden regeneration is idempotent (checksums identical; transcript in goldens.txt)
+ok: enum-negative.txt written: Java throw-at-build evidence + Flutter degrade evidence (unknown gradient.type -> flat color, unknown prop ignored, no exception)
+ok: flaky-fix.txt written (Map.of note + byte-identical GalleryDump probe)
+happy exit code 0
+ok: frontend suite green (scripts/qa/flutter-test.sh; transcript in test.txt)
+ok: ui-kit module suite green (conformance/lattice/enum/regression/GalleryDump; appended to test.txt)
+ok: golden delta recorded: 100 -> 140 PNGs, 40 new + 2 updated baselines
+ok: golden regeneration is idempotent (checksums identical; transcript in goldens.txt)
+ok: --fail probes passed: every unknown literal throws, documented literals pass
+ok: --fail probe: wrong expectation tripped as intended (the builder throws; appended to enum-negative.txt)
+--fail exit code 1 (intentional failure-path exit)
+FAIL: --fail mode: intentional failure-path exit

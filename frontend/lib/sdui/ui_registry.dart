@@ -3,17 +3,25 @@ import 'package:flutter/material.dart';
 import '../design/theme.dart';
 import '../design/tokens.dart';
 import 'expr.dart';
+import 'primitives/align_primitive.dart';
+import 'primitives/aspect_ratio_primitive.dart';
+import 'primitives/box.dart';
 import 'primitives/button.dart';
 import 'primitives/card.dart';
+import 'primitives/center_primitive.dart';
 import 'primitives/chart_bar.dart';
 import 'primitives/chart_line.dart';
 import 'primitives/chart_pie.dart';
 import 'primitives/checkbox.dart';
+import 'primitives/column.dart';
 import 'primitives/container.dart';
 import 'primitives/divider.dart';
 import 'primitives/drawer.dart';
 import 'primitives/dropdown.dart';
+import 'primitives/expanded.dart';
 import 'primitives/figure.dart';
+import 'primitives/flex.dart';
+import 'primitives/flexible.dart';
 import 'primitives/form.dart';
 import 'primitives/image.dart';
 import 'primitives/input.dart';
@@ -21,7 +29,9 @@ import 'primitives/list.dart';
 import 'primitives/markdown.dart';
 import 'primitives/nav.dart';
 import 'primitives/progress.dart';
+import 'primitives/row.dart';
 import 'primitives/screen.dart';
+import 'primitives/sized_box.dart';
 import 'primitives/slider.dart';
 import 'primitives/spacer.dart';
 import 'primitives/stream_view.dart';
@@ -73,6 +83,16 @@ class UiRegistry {
       'chart_bar': buildChartBar,
       'chart_pie': buildChartPie,
       'drawer': buildDrawer,
+      'box': buildBox,
+      'row': buildRow,
+      'column': buildColumn,
+      'flex': buildFlexPrimitive,
+      'expanded': buildExpanded,
+      'flexible': buildFlexible,
+      'sized_box': buildSizedBox,
+      'align': buildAlignPrimitive,
+      'center': buildCenterPrimitive,
+      'aspect_ratio': buildAspectRatioPrimitive,
     });
     return registry;
   }
@@ -151,7 +171,13 @@ class UiRegistry {
     // 2. text style (text-bearing nodes).
     final styling = _textStyling(node);
     result = _applyTextStyle(result, styling);
-    final textBearing = result is Text;
+    // Whether `color` is the legacy text color and `height` the line-height
+    // multiple (§2.1 Text group) instead of the Box-group background color
+    // and box constraint: only text-bearing primitives (`text`, `markdown`)
+    // qualify — a `box`/`container` whose built widget is a bare `Text`
+    // child passthrough still paints `color` as its own background.
+    final textBearing =
+        result is Text && (node.type == 'text' || node.type == 'markdown');
 
     // 3. DecoratedBox (color/gradient/border/borderRadius/shadow).
     final decoration = _decoration(node, textBearing: textBearing);
@@ -478,14 +504,21 @@ Widget _applyTextStyle(Widget widget, _TextStyling? styling) {
 Decoration? _decoration(UiNode node, {required bool textBearing}) {
   final color = textBearing ? null : _asColor(node.props['color']);
   final gradient = _gradient(node.props['gradient']);
-  final borderRadius = _borderRadius(node.props['borderRadius']);
+  final shape = _boxShape(node.stringProp('shape'));
+  // Flutter's `BoxDecoration` forbids combining `borderRadius` with
+  // `BoxShape.circle` (an assertion, not a degrade) — drop the radius for a
+  // circle instead (§2.4/§9: never crash on server content).
+  final borderRadius = shape == BoxShape.circle
+      ? null
+      : _borderRadius(node.props['borderRadius']);
   final border = _border(node);
   final shadow = _shadow(node.props['shadow']);
   if (color == null &&
       gradient == null &&
       borderRadius == null &&
       border == null &&
-      shadow == null) {
+      shadow == null &&
+      shape != BoxShape.circle) {
     return null;
   }
   return BoxDecoration(
@@ -494,7 +527,20 @@ Decoration? _decoration(UiNode node, {required bool textBearing}) {
     border: border,
     borderRadius: borderRadius,
     boxShadow: shadow == null ? null : [shadow],
+    shape: shape ?? BoxShape.rectangle,
   );
+}
+
+/// The `box`-only `shape` prop (§2.6): `rectangle` (default) or `circle`.
+/// Unknown/absent degrades to null (→ `BoxShape.rectangle`), never a crash.
+BoxShape? _boxShape(String? value) {
+  switch (value) {
+    case 'circle':
+      return BoxShape.circle;
+    case 'rectangle':
+      return BoxShape.rectangle;
+  }
+  return null;
 }
 
 /// A [Color] passthrough over [parseColor]: a resolved `$color.*` token
@@ -614,6 +660,21 @@ Alignment? _alignment(Object? value) {
     return Alignment((value[0] as num).toDouble(), (value[1] as num).toDouble());
   }
   return null;
+}
+
+/// Public alias of [_alignment] (docs/sdui.md §2.1 Box `align`): shared by
+/// the universal wrapper above and the `align`/`box`/`center` primitives,
+/// which need the same alignment-literal parsing for their own `child`
+/// slot. Unknown values degrade to null (§2.4).
+Alignment? parseAlignmentLiteral(Object? value) => _alignment(value);
+
+/// Builds the single `child` prop slot used by single-child primitives
+/// (`box`, `expanded`, `flexible`, `align`, `center`, `sized_box`,
+/// `aspect_ratio`, …): a nested node object or the string shorthand. `null`
+/// (the prop absent) returns `null` so the caller can degrade visibly.
+Widget? buildChildProp(BuildContext context, RenderContext ctx, Object? value) {
+  if (value == null) return null;
+  return ctx.build(context, UiNode.fromJson(value));
 }
 
 /// The `ConstrainedBox` constraints (§2.3 step 5). `width`/`height` set
@@ -855,8 +916,17 @@ Widget _applyFlexAndMargin(
   required bool flexParent,
 }) {
   final margin = parsePadding(node.props['margin'], tokens: tokens);
-  final flex = flexParent ? node.numProp('flex')?.round() : null;
-  final fit = flexParent ? _flexFit(node.stringProp('fit')) : null;
+  var flex = flexParent ? node.numProp('flex')?.round() : null;
+  var fit = flexParent ? _flexFit(node.stringProp('fit')) : null;
+  // §2.6 defaults of the `expanded`/`flexible` primitives: an absent `flex`
+  // is `1` for both, and an absent `fit` on `flexible` is `loose` — the node
+  // type carries the documented default even when the wire omits the prop.
+  if (flexParent && node.type == 'flexible' && fit == null) {
+    fit = FlexFit.loose;
+  }
+  if (flexParent && flex == null && fit == null && node.type == 'expanded') {
+    flex = 1;
+  }
   if (flex == null && fit == null) {
     return margin == null ? result : Padding(padding: margin, child: result);
   }

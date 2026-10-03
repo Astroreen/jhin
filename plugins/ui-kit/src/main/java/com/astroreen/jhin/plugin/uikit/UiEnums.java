@@ -125,6 +125,9 @@ final class UiEnums {
     /** docs/sdui.md 2.1 Box {@code gradient} type. */
     static final Set<String> GRADIENT_TYPE = Set.of("linear", "radial", "sweep");
 
+    /** docs/sdui.md 2.6 {@code box} {@code shape}. */
+    static final Set<String> BOX_SHAPE = Set.of("rectangle", "circle");
+
     /** Builder-specific literal overrides: entries are {@code <BuilderSimpleName>.<prop>}. */
     private static final Map<String, Set<String>> SPECIFIC = Map.of(
             "ButtonBuilder.style", BUTTON_STYLE,
@@ -133,7 +136,8 @@ final class UiEnums {
             "InputBuilder.border", INPUT_BORDER,
             "InputBuilder.enabledBorder", INPUT_BORDER,
             "InputBuilder.focusedBorder", INPUT_BORDER,
-            "InputBuilder.errorBorder", INPUT_BORDER);
+            "InputBuilder.errorBorder", INPUT_BORDER,
+            "BoxBuilder.shape", BOX_SHAPE);
 
     /** Global prop-name to literal-set lookup, used by the conformance probe. */
     private static final Map<String, Set<String>> BY_KEY = Map.ofEntries(

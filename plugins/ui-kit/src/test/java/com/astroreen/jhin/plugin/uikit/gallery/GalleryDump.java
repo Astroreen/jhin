@@ -1,7 +1,7 @@
 /**
  * Fixture generator for the golden gallery harness (T57): builds &gt;=40
  * {@link UiNode} fixtures through the real {@link Ui} builders, covering all
- * 25 current primitives ({@code BuilderProbe.BUILDERS}) with a basic and a
+ * 35 current primitives ({@code BuilderProbe.BUILDERS}) with a basic and a
  * prop-heavy variant each, and emits them as a generated Dart list consumed
  * by {@code frontend/test/gallery/golden_test.dart}.
  *
@@ -46,12 +46,14 @@ class GalleryDump {
     private static final Path COVERAGE_OUTPUT =
             Path.of("build", "gallery", "coverage.txt").toAbsolutePath().normalize();
 
-    /** The 25 current primitives (plan §4.4's 56 is the future catalog, not covered here). */
+    /** The 35 current primitives (the 25 of T57 plus the T58 layout set). */
     private static final List<String> EXPECTED_PRIMITIVES = List.of(
             "screen", "nav", "container", "card", "text", "markdown", "button", "input",
             "dropdown", "checkbox", "switch", "slider", "form", "list", "stream_view",
             "table", "divider", "spacer", "progress", "image", "figure", "chart_line",
-            "chart_bar", "chart_pie", "drawer");
+            "chart_bar", "chart_pie", "drawer",
+            "box", "row", "column", "flex", "expanded", "flexible", "sized_box",
+            "align", "center", "aspect_ratio");
 
     private static Map<String, Object> action(String name) {
         Map<String, Object> action = new LinkedHashMap<>();
@@ -384,6 +386,132 @@ class GalleryDump {
                 .child(Ui.text("drawer body").build())
                 .build()));
 
+        // box
+        all.add(new Fixture("fixture-box-basic", Ui.box()
+                .id("fixture-box-basic")
+                .shape("rectangle")
+                .child(Ui.text("boxed").build())
+                .build()));
+        all.add(new Fixture("fixture-box-propheavy", heavy(Ui.box(), "box-propheavy")
+                .shape("rectangle")
+                .gradient(Ui.gradient("linear", List.of("$color.accent", "$color.accentMuted"),
+                        List.of("0", "1"), "topLeft", "bottomRight"))
+                .border("$color.outline").borderWidth(2).borderStyle("solid")
+                .borderRadius("$radius.md")
+                .shadow(Ui.shadow("$color.shadow", 12, 0, 0, 4))
+                .clip("antiAlias").align("center")
+                .direction("row").gap(8)
+                .child(Ui.text("L").build())
+                .child(Ui.text("R").build())
+                .build()));
+
+        // row
+        all.add(new Fixture("fixture-row-basic", Ui.row()
+                .id("fixture-row-basic")
+                .child(Ui.text("A").build())
+                .child(Ui.text("B").build())
+                .build()));
+        all.add(new Fixture("fixture-row-propheavy", heavy(Ui.row(), "row-propheavy")
+                .mainAxisAlignment("spaceBetween").crossAxisAlignment("baseline")
+                .mainAxisSize("min").textDirection("ltr").verticalDirection("down")
+                .textBaseline("alphabetic").spacing(8)
+                .overflow("clip").clipBehavior("antiAlias")
+                .child(Ui.text("small").style("caption").build())
+                .child(Ui.text("LARGE").style("h2").build())
+                .build()));
+
+        // column
+        all.add(new Fixture("fixture-column-basic", Ui.column()
+                .id("fixture-column-basic")
+                .child(Ui.text("top").build())
+                .child(Ui.text("bottom").build())
+                .build()));
+        all.add(new Fixture("fixture-column-propheavy", heavy(Ui.column(), "column-propheavy")
+                .mainAxisAlignment("center").crossAxisAlignment("stretch")
+                .mainAxisSize("max").textDirection("rtl").verticalDirection("up")
+                .gap(4)
+                .child(Ui.text("one").build())
+                .child("string child")
+                .build()));
+
+        // flex
+        all.add(new Fixture("fixture-flex-basic", Ui.flex("column")
+                .id("fixture-flex-basic")
+                .child(Ui.text("x").build())
+                .child(Ui.text("y").build())
+                .build()));
+        all.add(new Fixture("fixture-flex-propheavy", heavy(Ui.flex("row"), "flex-propheavy")
+                .mainAxisAlignment("spaceEvenly").crossAxisAlignment("end")
+                .mainAxisSize("min").textDirection("ltr").verticalDirection("up")
+                .spacing(12).overflow("visible")
+                .child(Ui.text("a").build())
+                .child(Ui.text("b").build())
+                .build()));
+
+        // expanded (standalone: the flex wrap degrades to the plain child)
+        all.add(new Fixture("fixture-expanded-basic", Ui.expanded()
+                .id("fixture-expanded-basic")
+                .child(Ui.text("expanded child").build())
+                .build()));
+        all.add(new Fixture("fixture-expanded-propheavy", heavy(Ui.expanded(), "expanded-propheavy")
+                .flex(2)
+                .child(Ui.text("expanded propheavy child").build())
+                .build()));
+
+        // flexible (standalone: the flex wrap degrades to the plain child)
+        all.add(new Fixture("fixture-flexible-basic", Ui.flexible()
+                .id("fixture-flexible-basic")
+                .child(Ui.text("flexible child").build())
+                .build()));
+        all.add(new Fixture("fixture-flexible-propheavy", heavy(Ui.flexible(), "flexible-propheavy")
+                .flex(1).fit("loose")
+                .child(Ui.text("flexible propheavy child").build())
+                .build()));
+
+        // sized_box
+        all.add(new Fixture("fixture-sized_box-basic", Ui.sizedBox()
+                .id("fixture-sized_box-basic")
+                .width(80).height(40)
+                .child(Ui.text("fixed").build())
+                .build()));
+        all.add(new Fixture("fixture-sized_box-propheavy", heavy(Ui.sizedBox(), "sized_box-propheavy")
+                .width(120).height(48)
+                .color("$color.surface")
+                .child(Ui.text("fixed heavy").build())
+                .build()));
+
+        // align
+        all.add(new Fixture("fixture-align-basic", Ui.align()
+                .id("fixture-align-basic")
+                .align("bottomRight")
+                .child(Ui.text("aligned").build())
+                .build()));
+        all.add(new Fixture("fixture-align-propheavy", heavy(Ui.align(), "align-propheavy")
+                .align("topLeft")
+                .width(200).height(80).color("$color.surface")
+                .child(Ui.text("aligned heavy").build())
+                .build()));
+
+        // center
+        all.add(new Fixture("fixture-center-basic", Ui.center()
+                .id("fixture-center-basic")
+                .child(Ui.text("centered").build())
+                .build()));
+        all.add(new Fixture("fixture-center-propheavy", heavy(Ui.center(), "center-propheavy")
+                .width(200).height(80)
+                .child(Ui.text("centered heavy").build())
+                .build()));
+
+        // aspect_ratio
+        all.add(new Fixture("fixture-aspect_ratio-basic", Ui.aspectRatio(1.5)
+                .id("fixture-aspect_ratio-basic")
+                .child(Ui.text("ratio").build())
+                .build()));
+        all.add(new Fixture("fixture-aspect_ratio-propheavy", heavy(Ui.aspectRatio(2.5), "aspect_ratio-propheavy")
+                .color("$color.surface").borderRadius("$radius.sm")
+                .child(Ui.text("ratio heavy").build())
+                .build()));
+
         return all;
     }
 
@@ -391,7 +519,7 @@ class GalleryDump {
     void dumpGallery() throws IOException {
         List<Fixture> all = fixtures();
 
-        assertThat(all).hasSizeGreaterThanOrEqualTo(40);
+        assertThat(all).hasSizeGreaterThanOrEqualTo(70);
 
         Map<String, Integer> perType = new TreeMap<>();
         for (Fixture f : all) {

@@ -57,6 +57,16 @@ final class BuilderProbe {
         BUILDERS.put(Ui.ChartBarBuilder.class, Ui::chartBar);
         BUILDERS.put(Ui.ChartPieBuilder.class, Ui::chartPie);
         BUILDERS.put(Ui.DrawerBuilder.class, Ui::drawer);
+        BUILDERS.put(Ui.BoxBuilder.class, Ui::box);
+        BUILDERS.put(Ui.RowBuilder.class, Ui::row);
+        BUILDERS.put(Ui.ColumnBuilder.class, Ui::column);
+        BUILDERS.put(Ui.FlexBuilder.class, () -> Ui.flex("row"));
+        BUILDERS.put(Ui.ExpandedBuilder.class, Ui::expanded);
+        BUILDERS.put(Ui.FlexibleBuilder.class, Ui::flexible);
+        BUILDERS.put(Ui.SizedBoxBuilder.class, Ui::sizedBox);
+        BUILDERS.put(Ui.AlignBuilder.class, Ui::align);
+        BUILDERS.put(Ui.CenterBuilder.class, Ui::center);
+        BUILDERS.put(Ui.AspectRatioBuilder.class, () -> Ui.aspectRatio(1.5));
     }
 
     /**

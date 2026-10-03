@@ -305,8 +305,8 @@ stays as the legacy name; `box` is its superset.
 
 - Layout — `screen`, `shell`, `container`, `box`, `row`, `column`, `flex`,
   `expanded`, `flexible`, `stack`, `positioned`, `align`, `center`,
-  `sized_box`, `wrap`, `grid`, `scroll`, `divider`, `spacer`, `list`,
-  `list_row`, `table`, `tree`
+  `sized_box`, `aspect_ratio`, `wrap`, `grid`, `scroll`, `divider`, `spacer`,
+  `list`, `list_row`, `table`, `tree`
 - Text — `text`, `rich_text`, `markdown`, `code_block`
 - Controls — `button`, `icon_button`, `icon`, `input`, `textarea`,
   `dropdown`, `checkbox`, `switch`, `slider`, `form`, `segmented`, `menu`,
@@ -376,6 +376,8 @@ Layout primitives:
 | `sized_box` | `width` | num | — | width |
 | `sized_box` | `height` | num | — | height |
 | `sized_box` | `child` | node | — | child |
+| `aspect_ratio` | `aspectRatio` | num | — | width / height ratio (required; missing or non-positive degrades to the plain child) |
+| `aspect_ratio` | `child` | node | — | child |
 | `wrap` | `children` | node array | — | children |
 | `wrap` | `direction` | `horizontal`/`vertical` | `horizontal` | run direction |
 | `wrap` | `alignment` | wrap alignment | `start` | main-axis alignment (`start/center/end/spaceBetween/spaceAround/spaceEvenly`) |
