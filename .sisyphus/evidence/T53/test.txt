@@ -1,0 +1,214 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart
+00:00 +0: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +1: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +2: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +3: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +4: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +5: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +6: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +7: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +8: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +9: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +10: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +11: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +12: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +13: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +13: /home/astroreen/Documents/jhin/frontend/test/action_dispatcher_test.dart: ActionDispatcherTest action without a path is ignored
+Jhin SDUI: ignoring action without a path: {name: send}
+00:00 +14: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +15: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +16: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +17: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +18: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +19: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +20: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +21: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +22: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +23: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +24: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +25: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +26: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest navigate, back and replace manage the screen stack
+00:00 +27: /home/astroreen/Documents/jhin/frontend/test/sdui_host_test.dart: SduiHostTest non-empty bootstrap renders the tree through the screen renderer seam
+00:00 +28: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +29: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +30: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +31: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +32: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +33: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +34: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +35: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +36: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +37: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +38: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +39: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +40: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +41: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +42: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +43: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +44: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +45: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +46: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +46: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest openUrl calls the pluggable handler and degrades without one
+Jhin SDUI: openUrl has no handler, ignored: https://docs.example
+00:00 +47: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +48: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest url field defaults to https://
+00:00 +49: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add-first mode auto-opens the add screen when empty
+00:00 +50: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add-first mode auto-opens the add screen when empty
+00:00 +51: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add-first mode auto-opens the add screen when empty
+00:01 +52: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add-first mode auto-opens the add screen when empty
+00:01 +53: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add-first mode auto-opens the add screen when empty
+00:01 +54: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add-first mode auto-opens the add screen when empty
+00:01 +55: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add-first mode auto-opens the add screen when empty
+00:01 +56: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add-first mode auto-opens the add screen when empty
+00:01 +56: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest an unknown directive op still executes the known ones
+Jhin SDUI: ignoring unknown directive op: definitelyNotAnOp
+00:01 +57: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add-first mode auto-opens the add screen when empty
+00:01 +58: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add-first mode auto-opens the add screen when empty
+00:01 +59: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewTest append mode receives three nodes in order
+00:01 +60: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewTest append mode receives three nodes in order
+00:01 +61: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewTest append mode receives three nodes in order
+00:01 +61: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest one failing node never kills the screen
+Jhin SDUI: failed to render "bad": Bad state: boom
+00:01 +62: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewTest append mode receives three nodes in order
+00:01 +63: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewTest append mode receives three nodes in order
+00:01 +64: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewTest append mode receives three nodes in order
+00:01 +65: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewTest append mode receives three nodes in order
+00:01 +66: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewTest append mode receives three nodes in order
+00:01 +67: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test nav taps navigate by screen id for tabs, bottom and drawer
+00:01 +68: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest lists stored profiles with label and url
+00:01 +69: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest stream_view renders SSE nodes and routes client directives
+00:01 +70: /home/astroreen/Documents/jhin/frontend/test/sdui_runtime_test.dart: SduiRuntimeTest stream_view renders SSE nodes and routes client directives
+00:01 +71: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest probe failure shows the transport error verbatim and stores nothing
+00:01 +72: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest probe failure shows the transport error verbatim and stores nothing
+00:01 +73: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest probe failure shows the transport error verbatim and stores nothing
+00:01 +74: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest probe failure shows the transport error verbatim and stores nothing
+00:01 +75: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest probe failure shows the transport error verbatim and stores nothing
+00:01 +76: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest probe failure shows the transport error verbatim and stores nothing
+00:01 +77: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest probe failure shows the transport error verbatim and stores nothing
+00:01 +78: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +79: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +80: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +81: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +82: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +83: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +84: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +85: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +86: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +87: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +88: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +89: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +90: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +91: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +92: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +93: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +94: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +95: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +96: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +97: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +98: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +99: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest tap switches the active profile and notifies the host
+00:01 +100: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest https failure falls back to http and asks before storing an insecure profile
+00:01 +101: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest https failure falls back to http and asks before storing an insecure profile
+00:01 +102: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest https failure falls back to http and asks before storing an insecure profile
+00:01 +103: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest https failure falls back to http and asks before storing an insecure profile
+00:01 +104: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest https failure falls back to http and asks before storing an insecure profile
+00:01 +105: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest https failure falls back to http and asks before storing an insecure profile
+00:01 +106: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest https failure falls back to http and asks before storing an insecure profile
+00:01 +107: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest https failure falls back to http and asks before storing an insecure profile
+00:01 +108: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest https failure falls back to http and asks before storing an insecure profile
+00:01 +109: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add action opens the add screen
+00:01 +110: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add action opens the add screen
+00:01 +111: /home/astroreen/Documents/jhin/frontend/test/server_profiles_screen_test.dart: ServerProfilesScreenTest add action opens the add screen
+00:01 +112: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test button is disabled without action and confirm gates dispatch behind a dialog
+00:01 +113: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test button is disabled without action and confirm gates dispatch behind a dialog
+00:01 +114: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test button is disabled without action and confirm gates dispatch behind a dialog
+00:01 +115: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test button is disabled without action and confirm gates dispatch behind a dialog
+00:01 +116: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest cancelling the insecure prompt stores nothing
+00:01 +117: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest cancelling the insecure prompt stores nothing
+00:01 +118: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest cancelling the insecure prompt stores nothing
+00:01 +119: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest cancelling the insecure prompt stores nothing
+00:01 +120: /home/astroreen/Documents/jhin/frontend/test/add_server_screen_test.dart: AddServerScreenTest cancelling the insecure prompt stores nothing
+00:01 +121: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewTest replace mode swaps the content for each node event
+00:01 +122: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test input writes UiState and validation blocks bad values
+00:01 +123: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test input writes UiState and validation blocks bad values
+00:01 +124: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test input writes UiState and validation blocks bad values
+00:01 +125: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test input writes UiState and validation blocks bad values
+00:01 +126: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test input writes UiState and validation blocks bad values
+00:01 +127: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test input writes UiState and validation blocks bad values
+00:01 +128: /home/astroreen/Documents/jhin/frontend/test/primitives_batch1_test.dart: PrimitivesBatch1Test input writes UiState and validation blocks bad values
+00:01 +129: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewTest autoScroll pins the view to the newest item
+00:01 +130: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewTest autoScroll pins the view to the newest item
+00:02 +131: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:02 +132: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:02 +133: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:02 +134: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:02 +135: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:02 +136: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:02 +137: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:02 +138: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:02 +139: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:02 +140: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:02 +141: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:02 +142: /home/astroreen/Documents/jhin/frontend/test/design/token_fallback_test.dart: unknown token $spacing.nope: the literal is used and the node renders
+00:02 +143: /home/astroreen/Documents/jhin/frontend/test/design/token_fallback_test.dart: unknown token $spacing.nope: the literal is used and the node renders
+00:02 +144: /home/astroreen/Documents/jhin/frontend/test/design/token_fallback_test.dart: unknown token $spacing.nope: the literal is used and the node renders
+00:02 +145: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +146: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +147: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +148: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +149: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +150: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +151: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +152: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +153: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +154: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +155: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +156: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +157: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +158: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +159: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +160: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +161: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +162: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +163: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +164: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +165: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +166: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +167: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +168: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +169: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +170: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +171: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +172: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +173: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +174: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +175: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +176: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +177: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +178: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +179: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +180: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +181: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +182: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +183: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:02 +184: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +185: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +186: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +187: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +188: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +189: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +190: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +191: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +192: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +193: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +194: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +195: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +196: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +197: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +198: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +199: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +200: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +201: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +202: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest a replayed remove target stays gone
+00:02 +203: /home/astroreen/Documents/jhin/frontend/test/stream_view_test.dart: StreamViewFailureTest shows the reconnect indicator while the connection is down
+00:05 +204: All tests passed!

@@ -1,0 +1,4 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/design/token_fallback_test.dart
+00:00 +0: unknown token $spacing.nope: the literal is used and the node renders
+00:00 +1: malformed theme (accent not hex) falls back to the defaults without throwing
+00:00 +2: All tests passed!
