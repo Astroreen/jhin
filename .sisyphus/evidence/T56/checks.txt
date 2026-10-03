@@ -1,0 +1,24 @@
+ok: :jhin-plugin-ui-default:test green (BootstrapContractTest, BootstrapRouteTest, BootstrapEvidenceTest; transcript in test.txt)
+ok: 5 wire fixtures copied from plugins/ui-default/build/evidence-t56: bootstrap-api2.json, bootstrap-api1.json, absent-header.json, garbage-client.json, caps-no-sse.json
+ok: api2: top-level api == 2
+ok: api2: contract.api/minApi == 2
+ok: api2: contract.schema/minSchema == 3
+ok: api2: tokens.spacing.md == 12
+ok: api2: tokens.radius.full == 9999
+ok: api2: keymap has >= 8 entries
+ok: api2: theme carries appearance/canvas/accent/colors/mode
+ok: api2: theme.mode == theme.appearance
+ok: api2: density == comfortable
+ok: api1: top-level api == 1
+ok: api1: no contract/tokens/density/keymap fields
+ok: api1: theme reduced to seedColor+mode
+ok: absent-header: top-level api == 1
+ok: absent-header: no contract/tokens/density/keymap fields
+ok: absent-header: theme reduced to seedColor+mode
+ok: garbage-client: api=0;schema=99 negotiates down to 1
+ok: garbage-client: no contract/tokens/density/keymap fields
+ok: garbage-client: route answered 200 with a parseable JSON body (see test.txt — no exception, no 500)
+ok: caps-no-sse: top-level api == 2 (level-2 negotiated)
+ok: caps-no-sse: contract still present at level 2
+ok: caps-no-sse: stream_view degraded to list without the sse capability
+ok: caps-no-sse: degraded list carries no stream-only topic field

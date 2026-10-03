@@ -1,26 +1,39 @@
 /**
- * Server-side capability tailoring of UI nodes (D-22, applied at the source).
+ * Server-side capability tailoring of UI nodes and the api/schema negotiation
+ * arithmetic (docs/sdui.md section 6, D-22), applied at the source.
  *
- * <p>Two degradations, both applied before a node tree is written into a
- * payload:
+ * <p>Three independent degradations, all applied before a node tree is
+ * written into a payload:
  * <ul>
  *   <li>without the {@code sse} capability a {@code stream_view} node becomes a
  *       {@code list} carrying a server-side snapshot of the stream (the
  *       summaries of the tail of the session the topic points at, or the
- *       view's {@code empty} text when the stream is empty);</li>
+ *       view's {@code empty} text when the stream is empty) — unchanged from
+ *       level 1, independent of the negotiated contract level;</li>
  *   <li>inline directives embedded in node props (a button action, a submit
- *       action) are removed when the client cannot honour them — the same rule
- *       {@code Directives.filter} applies to directive lists.</li>
+ *       action) are removed when the client cannot honour them — the same
+ *       rule {@code Directives.filter} applies to directive lists;</li>
+ *   <li>below the negotiated level 2, every level-2-only primitive degrades
+ *       to its level-1 equivalent per the docs/sdui.md section 6 downgrade
+ *       table, applied recursively.</li>
  * </ul>
  * Nested nodes are tailored recursively; universal props ({@code id},
- * {@code visible}, {@code padding}, {@code flex}, {@code when}) survive the
- * {@code stream_view} replacement so patches addressed at the id still land.
+ * {@code visible}, {@code padding}, {@code flex}, {@code when}) survive every
+ * replacement so patches addressed at the id still land.
+ *
+ * <p>{@link #negotiatedApi(ClientInfo)} implements the {@code min(client api,
+ * server api)} rule the whole bootstrap payload follows (docs/sdui.md section
+ * 6); {@link #isLevel2(ClientInfo)} is the convenience predicate
+ * {@link BootstrapRoute} uses to decide whether to emit the level-2-only
+ * top-level fields ({@code contract}, {@code tokens}, {@code density},
+ * {@code keymap}) at all.
  */
 package com.astroreen.jhin.plugin.ui;
 
 import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.EventRecord;
 import com.astroreen.jhin.plugin.uikit.UiNode;
+import com.astroreen.jhin.sdk.ApiVersion;
 import com.astroreen.jhin.sdk.http.ClientInfo;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,10 +48,67 @@ final class CapabilityTailor {
     /** How many snapshot lines a degraded stream view keeps. */
     private static final int SNAPSHOT_LIMIT = 20;
 
+    /** The universal props that survive every structural replacement. */
+    private static final List<String> UNIVERSAL_PROP_KEYS =
+            List.of("id", "visible", "padding", "flex", "when");
+
+    /** Default fill color for a degraded {@code avatar -> figure} when none was set. */
+    private static final String DEFAULT_FIGURE_COLOR = "#7E57C2";
+
+    /** Default diameter (px) for a degraded {@code avatar -> figure} without a size. */
+    private static final int DEFAULT_AVATAR_SIZE = 40;
+
+    /**
+     * The level-2 -> level-1 primitive downgrade table (docs/sdui.md section
+     * 6). A type absent from this map is emitted unchanged below level 2.
+     */
+    private static final Map<String, String> DOWNGRADE_TYPES = Map.ofEntries(
+            Map.entry("shell", "container"),
+            Map.entry("row", "container"),
+            Map.entry("list_row", "card"),
+            Map.entry("chip", "text"),
+            Map.entry("badge", "text"),
+            Map.entry("sheet", "card"),
+            Map.entry("dialog", "card"),
+            Map.entry("code_block", "text"),
+            Map.entry("tabs", "nav"),
+            Map.entry("skeleton", "progress"),
+            Map.entry("avatar", "figure"),
+            Map.entry("menu", "list"),
+            Map.entry("tree", "list"),
+            Map.entry("rich_text", "text"));
+
     private final EventLog events;
 
     CapabilityTailor(EventLog events) {
         this.events = events;
+    }
+
+    /**
+     * The contract level the server replies at: {@code min(client api,
+     * server api)} (docs/sdui.md section 6). {@link ClientInfo#api()} is
+     * already lenient (never below 1), so this is never below 1 either, and
+     * it is capped at the level this server speaks
+     * ({@link ApiVersion#SDUI_CONTRACT}) so a client declaring a future
+     * level still gets a payload this server actually implements.
+     *
+     * @param client the parsed {@code X-Jhin-Client} header
+     * @return the negotiated contract level
+     */
+    int negotiatedApi(ClientInfo client) {
+        return Math.min(client.api(), ApiVersion.SDUI_CONTRACT);
+    }
+
+    /**
+     * Whether the negotiated level includes the level-2 payload shape
+     * ({@code contract}/{@code tokens}/{@code density}/{@code keymap} and the
+     * level-2 primitive catalog).
+     *
+     * @param client the parsed {@code X-Jhin-Client} header
+     * @return {@code true} when {@link #negotiatedApi(ClientInfo)} is at least 2
+     */
+    boolean isLevel2(ClientInfo client) {
+        return negotiatedApi(client) >= 2;
     }
 
     /**
@@ -49,21 +119,22 @@ final class CapabilityTailor {
      * @return the node as the client can honour it
      */
     UiNode tailor(UiNode node, ClientInfo client) {
-        if ("stream_view".equals(node.type()) && !client.supports("sse")) {
-            return snapshotList(node);
+        UiNode working = isLevel2(client) ? node : downgrade(node);
+        if ("stream_view".equals(working.type()) && !client.supports("sse")) {
+            return snapshotList(working);
         }
         Map<String, Object> props = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> entry : node.props().entrySet()) {
+        for (Map.Entry<String, Object> entry : working.props().entrySet()) {
             Object value = tailorValue(entry.getValue(), client);
             if (value != SKIP) {
                 props.put(entry.getKey(), value);
             }
         }
         List<Object> children = new ArrayList<>();
-        for (Object child : node.children()) {
+        for (Object child : working.children()) {
             children.add(child instanceof UiNode inner ? tailor(inner, client) : child);
         }
-        return new UiNode(node.type(), props, children);
+        return new UiNode(working.type(), props, children);
     }
 
     /** Marker for a prop value that must not be written at all. */
@@ -91,18 +162,224 @@ final class CapabilityTailor {
         return value;
     }
 
+    // ------------------------------------------------------------------
+    // Level-2 -> level-1 primitive downgrade (docs/sdui.md section 6)
+    // ------------------------------------------------------------------
+
+    /**
+     * Degrades one level-2-only primitive to its level-1 equivalent (the
+     * {@link #DOWNGRADE_TYPES} table); a type outside the table is returned
+     * unchanged. Recursion into children happens in {@link #tailor} right
+     * after this call runs — this method only rewrites the node it is given,
+     * never its descendants directly.
+     *
+     * @param node the node as authored (level-2 shape)
+     * @return the node a level-1 client can render; the same instance when
+     *         the type is not in the downgrade table
+     */
+    private UiNode downgrade(UiNode node) {
+        String degraded = DOWNGRADE_TYPES.get(node.type());
+        if (degraded == null) {
+            return node;
+        }
+        Map<String, Object> props = new LinkedHashMap<>(node.props());
+        List<Object> children = new ArrayList<>(node.children());
+        switch (node.type()) {
+            case "row" -> props.put("direction", "row");
+            case "code_block" -> {
+                Object code = props.remove("code");
+                props.remove("language");
+                props.remove("wrap");
+                props.remove("copyable");
+                props.remove("maxLines");
+                props.put("text", code == null ? "" : String.valueOf(code));
+                props.put("style", "mono");
+            }
+            case "tabs" -> props.put("kind", "tabs");
+            case "avatar" -> {
+                Object size = props.remove("size");
+                props.remove("image");
+                props.remove("initials");
+                props.remove("icon");
+                Object dimension = size == null ? DEFAULT_AVATAR_SIZE : size;
+                props.put("shape", "circle");
+                props.put("width", dimension);
+                props.put("height", dimension);
+                props.putIfAbsent("color", DEFAULT_FIGURE_COLOR);
+            }
+            case "chip" -> {
+                Object label = props.remove("label");
+                props.remove("icon");
+                props.remove("avatar");
+                props.remove("selected");
+                props.remove("onDeleted");
+                props.remove("variant");
+                props.put("text", label == null ? "" : String.valueOf(label));
+            }
+            case "badge" -> {
+                Object label = props.remove("label");
+                Object count = props.remove("count");
+                Object dot = props.remove("dot");
+                props.remove("max");
+                String text = label != null ? String.valueOf(label)
+                        : count != null ? String.valueOf(count)
+                        : Boolean.TRUE.equals(dot) ? "\u2022" : "";
+                props.put("text", text);
+            }
+            case "rich_text" -> {
+                Object spans = props.remove("spans");
+                props.put("text", joinSpans(spans));
+            }
+            case "sheet" -> {
+                Object title = props.remove("title");
+                Object body = props.remove("body");
+                Object footer = props.remove("footer");
+                props.remove("height");
+                props.remove("dismissible");
+                addTitleAndParts(props, children, title, body, footer);
+            }
+            case "dialog" -> {
+                Object title = props.remove("title");
+                Object content = props.remove("content");
+                Object actions = props.remove("actions");
+                addTitleAndParts(props, children, title, content);
+                if (actions instanceof List<?> actionList) {
+                    children.addAll(actionList);
+                }
+            }
+            case "list_row" -> {
+                Object title = props.remove("title");
+                Object subtitle = props.remove("subtitle");
+                props.remove("leading");
+                props.remove("trailing");
+                props.remove("badge");
+                props.remove("action");
+                props.remove("selected");
+                props.remove("onLongPress");
+                props.remove("dragHandle");
+                addTitleAndParts(props, children, title, subtitle);
+            }
+            case "shell" -> {
+                Object header = props.remove("header");
+                Object sidebar = props.remove("sidebar");
+                Object body = props.remove("body");
+                Object detail = props.remove("detail");
+                Object rail = props.remove("rail");
+                Map<String, Object> universal = universalProps(props);
+                props.clear();
+                props.putAll(universal);
+                props.put("direction", "column");
+                for (Object part : new Object[] {header, sidebar, body, detail, rail}) {
+                    if (part != null) {
+                        children.add(part);
+                    }
+                }
+            }
+            case "menu", "tree" -> {
+                Object items = props.get("items");
+                Map<String, Object> universal = universalProps(props);
+                props.clear();
+                props.putAll(universal);
+                props.put("items", flattenLabels(items));
+            }
+            case "skeleton" -> {
+                Object variant = props.get("variant");
+                Map<String, Object> universal = universalProps(props);
+                props.clear();
+                props.putAll(universal);
+                props.put("kind", "circle".equals(variant) ? "circular" : "linear");
+            }
+            default -> {
+                // type-only downgrade, no prop translation needed
+            }
+        }
+        return new UiNode(degraded, props, children);
+    }
+
+    /** The subset of {@code props} that is universal and must survive a rewrite. */
+    private static Map<String, Object> universalProps(Map<String, Object> props) {
+        Map<String, Object> kept = new LinkedHashMap<>();
+        for (String key : UNIVERSAL_PROP_KEYS) {
+            if (props.containsKey(key)) {
+                kept.put(key, props.get(key));
+            }
+        }
+        return kept;
+    }
+
+    /**
+     * Folds a string-or-node {@code title} plus any number of further
+     * string-or-node parts into the degraded node: a plain-string title
+     * becomes the {@code title} prop (the degrade targets — {@code card} —
+     * all accept a string title), a node title is pushed to the front of
+     * {@code children} instead; every further non-null part is appended to
+     * {@code children}, coerced to a {@code text} node when it is a plain
+     * string.
+     */
+    private static void addTitleAndParts(Map<String, Object> props, List<Object> children,
+                                          Object title, Object... parts) {
+        if (title instanceof UiNode titleNode) {
+            children.add(titleNode);
+        } else if (title != null) {
+            props.put("title", String.valueOf(title));
+        }
+        for (Object part : parts) {
+            if (part == null) {
+                continue;
+            }
+            children.add(part instanceof UiNode partNode ? partNode : textNode(String.valueOf(part)));
+        }
+    }
+
+    private static UiNode textNode(String text) {
+        return new UiNode("text", Map.of("text", text), List.of());
+    }
+
+    /** Concatenates every {@code rich_text} span's {@code text} in order. */
+    private static String joinSpans(Object spansValue) {
+        StringBuilder joined = new StringBuilder();
+        if (spansValue instanceof List<?> spans) {
+            for (Object span : spans) {
+                Object text = null;
+                if (span instanceof Map<?, ?> map) {
+                    text = map.get("text");
+                } else if (span instanceof UiNode node) {
+                    text = node.props().get("text");
+                }
+                if (text != null) {
+                    joined.append(text);
+                }
+            }
+        }
+        return joined.toString();
+    }
+
+    /** Flattens a {@code menu}/{@code tree} item array into its labels (lossy, visible). */
+    private static List<Object> flattenLabels(Object items) {
+        List<Object> labels = new ArrayList<>();
+        if (items instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map && map.get("label") != null) {
+                    labels.add(String.valueOf(map.get("label")));
+                } else if (item instanceof String label) {
+                    labels.add(label);
+                }
+            }
+        }
+        return labels;
+    }
+
+    // ------------------------------------------------------------------
+    // Capability-based stream_view degrade (unchanged from level 1)
+    // ------------------------------------------------------------------
+
     /**
      * The {@code list} snapshot replacing a stream view: the universal props
      * survive, the items are the summaries of the session tail the topic names.
      */
     private UiNode snapshotList(UiNode streamView) {
         Map<String, Object> props = streamView.props();
-        Map<String, Object> listProps = new LinkedHashMap<>();
-        for (String universal : new String[] {"id", "visible", "padding", "flex", "when"}) {
-            if (props.containsKey(universal)) {
-                listProps.put(universal, props.get(universal));
-            }
-        }
+        Map<String, Object> listProps = universalProps(props);
         int limit = SNAPSHOT_LIMIT;
         Object itemLimit = props.get("itemLimit");
         if (itemLimit instanceof Number number) {
