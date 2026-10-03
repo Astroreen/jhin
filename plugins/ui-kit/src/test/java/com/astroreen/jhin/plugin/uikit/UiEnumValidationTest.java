@@ -258,6 +258,52 @@ class UiEnumValidationTest {
         assertThatThrownBy(() -> Ui.input("i").mouseCursor("pointer")).isInstanceOf(IllegalArgumentException.class);
     }
 
+    // --- T59 layout enums ---
+
+    @Test
+    void stackFitValidatesItsLiterals() {
+        for (String literal : List.of("loose", "passthrough", "expand")) {
+            assertThatCode(() -> Ui.stack().fit(literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.stack().fit("nope")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Ui.stack().fit("tight")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void wrapEnumsValidateTheirLiterals() {
+        for (String literal : List.of("horizontal", "vertical")) {
+            assertThatCode(() -> Ui.wrap().direction(literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.wrap().direction("row")).isInstanceOf(IllegalArgumentException.class);
+
+        for (String literal : List.of("start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly")) {
+            assertThatCode(() -> Ui.wrap().alignment(literal)).doesNotThrowAnyException();
+            assertThatCode(() -> Ui.wrap().runAlignment(literal)).doesNotThrowAnyException();
+            assertThatCode(() -> Ui.wrap().crossAxisAlignment(literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.wrap().alignment("nope")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Ui.wrap().runAlignment("middle")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Ui.wrap().crossAxisAlignment("baseline")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void physicsValidatesItsLiteralsOnGridAndScroll() {
+        for (String literal : List.of("neverScrollable", "alwaysScrollable", "bouncing", "clamping")) {
+            assertThatCode(() -> Ui.grid().physics(literal)).doesNotThrowAnyException();
+            assertThatCode(() -> Ui.scroll().physics(literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.grid().physics("nope")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Ui.scroll().physics("nope")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void scrollDirectionValidatesItsLiterals() {
+        for (String literal : List.of("vertical", "horizontal")) {
+            assertThatCode(() -> Ui.scroll().scrollDirection(literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.scroll().scrollDirection("diagonal")).isInstanceOf(IllegalArgumentException.class);
+    }
+
     // --- Token helpers ---
 
     @Test

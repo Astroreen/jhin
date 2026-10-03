@@ -1,7 +1,7 @@
 /**
- * Fixture generator for the golden gallery harness (T57): builds &gt;=40
+ * Fixture generator for the golden gallery harness (T57): builds &gt;=80
  * {@link UiNode} fixtures through the real {@link Ui} builders, covering all
- * 35 current primitives ({@code BuilderProbe.BUILDERS}) with a basic and a
+ * 40 current primitives ({@code BuilderProbe.BUILDERS}) with a basic and a
  * prop-heavy variant each, and emits them as a generated Dart list consumed
  * by {@code frontend/test/gallery/golden_test.dart}.
  *
@@ -46,14 +46,15 @@ class GalleryDump {
     private static final Path COVERAGE_OUTPUT =
             Path.of("build", "gallery", "coverage.txt").toAbsolutePath().normalize();
 
-    /** The 35 current primitives (the 25 of T57 plus the T58 layout set). */
+    /** The 40 current primitives (the 25 of T57, the T58 layout set and the T59 stack/wrap/grid/scroll set). */
     private static final List<String> EXPECTED_PRIMITIVES = List.of(
             "screen", "nav", "container", "card", "text", "markdown", "button", "input",
             "dropdown", "checkbox", "switch", "slider", "form", "list", "stream_view",
             "table", "divider", "spacer", "progress", "image", "figure", "chart_line",
             "chart_bar", "chart_pie", "drawer",
             "box", "row", "column", "flex", "expanded", "flexible", "sized_box",
-            "align", "center", "aspect_ratio");
+            "align", "center", "aspect_ratio",
+            "stack", "positioned", "wrap", "grid", "scroll");
 
     private static Map<String, Object> action(String name) {
         Map<String, Object> action = new LinkedHashMap<>();
@@ -512,6 +513,97 @@ class GalleryDump {
                 .child(Ui.text("ratio heavy").build())
                 .build()));
 
+        // stack — badge over avatar: the T59 composition golden
+        all.add(new Fixture("fixture-stack-basic", Ui.stack()
+                .id("fixture-stack-basic")
+                .child(Ui.figure().shape("circle").color("#3D5A80").width(64).height(64).build())
+                .child(Ui.positioned()
+                        .top(0).right(0)
+                        .child(Ui.box()
+                                .color("#C1272D").borderRadius(10).padding(4)
+                                .child(Ui.text("3").color("#FFFFFF").bold(true).build())
+                                .build())
+                        .build())
+                .build()));
+        all.add(new Fixture("fixture-stack-propheavy", heavy(Ui.stack(), "stack-propheavy")
+                .alignment("bottomRight").fit("expand").clipBehavior("antiAlias").textDirection("ltr")
+                .child(Ui.figure().shape("rectangle").color("#3D5A80").width(120).height(80).build())
+                .child(Ui.positioned()
+                        .top(12).left(12).width(60).height(24)
+                        .child(Ui.text("badge").build())
+                        .build())
+                .child(Ui.text("loose child").build())
+                .build()));
+
+        // positioned (standalone: the golden pins the align degrade)
+        all.add(new Fixture("fixture-positioned-basic", Ui.positioned()
+                .id("fixture-positioned-basic")
+                .top(8).left(8)
+                .child(Ui.text("positioned child").build())
+                .build()));
+        all.add(new Fixture("fixture-positioned-propheavy", heavy(Ui.positioned(), "positioned-propheavy")
+                .top(0).right(0).bottom(0).left(0).width(40).height(20)
+                .child(Ui.text("boxed").build())
+                .build()));
+
+        // wrap
+        all.add(new Fixture("fixture-wrap-basic", Ui.wrap()
+                .id("fixture-wrap-basic")
+                .spacing(8).runSpacing(8)
+                .child(Ui.text("one").build())
+                .child(Ui.text("two").build())
+                .child(Ui.text("three").build())
+                .child(Ui.text("four").build())
+                .build()));
+        all.add(new Fixture("fixture-wrap-propheavy", heavy(Ui.wrap(), "wrap-propheavy")
+                .direction("vertical").alignment("spaceBetween").crossAxisAlignment("center")
+                .spacing(4).runSpacing(12).runAlignment("end")
+                .textDirection("ltr").verticalDirection("down")
+                .child(Ui.box().width(60).height(20).color("$color.surface").child(Ui.text("a").build()).build())
+                .child(Ui.box().width(60).height(20).color("$color.surface").child(Ui.text("b").build()).build())
+                .child(Ui.box().width(60).height(40).color("$color.surface").child(Ui.text("c").build()).build())
+                .build()));
+
+        // grid
+        all.add(new Fixture("fixture-grid-basic", Ui.grid()
+                .id("fixture-grid-basic")
+                .columns(3)
+                .childAspectRatio(1.4)
+                .child(Ui.text("1").build())
+                .child(Ui.text("2").build())
+                .child(Ui.text("3").build())
+                .child(Ui.text("4").build())
+                .child(Ui.text("5").build())
+                .child(Ui.text("6").build())
+                .child(Ui.text("7").build())
+                .child(Ui.text("8").build())
+                .child(Ui.text("9").build())
+                .build()));
+        all.add(new Fixture("fixture-grid-propheavy", heavy(Ui.grid(), "grid-propheavy")
+                .columns(2).childAspectRatio(1.8)
+                .crossAxisSpacing(8).mainAxisSpacing(8)
+                .shrinkWrap(true).physics("neverScrollable")
+                .child(Ui.box().color("$color.surface").child(Ui.text("a").build()).build())
+                .child(Ui.box().color("$color.surface").child(Ui.text("b").build()).build())
+                .child(Ui.box().color("$color.surface").child(Ui.text("c").build()).build())
+                .child(Ui.box().color("$color.surface").child(Ui.text("d").build()).build())
+                .build()));
+
+        // scroll
+        all.add(new Fixture("fixture-scroll-basic", Ui.scroll()
+                .id("fixture-scroll-basic")
+                .child(Ui.text("eager one").build())
+                .child(Ui.text("eager two").build())
+                .build()));
+        all.add(new Fixture("fixture-scroll-propheavy", heavy(Ui.scroll(), "scroll-propheavy")
+                .scrollDirection("horizontal").reverse(false)
+                .physics("alwaysScrollable").shrinkWrap(false)
+                .itemCount(3)
+                .item(Ui.text("lazy a").build())
+                .item(Ui.text("lazy b").build())
+                .item(Ui.text("lazy c").build())
+                .build()));
+
         return all;
     }
 
@@ -519,7 +611,7 @@ class GalleryDump {
     void dumpGallery() throws IOException {
         List<Fixture> all = fixtures();
 
-        assertThat(all).hasSizeGreaterThanOrEqualTo(70);
+        assertThat(all).hasSizeGreaterThanOrEqualTo(80);
 
         Map<String, Integer> perType = new TreeMap<>();
         for (Fixture f : all) {

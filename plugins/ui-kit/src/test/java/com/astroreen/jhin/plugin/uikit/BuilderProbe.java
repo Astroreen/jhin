@@ -67,6 +67,11 @@ final class BuilderProbe {
         BUILDERS.put(Ui.AlignBuilder.class, Ui::align);
         BUILDERS.put(Ui.CenterBuilder.class, Ui::center);
         BUILDERS.put(Ui.AspectRatioBuilder.class, () -> Ui.aspectRatio(1.5));
+        BUILDERS.put(Ui.StackBuilder.class, Ui::stack);
+        BUILDERS.put(Ui.PositionedBuilder.class, Ui::positioned);
+        BUILDERS.put(Ui.WrapBuilder.class, Ui::wrap);
+        BUILDERS.put(Ui.GridBuilder.class, Ui::grid);
+        BUILDERS.put(Ui.ScrollBuilder.class, Ui::scroll);
     }
 
     /**

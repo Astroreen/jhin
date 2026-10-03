@@ -77,11 +77,15 @@ class RenderContext {
   /// per-node error isolation apply uniformly.
   ///
   /// [flexParent] marks the node as a direct child of a `Flex`, enabling
-  /// the universal `flex`/`fit` wrap (§2.3 step 14).
-  Widget build(BuildContext context, UiNode node, {bool flexParent = false}) {
+  /// the universal `flex`/`fit` wrap (§2.3 step 14). [stackParent] marks
+  /// the node as a direct child of a `stack`, enabling the `positioned`
+  /// wrap (§2.6).
+  Widget build(BuildContext context, UiNode node,
+      {bool flexParent = false, bool stackParent = false}) {
     final overlay = patches[node.id];
     final resolved =
         overlay == null ? node : node.copyWithProps(overlay);
-    return registry.build(context, resolved, this, flexParent: flexParent);
+    return registry.build(context, resolved, this,
+        flexParent: flexParent, stackParent: stackParent);
   }
 }

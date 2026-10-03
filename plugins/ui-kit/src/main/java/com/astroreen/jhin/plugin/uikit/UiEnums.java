@@ -128,16 +128,37 @@ final class UiEnums {
     /** docs/sdui.md 2.6 {@code box} {@code shape}. */
     static final Set<String> BOX_SHAPE = Set.of("rectangle", "circle");
 
+    /** docs/sdui.md 2.6 {@code stack} {@code fit}. */
+    static final Set<String> STACK_FIT = Set.of("loose", "passthrough", "expand");
+
+    /** docs/sdui.md 2.6 {@code wrap} {@code direction}. */
+    static final Set<String> WRAP_DIRECTION = Set.of("horizontal", "vertical");
+
+    /** docs/sdui.md 2.6 {@code wrap} {@code alignment}/{@code runAlignment}/{@code crossAxisAlignment}. */
+    static final Set<String> WRAP_ALIGNMENT =
+            Set.of("start", "center", "end", "spaceBetween", "spaceAround", "spaceEvenly");
+
+    /** docs/sdui.md 2.6 {@code grid}/{@code scroll} {@code physics}. */
+    static final Set<String> PHYSICS = Set.of("neverScrollable", "alwaysScrollable", "bouncing", "clamping");
+
+    /** docs/sdui.md 2.6 {@code scroll} {@code scrollDirection}. */
+    static final Set<String> SCROLL_DIRECTION = Set.of("vertical", "horizontal");
+
     /** Builder-specific literal overrides: entries are {@code <BuilderSimpleName>.<prop>}. */
-    private static final Map<String, Set<String>> SPECIFIC = Map.of(
-            "ButtonBuilder.style", BUTTON_STYLE,
-            "ImageBuilder.fit", BOX_FIT,
-            "NavBuilder.kind", NAV_KIND,
-            "InputBuilder.border", INPUT_BORDER,
-            "InputBuilder.enabledBorder", INPUT_BORDER,
-            "InputBuilder.focusedBorder", INPUT_BORDER,
-            "InputBuilder.errorBorder", INPUT_BORDER,
-            "BoxBuilder.shape", BOX_SHAPE);
+    private static final Map<String, Set<String>> SPECIFIC = Map.ofEntries(
+            Map.entry("ButtonBuilder.style", BUTTON_STYLE),
+            Map.entry("ImageBuilder.fit", BOX_FIT),
+            Map.entry("NavBuilder.kind", NAV_KIND),
+            Map.entry("InputBuilder.border", INPUT_BORDER),
+            Map.entry("InputBuilder.enabledBorder", INPUT_BORDER),
+            Map.entry("InputBuilder.focusedBorder", INPUT_BORDER),
+            Map.entry("InputBuilder.errorBorder", INPUT_BORDER),
+            Map.entry("BoxBuilder.shape", BOX_SHAPE),
+            Map.entry("StackBuilder.fit", STACK_FIT),
+            Map.entry("WrapBuilder.direction", WRAP_DIRECTION),
+            Map.entry("WrapBuilder.alignment", WRAP_ALIGNMENT),
+            Map.entry("WrapBuilder.runAlignment", WRAP_ALIGNMENT),
+            Map.entry("WrapBuilder.crossAxisAlignment", WRAP_ALIGNMENT));
 
     /** Global prop-name to literal-set lookup, used by the conformance probe. */
     private static final Map<String, Set<String>> BY_KEY = Map.ofEntries(
@@ -172,7 +193,9 @@ final class UiEnums {
             Map.entry("maxLengthEnforcement", MAX_LENGTH_ENFORCEMENT),
             Map.entry("textWidthBasis", TEXT_WIDTH_BASIS),
             Map.entry("autovalidateMode", AUTOVALIDATE_MODE),
-            Map.entry("axis", SPACER_AXIS));
+            Map.entry("axis", SPACER_AXIS),
+            Map.entry("physics", PHYSICS),
+            Map.entry("scrollDirection", SCROLL_DIRECTION));
 
     private UiEnums() {
     }

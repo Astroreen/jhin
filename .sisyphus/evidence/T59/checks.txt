@@ -1,0 +1,18 @@
+ok: frontend suite green (scripts/qa/flutter-test.sh; transcript in test.txt)
+ok: ui-kit module suite green (conformance/lattice/enum/regression/GalleryDump; appended to test.txt)
+ok: perf: 10 000 items built in 304 ms (< 1000), 30 visible Text widgets (< 100)
+ok: degrade.txt written: positioned->align, grid.columns 0 -> 1, unknown enum literals/props degrade silently
+ok: golden delta recorded: 140 -> 160 PNGs, 20 new baselines
+ok: golden regeneration is idempotent (checksums identical; transcript in goldens.txt)
+ok: enum-negative.txt written: Ui.stack().fit/.wrap().direction/.grid().physics and friends throw at build time
+happy exit code 0
+ok: frontend suite green (scripts/qa/flutter-test.sh; transcript in test.txt)
+ok: ui-kit module suite green (conformance/lattice/enum/regression/GalleryDump; appended to test.txt)
+ok: perf: 10 000 items built in 300 ms (< 1000), 30 visible Text widgets (< 100)
+ok: degrade.txt written: positioned->align, grid.columns 0 -> 1, unknown enum literals/props degrade silently
+ok: golden delta recorded: 140 -> 160 PNGs, 20 new baselines
+ok: golden regeneration is idempotent (checksums identical; transcript in goldens.txt)
+ok: --fail probes passed: every unknown literal throws, documented literals pass
+ok: --fail probe: wrong expectation tripped as intended (the builder throws; appended to enum-negative.txt)
+--fail exit code 1 (intentional failure-path exit)
+FAIL: --fail mode: intentional failure-path exit

@@ -290,6 +290,31 @@ public final class Ui {
         return new AspectRatioBuilder(aspectRatio);
     }
 
+    /** A layered overlay: {@code stack}(alignment?, fit?, clipBehavior?, textDirection?, children). */
+    public static StackBuilder stack() {
+        return new StackBuilder();
+    }
+
+    /** A stack-layered child: {@code positioned}(top?, right?, bottom?, left?, width?, height?, child?). */
+    public static PositionedBuilder positioned() {
+        return new PositionedBuilder();
+    }
+
+    /** A flow layout: {@code wrap}(direction?, alignment?, spacing?, runSpacing?, runAlignment?, crossAxisAlignment?, textDirection?, verticalDirection?, children). */
+    public static WrapBuilder wrap() {
+        return new WrapBuilder();
+    }
+
+    /** A cell grid: {@code grid}(columns?, childAspectRatio?, crossAxisSpacing?, mainAxisSpacing?, shrinkWrap?, physics?, children). */
+    public static GridBuilder grid() {
+        return new GridBuilder();
+    }
+
+    /** A scroll region: {@code scroll}(children?, items?, itemCount?, scrollDirection?, reverse?, physics?, shrinkWrap?). */
+    public static ScrollBuilder scroll() {
+        return new ScrollBuilder();
+    }
+
     /**
      * Base of every builder: the universal optional fields of docs/sdui.md
      * section 2.1 (Meta, Box, Text, Flex, Interaction/A11y groups) through
@@ -2418,6 +2443,267 @@ public final class Ui {
         /** The child as a string (the text shorthand). */
         public AspectRatioBuilder child(String text) {
             props.put("child", text);
+            return this;
+        }
+    }
+
+    /** {@code stack}(alignment?, fit?, clipBehavior?, textDirection?, children). */
+    public static final class StackBuilder extends ParentBuilder<StackBuilder> {
+
+        private StackBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "stack";
+        }
+
+        /**
+         * The alignment of the non-positioned children (docs/sdui.md section
+         * 2.6) — stack's own prop, NOT the universal {@code align} alias.
+         */
+        public StackBuilder alignment(String value) {
+            props.put("alignment", UiEnums.require("alignment", value, UiEnums.ALIGNMENT));
+            return this;
+        }
+
+        /**
+         * The stack fit: {@code loose/passthrough/expand} (docs/sdui.md
+         * section 2.6) — overrides the universal Flex {@code fit} literals.
+         */
+        @Override
+        public StackBuilder fit(String value) {
+            props.put("fit", UiEnums.require("fit", value, UiEnums.STACK_FIT));
+            return this;
+        }
+    }
+
+    /**
+     * {@code positioned}(top?, right?, bottom?, left?, width?, height?,
+     * child?) — {@code width}/{@code height} come from the universal Box
+     * group (same wire keys the client's {@code Positioned} wrap reads).
+     */
+    public static final class PositionedBuilder extends NodeBuilder<PositionedBuilder> {
+
+        private PositionedBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "positioned";
+        }
+
+        /** The offset from the top of the stack. */
+        public PositionedBuilder top(Number value) {
+            props.put("top", value);
+            return this;
+        }
+
+        /** The offset from the right of the stack. */
+        public PositionedBuilder right(Number value) {
+            props.put("right", value);
+            return this;
+        }
+
+        /** The offset from the bottom of the stack. */
+        public PositionedBuilder bottom(Number value) {
+            props.put("bottom", value);
+            return this;
+        }
+
+        /** The offset from the left of the stack. */
+        public PositionedBuilder left(Number value) {
+            props.put("left", value);
+            return this;
+        }
+
+        /** The layered child node. */
+        public PositionedBuilder child(UiNode node) {
+            props.put("child", node);
+            return this;
+        }
+
+        /** The layered child as a string (the text shorthand). */
+        public PositionedBuilder child(String text) {
+            props.put("child", text);
+            return this;
+        }
+    }
+
+    /**
+     * {@code wrap}(direction?, alignment?, spacing?, runSpacing?,
+     * runAlignment?, crossAxisAlignment?, textDirection?, verticalDirection?,
+     * children) — {@code direction}/{@code alignment}/{@code runAlignment}/
+     * {@code crossAxisAlignment} carry wrap's own literal sets (docs/sdui.md
+     * section 2.6), not the Flex ones.
+     */
+    public static final class WrapBuilder extends ParentBuilder<WrapBuilder> {
+
+        private WrapBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "wrap";
+        }
+
+        /**
+         * The run direction: {@code horizontal/vertical} (docs/sdui.md
+         * section 2.6) — not the Flex {@code row/column} direction.
+         */
+        @Override
+        public WrapBuilder direction(String value) {
+            props.put("direction", UiEnums.require("direction", value, UiEnums.WRAP_DIRECTION));
+            return this;
+        }
+
+        /** The main-axis run alignment (wrap alignment literals). */
+        public WrapBuilder alignment(String value) {
+            props.put("alignment", UiEnums.require("alignment", value, UiEnums.WRAP_ALIGNMENT));
+            return this;
+        }
+
+        /** The gap between runs. */
+        public WrapBuilder runSpacing(Number value) {
+            props.put("runSpacing", value);
+            return this;
+        }
+
+        /** The alignment of the runs themselves (wrap alignment literals). */
+        public WrapBuilder runAlignment(String value) {
+            props.put("runAlignment", UiEnums.require("runAlignment", value, UiEnums.WRAP_ALIGNMENT));
+            return this;
+        }
+
+        /**
+         * The cross-axis alignment inside a run (wrap alignment literals,
+         * docs/sdui.md section 2.6) — not the Flex cross-axis set.
+         */
+        @Override
+        public WrapBuilder crossAxisAlignment(String value) {
+            props.put("crossAxisAlignment", UiEnums.require("crossAxisAlignment", value, UiEnums.WRAP_ALIGNMENT));
+            return this;
+        }
+    }
+
+    /**
+     * {@code grid}(columns?, childAspectRatio?, crossAxisSpacing?,
+     * mainAxisSpacing?, shrinkWrap?, physics?, children) — {@code padding}
+     * is the universal Box prop.
+     */
+    public static final class GridBuilder extends ParentBuilder<GridBuilder> {
+
+        private GridBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "grid";
+        }
+
+        /** The column count. */
+        public GridBuilder columns(int value) {
+            props.put("columns", value);
+            return this;
+        }
+
+        /** The cell width/height ratio. */
+        public GridBuilder childAspectRatio(Number value) {
+            props.put("childAspectRatio", value);
+            return this;
+        }
+
+        /** The gap between columns. */
+        public GridBuilder crossAxisSpacing(Number value) {
+            props.put("crossAxisSpacing", value);
+            return this;
+        }
+
+        /** The gap between rows. */
+        public GridBuilder mainAxisSpacing(Number value) {
+            props.put("mainAxisSpacing", value);
+            return this;
+        }
+
+        /** Whether the grid sizes to its content. */
+        public GridBuilder shrinkWrap(boolean value) {
+            props.put("shrinkWrap", value);
+            return this;
+        }
+
+        /** The scroll physics: {@code neverScrollable/alwaysScrollable/bouncing/clamping}; validated. */
+        public GridBuilder physics(String value) {
+            props.put("physics", UiEnums.require("physics", value, UiEnums.PHYSICS));
+            return this;
+        }
+    }
+
+    /**
+     * {@code scroll}(children?, items?, itemCount?, scrollDirection?,
+     * reverse?, physics?, shrinkWrap?) — {@code children} is the eager slot,
+     * {@code items} the lazy one enabled by {@code itemCount}.
+     */
+    public static final class ScrollBuilder extends ParentBuilder<ScrollBuilder> implements HasItems<ScrollBuilder> {
+
+        private ScrollBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "scroll";
+        }
+
+        @Override
+        public ScrollBuilder item(UiNode node) {
+            items().add(node);
+            return this;
+        }
+
+        @Override
+        public ScrollBuilder item(String text) {
+            items().add(text);
+            return this;
+        }
+
+        @Override
+        public ScrollBuilder item(Map<String, Object> entry) {
+            items().add(entry);
+            return this;
+        }
+
+        /** The live {@code items} list inside the props map. */
+        @SuppressWarnings("unchecked")
+        private List<Object> items() {
+            return (List<Object>) props.computeIfAbsent("items", key -> new ArrayList<>());
+        }
+
+        /** The lazy item count; its presence enables lazy building of {@code items}. */
+        public ScrollBuilder itemCount(int value) {
+            props.put("itemCount", value);
+            return this;
+        }
+
+        /** The scroll axis: {@code vertical/horizontal}; validated. */
+        public ScrollBuilder scrollDirection(String value) {
+            props.put("scrollDirection", UiEnums.require("scrollDirection", value, UiEnums.SCROLL_DIRECTION));
+            return this;
+        }
+
+        /** Whether the scroll order is reversed. */
+        public ScrollBuilder reverse(boolean value) {
+            props.put("reverse", value);
+            return this;
+        }
+
+        /** The scroll physics: {@code neverScrollable/alwaysScrollable/bouncing/clamping}; validated. */
+        public ScrollBuilder physics(String value) {
+            props.put("physics", UiEnums.require("physics", value, UiEnums.PHYSICS));
+            return this;
+        }
+
+        /** Whether the scroll region sizes to its content. */
+        public ScrollBuilder shrinkWrap(boolean value) {
+            props.put("shrinkWrap", value);
             return this;
         }
     }

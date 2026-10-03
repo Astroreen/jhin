@@ -25,7 +25,7 @@ bool _isSizedContainer(Widget widget, double width, double height) =>
 
 void main() {
   group('PrimitivesBatch2Test', () {
-    testWidgets('list renders string and node items and scrolls under '
+    testWidgets('list renders string and node items and scrolls lazily under '
         'maxHeight', (tester) async {
       await _pumpNode(tester, {
         'type': 'list',
@@ -34,6 +34,7 @@ void main() {
 
       expect(find.text('one'), findsOneWidget);
       expect(find.text('two'), findsOneWidget);
+      expect(find.byType(ListView), findsOneWidget);
       expect(find.byType(SingleChildScrollView), findsNothing);
 
       await _pumpNode(tester, {
@@ -43,7 +44,8 @@ void main() {
       });
 
       expect(find.text('scrolled'), findsOneWidget);
-      expect(find.byType(SingleChildScrollView), findsOneWidget);
+      expect(find.byType(ListView), findsOneWidget);
+      expect(tester.getSize(find.byType(ListView)).height, 50);
     });
 
     testWidgets('table renders headers and cells honouring width flex',

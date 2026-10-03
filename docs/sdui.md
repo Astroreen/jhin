@@ -370,6 +370,7 @@ Layout primitives:
 | `positioned` | `left` | num | — | offset from the left |
 | `positioned` | `width` | num | — | width |
 | `positioned` | `height` | num | — | height |
+| `positioned` | `child` | node | — | the layered child |
 | `align` | `align` | alignment | `center` | alignment (`alignment` accepted as alias) |
 | `align` | `child` | node | — | child |
 | `center` | `child` | node | — | child |

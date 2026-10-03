@@ -23,21 +23,26 @@ import 'primitives/figure.dart';
 import 'primitives/flex.dart';
 import 'primitives/flexible.dart';
 import 'primitives/form.dart';
+import 'primitives/grid.dart';
 import 'primitives/image.dart';
 import 'primitives/input.dart';
 import 'primitives/list.dart';
 import 'primitives/markdown.dart';
 import 'primitives/nav.dart';
+import 'primitives/positioned.dart';
 import 'primitives/progress.dart';
 import 'primitives/row.dart';
 import 'primitives/screen.dart';
+import 'primitives/scroll.dart';
 import 'primitives/sized_box.dart';
 import 'primitives/slider.dart';
 import 'primitives/spacer.dart';
+import 'primitives/stack.dart';
 import 'primitives/stream_view.dart';
 import 'primitives/switch.dart';
 import 'primitives/table.dart';
 import 'primitives/text.dart';
+import 'primitives/wrap.dart';
 import 'render_context.dart';
 import 'ui_node.dart';
 import 'ui_state.dart';
@@ -93,6 +98,11 @@ class UiRegistry {
       'align': buildAlignPrimitive,
       'center': buildCenterPrimitive,
       'aspect_ratio': buildAspectRatioPrimitive,
+      'stack': buildStack,
+      'positioned': buildPositioned,
+      'wrap': buildWrap,
+      'grid': buildGrid,
+      'scroll': buildScroll,
     });
     return registry;
   }
@@ -110,11 +120,17 @@ class UiRegistry {
   /// Flutter requires flex children to be direct children of a Flex, and
   /// the client never crashes on server content, so a `flex` elsewhere
   /// degrades silently.
+  ///
+  /// [stackParent] marks the node as a direct child of a `stack`: only
+  /// then does a `positioned` node wrap in [Positioned] (§2.6) — Flutter
+  /// requires parent-data widgets to be direct children of their Stack.
+  /// A `positioned` elsewhere degrades to `align` (§2.4).
   Widget build(
     BuildContext context,
     UiNode node,
     RenderContext ctx, {
     bool flexParent = false,
+    bool stackParent = false,
   }) {
     if (node.isUnsupported) {
       return _unsupportedCard(context, node.type, node.error);
@@ -140,13 +156,39 @@ class UiRegistry {
       debugPrint('Jhin SDUI: failed to render "${node.type}": $error');
       return _unsupportedCard(context, node.type, '$error');
     }
-    return _applyUniversal(
+    result = _applyUniversal(
       context,
       prepared,
       result,
       design,
       ctx,
       flexParent: flexParent,
+    );
+    return _applyPositionedWrap(result, prepared, stackParent: stackParent);
+  }
+
+  /// The §2.6 `positioned` wrap: under a `stack` parent ([stackParent]) the
+  /// node becomes a [Positioned] around its whole universal wrapping —
+  /// outermost, since Flutter requires the parent-data widget to be the
+  /// direct child of its Stack (margin and friends stay inside it, mirroring
+  /// the flex wrap of §2.3 step 14). Without a `stack` parent the node
+  /// degrades to `align` (§2.4): the child renders centered — never a
+  /// crash.
+  static Widget _applyPositionedWrap(
+    Widget result,
+    UiNode node, {
+    required bool stackParent,
+  }) {
+    if (node.type != 'positioned') return result;
+    if (!stackParent) return Align(child: result);
+    return Positioned(
+      top: node.numProp('top')?.toDouble(),
+      right: node.numProp('right')?.toDouble(),
+      bottom: node.numProp('bottom')?.toDouble(),
+      left: node.numProp('left')?.toDouble(),
+      width: node.numProp('width')?.toDouble(),
+      height: node.numProp('height')?.toDouble(),
+      child: result,
     );
   }
 
@@ -223,9 +265,11 @@ class UiRegistry {
     // 9. Clip.
     result = _applyClip(result, node, tokens);
 
-    // 10. Align (`alignment` is accepted as an alias).
+    // 10. Align (`alignment` is accepted as an alias — except on the
+    // primitives whose §2.6 `alignment` is their own layout prop).
     final alignment =
-        _alignment(node.props['align'] ?? node.props['alignment']);
+        _alignment(node.props['align'] ?? _alignmentAlias(node));
+
     if (alignment != null) {
       result = Align(alignment: alignment, child: result);
     }
@@ -667,6 +711,17 @@ Alignment? _alignment(Object? value) {
 /// which need the same alignment-literal parsing for their own `child`
 /// slot. Unknown values degrade to null (§2.4).
 Alignment? parseAlignmentLiteral(Object? value) => _alignment(value);
+
+/// Primitives whose §2.6 `alignment` prop is their own layout prop —
+/// `stack`'s non-positioned child alignment, `wrap`'s run alignment — and
+/// not the §2.1 alias of `align`. On those types the alias must not
+/// double-wrap the node in an `Align`.
+const Set<String> _ownAlignmentProps = {'stack', 'wrap'};
+
+/// The §2.1 `alignment` alias value of a node: null where the primitive
+/// owns the key (see [_ownAlignmentProps]).
+Object? _alignmentAlias(UiNode node) =>
+    _ownAlignmentProps.contains(node.type) ? null : node.props['alignment'];
 
 /// Builds the single `child` prop slot used by single-child primitives
 /// (`box`, `expanded`, `flexible`, `align`, `center`, `sized_box`,

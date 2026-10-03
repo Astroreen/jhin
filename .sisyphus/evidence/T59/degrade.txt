@@ -1,0 +1,18 @@
+T59 degrade evidence — §2.4: the client never crashes on server content
+
+=== positioned without a stack parent degrades to align ===
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch4_test.dart
+00:00 +0: stack + positioned (§2.6) positioned without a stack parent degrades to align
+00:00 +1: All tests passed!
+=== grid columns 0 degrades to 1 column ===
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch4_test.dart
+00:00 +0: grid (§2.6) grid columns 0 degrades to 1 column
+00:00 +1: All tests passed!
+=== unknown stack literals and unknown props degrade silently ===
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch4_test.dart
+00:00 +0: degradation (§2.4) unknown stack literals and unknown props degrade silently
+00:00 +1: All tests passed!
+=== unknown enum literals degrade client-side on wrap, grid and scroll ===
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch4_test.dart
+00:00 +0: degradation (§2.4) unknown enum literals degrade client-side on wrap, grid and scroll
+00:00 +1: All tests passed!
