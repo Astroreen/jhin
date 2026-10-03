@@ -1,0 +1,11 @@
+ok: GalleryDump probe green (./gradlew :jhin-plugin-ui-kit:test --tests '*GalleryDump*')
+ok: probe is idempotent: re-run produced a byte-identical frontend/test/gallery/gallery_nodes.dart (diff empty)
+ok: fixture total = 50 (>= 40)
+ok: primitive coverage = 25 (all 25 current primitives present)
+ok: every one of the 25 current primitives has >= 1 fixture (coverage.txt)
+ok: frontend/test/gallery/goldens has 100 baseline PNGs
+ok: --fail probe: corrupted goldens/fixture-text-basic-light.png correctly failed the suite (see .sisyphus/evidence/T57/test-fail.txt)
+ok: diff artifact copied to .sisyphus/evidence/T57/regression-diff.png
+FAIL (intentional): corrupted goldens/fixture-text-basic-light.png to prove the golden suite detects a visual regression
+ok: --fail probe passed: the golden suite correctly rejects a corrupted baseline, and the original baseline was restored
+FAIL: --fail mode: intentional failure-path exit
