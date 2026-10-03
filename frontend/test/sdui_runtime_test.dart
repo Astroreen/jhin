@@ -66,6 +66,41 @@ void main() {
       expect(transport.calls, isEmpty);
     });
 
+    testWidgets('a screen node shows a back button when the stack can pop',
+        (tester) async {
+      final transport = ScriptedTransport();
+      final runtime = SduiRuntime(transport: transport);
+      addTearDown(runtime.dispose);
+      await tester.pumpWidget(host(
+        runtime,
+        sduiPayload(entry: 'home', screens: {
+          'home': {
+            'type': 'screen',
+            'title': 'Home',
+            'body': {'type': 'text', 'text': 'home-screen'},
+          },
+          'details': {
+            'type': 'screen',
+            'title': 'Details',
+            'body': {'type': 'text', 'text': 'details-screen'},
+          },
+        }),
+      ));
+      await tester.pump();
+      expect(find.text('home-screen'), findsOneWidget);
+      expect(find.byType(BackButton), findsNothing);
+
+      await runtime.navigate('details');
+      await tester.pump();
+      expect(find.text('details-screen'), findsOneWidget);
+      expect(find.byType(BackButton), findsOneWidget);
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pump();
+      expect(find.text('home-screen'), findsOneWidget);
+      expect(find.byType(BackButton), findsNothing);
+    });
+
     testWidgets('non-inline screens fetch from screenEndpoint and cache',
         (tester) async {
       final transport = ScriptedTransport();

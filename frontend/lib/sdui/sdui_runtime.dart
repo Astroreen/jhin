@@ -220,6 +220,8 @@ class SduiRuntime extends ChangeNotifier
       openStream: (topic, {onStatus}) => transport.sse(topic, onStatus: onStatus),
       runDirectives: _executor.execute,
       confirm: _showConfirm,
+      canPop: () => _stack.length > 1,
+      onBack: () => unawaited(back()),
     );
   }
 

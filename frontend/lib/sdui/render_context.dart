@@ -30,6 +30,8 @@ class RenderContext {
     required this.openStream,
     required this.runDirectives,
     required this.confirm,
+    this.canPop,
+    this.onBack,
   });
 
   /// Local state of the screen being rendered (§8.7).
@@ -61,6 +63,14 @@ class RenderContext {
 
   /// Shows a confirm dialog for `button.confirm`; runs [onConfirm] on OK.
   final void Function(String message, VoidCallback onConfirm) confirm;
+
+  /// Whether the runtime stack can pop the current screen. Absent when the
+  /// context is not backed by a runtime stack.
+  final bool Function()? canPop;
+
+  /// Pops the current screen off the runtime stack; null when there is no
+  /// stack to pop.
+  final VoidCallback? onBack;
 
   /// Builds one node with patch overlays applied; every node goes through
   /// the registry so `when`, interpolation and per-node error isolation

@@ -13,9 +13,12 @@ Widget buildScreen(BuildContext context, UiNode node, RenderContext ctx) {
   final appBar = node.props['appBar'];
   final body = node.props['body'];
   final floatingAction = node.props['floatingAction'];
+  final onBack = ctx.onBack;
+  final canPop = onBack != null && (ctx.canPop?.call() ?? false);
   return Scaffold(
     appBar: (title != null && title.isNotEmpty) || appBar is Map
         ? AppBar(
+            leading: canPop ? BackButton(onPressed: onBack) : null,
             title: title != null && title.isNotEmpty
                 ? Text(title)
                 : ctx.build(context, UiNode.fromJson(appBar)),
