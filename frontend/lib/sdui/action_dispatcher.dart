@@ -12,6 +12,11 @@ import 'ui_state.dart';
 /// `{"action":"<name>","payload":{…merged}}`. A failing field shows its
 /// `errorText` inline and nothing is sent: zero round-trips. On a successful
 /// post the response's `client` directives are executed.
+///
+/// An action that carries no `path` but a directive `op` is a client-side
+/// effect embedded inline in a node prop (for example the server's offline
+/// and error Retry buttons, §8.5): it is run as a directive directly, with no
+/// round-trip.
 class ActionDispatcher {
   ActionDispatcher({
     required this.transport,
@@ -48,6 +53,14 @@ class ActionDispatcher {
   Future<void> _dispatch(Map<String, dynamic> action) async {
     final path = action['path'];
     if (path is! String || path.isEmpty) {
+      // A directive-only action (`op` without `path`) is a client-side
+      // effect embedded inline in a node prop — for example the server's
+      // offline/error Retry buttons (§8.5). Run it directly.
+      final op = action['op'];
+      if (op is String && op.isNotEmpty) {
+        await runDirectives([action]);
+        return;
+      }
       debugPrint('Jhin SDUI: ignoring action without a path: $action');
       return;
     }

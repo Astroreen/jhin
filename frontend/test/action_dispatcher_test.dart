@@ -265,5 +265,15 @@ void main() {
       await makeDispatcher().dispatch({'name': 'send'});
       expect(transport.calls, isEmpty);
     });
+
+    test('a directive-only action runs the directive and posts nothing',
+        () async {
+      await makeDispatcher().dispatch({'op': 'refresh'});
+
+      expect(transport.calls, isEmpty);
+      expect(directives, [
+        {'op': 'refresh'},
+      ]);
+    });
   });
 }

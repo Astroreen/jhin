@@ -112,7 +112,15 @@ class SduiRuntime extends ChangeNotifier
 
   @override
   Widget buildNode(BuildContext context, Map<String, dynamic> node) {
-    return _RuntimeView(this, (viewContext) => _buildStandalone(viewContext, node));
+    // Fallback art (offline/error) is shown until a bootstrap fills the
+    // stack; once it does — for example after the Retry button runs
+    // `refresh` → `reloadBootstrap` — the live tree takes over.
+    return _RuntimeView(
+      this,
+      (viewContext) => _stack.isEmpty
+          ? _buildStandalone(viewContext, node)
+          : _buildRoot(viewContext),
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -438,7 +446,12 @@ class SduiRuntime extends ChangeNotifier
 
   @override
   Future<void> refresh() async {
-    if (_stack.isEmpty) return;
+    if (_stack.isEmpty) {
+      // No screen yet: the bootstrap host is showing fallback art, so a
+      // refresh means "reconnect" — re-run bootstrap to recover.
+      await reloadBootstrap();
+      return;
+    }
     await _fetchScreen(_stack.last.id);
   }
 

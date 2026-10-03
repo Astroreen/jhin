@@ -191,6 +191,43 @@ void main() {
       expect(find.text('details-v2'), findsOneWidget);
     });
 
+    testWidgets('the offline fallback recovers when Retry reloads bootstrap',
+        (tester) async {
+      final transport = ScriptedTransport();
+      transport.routes['/_jhin/bootstrap'] =
+          sduiPayload(entry: 'home', screens: {
+        'home': {'type': 'text', 'text': 'recovered'},
+      });
+      final runtime = SduiRuntime(transport: transport);
+      addTearDown(runtime.dispose);
+
+      // No bootstrap has been ingested yet: the host renders fallback art.
+      await tester.pumpWidget(MaterialApp(
+        home: Builder(
+          builder: (context) => runtime.buildNode(context, {
+            'type': 'container',
+            'children': [
+              {'type': 'text', 'text': 'offline-art'},
+              {
+                'type': 'button',
+                'label': 'Retry',
+                'action': {'op': 'refresh'},
+              },
+            ],
+          }),
+        ),
+      ));
+      await tester.pump();
+      expect(find.text('offline-art'), findsOneWidget);
+
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('recovered'), findsOneWidget);
+      expect(find.text('offline-art'), findsNothing);
+      expect(transport.calls.any((c) => c.path == '/_jhin/bootstrap'), isTrue);
+    });
+
     testWidgets('setState re-renders interpolation and patch re-renders props',
         (tester) async {
       final transport = ScriptedTransport();
