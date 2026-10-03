@@ -8,7 +8,10 @@ import '../ui_registry.dart';
 /// `gap?`, `align?`, `scroll?`.
 ///
 /// Children with a `flex` are wrapped in `Expanded` (§8.3 universal
-/// fields). With no children the node degrades to a visible placeholder.
+/// fields). In a horizontal row, field primitives that need a bounded width
+/// ([_boundedInRow]) are also wrapped in `Expanded` so they fill the
+/// remaining space instead of throwing a layout assertion. With no children
+/// the node degrades to a visible placeholder.
 Widget buildContainer(BuildContext context, UiNode node, RenderContext ctx) {
   if (node.children.isEmpty) {
     return degradedBox(context, 'Missing children');
@@ -16,7 +19,13 @@ Widget buildContainer(BuildContext context, UiNode node, RenderContext ctx) {
   final direction = node.stringProp('direction') == 'row'
       ? Axis.horizontal
       : Axis.vertical;
-  final children = buildChildren(context, node, ctx, flexAware: true);
+  final children = buildChildren(
+    context,
+    node,
+    ctx,
+    flexAware: true,
+    expandTypes: direction == Axis.horizontal ? _boundedInRow : null,
+  );
   final gap = node.numProp('gap')?.toDouble();
   final spaced = gap == null || gap <= 0
       ? children
@@ -46,6 +55,12 @@ Widget buildContainer(BuildContext context, UiNode node, RenderContext ctx) {
   }
   return result;
 }
+
+/// Field primitives that build an `InputDecorator` and therefore require a
+/// bounded width. A `Row` gives non-flex children unbounded main-axis
+/// constraints, so these are wrapped in `Expanded` in a horizontal
+/// container.
+const Set<String> _boundedInRow = {'input', 'dropdown'};
 
 MainAxisAlignment _mainAlign(String? align) {
   switch (align) {

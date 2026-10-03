@@ -244,7 +244,7 @@ Widget _unsupportedCard(BuildContext context, String type, String? reason) {
 
 List<Widget> buildChildren(
     BuildContext context, UiNode node, RenderContext ctx,
-    {bool flexAware = false}) {
+    {bool flexAware = false, Set<String>? expandTypes}) {
   return [
     for (final child in node.children)
       if (flexAware && child.numProp('flex') != null)
@@ -252,6 +252,8 @@ List<Widget> buildChildren(
           flex: child.numProp('flex')!.round(),
           child: ctx.build(context, child),
         )
+      else if (expandTypes != null && expandTypes.contains(child.type))
+        Expanded(child: ctx.build(context, child))
       else
         ctx.build(context, child),
   ];

@@ -442,6 +442,38 @@ void main() {
       expect(h.state['temp'], 1.5);
     });
 
+    testWidgets('a row keeps field primitives bounded (no unbounded-width '
+        'assertion)', (tester) async {
+      await _pumpNode(tester, {
+        'type': 'container',
+        'direction': 'row',
+        'gap': 8,
+        'align': 'center',
+        'children': [
+          {'type': 'input', 'id': 'messageInput', 'label': 'Message'},
+          {
+            'type': 'dropdown',
+            'id': 'model',
+            'items': [
+              {'label': 'A', 'value': 'a'},
+            ],
+            'value': 'a',
+          },
+          {
+            'type': 'button',
+            'label': 'Send',
+            'action': {'path': '/ui/action/send', 'name': 'send'},
+          },
+        ],
+      });
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(TextField), findsOneWidget);
+      // input + dropdown are wrapped in Expanded; the button is not.
+      expect(find.byType(Expanded), findsNWidgets(2));
+    });
+
     testWidgets('form collects its fields into the merged submit payload and '
         'blocks submit on a failing field', (tester) async {
       final h = await _pumpNode(tester, {
