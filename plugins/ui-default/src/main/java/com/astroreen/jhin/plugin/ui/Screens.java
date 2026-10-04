@@ -44,7 +44,8 @@ final class Screens implements ScreenRegistry {
     }
 
     @Override
-    public Map<String, Supplier<UiNode>> screens(Optional<String> account) {
+    public Map<String, Supplier<UiNode>> screens(Optional<String> account,
+                                                 Map<String, String> overrides) {
         Map<String, Supplier<UiNode>> screens = new LinkedHashMap<>();
         if (features.security()) {
             screens.put("connect", EnrollScreen::render);
@@ -52,7 +53,8 @@ final class Screens implements ScreenRegistry {
         screens.put("sessions", () -> SessionsScreen.render(
                 store, account, providersPresent()));
         screens.put("settings", () -> SettingsScreen.render(
-                account, features.security(), features.reload()));
+                account, features.security(), features.reload(),
+                DefaultKeymap.entries(), overrides));
         screens.put("plugins", () -> PluginsScreen.render(kernel.plugins()));
         if (providersPresent()) {
             ProviderRegistry providers = providerRegistry().orElseThrow();
@@ -62,8 +64,9 @@ final class Screens implements ScreenRegistry {
     }
 
     @Override
-    public Optional<Supplier<UiNode>> screen(String id, Optional<String> account) {
-        Map<String, Supplier<UiNode>> screens = screens(account);
+    public Optional<Supplier<UiNode>> screen(String id, Optional<String> account,
+                                             Map<String, String> overrides) {
+        Map<String, Supplier<UiNode>> screens = screens(account, overrides);
         Supplier<UiNode> found = screens.get(id);
         if (found != null) {
             return Optional.of(found);

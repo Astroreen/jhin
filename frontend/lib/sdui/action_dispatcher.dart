@@ -24,6 +24,7 @@ class ActionDispatcher {
     required this.root,
     required this.onChanged,
     required this.runDirectives,
+    this.onClientAction,
   });
 
   /// Transport the action is posted through.
@@ -40,6 +41,13 @@ class ActionDispatcher {
 
   /// Runs the response's `client` directive list (§8.5).
   final Future<void> Function(List<dynamic> directives) runDirectives;
+
+  /// Client-owned action side effect (T70): invoked with the include-merged
+  /// payload for every named action that passes validation, before the post
+  /// — the `keybind-save` / `keybind-reset` / `keybind-restore` persistence
+  /// seam (docs/sdui.md §3). Absent → no side effect.
+  final Future<void> Function(String name, Map<String, dynamic> payload)?
+      onClientAction;
 
   /// Dispatches one §8.4 action object. Never throws.
   Future<void> dispatch(Map<String, dynamic> action) async {
@@ -92,6 +100,14 @@ class ActionDispatcher {
     for (final id in include) {
       final value = includeValue(root().findById(id), state[id]);
       if (value != _omit) payload[id] = value;
+    }
+
+    // Client-owned side effect (T70) before the round-trip: the keymap
+    // persistence actions write the store first, so a live rebind survives a
+    // failed or missing server handler.
+    final hook = onClientAction;
+    if (hook != null && name.isNotEmpty) {
+      await hook(name, payload);
     }
 
     final response =

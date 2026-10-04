@@ -326,6 +326,15 @@ column shows the built-in default, `—` means no default (prop absent).
 
 ### 2.6 Per-primitive props
 
+**Reserved input ids** are client affordances: an `input`/`textarea` node
+carrying one attaches to client behaviour instead of behaving like a plain
+field.
+
+| Reserved `id` | Affordance |
+|---------------|------------|
+| `messageInput` | the composer host of the keyboard flow — the field the composer commands (`composer.send`, `composer.newline`, recall) edit |
+| `keyCapture` | key-chord capture (T70): while focused, the next keystroke is recorded into the field's UiState value as a chord spec (`mod+shift+enter` — the platform's mod key is written `mod`) instead of typing, and the chord never reaches the keymap |
+
 Layout primitives:
 
 | Primitive | Prop | Type | Default | Description |
@@ -891,6 +900,19 @@ session keeps them. When creation answers `4xx`/`5xx` (or no `navigate`), the
 client keeps the draft intact and surfaces a `toast` — user text is never
 lost.
 
+**Three action names are client-owned for keybindings** (T70):
+`keybind-save`, `keybind-reset` and `keybind-restore` additionally persist
+the user keymap client-side (enveloped store key `keybindings`, see
+[updates.md](updates.md)) as a dispatch side effect, after validation and the
+`include` merge and before the post. `keybind-save` carries the command in
+the payload and the captured chord under the `include`d `keyCapture` id
+(section 2.6); `keybind-reset` reverts one command and `keybind-restore`
+clears every override. The server handlers only answer feedback directives
+(`dismissDialog`, `toast`, `refresh`) — the chords the rows render arrive per
+request in the `X-Jhin-Keybindings` header (section 8). The `keybind-edit`
+action opens the rebind `sheet` (a `dialog` directive with `kind: "sheet"`
+around the `keyCapture` field, section 4).
+
 ## 5. Streams and frames
 
 `stream_view.topic` is the SSE endpoint path to open (for `jhin.ui`,
@@ -1020,6 +1042,17 @@ revalidates `cachedBootstrap` — a stale screen built for api 1 must never be
 replayed into an api-2 renderer. This is the cache half of the data-upgrade
 system; the persisted-state half is specified in
 [updates.md](updates.md).
+
+**Request enrichment: `X-Jhin-Keybindings`.** Every JSON request (screen
+fetch and action post) carries the caller's current user keymap overrides so
+the server can render the chords the client actually uses: the Settings →
+Keyboard rows show the effective chord per command (the override wins per
+command; commands without one keep their server default) and the `keybind-edit`
+sheet prefills the capture field with the current chord. The header value is
+the store shape `{"rules": [{"command": …, "keys": …}]}`; an absent or
+malformed header means no overrides and the server renders its defaults. The
+client sends it from the live store, so a `refresh` after a rebind renders the
+fresh chords without a restart.
 
 ## Appendix A. Contract level 1
 

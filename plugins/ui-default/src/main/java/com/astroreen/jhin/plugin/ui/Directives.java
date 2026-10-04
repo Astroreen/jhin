@@ -90,6 +90,18 @@ public final class Directives {
         return op("dialog", "node", node);
     }
 
+    /**
+     * {@code dialog}(node, kind): opens a dialog; {@code kind: "sheet"} opens
+     * a bottom sheet (docs/sdui.md section 4).
+     */
+    public static Map<String, Object> dialog(Map<String, Object> node, String kind) {
+        Map<String, Object> dialog = dialog(node);
+        if (kind != null) {
+            dialog.put("kind", kind);
+        }
+        return dialog;
+    }
+
     /** {@code dismissDialog}: closes the open dialog. */
     public static Map<String, Object> dismissDialog() {
         return op("dismissDialog");

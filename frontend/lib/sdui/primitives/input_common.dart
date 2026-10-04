@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../keyboard/composer_commands.dart';
+import '../keyboard/keymap.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -48,7 +49,12 @@ class _InputFieldState extends State<_InputField> {
     super.initState();
     final initial = fieldValue(widget.ctx, widget.node);
     _controller = TextEditingController(text: initial?.toString() ?? '');
-    _focusNode = FocusNode(debugLabel: 'jhin-input-$_id');
+    // The capture handler rides the field's own focus node (T70) so the
+    // keystroke is intercepted before the editor or the keymap sees it.
+    _focusNode = FocusNode(
+      debugLabel: 'jhin-input-$_id',
+      onKeyEvent: _captureKey,
+    );
     _focusNode.addListener(_editingChanged);
   }
 
@@ -119,9 +125,27 @@ class _InputFieldState extends State<_InputField> {
     }
   }
 
+  /// The key-capture affordance (T70): while a `keyCapture` field has focus
+  /// the next keystroke is recorded as a chord spec (`mod+shift+enter`)
+  /// instead of typing — the reserved-id precedent of `messageInput`
+  /// (docs/sdui.md §2.6). Every hardware key is swallowed so the chord never
+  /// reaches the keymap either: the keystroke rebinds, it does not dispatch.
+  KeyEventResult _captureKey(FocusNode node, KeyEvent event) {
+    if (widget.node.id != kKeyCaptureFieldId) return KeyEventResult.ignored;
+    if (event is! KeyDownEvent) return KeyEventResult.handled;
+    final chord = KeyChord.fromKeyEvent(event);
+    if (chord == null) return KeyEventResult.ignored;
+    final spec = chord.toSpec();
+    _controller.text = spec;
+    _controller.selection = TextSelection.collapsed(offset: spec.length);
+    widget.ctx.setState(_id, spec);
+    return KeyEventResult.handled;
+  }
+
   @override
   Widget build(BuildContext context) {
     final node = widget.node;
+    final capture = node.id == kKeyCaptureFieldId;
     final multilineDefault = node.type == 'textarea';
     final multiline = node.boolProp('multiline') ?? multilineDefault;
     final obscure = node.boolProp('obscure') == true;
@@ -165,7 +189,7 @@ class _InputFieldState extends State<_InputField> {
         enableSuggestions: node.boolProp('enableSuggestions') ?? true,
         enableInteractiveSelection:
             node.boolProp('enableInteractiveSelection'),
-        readOnly: node.boolProp('readOnly') == true,
+        readOnly: capture || node.boolProp('readOnly') == true,
         showCursor: node.boolProp('showCursor'),
         autofocus: node.boolProp('autofocus') == true,
         cursorWidth: node.numProp('cursorWidth')?.toDouble() ?? 2.0,

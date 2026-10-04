@@ -153,7 +153,7 @@ class ScreensTest {
     @Test
     void settingsScreenCarriesTheAccountInfoAndTheClientOwnedControls() {
         Map<String, Object> json = SettingsScreen.render(
-                Optional.of("acc-1"), true, false).toJson();
+                Optional.of("acc-1"), true, false, keymapFixture(), Map.of()).toJson();
 
         assertThat(stringsIn(json)).anyMatch(text -> text.contains("Signed in as acc-1"));
         assertThat(opsIn(json)).contains("openProfiles", "clearToken", "openUrl");
@@ -162,8 +162,10 @@ class ScreensTest {
 
     @Test
     void settingsScreenReloadButtonAppearsOnlyWithTheReloadPlugin() {
-        Map<String, Object> withReload = SettingsScreen.render(Optional.empty(), true, true).toJson();
-        Map<String, Object> without = SettingsScreen.render(Optional.empty(), true, false).toJson();
+        Map<String, Object> withReload = SettingsScreen.render(
+                Optional.empty(), true, true, keymapFixture(), Map.of()).toJson();
+        Map<String, Object> without = SettingsScreen.render(
+                Optional.empty(), true, false, keymapFixture(), Map.of()).toJson();
 
         assertThat(labels(withReload)).contains("Reload");
         assertThat(castMap(button(withReload, "Reload").get("action")))
@@ -173,9 +175,26 @@ class ScreensTest {
 
     @Test
     void settingsScreenShowsNotSignedInWithoutAPrincipal() {
-        Map<String, Object> json = SettingsScreen.render(Optional.empty(), true, false).toJson();
+        Map<String, Object> json = SettingsScreen.render(
+                Optional.empty(), true, false, keymapFixture(), Map.of()).toJson();
 
         assertThat(stringsIn(json)).contains("Not signed in");
+    }
+
+    @Test
+    void settingsScreenKeyboardRowsShowTheEffectiveChords() {
+        Map<String, Object> json = SettingsScreen.render(
+                Optional.empty(), true, false, keymapFixture(),
+                Map.of("composer.send", "mod+shift+enter")).toJson();
+
+        assertThat(stringsIn(json)).contains("composer.send", "palette.open");
+        // The client override wins per command; un-overridden commands keep
+        // their default chord (T70).
+        assertThat(stringsIn(json)).contains("mod+shift+enter", "ctrl+k");
+        assertThat(stringsIn(json)).doesNotContain("mod+enter");
+        assertThat(labels(json)).contains("Edit", "Reset", "Restore defaults");
+        assertThat(opsIn(json)).contains(
+                "keybind-edit", "keybind-reset", "keybind-restore");
     }
 
     @Test
@@ -216,7 +235,7 @@ class ScreensTest {
     void registryOmitsTheOptionalScreensWithoutTheirIntegrations() {
         Screens screens = registry(NO_PLUGINS);
 
-        assertThat(screens.screens(Optional.empty()).keySet())
+        assertThat(screens.screens(Optional.empty(), Map.of()).keySet())
                 .containsExactly("sessions", "settings", "plugins");
     }
 
@@ -226,7 +245,7 @@ class ScreensTest {
         services.publish(ProviderRegistry.class, providers);
         Screens screens = new Screens(store, services, kernel(), EVERYTHING);
 
-        Set<String> ids = screens.screens(Optional.empty()).keySet();
+        Set<String> ids = screens.screens(Optional.empty(), Map.of()).keySet();
         assertThat(ids).contains("connect", "sessions", "settings", "plugins", "providers");
     }
 
@@ -235,7 +254,7 @@ class ScreensTest {
         FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
         Screens screens = new Screens(store, services, kernel(), EVERYTHING);
 
-        assertThat(screens.screens(Optional.empty()).keySet()).doesNotContain("providers");
+        assertThat(screens.screens(Optional.empty(), Map.of()).keySet()).doesNotContain("providers");
     }
 
     @Test
@@ -243,16 +262,23 @@ class ScreensTest {
         Session session = store.create("demo", "/tmp/work");
         Screens screens = registry(NO_PLUGINS);
 
-        Optional<Supplier<UiNode>> chat = screens.screen("chat:" + session.id(), Optional.empty());
+        Optional<Supplier<UiNode>> chat = screens.screen("chat:" + session.id(), Optional.empty(), Map.of());
         assertThat(chat).isPresent();
         Map<String, Object> json = chat.get().get().toJson();
         assertThat(typesIn(json)).contains("stream_view");
-        assertThat(screens.screen("chat:missing", Optional.empty())).isEmpty();
-        assertThat(screens.screen("nope", Optional.empty())).isEmpty();
+        assertThat(screens.screen("chat:missing", Optional.empty(), Map.of())).isEmpty();
+        assertThat(screens.screen("nope", Optional.empty(), Map.of())).isEmpty();
     }
 
     private Screens registry(Features features) {
         return new Screens(store, new FakePluginContext.FakeServices(), kernel(), features);
+    }
+
+    /** The default keymap rows the Keyboard section renders. */
+    private static List<Map<String, Object>> keymapFixture() {
+        return List.of(
+                Map.of("key", "mod+enter", "command", "composer.send"),
+                Map.of("key", "ctrl+k", "command", "palette.open"));
     }
 
     private static KernelInfo kernel() {

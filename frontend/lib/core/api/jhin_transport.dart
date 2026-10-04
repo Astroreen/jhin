@@ -143,6 +143,11 @@ class JhinTransport {
   /// Device token sent as `Authorization: Bearer <token>` when set.
   String? token;
 
+  /// Live user keymap overrides (T70) advertised on every JSON request as
+  /// the `X-Jhin-Keybindings` header (docs/sdui.md §8) so screens and
+  /// actions can render the current chords. Null/empty → no header.
+  String Function()? keybindingsJson;
+
   final http.Client _client;
   final SseByteOpener _sseOpener;
   final SseRetryPolicy _retryPolicy;
@@ -229,6 +234,10 @@ class JhinTransport {
   }) async {
     final request = http.Request(method, uri)
       ..headers['X-Jhin-Client'] = buildXJhinClientHeader();
+    final keybindings = keybindingsJson?.call();
+    if (keybindings != null && keybindings.isNotEmpty) {
+      request.headers['X-Jhin-Keybindings'] = keybindings;
+    }
     if (auth) {
       request.headers.addAll(_authHeader());
     }

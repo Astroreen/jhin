@@ -11,6 +11,7 @@ import '../core/tls/tls_trust.dart';
 import '../design/theme.dart';
 import 'action_dispatcher.dart';
 import 'directives.dart';
+import 'keyboard/keymap.dart';
 import 'primitives/sheet.dart';
 import 'render_context.dart';
 import 'ui_node.dart';
@@ -35,6 +36,7 @@ class SduiRuntime extends ChangeNotifier
     this.onOpenProfiles,
     this.onOpenUrl,
     this.onTheme,
+    this.keymapStore,
     UiRegistry? registry,
   }) : registry = registry ?? UiRegistry.standard() {
     final cached = profile?.cachedScreens;
@@ -68,6 +70,11 @@ class SduiRuntime extends ChangeNotifier
   /// (§1). May be called during build — the receiver must defer any
   /// setState past the frame.
   final void Function(Map<String, dynamic> payload)? onTheme;
+
+  /// The live user keymap (T70): when set, the `keybind-save` /
+  /// `keybind-reset` / `keybind-restore` actions persist through it as a
+  /// client-side dispatch side effect (docs/sdui.md §3).
+  final KeymapStore? keymapStore;
 
   /// Primitive registry used for every node (§8.3).
   final UiRegistry registry;
@@ -227,6 +234,7 @@ class SduiRuntime extends ChangeNotifier
       root: () => entry.node ?? UiNode(type: 'text', props: const {}),
       onChanged: notifyListeners,
       runDirectives: _executor.execute,
+      onClientAction: keymapStore?.applyAction,
     );
     return RenderContext(
       state: entry.state,

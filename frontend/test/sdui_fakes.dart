@@ -51,6 +51,9 @@ class ScriptedTransport implements JhinTransport {
   @override
   String? token;
 
+  @override
+  String Function()? keybindingsJson;
+
   /// The (single) SSE stream of [topic], created on demand.
   StreamController<Map<String, dynamic>> streamFor(String topic) =>
       streams.putIfAbsent(

@@ -40,6 +40,9 @@ class FakeTransport implements JhinTransport {
   String? token;
 
   @override
+  String Function()? keybindingsJson;
+
+  @override
   Future<HealthInfo> health(String url) async {
     calls.add('health:$url');
     final failure = error;

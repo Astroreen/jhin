@@ -52,7 +52,7 @@ class ScreenRouteTest {
                 .build();
         Map<String, Supplier<UiNode>> registry = new LinkedHashMap<>();
         registry.put("known", () -> screen);
-        route = new ScreenRoute(account -> registry, new CapabilityTailor(eventLog));
+        route = new ScreenRoute((account, overrides) -> registry, new CapabilityTailor(eventLog));
     }
 
     @AfterEach
@@ -87,6 +87,31 @@ class ScreenRouteTest {
 
         assertThat(response.status()).isEqualTo(404);
         assertThat(new String(response.body())).contains("unknown_screen");
+    }
+
+    @Test
+    void screenRouteThreadsTheHeaderOverridesToTheRegistry() {
+        Map<String, String> seen = new LinkedHashMap<>();
+        UiNode screen = Ui.screen()
+                .title("Fixture")
+                .body(Ui.text("hello").build())
+                .build();
+        ScreenRegistry recording = (account, overrides) -> {
+            seen.putAll(overrides);
+            return new LinkedHashMap<>(Map.of("known", (Supplier<UiNode>) () -> screen));
+        };
+        ScreenRoute custom = new ScreenRoute(recording, new CapabilityTailor(eventLog));
+        FakeHttpRequest req = new FakeHttpRequest("GET", "/ui/screen/known",
+                Map.of("id", "known"), Map.of(), "", NO_CAPS,
+                Map.of(ClientKeybindings.HEADER,
+                        "{\"rules\":[{\"command\":\"composer.send\","
+                                + "\"keys\":\"mod+shift+enter\"}]}"));
+
+        HttpResponse response = custom.handle(req);
+
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(seen).containsExactlyEntriesOf(
+                Map.of("composer.send", "mod+shift+enter"));
     }
 
     private static FakeHttpRequest request(String id, ClientInfo client) {

@@ -308,7 +308,7 @@ class BootstrapContractTest {
                 .build();
         Map<String, Supplier<UiNode>> registry = new LinkedHashMap<>();
         registry.put("sessions", () -> screen);
-        return account -> registry;
+        return (account, overrides) -> registry;
     }
 
     @SuppressWarnings("unchecked")

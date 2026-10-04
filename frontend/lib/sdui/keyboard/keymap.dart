@@ -1,7 +1,24 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/auth/app_storage.dart';
+import '../../store/versioned_store.dart';
 import 'when_context.dart';
+
+/// Reserved input id of the key-capture affordance (T70): an `input` /
+/// `textarea` node carrying this id captures the focused keystroke as a
+/// chord spec (`mod+shift+enter`) instead of typing text. Follows the T68
+/// `messageInput` id-affordance precedent (docs/sdui.md §2.6).
+const String kKeyCaptureFieldId = 'keyCapture';
+
+/// The client-owned keybinding action names (T70): dispatching one of these
+/// persists the user keymap through [KeymapStore] as a client-side side
+/// effect, before the action is posted as usual (docs/sdui.md §3).
+const String kKeybindSaveAction = 'keybind-save';
+const String kKeybindResetAction = 'keybind-reset';
+const String kKeybindRestoreAction = 'keybind-restore';
 
 /// The platform a key chord is resolved against: `mod` is Cmd (meta) on
 /// macOS and Ctrl everywhere else (docs/sdui.md §1). Injectable for tests.
@@ -189,6 +206,24 @@ class KeyChord {
     final names = modifiers.map((m) => m.name).toList()..sort();
     return <String>[...names, key].join('+');
   }
+
+  /// The portable chord spec (§1 spelling): the platform's `mod` key is
+  /// written as the `mod` alias so a captured binding survives a platform
+  /// change (`mod+shift+enter` on every OS), the remaining modifiers keep
+  /// their explicit names in `mod, ctrl, alt, shift, meta` order.
+  String toSpec({KeyPlatform? platform}) {
+    final effective = platform ?? KeyPlatform.current;
+    final modModifier =
+        effective.modIsMeta ? KeyModifier.meta : KeyModifier.ctrl;
+    final parts = <String>[];
+    if (modifiers.contains(modModifier)) parts.add('mod');
+    for (final modifier in KeyModifier.values) {
+      if (modifier == modModifier) continue;
+      if (modifiers.contains(modifier)) parts.add(modifier.name);
+    }
+    parts.add(key);
+    return parts.join('+');
+  }
 }
 
 /// One keymap rule: a chord, the command it dispatches and an optional
@@ -344,5 +379,171 @@ class Keymap {
     } catch (_) {
       return null;
     }
+  }
+}
+
+/// The persisted user keymap (T70): the override rules under the enveloped
+/// `keybindings` store key (docs/updates.md §1, `{'rules': [{command, keys}]}`)
+/// plus the load/save side effects the settings surface dispatches.
+///
+/// Corruption safety (T70): a blob that does not decode to the store shape
+/// falls back to the server defaults — the raw bytes are never destroyed,
+/// they are quarantined under `migration.quarantine:keybindings:<schema>`
+/// and the key joins the `migration.quarantine` list (the T54 convention,
+/// docs/updates.md §4). Loading never throws.
+class KeymapStore extends ChangeNotifier {
+  KeymapStore(this._storage);
+
+  final AppStorage _storage;
+
+  /// The override rules in store shape (`{command, keys}` maps), in
+  /// insertion order. This is the `keymapOverrides` seam of `SduiHost`.
+  List<Object?> _rules = const <Object?>[];
+
+  /// The current override rules (store shape), never null.
+  List<Object?> get rules => _rules;
+
+  /// The override rules keyed by command (a later rule for the same command
+  /// wins; [setOverride] keeps at most one per command).
+  Map<String, String> get byCommand {
+    final out = <String, String>{};
+    for (final rule in _rules) {
+      final command = rule is Map ? rule['command'] : null;
+      final keys = rule is Map ? rule['keys'] : null;
+      if (command is String && keys is String) out[command] = keys;
+    }
+    return out;
+  }
+
+  /// The `X-Jhin-Keybindings` request header value (docs/sdui.md §8): the
+  /// store shape `{'rules': [{command, keys}]}` so the server can render the
+  /// current chords. Empty overrides serialize as `{"rules":[]}`.
+  String get headerJson => jsonEncode({'rules': _rules});
+
+  /// Loads the persisted overrides. A corrupted blob quarantines itself and
+  /// degrades to no overrides (server defaults stay active). Never throws.
+  Future<void> load() async {
+    String? raw;
+    Object? data;
+    var schema = 1;
+    try {
+      raw = await _storage.readRaw(StoreKeys.keybindings);
+      if (raw == null || raw.isEmpty) {
+        _rules = const <Object?>[];
+        return;
+      }
+      final stored = decodeStoredValue(raw);
+      schema = stored?.schema ?? 1;
+      data = stored?.data;
+      final parsed = _storeRules(data);
+      if (parsed == null) {
+        await _quarantine(raw, schema);
+        _rules = const <Object?>[];
+        return;
+      }
+      _rules = List<Object?>.unmodifiable(parsed);
+    } catch (_) {
+      // Defensive: a storage failure degrades to server defaults; a raw
+      // value that made it out of storage is quarantined first.
+      if (raw != null) {
+        try {
+          await _quarantine(raw, schema);
+        } catch (_) {}
+      }
+      _rules = const <Object?>[];
+    }
+  }
+
+  /// Rebinds [command] to [keys] (store shape `{command, keys}`), replacing
+  /// any existing override of that command. Persists and notifies.
+  Future<void> setOverride(String command, String keys) => _persist([
+        for (final rule in _rules)
+          if (rule is! Map || rule['command'] != command) rule,
+        {'command': command, 'keys': keys},
+      ]);
+
+  /// Drops the override of [command] — the command falls back to its server
+  /// default. Persists and notifies.
+  Future<void> resetCommand(String command) => _persist([
+        for (final rule in _rules)
+          if (rule is! Map || rule['command'] != command) rule,
+      ]);
+
+  /// Clears every override — the server defaults return. Persists and
+  /// notifies.
+  Future<void> restoreDefaults() => _persist(const <Object?>[]);
+
+  /// The T70 client-owned action side effect (docs/sdui.md §3): maps the
+  /// `keybind-save` / `keybind-reset` / `keybind-restore` payloads onto the
+  /// store. Unknown names are ignored; never throws.
+  Future<void> applyAction(String name, Map<String, dynamic> payload) async {
+    try {
+      switch (name) {
+        case kKeybindSaveAction:
+          final command = payload['command'];
+          final keys = payload['keys'] ?? payload[kKeyCaptureFieldId];
+          if (command is String && command.isNotEmpty) {
+            if (keys is String && keys.isNotEmpty) {
+              await setOverride(command, keys);
+            }
+          }
+        case kKeybindResetAction:
+          final command = payload['command'];
+          if (command is String && command.isNotEmpty) {
+            await resetCommand(command);
+          }
+        case kKeybindRestoreAction:
+          await restoreDefaults();
+      }
+    } catch (_) {
+      // Persistence failures never break dispatch (§3).
+    }
+  }
+
+  Future<void> _persist(List<Object?> next) async {
+    _rules = List<Object?>.unmodifiable(next);
+    await _storage.writeEnvelope(StoreKeys.keybindings, {'rules': _rules});
+    notifyListeners();
+  }
+
+  /// Quarantines one corrupted raw blob (docs/updates.md §4): a raw copy
+  /// under `migration.quarantine:keybindings:<schema>` (kept only once, so
+  /// repeated loads never overwrite the first capture) plus the key name in
+  /// the `migration.quarantine` list. The original key is left untouched.
+  Future<void> _quarantine(String raw, int schema) async {
+    final copyKey = StoreKeys.quarantineCopy(StoreKeys.keybindings, schema);
+    if (await _storage.readRaw(copyKey) == null) {
+      await _storage.writeRaw(copyKey, raw);
+    }
+    final listed = decodeStoredValue(await _storage.readRaw(StoreKeys.quarantine))
+            ?.data;
+    final quarantine = <String>[
+      if (listed is List)
+        for (final item in listed)
+          if (item is String) item,
+    ];
+    if (!quarantine.contains(StoreKeys.keybindings)) {
+      quarantine.add(StoreKeys.keybindings);
+      await _storage.writeEnvelope(StoreKeys.quarantine, quarantine);
+    }
+  }
+
+  /// The validated rule list of [data] (store shape `{'rules': […]}`), or
+  /// null when the payload is not the store shape (corrupted). Malformed
+  /// entries inside a well-formed list are dropped, never thrown on.
+  static List<Object?>? _storeRules(Object? data) {
+    if (data is! Map) return null;
+    final rawRules = data['rules'];
+    if (rawRules is! List) return null;
+    final rules = <Object?>[];
+    for (final entry in rawRules) {
+      if (entry is! Map) continue;
+      final command = entry['command'];
+      final keys = entry['keys'] ?? entry['key'];
+      if (command is! String || command.isEmpty) continue;
+      if (keys is! String || keys.isEmpty) continue;
+      rules.add({'command': command, 'keys': keys});
+    }
+    return rules;
   }
 }

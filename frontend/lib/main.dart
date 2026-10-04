@@ -11,6 +11,7 @@ import 'core/api/jhin_transport.dart';
 import 'core/auth/app_storage.dart';
 import 'core/tls/tls_trust.dart';
 import 'design/theme.dart';
+import 'sdui/keyboard/keymap.dart';
 import 'sdui/keyboard/palette.dart';
 import 'sdui/sdui_runtime.dart';
 import 'store/migrations/migration_runner.dart';
@@ -46,6 +47,7 @@ class RendererEnv {
     required this.createTransport,
     required this.onOpenProfiles,
     this.onTheme,
+    this.keymapStore,
   });
 
   /// Profile storage the runtime persists tokens and caches into.
@@ -67,6 +69,9 @@ class RendererEnv {
   /// regenerate its theme from the payload's `theme`/`tokens`/`density`
   /// (§1). May fire during build; the receiver defers past the frame.
   final void Function(Map<String, dynamic> payload)? onTheme;
+
+  /// The live user keymap (T70): keybinding actions persist through it.
+  final KeymapStore? keymapStore;
 }
 
 /// Creates the screen renderer for one profile (the T22 seam of [SduiHost]).
@@ -80,6 +85,7 @@ ScreenRenderer createSduiRuntime(RendererEnv env) => SduiRuntime(
       createTransport: env.createTransport,
       onOpenProfiles: env.onOpenProfiles,
       onTheme: env.onTheme,
+      keymapStore: env.keymapStore,
     );
 
 /// App shell (§8.1): empty profile list → [ServerProfilesScreen] in
@@ -121,6 +127,7 @@ class JhinApp extends StatefulWidget {
 class _JhinAppState extends State<JhinApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   late final AppStorage _storage = widget.storage ?? AppStorage();
+  late final KeymapStore _keymapStore = KeymapStore(_storage);
   late final JhinTransport Function(ServerProfile) _createTransport =
       widget.createTransport ?? createProfileTransport;
   late final ServerProbe _probe = widget.probe ?? probeServer;
@@ -240,6 +247,9 @@ class _JhinAppState extends State<JhinApp> {
 
   Future<void> _reload() async {
     final prefs = await AppearancePrefs.read(_storage);
+    // T70: the user keymap is loaded before the first bootstrap so the
+    // effective keymap starts with the persisted overrides in place.
+    await _keymapStore.load();
     final profiles = await _storage.readProfiles();
     final activeId = await _storage.readActiveProfileId();
     ServerProfile? active;
@@ -289,12 +299,13 @@ class _JhinAppState extends State<JhinApp> {
         key: ValueKey(active.id),
         profile: active,
         storage: _storage,
-        transport: _createTransport(active),
+        transport: _boundTransport(active),
         renderer: _rendererFor(active),
         onOpenProfiles: _openProfiles,
         runDirectives: _runDirectives,
         onAppearanceChanged: () => unawaited(_reloadAppearance()),
         accentPresets: _accentPresets(),
+        keymapStore: _keymapStore,
       );
     }
 
@@ -325,6 +336,14 @@ class _JhinAppState extends State<JhinApp> {
     );
   }
 
+  /// Creates one profile transport with the T70 `X-Jhin-Keybindings` hook
+  /// bound: every JSON request carries the current user keymap overrides.
+  JhinTransport _boundTransport(ServerProfile profile) {
+    final transport = _createTransport(profile);
+    transport.keybindingsJson = () => _keymapStore.headerJson;
+    return transport;
+  }
+
   /// Builds — and memoizes — the renderer of one profile. The runtime is
   /// stateful (screen stack, local state), so it must survive app rebuilds
   /// and only be recreated when the active profile changes.
@@ -335,10 +354,11 @@ class _JhinAppState extends State<JhinApp> {
       _renderer = _createRenderer(RendererEnv(
         storage: _storage,
         profile: profile,
-        transport: _createTransport(profile),
-        createTransport: _createTransport,
+        transport: _boundTransport(profile),
+        createTransport: _boundTransport,
         onOpenProfiles: _openProfiles,
         onTheme: _applyTheme,
+        keymapStore: _keymapStore,
       ));
       _rendererProfileId = profile.id;
     }

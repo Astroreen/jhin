@@ -1,0 +1,6 @@
+ok: hardcode scan clean (no EdgeInsets.all(11/12), maxHeight: 240 or height: 160 in frontend/lib)
+ok: flutter analyze clean
+ok: flutter suite green (731 tests; transcript in test.txt)
+ok: rebind transcript recorded (rebind.txt: restart read-back, new chord fires, old dead, upgrade keeps the override)
+ok: corrupt transcript recorded (corrupt.txt: defaults + quarantine copy + raw bytes preserved)
+ok: :jhin-plugin-ui-default:test green (keybind actions, keyboard rows, header parsing)

@@ -36,6 +36,7 @@ class SduiHost extends StatefulWidget {
     this.commandRegistry,
     this.whenContext,
     this.keymapOverrides = const <Object?>[],
+    this.keymapStore,
     this.runDirectives,
     this.onAppearanceChanged,
     this.accentPresets = const <String>[],
@@ -68,7 +69,13 @@ class SduiHost extends StatefulWidget {
   /// User keybinding overrides merged over the server keymap (§1). The T70
   /// persistence seam: the store rules of `StoreKeys.keybindings`
   /// (`{'rules': [{command, keys}]}`) arrive here; T67 leaves it empty.
+  /// Ignored while [keymapStore] is set — the store is then the live source.
   final List<Object?> keymapOverrides;
+
+  /// The live user keymap (T70): when set it is the source of the override
+  /// rules and every change re-resolves the effective keymap immediately
+  /// (a rebind takes effect without a restart).
+  final KeymapStore? keymapStore;
 
   /// Runs a client-directive list through the live runtime (T69): undo
   /// feedback, palette navigation and error toasts ride through it. Absent
@@ -107,6 +114,7 @@ class _SduiHostState extends State<SduiHost> {
   @override
   void initState() {
     super.initState();
+    widget.keymapStore?.addListener(_onKeymapStoreChanged);
     if (widget.whenContext == null) {
       _when = WhenContext();
       _ownsWhen = true;
@@ -144,6 +152,7 @@ class _SduiHostState extends State<SduiHost> {
 
   @override
   void dispose() {
+    widget.keymapStore?.removeListener(_onKeymapStoreChanged);
     if (_ownsWhen) _when.dispose();
     super.dispose();
   }
@@ -153,13 +162,22 @@ class _SduiHostState extends State<SduiHost> {
   /// client fallback chords (T68) appended for commands no rule binds yet.
   void _resolveKeymap(Map<String, dynamic> payload) {
     final rawKeymap = payload['keymap'];
+    final overrides = widget.keymapStore?.rules ?? widget.keymapOverrides;
     _keymap = Keymap
         .resolve(
           rawKeymap is List ? rawKeymap : const <Object?>[],
-          widget.keymapOverrides,
+          overrides,
         )
         .withDefaults(ComposerCommands.defaultKeymapRules)
         .withDefaults(PaletteCommands.defaultKeymapRules);
+  }
+
+  /// T70: a rebind in the store re-resolves the live keymap immediately —
+  /// the new chord fires (and the old one dies) without a restart.
+  void _onKeymapStoreChanged() {
+    final payload = _payload;
+    if (payload == null || !mounted) return;
+    setState(() => _resolveKeymap(payload));
   }
 
   Future<void> _load() async {

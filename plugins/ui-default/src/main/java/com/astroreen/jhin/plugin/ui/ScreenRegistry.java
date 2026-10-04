@@ -22,21 +22,28 @@ interface ScreenRegistry {
      * Called per request so a screen can render request-scoped state (the
      * caller's sessions, for example).
      *
-     * @param account the caller's account id, empty when unscoped
+     * @param account   the caller's account id, empty when unscoped
+     * @param overrides the caller's keybinding overrides (command to chord,
+     *                  {@code X-Jhin-Keybindings}; empty when absent) so a
+     *                  screen can render the client's current chords
      * @return screen id to node supplier
      */
-    Map<String, Supplier<UiNode>> screens(Optional<String> account);
+    Map<String, Supplier<UiNode>> screens(Optional<String> account,
+                                         Map<String, String> overrides);
 
     /**
      * One screen by id, including the dynamic ids {@link #screens} does not
      * inline. The default resolves against {@link #screens}; implementations
      * with dynamic screens override it.
      *
-     * @param id      the screen id (may name a dynamic screen)
-     * @param account the caller's account id, empty when unscoped
+     * @param id        the screen id (may name a dynamic screen)
+     * @param account   the caller's account id, empty when unscoped
+     * @param overrides the caller's keybinding overrides (see
+     *                  {@link #screens})
      * @return the node supplier, or empty when the id is unknown to the caller
      */
-    default Optional<Supplier<UiNode>> screen(String id, Optional<String> account) {
-        return Optional.ofNullable(screens(account).get(id));
+    default Optional<Supplier<UiNode>> screen(String id, Optional<String> account,
+                                              Map<String, String> overrides) {
+        return Optional.ofNullable(screens(account, overrides).get(id));
     }
 }

@@ -3,7 +3,7 @@
  * action, registered always and degrading to an explanatory toast when the
  * plugin that would serve it is not loaded.
  *
- * <p>Names, exhaustively (7):
+ * <p>Names, exhaustively (11):
  * <ul>
  *   <li>{@code enroll} — redeem an enrollment code, answer
  *       {@code [setToken, navigate:sessions]} (jhin.security);</li>
@@ -14,7 +14,11 @@
  *   <li>{@code create-provider} — store one LLM provider (jhin.llm);</li>
  *   <li>{@code delete-provider} — remove one LLM provider (jhin.llm);</li>
  *   <li>{@code reload} — answer {@code [toast, reloadBootstrap]}
- *       (always; the reload button only shows while jhin.reload is loaded).</li>
+ *       (always; the reload button only shows while jhin.reload is loaded);</li>
+ *   <li>{@code keybind-edit} / {@code keybind-save} / {@code keybind-reset}
+ *       / {@code keybind-restore} — the T70 keybinding surface: the rebind
+ *       sheet and the feedback directives; the user keymap itself is
+ *       persisted client-side (see {@code KeybindActions}).</li>
  * </ul>
  *
  * <p>The optional integrations are constructed behind their flag, so a
@@ -55,6 +59,10 @@ final class Actions {
         handlers.put("create-provider", createProvider(services, features));
         handlers.put("delete-provider", deleteProvider(services, features));
         handlers.put("reload", ReloadAction::handle);
+        handlers.put("keybind-edit", KeybindActions::edit);
+        handlers.put("keybind-save", KeybindActions::save);
+        handlers.put("keybind-reset", KeybindActions::reset);
+        handlers.put("keybind-restore", KeybindActions::restore);
         return Map.copyOf(handlers);
     }
 

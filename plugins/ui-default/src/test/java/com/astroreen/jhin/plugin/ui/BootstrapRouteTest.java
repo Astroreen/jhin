@@ -207,7 +207,7 @@ class BootstrapRouteTest {
         Map<String, Supplier<UiNode>> registry = new LinkedHashMap<>();
         registry.put("connect", () -> screen);
         registry.put("sessions", () -> screen);
-        return account -> registry;
+        return (account, overrides) -> registry;
     }
 
     /** Every primitive type name appearing anywhere in a payload fragment. */
