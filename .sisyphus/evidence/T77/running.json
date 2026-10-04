@@ -1,0 +1,90 @@
+{
+  "type": "screen",
+  "title": "running",
+  "body": {
+    "type": "container",
+    "direction": "column",
+    "gap": 12,
+    "padding": 16,
+    "children": [
+      {
+        "type": "badge",
+        "id": "runStatus",
+        "label": "Running…",
+        "color": "$color.accent"
+      },
+      {
+        "type": "expanded",
+        "child": {
+          "type": "list",
+          "id": "messages",
+          "empty": "No messages yet."
+        }
+      },
+      {
+        "type": "stream_view",
+        "id": "stream",
+        "topic": "/ui/stream/session/65a5f117-d6e2-499d-99c5-23437b7fdde1?fromSeq=1",
+        "mode": "append",
+        "itemLimit": 200,
+        "autoScroll": true
+      },
+      {
+        "type": "container",
+        "id": "composer",
+        "direction": "row",
+        "gap": 8,
+        "align": "center",
+        "children": [
+          {
+            "type": "textarea",
+            "id": "messageInput",
+            "label": "Message",
+            "required": true,
+            "errorText": "Write a message first",
+            "minLines": 1,
+            "maxLines": 8,
+            "autofocus": true,
+            "flex": 1
+          },
+          {
+            "type": "button",
+            "label": "Send",
+            "style": "primary",
+            "icon": "send",
+            "action": {
+              "path": "/ui/action/send",
+              "method": "POST",
+              "name": "send",
+              "payload": {
+                "sessionId": "65a5f117-d6e2-499d-99c5-23437b7fdde1"
+              },
+              "include": [
+                "messageInput"
+              ]
+            }
+          },
+          {
+            "type": "button",
+            "label": "Cancel",
+            "style": "danger",
+            "action": {
+              "path": "/ui/action/cancel",
+              "method": "POST",
+              "name": "cancel",
+              "payload": {
+                "sessionId": "65a5f117-d6e2-499d-99c5-23437b7fdde1"
+              }
+            }
+          },
+          {
+            "type": "icon_button",
+            "icon": "add",
+            "command": "composer.sendAndNew",
+            "tooltip": "New session"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -109,22 +109,27 @@ class StreamRouteTest {
         List<Map<String, Object>> frames = lastPreamble();
 
         assertThat(frames).hasSize(10);
-        assertThat(nodeType(frames.get(0))).isEqualTo("text");
-        assertThat(nodeOf(frames.get(0)).get("text")).isEqualTo("hi");
-        assertThat(nodeOf(frames.get(0)).get("bold")).isEqualTo(true);
-        assertThat(nodeOf(frames.get(1)).get("id")).isEqualTo("msg-2");
+        assertThat(nodeType(frames.get(0))).isEqualTo("card");
+        assertThat(nodeOf(frames.get(0))).containsEntry("color", "$color.accentMuted");
+        assertThat(childText(frames.get(0))).isEqualTo("hi");
+        assertThat(nodeType(frames.get(1))).isEqualTo("card");
+        assertThat(nodeOf(frames.get(1)).get("id")).isEqualTo("ev-2");
+        assertThat(Json.write(nodeOf(frames.get(1)))).contains("\"id\":\"msg-2\"");
         assertThat(patchOf(frames.get(2)).get("id")).isEqualTo("msg-2");
         assertThat(castMap(patchOf(frames.get(2)).get("props"))).containsEntry("text", "Hel");
         assertThat(castMap(patchOf(frames.get(3)).get("props"))).containsEntry("text", "Hello");
         assertThat(castMap(patchOf(frames.get(4)).get("props"))).containsEntry("text", "Hello");
-        assertThat(nodeOf(frames.get(5)).get("text")).isEqualTo("Run started");
-        assertThat(nodeOf(frames.get(6)).get("text")).isEqualTo("Run finished");
-        assertThat(nodeType(frames.get(7))).isEqualTo("card");
-        assertThat(nodeOf(frames.get(7)).get("title")).isEqualTo("read");
+        assertThat(patchOf(frames.get(5)).get("id")).isEqualTo("runStatus");
+        assertThat(castMap(patchOf(frames.get(5)).get("props"))).containsEntry("label", "Running\u2026");
+        assertThat(patchOf(frames.get(6)).get("id")).isEqualTo("runStatus");
+        assertThat(castMap(patchOf(frames.get(6)).get("props"))).containsEntry("label", "Idle");
+        assertThat(nodeType(frames.get(7))).isEqualTo("code_block");
+        assertThat(Json.write(nodeOf(frames.get(7)))).contains("read");
         assertThat(nodeType(frames.get(8))).isEqualTo("card");
-        assertThat(nodeType(frames.get(9))).isEqualTo("card");
-        assertThat(nodeOf(frames.get(9)).get("title")).isEqualTo("Error");
-        assertThat(Json.write(nodeOf(frames.get(9)))).contains("#E53935");
+        assertThat(nodeOf(frames.get(8)).get("title")).isEqualTo("read");
+        assertThat(childText(frames.get(8))).isEqualTo("done");
+        assertThat(nodeType(frames.get(9))).isEqualTo("banner");
+        assertThat(Json.write(nodeOf(frames.get(9)))).contains("$color.error");
         assertThat(Json.write(nodeOf(frames.get(9)))).contains("boom");
     }
 
@@ -144,18 +149,20 @@ class StreamRouteTest {
 
         Map<String, Object> card = nodeOf(frames.get(0));
         assertThat(card).containsEntry("title", "File");
-        List<Object> children = castList(card.get("children"));
-        assertThat(Json.write(children.get(0))).contains("path: /a");
+        String cardJson = Json.write(card);
+        assertThat(cardJson).contains("path: /a");
+        assertThat(cardJson).contains("\"collapsed\":true");
 
         Map<String, Object> imageCard = nodeOf(frames.get(1));
         assertThat(imageCard).containsEntry("title", "Shot");
-        String imageJson = Json.write(castList(imageCard.get("children")).get(0));
+        String imageJson = Json.write(imageCard);
         assertThat(imageJson).contains("data:image/png;base64,aGk=");
+        assertThat(imageJson).contains("\"collapsed\":true");
 
         Map<String, Object> plain = nodeOf(frames.get(2));
         assertThat(plain).containsEntry("title", "bash");
-        assertThat(Json.write(castList(plain.get("children")).get(0)))
-                .contains("plain text").contains("#E53935");
+        assertThat(Json.write(plain))
+                .contains("plain text").contains("$color.error");
     }
 
     @Test
@@ -170,7 +177,8 @@ class StreamRouteTest {
                 streams.publishedOn("ui/frames/" + sessionId);
         assertThat(published).hasSize(3);
         Map<String, Object> first = castMap(published.get(0).payload());
-        assertThat(nodeOf(first).get("id")).isEqualTo("msg-1");
+        assertThat(nodeOf(first).get("id")).isEqualTo("ev-1");
+        assertThat(Json.write(nodeOf(first))).contains("\"id\":\"msg-1\"");
         Map<String, Object> last = castMap(published.get(2).payload());
         assertThat(castMap(patchOf(last).get("props"))).containsEntry("text", "Hello");
     }
@@ -200,7 +208,7 @@ class StreamRouteTest {
 
         List<Map<String, Object>> frames = lastPreamble();
         assertThat(frames).hasSize(1);
-        assertThat(nodeOf(frames.get(0)).get("text")).isEqualTo("one");
+        assertThat(childText(frames.get(0))).isEqualTo("one");
         assertThat(streams.publishedOn("ui/frames/" + sessionId)).hasSize(1);
     }
 
@@ -216,8 +224,8 @@ class StreamRouteTest {
 
         List<Map<String, Object>> frames = lastPreamble();
         assertThat(frames).hasSize(2);
-        assertThat(nodeOf(frames.get(0)).get("text")).isEqualTo("two");
-        assertThat(nodeOf(frames.get(1)).get("text")).isEqualTo("three");
+        assertThat(childText(frames.get(0))).isEqualTo("two");
+        assertThat(childText(frames.get(1))).isEqualTo("three");
     }
 
     @Test
@@ -308,6 +316,12 @@ class StreamRouteTest {
 
     private static String nodeType(Map<String, Object> frame) {
         return String.valueOf(nodeOf(frame).get("type"));
+    }
+
+    /** The text of the first text child of a node frame (bubble shorthand). */
+    private static String childText(Map<String, Object> frame) {
+        List<Object> children = castList(nodeOf(frame).get("children"));
+        return String.valueOf(castMap(children.get(0)).get("text"));
     }
 
     @SuppressWarnings("unchecked")

@@ -402,9 +402,30 @@ final class CapabilityTailor {
             return List.of();
         }
         String sessionId = path.substring(STREAM_TOPIC_PREFIX.length());
+        long fromSeq = 0;
+        int query = sessionId.indexOf('?');
+        if (query >= 0) {
+            fromSeq = parseFromSeq(sessionId.substring(query + 1));
+            sessionId = sessionId.substring(0, query);
+        }
         if (sessionId.isBlank()) {
             return List.of();
         }
-        return events.list(sessionId, 0);
+        return events.list(sessionId, fromSeq);
+    }
+
+    /** The {@code fromSeq} value of a topic query string ({@code 0} default). */
+    private static long parseFromSeq(String query) {
+        for (String pair : query.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0 && "fromSeq".equals(pair.substring(0, eq))) {
+                try {
+                    return Long.parseLong(pair.substring(eq + 1));
+                } catch (NumberFormatException e) {
+                    return 0;
+                }
+            }
+        }
+        return 0;
     }
 }

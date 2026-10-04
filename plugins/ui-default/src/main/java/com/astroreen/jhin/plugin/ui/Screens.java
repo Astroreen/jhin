@@ -10,6 +10,7 @@
 package com.astroreen.jhin.plugin.ui;
 
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
+import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
 import com.astroreen.jhin.plugin.ui.screens.ChatScreen;
@@ -32,12 +33,15 @@ final class Screens implements ScreenRegistry {
     private static final String CHAT_PREFIX = "chat:";
 
     private final SessionStore store;
+    private final EventLog events;
     private final ServiceRegistry services;
     private final KernelInfo kernel;
     private final Features features;
 
-    Screens(SessionStore store, ServiceRegistry services, KernelInfo kernel, Features features) {
+    Screens(SessionStore store, EventLog events, ServiceRegistry services,
+            KernelInfo kernel, Features features) {
         this.store = store;
+        this.events = events;
         this.services = services;
         this.kernel = kernel;
         this.features = features;
@@ -79,7 +83,7 @@ final class Screens implements ScreenRegistry {
                 .map(owner -> store.get(owner, sessionId))
                 .orElseGet(() -> store.get(sessionId));
         return session.map(open -> (Supplier<UiNode>) () ->
-                ChatScreen.render(open, features.agent()));
+                ChatScreen.render(open, events.list(open.id(), 0)));
     }
 
     /** Whether the providers screen exists for this caller. */

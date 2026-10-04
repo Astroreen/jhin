@@ -11,6 +11,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.astroreen.jhin.plugin.llm.api.ProviderRecord;
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
+import com.astroreen.jhin.plugin.sessions.api.EventLog;
+import com.astroreen.jhin.plugin.sessions.api.EventRecord;
+import com.astroreen.jhin.plugin.sessions.api.EventType;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
 import com.astroreen.jhin.plugin.ui.screens.ChatScreen;
@@ -46,6 +49,7 @@ class ScreensTest {
 
     private TestDbAccess db;
     private SessionStore store;
+    private EventLog events;
     private FakeProviderRegistry providers;
 
     @BeforeEach
@@ -56,6 +60,7 @@ class ScreensTest {
         new com.astroreen.jhin.plugin.sessions.SessionsPlugin()
                 .start(new FakePluginContext(tmp, "jhin.sessions", db, streams, services));
         store = services.find(SessionStore.class).orElseThrow();
+        events = services.find(EventLog.class).orElseThrow();
         providers = new FakeProviderRegistry(List.of("mock", "anthropic"));
     }
 
@@ -119,12 +124,15 @@ class ScreensTest {
     void chatScreenBindsTheStreamTheInputAndTheSendAction() {
         Session session = store.create("demo", "/tmp/work");
 
-        Map<String, Object> json = ChatScreen.render(session, true).toJson();
+        Map<String, Object> json = ChatScreen.render(session, List.of()).toJson();
 
         List<Map<String, Object>> streams = nodesOfType(json, "stream_view");
         assertThat(streams).hasSize(1);
-        assertThat(streams.get(0)).containsEntry("topic", "/ui/stream/session/" + session.id());
-        assertThat(nodesOfType(json, "input"))
+        assertThat(streams.get(0))
+                .containsEntry("topic", "/ui/stream/session/" + session.id() + "?fromSeq=0")
+                .containsEntry("itemLimit", 200)
+                .containsEntry("autoScroll", true);
+        assertThat(nodesOfType(json, "textarea"))
                 .extracting(input -> input.get("id"))
                 .containsExactly("messageInput");
         Map<String, Object> send = button(json, "Send");
@@ -135,16 +143,18 @@ class ScreensTest {
     }
 
     @Test
-    void chatScreenCarriesCancelOnlyWhenTheAgentIsLoaded() {
+    void chatScreenCarriesCancelOnlyWhileARunIsLive() {
         Session session = store.create("demo", "/tmp/work");
+        EventRecord runStart = new EventRecord(session.id(), 1, 1L, EventType.RUN_START,
+                "{\"runId\":\"r1\"}");
 
-        Map<String, Object> withAgent = ChatScreen.render(session, true).toJson();
-        Map<String, Object> withoutAgent = ChatScreen.render(session, false).toJson();
+        Map<String, Object> idle = ChatScreen.render(session, List.of()).toJson();
+        Map<String, Object> running = ChatScreen.render(session, List.of(runStart)).toJson();
 
-        assertThat(labels(withAgent)).contains("Cancel");
-        assertThat(castMap(button(withAgent, "Cancel").get("action")))
+        assertThat(labels(idle)).doesNotContain("Cancel");
+        assertThat(labels(running)).contains("Cancel");
+        assertThat(castMap(button(running, "Cancel").get("action")))
                 .containsEntry("name", "cancel");
-        assertThat(labels(withoutAgent)).doesNotContain("Cancel");
     }
 
     @Test
@@ -240,7 +250,7 @@ class ScreensTest {
     void registryAddsConnectForSecurityAndProvidersForTheLlmService() {
         FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
         services.publish(ProviderRegistry.class, providers);
-        Screens screens = new Screens(store, services, kernel(), EVERYTHING);
+        Screens screens = new Screens(store, events, services, kernel(), EVERYTHING);
 
         Set<String> ids = screens.screens(Optional.empty(), Map.of()).keySet();
         assertThat(ids).contains("connect", "sessions", "settings", "plugins", "providers");
@@ -249,7 +259,7 @@ class ScreensTest {
     @Test
     void registryKeepsProvidersOutWhileTheServiceIsMissing() {
         FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
-        Screens screens = new Screens(store, services, kernel(), EVERYTHING);
+        Screens screens = new Screens(store, events, services, kernel(), EVERYTHING);
 
         assertThat(screens.screens(Optional.empty(), Map.of()).keySet()).doesNotContain("providers");
     }
@@ -268,7 +278,7 @@ class ScreensTest {
     }
 
     private Screens registry(Features features) {
-        return new Screens(store, new FakePluginContext.FakeServices(), kernel(), features);
+        return new Screens(store, events, new FakePluginContext.FakeServices(), kernel(), features);
     }
 
     /** The default keymap rows the Keyboard section renders. */

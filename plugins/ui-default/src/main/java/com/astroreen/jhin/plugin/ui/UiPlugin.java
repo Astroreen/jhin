@@ -78,7 +78,7 @@ public final class UiPlugin implements JhinPlugin {
                 probe.test(AGENT_API),
                 Integrations.loaded(ctx.kernel(), RELOAD_ID));
 
-        ScreenRegistry screens = new Screens(store, ctx.services(), ctx.kernel(), features);
+        ScreenRegistry screens = new Screens(store, events, ctx.services(), ctx.kernel(), features);
         CapabilityTailor tailor = new CapabilityTailor(events);
         streamRoute = new StreamRoute(store, events, ctx.streams());
         ctx.onShutdown(streamRoute::shutdown);

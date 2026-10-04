@@ -1,0 +1,49 @@
+=== create-tool-run ===
+POST /sessions
+req:  {"title":"tool-run","workdir":"/tmp/t77/tool-run"}
+status: 201
+resp: {"id":"2ed6397a-8858-4d0c-9efe-f076efe4b170","accountId":"local","title":"tool-run","workdir":"/tmp/t77/tool-run","model":null,"providerId":null,"status":"active","createdAt":1791129781036,"updatedAt":1791129781036,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=201, jq '.id | length > 0'
+assert: ok
+=== event-run_start-2ed6397a-8858-4d0c-9efe-f076efe4b170 ===
+POST /sessions/2ed6397a-8858-4d0c-9efe-f076efe4b170/events
+req:  {"type":"run_start","payload":{"runId":"r1"}}
+status: 201
+resp: {"sessionId":"2ed6397a-8858-4d0c-9efe-f076efe4b170","seq":1,"ts":1791129781121,"type":"run_start","payload":"{\"runId\":\"r1\"}"}
+assert: status=201, jq '.seq > 0'
+assert: ok
+=== event-user_message-2ed6397a-8858-4d0c-9efe-f076efe4b170 ===
+POST /sessions/2ed6397a-8858-4d0c-9efe-f076efe4b170/events
+req:  {"type":"user_message","payload":{"text":"Fix the bug"}}
+status: 201
+resp: {"sessionId":"2ed6397a-8858-4d0c-9efe-f076efe4b170","seq":2,"ts":1791129781170,"type":"user_message","payload":"{\"text\":\"Fix the bug\"}"}
+assert: status=201, jq '.seq > 0'
+assert: ok
+=== event-tool_use-2ed6397a-8858-4d0c-9efe-f076efe4b170 ===
+POST /sessions/2ed6397a-8858-4d0c-9efe-f076efe4b170/events
+req:  {"type":"tool_use","payload":{"id":"c1","name":"write","arguments":"{\"path\":\"/tmp/a.txt\"}"}}
+status: 201
+resp: {"sessionId":"2ed6397a-8858-4d0c-9efe-f076efe4b170","seq":3,"ts":1791129781216,"type":"tool_use","payload":"{\"id\":\"c1\",\"name\":\"write\",\"arguments\":\"{\\\"path\\\":\\\"/tmp/a.txt\\\"}\"}"}
+assert: status=201, jq '.seq > 0'
+assert: ok
+=== event-tool_result-2ed6397a-8858-4d0c-9efe-f076efe4b170 ===
+POST /sessions/2ed6397a-8858-4d0c-9efe-f076efe4b170/events
+req:  {"type":"tool_result","payload":{"id":"c1","name":"write","content":"ok","error":false,"structured":"{\"kind\":\"card\",\"title\":\"write\",\"rows\":[{\"label\":\"bytes\",\"value\":\"12\"}]}"}}
+status: 201
+resp: {"sessionId":"2ed6397a-8858-4d0c-9efe-f076efe4b170","seq":4,"ts":1791129781265,"type":"tool_result","payload":"{\"id\":\"c1\",\"name\":\"write\",\"content\":\"ok\",\"error\":false,\"structured\":\"{\\\"kind\\\":\\\"card\\\",\\\"title\\\":\\\"write\\\",\\\"rows\\\":[{\\\"label\\\":\\\"bytes\\\",\\\"value\\\":\\\"12\\\"}]}\"}"}
+assert: status=201, jq '.seq > 0'
+assert: ok
+=== event-run_end-2ed6397a-8858-4d0c-9efe-f076efe4b170 ===
+POST /sessions/2ed6397a-8858-4d0c-9efe-f076efe4b170/events
+req:  {"type":"run_end","payload":{"runId":"r1"}}
+status: 201
+resp: {"sessionId":"2ed6397a-8858-4d0c-9efe-f076efe4b170","seq":5,"ts":1791129781313,"type":"run_end","payload":"{\"runId\":\"r1\"}"}
+assert: status=201, jq '.seq > 0'
+assert: ok
+=== fetch-chat-2ed6397a-8858-4d0c-9efe-f076efe4b170 ===
+GET /ui/screen/chat:2ed6397a-8858-4d0c-9efe-f076efe4b170
+req:  
+status: 200
+resp: {"id":"chat:2ed6397a-8858-4d0c-9efe-f076efe4b170","node":{"type":"screen","title":"tool-run","body":{"type":"container","direction":"column","gap":12,"padding":16,"children":[{"type":"badge","id":"runStatus","label":"Idle"},{"type":"expanded","child":{"type":"list","id":"messages","empty":"No messages yet.","items":[{"type":"card","id":"ev-2","color":"$color.accentMuted","align":"centerRight","borderRadius":"$radius.md","padding":12,"maxWidth":560,"children":[{"type":"text","text":"Fix the bug","style":"body"}]},{"type":"code_block","code":"{\"path\":\"/tmp/a.txt\"}","id":"ev-3","language":"json","wrap":false,"copyable":true,"maxLines":8,"lineNumbers":false,"tooltip":"write arguments","semanticsLabel":"tool call write"},{"type":"card","id":"ev-4","title":"write","children":[{"type":"list","sections":[{"id":"ev-4-details","label":"Details","collapsible":true,"collapsed":true,"items":[{"type":"column","gap":4,"children":[{"type":"text","text":"bytes: 12","style":"body","id":"ev-4-r0"}]}]}]}]}]}},{"type":"stream_view","id":"stream","topic":"/ui/stream/session/2ed6397a-8858-4d0c-9efe-f076efe4b170?fromSeq=5","mode":"append","itemLimit":200,"autoScroll":true},{"type":"container","id":"composer","direction":"row","gap":8,"align":"center","children":[{"type":"textarea","id":"messageInput","label":"Message","required":true,"errorText":"Write a message first","minLines":1,"maxLines":8,"autofocus":true,"flex":1},{"type":"button","label":"Send","style":"primary","icon":"send","action":{"path":"/ui/action/send","method":"POST","name":"send","payload":{"sessionId":"2ed6397a-8858-4d0c-9efe-f076efe4b170"},"include":["messageInput"]}},{"type":"icon_button","icon":"add","command":"composer.sendAndNew","tooltip":"New session"}]}]}}}
+assert: status=200, jq '.node.type == "screen"'
+assert: ok

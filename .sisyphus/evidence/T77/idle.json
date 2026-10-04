@@ -1,0 +1,164 @@
+{
+  "type": "screen",
+  "title": "chat",
+  "body": {
+    "type": "container",
+    "direction": "column",
+    "gap": 12,
+    "padding": 16,
+    "children": [
+      {
+        "type": "badge",
+        "id": "runStatus",
+        "label": "Idle"
+      },
+      {
+        "type": "expanded",
+        "child": {
+          "type": "list",
+          "id": "messages",
+          "empty": "No messages yet.",
+          "items": [
+            {
+              "type": "card",
+              "id": "ev-2",
+              "color": "$color.accentMuted",
+              "align": "centerRight",
+              "borderRadius": "$radius.md",
+              "padding": 12,
+              "maxWidth": 560,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "Fix the bug",
+                  "style": "body"
+                }
+              ]
+            },
+            {
+              "type": "card",
+              "id": "ev-3",
+              "padding": 12,
+              "maxWidth": 560,
+              "children": [
+                {
+                  "type": "markdown",
+                  "text": "Let me look.",
+                  "id": "msg-3"
+                }
+              ]
+            },
+            {
+              "type": "code_block",
+              "code": "{\"path\":\"/tmp/a.txt\",\"content\":\"hello world!\"}",
+              "id": "ev-7",
+              "language": "json",
+              "wrap": false,
+              "copyable": true,
+              "maxLines": 8,
+              "lineNumbers": false,
+              "tooltip": "write arguments",
+              "semanticsLabel": "tool call write"
+            },
+            {
+              "type": "card",
+              "id": "ev-8",
+              "title": "write",
+              "children": [
+                {
+                  "type": "list",
+                  "sections": [
+                    {
+                      "id": "ev-8-details",
+                      "label": "Details",
+                      "collapsible": true,
+                      "collapsed": true,
+                      "items": [
+                        {
+                          "type": "column",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "text": "bytes: 12",
+                              "style": "body",
+                              "id": "ev-8-r0"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "card",
+              "id": "ev-9",
+              "padding": 12,
+              "maxWidth": 560,
+              "children": [
+                {
+                  "type": "markdown",
+                  "text": "All done",
+                  "id": "msg-9"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "stream_view",
+        "id": "stream",
+        "topic": "/ui/stream/session/74bdb1c8-1480-4938-b37a-f6a376ecb443?fromSeq=12",
+        "mode": "append",
+        "itemLimit": 200,
+        "autoScroll": true
+      },
+      {
+        "type": "container",
+        "id": "composer",
+        "direction": "row",
+        "gap": 8,
+        "align": "center",
+        "children": [
+          {
+            "type": "textarea",
+            "id": "messageInput",
+            "label": "Message",
+            "required": true,
+            "errorText": "Write a message first",
+            "minLines": 1,
+            "maxLines": 8,
+            "autofocus": true,
+            "flex": 1
+          },
+          {
+            "type": "button",
+            "label": "Send",
+            "style": "primary",
+            "icon": "send",
+            "action": {
+              "path": "/ui/action/send",
+              "method": "POST",
+              "name": "send",
+              "payload": {
+                "sessionId": "74bdb1c8-1480-4938-b37a-f6a376ecb443"
+              },
+              "include": [
+                "messageInput"
+              ]
+            }
+          },
+          {
+            "type": "icon_button",
+            "icon": "add",
+            "command": "composer.sendAndNew",
+            "tooltip": "New session"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -113,8 +113,13 @@ final class StreamRoute {
         return streams.sse(FRAMES_TOPIC_PREFIX + sessionId, writer -> {
             try {
                 EventFrames.Translator translator = new EventFrames.Translator();
-                for (EventRecord record : events.list(sessionId, fromSeq)) {
-                    if (seen.add(record.seq())) {
+                // Seed the translation state from everything before the
+                // replay window, so a window that starts mid-message still
+                // patches the open message instead of opening a new one.
+                for (EventRecord record : events.list(sessionId, 0)) {
+                    if (record.seq() <= fromSeq) {
+                        translator.absorb(record.type().wire(), record.payload(), record.seq());
+                    } else if (seen.add(record.seq())) {
                         writer.event(EventFrames.FRAME_EVENT, translator.frame(
                                 record.type().wire(), record.payload(), record.seq()));
                     }
