@@ -1,0 +1,6 @@
+ok: hardcode scan clean (no EdgeInsets.all(11/12), maxHeight: 240 or height: 160 in frontend/lib)
+ok: flutter analyze clean
+ok: flutter suite green (685 tests; transcript in test.txt)
+ok: key parse matrix recorded (parse.txt incl. mod -> ctrl on linux/windows, mod -> meta on macOS)
+ok: when-context truth table recorded (when.txt: 9 contexts + negations, unknown = false)
+ok: negative cases recorded (negative.txt: mod+ ignored, unknown when=false, unknown command no-op)

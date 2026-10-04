@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../core/api/jhin_transport.dart';
 import '../core/auth/app_storage.dart';
+import '../sdui/keyboard/command_registry.dart';
+import '../sdui/keyboard/command_shortcuts.dart';
+import '../sdui/keyboard/keymap.dart';
+import '../sdui/keyboard/when_context.dart';
 import 'boot_error.dart';
 import 'empty_state.dart';
 import 'screen_renderer.dart';
@@ -27,6 +31,9 @@ class SduiHost extends StatefulWidget {
     required this.transport,
     this.renderer = const GenericScreenRenderer(),
     this.onOpenProfiles,
+    this.commandRegistry,
+    this.whenContext,
+    this.keymapOverrides = const <Object?>[],
   });
 
   /// Profile the bootstrap is bound to.
@@ -45,6 +52,19 @@ class SduiHost extends StatefulWidget {
   /// Change server actions of [EmptyState] / [BootError]).
   final VoidCallback? onOpenProfiles;
 
+  /// Keyboard command registry (T67); a fresh one with the full vocabulary
+  /// when omitted.
+  final CommandRegistry? commandRegistry;
+
+  /// Observable command contexts for keymap `when` expressions (T67); a
+  /// fresh platform-seeded one when omitted.
+  final WhenContext? whenContext;
+
+  /// User keybinding overrides merged over the server keymap (§1). The T70
+  /// persistence seam: the store rules of `StoreKeys.keybindings`
+  /// (`{'rules': [{command, keys}]}`) arrive here; T67 leaves it empty.
+  final List<Object?> keymapOverrides;
+
   @override
   State<SduiHost> createState() => _SduiHostState();
 }
@@ -58,10 +78,38 @@ class _SduiHostState extends State<SduiHost> {
   Map<String, dynamic>? _offlineNode;
   String? _errorText;
 
+  late final CommandRegistry _registry =
+      widget.commandRegistry ?? CommandRegistry();
+  late WhenContext _when;
+  bool _ownsWhen = false;
+  Keymap _keymap = Keymap.empty;
+
   @override
   void initState() {
     super.initState();
+    if (widget.whenContext == null) {
+      _when = WhenContext();
+      _ownsWhen = true;
+    } else {
+      _when = widget.whenContext!;
+    }
     _load();
+  }
+
+  @override
+  void dispose() {
+    if (_ownsWhen) _when.dispose();
+    super.dispose();
+  }
+
+  /// Resolves the effective keymap (§1): the payload's server defaults
+  /// merged with the user overrides, last matching rule wins.
+  void _resolveKeymap(Map<String, dynamic> payload) {
+    final rawKeymap = payload['keymap'];
+    _keymap = Keymap.resolve(
+      rawKeymap is List ? rawKeymap : const <Object?>[],
+      widget.keymapOverrides,
+    );
   }
 
   Future<void> _load() async {
@@ -78,6 +126,7 @@ class _SduiHostState extends State<SduiHost> {
       );
       await widget.storage.updateProfile(updated);
       if (!mounted) return;
+      _resolveKeymap(payload);
       setState(() {
         _profile = updated;
         _payload = payload;
@@ -96,27 +145,32 @@ class _SduiHostState extends State<SduiHost> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(child: _body()),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: SafeArea(
-              child: Material(
-                key: const Key('sdui-host-overlay'),
-                elevation: 2,
-                shape: const CircleBorder(),
-                child: IconButton(
-                  tooltip: 'Change server',
-                  icon: const Icon(Icons.dns_outlined),
-                  onPressed: widget.onOpenProfiles,
+    return CommandShortcuts(
+      registry: _registry,
+      whenContext: _when,
+      keymap: _keymap,
+      child: Scaffold(
+        body: Stack(
+          children: [
+            Positioned.fill(child: _body()),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: SafeArea(
+                child: Material(
+                  key: const Key('sdui-host-overlay'),
+                  elevation: 2,
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    tooltip: 'Change server',
+                    icon: const Icon(Icons.dns_outlined),
+                    onPressed: widget.onOpenProfiles,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

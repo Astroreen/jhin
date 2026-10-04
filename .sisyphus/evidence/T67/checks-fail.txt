@@ -1,0 +1,2 @@
+T67 QA --fail: deliberate wrong expectation (hardcode scan hits == 1)
+FAIL: hardcode scan hits == 1 — the deliberate wrong expectation failed as designed (actual hits=0)
