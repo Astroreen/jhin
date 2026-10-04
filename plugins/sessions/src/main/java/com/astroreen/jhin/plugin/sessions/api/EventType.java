@@ -35,6 +35,13 @@ public enum EventType {
     /** An agent run has finished. */
     RUN_END("run_end"),
 
+    /**
+     * A lifecycle operation changed the session. Emitted by the lifecycle
+     * service on every successful operation; the payload is the updated
+     * session as JSON.
+     */
+    SESSION_UPDATED("session_updated"),
+
     /** Something failed; details live in the payload. */
     ERROR("error");
 

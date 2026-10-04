@@ -8,10 +8,12 @@ package com.astroreen.jhin.plugin.agent;
 
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
+import com.astroreen.jhin.plugin.sessions.api.SessionStore.ClearableField;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -101,6 +103,11 @@ final class FakeSessionStore implements SessionStore {
 
     @Override
     public Session patch(String id, Patch patch) {
+        return patch(id, patch, Set.of());
+    }
+
+    @Override
+    public Session patch(String id, Patch patch, Set<ClearableField> clears) {
         Session current = sessions.get(id);
         if (current == null) {
             throw new IllegalArgumentException("unknown session id: " + id);
@@ -116,17 +123,26 @@ final class FakeSessionStore implements SessionStore {
                 current.createdAt(),
                 System.currentTimeMillis(),
                 patch.pinned() != null ? patch.pinned() : current.pinned(),
-                patch.pinnedOrder() != null ? patch.pinnedOrder() : current.pinnedOrder(),
-                patch.settledAt() != null ? patch.settledAt() : current.settledAt(),
-                patch.snoozedUntil() != null ? patch.snoozedUntil() : current.snoozedUntil(),
-                patch.archivedAt() != null ? patch.archivedAt() : current.archivedAt(),
+                field(patch.pinnedOrder(), current.pinnedOrder(),
+                        clears.contains(ClearableField.PINNED_ORDER)),
+                field(patch.settledAt(), current.settledAt(),
+                        clears.contains(ClearableField.SETTLED_AT)),
+                field(patch.snoozedUntil(), current.snoozedUntil(),
+                        clears.contains(ClearableField.SNOOZED_UNTIL)),
+                field(patch.archivedAt(), current.archivedAt(),
+                        clears.contains(ClearableField.ARCHIVED_AT)),
                 patch.autoSettle() != null ? patch.autoSettle() : current.autoSettle(),
                 patch.sortOrder() != null ? patch.sortOrder() : current.sortOrder(),
-                patch.settledReason() != null ? patch.settledReason() : current.settledReason(),
+                field(patch.settledReason(), current.settledReason(),
+                        clears.contains(ClearableField.SETTLED_REASON)),
                 patch.autoSettleSuppressed() != null
                         ? patch.autoSettleSuppressed() : current.autoSettleSuppressed());
         sessions.put(id, updated);
         return updated;
+    }
+
+    private static <T> T field(T patched, T base, boolean clear) {
+        return clear ? null : (patched != null ? patched : base);
     }
 
     @Override
@@ -134,6 +150,13 @@ final class FakeSessionStore implements SessionStore {
         Session current = get(accountId, id).orElseThrow(
                 () -> new IllegalArgumentException("unknown session id: " + id));
         return patch(current.id(), patch);
+    }
+
+    @Override
+    public Session patch(String accountId, String id, Patch patch, Set<ClearableField> clears) {
+        Session current = get(accountId, id).orElseThrow(
+                () -> new IllegalArgumentException("unknown session id: " + id));
+        return patch(current.id(), patch, clears);
     }
 
     @Override

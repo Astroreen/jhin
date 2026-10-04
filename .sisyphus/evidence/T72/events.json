@@ -1,0 +1,50 @@
+[
+  {
+    "seq": 1,
+    "ts": 1791111213111,
+    "type": "session_updated",
+    "payload": "{\"id\":\"d3b92667-f350-4cb5-9940-b2480f7119a9\",\"accountId\":\"local\",\"title\":\"t72-a\",\"workdir\":\"/tmp/t72\",\"status\":\"active\",\"createdAt\":1791111212965,\"updatedAt\":1791111213080,\"pinned\":true,\"pinnedOrder\":2,\"autoSettle\":true,\"autoSettleSuppressed\":false}"
+  },
+  {
+    "seq": 2,
+    "ts": 1791111213162,
+    "type": "session_updated",
+    "payload": "{\"id\":\"d3b92667-f350-4cb5-9940-b2480f7119a9\",\"accountId\":\"local\",\"title\":\"t72-a\",\"workdir\":\"/tmp/t72\",\"status\":\"active\",\"createdAt\":1791111212965,\"updatedAt\":1791111213140,\"pinned\":false,\"settledAt\":1791111213140,\"autoSettle\":true,\"settledReason\":\"manual\",\"autoSettleSuppressed\":false}"
+  },
+  {
+    "seq": 3,
+    "ts": 1791111213223,
+    "type": "session_updated",
+    "payload": "{\"id\":\"d3b92667-f350-4cb5-9940-b2480f7119a9\",\"accountId\":\"local\",\"title\":\"t72-a\",\"workdir\":\"/tmp/t72\",\"status\":\"active\",\"createdAt\":1791111212965,\"updatedAt\":1791111213201,\"pinned\":false,\"autoSettle\":true,\"autoSettleSuppressed\":true}"
+  },
+  {
+    "seq": 4,
+    "ts": 1791111213299,
+    "type": "session_updated",
+    "payload": "{\"id\":\"d3b92667-f350-4cb5-9940-b2480f7119a9\",\"accountId\":\"local\",\"title\":\"t72-a\",\"workdir\":\"/tmp/t72\",\"status\":\"active\",\"createdAt\":1791111212965,\"updatedAt\":1791111213275,\"pinned\":false,\"snoozedUntil\":1791114813273,\"autoSettle\":true,\"autoSettleSuppressed\":true}"
+  },
+  {
+    "seq": 5,
+    "ts": 1791111213371,
+    "type": "session_updated",
+    "payload": "{\"id\":\"d3b92667-f350-4cb5-9940-b2480f7119a9\",\"accountId\":\"local\",\"title\":\"t72-a\",\"workdir\":\"/tmp/t72\",\"status\":\"active\",\"createdAt\":1791111212965,\"updatedAt\":1791111213348,\"pinned\":false,\"autoSettle\":true,\"autoSettleSuppressed\":true}"
+  },
+  {
+    "seq": 6,
+    "ts": 1791111213447,
+    "type": "session_updated",
+    "payload": "{\"id\":\"d3b92667-f350-4cb5-9940-b2480f7119a9\",\"accountId\":\"local\",\"title\":\"t72-a\",\"workdir\":\"/tmp/t72\",\"status\":\"active\",\"createdAt\":1791111212965,\"updatedAt\":1791111213424,\"pinned\":false,\"archivedAt\":1791111213422,\"autoSettle\":true,\"autoSettleSuppressed\":true}"
+  },
+  {
+    "seq": 7,
+    "ts": 1791111213513,
+    "type": "session_updated",
+    "payload": "{\"id\":\"d3b92667-f350-4cb5-9940-b2480f7119a9\",\"accountId\":\"local\",\"title\":\"t72-a\",\"workdir\":\"/tmp/t72\",\"status\":\"active\",\"createdAt\":1791111212965,\"updatedAt\":1791111213491,\"pinned\":false,\"autoSettle\":true,\"autoSettleSuppressed\":true}"
+  },
+  {
+    "seq": 8,
+    "ts": 1791111213634,
+    "type": "session_updated",
+    "payload": "{\"id\":\"d3b92667-f350-4cb5-9940-b2480f7119a9\",\"accountId\":\"local\",\"title\":\"t72-a\",\"workdir\":\"/tmp/t72\",\"status\":\"active\",\"createdAt\":1791111212965,\"updatedAt\":1791111213611,\"pinned\":false,\"pinnedOrder\":1,\"autoSettle\":true,\"sortOrder\":1,\"autoSettleSuppressed\":true}"
+  }
+]

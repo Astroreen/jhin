@@ -15,6 +15,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 final class SessionStoreImpl implements SessionStore {
@@ -90,12 +91,22 @@ final class SessionStoreImpl implements SessionStore {
 
     @Override
     public Session patch(String id, Patch patch) {
-        return applyPatch(null, id, patch);
+        return applyPatch(null, id, patch, Set.of());
     }
 
     @Override
     public Session patch(String accountId, String id, Patch patch) {
-        return applyPatch(accountId, id, patch);
+        return applyPatch(accountId, id, patch, Set.of());
+    }
+
+    @Override
+    public Session patch(String id, Patch patch, Set<ClearableField> clears) {
+        return applyPatch(null, id, patch, clears);
+    }
+
+    @Override
+    public Session patch(String accountId, String id, Patch patch, Set<ClearableField> clears) {
+        return applyPatch(accountId, id, patch, clears);
     }
 
     @Override
@@ -170,15 +181,19 @@ final class SessionStoreImpl implements SessionStore {
         });
     }
 
-    private Session applyPatch(String accountId, String id, Patch patch) {
+    private Session applyPatch(String accountId, String id, Patch patch, Set<ClearableField> clears) {
         if (patch == null) {
             throw new IllegalArgumentException("patch must not be null");
         }
+        if (clears == null) {
+            throw new IllegalArgumentException("clears must not be null");
+        }
+        rejectConflict(patch, clears);
         Optional<Session> current = find(accountId, id);
         if (current.isEmpty()) {
             throw new PluginException("session " + id + " not found");
         }
-        if (patch.isEmpty()) {
+        if (patch.isEmpty() && clears.isEmpty()) {
             return current.get();
         }
         Session base = current.get();
@@ -188,13 +203,18 @@ final class SessionStoreImpl implements SessionStore {
         String providerId = patch.providerId() != null ? patch.providerId() : base.providerId();
         String status = patch.status() != null ? patch.status() : base.status();
         boolean pinned = patch.pinned() != null ? patch.pinned() : base.pinned();
-        Integer pinnedOrder = patch.pinnedOrder() != null ? patch.pinnedOrder() : base.pinnedOrder();
-        Long settledAt = patch.settledAt() != null ? patch.settledAt() : base.settledAt();
-        Long snoozedUntil = patch.snoozedUntil() != null ? patch.snoozedUntil() : base.snoozedUntil();
-        Long archivedAt = patch.archivedAt() != null ? patch.archivedAt() : base.archivedAt();
+        Integer pinnedOrder = applyOne(patch.pinnedOrder(), base.pinnedOrder(),
+                clears.contains(ClearableField.PINNED_ORDER));
+        Long settledAt = applyOne(patch.settledAt(), base.settledAt(),
+                clears.contains(ClearableField.SETTLED_AT));
+        Long snoozedUntil = applyOne(patch.snoozedUntil(), base.snoozedUntil(),
+                clears.contains(ClearableField.SNOOZED_UNTIL));
+        Long archivedAt = applyOne(patch.archivedAt(), base.archivedAt(),
+                clears.contains(ClearableField.ARCHIVED_AT));
         boolean autoSettle = patch.autoSettle() != null ? patch.autoSettle() : base.autoSettle();
         Integer sortOrder = patch.sortOrder() != null ? patch.sortOrder() : base.sortOrder();
-        String settledReason = patch.settledReason() != null ? patch.settledReason() : base.settledReason();
+        String settledReason = applyOne(patch.settledReason(), base.settledReason(),
+                clears.contains(ClearableField.SETTLED_REASON));
         boolean autoSettleSuppressed = patch.autoSettleSuppressed() != null
                 ? patch.autoSettleSuppressed() : base.autoSettleSuppressed();
         long updatedAt = System.currentTimeMillis();
@@ -228,6 +248,35 @@ final class SessionStoreImpl implements SessionStore {
                     pinned, pinnedOrder, settledAt, snoozedUntil, archivedAt,
                     autoSettle, sortOrder, settledReason, autoSettleSuppressed);
         });
+    }
+
+    /**
+     * Resolves one column of a clear-aware patch: {@code null} when the field
+     * is cleared, otherwise the patched value or the current one.
+     */
+    private static <T> T applyOne(T patched, T base, boolean clear) {
+        if (clear) {
+            return null;
+        }
+        return patched != null ? patched : base;
+    }
+
+    /** Rejects a patch that both sets and clears the same field. */
+    private static void rejectConflict(Patch patch, Set<ClearableField> clears) {
+        if (clears.isEmpty()) {
+            return;
+        }
+        rejectConflict(patch.pinnedOrder() != null, clears.contains(ClearableField.PINNED_ORDER), "pinnedOrder");
+        rejectConflict(patch.settledAt() != null, clears.contains(ClearableField.SETTLED_AT), "settledAt");
+        rejectConflict(patch.settledReason() != null, clears.contains(ClearableField.SETTLED_REASON), "settledReason");
+        rejectConflict(patch.snoozedUntil() != null, clears.contains(ClearableField.SNOOZED_UNTIL), "snoozedUntil");
+        rejectConflict(patch.archivedAt() != null, clears.contains(ClearableField.ARCHIVED_AT), "archivedAt");
+    }
+
+    private static void rejectConflict(boolean set, boolean clear, String field) {
+        if (set && clear) {
+            throw new IllegalArgumentException(field + " must not be set and cleared at once");
+        }
     }
 
     private boolean remove(String accountId, String id) {

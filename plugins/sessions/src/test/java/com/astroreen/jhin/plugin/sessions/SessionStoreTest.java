@@ -9,9 +9,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
+import com.astroreen.jhin.plugin.sessions.api.SessionStore.ClearableField;
 import com.astroreen.jhin.sdk.PluginException;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -288,6 +290,80 @@ class SessionStoreTest {
                 .contains("active", "archived", "settled-snoozed");
     }
 
+    @Test
+    void patchWithClearsResetsListedColumnsToNull() {
+        Session created = store.create("alice", "demo", "/tmp/demo");
+        store.patch(created.id(), lifecyclePatch(true, 42L, 60_000L, 99L, "manual", 3, 7));
+
+        Session cleared = store.patch(created.id(), emptyPatch(),
+                Set.of(ClearableField.PINNED_ORDER, ClearableField.SETTLED_AT,
+                        ClearableField.SETTLED_REASON, ClearableField.SNOOZED_UNTIL,
+                        ClearableField.ARCHIVED_AT));
+
+        assertThat(cleared.pinnedOrder()).isNull();
+        assertThat(cleared.settledAt()).isNull();
+        assertThat(cleared.settledReason()).isNull();
+        assertThat(cleared.snoozedUntil()).isNull();
+        assertThat(cleared.archivedAt()).isNull();
+        assertThat(cleared.pinned()).isTrue();
+        assertThat(cleared.sortOrder()).isEqualTo(7);
+        assertThat(store.get(created.id())).contains(cleared);
+    }
+
+    @Test
+    void patchWithClearsAppliesSetAndClearedFieldsTogether() {
+        Session created = store.create("alice", "demo", "/tmp/demo");
+        store.patch(created.id(), lifecyclePatch(true, 42L, 60_000L, null, "manual", 3, 7));
+
+        Session settled = store.patch(created.id(),
+                new SessionStore.Patch(null, null, null, null, null,
+                        false, null, 1_700_000_000_000L, null, null,
+                        null, null, "other", null),
+                Set.of(ClearableField.PINNED_ORDER, ClearableField.SNOOZED_UNTIL));
+
+        assertThat(settled.pinned()).isFalse();
+        assertThat(settled.pinnedOrder()).isNull();
+        assertThat(settled.snoozedUntil()).isNull();
+        assertThat(settled.settledAt()).isEqualTo(1_700_000_000_000L);
+        assertThat(settled.settledReason()).isEqualTo("other");
+    }
+
+    @Test
+    void patchRejectsSettingAndClearingTheSameField() {
+        Session created = store.create("alice", "demo", "/tmp/demo");
+
+        assertThatThrownBy(() -> store.patch(created.id(),
+                new SessionStore.Patch(null, null, null, null, null,
+                        null, null, 1L, null, null, null, null, null, null),
+                Set.of(ClearableField.SETTLED_AT)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> store.patch(created.id(), emptyPatch(), null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void patchWithEmptyClearsMatchesPlainPatch() {
+        Session created = store.create("alice", "demo", "/tmp/demo");
+
+        Session patched = store.patch(created.id(),
+                new SessionStore.Patch("renamed", null, null, null, null), Set.of());
+
+        assertThat(patched.title()).isEqualTo("renamed");
+        assertThat(patched).isEqualTo(store.get(created.id()).orElseThrow());
+    }
+
+    @Test
+    void patchWithClearsIsScopedToTheOwner() {
+        Session created = store.create("alice", "demo", "/tmp/demo");
+
+        assertThatThrownBy(() -> store.patch("bob", created.id(), emptyPatch(),
+                Set.of(ClearableField.SETTLED_AT)))
+                .isInstanceOf(PluginException.class);
+        assertThatThrownBy(() -> store.patch(created.id() + "-missing", emptyPatch(),
+                Set.of(ClearableField.SETTLED_AT)))
+                .isInstanceOf(PluginException.class);
+    }
+
     private void insertRow(String id, int pinned, Integer pinnedOrder, Integer sortOrder, long createdAt) {
         db.write(connection -> {
             try (java.sql.PreparedStatement insert = connection.prepareStatement(
@@ -313,5 +389,10 @@ class SessionStoreTest {
         return new SessionStore.Patch(null, null, null, null, null,
                 pinned, pinnedOrder, settledAt, snoozedUntil, archivedAt,
                 null, sortOrder, settledReason, null);
+    }
+
+    private static SessionStore.Patch emptyPatch() {
+        return new SessionStore.Patch(null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null);
     }
 }

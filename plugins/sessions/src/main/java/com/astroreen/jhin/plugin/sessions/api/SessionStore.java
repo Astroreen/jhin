@@ -9,6 +9,7 @@ package com.astroreen.jhin.plugin.sessions.api;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface SessionStore {
 
@@ -121,6 +122,44 @@ public interface SessionStore {
     Session patch(String accountId, String id, Patch patch);
 
     /**
+     * Applies a partial update that may also clear columns, unscoped.
+     *
+     * <p>{@link Patch} keeps every field that is {@code null}, so this variant
+     * takes the columns to reset explicitly: fields listed in {@code clears}
+     * become {@code NULL} whatever the patch says, every other field follows
+     * the usual patch semantics ({@code null} keeps the current value). An
+     * empty {@code clears} set behaves exactly like
+     * {@link #patch(String, Patch)}; when both the patch and {@code clears}
+     * target the same field the call is rejected.
+     *
+     * @param id     the session id
+     * @param patch  the fields to change; never {@code null}
+     * @param clears the fields to reset to {@code NULL}; never {@code null}
+     * @return the updated session
+     * @throws IllegalArgumentException when {@code patch} or {@code clears} is
+     *         {@code null} or one field is both set and cleared
+     * @throws com.astroreen.jhin.sdk.PluginException when the session is unknown
+     */
+    Session patch(String id, Patch patch, Set<ClearableField> clears);
+
+    /**
+     * Applies a partial update that may also clear columns, restricted to the
+     * given account. A session owned by another account is indistinguishable
+     * from an unknown one.
+     *
+     * @param accountId the owning account
+     * @param id        the session id
+     * @param patch     the fields to change; never {@code null}
+     * @param clears    the fields to reset to {@code NULL}; never {@code null}
+     * @return the updated session
+     * @throws IllegalArgumentException when {@code patch} or {@code clears} is
+     *         {@code null} or one field is both set and cleared
+     * @throws com.astroreen.jhin.sdk.PluginException when the session is unknown
+     *                                                  or owned by another account
+     */
+    Session patch(String accountId, String id, Patch patch, Set<ClearableField> clears);
+
+    /**
      * Deletes one session and its events, unscoped.
      *
      * @param id the session id
@@ -163,6 +202,30 @@ public interface SessionStore {
 
         /** Every session, archived ones included. */
         ALL
+    }
+
+    /**
+     * The nullable columns a {@link #patch(String, Patch, Set) clear-aware}
+     * update may reset to {@code NULL}. Only these five can ever be empty again
+     * after being set, which is what the lifecycle transitions need: a plain
+     * {@link Patch} keeps a {@code null} field instead of clearing it.
+     */
+    enum ClearableField {
+
+        /** Clears {@code pinned_order}; written by unpin and settle. */
+        PINNED_ORDER,
+
+        /** Clears {@code settled_at}; written by un-settle. */
+        SETTLED_AT,
+
+        /** Clears {@code settled_reason}; written by un-settle. */
+        SETTLED_REASON,
+
+        /** Clears {@code snoozed_until}; written by wake and settle. */
+        SNOOZED_UNTIL,
+
+        /** Clears {@code archived_at}; written by restore. */
+        ARCHIVED_AT
     }
 
     /**

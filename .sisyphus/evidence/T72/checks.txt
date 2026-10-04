@@ -1,0 +1,5 @@
+ok: :jhin-plugin-sessions:test green (84 tests; transcript in test.txt)
+ok: kernel booted with only jhin.sessions (kernel.log)
+ok: lifecycle sequence create->pin->settle->unsettle->snooze->wake->archive->restore->reorder (lifecycle-transcript.txt)
+ok: events.json holds the 8 session_updated SSE frames of session A (raw in sse-raw.txt)
+ok: failure matrix: settle-on-archived=409, snooze-past=400, title-without-agent=503 (conflict.txt)

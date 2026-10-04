@@ -1,0 +1,35 @@
+=== create-c ===
+POST /sessions
+req:  {"title":"t72-c","workdir":"/tmp/t72"}
+status: 201
+resp: {"id":"ebd87104-8fba-460d-a189-49e2bfb11b07","accountId":"local","title":"t72-c","workdir":"/tmp/t72","model":null,"providerId":null,"status":"active","createdAt":1791111216708,"updatedAt":1791111216708,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=201, jq '.id | length > 0'
+assert: ok
+=== archive-c ===
+POST /sessions/ebd87104-8fba-460d-a189-49e2bfb11b07/archive
+req:  
+status: 200
+resp: {"id":"ebd87104-8fba-460d-a189-49e2bfb11b07","accountId":"local","title":"t72-c","workdir":"/tmp/t72","model":null,"providerId":null,"status":"active","createdAt":1791111216708,"updatedAt":1791111216777,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":1791111216777,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=200, jq '.archivedAt != null'
+assert: ok
+=== settle-on-archived ===
+POST /sessions/ebd87104-8fba-460d-a189-49e2bfb11b07/settle
+req:  {"reason":"manual"}
+status: 409
+resp: {"error":"invalid_transition","message":"session ebd87104-8fba-460d-a189-49e2bfb11b07 is archived"}
+assert: status=409, jq '.error == "invalid_transition"'
+assert: ok
+=== snooze-past ===
+POST /sessions/d3b92667-f350-4cb5-9940-b2480f7119a9/snooze
+req:  {"until":1}
+status: 400
+resp: {"error":"invalid_request","message":"snoozedUntil must be in the future"}
+assert: status=400, jq '.error == "invalid_request"'
+assert: ok
+=== title-without-agent ===
+POST /sessions/d3b92667-f350-4cb5-9940-b2480f7119a9/title
+req:  
+status: 503
+resp: {"error":"title_service_unavailable","message":"no title service is published"}
+assert: status=503, jq '.error == "title_service_unavailable"'
+assert: ok

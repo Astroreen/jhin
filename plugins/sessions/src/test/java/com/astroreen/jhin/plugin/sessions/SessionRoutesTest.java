@@ -37,7 +37,9 @@ class SessionRoutesTest {
         db = TestDbAccess.open(tmp);
         db.migrate(Migrations.all());
         store = new SessionStoreImpl(db);
-        routes = new SessionRoutes(store);
+        SessionLifecycleServiceImpl lifecycle = new SessionLifecycleServiceImpl(
+                store, new EventLogImpl(db, new RecordingStreamRegistry()), new FakeServiceRegistry());
+        routes = new SessionRoutes(store, lifecycle);
     }
 
     @AfterEach
