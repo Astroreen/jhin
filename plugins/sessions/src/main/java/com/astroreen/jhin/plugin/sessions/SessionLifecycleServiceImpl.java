@@ -75,6 +75,35 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
                 Set.of(ClearableField.PINNED_ORDER, ClearableField.SNOOZED_UNTIL)));
     }
 
+    /**
+     * Settles a session the auto-settle sweep's way: like {@link #settle} but
+     * in place — {@code pinned} and {@code pinned_order} survive, so a pinned
+     * session keeps its pin and stays in the Pinned group after the sweep
+     * settles it. The manual {@code settle} keeps its pin-clearing semantics;
+     * this path is only for the background sweep.
+     *
+     * <p>An already-settled session is a documented no-op: the unchanged
+     * session is returned and nothing is recorded or emitted, so a re-run
+     * after a crash mid-sweep settles each session exactly once. Otherwise
+     * the pre-operation snapshot goes through the {@link UndoJournal} and one
+     * {@code session_updated} event is emitted, like every other lifecycle
+     * change; only the stale {@code snoozed_until} is cleared.
+     */
+    Session settlePreservingPin(String id, SettleReason reason) {
+        if (reason == null) {
+            throw new IllegalArgumentException("reason must not be null");
+        }
+        Session current = requireOpen(id);
+        if (current.settledAt() != null) {
+            return current;
+        }
+        journal.record(id, OpKind.SETTLE, current);
+        Patch patch = new Patch(null, null, null, null, null,
+                null, null, System.currentTimeMillis(), null, null,
+                null, null, reason.wire(), null);
+        return emit(store.patch(id, patch, Set.of(ClearableField.SNOOZED_UNTIL)));
+    }
+
     @Override
     public Session unsettle(String id) {
         Session current = requireOpen(id);

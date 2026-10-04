@@ -1,0 +1,15 @@
+=== seed ===
+idle:   ca7bbf64-f5a3-4990-88eb-18175cbcb449 (no pin, no run)
+pinned: a96abb38-ae66-4c93-b931-367f38748a62 (pinned order=2, no run)
+pin:    {"id":"a96abb38-ae66-4c93-b931-367f38748a62","accountId":"local","title":"t74-pinned","workdir":"/tmp/t74","model":null,"providerId":null,"status":"active","createdAt":1791115268832,"updatedAt":1791115268938,"pinned":true,"pinnedOrder":2,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+live:   0ec62311-d2f4-40c3-9d1a-ea7fa5e2e551 (run row t74-run-1, ended_at IS NULL)
+=== backdate ===
+updated_at of the three sessions set to now-10s via sqlite3 on /tmp/tmp.C0dyXWHGkj/data/jhin.db
+live run row t74-run-1 inserted for 0ec62311-d2f4-40c3-9d1a-ea7fa5e2e551 (ended_at NULL)
+=== sweep result (after 8 s, sweeps every 2 s) ===
+idle:   {"id":"ca7bbf64-f5a3-4990-88eb-18175cbcb449","accountId":"local","title":"t74-idle","workdir":"/tmp/t74","model":null,"providerId":null,"status":"active","createdAt":1791115268780,"updatedAt":1791115269207,"pinned":false,"pinnedOrder":null,"settledAt":1791115269206,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":"inactive","autoSettleSuppressed":false}
+pinned: {"id":"a96abb38-ae66-4c93-b931-367f38748a62","accountId":"local","title":"t74-pinned","workdir":"/tmp/t74","model":null,"providerId":null,"status":"active","createdAt":1791115268832,"updatedAt":1791115269252,"pinned":true,"pinnedOrder":2,"settledAt":1791115269252,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":"inactive","autoSettleSuppressed":false}
+live:   {"id":"0ec62311-d2f4-40c3-9d1a-ea7fa5e2e551","accountId":"local","title":"t74-live-run","workdir":"/tmp/t74","model":null,"providerId":null,"status":"active","createdAt":1791115268880,"updatedAt":1791115259078,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert idle: settled with settled_reason=inactive -- ok
+assert pinned: settled with settled_reason=inactive AND kept pinned/pinned_order -- ok
+assert live-run: not settled (blocked by the unfinished run) -- ok

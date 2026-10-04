@@ -1,0 +1,4 @@
+=== no-settle probe (inactivityMs=Long.MAX_VALUE) ===
+session: {"id":"93d55960-29c6-444a-b7be-ea5b181e1513","accountId":"local","title":"t74-fail","workdir":"/tmp/t74","model":null,"providerId":null,"status":"active","createdAt":1791115340096,"updatedAt":1791115330136,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: .settledAt == null (the huge threshold settles nothing)
+assert: ok

@@ -14,6 +14,10 @@
  * key of the {@code jhin.sessions} section of {@code config.json}); it exists
  * so the QA script can append deterministic event sequences and is absent by
  * default.
+ *
+ * <p>Also arms the auto-settle sweep ({@link SettlementService}) on the host
+ * scheduler from {@code onStarted} and cancels it from {@code onShutdown};
+ * the inactivity threshold comes from {@code jhin.sessions.inactivityMs}.
  */
 package com.astroreen.jhin.plugin.sessions;
 
@@ -24,6 +28,7 @@ import com.astroreen.jhin.plugin.sessions.api.UndoJournal;
 import com.astroreen.jhin.sdk.JhinPlugin;
 import com.astroreen.jhin.sdk.PluginContext;
 import com.astroreen.jhin.sdk.http.RouteSpec;
+import com.astroreen.jhin.sdk.sched.TaskSpec;
 
 public final class SessionsPlugin implements JhinPlugin {
 
@@ -44,8 +49,9 @@ public final class SessionsPlugin implements JhinPlugin {
         EventLog eventLog = new EventLogImpl(ctx.db(), ctx.streams());
         UndoJournal journal = new UndoJournalImpl(store, eventLog,
                 ctx.config().getInt("undoWindowMs", DEFAULT_UNDO_WINDOW_MS));
-        SessionLifecycleService lifecycle =
+        SessionLifecycleServiceImpl lifecycleService =
                 new SessionLifecycleServiceImpl(store, eventLog, ctx.services(), journal);
+        SessionLifecycleService lifecycle = lifecycleService;
         ctx.services().publish(SessionStore.class, store);
         ctx.services().publish(EventLog.class, eventLog);
         ctx.services().publish(SessionLifecycleService.class, lifecycle);
@@ -73,6 +79,15 @@ public final class SessionsPlugin implements JhinPlugin {
             ctx.http().route(new RouteSpec("POST", "/sessions/{id}/events", eventRoutes::appendOne));
             ctx.log().warn("QA helper enabled (JHIN_SESSIONS_QA): POST /sessions/{id}/events appends one event");
         }
+        SettlementService sweep = new SettlementService(ctx.db(), lifecycleService, ctx.services(),
+                ctx.config().getLong("inactivityMs", SettlementService.DEFAULT_INACTIVITY_MS), ctx.log());
+        long sweepInitialDelay =
+                ctx.config().getLong("sweepInitialDelayMs", SettlementService.INITIAL_DELAY_MS);
+        long sweepInterval =
+                ctx.config().getLong("sweepIntervalMs", SettlementService.INTERVAL_MS);
+        ctx.onStarted(() -> ctx.sched().schedule(TaskSpec.periodic(
+                SettlementService.TASK_NAME, sweepInitialDelay, sweepInterval, sweep::sweep)));
+        ctx.onShutdown(() -> ctx.sched().cancel(SettlementService.TASK_NAME));
         ctx.log().info("sessions plugin started: store, event log, lifecycle service, undo journal and routes published");
     }
 }

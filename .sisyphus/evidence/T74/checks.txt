@@ -1,0 +1,9 @@
+15:00:27 T74 QA: server-owned auto-settle sweep
+15:00:28 evidence dir: .sisyphus/evidence/T74
+ok: :jhin-plugin-sessions:test green (110 tests; transcript in test.txt)
+ok: kernel booted with only jhin.sessions (kernel.log; inactivityMs=1000, sweep delays 1s/2s)
+ok: sweep settles idle and pinned sessions (pin kept) and skips the live run (sweep-transcript.txt)
+ok: kernel.log carries the settlement sweep lines
+ok: kernel booted with jhin.sessions.inactivityMs=Long.MAX_VALUE (no-settle-boot/kernel.log)
+ok: inactivityMs=Long.MAX_VALUE settles nothing (no-settle.txt)
+15:01:29 T74 QA OK (evidence in .sisyphus/evidence/T74)
