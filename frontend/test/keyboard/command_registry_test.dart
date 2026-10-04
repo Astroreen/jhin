@@ -6,7 +6,7 @@ void main() {
     test('dispatch calls a registered handler exactly once', () {
       final registry = CommandRegistry();
       var calls = 0;
-      registry.register('composer.send', handler: () => calls++);
+      registry.register('composer.send', handler: () { calls++; return true; });
 
       registry.dispatch('composer.send');
 
@@ -18,7 +18,7 @@ void main() {
       var calls = 0;
       registry.register(
         'composer.send',
-        handler: () => calls++,
+        handler: () { calls++; return true; },
         enabled: () => false,
       );
 
@@ -32,7 +32,7 @@ void main() {
       var calls = 0;
       registry.register(
         'thread.pin',
-        handler: () => calls++,
+        handler: () { calls++; return true; },
         when: () => false,
       );
 
@@ -69,8 +69,8 @@ void main() {
       final registry = CommandRegistry();
       var first = 0;
       var second = 0;
-      registry.register('theme.pick', handler: () => first++);
-      registry.register('theme.pick', handler: () => second++);
+      registry.register('theme.pick', handler: () { first++; return true; });
+      registry.register('theme.pick', handler: () { second++; return true; });
 
       registry.dispatch('theme.pick');
 

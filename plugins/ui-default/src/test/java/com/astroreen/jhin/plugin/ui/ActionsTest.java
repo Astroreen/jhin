@@ -127,6 +127,65 @@ class ActionsTest {
     }
 
     @Test
+    void createSessionReturnsTheNewIdInTheActionResponse() {
+        List<Map<String, Object>> ops = handlers.get("create-session").handle(
+                request(), Map.of("title", "demo", "workdir", "/tmp/work"));
+
+        assertThat(ops).hasSize(1);
+        assertThat(ops.get(0)).containsEntry("op", "navigate");
+        String screen = String.valueOf(ops.get(0).get("screen"));
+        assertThat(screen).startsWith("chat:");
+        String id = screen.substring("chat:".length());
+        assertThat(store.list()).extracting(Session::id).containsExactly(id);
+    }
+
+    @Test
+    void createSessionCarriesTheDraftModelToTheNewSession() {
+        List<Map<String, Object>> ops = handlers.get("create-session").handle(
+                request(), Map.of("title", "demo", "workdir", "/tmp/work", "model", "echo-1"));
+
+        String screen = String.valueOf(ops.get(0).get("screen"));
+        Session created = store.get(screen.substring("chat:".length())).orElseThrow();
+        assertThat(created.workdir()).isEqualTo("/tmp/work");
+        assertThat(created.model()).isEqualTo("echo-1");
+    }
+
+    @Test
+    void sendEnqueuesTheRunAndAnswersWithoutWaitingForIt() {
+        Session session = store.create("demo", "/tmp/work");
+        store.patch(session.id(), new SessionStore.Patch(
+                null, null, null, "provider-1", null));
+
+        List<Map<String, Object>> ops = handlers.get("send").handle(request(),
+                Map.of("sessionId", session.id(), "messageInput", "hello"));
+
+        assertThat(ops).isEmpty();
+        assertThat(runs.started()).hasSize(1);
+        assertThat(runs.finished()).isEmpty();
+        runs.finish("run-1");
+        assertThat(runs.finished()).containsExactly("run-1");
+    }
+
+    @Test
+    void unknownActionIsA404AndMalformedBodyIsA400() {
+        ActionRoute route = new ActionRoute(handlers);
+
+        var missing = route.handle(new FakeHttpRequest("POST", "/ui/action/nope",
+                Map.of("name", "nope"), Map.of(), "", FULL_CAPS, Map.of()));
+        assertThat(missing.status()).isEqualTo(404);
+        Map<String, Object> body =
+                com.astroreen.jhin.sdk.json.Json.readMap(new String(missing.body()));
+        assertThat(body).containsEntry("error", "unknown_action");
+
+        var malformed = route.handle(new FakeHttpRequest("POST", "/ui/action/create-session",
+                Map.of("name", "create-session"), Map.of(), "not json", FULL_CAPS, Map.of()));
+        assertThat(malformed.status()).isEqualTo(400);
+        Map<String, Object> bad =
+                com.astroreen.jhin.sdk.json.Json.readMap(new String(malformed.body()));
+        assertThat(bad).containsEntry("error", "invalid_request");
+    }
+
+    @Test
     void sendPostsTheIncludedMessageToTheRunService() {
         Session session = store.create("demo", "/tmp/work");
         store.patch(session.id(), new SessionStore.Patch(

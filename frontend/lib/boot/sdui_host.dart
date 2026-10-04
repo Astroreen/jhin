@@ -4,6 +4,7 @@ import '../core/api/jhin_transport.dart';
 import '../core/auth/app_storage.dart';
 import '../sdui/keyboard/command_registry.dart';
 import '../sdui/keyboard/command_shortcuts.dart';
+import '../sdui/keyboard/composer_commands.dart';
 import '../sdui/keyboard/keymap.dart';
 import '../sdui/keyboard/when_context.dart';
 import 'boot_error.dart';
@@ -83,6 +84,7 @@ class _SduiHostState extends State<SduiHost> {
   late WhenContext _when;
   bool _ownsWhen = false;
   Keymap _keymap = Keymap.empty;
+  late ComposerBinding _composerBinding;
 
   @override
   void initState() {
@@ -93,6 +95,18 @@ class _SduiHostState extends State<SduiHost> {
     } else {
       _when = widget.whenContext!;
     }
+    _composerBinding = ComposerBinding(whenContext: _when);
+    // Registers the five composer commands on the registry (T68); the
+    // instance is retained by the registered handlers.
+    ComposerCommands(
+      registry: _registry,
+      binding: _composerBinding,
+      history: ComposerHistory(
+        storage: widget.storage,
+        profileId: widget.profile.id,
+      ),
+      post: widget.transport.postJson,
+    );
     _load();
   }
 
@@ -103,13 +117,16 @@ class _SduiHostState extends State<SduiHost> {
   }
 
   /// Resolves the effective keymap (§1): the payload's server defaults
-  /// merged with the user overrides, last matching rule wins.
+  /// merged with the user overrides (last matching rule wins), with the
+  /// client fallback chords (T68) appended for commands no rule binds yet.
   void _resolveKeymap(Map<String, dynamic> payload) {
     final rawKeymap = payload['keymap'];
-    _keymap = Keymap.resolve(
-      rawKeymap is List ? rawKeymap : const <Object?>[],
-      widget.keymapOverrides,
-    );
+    _keymap = Keymap
+        .resolve(
+          rawKeymap is List ? rawKeymap : const <Object?>[],
+          widget.keymapOverrides,
+        )
+        .withDefaults(ComposerCommands.defaultKeymapRules);
   }
 
   Future<void> _load() async {
@@ -145,31 +162,34 @@ class _SduiHostState extends State<SduiHost> {
 
   @override
   Widget build(BuildContext context) {
-    return CommandShortcuts(
-      registry: _registry,
-      whenContext: _when,
-      keymap: _keymap,
-      child: Scaffold(
-        body: Stack(
-          children: [
-            Positioned.fill(child: _body()),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: SafeArea(
-                child: Material(
-                  key: const Key('sdui-host-overlay'),
-                  elevation: 2,
-                  shape: const CircleBorder(),
-                  child: IconButton(
-                    tooltip: 'Change server',
-                    icon: const Icon(Icons.dns_outlined),
-                    onPressed: widget.onOpenProfiles,
+    return ComposerScope(
+      binding: _composerBinding,
+      child: CommandShortcuts(
+        registry: _registry,
+        whenContext: _when,
+        keymap: _keymap,
+        child: Scaffold(
+          body: Stack(
+            children: [
+              Positioned.fill(child: _body()),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: SafeArea(
+                  child: Material(
+                    key: const Key('sdui-host-overlay'),
+                    elevation: 2,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      tooltip: 'Change server',
+                      icon: const Icon(Icons.dns_outlined),
+                      onPressed: widget.onOpenProfiles,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

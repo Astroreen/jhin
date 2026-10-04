@@ -294,6 +294,24 @@ class Keymap {
     return Keymap(List<KeymapRule>.unmodifiable(effective));
   }
 
+  /// The effective keymap plus client fallback rules (T68): one fallback is
+  /// appended for every command no existing rule binds, so the default
+  /// composer chords work when the server keymap does not carry them yet.
+  /// Existing rules are never replaced or reordered.
+  Keymap withDefaults(List<Object?> fallbackEntries, {KeyPlatform? platform}) {
+    try {
+      final bound = rules.map((rule) => rule.command).toSet();
+      final extra = <KeymapRule>[
+        for (final rule in parse(fallbackEntries, platform: platform).rules)
+          if (!bound.contains(rule.command)) rule,
+      ];
+      if (extra.isEmpty) return this;
+      return Keymap(List<KeymapRule>.unmodifiable([...rules, ...extra]));
+    } catch (_) {
+      return this;
+    }
+  }
+
   /// The command a chord resolves to in the current [context], or null when
   /// no rule matches. **The last matching rule wins.**
   ///

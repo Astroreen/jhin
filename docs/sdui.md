@@ -881,6 +881,16 @@ dropped without `open_url`; `setToken` and `clearToken` without
 inline directives from node props at the source (the prop is removed rather
 than emitted and ignored).
 
+**One lifecycle flow deserves a note:** `sendAndNew` (the `Ctrl/Cmd+Alt+Enter`
+composer command) is a **client-side composition** of three steps — dispatch
+the `send` action, `POST /ui/action/create-session`, then `navigate` to the
+new chat. The create-session response carries the fresh session id for the
+navigation (`client` → `navigate` → `screen`: `chat:<id>`), and the draft's
+`workdir` / `model` ride along in the create-session payload so the new
+session keeps them. When creation answers `4xx`/`5xx` (or no `navigate`), the
+client keeps the draft intact and surfaces a `toast` — user text is never
+lost.
+
 ## 5. Streams and frames
 
 `stream_view.topic` is the SSE endpoint path to open (for `jhin.ui`,

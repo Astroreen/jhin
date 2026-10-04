@@ -1,0 +1,7 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/keyboard/keymap_test.dart
+00:00 +0: /home/astroreen/Documents/jhin/frontend/test/keyboard/composer_flow_test.dart: composer keyboard flow T68 evidence/send-and-new: Ctrl+Alt+Enter sends, creates a session and navigates
+evidence/send-and-new: send posts=1 create-session posts=1
+evidence/send-and-new: create-session body={action: create-session, payload: {title: hello from the composer, workdir: /tmp/work, model: echo}}
+evidence/send-and-new: navigated=true
+evidence/send-and-new: new session composer empty=true
+00:00 +1: All tests passed!

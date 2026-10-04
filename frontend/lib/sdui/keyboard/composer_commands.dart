@@ -1,0 +1,589 @@
+import 'dart:async';
+
+import 'package:flutter/widgets.dart' hide ActionDispatcher;
+
+import '../../core/auth/app_storage.dart';
+import '../../store/versioned_store.dart';
+import '../action_dispatcher.dart';
+import '../render_context.dart';
+import '../ui_state.dart';
+import 'command_registry.dart';
+import 'when_context.dart';
+
+/// The reserved id of the composer field (T68): the `input`/`textarea` node
+/// the `send` action includes and the composer commands operate on.
+const String kComposerFieldId = 'messageInput';
+
+/// The live composer text field the composer commands operate on (T68).
+///
+/// Attached by the `input` / `textarea` primitive carrying
+/// [kComposerFieldId] through [ComposerScope], detached on dispose. Every
+/// mutation goes through the field's own [RenderContext] so the screen's
+/// `UiState` and the rendered decoration stay in step.
+class ComposerField {
+  ComposerField({
+    required this.id,
+    required this.controller,
+    required this.focusNode,
+    required this.state,
+    required this.invalidate,
+    required this.ctx,
+  });
+
+  /// The composer node id (the reserved [kComposerFieldId]).
+  final String id;
+
+  /// The text field's controller — the caret source for newline and recall.
+  final TextEditingController controller;
+
+  /// The text field's focus node (the `composerFocus` context source).
+  final FocusNode focusNode;
+
+  /// Per-screen local state (§8.7) the draft and the inline error live in.
+  final UiState state;
+
+  /// Rebuilds the field so a [showError] becomes visible.
+  final VoidCallback invalidate;
+
+  /// The render context of the screen — state writes, directives, navigation
+  /// and the screen root for action lookup.
+  final RenderContext ctx;
+
+  /// The current draft.
+  String get text => controller.text;
+
+  /// Replaces the draft and places the caret at its end.
+  set text(String value) {
+    controller.value = TextEditingValue(
+      text: value,
+      selection: TextSelection.collapsed(offset: value.length),
+    );
+    ctx.setState(id, value);
+  }
+
+  /// The caret/selection of the draft.
+  TextSelection get selection => controller.selection;
+
+  /// Whether the field currently owns the keyboard.
+  bool get isFocused => focusNode.hasFocus;
+
+  /// Whether the caret sits on the first line of the draft.
+  bool get caretOnFirstLine {
+    final offset = _caretOffset();
+    return !text.substring(0, offset).contains('\n');
+  }
+
+  /// Whether the caret sits on the last line of the draft.
+  bool get caretOnLastLine {
+    final offset = _caretOffset();
+    return !text.substring(offset).contains('\n');
+  }
+
+  int _caretOffset() {
+    final selection = controller.selection;
+    if (!selection.isValid) return text.length;
+    return selection.baseOffset.clamp(0, text.length).toInt();
+  }
+
+  /// Inserts a newline at the caret and moves the caret past it. Never
+  /// submits anything.
+  void insertNewline() {
+    final start = _caretOffset();
+    final selection = controller.selection;
+    final end =
+        selection.isValid ? selection.end.clamp(0, text.length).toInt() : start;
+    final updated = text.replaceRange(start, end, '\n');
+    controller.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(offset: start + 1),
+    );
+    ctx.setState(id, updated);
+  }
+
+  /// Clears the draft and its inline error.
+  void clear() {
+    controller.value = const TextEditingValue(
+      text: '',
+      selection: TextSelection.collapsed(offset: 0),
+    );
+    ctx.setState(id, '');
+    showError(null);
+  }
+
+  /// Shows (or clears, when [message] is null) the inline error text of the
+  /// composer node.
+  void showError(String? message) {
+    state.setError(id, message);
+    invalidate();
+  }
+
+  /// The screen's action descriptor named [name] (§3), or null — the
+  /// composer keyboard flow dispatches the very action of the matching
+  /// button (the `send` action of the Send button).
+  Map<String, dynamic>? findAction(String name) {
+    final root = ctx.root;
+    if (root == null) return null;
+    for (final node in root().flatten()) {
+      for (final value in node.props.values) {
+        if (value is! Map) continue;
+        final map = Map<String, dynamic>.from(value);
+        if (map['name'] != name) continue;
+        final path = map['path'];
+        if (path is! String || path.isEmpty) continue;
+        return map;
+      }
+    }
+    return null;
+  }
+}
+
+/// The attach point of the composer field plus the focus/draft command
+/// contexts its keymap `when` expressions read (T68).
+class ComposerBinding {
+  ComposerBinding({required this.whenContext});
+
+  /// The `when` contexts kept in step with the attached field.
+  final WhenContext whenContext;
+
+  ComposerField? _active;
+
+  /// The attached composer field, if any.
+  ComposerField? get active => _active;
+
+  /// Attaches [field] as the composer (any previous one is detached).
+  void attach(ComposerField field) {
+    detach();
+    _active = field;
+    field.focusNode.addListener(_focusChanged);
+    field.controller.addListener(_draftChanged);
+    _focusChanged();
+    _draftChanged();
+  }
+
+  /// Detaches [field] (or the current one when omitted) and clears the
+  /// composer contexts.
+  void detach([ComposerField? field]) {
+    if (field != null && !identical(field, _active)) return;
+    final current = _active;
+    if (current == null) return;
+    current.focusNode.removeListener(_focusChanged);
+    current.controller.removeListener(_draftChanged);
+    _active = null;
+    whenContext.composerFocus = false;
+    whenContext.composerDraft = false;
+  }
+
+  void _focusChanged() {
+    whenContext.composerFocus = _active?.isFocused ?? false;
+  }
+
+  void _draftChanged() {
+    whenContext.composerDraft = _active?.text.isNotEmpty ?? false;
+  }
+}
+
+/// Inherited access to the [ComposerBinding] (T68): installed by the boot
+/// host around the rendered screen tree and looked up by the field primitive
+/// carrying the reserved composer id.
+class ComposerScope extends InheritedWidget {
+  const ComposerScope({
+    super.key,
+    required this.binding,
+    required super.child,
+  });
+
+  /// The composer attach point of this subtree.
+  final ComposerBinding binding;
+
+  /// The scope of [context], or null outside a [ComposerScope].
+  static ComposerScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ComposerScope>();
+
+  @override
+  bool updateShouldNotify(ComposerScope oldWidget) =>
+      !identical(binding, oldWidget.binding);
+}
+
+/// The per-profile sent-prompt history behind the composer recall commands
+/// (T68): kept in memory for the walk and persisted enveloped at the current
+/// schema (docs/updates.md §1) under `composer.history:<profileId>`.
+class ComposerHistory {
+  ComposerHistory({
+    required this.storage,
+    required this.profileId,
+    this.maxEntries = 50,
+  });
+
+  /// Versioned store the history is persisted into.
+  final AppStorage storage;
+
+  /// Profile the history belongs to (per-profile isolation).
+  final String profileId;
+
+  /// Upper bound of kept entries (oldest dropped first).
+  final int maxEntries;
+
+  final List<String> _entries = <String>[];
+  bool _loaded = false;
+
+  /// The persisted key (schema-3 envelope).
+  String get key => StoreKeys.composerHistory(profileId);
+
+  /// The history, oldest first.
+  List<String> get entries => List<String>.unmodifiable(_entries);
+
+  /// Loads the persisted history once and answers it. Never throws — an
+  /// unreadable history degrades to empty.
+  Future<List<String>> load() async {
+    if (_loaded) return entries;
+    _loaded = true;
+    try {
+      final data = await storage.readData(key);
+      if (data is Map && data['entries'] is List) {
+        for (final item in data['entries'] as List) {
+          if (item is String && item.isNotEmpty) _entries.add(item);
+        }
+      }
+    } catch (_) {
+      // A unreadable history degrades to empty — never throws.
+    }
+    return entries;
+  }
+
+  /// Appends one successfully sent prompt (no consecutive duplicates) and
+  /// persists the history.
+  Future<void> add(String entry) async {
+    if (entry.trim().isEmpty) return;
+    await load();
+    if (_entries.isNotEmpty && _entries.last == entry) return;
+    _entries.add(entry);
+    while (_entries.length > maxEntries) {
+      _entries.removeAt(0);
+    }
+    await storage.writeEnvelope(key, {'entries': entries});
+  }
+}
+
+/// Posts one action body to `path` — the transport seam of the composer
+/// commands; the error of a failed post propagates to the caller.
+typedef ComposerPost = Future<Map<String, dynamic>> Function(
+    String path, Object body);
+
+/// The five composer commands (T68) and their default chords.
+///
+/// `composer.send` dispatches the screen's `send` action exactly once;
+/// `composer.sendAndNew` sends, creates a fresh session and navigates to the
+/// `chat:<id>` of the create-session response (the draft's workdir/model
+/// carry over); `composer.newline` inserts a newline and never submits;
+/// `composer.recallPrev` / `composer.recallNext` walk the per-profile
+/// sent-prompt history.
+///
+/// Dispatch reports handled/declined: the recall commands DECLINE outside
+/// the recall gate (non-empty draft, caret off the first/last line) so the
+/// arrow key still moves the caret, and every command declines when there is
+/// no composer field to act on.
+class ComposerCommands {
+  ComposerCommands({
+    required this.registry,
+    required this.binding,
+    required this.history,
+    required this.post,
+  }) {
+    registry.registerIfPlaceholder('composer.send', handler: send);
+    registry.registerIfPlaceholder('composer.sendAndNew', handler: sendAndNew);
+    registry.registerIfPlaceholder('composer.newline', handler: newline);
+    registry.registerIfPlaceholder('composer.recallPrev', handler: recallPrev);
+    registry.registerIfPlaceholder('composer.recallNext', handler: recallNext);
+    unawaited(history.load());
+  }
+
+  /// The command registry the handlers are installed on.
+  final CommandRegistry registry;
+
+  /// The composer field the commands operate on.
+  final ComposerBinding binding;
+
+  /// The per-profile sent-prompt history.
+  final ComposerHistory history;
+
+  /// The action post channel (errors propagate).
+  final ComposerPost post;
+
+  /// Client fallback chords (T68): applied by the boot host for commands
+  /// the server keymap carries no rule for.
+  static const List<Object?> defaultKeymapRules = <Object?>[
+    {'key': 'mod+enter', 'command': 'composer.send', 'when': 'composerFocus'},
+    {
+      'key': 'mod+alt+enter',
+      'command': 'composer.sendAndNew',
+      'when': 'composerFocus',
+    },
+    {
+      'key': 'shift+enter',
+      'command': 'composer.newline',
+      'when': 'composerFocus',
+    },
+    {'key': 'up', 'command': 'composer.recallPrev', 'when': 'composerFocus'},
+    {'key': 'down', 'command': 'composer.recallNext', 'when': 'composerFocus'},
+  ];
+
+  /// The inline error of an empty composer (the node's own `errorText` prop
+  /// wins when set).
+  static const String emptyMessage = 'Write a message first';
+
+  /// The toast when create-session fails after a successful send — the
+  /// draft is kept, never lose user text.
+  static const String createFailed =
+      'Could not open a new session. Your draft is kept.';
+
+  /// The toast when the `send` post fails.
+  static const String sendFailed = 'Could not send the message.';
+
+  int? _cursor;
+  String _walkFill = '';
+
+  // -------------------------------------------------------------------------
+  // composer.send / composer.sendAndNew
+  // -------------------------------------------------------------------------
+
+  /// `composer.send` — dispatches the Send button's `send` action exactly
+  /// once. An empty draft dispatches nothing and shows the inline error.
+  bool send() {
+    final field = binding.active;
+    if (field == null) return false;
+    if (field.findAction('send') == null) return false;
+    if (!_validate(field)) return true;
+    unawaited(_sendThenClear(field));
+    return true;
+  }
+
+  /// `composer.sendAndNew` — sends first, then creates a fresh session and
+  /// navigates to its `chat:<id>`. On a failed creation the draft is kept
+  /// and a toast explains.
+  bool sendAndNew() {
+    final field = binding.active;
+    if (field == null) return false;
+    if (field.findAction('send') == null) return false;
+    if (!_validate(field)) return true;
+    unawaited(_sendAndNew(field));
+    return true;
+  }
+
+  Future<void> _sendThenClear(ComposerField field) async {
+    if (!await _send(field)) return;
+    field.clear();
+  }
+
+  Future<void> _sendAndNew(ComposerField field) async {
+    final text = field.text;
+    if (!await _send(field)) return;
+    final target = await _createSession(field, text);
+    if (target == null) return; // draft kept + toast shown
+    field.clear();
+    field.ctx.navigate(target);
+  }
+
+  /// Posts the `send` action of the screen; true on a successful post.
+  Future<bool> _send(ComposerField field) async {
+    final action = field.findAction('send');
+    if (action == null) return false;
+    final path = action['path'];
+    if (path is! String || path.isEmpty) return false;
+    final name = action['name'] is String ? action['name'] as String : 'send';
+    try {
+      final response = await post(path, {
+        'action': name,
+        'payload': _payload(field, action),
+      });
+      _cursor = null;
+      _walkFill = '';
+      await history.add(field.text);
+      field.showError(null);
+      final client = response['client'];
+      if (client is List) await field.ctx.runDirectives(client);
+      return true;
+    } catch (_) {
+      await _toast(field, sendFailed, 'error');
+      return false;
+    }
+  }
+
+  /// Posts `create-session` for the send-and-new flow and answers the
+  /// navigation target of its response (the new `chat:<id>`), or null on
+  /// failure (a toast has been shown).
+  Future<String?> _createSession(ComposerField field, String sentText) async {
+    final payload = <String, dynamic>{'title': _titleFor(sentText)};
+    final workdir = field.state['workdir'];
+    if (workdir is String && workdir.trim().isNotEmpty) {
+      payload['workdir'] = workdir;
+    }
+    final model = field.state['model'];
+    if (model is String && model.trim().isNotEmpty) {
+      payload['model'] = model;
+    }
+    try {
+      final response = await post('/ui/action/create-session', {
+        'action': 'create-session',
+        'payload': payload,
+      });
+      final target = navigateTarget(response);
+      if (target == null) {
+        await _toast(field, createFailed, 'error');
+        return null;
+      }
+      return target;
+    } catch (_) {
+      await _toast(field, createFailed, 'error');
+      return null;
+    }
+  }
+
+  /// The navigation target of an action response (§4): the `screen` of its
+  /// `navigate` / `replace` directive. The `create-session` response carries
+  /// the new `chat:<id>` here for the client to navigate to.
+  static String? navigateTarget(Map<String, dynamic> response) {
+    final client = response['client'];
+    if (client is! List) return null;
+    for (final item in client) {
+      if (item is! Map) continue;
+      final op = item['op'];
+      if (op != 'navigate' && op != 'replace') continue;
+      final screen = item['screen'];
+      if (screen is String && screen.isNotEmpty) return screen;
+    }
+    return null;
+  }
+
+  /// The title of the fresh session of `composer.sendAndNew`: the first
+  /// non-empty line of the sent prompt, shortened to 60 characters.
+  static String _titleFor(String text) {
+    for (final line in text.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      return trimmed.length <= 60 ? trimmed : '${trimmed.substring(0, 57)}...';
+    }
+    return 'New session';
+  }
+
+  /// The merged payload of an action dispatch (§8.4): the static `payload`
+  /// plus the included ids' current values (include wins on collisions).
+  Map<String, dynamic> _payload(
+      ComposerField field, Map<String, dynamic> action) {
+    final payload = <String, dynamic>{};
+    final staticPayload = action['payload'];
+    if (staticPayload is Map) {
+      payload.addAll(Map<String, dynamic>.from(staticPayload));
+    }
+    final include = action['include'];
+    if (include is List) {
+      for (final item in include) {
+        if (item is! String) continue;
+        final node = field.ctx.root?.call().findById(item);
+        final value = ActionDispatcher.includeValue(node, field.state[item]);
+        if (value is String ||
+            value is num ||
+            value is bool ||
+            value is Map ||
+            value is List) {
+          payload[item] = value;
+        }
+      }
+    }
+    return payload;
+  }
+
+  /// Validates the draft before dispatch (§8.4 semantics plus the empty
+  /// composer gate): shows the inline error and answers false when nothing
+  /// may be dispatched.
+  bool _validate(ComposerField field) {
+    final node = field.ctx.root?.call().findById(field.id);
+    if (field.text.trim().isEmpty) {
+      field.showError(node?.stringProp('errorText') ?? emptyMessage);
+      return false;
+    }
+    final error = ActionDispatcher.validateField(node, field.state[field.id]);
+    if (error != null) {
+      field.showError(error);
+      return false;
+    }
+    field.showError(null);
+    return true;
+  }
+
+  Future<void> _toast(ComposerField field, String text, String style) =>
+      field.ctx.runDirectives(<dynamic>[
+        {'op': 'toast', 'text': text, 'style': style},
+      ]);
+
+  // -------------------------------------------------------------------------
+  // composer.newline
+  // -------------------------------------------------------------------------
+
+  /// `composer.newline` — inserts a newline into the composer and never
+  /// submits.
+  bool newline() {
+    final field = binding.active;
+    if (field == null) return false;
+    field.insertNewline();
+    return true;
+  }
+
+  // -------------------------------------------------------------------------
+  // composer.recallPrev / composer.recallNext
+  // -------------------------------------------------------------------------
+
+  /// `composer.recallPrev` — walks the history to older prompts.
+  bool recallPrev() => _recall(-1);
+
+  /// `composer.recallNext` — walks the history to newer prompts.
+  bool recallNext() => _recall(1);
+
+  /// The recall walk (T68): enters only on an empty draft with the caret on
+  /// the first (older) / last (newer) line; once entered it continues over
+  /// the recalled text — the first user edit ends it — and clears past the
+  /// newest entry. Everywhere else it DECLINES so the arrow key moves the
+  /// caret normally.
+  bool _recall(int direction) {
+    final field = binding.active;
+    if (field == null) return false;
+    final entries = history.entries;
+    if (_walkActive(field)) {
+      final next = _cursor! + direction;
+      if (next < 0) return true; // at the oldest entry — stay there
+      if (next >= entries.length) {
+        _cursor = null;
+        _walkFill = '';
+        field.clear();
+        return true;
+      }
+      _cursor = next;
+      _fill(field, entries[next]);
+      return true;
+    }
+    if (field.text.trim().isNotEmpty) return false;
+    if (direction < 0 && !field.caretOnFirstLine) return false;
+    if (direction > 0 && !field.caretOnLastLine) return false;
+    if (entries.isEmpty) return false;
+    if (direction > 0) return false; // nothing to walk forward to yet
+    _cursor = entries.length - 1;
+    _fill(field, entries[_cursor!]);
+    return true;
+  }
+
+  /// Whether a recall walk is in progress — the recalled text must still sit
+  /// unchanged in the composer; the first user edit ends the walk.
+  bool _walkActive(ComposerField field) {
+    if (_cursor == null) return false;
+    if (field.text != _walkFill) {
+      _cursor = null;
+      _walkFill = '';
+      return false;
+    }
+    return true;
+  }
+
+  void _fill(ComposerField field, String entry) {
+    _walkFill = entry;
+    field.text = entry;
+  }
+}

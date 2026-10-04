@@ -1,0 +1,9 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/keyboard/keymap_test.dart
+00:00 +0: /home/astroreen/Documents/jhin/frontend/test/keyboard/composer_flow_test.dart: composer keyboard flow T68 evidence/send: Ctrl+Enter dispatches the send action exactly once
+evidence/send: send posts=1 path=/ui/action/send
+evidence/send: body={action: send, payload: {sessionId: s1, messageInput: hello}}
+evidence/send: draft after send=cleared
+00:00 +1: /home/astroreen/Documents/jhin/frontend/test/keyboard/composer_flow_test.dart: composer keyboard flow T68 evidence/send: Shift+Enter inserts a newline and never submits
+evidence/send: newline inserted: 'hello' -> 'hello\n'
+evidence/send: posts after shift+enter=0
+00:00 +2: All tests passed!

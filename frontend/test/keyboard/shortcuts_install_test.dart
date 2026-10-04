@@ -42,7 +42,7 @@ void main() {
         '(fake handler spy)', (tester) async {
       final registry = CommandRegistry();
       var sent = 0;
-      registry.register('palette.open', handler: () => sent++);
+      registry.register('palette.open', handler: () { sent++; return true; });
       final payload = bootstrapPayload(entry: 'home', marker: 'tree-marker');
       payload['keymap'] = [
         {'key': 'ctrl+k', 'command': 'palette.open'},
@@ -70,7 +70,7 @@ void main() {
         (tester) async {
       final registry = CommandRegistry();
       var sent = 0;
-      registry.register('composer.send', handler: () => sent++);
+      registry.register('composer.send', handler: () { sent++; return true; });
       final payload = bootstrapPayload(entry: 'home', marker: 'tree-marker');
       payload['keymap'] = [
         {
@@ -119,7 +119,7 @@ void main() {
         'text field is focused', (tester) async {
       final registry = CommandRegistry();
       var sent = 0;
-      registry.register('palette.open', handler: () => sent++);
+      registry.register('palette.open', handler: () { sent++; return true; });
       final keymap = Keymap.parse([
         {'key': 'ctrl+k', 'command': 'palette.open'},
       ]);
@@ -143,7 +143,7 @@ void main() {
         'while typing', (tester) async {
       final registry = CommandRegistry();
       var sent = 0;
-      registry.register('composer.newline', handler: () => sent++);
+      registry.register('composer.newline', handler: () { sent++; return true; });
       final keymap = Keymap.parse([
         {
           'key': 'shift+enter',

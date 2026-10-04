@@ -30,6 +30,7 @@ class RenderContext {
     required this.openStream,
     required this.runDirectives,
     required this.confirm,
+    this.root,
     this.canPop,
     this.onBack,
   });
@@ -63,6 +64,11 @@ class RenderContext {
 
   /// Shows a confirm dialog for `button.confirm`; runs [onConfirm] on OK.
   final void Function(String message, VoidCallback onConfirm) confirm;
+
+  /// The current screen root node — client-side tree lookups (the T68
+  /// composer keyboard flow finds the screen's action descriptors through
+  /// it). Null when the context is not backed by a screen tree.
+  final UiNode Function()? root;
 
   /// Whether the runtime stack can pop the current screen. Absent when the
   /// context is not backed by a runtime stack.

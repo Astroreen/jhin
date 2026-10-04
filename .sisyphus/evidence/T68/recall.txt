@@ -1,0 +1,12 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/keyboard/keymap_test.dart
+00:00 +0: /home/astroreen/Documents/jhin/frontend/test/keyboard/composer_flow_test.dart: composer keyboard flow T68 evidence/recall: ArrowUp and ArrowDown walk the sent-prompt history
+evidence/recall: sent two prompts (history=2)
+evidence/recall: ArrowUp -> 'second prompt'
+evidence/recall: ArrowUp -> 'first prompt'
+evidence/recall: ArrowDown -> 'second prompt'
+evidence/recall: ArrowDown -> (cleared)
+00:00 +1: /home/astroreen/Documents/jhin/frontend/test/keyboard/composer_flow_test.dart: composer keyboard flow T68 evidence/recall: a non-empty composer declines and the caret still moves
+evidence/recall: typed draft kept='one\ntwo' (declined), caret 7 -> 3
+00:00 +2: /home/astroreen/Documents/jhin/frontend/test/keyboard/composer_flow_test.dart: composer keyboard flow T68 evidence/recall: history is per-profile (profile A invisible in profile B)
+evidence/recall: profile B recall -> (empty: profile A history invisible)
+00:01 +3: All tests passed!

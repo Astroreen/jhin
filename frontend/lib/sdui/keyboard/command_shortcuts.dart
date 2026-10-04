@@ -21,8 +21,9 @@ import 'when_context.dart';
 /// context). A rule with a `when` follows its expression exactly.
 ///
 /// One command has live machinery here: `nav.back` pops the enclosing
-/// [Navigator] when it can (`nav.forward` has no Flutter seam yet). Every
-/// other vocabulary id keeps its documented placeholder until T68–T70.
+/// [Navigator] when it can (`nav.forward` has no Flutter seam yet). The five
+/// composer commands arrive wired by `ComposerCommands` (T68); every other
+/// vocabulary id keeps its documented placeholder until T69–T70.
 class CommandShortcuts extends StatefulWidget {
   const CommandShortcuts({
     super.key,
@@ -56,11 +57,12 @@ class _CommandShortcutsState extends State<CommandShortcuts> {
   }
 
   /// Live machinery: Flutter's navigator can pop. Dispatched as a no-op
-  /// when nothing can be popped.
-  void _navBack() {
-    if (!mounted) return;
+  /// when nothing can be popped (the command still reports handled).
+  bool _navBack() {
+    if (!mounted) return true;
     final navigator = Navigator.maybeOf(context);
     if (navigator != null && navigator.canPop()) navigator.pop();
+    return true;
   }
 
   /// Whether text is being entered: the WhenContext's text contexts plus a
@@ -96,8 +98,11 @@ class _CommandShortcutsState extends State<CommandShortcuts> {
       textEntryActive: _textEntryActive(),
     );
     if (command == null) return KeyEventResult.ignored;
-    widget.registry.dispatch(command);
-    return KeyEventResult.handled;
+    // Handled/declined (T68): a declining handler must not swallow the key —
+    // e.g. the recall commands refuse on a non-empty composer so the arrow
+    // key still moves the caret.
+    final handled = widget.registry.dispatch(command);
+    return handled ? KeyEventResult.handled : KeyEventResult.ignored;
   }
 
   @override

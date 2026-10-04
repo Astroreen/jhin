@@ -124,6 +124,11 @@ class StoreKeys {
   /// Command palette history.
   static const String paletteHistory = 'commands.paletteHistory';
 
+  /// Per-profile sent-prompt history of the composer
+  /// (`composer.history:<profileId>`) — introduced at the current schema
+  /// (schema 3 envelope, no migration step needed).
+  static String composerHistory(String profileId) => 'composer.history:$profileId';
+
   /// The legacy theme key migrated into `appearance` by 2→3.
   static const String legacyTheme = 'theme';
 

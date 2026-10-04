@@ -4,6 +4,11 @@
  * asynchronously and every step lands in the session event log, so the chat
  * screen's stream view picks the answer up without further directives.
  *
+ * <p>The background-send flow (T68): the action enqueues the run through
+ * {@link RunService#start} and answers immediately — the HTTP response is
+ * the enqueue acknowledgement, the run continues on its own and its events
+ * flow over the existing session streams.
+ *
  * <p>Registered only while the agent plugin is loaded and published its
  * {@code RunService}. The message text arrives as {@code messageInput} (the
  * input id the Send button includes). A session without a provider is still

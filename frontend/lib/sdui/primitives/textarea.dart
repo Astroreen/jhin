@@ -9,6 +9,8 @@ import 'input_common.dart';
 /// `maxLines: 8`).
 ///
 /// Shares the `input` field machinery (`input_common.dart`): state writes,
-/// validation and the degrade rules are identical.
+/// validation and the degrade rules are identical. The field carrying the
+/// reserved id `messageInput` additionally attaches itself as the composer
+/// host of the T68 keyboard flow (`ComposerScope`).
 Widget buildTextarea(BuildContext context, UiNode node, RenderContext ctx) =>
     buildInputField(context, node, ctx);

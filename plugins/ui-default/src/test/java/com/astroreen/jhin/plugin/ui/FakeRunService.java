@@ -19,6 +19,7 @@ final class FakeRunService implements RunService {
 
     private final List<Started> started = new ArrayList<>();
     private final List<String> cancelled = new ArrayList<>();
+    private final List<String> finished = new ArrayList<>();
 
     @Override
     public String start(Session session, String text) {
@@ -37,11 +38,20 @@ final class FakeRunService implements RunService {
         cancelled.add(sessionId);
     }
 
+    /** Marks one run finished — the run body completing in the background. */
+    void finish(String runId) {
+        finished.add(runId);
+    }
+
     List<Started> started() {
         return List.copyOf(started);
     }
 
     List<String> cancelled() {
         return List.copyOf(cancelled);
+    }
+
+    List<String> finished() {
+        return List.copyOf(finished);
     }
 }

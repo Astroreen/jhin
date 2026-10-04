@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../keyboard/composer_commands.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -37,6 +38,8 @@ class _InputField extends StatefulWidget {
 class _InputFieldState extends State<_InputField> {
   late final TextEditingController _controller;
   late final FocusNode _focusNode;
+  ComposerField? _composer;
+  ComposerScope? _composerScope;
 
   String get _id => widget.node.id ?? '';
 
@@ -47,6 +50,34 @@ class _InputFieldState extends State<_InputField> {
     _controller = TextEditingController(text: initial?.toString() ?? '');
     _focusNode = FocusNode(debugLabel: 'jhin-input-$_id');
     _focusNode.addListener(_editingChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncComposer();
+  }
+
+  /// Attaches this field as the composer (T68) when it carries the reserved
+  /// composer id and a [ComposerScope] is in reach.
+  void _syncComposer() {
+    if (_composer != null) return;
+    if (widget.node.id != kComposerFieldId) return;
+    final scope = ComposerScope.maybeOf(context);
+    if (scope == null) return;
+    _composerScope = scope;
+    final composer = ComposerField(
+      id: _id,
+      controller: _controller,
+      focusNode: _focusNode,
+      state: widget.ctx.state,
+      invalidate: () {
+        if (mounted) setState(() {});
+      },
+      ctx: widget.ctx,
+    );
+    _composer = composer;
+    scope.binding.attach(composer);
   }
 
   void _editingChanged() {
@@ -65,6 +96,9 @@ class _InputFieldState extends State<_InputField> {
 
   @override
   void dispose() {
+    _composerScope?.binding.detach(_composer);
+    _composerScope = null;
+    _composer = null;
     _focusNode.removeListener(_editingChanged);
     _focusNode.dispose();
     _controller.dispose();

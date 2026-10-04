@@ -43,7 +43,8 @@ Current keys and their owners: `profiles` (list of `ServerProfile`: url,
 label, certFingerprint, tokenRef, cachedBootstrap, cachedScreens, fallbacks),
 `activeProfileId`, `sessionState:<profileId>` (screen stack + cache),
 `appearance` (themeMode, textSize, density, panelMotionMs), `keybindings`
-(user override rules), `commands.paletteHistory`, `migration.quarantine`.
+(user override rules), `commands.paletteHistory`, `composer.history:<profileId>`
+(per-profile sent-prompt history of the composer), `migration.quarantine`.
 **Secure storage (`flutter_secure_storage`) is NOT enveloped** — device
 tokens are opaque and version-independent.
 
