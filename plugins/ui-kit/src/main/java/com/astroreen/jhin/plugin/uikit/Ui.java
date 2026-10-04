@@ -390,6 +390,31 @@ public final class Ui {
         return new BannerBuilder();
     }
 
+    /** A tab strip with panels: {@code tabs}(items, activeIndex?, variant?). */
+    public static TabsBuilder tabs() {
+        return new TabsBuilder();
+    }
+
+    /** One {@code tabs} item spec ({@code {label, icon?, badge?, panel?}}). */
+    public static TabItemBuilder tabItem(String label) {
+        return new TabItemBuilder(label);
+    }
+
+    /** A single-select control: {@code segmented}(segments, value?, action?). */
+    public static SegmentedBuilder segmented() {
+        return new SegmentedBuilder();
+    }
+
+    /** An app shell: {@code shell}(sidebar?, header?, body?, detail?, rail?, breakpoint?, sidebarWidth?, sidebarCollapsedWidth?, collapsible?, collapsed?). */
+    public static ShellBuilder shell() {
+        return new ShellBuilder();
+    }
+
+    /** One {@code nav} item spec ({@code {label, icon?, screen?, action?, badge?, count?, section?, enabled?}}). */
+    public static NavItemBuilder navItem(String label) {
+        return new NavItemBuilder(label);
+    }
+
     /**
      * Base of every builder: the universal optional fields of docs/sdui.md
      * section 2.1 (Meta, Box, Text, Flex, Interaction/A11y groups) through
@@ -970,6 +995,27 @@ public final class Ui {
             }
             item.put("screen", screen);
             items().add(item);
+            return this;
+        }
+
+        /** Appends one item that opens a named sidebar section. */
+        public NavBuilder item(String label, String icon, String screen, String section) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("label", label);
+            if (icon != null) {
+                item.put("icon", icon);
+            }
+            item.put("screen", screen);
+            if (section != null) {
+                item.put("section", section);
+            }
+            items().add(item);
+            return this;
+        }
+
+        /** Appends one finished item spec ({@link Ui#navItem(String)}). */
+        public NavBuilder item(NavItemBuilder item) {
+            items().add(item.build());
             return this;
         }
 
@@ -3587,6 +3633,280 @@ public final class Ui {
             @SuppressWarnings("unchecked")
             List<Object> actions = (List<Object>) props.computeIfAbsent("actions", key -> new ArrayList<>());
             return actions;
+        }
+    }
+
+    /** {@code tabs}(items, activeIndex?, variant?) — a tab strip whose selected item shows its {@code panel}. */
+    public static final class TabsBuilder extends ItemBuilder<TabsBuilder> {
+
+        private TabsBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "tabs";
+        }
+
+        /** Appends one label-only item ({@code {label}}). */
+        @Override
+        public TabsBuilder item(String label) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("label", label);
+            items().add(item);
+            return this;
+        }
+
+        /** Appends one finished item spec ({@link Ui#tabItem(String)}). */
+        public TabsBuilder item(TabItemBuilder item) {
+            items().add(item.build());
+            return this;
+        }
+
+        /** The selected tab by index; patchable via the node {@code id}. */
+        public TabsBuilder activeIndex(int value) {
+            props.put("activeIndex", value);
+            return this;
+        }
+
+        /** The visual variant: {@code underline}, {@code pill} or {@code segmented}; validated. */
+        public TabsBuilder variant(String value) {
+            props.put("variant", UiEnums.require("variant", value, UiEnums.TAB_VARIANT));
+            return this;
+        }
+    }
+
+    /**
+     * The spec builder of one {@code tabs} item ({@code {label, icon?,
+     * badge?, panel?}}): see {@link Ui#tabItem(String)}. Finished with
+     * {@link #build()}, the spec is appended through {@link ItemBuilder#item(Map)}.
+     */
+    public static final class TabItemBuilder {
+
+        private final Map<String, Object> spec = new LinkedHashMap<>();
+
+        private TabItemBuilder(String label) {
+            spec.put("label", label);
+        }
+
+        /** The leading icon name. */
+        public TabItemBuilder icon(String value) {
+            spec.put("icon", value);
+            return this;
+        }
+
+        /** The trailing badge node. */
+        public TabItemBuilder badge(UiNode value) {
+            spec.put("badge", value);
+            return this;
+        }
+
+        /** The panel node shown while the tab is selected. */
+        public TabItemBuilder panel(UiNode value) {
+            spec.put("panel", value);
+            return this;
+        }
+
+        /** The finished item spec, in insertion order. */
+        public Map<String, Object> build() {
+            return new LinkedHashMap<>(spec);
+        }
+    }
+
+    /** {@code segmented}(segments, value?, action?) — a single-select segmented control. */
+    public static final class SegmentedBuilder extends NodeBuilder<SegmentedBuilder> {
+
+        private SegmentedBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "segmented";
+        }
+
+        /** Appends one segment ({@code {label, value, icon?}}). */
+        public SegmentedBuilder segment(String label, Object value) {
+            return segment(label, value, null);
+        }
+
+        /** Appends one segment with an icon name. */
+        public SegmentedBuilder segment(String label, Object value, String icon) {
+            Map<String, Object> segment = new LinkedHashMap<>();
+            segment.put("label", label);
+            segment.put("value", value);
+            if (icon != null) {
+                segment.put("icon", icon);
+            }
+            segments().add(segment);
+            return this;
+        }
+
+        /** Sets the segment entries wholesale. */
+        public SegmentedBuilder segments(List<Object> entries) {
+            props.put("segments", new ArrayList<>(entries));
+            return this;
+        }
+
+        /** The selected value. */
+        public SegmentedBuilder value(Object value) {
+            props.put("value", value);
+            return this;
+        }
+
+        /** The selection action dispatched on change. */
+        public SegmentedBuilder action(Map<String, Object> value) {
+            props.put("action", value);
+            return this;
+        }
+
+        private List<Object> segments() {
+            @SuppressWarnings("unchecked")
+            List<Object> segments = (List<Object>) props.computeIfAbsent("segments", key -> new ArrayList<>());
+            return segments;
+        }
+    }
+
+    /**
+     * {@code shell}(sidebar?, header?, body?, detail?, rail?, breakpoint?,
+     * sidebarWidth?, sidebarCollapsedWidth?, collapsible?, collapsed?) — the
+     * app shell; a shell without {@code body} degrades to a card with
+     * "Missing body" on the client.
+     */
+    public static final class ShellBuilder extends NodeBuilder<ShellBuilder> {
+
+        private ShellBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "shell";
+        }
+
+        /** The sidebar region (a {@code nav} with {@code kind: sidebar}). */
+        public ShellBuilder sidebar(UiNode node) {
+            props.put("sidebar", node);
+            return this;
+        }
+
+        /** The top header region. */
+        public ShellBuilder header(UiNode node) {
+            props.put("header", node);
+            return this;
+        }
+
+        /** The main region. */
+        public ShellBuilder body(UiNode node) {
+            props.put("body", node);
+            return this;
+        }
+
+        /** The main region as a string (the text shorthand). */
+        public ShellBuilder body(String text) {
+            props.put("body", text);
+            return this;
+        }
+
+        /** The optional right detail region. */
+        public ShellBuilder detail(UiNode node) {
+            props.put("detail", node);
+            return this;
+        }
+
+        /** The optional navigation rail for narrow widths. */
+        public ShellBuilder rail(UiNode node) {
+            props.put("rail", node);
+            return this;
+        }
+
+        /** The width below which the sidebar becomes a drawer. */
+        public ShellBuilder breakpoint(Number value) {
+            props.put("breakpoint", value);
+            return this;
+        }
+
+        /** The expanded sidebar width (a number or a {@code $size.sidebar} token). */
+        public ShellBuilder sidebarWidth(Object value) {
+            props.put("sidebarWidth", value);
+            return this;
+        }
+
+        /** The collapsed sidebar width. */
+        public ShellBuilder sidebarCollapsedWidth(Number value) {
+            props.put("sidebarCollapsedWidth", value);
+            return this;
+        }
+
+        /** Whether the sidebar can collapse. */
+        public ShellBuilder collapsible(boolean value) {
+            props.put("collapsible", value);
+            return this;
+        }
+
+        /** The current collapsed state; patchable via the node {@code id}. */
+        public ShellBuilder collapsed(boolean value) {
+            props.put("collapsed", value);
+            return this;
+        }
+    }
+
+    /**
+     * The spec builder of one {@code nav} item ({@code {label, icon?,
+     * screen?, action?, badge?, count?, section?, enabled?}}): see
+     * {@link Ui#navItem(String)}. Finished with {@link #build()}, the spec is
+     * appended through {@link ItemBuilder#item(Map)}.
+     */
+    public static final class NavItemBuilder {
+
+        private final Map<String, Object> spec = new LinkedHashMap<>();
+
+        private NavItemBuilder(String label) {
+            spec.put("label", label);
+        }
+
+        /** The leading icon name. */
+        public NavItemBuilder icon(String value) {
+            spec.put("icon", value);
+            return this;
+        }
+
+        /** The screen id to navigate to. */
+        public NavItemBuilder screen(String value) {
+            spec.put("screen", value);
+            return this;
+        }
+
+        /** The custom dispatch action. */
+        public NavItemBuilder action(Map<String, Object> value) {
+            spec.put("action", value);
+            return this;
+        }
+
+        /** The trailing badge node. */
+        public NavItemBuilder badge(UiNode value) {
+            spec.put("badge", value);
+            return this;
+        }
+
+        /** The trailing count badge. */
+        public NavItemBuilder count(Number value) {
+            spec.put("count", value);
+            return this;
+        }
+
+        /** The sidebar section label this item opens. */
+        public NavItemBuilder section(String value) {
+            spec.put("section", value);
+            return this;
+        }
+
+        /** Whether the item accepts taps (defaults to {@code true}). */
+        public NavItemBuilder enabled(boolean value) {
+            spec.put("enabled", value);
+            return this;
+        }
+
+        /** The finished item spec, in insertion order. */
+        public Map<String, Object> build() {
+            return new LinkedHashMap<>(spec);
         }
     }
 }

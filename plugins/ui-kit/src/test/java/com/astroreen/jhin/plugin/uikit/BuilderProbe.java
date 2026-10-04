@@ -85,6 +85,9 @@ final class BuilderProbe {
         BUILDERS.put(Ui.SheetBuilder.class, Ui::sheet);
         BUILDERS.put(Ui.DialogBuilder.class, Ui::dialog);
         BUILDERS.put(Ui.BannerBuilder.class, Ui::banner);
+        BUILDERS.put(Ui.TabsBuilder.class, Ui::tabs);
+        BUILDERS.put(Ui.SegmentedBuilder.class, Ui::segmented);
+        BUILDERS.put(Ui.ShellBuilder.class, Ui::shell);
     }
 
     /**
@@ -168,8 +171,16 @@ final class BuilderProbe {
         if (type == UiNode.class) {
             return Ui.text("probe").build();
         }
+        if (type == Ui.NavItemBuilder.class) {
+            return Ui.navItem("probe");
+        }
+        if (type == Ui.TabItemBuilder.class) {
+            return Ui.tabItem("probe");
+        }
         if (type == List.class) {
-            return List.of();
+            // A mutable list: several wholesale setters store the instance and
+            // the appenders extend it in place.
+            return new ArrayList<>();
         }
         if (type == Map.class) {
             return mapFor(method.getName());

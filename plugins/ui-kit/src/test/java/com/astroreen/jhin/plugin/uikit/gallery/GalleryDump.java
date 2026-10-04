@@ -1,7 +1,7 @@
 /**
  * Fixture generator for the golden gallery harness (T57): builds &gt;=84
  * {@link UiNode} fixtures through the real {@link Ui} builders, covering all
- * 42 current primitives ({@code BuilderProbe.BUILDERS}) with a basic and a
+ * 56 current primitives ({@code BuilderProbe.BUILDERS}) with a basic and a
  * prop-heavy variant each, and emits them as a generated Dart list consumed
  * by {@code frontend/test/gallery/golden_test.dart}.
  *
@@ -46,7 +46,7 @@ class GalleryDump {
     private static final Path COVERAGE_OUTPUT =
             Path.of("build", "gallery", "coverage.txt").toAbsolutePath().normalize();
 
-    /** The 53 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set, the T60 rich_text/code_block text set, the T61 icon/icon_button set, the T63 list_row/badge/chip/avatar/skeleton set and the T64 menu/sheet/dialog/banner set). */
+    /** The 56 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set, the T60 rich_text/code_block text set, the T61 icon/icon_button set, the T63 list_row/badge/chip/avatar/skeleton set, the T64 menu/sheet/dialog/banner set and the T65 tabs/segmented/shell set). */
     private static final List<String> EXPECTED_PRIMITIVES = List.of(
             "screen", "nav", "container", "card", "text", "markdown", "rich_text",
             "code_block", "button", "input",
@@ -58,7 +58,8 @@ class GalleryDump {
             "stack", "positioned", "wrap", "grid", "scroll",
             "icon", "icon_button",
             "list_row", "badge", "chip", "avatar", "skeleton",
-            "menu", "sheet", "dialog", "banner");
+            "menu", "sheet", "dialog", "banner",
+            "tabs", "segmented", "shell");
 
     private static Map<String, Object> action(String name) {
         Map<String, Object> action = new LinkedHashMap<>();
@@ -822,6 +823,84 @@ class GalleryDump {
                         .action(action("banner-undo"))
                         .build())
                 .onDismiss(action("banner-dismiss"))
+                .build()));
+
+        // tabs
+        all.add(new Fixture("fixture-tabs-basic", Ui.tabs()
+                .id("fixture-tabs-basic")
+                .activeIndex(0)
+                .item(Ui.tabItem("Overview")
+                        .panel(Ui.text("Overview panel").build())
+                        .build())
+                .item(Ui.tabItem("Activity")
+                        .panel(Ui.text("Activity panel").build())
+                        .build())
+                .build()));
+        all.add(new Fixture("fixture-tabs-propheavy", heavy(Ui.tabs(), "tabs-propheavy")
+                .variant("pill")
+                .activeIndex(1)
+                .item(Ui.tabItem("Overview")
+                        .icon("home")
+                        .badge(Ui.badge().label("new").build())
+                        .panel(Ui.text("Overview panel").style("body").build())
+                        .build())
+                .item(Ui.tabItem("Activity")
+                        .icon("settings")
+                        .panel(Ui.container()
+                                .direction("column").gap(8)
+                                .child(Ui.text("Activity panel").style("h3").build())
+                                .child(Ui.text("$color.accent").color("$color.accent").build())
+                                .build())
+                        .build())
+                .build()));
+
+        // segmented
+        all.add(new Fixture("fixture-segmented-basic", Ui.segmented()
+                .id("fixture-segmented-basic")
+                .segment("Day", "day")
+                .segment("Week", "week")
+                .value("day")
+                .build()));
+        all.add(new Fixture("fixture-segmented-propheavy", heavy(Ui.segmented(), "segmented-propheavy")
+                .segment("Day", "day", "home")
+                .segment("Week", "week", "settings")
+                .segment("Month", "month")
+                .value("week")
+                .action(action("segmented-change"))
+                .build()));
+
+        // shell
+        all.add(new Fixture("fixture-shell-basic", Ui.shell()
+                .id("fixture-shell-basic")
+                .breakpoint(600)
+                .sidebar(Ui.nav()
+                        .kind("sidebar")
+                        .item("Home", "home", "home")
+                        .build())
+                .body(Ui.text("Body").build())
+                .build()));
+        all.add(new Fixture("fixture-shell-propheavy", heavy(Ui.shell(), "shell-propheavy")
+                .breakpoint(600)
+                .sidebarWidth("$size.sidebar")
+                .sidebarCollapsedWidth(56)
+                .collapsible(true)
+                .collapsed(false)
+                .sidebar(Ui.nav()
+                        .kind("sidebar")
+                        .item(Ui.navItem("Home").icon("home").section("Main").screen("home").build())
+                        .item(Ui.navItem("Settings").icon("settings").section("Main").count(3).screen("settings").build())
+                        .build())
+                .header(Ui.text("Header").style("h3").build())
+                .body(Ui.container()
+                        .direction("column").gap(8)
+                        .child(Ui.text("Body").style("body").build())
+                        .child(Ui.text("$color.accent").color("$color.accent").build())
+                        .build())
+                .detail(Ui.text("Detail").style("small").build())
+                .rail(Ui.nav()
+                        .kind("rail")
+                        .item("Inbox", "inbox")
+                        .build())
                 .build()));
 
         return all;

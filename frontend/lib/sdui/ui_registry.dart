@@ -46,7 +46,9 @@ import 'primitives/rich_text.dart';
 import 'primitives/row.dart';
 import 'primitives/screen.dart';
 import 'primitives/scroll.dart';
+import 'primitives/segmented.dart';
 import 'primitives/sheet.dart';
+import 'primitives/shell.dart';
 import 'primitives/sized_box.dart';
 import 'primitives/skeleton.dart';
 import 'primitives/slider.dart';
@@ -55,6 +57,7 @@ import 'primitives/stack.dart';
 import 'primitives/stream_view.dart';
 import 'primitives/switch.dart';
 import 'primitives/table.dart';
+import 'primitives/tabs.dart';
 import 'primitives/text.dart';
 import 'primitives/wrap.dart';
 import 'render_context.dart';
@@ -130,6 +133,9 @@ class UiRegistry {
       'sheet': buildSheet,
       'dialog': buildDialog,
       'banner': buildBanner,
+      'tabs': buildTabs,
+      'segmented': buildSegmented,
+      'shell': buildShell,
     });
     return registry;
   }
@@ -937,6 +943,8 @@ const Set<String> _interactivePrimitives = {
   'list_row',
   'chip',
   'menu',
+  'tabs',
+  'segmented',
 };
 
 /// The gesture wrapper (§2.3 step 12): `InkWell` when the node sits on a

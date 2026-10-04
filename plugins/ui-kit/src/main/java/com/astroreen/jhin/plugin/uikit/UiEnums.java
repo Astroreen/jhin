@@ -163,6 +163,9 @@ final class UiEnums {
     /** docs/sdui.md 2.6 {@code skeleton} {@code variant}. */
     static final Set<String> SKELETON_VARIANT = Set.of("text", "circle", "rect", "list");
 
+    /** docs/sdui.md 2.6 {@code tabs} {@code variant}. */
+    static final Set<String> TAB_VARIANT = Set.of("underline", "pill", "segmented");
+
     /** Builder-specific literal overrides: entries are {@code <BuilderSimpleName>.<prop>}. */
     private static final Map<String, Set<String>> SPECIFIC = Map.ofEntries(
             Map.entry("ButtonBuilder.style", BUTTON_STYLE),
@@ -180,7 +183,8 @@ final class UiEnums {
             Map.entry("WrapBuilder.crossAxisAlignment", WRAP_ALIGNMENT),
             Map.entry("ChipBuilder.variant", CHIP_VARIANT),
             Map.entry("AvatarBuilder.shape", AVATAR_SHAPE),
-            Map.entry("SkeletonBuilder.variant", SKELETON_VARIANT));
+            Map.entry("SkeletonBuilder.variant", SKELETON_VARIANT),
+            Map.entry("TabsBuilder.variant", TAB_VARIANT));
 
     /** Global prop-name to literal-set lookup, used by the conformance probe. */
     private static final Map<String, Set<String>> BY_KEY = Map.ofEntries(

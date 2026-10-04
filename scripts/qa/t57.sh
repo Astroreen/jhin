@@ -13,7 +13,7 @@
 #     also saved standalone as evidence/T57/idempotency.diff);
 #   - copies the probe's per-primitive coverage table (written to
 #     plugins/ui-kit/build/gallery/coverage.txt) to evidence/T57/coverage.txt
-#     and asserts >= 84 fixtures total and all 53 current primitives present
+#     and asserts >= 84 fixtures total and all 56 current primitives present
 #     with >= 1 fixture each;
 #   - asserts frontend/test/gallery/goldens has >= 2 baseline PNGs;
 #   - runs the gallery flutter suite (scripts/qa/flutter-test.sh test/gallery)
@@ -94,17 +94,17 @@ primitives=$(grep -m1 '^primitives=' "$evidence/coverage.txt" | cut -d= -f2)
 [ -n "$total" ] && [ "$total" -ge 84 ] \
   || fail "fixture total ($total) is below the required 84 (see $evidence/coverage.txt)"
 ok "fixture total = $total (>= 84)"
-[ -n "$primitives" ] && [ "$primitives" -eq 53 ] \
-  || fail "primitive coverage ($primitives) != 53 current primitives (see $evidence/coverage.txt)"
-ok "primitive coverage = $primitives (all 53 current primitives present)"
+[ -n "$primitives" ] && [ "$primitives" -eq 56 ] \
+  || fail "primitive coverage ($primitives) != 56 current primitives (see $evidence/coverage.txt)"
+ok "primitive coverage = $primitives (all 56 current primitives present)"
 
-expected_primitives="screen nav container card text markdown rich_text code_block button input dropdown checkbox switch slider form list stream_view table divider spacer progress image figure chart_line chart_bar chart_pie drawer box row column flex expanded flexible sized_box align center aspect_ratio stack positioned wrap grid scroll icon icon_button list_row badge chip avatar skeleton menu sheet dialog banner"
+expected_primitives="screen nav container card text markdown rich_text code_block button input dropdown checkbox switch slider form list stream_view table divider spacer progress image figure chart_line chart_bar chart_pie drawer box row column flex expanded flexible sized_box align center aspect_ratio stack positioned wrap grid scroll icon icon_button list_row badge chip avatar skeleton menu sheet dialog banner tabs segmented shell"
 for primitive in $expected_primitives; do
   count=$(grep -m1 "^${primitive}=" "$evidence/coverage.txt" | cut -d= -f2)
   [ -n "$count" ] && [ "$count" -ge 1 ] \
     || fail "primitive '$primitive' has no fixture in $evidence/coverage.txt"
 done
-ok "every one of the 53 current primitives has >= 1 fixture (coverage.txt)"
+ok "every one of the 56 current primitives has >= 1 fixture (coverage.txt)"
 
 # --- 4. Golden baseline count ---
 golden_count=$(ls frontend/test/gallery/goldens/*.png 2>/dev/null | wc -l | tr -d ' ')

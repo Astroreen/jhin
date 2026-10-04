@@ -1,0 +1,12 @@
+ok: hardcode scan clean: rg 'EdgeInsets\.all\(1[12]\)|maxHeight: 240|height: 160' frontend/lib = 0 hits
+Analyzing frontend...                                           
+No issues found! (ran in 0.8s)
+ok: flutter analyze clean
+ok: frontend suite green (scripts/qa/flutter-test.sh; transcript in test.txt)
+ok: ui-kit module suite green (the T65 builders + conformance; appended to test.txt)
+ok: missing-body.txt written: a body-less shell degrades to a 'Missing body' card
+ok: activeid-fallback.txt written: unknown activeId degrades, collapsed patches to 56 and back
+ok: goldens.txt written: 0 modified pre-existing baselines, 14 new T65 baselines (227 total)
+
+golden baselines: 227 (14 new for T65, 0 modified)
+ok: T65 QA complete (happy path)
