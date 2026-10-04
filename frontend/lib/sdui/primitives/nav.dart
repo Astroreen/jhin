@@ -118,7 +118,7 @@ class _NavViewState extends State<_NavView> {
     if (item.count != null) {
       return Text(
         '${item.count}',
-        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        style: TextStyle(color: JhinDesignScope.materialOf(context).colorScheme.onSurfaceVariant),
       );
     }
     return null;
@@ -148,7 +148,7 @@ class _NavViewState extends State<_NavView> {
   }
 
   Widget _tabs(BuildContext context, List<_NavItem> items, int? active) {
-    final scheme = Theme.of(context).colorScheme;
+    final scheme = JhinDesignScope.materialOf(context).colorScheme;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -206,7 +206,7 @@ class _NavViewState extends State<_NavView> {
   }
 
   Widget _drawer(BuildContext context, List<_NavItem> items, int? active) {
-    final scheme = Theme.of(context).colorScheme;
+    final scheme = JhinDesignScope.materialOf(context).colorScheme;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -258,7 +258,7 @@ class _NavViewState extends State<_NavView> {
     List<_NavItem> items,
     int? active,
   ) {
-    final scheme = Theme.of(context).colorScheme;
+    final scheme = JhinDesignScope.materialOf(context).colorScheme;
     final tokens = JhinDesignScope.of(context).tokens;
     final groups = <String, List<_NavItem>>{};
     for (final item in items) {

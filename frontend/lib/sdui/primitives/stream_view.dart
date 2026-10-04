@@ -248,7 +248,7 @@ class _ReconnectingRow extends StatelessWidget {
           const SizedBox(width: 6),
           Text('Reconnecting...',
               style: TextStyle(
-                  fontSize: 10, color: Theme.of(context).disabledColor)),
+                  fontSize: 10, color: JhinDesignScope.materialOf(context).disabledColor)),
         ],
       ),
     );

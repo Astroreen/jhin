@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -27,7 +28,7 @@ Widget buildImage(BuildContext context, UiNode node, RenderContext ctx) {
       height: height,
       child: Center(
         child: Icon(iconFor('broken_image_outlined'),
-            color: Theme.of(context).disabledColor),
+            color: JhinDesignScope.materialOf(context).disabledColor),
       ),
     );
   }

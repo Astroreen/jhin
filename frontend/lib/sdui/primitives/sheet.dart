@@ -28,7 +28,7 @@ Widget buildSheet(BuildContext context, UiNode node, RenderContext ctx) =>
 /// `dialog` directive's `kind: "sheet"` presentation: rounded top corners
 /// over a drag handle and the given content.
 Widget buildSheetChrome(BuildContext context, Widget content) {
-  final theme = Theme.of(context);
+  final theme = JhinDesignScope.materialOf(context);
   final tokens = JhinDesignScope.of(context).tokens;
   return Material(
     color: theme.colorScheme.surface,

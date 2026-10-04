@@ -1254,7 +1254,7 @@ EdgeInsets? parsePadding(Object? value, {JhinTokens? tokens}) {
 /// Visible fallback for a node whose required props are missing or
 /// malformed (§8.3 degrade rule): a muted box, never an empty frame.
 Widget degradedBox(BuildContext context, String message) {
-  final theme = Theme.of(context);
+  final theme = JhinDesignScope.materialOf(context);
   final tokens = JhinDesignScope.of(context).tokens;
   return Container(
     padding: EdgeInsets.all(tokens.spacing.sm),
@@ -1279,7 +1279,7 @@ Object? fieldValue(RenderContext ctx, UiNode node) {
 }
 
 Widget _unsupportedCard(BuildContext context, String type, String? reason) {
-  final theme = Theme.of(context);
+  final theme = JhinDesignScope.materialOf(context);
   final tokens = JhinDesignScope.of(context).tokens;
   return Card(
     child: Padding(

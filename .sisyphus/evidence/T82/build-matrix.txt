@@ -1,0 +1,13 @@
+# T82 build matrix (2026-10-04T19:37:50Z)
+# target statuses are BUILT / SKIPPED / FAILED; SKIPPED means the
+# target cannot build on this host and is not a task failure.
+
+icon registry: frontend/lib/design/icon_registry.dart resolves 8825
+IconData lookups dynamically, so release builds must pass
+--no-tree-shake-icons (docs/updates.md §8); the curated-300-icon
+fallback triggers only if the size delta exceeds 50 MB.
+web --release (no flag)      BUILT    build/web = 43588 KB
+web --release +icons         BUILT    build/web = 43964 KB
+icons delta (web): 376 KB (0 MB) = with-flag minus without-flag
+linux --release +icons       BUILT    bundle = 29460 KB
+apk --release +icons         SKIPPED  exit 1 — no Android SDK on this host (see build-apk.txt)

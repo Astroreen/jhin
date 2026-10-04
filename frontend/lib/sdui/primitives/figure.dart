@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -11,7 +12,7 @@ import '../ui_registry.dart';
 /// the theme's disabled color, so `{}` renders a visible grey box.
 Widget buildFigure(BuildContext context, UiNode node, RenderContext ctx) {
   final color =
-      parseColor(node.props['color']) ?? Theme.of(context).disabledColor;
+      parseColor(node.props['color']) ?? JhinDesignScope.materialOf(context).disabledColor;
   final width = node.numProp('width')?.toDouble() ?? 64;
   final height = node.numProp('height')?.toDouble() ?? 64;
   switch (node.stringProp('shape') ?? 'rectangle') {

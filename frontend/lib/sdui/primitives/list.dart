@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -145,7 +146,7 @@ class _SelectionListState extends State<_SelectionList> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final theme = JhinDesignScope.materialOf(context);
     final separator = widget.node.props['separator'];
 
     Widget entry(int index) {
@@ -268,7 +269,7 @@ class _SectionedListState extends State<_SectionedList> {
   }
 
   Widget _header(BuildContext context, Object? label, bool collapsible, int s) {
-    final theme = Theme.of(context);
+    final theme = JhinDesignScope.materialOf(context);
     final text = label is String ? label : '${label ?? ''}';
     final row = Row(
       children: [

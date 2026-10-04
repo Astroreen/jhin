@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -86,7 +87,7 @@ Widget buildTable(BuildContext context, UiNode node, RenderContext ctx) {
           cells: (rows[r] as List).cast<Object?>(),
           flexes: flexes,
           aligns: aligns,
-          tint: zebra && r.isOdd ? Theme.of(context).hoverColor : null,
+          tint: zebra && r.isOdd ? JhinDesignScope.materialOf(context).hoverColor : null,
           hoverable: hoverable,
           onRowTap: enabled ? onRowTap : null,
         ),

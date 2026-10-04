@@ -148,7 +148,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
                     _error!,
                     key: const Key('connect-error'),
                     style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+                      color: JhinDesignScope.materialOf(context).colorScheme.error,
                       fontFamily: 'monospace',
                     ),
                   ),

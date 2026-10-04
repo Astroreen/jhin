@@ -94,7 +94,7 @@ class VersionGate extends StatelessWidget {
           ),
         );
       case VersionGateMode.newerVersion:
-        final scheme = Theme.of(context).colorScheme;
+        final scheme = JhinDesignScope.materialOf(context).colorScheme;
         return Padding(
           padding: EdgeInsets.symmetric(
             horizontal: spacing.md,

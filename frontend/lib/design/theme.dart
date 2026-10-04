@@ -283,6 +283,15 @@ class JhinDesignScope extends InheritedWidget {
     return design;
   }
 
+  /// The resolved Material [ThemeData] at [context].
+  ///
+  /// The token layer's only bridge to [Theme.of]: the themes generated from
+  /// the token lattice are installed on the app's `MaterialApp`, so every
+  /// Material lookup outside `design/` (colorScheme, disabled, hover,
+  /// divider) goes through this accessor and `Theme.of` stays confined to
+  /// this layer.
+  static ThemeData materialOf(BuildContext context) => Theme.of(context);
+
   @override
   bool updateShouldNotify(JhinDesignScope oldWidget) =>
       design != oldWidget.design;

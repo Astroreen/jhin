@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -14,7 +15,7 @@ import '../ui_registry.dart';
 /// fallback content and a failed network load to empty (§2.4 — the node
 /// never throws).
 Widget buildAvatar(BuildContext context, UiNode node, RenderContext ctx) {
-  final theme = Theme.of(context);
+  final theme = JhinDesignScope.materialOf(context);
   final size = node.numProp('size')?.toDouble() ?? 40;
   final square = node.stringProp('shape') == 'square';
   final color = parseColor(node.props['color']) ?? theme.colorScheme.primaryContainer;

@@ -14,7 +14,7 @@ Widget buildDrawer(BuildContext context, UiNode node, RenderContext ctx) {
   final tokens = JhinDesignScope.of(context).tokens;
   return Container(
     decoration: BoxDecoration(
-      border: Border.all(color: Theme.of(context).dividerColor),
+      border: Border.all(color: JhinDesignScope.materialOf(context).dividerColor),
       borderRadius: BorderRadius.circular(tokens.radius.sm),
     ),
     padding: EdgeInsets.all(tokens.spacing.md),

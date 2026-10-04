@@ -17,7 +17,7 @@ import '../ui_registry.dart';
 /// drag affordance (reorder itself goes through actions).
 Widget buildListRow(BuildContext context, UiNode node, RenderContext ctx) {
   final tokens = JhinDesignScope.of(context).tokens;
-  final theme = Theme.of(context);
+  final theme = JhinDesignScope.materialOf(context);
   final leading = buildChildProp(context, ctx, node.props['leading']);
   final title = buildChildProp(context, ctx, node.props['title']);
   final subtitle = buildChildProp(context, ctx, node.props['subtitle']);

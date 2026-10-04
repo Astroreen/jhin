@@ -225,11 +225,11 @@ class SduiRuntime extends ChangeNotifier
   static Color _toastColor(BuildContext context, String? style) {
     switch (style) {
       case 'error':
-        return Theme.of(context).colorScheme.error;
+        return JhinDesignScope.materialOf(context).colorScheme.error;
       case 'success':
         return const Color(0xFF2E7D32);
       default:
-        return Theme.of(context).colorScheme.inverseSurface;
+        return JhinDesignScope.materialOf(context).colorScheme.inverseSurface;
     }
   }
 

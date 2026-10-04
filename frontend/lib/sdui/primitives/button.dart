@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -42,8 +43,8 @@ Widget buildButton(BuildContext context, UiNode node, RenderContext ctx) {
               onPressed: onPressed, icon: iconWidget, label: Text(label));
     case 'danger':
       final danger = ElevatedButton.styleFrom(
-          foregroundColor: Theme.of(context).colorScheme.onError,
-          backgroundColor: Theme.of(context).colorScheme.error);
+          foregroundColor: JhinDesignScope.materialOf(context).colorScheme.onError,
+          backgroundColor: JhinDesignScope.materialOf(context).colorScheme.error);
       return iconWidget == null
           ? ElevatedButton(
               style: danger, onPressed: onPressed, child: Text(label))

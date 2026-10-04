@@ -132,7 +132,7 @@ Widget _label(
   _TabItem item,
   bool active,
 ) {
-  final scheme = Theme.of(context).colorScheme;
+  final scheme = JhinDesignScope.materialOf(context).colorScheme;
   return Row(
     mainAxisSize: MainAxisSize.min,
     children: [
@@ -164,7 +164,7 @@ Widget _underlineBar(
   int active,
   ValueChanged<int> onSelect,
 ) {
-  final scheme = Theme.of(context).colorScheme;
+  final scheme = JhinDesignScope.materialOf(context).colorScheme;
   final tokens = JhinDesignScope.of(context).tokens;
   return SingleChildScrollView(
     scrollDirection: Axis.horizontal,
@@ -202,7 +202,7 @@ Widget _pillBar(
   int active,
   ValueChanged<int> onSelect,
 ) {
-  final scheme = Theme.of(context).colorScheme;
+  final scheme = JhinDesignScope.materialOf(context).colorScheme;
   final tokens = JhinDesignScope.of(context).tokens;
   return Container(
     padding: EdgeInsets.all(tokens.spacing.xs),
@@ -243,7 +243,7 @@ Widget _segmentedBar(
   int active,
   ValueChanged<int> onSelect,
 ) {
-  final scheme = Theme.of(context).colorScheme;
+  final scheme = JhinDesignScope.materialOf(context).colorScheme;
   final tokens = JhinDesignScope.of(context).tokens;
   final radius = BorderRadius.circular(tokens.radius.sm);
   return Container(

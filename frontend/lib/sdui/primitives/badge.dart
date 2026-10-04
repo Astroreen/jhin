@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -10,7 +11,7 @@ import '../ui_registry.dart';
 /// capped at `max` (`99+` above the cap); otherwise `label` renders. A
 /// missing label and count degrades to a visible placeholder.
 Widget buildBadge(BuildContext context, UiNode node, RenderContext ctx) {
-  final theme = Theme.of(context);
+  final theme = JhinDesignScope.materialOf(context);
   final color = parseColor(node.props['color']) ?? theme.colorScheme.error;
   if (node.boolProp('dot') == true) {
     return Container(

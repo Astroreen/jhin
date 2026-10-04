@@ -44,7 +44,7 @@ class _BannerState extends State<_Banner> {
     final onDismiss = asMap(node.props['onDismiss']);
     final tokens = JhinDesignScope.of(context).tokens;
     return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      color: JhinDesignScope.materialOf(context).colorScheme.surfaceContainerHighest,
       child: Padding(
         padding: EdgeInsets.all(tokens.spacing.md),
         child: Row(

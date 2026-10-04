@@ -7,7 +7,7 @@ emit.
 
 ## Files
 
-- `gallery_nodes.dart` — generated fixture list (50 `UiNode` JSON trees, 2 per
+- `gallery_nodes.dart` — generated fixture list (116 `UiNode` JSON trees, 2 per
   current primitive: a basic variant and a prop-heavy variant exercising the
   box/text/flex/interaction universal surface, including `$token` strings).
 - `golden_test.dart` — pumps each fixture through the standard SDUI render
@@ -31,9 +31,9 @@ committed) `plugins/ui-kit/build/gallery/coverage.txt`. The generator is
 idempotent: re-running it with no builder changes produces a byte-identical
 file — `scripts/qa/t57.sh` checks this on every run.
 
-Covers the current 25 primitives only (plan §4.4's 56-primitive catalog is
-the future target arriving in later tasks); new primitives get their own
-fixtures in their own tasks, and the whole gallery is refreshed at T82.
+Covers the full 58-primitive contract-level-2 catalog (two fixtures per
+primitive); new primitives get their own fixtures in their own tasks, and the
+whole gallery is refreshed and eyeballed at T82.
 
 ## Regenerating the golden baselines
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -122,7 +123,7 @@ Widget _menuItemRow(BuildContext context, Map<String, dynamic> item) {
   final icon = iconFor(item['icon'] is String ? item['icon'] as String : null);
   final danger = item['danger'] == true;
   final style = danger
-      ? TextStyle(color: Theme.of(context).colorScheme.error)
+      ? TextStyle(color: JhinDesignScope.materialOf(context).colorScheme.error)
       : null;
   return Row(
     mainAxisSize: MainAxisSize.min,

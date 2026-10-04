@@ -163,3 +163,35 @@ every server-authored icon blank. The flag keeps the full Material icon font
 in the binary; the size cost is accepted. Ship this flag with every client
 release — a build without it is a broken update for the UI, even though the
 persisted-state migrations above run unchanged.
+
+## 9. Release notes: the UI overhaul
+
+What a user sees after this update.
+
+**Sidebar and thread lifecycle.** The session sidebar is grouped into
+t3code-style sections — pinned, active and settled threads — and every thread
+carries its lifecycle actions: *pin* keeps it on top, *settle* marks a thread
+done and moves it to its own section, *snooze* hides it until it is needed
+again and *archive* retires it. Every lifecycle move has a 5-second *undo*
+window; the last action can be taken back from the toast before it settles
+for good.
+
+**Keyboard-first navigation.** Shortcuts cover the daily loop (new thread,
+search, command palette, lifecycle actions); the command palette runs every
+command by name, and any shortcut can be rebound in the keyboard settings —
+nothing is hardwired to one layout.
+
+**Themes and appearance.** The appearance settings drive the whole client
+from the server's theme: light, dark or system appearance, accent and canvas
+colors, the `colors{}` token overrides, spacing density
+(`compact | comfortable | spacious`) and motion durations. Reduced-motion is
+honored — when the OS asks for it, every animation duration collapses to
+zero. Nothing is styled from a hardcoded value; the client renders from the
+token lattice alone.
+
+**Upgrades.** The client and the host upgrade independently and safely. On
+version change the client migrates its own persisted state through the
+envelope and runner model above, and the host migrates its database through
+plugin migrations. When the client and server disagree on the contract level,
+a version gate screen states plainly what is too old or too new and what to
+update — the app never renders a broken half-state.

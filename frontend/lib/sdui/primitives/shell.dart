@@ -213,7 +213,7 @@ class _ShellViewState extends State<_ShellView> {
   }
 
   Widget _missingBody(BuildContext context) {
-    final theme = Theme.of(context);
+    final theme = JhinDesignScope.materialOf(context);
     final tokens = JhinDesignScope.of(context).tokens;
     return Card(
       child: Padding(

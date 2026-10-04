@@ -66,7 +66,7 @@ class _SkeletonState extends State<_Skeleton>
   @override
   Widget build(BuildContext context) {
     final node = widget.node;
-    final theme = Theme.of(context);
+    final theme = JhinDesignScope.materialOf(context);
     final base = theme.colorScheme.surfaceContainerHighest;
     final highlight = theme.colorScheme.surfaceContainerLow;
     final variant = node.stringProp('variant') ?? 'text';

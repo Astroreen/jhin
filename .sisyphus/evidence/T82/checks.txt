@@ -1,0 +1,29 @@
+ok: golden refresh recorded in goldens.txt (new=0 updated=0 unchanged=242)
+ok: full Flutter suite green after the refresh (test.txt)
+ok: ./gradlew dist exited 0 (dist.txt; bundle under dist/)
+ok: dist built the Flutter clients with --no-tree-shake-icons (dist.txt)
+ok: ./gradlew test green across the composite (gradle-test.txt)
+ok: icon tree-shake delta 0 MB within the 50 MB threshold (build-matrix.txt)
+ok: final hardcode sweep clean: 0 hits across all 5 patterns (sweep.txt)
+
+# AGENTS.md coherence pass (T82 final check)
+ok: plugin count — AGENTS.md 'sdk, kernel, 12 plugins' matches settings.gradle
+    (2 includeBuild for sdk/kernel + 12 plugin includeBuild entries)
+ok: plugin catalogue — 12 entries (sessions, security, llm, llm-builtin,
+    agent, tools-builtin, mcp, ui-kit, ui-default, reload, qa-mock-llm,
+    example) match the 12 builds in settings.gradle
+ok: contract fields — AGENTS.md 'contract {api: 2, minApi: 2, schema: 3,
+    minSchema: 3}' matches docs/sdui.md:54; X-Jhin-Client advertising claim
+    matches docs/sdui.md:29 and :996
+ok: catalog-of-58 statement — matches docs/sdui.md §2.5 ('grows the catalog
+    from 25 to 58'; categories Layout/Text/Controls/Surfaces/Data/Nav at
+    §2.5 lines 334-346); the 'fixed list of 25' text at docs/sdui.md:1124 is
+    inside Appendix A level-1 history and is coherent, not a leftover
+ok: --no-tree-shake-icons — AGENTS.md matches README.md:81-86 and
+    docs/updates.md:156-160 (8825 dynamic IconData lookups in
+    frontend/lib/design/icon_registry.dart); dist build args recorded in
+    dist.txt carry the flag
+ok: gallery README counts (116 fixtures / 58 primitives) already fixed in
+    the verified-done work; no inconsistency found by rg
+verdict: AGENTS.md coherent with settings.gradle, docs/sdui.md and
+    docs/updates.md — zero leftovers to fix

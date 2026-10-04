@@ -13,9 +13,9 @@
 //   dist/jhin-kernel-0.2.0.jar   kernel boot jar, renamed for the bundle
 //   dist/plugins-default/*.jar   the ten default plugins (never the example
 //                                and never the qa-mock-llm harness)
-//   dist/frontend/web/           flutter build web --release
-//   dist/frontend/linux/         flutter build linux --release bundle
-//   dist/frontend/jhin.apk       flutter build apk --release
+//   dist/frontend/web/           flutter build web --release --no-tree-shake-icons
+//   dist/frontend/linux/         flutter build linux --release --no-tree-shake-icons bundle
+//   dist/frontend/jhin.apk       flutter build apk --release --no-tree-shake-icons
 //   dist/run.sh                  restart loop (copied from deploy/run.sh)
 //   dist/README.md               install and first-run instructions
 //   dist/MANIFEST.txt            size and SHA-256 per artifact
@@ -173,13 +173,15 @@ tasks.register('dist') {
             }
         }
 
-        // Web: needs only flutter.
-        if (runFlutter(['build', 'web', '--release'], 'frontend web bundle', { null })) {
+        // Web: needs only flutter. --no-tree-shake-icons is mandatory: icon
+        // names resolve through the generated registry at runtime (see
+        // docs/updates.md §8), so the tree-shaker would strip every glyph.
+        if (runFlutter(['build', 'web', '--release', '--no-tree-shake-icons'], 'frontend web bundle', { null })) {
             copyTree(new File(frontendDir, 'build/web'), new File(distDir, 'frontend/web'))
         }
 
         // Linux desktop: needs the desktop toolchain.
-        if (runFlutter(['build', 'linux', '--release'], 'frontend linux bundle', {
+        if (runFlutter(['build', 'linux', '--release', '--no-tree-shake-icons'], 'frontend linux bundle', {
                 if (!onPath('cmake') || !onPath('ninja') || !onPath('pkg-config')) {
                     return 'cmake, ninja and pkg-config are required for the linux target'
                 }
@@ -193,7 +195,7 @@ tasks.register('dist') {
         }
 
         // Android: needs an Android SDK.
-        if (runFlutter(['build', 'apk', '--release'], 'frontend apk', {
+        if (runFlutter(['build', 'apk', '--release', '--no-tree-shake-icons'], 'frontend apk', {
                 def sdk = ['ANDROID_SDK_ROOT', 'ANDROID_HOME']
                     .collect { System.getenv(it) }
                     .find { it != null && new File(it).isDirectory() }
@@ -337,6 +339,14 @@ tasks.register('clean') {
     group = 'build'
     description = 'Cleans all included builds.'
     dependsOn gradle.includedBuilds*.task(':clean')
+}
+
+// Delegate `test` to every included build so `./gradlew test` runs the whole
+// composite test suite (mirrors `build` below).
+tasks.register('test') {
+    group = 'verification'
+    description = 'Runs the tests of every included build.'
+    dependsOn gradle.includedBuilds*.task(':test')
 }
 
 // Delegate `build` to every included build so `./gradlew build` builds everything.

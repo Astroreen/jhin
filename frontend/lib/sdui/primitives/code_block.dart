@@ -21,7 +21,7 @@ Widget buildCodeBlock(BuildContext context, UiNode node, RenderContext ctx) {
   }
   final design = JhinDesignScope.of(context);
   final tokens = design.tokens;
-  final theme = Theme.of(context);
+  final theme = JhinDesignScope.materialOf(context);
 
   final monoFamily = tokens.resolveToken(r'$font.mono');
   var codeStyle = tokens.typography.mono;

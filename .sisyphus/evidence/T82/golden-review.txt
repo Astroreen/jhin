@@ -1,0 +1,161 @@
+# T82 golden review (pixel/ink-map probes — OPTION 1)
+
+Review method: per-file pixel probes (pure-python PNG decode: zlib inflate +
+PNG unfilter, no image display). The Read tool image path is unreliable in this
+environment (scrambled PNG rendering) and was NOT used; bash/python pixel
+probes are ground truth. The orchestrator independently re-analyzed the 5
+state goldens with a pure-python pixel probe and confirmed the numbers below
+exactly (state-offline ink only in y=0..227; state-empty / state-version-gate
+span to y≈680).
+
+Probe: /tmp/opencode/t82_probe.py (committed content mirrored in this file's
+stat lines). Ink pixel = per-channel delta > 16 from the modal corner
+background. Stats per file: dimensions, ink-row bbox (y), ink bbox (x),
+interior max empty-gap (rows with zero ink between first and last ink row),
+quarter-band ink densities (q0..q3 top to bottom), overflow-stripe yellow
+pixel count (high-R/high-G/low-B heuristic) and mid-density row count.
+
+FLAG criteria applied: fully blank; ink confined suspiciously (tiny bbox in a
+full-surface golden without a design explanation); huge interior empty gaps
+suggesting clipped/vanished content; yellow-black overflow stripes.
+
+Global note: every golden carries the Flutter debug banner at the top-right
+(corner triangle, e.g. x=743..799 y=0..56 on 800x1200 surfaces, reddish
+(162,64,65) over the surface). Provenance proven earlier with a bare
+MaterialApp scratch — test-harness artifact, not a product bug; banner ink
+counts toward bbox_y=0 and is discounted in the verdicts below.
+
+## Sample and verdicts (13 files)
+
+1. frontend/test/gallery/goldens/shell-wide.png
+   1200x800 ink_frac=0.0113 bbox_y=0..117 bbox_x=12..1199 max_gap_interior=26
+   q=[0.0453,0,0,0] yellow=0 mid_rows=14
+   Verdict: OK — top-band ink is the designed shell layout: rail + sidebar
+   (SizedBox 280, collapse toggle, one 'Home' nav item) + header/body/detail
+   texts all sit at start/top (shell.dart:141-157 Row crossAxisAlignment
+   .stretch, sidebar Column items top-aligned; fixture = _shellNode with one
+   nav item and three one-line texts, primitives_batch10_test.dart:164-188).
+   The same node is asserted to render sidebar=280 + all four slots at
+   1200x800 in the widget test (primitives_batch10_test.dart:391-405), so
+   content is present; the surface below y=117 is empty sidebar/surface by
+   design (1-item fixture), not clipped content. Rows 0..56 right corner =
+   debug banner.
+
+2. frontend/test/gallery/goldens/shell-narrow.png
+   700x800 ink_frac=0.0160 bbox_y=0..64 bbox_x=12..699 max_gap_interior=0
+   q=[0.0639,0,0,0] yellow=0 mid_rows=28
+   Verdict: OK — narrow breakpoint (700 < 900) turns the sidebar into a
+   drawer and renders a hamburger header bar + header/body/detail texts at
+   top (shell.dart:161+ _narrow; widget test
+   primitives_batch10_test.dart:446-452 asserts hamburger + hidden sidebar
+   on the same node). Natural height 64px content, top-aligned by design.
+
+3. frontend/test/gallery/goldens/thread-row.png
+   400x200 ink_frac=0.1220 bbox_y=0..87 bbox_x=12..399 max_gap_interior=4
+   q=[0.2366,0.2513,0,0] yellow=0 mid_rows=56
+   Verdict: OK — one thread-row list tile (avatar, title, snippet, timestamp)
+   at natural height ~87px on a 400x200 surface, dense ink in the top two
+   bands as expected; gap=4 is inter-line whitespace.
+
+4. frontend/test/gallery/goldens/fixture-markdown-basic-light.png
+   800x1200 ink_frac=0.0075 bbox_y=0..63 bbox_x=0..799 max_gap_interior=0
+   q=[0.0299,0,0,0] yellow=0 mid_rows=30
+   Verdict: OK — short markdown fixture (text lines at y=3..33 + short block
+   at y=60..63) at top-start; the harness is Material(child) with no Center
+   (golden_test.dart:72-77), so natural-height top alignment is designed.
+   Content ink confirmed beyond the banner region (x=0..217 rows 3..33).
+
+5. frontend/test/gallery/goldens/fixture-form-basic-light.png
+   800x1200 ink_frac=0.0071 bbox_y=0..121 bbox_x=0..799 max_gap_interior=7
+   q=[0.0285,0,0,0] yellow=0 mid_rows=14
+   Verdict: OK — basic form fixture (fields + labels) natural height 121px,
+   top-start; gap=7 is field spacing.
+
+6. frontend/test/gallery/goldens/fixture-table-basic-light.png
+   800x1200 ink_frac=0.0038 bbox_y=0..59 bbox_x=0..799 max_gap_interior=0
+   q=[0.0153,0,0,0] yellow=0 mid_rows=0
+   Verdict: OK — basic table fixture (header row + few rows) natural height
+   ~59px, top-start.
+
+7. frontend/test/gallery/goldens/fixture-chip-basic-light.png
+   800x1200 ink_frac=0.0020 bbox_y=0..56 bbox_x=0..799 max_gap_interior=0
+   q=[0.0081,0,0,0] yellow=0 mid_rows=0
+   Verdict: OK — content = one 'Filter' chip pill (ink rows 5..31 at x=0..~90,
+   verified by row profile; fixture is {"type":"chip","label":"Filter"},
+   gallery_nodes.dart:101); rows 0..56 right corner is the debug banner. Not
+   blank: chip ink is well outside the banner region.
+
+8. frontend/test/gallery/goldens/fixture-menu-basic-light.png
+   800x1200 ink_frac=0.0015 bbox_y=0..56 bbox_x=0..799 max_gap_interior=0
+   q=[0.0059,0,0,0] yellow=0 mid_rows=0
+   Verdict: OK — content = menu trigger button 'Open' + items art at top-left
+   (ink rows 3..31, x=9..33+; fixture gallery_nodes.dart:107); banner in the
+   top-right corner as always. Natural-height fixture.
+
+9. frontend/test/boot/goldens/state-error.png
+   800x1200 ink_frac=0.0288 bbox_y=0..254 bbox_x=19..799 max_gap_interior=0
+   q=[0.1152,0,0,0] yellow=0 mid_rows=54
+   Verdict: OK-by-design (top-aligned) — rendered from the fallbacks.error
+   wire art (root 'card': title + body text + bordered skeleton + Retry /
+   Change-server buttons, state_fixtures.dart errorArt) through the registry
+   exactly like SduiRuntime's fallback path (sdui_runtime.dart:208-210). The
+   card primitive lays out Column(mainAxisSize: min, crossAxisAlignment:
+   start) (frontend/lib/sdui/primitives/card.dart:18-20) inside a Scaffold
+   body with loose height (state_golden_test.dart harnessHost,
+   state_fixtures.dart:106-138), so the art is pinned top-start by the
+   widget's designed layout. Docs do not prescribe centered fallback art
+   (rg found no centering expectation for fallbacks in docs/). NOT a bug.
+
+10. frontend/test/boot/goldens/state-offline.png
+    800x1200 ink_frac=0.0295 bbox_y=0..227 bbox_x=19..799 max_gap_interior=0
+    q=[0.1181,0,0,0] yellow=0 mid_rows=38
+    Verdict: OK-by-design (top-aligned) — same as state-error: root 'card'
+    art (state_fixtures.dart offlineArt) through the registry; layout =
+    card.dart:18-20 Column mainAxisSize.min / crossAxisAlignment.start.
+    Ink y=0..227 matches the orchestrator cross-check exactly.
+
+11. frontend/test/boot/goldens/state-loading.png
+    800x1200 ink_frac=0.0643 bbox_y=0..242 bbox_x=56..799 max_gap_interior=25
+    q=[0.2573,0,0,0] yellow=0 mid_rows=96
+    Verdict: OK-by-design (top-aligned) — root 'container' wire art
+    (loadingFrameJson: rect skeleton 220x28 + 2-line text skeleton + 3-line
+    list skeleton, frontend/lib/boot/loading_frame.dart:18-27) built via
+    ScreenRenderer/SduiRuntime (sdui_runtime.dart:206,
+    sdui_host.dart:271). Container primitive = Column(mainAxisSize: min,
+    mainAxisAlignment: start) (container.dart:47-50,65-76) with gap =
+    $spacing.md; the interior gap of 25 rows is exactly that inter-block gap.
+    Top alignment by design.
+
+12. frontend/test/boot/goldens/state-empty.png
+    800x1200 ink_frac=0.0271 bbox_y=0..676 bbox_x=226..799 max_gap_interior=464
+    q=[0.0017,0.0653,0.0415,0] yellow=0 mid_rows=94
+    Verdict: OK — EmptyState wraps its Column in Center
+    (frontend/lib/boot/empty_state.dart:35, Column mainAxisSize.min at :44),
+    so the content block sits mid-surface (ink to y=676 ≈ orchestrator's
+    y≈680 cross-check); the 464-row interior gap is the empty area between
+    the debug banner (rows 0..56) and the centered block — expected for a
+    centered layout, not clipped content. Exactly matches the independent
+    orchestrator probe.
+
+13. frontend/test/boot/goldens/state-version-gate.png
+    800x1200 ink_frac=0.0266 bbox_y=0..696 bbox_x=222..799 max_gap_interior=445
+    q=[0.0017,0.0696,0.0351,0] yellow=0 mid_rows=82
+    Verdict: OK — VersionGate wraps in Center (frontend/lib/boot/version_gate.dart:59,
+    Column mainAxisSize.min at :68); centered layout, gap of 445 rows is the
+    banner-to-content whitespace. Matches the orchestrator cross-check
+    (span to y≈680–696).
+
+## Summary
+
+Sampled: 13 (3 named screen goldens, 5 gallery fixtures, 5 boot state goldens).
+OK: 13. FLAGGED: 0.
+- No fully blank golden (every file has content ink beyond the debug banner).
+- No suspicious confinement: every small bbox is explained by a natural-height
+  fixture (chip/menu/table/markdown/form, thread-row) or by a top-start
+  designed layout (shell slots, fallback card/container art) or by Center
+  (empty, version-gate).
+- No overflow stripes anywhere (yellow=0 in all 13; no alternating high-density
+  stripe rows).
+- The 3 top-aligned state goldens (error/offline/loading) are top-aligned by
+  the designed widget layout — code citations above; no doc prescribes
+  centering, so no fix needed and no golden refresh required.
