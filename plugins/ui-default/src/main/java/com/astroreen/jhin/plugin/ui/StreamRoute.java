@@ -19,11 +19,22 @@
  * <p>An unknown session id is a JSON {@code 404} carrying
  * {@code unknown_session} (never an SSE response); a malformed {@code fromSeq}
  * is a JSON {@code 400} whose body names {@code fromSeq}.
+ *
+ * <p><b>Sessions overview.</b> {@code GET /ui/stream/sessions-overview} is the
+ * live list stream: every {@code session_updated} event of every known session
+ * is translated into the sidebar-row {@code patch} frame and republished on
+ * the internal topic {@code ui/frames/sessions-overview}. One relay per
+ * session feeds it (the same forwarder pattern, one raw-topic subscription
+ * each); relays are attached for every session in the store when the overview
+ * stream is opened and whenever a per-session forwarder starts, so a sidebar
+ * stays live without a full refresh. The overview stream has no preamble — it
+ * broadcasts live updates only.
  */
 package com.astroreen.jhin.plugin.ui;
 
 import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.EventRecord;
+import com.astroreen.jhin.plugin.sessions.api.EventType;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
 import com.astroreen.jhin.sdk.http.HttpRequest;
@@ -48,10 +59,14 @@ final class StreamRoute {
     /** Topic prefix of the translated frames, internal to this plugin. */
     private static final String FRAMES_TOPIC_PREFIX = "ui/frames/";
 
+    /** The translated topic carrying the sidebar-row patch frames. */
+    static final String OVERVIEW_TOPIC = FRAMES_TOPIC_PREFIX + "sessions-overview";
+
     private final SessionStore store;
     private final EventLog events;
     private final StreamRegistry streams;
     private final Map<String, Forwarder> forwarders = new ConcurrentHashMap<>();
+    private final Map<String, OverviewRelay> relays = new ConcurrentHashMap<>();
 
     StreamRoute(SessionStore store, EventLog events, StreamRegistry streams) {
         this.store = store;
@@ -111,19 +126,48 @@ final class StreamRoute {
     }
 
     /**
-     * Closes every live forwarder. Called from the plugin shutdown hook; the
-     * subscriptions would otherwise outlive the plugin.
+     * Streams the sessions overview: live {@code session_updated} sidebar-row
+     * patch frames on {@link #OVERVIEW_TOPIC}. Every session known to the
+     * store gets a relay attached first, so sessions created since the last
+     * overview connection are covered too.
+     *
+     * @param req the request (used to scope the session scan by account)
+     * @return the SSE response
+     */
+    HttpResponse handleOverview(HttpRequest req) {
+        Optional<String> account = account(req);
+        List<Session> sessions = account.map(store::list).orElseGet(store::list);
+        for (Session session : sessions) {
+            relay(session.id());
+        }
+        return streams.sse(OVERVIEW_TOPIC, writer -> {
+        });
+    }
+
+    /**
+     * Closes every live forwarder and overview relay. Called from the plugin
+     * shutdown hook; the subscriptions would otherwise outlive the plugin.
      */
     void shutdown() {
         for (Forwarder forwarder : forwarders.values()) {
             forwarder.close();
         }
         forwarders.clear();
+        for (OverviewRelay relay : relays.values()) {
+            relay.close();
+        }
+        relays.clear();
     }
 
     /** The forwarder of one session, created on first use. */
     private Forwarder forwarder(String sessionId) {
+        relay(sessionId);
         return forwarders.computeIfAbsent(sessionId, Forwarder::new);
+    }
+
+    /** The overview relay of one session, created on first use. */
+    private OverviewRelay relay(String sessionId) {
+        return relays.computeIfAbsent(sessionId, OverviewRelay::new);
     }
 
     private static Optional<String> account(HttpRequest req) {
@@ -207,6 +251,37 @@ final class StreamRoute {
             Map<String, Object> frame = translator.frame(type, payloadJson, seq);
             streams.publish(FRAMES_TOPIC_PREFIX + sessionId,
                     new StreamEvent(EventFrames.FRAME_EVENT, frame));
+        }
+
+        private void close() {
+            subscription.close();
+        }
+    }
+
+    /**
+     * The per-session relay feeding the overview topic: every live
+     * {@code session_updated} event becomes one sidebar-row {@code patch}
+     * frame on {@link #OVERVIEW_TOPIC}; all other event kinds are ignored.
+     */
+    private final class OverviewRelay {
+
+        private final Subscription subscription;
+
+        private OverviewRelay(String sessionId) {
+            this.subscription = streams.subscribe(RAW_TOPIC_PREFIX + sessionId, this::onEvent);
+        }
+
+        private void onEvent(StreamEvent event) {
+            if (!(event.payload() instanceof Map<?, ?> body)) {
+                return;
+            }
+            if (!EventType.SESSION_UPDATED.wire().equals(String.valueOf(body.get("type")))) {
+                return;
+            }
+            Object payload = body.get("payload");
+            String payloadJson = (payload instanceof String text) ? text : Json.write(payload);
+            streams.publish(OVERVIEW_TOPIC, new StreamEvent(EventFrames.FRAME_EVENT,
+                    EventFrames.sessionUpdatedFrame(payloadJson)));
         }
 
         private void close() {

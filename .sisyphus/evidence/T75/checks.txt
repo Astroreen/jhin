@@ -1,0 +1,6 @@
+ok: agent, ui-default and sessions suites green (261 tests; transcript in test.txt)
+ok: kernel booted with sessions, llm, qa-mock-llm, agent and ui (kernel.log)
+ok: one scripted run finished (user_message -> message_end -> run_end in run-events.txt)
+ok: POST /sessions/c86c651b-27e2-43ec-97f0-539950094b48/title -> 200 with a 60-char title, stored in the database (title-transcript.txt)
+ok: session_updated patch frames: per-session stream, raw bodies and live sessions-overview (session-stream.txt, raw-events.txt, overview-sse.txt)
+ok: failure matrix: failing mock and absent provider both 503 with the title unchanged (llm-failure.txt)

@@ -101,6 +101,25 @@ class QaMockFactoryTest {
         assertThat(response.aiMessage().hasToolExecutionRequests()).isFalse();
     }
 
+    @Test
+    void failModelRefusesEveryCall() {
+        ChatModel model = factory.create(new ProviderConfig(null, QaMockFactory.FAIL_MODEL, null));
+
+        assertThatThrownBy(() -> model.chat(request("title this")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("scripted model failure");
+    }
+
+    @Test
+    void titleModelAnswersWithAnOverlongTitle() {
+        ChatModel model = factory.create(new ProviderConfig(null, QaMockFactory.TITLE_MODEL, null));
+
+        ChatResponse response = model.chat(request("title this"));
+
+        assertThat(response.aiMessage().text()).isEqualTo(QaMockTitleModel.TITLE);
+        assertThat(response.aiMessage().text()).hasSizeGreaterThan(60);
+    }
+
     private static ToolSpecification writeTool() {
         return ToolSpecification.builder().name(QaMockChatModel.TOOL_NAME).build();
     }

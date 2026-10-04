@@ -367,6 +367,19 @@ class SessionLifecycleServiceTest {
     }
 
     @Test
+    void regenerateTitleFailureLeavesTheTitleUnchanged() {
+        Session created = create("demo");
+        services.publish(TitleService.class, (TitleService) (session, history) -> {
+            throw new IllegalStateException("llm down");
+        });
+
+        assertThatThrownBy(() -> lifecycle.regenerateTitle(created.id()))
+                .isInstanceOf(LifecycleException.class);
+
+        assertThat(store.get(created.id()).orElseThrow().title()).isEqualTo("demo");
+    }
+
+    @Test
     void regenerateTitleFailsWhenTheServiceProducesNoTitle() {
         Session created = create("demo");
         services.publish(TitleService.class, (TitleService) (session, history) -> " ");

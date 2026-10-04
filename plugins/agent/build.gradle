@@ -39,6 +39,9 @@ dependencies {
     // interface. Stays out of the plugin jar.
     testImplementation 'com.astroreen:jhin-plugin-sessions:0.2.0'
     testImplementation 'com.astroreen:jhin-plugin-llm:0.2.0'
+    // The qa-mock-llm harness factory drives the TitleServiceImpl unit tests
+    // (title and fail scripts of the mock format). Test-only, like the fakes.
+    testImplementation 'com.astroreen:jhin-plugin-qa-mock-llm:0.2.0'
     // Same explicit LangChain4j coordinates for the test sources (the test
     // classpath does not inherit compileOnly); still not bundled anywhere.
     testCompileOnly platform('dev.langchain4j:langchain4j-bom:1.20.1')

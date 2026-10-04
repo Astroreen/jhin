@@ -1,0 +1,18 @@
+event: user_message
+data: {"seq":1,"ts":1791117064980,"type":"user_message","payload":"{\"text\":\"Fix the login bug in the auth module\"}"}
+
+event: run_start
+data: {"seq":2,"ts":1791117065027,"type":"run_start","payload":"{\"runId\":\"6badabc1-f7e7-4ade-867c-71be303319c4\"}"}
+
+event: message_start
+data: {"seq":3,"ts":1791117065057,"type":"message_start","payload":"{\"role\":\"assistant\"}"}
+
+event: text_delta
+data: {"seq":4,"ts":1791117065079,"type":"text_delta","payload":"{\"text\":\"Fix the authentication flow across the gateway, the proxy and every dependent microservice\"}"}
+
+event: message_end
+data: {"seq":5,"ts":1791117065098,"type":"message_end","payload":"{\"text\":\"Fix the authentication flow across the gateway, the proxy and every dependent microservice\"}"}
+
+event: run_end
+data: {"seq":6,"ts":1791117065118,"type":"run_end","payload":"{\"runId\":\"6badabc1-f7e7-4ade-867c-71be303319c4\"}"}
+

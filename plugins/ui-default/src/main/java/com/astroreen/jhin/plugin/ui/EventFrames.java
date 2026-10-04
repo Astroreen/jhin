@@ -19,6 +19,9 @@
  *       {@code structured} payload when present ({@code {kind:"card", title,
  *       rows:[{label, value}]}} and {@code {kind:"image", …}}), else from the
  *       text content;</li>
+ *   <li>{@code session_updated} — the sidebar-row {@code patch} frame
+ *       {@code {"patch":{"id":"session-row:<sessionId>","props":{…}}}} whose
+ *       props carry the title and the lifecycle fields of the row;</li>
  *   <li>{@code error} — a danger-styled {@code card} node (red text child).</li>
  * </ul>
  *
@@ -78,6 +81,7 @@ final class EventFrames {
                 case "run_end" -> node(textNode("ev-" + seq, "Run finished", "caption", false, null));
                 case "tool_use" -> node(toolUseNode(payload, seq));
                 case "tool_result" -> node(toolResultNode(payload, seq));
+                case "session_updated" -> sessionUpdatedFrame(payloadJson);
                 case "error" -> node(errorNode(payload, seq));
                 default -> node(textNode("ev-" + seq, "Event: " + wireType, "caption", false, null));
             };
@@ -162,9 +166,44 @@ final class EventFrames {
             case "run_end" -> "Run finished";
             case "tool_use" -> "Tool: " + payload.getOrDefault("name", "?");
             case "tool_result" -> "Result: " + payload.getOrDefault("name", "?");
+            case "session_updated" -> "Session updated";
             case "error" -> "Error: " + payload.getOrDefault("message", "");
             default -> null;
         };
+    }
+
+    /** The session fields a sidebar row renders and orders itself by. */
+    private static final List<String> ROW_PROPS = List.of(
+            "title", "workdir", "status", "pinned", "pinnedOrder",
+            "settledAt", "snoozedUntil", "archivedAt", "settledReason", "sortOrder");
+
+    /**
+     * The sidebar-row id one {@code session_updated} frame patches.
+     *
+     * @param sessionId the updated session id
+     * @return {@code session-row:<sessionId>}
+     */
+    static String sessionRowId(String sessionId) {
+        return "session-row:" + sessionId;
+    }
+
+    /**
+     * The {@code session_updated} frame: a {@code patch} against the sidebar
+     * row of the updated session, carrying the title and lifecycle props of
+     * {@link #ROW_PROPS} (absent fields become {@code null}, so cleared
+     * lifecycle state resets the row).
+     *
+     * @param payloadJson the {@code session_updated} payload: the updated
+     *                    session as JSON
+     * @return the {@code {patch:…}} frame
+     */
+    static Map<String, Object> sessionUpdatedFrame(String payloadJson) {
+        Map<String, Object> payload = parse(payloadJson);
+        Map<String, Object> props = new LinkedHashMap<>();
+        for (String key : ROW_PROPS) {
+            props.put(key, payload.get(key));
+        }
+        return patch(sessionRowId(String.valueOf(payload.getOrDefault("id", ""))), props);
     }
 
     /** The {@code {node:…}} frame wrapper. */

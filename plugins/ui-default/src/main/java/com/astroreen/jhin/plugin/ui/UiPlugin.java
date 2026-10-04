@@ -1,7 +1,7 @@
 /**
  * Entry point of the default SDUI plugin: resolves the session services of
  * {@code jhin.sessions}, detects which optional integrations are loaded,
- * assembles the default screens, the action table and the five routes and
+ * assembles the default screens, the action table and the six routes and
  * registers them. {@code GET /_jhin/bootstrap} replaces the kernel fallback on
  * the same path silently (a plugin route always supersedes a fallback).
  *
@@ -97,6 +97,7 @@ public final class UiPlugin implements JhinPlugin {
         ctx.http().route(new RouteSpec("POST", "/ui/action/search", search::handle));
         ctx.http().route(new RouteSpec("POST", "/ui/action/{name}", action::handle));
         ctx.http().route(new RouteSpec("GET", "/ui/stream/session/{id}", streamRoute::handle));
+        ctx.http().route(new RouteSpec("GET", "/ui/stream/sessions-overview", streamRoute::handleOverview));
         ctx.log().info("ui plugin started: bootstrap, screen, action, search and stream routes registered");
     }
 

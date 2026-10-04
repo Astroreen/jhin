@@ -1,0 +1,49 @@
+=== create-fail-provider ===
+POST /providers
+req:  {"format":"mock","model":"fail","apiKey":"qa"}
+status: 201
+resp: {"id":"88554662-d7b1-43bb-bbb0-74796ff5759c","accountId":"local","format":"mock","model":"fail","baseUrl":null,"createdAt":1791117081083}
+assert: status=201, jq '.id | length > 0'
+assert: ok
+=== create-fail-session ===
+POST /sessions
+req:  {"title":"keep-me","workdir":"/tmp/t75","providerId":"88554662-d7b1-43bb-bbb0-74796ff5759c"}
+status: 201
+resp: {"id":"fac947f2-dbc0-45fc-a7ba-1779f7d09ba0","accountId":"local","title":"keep-me","workdir":"/tmp/t75","model":null,"providerId":"88554662-d7b1-43bb-bbb0-74796ff5759c","status":"active","createdAt":1791117081121,"updatedAt":1791117081141,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=201, jq '.id | length > 0'
+assert: ok
+=== title-on-failing-mock ===
+POST /sessions/fac947f2-dbc0-45fc-a7ba-1779f7d09ba0/title
+req:  
+status: 503
+resp: {"error":"title_service_unavailable","message":"the title service failed to produce a title"}
+assert: status=503, jq '.error == "title_service_unavailable"'
+assert: ok
+=== title-unchanged ===
+GET /sessions/fac947f2-dbc0-45fc-a7ba-1779f7d09ba0
+req:  
+status: 200
+resp: {"id":"fac947f2-dbc0-45fc-a7ba-1779f7d09ba0","accountId":"local","title":"keep-me","workdir":"/tmp/t75","model":null,"providerId":"88554662-d7b1-43bb-bbb0-74796ff5759c","status":"active","createdAt":1791117081121,"updatedAt":1791117081141,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=200, jq '.title == "keep-me"'
+assert: ok
+=== create-session-without-provider ===
+POST /sessions
+req:  {"title":"plain-title","workdir":"/tmp/t75"}
+status: 201
+resp: {"id":"44416870-7433-460d-b3e9-7b5c700f991a","accountId":"local","title":"plain-title","workdir":"/tmp/t75","model":null,"providerId":null,"status":"active","createdAt":1791117081190,"updatedAt":1791117081190,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=201, jq '.id | length > 0'
+assert: ok
+=== title-without-provider ===
+POST /sessions/44416870-7433-460d-b3e9-7b5c700f991a/title
+req:  
+status: 503
+resp: {"error":"title_service_unavailable","message":"the title service failed to produce a title"}
+assert: status=503, jq '.error == "title_service_unavailable"'
+assert: ok
+=== title-unchanged-2 ===
+GET /sessions/44416870-7433-460d-b3e9-7b5c700f991a
+req:  
+status: 200
+resp: {"id":"44416870-7433-460d-b3e9-7b5c700f991a","accountId":"local","title":"plain-title","workdir":"/tmp/t75","model":null,"providerId":null,"status":"active","createdAt":1791117081190,"updatedAt":1791117081190,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=200, jq '.title == "plain-title"'
+assert: ok

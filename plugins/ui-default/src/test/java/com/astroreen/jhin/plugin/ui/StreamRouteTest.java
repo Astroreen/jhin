@@ -220,6 +220,55 @@ class StreamRouteTest {
         assertThat(nodeOf(frames.get(1)).get("text")).isEqualTo("three");
     }
 
+    @Test
+    void sessionUpdatedReplayBecomesARowPatchFrame() throws Exception {
+        eventLog.append(sessionId, EventType.SESSION_UPDATED, Json.write(store.get(sessionId).orElseThrow()));
+
+        open("");
+        List<Map<String, Object>> frames = lastPreamble();
+
+        assertThat(frames).hasSize(1);
+        assertThat(patchOf(frames.get(0)).get("id")).isEqualTo("session-row:" + sessionId);
+        Map<String, Object> props = castMap(patchOf(frames.get(0)).get("props"));
+        assertThat(props).containsEntry("title", "demo");
+        assertThat(props).containsKey("pinned");
+        assertThat(props).containsKey("settledAt");
+    }
+
+    @Test
+    void liveSessionUpdatedBecomesARowPatchFrame() {
+        open("");
+
+        eventLog.append(sessionId, EventType.SESSION_UPDATED, Json.write(store.get(sessionId).orElseThrow()));
+
+        List<com.astroreen.jhin.sdk.stream.StreamEvent> published =
+                streams.publishedOn("ui/frames/" + sessionId);
+        assertThat(published).hasSize(1);
+        Map<String, Object> frame = castMap(published.get(0).payload());
+        assertThat(patchOf(frame).get("id")).isEqualTo("session-row:" + sessionId);
+        assertThat(castMap(patchOf(frame).get("props"))).containsEntry("title", "demo");
+    }
+
+    @Test
+    void overviewStreamBroadcastsRowPatchesOnly() {
+        HttpResponse response = route.handleOverview(new FakeHttpRequest("GET",
+                "/ui/stream/sessions-overview", Map.of(), Map.of(), ""));
+        assertThat(response.status()).isEqualTo(200);
+        assertThat(streams.sseRequests().get(streams.sseRequests().size() - 1).topic())
+                .isEqualTo("ui/frames/sessions-overview");
+
+        eventLog.append(sessionId, EventType.SESSION_UPDATED, Json.write(store.get(sessionId).orElseThrow()));
+        eventLog.append(sessionId, EventType.USER_MESSAGE, json("text", "ignored"));
+
+        List<com.astroreen.jhin.sdk.stream.StreamEvent> published =
+                streams.publishedOn("ui/frames/sessions-overview");
+        assertThat(published).hasSize(1);
+        Map<String, Object> frame = castMap(published.get(0).payload());
+        assertThat(published.get(0).type()).isEqualTo(EventFrames.FRAME_EVENT);
+        assertThat(patchOf(frame).get("id")).isEqualTo("session-row:" + sessionId);
+        assertThat(castMap(patchOf(frame).get("props"))).containsEntry("title", "demo");
+    }
+
     /** Opens the stream endpoint for the session under test. */
     private HttpResponse open(String query) {
         return route.handle(request(sessionId, query));

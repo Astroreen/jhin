@@ -1,0 +1,21 @@
+event: frame
+data: {"node":{"type":"text","text":"Fix the login bug in the auth module","id":"ev-1","style":"body","bold":true}}
+
+event: frame
+data: {"node":{"type":"text","text":"Run started","id":"ev-2","style":"caption"}}
+
+event: frame
+data: {"node":{"type":"text","text":"","id":"msg-3","style":"body"}}
+
+event: frame
+data: {"patch":{"id":"msg-3","props":{"text":"Fix the authentication flow across the gateway, the proxy and every dependent microservice"}}}
+
+event: frame
+data: {"patch":{"id":"msg-3","props":{"text":"Fix the authentication flow across the gateway, the proxy and every dependent microservice"}}}
+
+event: frame
+data: {"node":{"type":"text","text":"Run finished","id":"ev-6","style":"caption"}}
+
+event: frame
+data: {"patch":{"id":"session-row:c86c651b-27e2-43ec-97f0-539950094b48","props":{"title":"Fix the authentication flow across the gateway, the proxy an","workdir":"/tmp/t75","status":"active","pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"settledReason":null,"sortOrder":null}}}
+

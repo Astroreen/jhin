@@ -249,6 +249,20 @@ class SessionLifecycleRoutesTest {
         assertThat(Json.read(response.body(), Session.class).title()).isEqualTo("retitled");
     }
 
+    @Test
+    void regenerateTitleAnswers503WhenTheTitleServiceFailsAndKeepsTheTitle() {
+        Session created = create("demo");
+        services.publish(TitleService.class, (TitleService) (session, history) -> {
+            throw new IllegalStateException("llm down");
+        });
+
+        HttpResponse response = post(created.id() + "/title", Map.of("id", created.id()), "");
+
+        assertThat(response.status()).isEqualTo(503);
+        assertThat(errorCode(response)).isEqualTo("title_service_unavailable");
+        assertThat(store.get(created.id()).orElseThrow().title()).isEqualTo("demo");
+    }
+
     private Session create(String title) {
         return store.create(title, "/tmp/" + title);
     }

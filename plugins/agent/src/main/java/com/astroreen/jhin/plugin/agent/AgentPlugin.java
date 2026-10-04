@@ -12,7 +12,10 @@
  * sessions, llm and tool SPI services are resolved through the cross-plugin
  * service registry; a missing dependency fails the start with a clear error.
  * The run lifecycle is published as {@link RunService} so a user-interface
- * plugin can start and cancel runs with the route semantics.
+ * plugin can start and cancel runs with the route semantics, and session
+ * title regeneration is published as the sessions {@code TitleService}
+ * ({@link TitleServiceImpl}) so {@code POST /sessions/{id}/title} flows
+ * through the configured LLM provider.
  */
 package com.astroreen.jhin.plugin.agent;
 
@@ -24,6 +27,7 @@ import com.astroreen.jhin.plugin.agent.api.ToolResultTransformer;
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
 import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
+import com.astroreen.jhin.plugin.sessions.api.TitleService;
 import com.astroreen.jhin.sdk.JhinPlugin;
 import com.astroreen.jhin.sdk.PluginContext;
 import com.astroreen.jhin.sdk.PluginException;
@@ -57,6 +61,7 @@ public class AgentPlugin implements JhinPlugin {
         AgentLoop loop = new AgentLoop(events, prompts, conversations, invoker, providers, ctx.log());
         RunServiceImpl runs = new RunServiceImpl(ctx.db(), events, ctx.streams(), loop::run, ctx.log());
         ctx.services().publish(RunService.class, runs);
+        ctx.services().publish(TitleService.class, new TitleServiceImpl(providers, ctx.log()));
         new RunRecovery(ctx.db(), ctx.log()).recover();
         MessageRoutes routes = new MessageRoutes(sessions, runs);
         ctx.http().route(new RouteSpec("POST", "/sessions/{id}/messages", routes::messages));
