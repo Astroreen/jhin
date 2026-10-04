@@ -1,0 +1,30 @@
+=== create ===
+POST /sessions
+req:  {"title":"t73-no-entry","workdir":"/tmp/t73"}
+status: 201
+resp: {"id":"c9deeb70-372c-405b-b83b-ac90662198d1","accountId":"local","title":"t73-no-entry","workdir":"/tmp/t73","model":null,"providerId":null,"status":"active","createdAt":1791113551199,"updatedAt":1791113551199,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=201, jq '.id | length > 0'
+assert: ok
+=== session-before ===
+GET /sessions/c9deeb70-372c-405b-b83b-ac90662198d1
+status: 200
+resp: {"id":"c9deeb70-372c-405b-b83b-ac90662198d1","accountId":"local","title":"t73-no-entry","workdir":"/tmp/t73","model":null,"providerId":null,"status":"active","createdAt":1791113551199,"updatedAt":1791113551199,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=200, jq '.settledAt == null and .pinned == false and .pinnedOrder == null'
+assert: ok
+=== undo-empty-journal ===
+POST /ui/action/undo
+req:  {"action":"undo","payload":{}}
+status: 200
+resp: {"client":[{"op":"toast","text":"Nothing to undo","style":"error"}]}
+assert: status=200, jq '(.client | length) == 1 and .client[0].op == "toast" and .client[0].text == "Nothing to undo" and .client[0].style == "error"'
+assert: ok
+=== session-after-unchanged ===
+GET /sessions/c9deeb70-372c-405b-b83b-ac90662198d1
+status: 200
+resp: {"id":"c9deeb70-372c-405b-b83b-ac90662198d1","accountId":"local","title":"t73-no-entry","workdir":"/tmp/t73","model":null,"providerId":null,"status":"active","createdAt":1791113551199,"updatedAt":1791113551199,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=200, jq '.settledAt == null and .pinned == false and .pinnedOrder == null'
+assert: ok
+=== state-comparison ===
+before: {"id":"c9deeb70-372c-405b-b83b-ac90662198d1","accountId":"local","title":"t73-no-entry","workdir":"/tmp/t73","model":null,"providerId":null,"status":"active","createdAt":1791113551199,"updatedAt":1791113551199,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+after:  {"id":"c9deeb70-372c-405b-b83b-ac90662198d1","accountId":"local","title":"t73-no-entry","workdir":"/tmp/t73","model":null,"providerId":null,"status":"active","createdAt":1791113551199,"updatedAt":1791113551199,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: before == after

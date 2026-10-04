@@ -3,7 +3,7 @@
  * action, registered always and degrading to an explanatory toast when the
  * plugin that would serve it is not loaded.
  *
- * <p>Names, exhaustively (11):
+ * <p>Names, exhaustively (12):
  * <ul>
  *   <li>{@code enroll} — redeem an enrollment code, answer
  *       {@code [setToken, navigate:sessions]} (jhin.security);</li>
@@ -15,6 +15,9 @@
  *   <li>{@code delete-provider} — remove one LLM provider (jhin.llm);</li>
  *   <li>{@code reload} — answer {@code [toast, reloadBootstrap]}
  *       (always; the reload button only shows while jhin.reload is loaded);</li>
+ *   <li>{@code undo} — revert the last lifecycle action inside the 5-second
+ *       window, answer {@code [toast "Undone", refresh]} or one
+ *       {@code "Nothing to undo"} toast (jhin.sessions, always);</li>
  *   <li>{@code keybind-edit} / {@code keybind-save} / {@code keybind-reset}
  *       / {@code keybind-restore} — the T70 keybinding surface: the rebind
  *       sheet and the feedback directives; the user keymap itself is
@@ -30,6 +33,7 @@ import com.astroreen.jhin.plugin.agent.api.RunService;
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
 import com.astroreen.jhin.plugin.security.api.EnrollmentService;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
+import com.astroreen.jhin.plugin.sessions.api.UndoJournal;
 import com.astroreen.jhin.sdk.ServiceRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,6 +63,7 @@ final class Actions {
         handlers.put("create-provider", createProvider(services, features));
         handlers.put("delete-provider", deleteProvider(services, features));
         handlers.put("reload", ReloadAction::handle);
+        handlers.put("undo", undo(services));
         handlers.put("keybind-edit", KeybindActions::edit);
         handlers.put("keybind-save", KeybindActions::save);
         handlers.put("keybind-reset", KeybindActions::reset);
@@ -134,5 +139,17 @@ final class Actions {
                         new DeleteProviderAction(service)::handle)
                 .orElseGet(() -> (req, payload) -> ActionSupport.error(
                         "The provider registry is unavailable."));
+    }
+
+    /**
+     * The undo handler, or its absent-journal stand-in. Without the undo
+     * journal there is nothing to undo, so the answer is the client's own
+     * fallback wording instead of an explanation.
+     */
+    private static ActionRoute.ActionHandler undo(ServiceRegistry services) {
+        Optional<UndoJournal> journal = services.find(UndoJournal.class);
+        return journal
+                .map(service -> (ActionRoute.ActionHandler) new UndoAction(service)::handle)
+                .orElseGet(() -> (req, payload) -> ActionSupport.error("Nothing to undo"));
     }
 }

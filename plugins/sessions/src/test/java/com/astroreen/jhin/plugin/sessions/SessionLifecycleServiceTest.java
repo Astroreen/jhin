@@ -35,6 +35,7 @@ class SessionLifecycleServiceTest {
     private EventLog eventLog;
     private RecordingStreamRegistry streams;
     private FakeServiceRegistry services;
+    private UndoJournalImpl journal;
     private SessionLifecycleServiceImpl lifecycle;
 
     @BeforeEach
@@ -45,7 +46,8 @@ class SessionLifecycleServiceTest {
         streams = new RecordingStreamRegistry();
         eventLog = new EventLogImpl(db, streams);
         services = new FakeServiceRegistry();
-        lifecycle = new SessionLifecycleServiceImpl(store, eventLog, services);
+        journal = new UndoJournalImpl(store, eventLog, 5000);
+        lifecycle = new SessionLifecycleServiceImpl(store, eventLog, services, journal);
     }
 
     @AfterEach
@@ -374,7 +376,7 @@ class SessionLifecycleServiceTest {
                 .isEqualTo(Failure.TITLE_UNAVAILABLE);
 
         services = new FakeServiceRegistry();
-        lifecycle = new SessionLifecycleServiceImpl(store, eventLog, services);
+        lifecycle = new SessionLifecycleServiceImpl(store, eventLog, services, journal);
         services.publish(TitleService.class, (TitleService) (session, history) -> {
             throw new IllegalStateException("llm down");
         });
@@ -400,6 +402,60 @@ class SessionLifecycleServiceTest {
                 .isInstanceOf(LifecycleException.class)
                 .extracting(e -> ((LifecycleException) e).failure())
                 .isEqualTo(Failure.NOT_FOUND);
+    }
+
+    @Test
+    void settleIsUndoableThroughTheJournal() {
+        Session created = create("demo");
+        lifecycle.pin(created.id(), 2);
+        Session pinned = current(created.id());
+
+        Session settled = lifecycle.settle(created.id(), SettleReason.MANUAL);
+        Session restored = journal.undo(settled.id()).orElseThrow();
+
+        assertThat(settled.settledAt()).isNotNull();
+        assertThat(restored).usingRecursiveComparison()
+                .ignoringFields("updatedAt")
+                .isEqualTo(pinned);
+        assertThat(restored.settledAt()).isNull();
+        assertThat(restored.pinned()).isTrue();
+        assertThat(restored.pinnedOrder()).isEqualTo(2);
+    }
+
+    @Test
+    void reorderIsUndoablePerSessionClearingTheSortOrder() {
+        Session first = create("first");
+        Session second = create("second");
+
+        lifecycle.reorder(List.of(first.id(), second.id()));
+        Session restored = journal.undo(first.id()).orElseThrow();
+
+        assertThat(restored.sortOrder()).isNull();
+        assertThat(restored.pinnedOrder()).isNull();
+        assertThat(current(second.id()).sortOrder()).isEqualTo(1);
+    }
+
+    @Test
+    void noOpSuccessesAreNotRecordedInTheJournal() {
+        Session created = create("demo");
+
+        lifecycle.wake(created.id());
+        lifecycle.unpin(created.id());
+        lifecycle.setAutoSettle(created.id(), true);
+
+        assertThat(journal.undo(created.id())).isEmpty();
+        assertThat(journal.undoLatest()).isEmpty();
+    }
+
+    @Test
+    void regenerateTitleIsNotRecordedInTheJournal() {
+        Session created = create("demo");
+        services.publish(TitleService.class, (TitleService) (session, history) -> "Fresh title");
+
+        Session retitled = lifecycle.regenerateTitle(created.id());
+
+        assertThat(retitled.title()).isEqualTo("Fresh title");
+        assertThat(journal.undo(created.id())).isEmpty();
     }
 
     private Session create(String title) {

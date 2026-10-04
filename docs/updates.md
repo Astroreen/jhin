@@ -146,7 +146,10 @@ successful commit.
 
 Plugin DB migrations (`MigrationSpec`, strictly increasing versions,
 prefixed tables) keep doing their job for server-side schema changes. Nothing
-new is needed there; this document covers client-persisted state only.
+new is needed there; this document covers client-persisted state only. One
+server-side note: the sessions undo journal (the 5-second undo window) is
+in-memory and therefore assumes a single host instance — a second instance
+cannot see the first one's entries.
 
 ## 8. Build note: icon registry and tree-shaking
 

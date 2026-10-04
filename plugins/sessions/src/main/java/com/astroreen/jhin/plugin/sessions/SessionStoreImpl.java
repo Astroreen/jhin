@@ -212,7 +212,8 @@ final class SessionStoreImpl implements SessionStore {
         Long archivedAt = applyOne(patch.archivedAt(), base.archivedAt(),
                 clears.contains(ClearableField.ARCHIVED_AT));
         boolean autoSettle = patch.autoSettle() != null ? patch.autoSettle() : base.autoSettle();
-        Integer sortOrder = patch.sortOrder() != null ? patch.sortOrder() : base.sortOrder();
+        Integer sortOrder = applyOne(patch.sortOrder(), base.sortOrder(),
+                clears.contains(ClearableField.SORT_ORDER));
         String settledReason = applyOne(patch.settledReason(), base.settledReason(),
                 clears.contains(ClearableField.SETTLED_REASON));
         boolean autoSettleSuppressed = patch.autoSettleSuppressed() != null
@@ -271,6 +272,7 @@ final class SessionStoreImpl implements SessionStore {
         rejectConflict(patch.settledReason() != null, clears.contains(ClearableField.SETTLED_REASON), "settledReason");
         rejectConflict(patch.snoozedUntil() != null, clears.contains(ClearableField.SNOOZED_UNTIL), "snoozedUntil");
         rejectConflict(patch.archivedAt() != null, clears.contains(ClearableField.ARCHIVED_AT), "archivedAt");
+        rejectConflict(patch.sortOrder() != null, clears.contains(ClearableField.SORT_ORDER), "sortOrder");
     }
 
     private static void rejectConflict(boolean set, boolean clear, String field) {

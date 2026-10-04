@@ -1,7 +1,8 @@
 /**
  * Entry point of the sessions plugin: migrates the schema, publishes
- * {@link SessionStore}, {@link EventLog} and {@link SessionLifecycleService} to
- * the cross-plugin service registry and registers the REST and SSE routes.
+ * {@link SessionStore}, {@link EventLog}, {@link SessionLifecycleService} and
+ * {@link UndoJournal} to the cross-plugin service registry and registers the
+ * REST and SSE routes.
  *
  * <p>Routes: {@code GET/POST /sessions}, {@code GET/PATCH/DELETE /sessions/{id}}
  * (see {@link SessionRoutes}), the lifecycle actions
@@ -19,16 +20,20 @@ package com.astroreen.jhin.plugin.sessions;
 import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.SessionLifecycleService;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
+import com.astroreen.jhin.plugin.sessions.api.UndoJournal;
 import com.astroreen.jhin.sdk.JhinPlugin;
 import com.astroreen.jhin.sdk.PluginContext;
 import com.astroreen.jhin.sdk.http.RouteSpec;
 
 public final class SessionsPlugin implements JhinPlugin {
 
+    /** The default undo window: 5 seconds, as the "Undo for 5 seconds" UX. */
+    private static final int DEFAULT_UNDO_WINDOW_MS = 5000;
+
     /**
      * Applies the schema migrations, publishes the session store, the event
-     * log and the lifecycle service and registers the session, lifecycle and
-     * event routes.
+     * log, the lifecycle service and the undo journal and registers the
+     * session, lifecycle and event routes.
      *
      * @param ctx this plugin's context, valid for the whole plugin lifetime
      */
@@ -37,10 +42,14 @@ public final class SessionsPlugin implements JhinPlugin {
         ctx.db().migrate(Migrations.all());
         SessionStore store = new SessionStoreImpl(ctx.db());
         EventLog eventLog = new EventLogImpl(ctx.db(), ctx.streams());
-        SessionLifecycleService lifecycle = new SessionLifecycleServiceImpl(store, eventLog, ctx.services());
+        UndoJournal journal = new UndoJournalImpl(store, eventLog,
+                ctx.config().getInt("undoWindowMs", DEFAULT_UNDO_WINDOW_MS));
+        SessionLifecycleService lifecycle =
+                new SessionLifecycleServiceImpl(store, eventLog, ctx.services(), journal);
         ctx.services().publish(SessionStore.class, store);
         ctx.services().publish(EventLog.class, eventLog);
         ctx.services().publish(SessionLifecycleService.class, lifecycle);
+        ctx.services().publish(UndoJournal.class, journal);
         SessionRoutes sessionRoutes = new SessionRoutes(store, lifecycle);
         EventRoutes eventRoutes = new EventRoutes(store, eventLog, ctx.streams());
         ctx.http().route(new RouteSpec("GET", "/sessions", sessionRoutes::list));
@@ -64,6 +73,6 @@ public final class SessionsPlugin implements JhinPlugin {
             ctx.http().route(new RouteSpec("POST", "/sessions/{id}/events", eventRoutes::appendOne));
             ctx.log().warn("QA helper enabled (JHIN_SESSIONS_QA): POST /sessions/{id}/events appends one event");
         }
-        ctx.log().info("sessions plugin started: store, event log, lifecycle service and routes published");
+        ctx.log().info("sessions plugin started: store, event log, lifecycle service, undo journal and routes published");
     }
 }

@@ -1,0 +1,4 @@
+ok: :jhin-plugin-sessions:test and :jhin-plugin-ui-default:test green (210 tests; transcript in test.txt)
+ok: kernel booted with jhin.sessions + jhin.ui-kit + jhin.ui (kernel.log)
+ok: undo on an empty journal answers nothing-to-undo and mutates no state (no-entry.txt)
+ok: undo inside 5 s restored settled_at/pinned/pinned_order exactly; after 6 s nothing-to-undo and no mutation (undo-transcript.txt)

@@ -9,6 +9,11 @@
  * on a session without a snooze and {@code unpin} on a session that is already
  * fully unpinned — return the unchanged session and emit nothing.
  *
+ * <p>Every mutating operation is wrapped in one {@link UndoJournal} record of
+ * the pre-operation snapshot, so the short undo window can put the session
+ * back exactly as it was. The no-op successes and {@code regenerateTitle}
+ * (not undoable) are not recorded.
+ *
  * <p>Archived sessions are sealed: every operation except {@code restore} is
  * rejected with {@link LifecycleException.Failure#INVALID_TRANSITION}. The
  * rest of the matrix lives on {@link SessionLifecycleService}.
@@ -26,11 +31,15 @@ import com.astroreen.jhin.plugin.sessions.api.SessionStore.ClearableField;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore.Patch;
 import com.astroreen.jhin.plugin.sessions.api.SettleReason;
 import com.astroreen.jhin.plugin.sessions.api.TitleService;
+import com.astroreen.jhin.plugin.sessions.api.UndoJournal;
+import com.astroreen.jhin.plugin.sessions.api.UndoJournal.OpKind;
 import com.astroreen.jhin.sdk.ServiceRegistry;
 import com.astroreen.jhin.sdk.json.Json;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 final class SessionLifecycleServiceImpl implements SessionLifecycleService {
@@ -38,11 +47,14 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
     private final SessionStore store;
     private final EventLog eventLog;
     private final ServiceRegistry services;
+    private final UndoJournal journal;
 
-    SessionLifecycleServiceImpl(SessionStore store, EventLog eventLog, ServiceRegistry services) {
+    SessionLifecycleServiceImpl(SessionStore store, EventLog eventLog,
+            ServiceRegistry services, UndoJournal journal) {
         this.store = store;
         this.eventLog = eventLog;
         this.services = services;
+        this.journal = journal;
     }
 
     @Override
@@ -55,6 +67,7 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
             throw new LifecycleException(Failure.INVALID_TRANSITION,
                     "session " + id + " is already settled");
         }
+        journal.record(id, OpKind.SETTLE, current);
         Patch patch = new Patch(null, null, null, null, null,
                 false, null, System.currentTimeMillis(), null, null,
                 null, null, reason.wire(), null);
@@ -69,6 +82,7 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
             throw new LifecycleException(Failure.INVALID_TRANSITION,
                     "session " + id + " is not settled");
         }
+        journal.record(id, OpKind.UNSETTLE, current);
         Patch patch = new Patch(null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, true);
@@ -78,7 +92,8 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
 
     @Override
     public Session pin(String id, Integer order) {
-        requireOpen(id);
+        Session current = requireOpen(id);
+        journal.record(id, OpKind.PIN, current);
         Patch patch = new Patch(null, null, null, null, null,
                 true, order, null, null, null,
                 null, null, null, null);
@@ -91,6 +106,7 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
         if (!current.pinned() && current.pinnedOrder() == null) {
             return current;
         }
+        journal.record(id, OpKind.UNPIN, current);
         Patch patch = new Patch(null, null, null, null, null,
                 false, null, null, null, null,
                 null, null, null, null);
@@ -99,10 +115,11 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
 
     @Override
     public Session snooze(String id, long untilTs) {
-        requireOpen(id);
+        Session current = requireOpen(id);
         if (untilTs <= System.currentTimeMillis()) {
             throw new IllegalArgumentException("snoozedUntil must be in the future");
         }
+        journal.record(id, OpKind.SNOOZE, current);
         Patch patch = new Patch(null, null, null, null, null,
                 null, null, null, untilTs, null,
                 null, null, null, null);
@@ -123,6 +140,7 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
         if (current.snoozedUntil() == null) {
             return current;
         }
+        journal.record(id, OpKind.WAKE, current);
         Patch patch = new Patch(null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, null);
@@ -131,7 +149,8 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
 
     @Override
     public Session archive(String id) {
-        requireOpen(id);
+        Session current = requireOpen(id);
+        journal.record(id, OpKind.ARCHIVE, current);
         Patch patch = new Patch(null, null, null, null, null,
                 null, null, null, null, System.currentTimeMillis(),
                 null, null, null, null);
@@ -145,6 +164,7 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
             throw new LifecycleException(Failure.INVALID_TRANSITION,
                     "session " + id + " is not archived");
         }
+        journal.record(id, OpKind.RESTORE, current);
         Patch patch = new Patch(null, null, null, null, null,
                 null, null, null, null, null,
                 null, null, null, null);
@@ -154,16 +174,19 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
     @Override
     public List<Session> reorder(List<String> ids) {
         List<String> order = validateOrder(ids);
+        Map<String, Session> before = new LinkedHashMap<>();
         for (String id : order) {
             Session session = require(id);
             if (session.archivedAt() != null) {
                 throw new LifecycleException(Failure.INVALID_TRANSITION,
                         "session " + id + " is archived");
             }
+            before.put(id, session);
         }
         List<Session> updated = new ArrayList<>();
         for (int i = 0; i < order.size(); i++) {
             String id = order.get(i);
+            journal.record(id, OpKind.REORDER, before.get(id));
             Patch patch = new Patch(null, null, null, null, null,
                     null, i, null, null, null,
                     null, i, null, null);
@@ -178,6 +201,7 @@ final class SessionLifecycleServiceImpl implements SessionLifecycleService {
         if (current.autoSettle() == enabled) {
             return current;
         }
+        journal.record(id, OpKind.SET_AUTO_SETTLE, current);
         Patch patch = new Patch(null, null, null, null, null,
                 null, null, null, null, null,
                 enabled, null, null, null);

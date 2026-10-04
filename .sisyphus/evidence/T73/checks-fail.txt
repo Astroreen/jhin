@@ -1,0 +1,1 @@
+FAIL: deliberately wrong expectation: undo with an empty journal answered Undone (see .sisyphus/evidence/T73/undo-fail.txt)

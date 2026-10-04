@@ -43,7 +43,8 @@ class SessionLifecycleRoutesTest {
         streams = new RecordingStreamRegistry();
         services = new FakeServiceRegistry();
         lifecycle = new SessionLifecycleServiceImpl(
-                store, new EventLogImpl(db, streams), services);
+                store, new EventLogImpl(db, streams), services,
+                new UndoJournalImpl(store, new EventLogImpl(db, streams), 5000));
         routes = new SessionRoutes(store, lifecycle);
     }
 

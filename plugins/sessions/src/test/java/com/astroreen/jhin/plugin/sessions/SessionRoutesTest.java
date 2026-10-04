@@ -38,7 +38,8 @@ class SessionRoutesTest {
         db.migrate(Migrations.all());
         store = new SessionStoreImpl(db);
         SessionLifecycleServiceImpl lifecycle = new SessionLifecycleServiceImpl(
-                store, new EventLogImpl(db, new RecordingStreamRegistry()), new FakeServiceRegistry());
+                store, new EventLogImpl(db, new RecordingStreamRegistry()), new FakeServiceRegistry(),
+                new UndoJournalImpl(store, new EventLogImpl(db, new RecordingStreamRegistry()), 5000));
         routes = new SessionRoutes(store, lifecycle);
     }
 

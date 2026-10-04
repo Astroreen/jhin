@@ -36,13 +36,14 @@ class ActionsTest {
     private SessionStore store;
     private FakeRunService runs;
     private FakeProviderRegistry providers;
+    private FakePluginContext.FakeServices services;
     private Map<String, ActionRoute.ActionHandler> handlers;
 
     @BeforeEach
     void setUp() {
         db = TestDbAccess.open(tmp);
         RecordingStreamRegistry streams = new RecordingStreamRegistry();
-        FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
+        services = new FakePluginContext.FakeServices();
         new com.astroreen.jhin.plugin.sessions.SessionsPlugin()
                 .start(new FakePluginContext(tmp, "jhin.sessions", db, streams, services));
         store = services.find(SessionStore.class).orElseThrow();
@@ -276,6 +277,98 @@ class ActionsTest {
     }
 
     @Test
+    void undoRestoresTheLastLifecycleChangeAndAnswersToastAndRefresh() {
+        Session session = store.create("demo", "/tmp/work");
+        services.find(com.astroreen.jhin.plugin.sessions.api.SessionLifecycleService.class)
+                .orElseThrow()
+                .settle(session.id(), com.astroreen.jhin.plugin.sessions.api.SettleReason.MANUAL);
+
+        List<Map<String, Object>> ops = handlers.get("undo").handle(request(), Map.of());
+
+        assertThat(ops).extracting(op -> op.get("op")).containsExactly("toast", "refresh");
+        assertThat(ops.get(0)).containsEntry("text", "Undone");
+        assertThat(store.get(session.id()).orElseThrow().settledAt()).isNull();
+    }
+
+    @Test
+    void undoWithoutAnEntryAnswersNothingToUndo() {
+        List<Map<String, Object>> ops = handlers.get("undo").handle(request(), Map.of());
+
+        assertThat(ops).hasSize(1);
+        assertThat(ops.get(0)).containsEntry("op", "toast")
+                .containsEntry("text", "Nothing to undo")
+                .containsEntry("style", "error");
+    }
+
+    @Test
+    void undoConsumesTheEntrySoASecondUndoFindsNothing() {
+        Session session = store.create("demo", "/tmp/work");
+        services.find(com.astroreen.jhin.plugin.sessions.api.SessionLifecycleService.class)
+                .orElseThrow()
+                .settle(session.id(), com.astroreen.jhin.plugin.sessions.api.SettleReason.MANUAL);
+
+        assertThat(handlers.get("undo").handle(request(), Map.of()))
+                .extracting(op -> op.get("op"))
+                .containsExactly("toast", "refresh");
+        List<Map<String, Object>> second = handlers.get("undo").handle(request(), Map.of());
+        assertThat(second).hasSize(1);
+        assertThat(second.get(0)).containsEntry("text", "Nothing to undo");
+    }
+
+    @Test
+    void undoActionResponseIsTheClientDirectiveArray() {
+        Session session = store.create("demo", "/tmp/work");
+        services.find(com.astroreen.jhin.plugin.sessions.api.SessionLifecycleService.class)
+                .orElseThrow()
+                .settle(session.id(), com.astroreen.jhin.plugin.sessions.api.SettleReason.MANUAL);
+        ActionRoute route = new ActionRoute(handlers);
+
+        var response = route.handle(new FakeHttpRequest("POST", "/ui/action/undo",
+                Map.of("name", "undo"), Map.of(), "{\"action\":\"undo\",\"payload\":{}}",
+                FULL_CAPS, Map.of()));
+        Map<String, Object> body =
+                com.astroreen.jhin.sdk.json.Json.readMap(new String(response.body()));
+
+        assertThat(response.status()).isEqualTo(200);
+        List<Object> client = castList(body.get("client"));
+        assertThat(client).hasSize(2);
+        assertThat(castMap(client.get(0)))
+                .containsEntry("op", "toast").containsEntry("text", "Undone");
+        assertThat(castMap(client.get(1))).containsEntry("op", "refresh");
+
+        var nothing = route.handle(new FakeHttpRequest("POST", "/ui/action/undo",
+                Map.of("name", "undo"), Map.of(), "{\"action\":\"undo\",\"payload\":{}}",
+                FULL_CAPS, Map.of()));
+        Map<String, Object> emptyBody =
+                com.astroreen.jhin.sdk.json.Json.readMap(new String(nothing.body()));
+        assertThat(nothing.status()).isEqualTo(200);
+        List<Object> emptyClient = castList(emptyBody.get("client"));
+        assertThat(emptyClient).hasSize(1);
+        assertThat(castMap(emptyClient.get(0)))
+                .containsEntry("op", "toast")
+                .containsEntry("text", "Nothing to undo")
+                .containsEntry("style", "error");
+    }
+
+    @Test
+    void undoTargetsOneSessionThroughTheSessionIdPayload() {
+        Session first = store.create("first", "/tmp/first");
+        Session second = store.create("second", "/tmp/second");
+        var lifecycle = services
+                .find(com.astroreen.jhin.plugin.sessions.api.SessionLifecycleService.class)
+                .orElseThrow();
+        lifecycle.pin(first.id(), 1);
+        lifecycle.pin(second.id(), 2);
+
+        List<Map<String, Object>> ops = handlers.get("undo").handle(
+                request(), Map.of("sessionId", first.id()));
+
+        assertThat(ops).extracting(op -> op.get("op")).containsExactly("toast", "refresh");
+        assertThat(store.get(first.id()).orElseThrow().pinned()).isFalse();
+        assertThat(store.get(second.id()).orElseThrow().pinned()).isTrue();
+    }
+
+    @Test
     void absentIntegrationsAnswerWithExplanatoryToasts() {
         FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
         Map<String, ActionRoute.ActionHandler> degraded =
@@ -283,10 +376,10 @@ class ActionsTest {
 
         assertThat(degraded.keySet()).containsExactlyInAnyOrder(
                 "enroll", "create-session", "send", "cancel",
-                "create-provider", "delete-provider", "reload",
+                "create-provider", "delete-provider", "reload", "undo",
                 "keybind-edit", "keybind-save", "keybind-reset", "keybind-restore");
         for (String name : List.of("enroll", "send", "cancel",
-                "create-provider", "delete-provider")) {
+                "create-provider", "delete-provider", "undo")) {
             List<Map<String, Object>> ops = degraded.get(name).handle(request(), Map.of());
             assertThat(ops).as(name).hasSize(1);
             assertThat(ops.get(0)).as(name).containsEntry("op", "toast");

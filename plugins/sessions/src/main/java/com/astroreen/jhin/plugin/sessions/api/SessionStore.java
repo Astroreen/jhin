@@ -206,7 +206,7 @@ public interface SessionStore {
 
     /**
      * The nullable columns a {@link #patch(String, Patch, Set) clear-aware}
-     * update may reset to {@code NULL}. Only these five can ever be empty again
+     * update may reset to {@code NULL}. Only these six can ever be empty again
      * after being set, which is what the lifecycle transitions need: a plain
      * {@link Patch} keeps a {@code null} field instead of clearing it.
      */
@@ -225,7 +225,10 @@ public interface SessionStore {
         SNOOZED_UNTIL,
 
         /** Clears {@code archived_at}; written by restore. */
-        ARCHIVED_AT
+        ARCHIVED_AT,
+
+        /** Clears {@code sort_order}; written by the undo journal restore. */
+        SORT_ORDER
     }
 
     /**
