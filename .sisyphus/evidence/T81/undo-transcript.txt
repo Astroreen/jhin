@@ -1,0 +1,24 @@
+=== settle-active ===
+POST /sessions/955a87a4-ece4-40e1-9961-2c487e038417/settle
+req:  {"reason":"manual"}
+status: 200
+resp: {"id":"955a87a4-ece4-40e1-9961-2c487e038417","accountId":"357737dd-d013-4d04-bff2-53970e30ecc4","title":"t81-active","workdir":"/tmp/t81/active","model":null,"providerId":null,"status":"active","createdAt":1791141286266,"updatedAt":1791141286629,"pinned":false,"pinnedOrder":null,"settledAt":1791141286629,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":"manual","autoSettleSuppressed":false}
+assert: status=200, jq '.settledReason == "manual" and .settledAt != null'
+assert: ok
+assert: after settle the active session sits in Settled -- ok
+=== undo-settle ===
+POST /ui/action/undo
+req:  {"action":"undo","payload":{}}
+status: 200
+resp: {"client":[{"op":"toast","text":"Undone"},{"op":"refresh"}]}
+assert: status=200, jq '(.client | length) == 2 and .client[0].op == "toast" and .client[0].text == "Undone" and .client[1].op == "refresh"'
+assert: ok
+=== state-after-undo ===
+GET /sessions
+req:  
+status: 200
+resp: [{"id":"12cf8d7c-0584-40c8-95a3-f94f0516b2f3","accountId":"357737dd-d013-4d04-bff2-53970e30ecc4","title":"t81-pinned","workdir":"/tmp/t81/pinned","model":null,"providerId":null,"status":"active","createdAt":1791141286310,"updatedAt":1791141286418,"pinned":true,"pinnedOrder":1,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false},{"id":"6f26c6a1-7871-448a-bb09-646b1cd4bfd9","accountId":"357737dd-d013-4d04-bff2-53970e30ecc4","title":"t81-settled","workdir":"/tmp/t81/settled","model":null,"providerId":null,"status":"active","createdAt":1791141286350,"updatedAt":1791141286507,"pinned":false,"pinnedOrder":null,"settledAt":1791141286506,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":"manual","autoSettleSuppressed":false},{"id":"955a87a4-ece4-40e1-9961-2c487e038417","accountId":"357737dd-d013-4d04-bff2-53970e30ecc4","title":"t81-active","workdir":"/tmp/t81/active","model":null,"providerId":null,"status":"active","createdAt":1791141286266,"updatedAt":1791141286702,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}]
+assert: status=200, jq 'any(.[]; .id == "955a87a4-ece4-40e1-9961-2c487e038417" and .settledAt == null and .settledReason == null)'
+assert: ok
+assert: undo inside the 5 s window restored the session (settledAt null,
+  settledReason null) and the sidebar moved it back to Active

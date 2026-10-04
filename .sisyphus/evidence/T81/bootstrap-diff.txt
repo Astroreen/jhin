@@ -1,0 +1,12 @@
+api1 keys:
+api, empty, entry, fallbacks, screenEndpoint, screens, theme, title
+
+api2 keys:
+api, contract, density, empty, entry, fallbacks, keymap, screenEndpoint, screens, theme, title, tokens
+
+level-2 keys: contract, tokens, density, keymap
+level-2 keys in api2: contract, tokens, density, keymap
+level-2 keys in api1: 
+
+assert: the level-1 shape carries zero level-2 keys (contract/tokens/density/keymap)
+

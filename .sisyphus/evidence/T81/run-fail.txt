@@ -1,0 +1,88 @@
+22:15:09 T81 QA --fail: the checker must fail on a deliberately wrong expectation
+22:15:09 evidence dir: .sisyphus/evidence/T81
+> Task :jhin-plugin-mcp:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:processResources UP-TO-DATE
+> Task :jhin-plugin-reload:processResources UP-TO-DATE
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :kernel:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-reload:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-reload:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-reload:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:jar UP-TO-DATE
+> Task :jhin-plugin-mcp:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:compileJava UP-TO-DATE
+> Task :jhin-plugin-mcp:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:jar UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:jar UP-TO-DATE
+> Task :jhin-plugin-mcp:jar UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 632ms
+36 actionable tasks: 36 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+> Task :kernel:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 603ms
+6 actionable tasks: 6 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+22:15:10.933 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+22:15:11.109 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
+22:15:11.535 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
+22:15:11.581 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+22:15:11.586 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
+22:15:11.588 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-lifecycle-home.iJitEr/mcp.json; no MCP servers to start
+22:15:11.591 [main] INFO plugin.jhin.tools-builtin -- jhin.tools-builtin started: 8 tools: ls, write, read, edit, edit-diff, find, grep, bash
+22:15:11.604 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+2026-10-04T22:15:12.020+03:00  INFO 2293809 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 2293809 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-04T22:15:12.022+03:00  INFO 2293809 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-04T22:15:12.492+03:00  INFO 2293809 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18481 (https)
+2026-10-04T22:15:12.502+03:00  INFO 2293809 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-04T22:15:12.503+03:00  INFO 2293809 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-04T22:15:12.520+03:00  INFO 2293809 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 464 ms
+2026-10-04T22:15:12.795+03:00  INFO 2293809 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18481], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
+2026-10-04T22:15:12.802+03:00  INFO 2293809 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18481 (https) with context path '/'
+2026-10-04T22:15:12.809+03:00  INFO 2293809 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.125 seconds (process running for 2.25)
+FAIL: deliberately wrong expectation: settle on an archived session answered 200 (see .sisyphus/evidence/T81/negative.txt)
+2026-10-04T22:15:14.451+03:00  INFO 2293809 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-04T22:15:14.454+03:00  INFO 2293809 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete

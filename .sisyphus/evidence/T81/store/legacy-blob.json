@@ -1,0 +1,6 @@
+{
+  "jhin.profiles": "[{\"id\":\"legacy-1\",\"label\":\"Home\",\"url\":\"https://jhin.example.org\",\"certFingerprint\":\"AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA\"},{\"id\":\"legacy-2\",\"label\":\"Work\",\"url\":\"https://work.example:8443\"}]",
+  "jhin.activeProfileId": "legacy-1",
+  "sessionState": "{\"stack\":[\"screen:chat\",\"screen:settings\"],\"cache\":{\"sidebar\":\"collapsed\"}}",
+  "theme": "{\"mode\":\"dark\"}"
+}

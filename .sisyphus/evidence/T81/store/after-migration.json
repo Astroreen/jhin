@@ -1,0 +1,89 @@
+{
+  "jhin.profiles": {
+    "schema": 3,
+    "app": "0.1.0",
+    "writtenAt": "2026-10-04T19:15:09.023128Z",
+    "data": [
+      {
+        "id": "legacy-1",
+        "label": "Home",
+        "url": "https://jhin.example.org",
+        "certFingerprint": "AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA:AA"
+      },
+      {
+        "id": "legacy-2",
+        "label": "Work",
+        "url": "https://work.example:8443"
+      }
+    ]
+  },
+  "jhin.activeProfileId": {
+    "schema": 3,
+    "app": "0.1.0",
+    "writtenAt": "2026-10-04T19:15:09.021558Z",
+    "data": "legacy-1"
+  },
+  "sessionState": {
+    "schema": 3,
+    "app": "0.1.0",
+    "writtenAt": "2026-10-04T19:15:09.023772Z",
+    "data": {
+      "stack": [
+        "screen:chat",
+        "screen:settings"
+      ],
+      "cache": {
+        "sidebar": "collapsed"
+      }
+    }
+  },
+  "theme": {
+    "schema": 3,
+    "app": "0.1.0",
+    "writtenAt": "2026-10-04T19:15:09.024037Z",
+    "data": {
+      "mode": "dark"
+    }
+  },
+  "sessionState:legacy-1": {
+    "schema": 3,
+    "app": "0.1.0",
+    "writtenAt": "2026-10-04T19:15:09.023918Z",
+    "data": {
+      "stack": [
+        "screen:chat",
+        "screen:settings"
+      ],
+      "cache": {
+        "sidebar": "collapsed"
+      }
+    }
+  },
+  "appearance": {
+    "schema": 3,
+    "app": "0.1.0",
+    "writtenAt": "2026-10-04T19:15:09.024079Z",
+    "data": {
+      "themeMode": "dark",
+      "textSize": 14,
+      "density": "comfortable",
+      "panelMotionMs": 0
+    }
+  },
+  "keybindings": {
+    "schema": 3,
+    "app": "0.1.0",
+    "writtenAt": "2026-10-04T19:15:09.024273Z",
+    "data": {
+      "rules": []
+    }
+  },
+  "tokensEtag": {
+    "schema": 3,
+    "app": "0.1.0",
+    "writtenAt": "2026-10-04T19:15:09.024463Z",
+    "data": {
+      "etag": ""
+    }
+  }
+}
