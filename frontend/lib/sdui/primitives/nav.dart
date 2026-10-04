@@ -54,7 +54,7 @@ Widget buildNav(BuildContext context, UiNode node, RenderContext ctx) {
       items: [
         for (var i = 0; i < labels.length; i++)
           BottomNavigationBarItem(
-            icon: Icon(icons[i] ?? Icons.circle_outlined),
+            icon: Icon(icons[i] ?? iconFor('circle_outlined')),
             label: labels[i],
           ),
       ],

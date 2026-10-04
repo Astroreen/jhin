@@ -74,6 +74,8 @@ final class BuilderProbe {
         BUILDERS.put(Ui.WrapBuilder.class, Ui::wrap);
         BUILDERS.put(Ui.GridBuilder.class, Ui::grid);
         BUILDERS.put(Ui.ScrollBuilder.class, Ui::scroll);
+        BUILDERS.put(Ui.IconBuilder.class, Ui::icon);
+        BUILDERS.put(Ui.IconButtonBuilder.class, Ui::iconButton);
     }
 
     /**

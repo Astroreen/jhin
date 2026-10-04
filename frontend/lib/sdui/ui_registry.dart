@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../design/icon_registry.dart';
 import '../design/theme.dart';
 import '../design/tokens.dart';
 import 'expr.dart';
@@ -25,6 +26,8 @@ import 'primitives/flex.dart';
 import 'primitives/flexible.dart';
 import 'primitives/form.dart';
 import 'primitives/grid.dart';
+import 'primitives/icon.dart';
+import 'primitives/icon_button.dart';
 import 'primitives/image.dart';
 import 'primitives/input.dart';
 import 'primitives/list.dart';
@@ -107,6 +110,8 @@ class UiRegistry {
       'wrap': buildWrap,
       'grid': buildGrid,
       'scroll': buildScroll,
+      'icon': buildIcon,
+      'icon_button': buildIconButton,
     });
     return registry;
   }
@@ -227,17 +232,26 @@ class UiRegistry {
     final textBearing = node.type == 'text' ||
         node.type == 'markdown' ||
         node.type == 'rich_text';
+    // `color` is the icon color on `icon`/`icon_button` (§2.6) — consumed by
+    // the primitive, not painted as a background (the same rule as the text
+    // color on text-bearing nodes).
+    final colorBearing =
+        textBearing || node.type == 'icon' || node.type == 'icon_button';
 
     // 3. DecoratedBox (color/gradient/border/borderRadius/shadow).
-    final decoration = _decoration(node, textBearing: textBearing);
+    final decoration = _decoration(node, colorConsumed: colorBearing);
     if (decoration != null) {
       result = DecoratedBox(decoration: decoration, child: result);
     }
 
-    // 4. Padding (padding).
-    final padding = parsePadding(node.props['padding'], tokens: tokens);
-    if (padding != null) {
-      result = Padding(padding: padding, child: result);
+    // 4. Padding (padding). `icon_button` owns its `padding` key (§2.6 —
+    // the IconButton padding around the icon), so the universal wrap skips
+    // it there.
+    if (node.type != 'icon_button') {
+      final padding = parsePadding(node.props['padding'], tokens: tokens);
+      if (padding != null) {
+        result = Padding(padding: padding, child: result);
+      }
     }
 
     // 5. ConstrainedBox (min/max/w/h). On a text-bearing node `height` is
@@ -588,10 +602,11 @@ Widget _applyTextStyle(Widget widget, _TextStyling? styling) {
 /// The `DecoratedBox` decoration (§2.3 step 3): `color`, `gradient`,
 /// `border`+`borderWidth`+`borderStyle`, `borderRadius`, `shadow`.
 ///
-/// On a text-bearing node `color` is the legacy level-1 text color
-/// (consumed by the primitive) and is not painted as a background.
-Decoration? _decoration(UiNode node, {required bool textBearing}) {
-  final color = textBearing ? null : _asColor(node.props['color']);
+/// On a node that consumes `color` itself (text-bearing nodes: the legacy
+/// level-1 text color; `icon`/`icon_button`: the icon color, §2.6) the
+/// color is not painted as a background.
+Decoration? _decoration(UiNode node, {required bool colorConsumed}) {
+  final color = colorConsumed ? null : _asColor(node.props['color']);
   final gradient = _gradient(node.props['gradient']);
   final shape = _boxShape(node.stringProp('shape'));
   // Flutter's `BoxDecoration` forbids combining `borderRadius` with
@@ -758,10 +773,10 @@ Alignment? _alignment(Object? value) {
 Alignment? parseAlignmentLiteral(Object? value) => _alignment(value);
 
 /// Primitives whose §2.6 `alignment` prop is their own layout prop —
-/// `stack`'s non-positioned child alignment, `wrap`'s run alignment — and
-/// not the §2.1 alias of `align`. On those types the alias must not
-/// double-wrap the node in an `Align`.
-const Set<String> _ownAlignmentProps = {'stack', 'wrap'};
+/// `stack`'s non-positioned child alignment, `wrap`'s run alignment,
+/// `icon_button`'s icon alignment — and not the §2.1 alias of `align`. On
+/// those types the alias must not double-wrap the node in an `Align`.
+const Set<String> _ownAlignmentProps = {'stack', 'wrap', 'icon_button'};
 
 /// The §2.1 `alignment` alias value of a node: null where the primitive
 /// owns the key (see [_ownAlignmentProps]).
@@ -910,7 +925,7 @@ Widget _applyGesture(
     if (rawLongPress != null) ctx.dispatch(rawLongPress);
   }
 
-  final cursor = _mouseCursor(node.stringProp('cursor'));
+  final cursor = parseMouseCursor(node.stringProp('cursor'));
   final onMaterial = context.findAncestorWidgetOfExactType<Material>() != null;
   if (onMaterial) {
     return InkWell(
@@ -931,7 +946,9 @@ Widget _applyGesture(
   );
 }
 
-MouseCursor? _mouseCursor(String? value) {
+/// The `cursor`/`mouseCursor` literal set (§2.1/§2.6); unknown degrades to
+/// null (the platform default) — §2.4.
+MouseCursor? parseMouseCursor(String? value) {
   switch (value) {
     case 'system':
       return SystemMouseCursors.basic;
@@ -1223,46 +1240,15 @@ List<Widget> buildNodeList(
 Map<String, dynamic>? asMap(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : null;
 
+/// Resolves one icon name through the generated [kIconRegistry] (§2.6) —
+/// the only icon lookup path in the client. An unknown name logs and
+/// returns null, and every caller degrades to an empty icon (§2.4) — never
+/// a crash.
 IconData? iconFor(String? name) {
-  switch (name) {
-    case 'menu':
-      return Icons.menu;
-    case 'home':
-      return Icons.home;
-    case 'settings':
-      return Icons.settings;
-    case 'person':
-      return Icons.person;
-    case 'add':
-      return Icons.add;
-    case 'edit':
-      return Icons.edit;
-    case 'delete':
-      return Icons.delete;
-    case 'search':
-      return Icons.search;
-    case 'close':
-      return Icons.close;
-    case 'check':
-      return Icons.check;
-    case 'arrow_back':
-      return Icons.arrow_back;
-    case 'more_vert':
-      return Icons.more_vert;
-    case 'share':
-      return Icons.share;
-    case 'star':
-      return Icons.star;
-    case 'warning':
-      return Icons.warning;
-    case 'info':
-      return Icons.info;
-    case 'list':
-      return Icons.list;
-    case 'chat':
-      return Icons.chat;
-    case 'send':
-      return Icons.send;
+  if (name == null) return null;
+  final icon = kIconRegistry[name];
+  if (icon == null) {
+    debugPrint('Jhin SDUI: unknown icon name "$name"');
   }
-  return null;
+  return icon;
 }

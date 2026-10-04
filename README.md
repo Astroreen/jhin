@@ -75,6 +75,25 @@ into `$JHIN_HOME/plugins/` and restart the host. Bundled jars of the
 distribution are seeded there automatically on start (a user-modified copy is
 never overwritten).
 
+## Building the clients
+
+The Flutter client (Android / Linux desktop / Web) is built with the standard
+Flutter toolchain. Release builds **must** pass `--no-tree-shake-icons`:
+
+```bash
+flutter build apk --release --no-tree-shake-icons
+flutter build linux --release --no-tree-shake-icons
+flutter build web --release --no-tree-shake-icons
+```
+
+The client resolves icon names through a generated registry
+(`frontend/lib/design/icon_registry.dart`, regenerated with
+`devenv shell -- dart frontend/tool/gen_icons.dart`) instead of compile-time
+`Icons.*` references, so the icon tree-shaker cannot see which glyphs are
+used and would strip them from the font. The flag keeps the full Material
+icon font in the binary; the size cost is accepted. Debug builds are
+unaffected (no icon tree shaking runs there).
+
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md) — runtime architecture: boot

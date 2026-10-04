@@ -146,3 +146,16 @@ successful commit.
 Plugin DB migrations (`MigrationSpec`, strictly increasing versions,
 prefixed tables) keep doing their job for server-side schema changes. Nothing
 new is needed there; this document covers client-persisted state only.
+
+## 8. Build note: icon registry and tree-shaking
+
+Release builds of the client must pass `--no-tree-shake-icons` (see the
+top-level [README](../README.md) build section). Icon names are resolved at
+runtime through the generated registry
+(`frontend/lib/design/icon_registry.dart`) — the registry's `IconData`
+entries are looked up dynamically, so the Flutter icon tree-shaker cannot see
+which glyphs are used and would strip them from the bundled font, leaving
+every server-authored icon blank. The flag keeps the full Material icon font
+in the binary; the size cost is accepted. Ship this flag with every client
+release — a build without it is a broken update for the UI, even though the
+persisted-state migrations above run unchanged.

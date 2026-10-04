@@ -330,6 +330,16 @@ public final class Ui {
         return new ScrollBuilder();
     }
 
+    /** A registry icon: {@code icon}(icon, size?, color?, semanticLabel?, fill?, weight?, grade?, opticalSize?, shadows?, textDirection?, blendMode?). */
+    public static IconBuilder icon() {
+        return new IconBuilder();
+    }
+
+    /** An icon button: {@code icon_button}(icon, action?, iconSize?, color?, …) — the full IconButton parameter set of docs/sdui.md section 2.6. */
+    public static IconButtonBuilder iconButton() {
+        return new IconButtonBuilder();
+    }
+
     /**
      * Base of every builder: the universal optional fields of docs/sdui.md
      * section 2.1 (Meta, Box, Text, Flex, Interaction/A11y groups) through
@@ -2843,6 +2853,217 @@ public final class Ui {
         /** Whether the scroll region sizes to its content. */
         public ScrollBuilder shrinkWrap(boolean value) {
             props.put("shrinkWrap", value);
+            return this;
+        }
+    }
+
+    /**
+     * {@code icon}(icon, size?, color?, semanticLabel?, fill?, weight?,
+     * grade?, opticalSize?, shadows?, textDirection?, blendMode?) — the
+     * Flutter {@code Icon} parameter set of docs/sdui.md section 2.6.
+     * {@code color} (inherited) is the icon color and {@code textDirection}
+     * (inherited) the rendering direction; the name resolves through the
+     * generated client registry, and an unknown name degrades to an empty
+     * icon client-side (section 2.4).
+     */
+    public static final class IconBuilder extends NodeBuilder<IconBuilder> {
+
+        private IconBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "icon";
+        }
+
+        /** The icon name (required; resolved through the client icon registry). */
+        public IconBuilder icon(String value) {
+            props.put("icon", value);
+            return this;
+        }
+
+        /** The icon size in logical pixels. */
+        public IconBuilder size(Number value) {
+            props.put("size", value);
+            return this;
+        }
+
+        /** The semantics label of the icon. */
+        public IconBuilder semanticLabel(String value) {
+            props.put("semanticLabel", value);
+            return this;
+        }
+
+        /** The variable-font fill ({@code 0.0}–{@code 1.0}). */
+        public IconBuilder fill(Number value) {
+            props.put("fill", value);
+            return this;
+        }
+
+        /** The variable-font weight. */
+        public IconBuilder weight(Number value) {
+            props.put("weight", value);
+            return this;
+        }
+
+        /** The variable-font grade. */
+        public IconBuilder grade(Number value) {
+            props.put("grade", value);
+            return this;
+        }
+
+        /** The variable-font optical size. */
+        public IconBuilder opticalSize(Number value) {
+            props.put("opticalSize", value);
+            return this;
+        }
+
+        /** The icon shadows (the shadow-array form of the section 2.1 shadow spec). */
+        public IconBuilder shadows(List<Map<String, Object>> value) {
+            props.put("shadows", value);
+            return this;
+        }
+
+        /** The color blend mode: the Flutter {@code BlendMode} names; validated. */
+        public IconBuilder blendMode(String value) {
+            props.put("blendMode", UiEnums.require("blendMode", value, UiEnums.BLEND_MODE));
+            return this;
+        }
+    }
+
+    /**
+     * {@code icon_button}(icon, action?, iconSize?, color?, disabledColor?,
+     * highlightColor?, splashColor?, focusColor?, hoverColor?, padding?,
+     * alignment?, constraints?, autofocus?, isSelected?, selectedIcon?,
+     * mouseCursor?, visualDensity?, enableFeedback?, splashRadius?, style?) —
+     * the full Flutter {@code IconButton} parameter set of docs/sdui.md
+     * section 2.6.
+     * {@code color}/{@code padding} (inherited) are the button's own icon
+     * color and icon padding; {@code action}/{@code tooltip}/{@code confirm}
+     * come from the interaction lattice. Without an {@code action} the
+     * button is disabled client-side.
+     */
+    public static final class IconButtonBuilder extends NodeBuilder<IconButtonBuilder> {
+
+        private IconButtonBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "icon_button";
+        }
+
+        /** The icon name (required; resolved through the client icon registry). */
+        public IconButtonBuilder icon(String value) {
+            props.put("icon", value);
+            return this;
+        }
+
+        /** The icon as an inline node (the {@code icon} primitive or any node). */
+        public IconButtonBuilder icon(UiNode value) {
+            props.put("icon", value);
+            return this;
+        }
+
+        /** The icon size in logical pixels. */
+        public IconButtonBuilder iconSize(Number value) {
+            props.put("iconSize", value);
+            return this;
+        }
+
+        /** The icon color when disabled. */
+        public IconButtonBuilder disabledColor(String value) {
+            props.put("disabledColor", value);
+            return this;
+        }
+
+        /** The highlight color. */
+        public IconButtonBuilder highlightColor(String value) {
+            props.put("highlightColor", value);
+            return this;
+        }
+
+        /** The splash color. */
+        public IconButtonBuilder splashColor(String value) {
+            props.put("splashColor", value);
+            return this;
+        }
+
+        /** The focus color. */
+        public IconButtonBuilder focusColor(String value) {
+            props.put("focusColor", value);
+            return this;
+        }
+
+        /** The hover color. */
+        public IconButtonBuilder hoverColor(String value) {
+            props.put("hoverColor", value);
+            return this;
+        }
+
+        /** The icon alignment inside the button; validated. */
+        public IconButtonBuilder alignment(String value) {
+            props.put("alignment", UiEnums.require("alignment", value, UiEnums.ALIGNMENT));
+            return this;
+        }
+
+        /** The size constraints ({@code minWidth}/{@code maxWidth}/{@code minHeight}/{@code maxHeight}). */
+        public IconButtonBuilder constraints(Map<String, Object> value) {
+            props.put("constraints", value);
+            return this;
+        }
+
+        /** Whether the button takes focus automatically. */
+        public IconButtonBuilder autofocus(boolean value) {
+            props.put("autofocus", value);
+            return this;
+        }
+
+        /** The toggled state (shows {@code selectedIcon} when true). */
+        public IconButtonBuilder isSelected(boolean value) {
+            props.put("isSelected", value);
+            return this;
+        }
+
+        /** The icon shown when selected (an icon name). */
+        public IconButtonBuilder selectedIcon(String value) {
+            props.put("selectedIcon", value);
+            return this;
+        }
+
+        /** The icon shown when selected (an inline node). */
+        public IconButtonBuilder selectedIcon(UiNode value) {
+            props.put("selectedIcon", value);
+            return this;
+        }
+
+        /** The mouse cursor: the section 2.1 cursor literals; validated. */
+        public IconButtonBuilder mouseCursor(String value) {
+            props.put("mouseCursor", UiEnums.require("mouseCursor", value, UiEnums.CURSOR));
+            return this;
+        }
+
+        /** The visual density: {@code compact/comfortable/spacious}; validated. */
+        public IconButtonBuilder visualDensity(String value) {
+            props.put("visualDensity", UiEnums.require("visualDensity", value, UiEnums.VISUAL_DENSITY));
+            return this;
+        }
+
+        /** Whether acoustic/haptic feedback is enabled. */
+        public IconButtonBuilder enableFeedback(boolean value) {
+            props.put("enableFeedback", value);
+            return this;
+        }
+
+        /** The splash radius. */
+        public IconButtonBuilder splashRadius(Number value) {
+            props.put("splashRadius", value);
+            return this;
+        }
+
+        /** The ButtonStyle map (see docs/sdui.md section 2.6). */
+        public IconButtonBuilder style(Map<String, Object> value) {
+            props.put("style", value);
             return this;
         }
     }

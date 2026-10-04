@@ -144,6 +144,16 @@ final class UiEnums {
     /** docs/sdui.md 2.6 {@code scroll} {@code scrollDirection}. */
     static final Set<String> SCROLL_DIRECTION = Set.of("vertical", "horizontal");
 
+    /** docs/sdui.md 2.6 {@code icon} {@code blendMode} (the Flutter BlendMode names). */
+    static final Set<String> BLEND_MODE = Set.of(
+            "clear", "src", "dst", "srcOver", "dstOver", "srcIn", "dstIn", "srcOut", "dstOut",
+            "srcATop", "dstATop", "xor", "plus", "modulate", "screen", "overlay", "darken",
+            "lighten", "colorDodge", "colorBurn", "hardLight", "softLight", "difference",
+            "exclusion", "multiply", "hue", "saturation", "color", "luminosity");
+
+    /** docs/sdui.md 2.6 {@code icon_button} {@code visualDensity} (the section 1 density literals). */
+    static final Set<String> VISUAL_DENSITY = Set.of("compact", "comfortable", "spacious");
+
     /** Builder-specific literal overrides: entries are {@code <BuilderSimpleName>.<prop>}. */
     private static final Map<String, Set<String>> SPECIFIC = Map.ofEntries(
             Map.entry("ButtonBuilder.style", BUTTON_STYLE),
@@ -195,7 +205,9 @@ final class UiEnums {
             Map.entry("autovalidateMode", AUTOVALIDATE_MODE),
             Map.entry("axis", SPACER_AXIS),
             Map.entry("physics", PHYSICS),
-            Map.entry("scrollDirection", SCROLL_DIRECTION));
+            Map.entry("scrollDirection", SCROLL_DIRECTION),
+            Map.entry("blendMode", BLEND_MODE),
+            Map.entry("visualDensity", VISUAL_DENSITY));
 
     private UiEnums() {
     }

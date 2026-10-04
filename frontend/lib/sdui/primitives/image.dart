@@ -26,7 +26,7 @@ Widget buildImage(BuildContext context, UiNode node, RenderContext ctx) {
       width: width,
       height: height,
       child: Center(
-        child: Icon(Icons.broken_image_outlined,
+        child: Icon(iconFor('broken_image_outlined'),
             color: Theme.of(context).disabledColor),
       ),
     );

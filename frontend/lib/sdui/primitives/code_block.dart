@@ -92,7 +92,7 @@ Widget buildCodeBlock(BuildContext context, UiNode node, RenderContext ctx) {
               if (language != null) Expanded(child: Text(language, style: labelStyle)),
               if (copyable)
                 IconButton(
-                  icon: const Icon(Icons.copy),
+                  icon: Icon(iconFor('copy')),
                   tooltip: 'Copy code',
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: code));

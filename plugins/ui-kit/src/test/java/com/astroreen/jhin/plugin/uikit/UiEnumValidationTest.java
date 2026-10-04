@@ -321,6 +321,29 @@ class UiEnumValidationTest {
         assertThatThrownBy(() -> Ui.scroll().scrollDirection("diagonal")).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void iconBlendModeValidatesItsLiterals() {
+        for (String literal : List.of("clear", "srcOver", "multiply", "luminosity")) {
+            assertThatCode(() -> Ui.icon().blendMode(literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.icon().blendMode("nope")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Ui.icon().blendMode("srcOver ")).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void iconButtonVisualDensityAndAlignmentValidateTheirLiterals() {
+        for (String literal : List.of("compact", "comfortable", "spacious")) {
+            assertThatCode(() -> Ui.iconButton().visualDensity(literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.iconButton().visualDensity("nope")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Ui.iconButton().visualDensity("standard")).isInstanceOf(IllegalArgumentException.class);
+
+        for (String literal : List.of("topLeft", "center", "bottomRight")) {
+            assertThatCode(() -> Ui.iconButton().alignment(literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.iconButton().alignment("middle")).isInstanceOf(IllegalArgumentException.class);
+    }
+
     // --- Token helpers ---
 
     @Test

@@ -46,7 +46,7 @@ class GalleryDump {
     private static final Path COVERAGE_OUTPUT =
             Path.of("build", "gallery", "coverage.txt").toAbsolutePath().normalize();
 
-    /** The 42 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set and the T60 rich_text/code_block text set). */
+    /** The 44 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set, the T60 rich_text/code_block text set and the T61 icon/icon_button set). */
     private static final List<String> EXPECTED_PRIMITIVES = List.of(
             "screen", "nav", "container", "card", "text", "markdown", "rich_text",
             "code_block", "button", "input",
@@ -55,7 +55,8 @@ class GalleryDump {
             "chart_bar", "chart_pie", "drawer",
             "box", "row", "column", "flex", "expanded", "flexible", "sized_box",
             "align", "center", "aspect_ratio",
-            "stack", "positioned", "wrap", "grid", "scroll");
+            "stack", "positioned", "wrap", "grid", "scroll",
+            "icon", "icon_button");
 
     private static Map<String, Object> action(String name) {
         Map<String, Object> action = new LinkedHashMap<>();
@@ -632,6 +633,39 @@ class GalleryDump {
                 .item(Ui.text("lazy a").build())
                 .item(Ui.text("lazy b").build())
                 .item(Ui.text("lazy c").build())
+                .build()));
+
+        // icon
+        all.add(new Fixture("fixture-icon-basic", Ui.icon()
+                .id("fixture-icon-basic")
+                .icon("settings")
+                .build()));
+        all.add(new Fixture("fixture-icon-propheavy", heavy(Ui.icon(), "icon-propheavy")
+                .icon("star")
+                .size(32).color("#C1272D").semanticLabel("Star")
+                .fill(0.5).weight(600).grade(100).opticalSize(48)
+                .shadows(List.of(Ui.shadow("#000000", 2, 0, 0, 1)))
+                .textDirection("ltr").blendMode("srcOver")
+                .build()));
+
+        // icon_button
+        all.add(new Fixture("fixture-icon_button-basic", Ui.iconButton()
+                .id("fixture-icon_button-basic")
+                .icon("settings")
+                .action(action("icon-button-basic"))
+                .build()));
+        all.add(new Fixture("fixture-icon_button-propheavy", heavy(Ui.iconButton(), "icon_button-propheavy")
+                .icon("home")
+                .iconSize(20).color("#3D5A80").disabledColor("#9AA5B1")
+                .highlightColor("#E0FBFC").splashColor("#98C1D9")
+                .focusColor("#EEF5DB").hoverColor("#E0FBFC")
+                .padding(8).alignment("center")
+                .constraints(entry("minWidth", 40, "minHeight", 40))
+                .autofocus(true).isSelected(true)
+                .selectedIcon("star").mouseCursor("click")
+                .visualDensity("compact").enableFeedback(false)
+                .splashRadius(24)
+                .style(entry("backgroundColor", "#EEF5DB", "elevation", 2))
                 .build()));
 
         return all;
