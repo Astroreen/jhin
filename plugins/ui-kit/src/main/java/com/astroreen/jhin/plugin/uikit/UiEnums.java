@@ -113,6 +113,9 @@ final class UiEnums {
     /** docs/sdui.md 2.6 input {@code border}/{@code enabledBorder}/{@code focusedBorder}/{@code errorBorder} spec. */
     static final Set<String> INPUT_BORDER = Set.of("underline", "outline", "none");
 
+    /** docs/sdui.md 2.6 input {@code floatingLabelBehavior}. */
+    static final Set<String> FLOATING_LABEL_BEHAVIOR = Set.of("never", "always", "auto");
+
     /** docs/sdui.md 2.6 text {@code textWidthBasis}. */
     static final Set<String> TEXT_WIDTH_BASIS = Set.of("parent", "longestLine", "character");
 
@@ -175,6 +178,9 @@ final class UiEnums {
             Map.entry("InputBuilder.enabledBorder", INPUT_BORDER),
             Map.entry("InputBuilder.focusedBorder", INPUT_BORDER),
             Map.entry("InputBuilder.errorBorder", INPUT_BORDER),
+            Map.entry("InputBuilder.focusedErrorBorder", INPUT_BORDER),
+            Map.entry("InputBuilder.disabledBorder", INPUT_BORDER),
+            Map.entry("InputBuilder.floatingLabelBehavior", FLOATING_LABEL_BEHAVIOR),
             Map.entry("BoxBuilder.shape", BOX_SHAPE),
             Map.entry("StackBuilder.fit", STACK_FIT),
             Map.entry("WrapBuilder.direction", WRAP_DIRECTION),
@@ -217,6 +223,7 @@ final class UiEnums {
             Map.entry("textInputAction", TEXT_INPUT_ACTION),
             Map.entry("textCapitalization", TEXT_CAPITALIZATION),
             Map.entry("maxLengthEnforcement", MAX_LENGTH_ENFORCEMENT),
+            Map.entry("floatingLabelBehavior", FLOATING_LABEL_BEHAVIOR),
             Map.entry("textWidthBasis", TEXT_WIDTH_BASIS),
             Map.entry("autovalidateMode", AUTOVALIDATE_MODE),
             Map.entry("axis", SPACER_AXIS),
@@ -248,11 +255,23 @@ final class UiEnums {
 
     /**
      * A sample literal for the conformance probe: the builder-specific set
-     * when one exists, else the global set for the prop name.
+     * when one exists (walking the builder's class hierarchy, so a subclass
+     * inherits its parent's sets), else the global set for the prop name.
      */
     static String sample(Class<?> builder, String prop) {
-        Set<String> specific = SPECIFIC.get(builder.getSimpleName() + "." + prop);
+        Set<String> specific = specificFor(builder, prop);
         Set<String> literals = specific != null ? specific : BY_KEY.get(prop);
         return literals != null ? literals.iterator().next() : "$spacing.md";
+    }
+
+    /** The builder-specific literal set of {@code builder} or any of its superclasses. */
+    private static Set<String> specificFor(Class<?> builder, String prop) {
+        for (Class<?> type = builder; type != null; type = type.getSuperclass()) {
+            Set<String> literals = SPECIFIC.get(type.getSimpleName() + "." + prop);
+            if (literals != null) {
+                return literals;
+            }
+        }
+        return null;
     }
 }

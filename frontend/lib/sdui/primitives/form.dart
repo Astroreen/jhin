@@ -6,42 +6,82 @@ import '../ui_registry.dart';
 
 const Set<String> _fieldTypes = {
   'input',
+  'textarea',
   'checkbox',
   'switch',
   'slider',
   'dropdown',
 };
 
-/// `form` (§8.3): `fields: [UiNode]`, `submit: {label, action}`.
+/// `form` (§2.6): `fields: [UiNode]`, `submit: {label, action}` with the
+/// `autovalidateMode` and `onChanged` parity.
 ///
 /// On submit the form collects the current values of its own fields and
 /// posts the submit action with them merged in (via the action's `include`,
 /// §8.4) — so the dispatcher validates the fields and blocks the dispatch
-/// on a failing one. Without `fields` the node degrades to a visible
-/// placeholder; without a submit `action` the submit button is disabled.
+/// on a failing one. `onChanged` fires when any of the form's own fields
+/// change. Without `fields` the node degrades to a visible placeholder;
+/// without a submit `action` the submit button is disabled. Unknown
+/// `autovalidateMode` literals degrade to `disabled` (§2.4).
 Widget buildForm(BuildContext context, UiNode node, RenderContext ctx) {
   final rawFields = node.listProp('fields');
   if (rawFields == null || rawFields.isEmpty) {
     return degradedBox(context, 'Missing fields');
   }
-  final fields = buildNodeList(context, ctx, rawFields);
+  final onChanged = asMap(node.props['onChanged']);
+  // The form listens to its own fields' state writes: every field change
+  // dispatches the form's `onChanged` (§2.6) without leaking to fields
+  // outside the form.
+  final fieldCtx = onChanged == null
+      ? ctx
+      : RenderContext(
+          state: ctx.state,
+          registry: ctx.registry,
+          patches: ctx.patches,
+          setState: (id, value) {
+            ctx.setState(id, value);
+            ctx.dispatch(onChanged);
+          },
+          patch: ctx.patch,
+          navigate: ctx.navigate,
+          dispatch: ctx.dispatch,
+          openStream: ctx.openStream,
+          runDirectives: ctx.runDirectives,
+          confirm: ctx.confirm,
+          canPop: ctx.canPop,
+          onBack: ctx.onBack,
+        );
+  final fields = buildNodeList(context, fieldCtx, rawFields);
   final submit = asMap(node.props['submit']);
   final label = submit?['label'];
   final action = asMap(submit?['action']);
-  return Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      ...fields,
-      if (submit != null)
-        ElevatedButton(
-          onPressed: action == null || node.boolProp('enabled') == false
-              ? null
-              : () => ctx.dispatch(_submitAction(node, action)),
-          child: Text(label is String ? label : 'Submit'),
-        ),
-    ],
+  return Form(
+    autovalidateMode: _autovalidateMode(node.stringProp('autovalidateMode')),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ...fields,
+        if (submit != null)
+          ElevatedButton(
+            onPressed: action == null || node.boolProp('enabled') == false
+                ? null
+                : () => ctx.dispatch(_submitAction(node, action)),
+            child: Text(label is String ? label : 'Submit'),
+          ),
+      ],
+    ),
   );
+}
+
+AutovalidateMode _autovalidateMode(String? name) {
+  switch (name) {
+    case 'always':
+      return AutovalidateMode.always;
+    case 'onUserInteraction':
+      return AutovalidateMode.onUserInteraction;
+  }
+  return AutovalidateMode.disabled;
 }
 
 /// The submit action with the form's own field ids appended to `include`

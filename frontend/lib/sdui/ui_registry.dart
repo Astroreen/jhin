@@ -59,6 +59,8 @@ import 'primitives/switch.dart';
 import 'primitives/table.dart';
 import 'primitives/tabs.dart';
 import 'primitives/text.dart';
+import 'primitives/textarea.dart';
+import 'primitives/tree.dart';
 import 'primitives/wrap.dart';
 import 'render_context.dart';
 import 'ui_node.dart';
@@ -90,6 +92,7 @@ class UiRegistry {
       'code_block': buildCodeBlock,
       'button': buildButton,
       'input': buildInput,
+      'textarea': buildTextarea,
       'dropdown': buildDropdown,
       'checkbox': buildCheckbox,
       'switch': buildSwitch,
@@ -98,6 +101,7 @@ class UiRegistry {
       'list': buildList,
       'stream_view': buildStreamView,
       'table': buildTable,
+      'tree': buildTree,
       'divider': buildDivider,
       'spacer': buildSpacer,
       'progress': buildProgress,
@@ -934,8 +938,8 @@ Widget _applyClip(Widget result, UiNode node, JhinTokens tokens) {
 
 /// Primitives that already own their interaction — their own `action`
 /// handler and tap target (`button`, `icon_button`, `dropdown`, `list_row`,
-/// `chip`, `menu`) — so the gesture wrapper must not add a nested second
-/// dispatch handler for them (the §2.3 note).
+/// `chip`, `menu`, `table`, `tree`) — so the gesture wrapper must not add a
+/// nested second dispatch handler for them (the §2.3 note).
 const Set<String> _interactivePrimitives = {
   'button',
   'icon_button',
@@ -945,6 +949,8 @@ const Set<String> _interactivePrimitives = {
   'menu',
   'tabs',
   'segmented',
+  'table',
+  'tree',
 };
 
 /// The gesture wrapper (§2.3 step 12): `InkWell` when the node sits on a

@@ -1,0 +1,2 @@
+T66 QA --fail: deliberate wrong expectation (fixture total == 1)
+FAIL: fixture total == 1 — the deliberate wrong expectation failed as designed (actual total=116)

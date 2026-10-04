@@ -42,6 +42,7 @@ final class BuilderProbe {
         BUILDERS.put(Ui.CodeBlockBuilder.class, () -> Ui.codeBlock("probe"));
         BUILDERS.put(Ui.ButtonBuilder.class, () -> Ui.button("probe"));
         BUILDERS.put(Ui.InputBuilder.class, () -> Ui.input("probe"));
+        BUILDERS.put(Ui.TextareaBuilder.class, () -> Ui.textarea("probe"));
         BUILDERS.put(Ui.DropdownBuilder.class, () -> Ui.dropdown("probe"));
         BUILDERS.put(Ui.CheckboxBuilder.class, () -> Ui.checkbox("probe", "probe"));
         BUILDERS.put(Ui.ToggleBuilder.class, () -> Ui.toggle("probe", "probe"));
@@ -50,6 +51,7 @@ final class BuilderProbe {
         BUILDERS.put(Ui.ListBuilder.class, Ui::list);
         BUILDERS.put(Ui.StreamViewBuilder.class, () -> Ui.streamView("probe", "/probe"));
         BUILDERS.put(Ui.TableBuilder.class, Ui::table);
+        BUILDERS.put(Ui.TreeBuilder.class, Ui::tree);
         BUILDERS.put(Ui.DividerBuilder.class, Ui::divider);
         BUILDERS.put(Ui.SpacerBuilder.class, Ui::spacer);
         BUILDERS.put(Ui.ProgressBuilder.class, Ui::progress);
@@ -176,6 +178,9 @@ final class BuilderProbe {
         }
         if (type == Ui.TabItemBuilder.class) {
             return Ui.tabItem("probe");
+        }
+        if (type == Ui.TreeItemBuilder.class) {
+            return Ui.treeItem("probe");
         }
         if (type == List.class) {
             // A mutable list: several wholesale setters store the instance and

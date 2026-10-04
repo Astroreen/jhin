@@ -170,6 +170,11 @@ public final class Ui {
         return new InputBuilder(id);
     }
 
+    /** {@code textarea}(id) — the full {@code input} prop set with {@code multiline} defaulting to true (client-side). */
+    public static TextareaBuilder textarea(String id) {
+        return new TextareaBuilder(id);
+    }
+
     /** A select control: {@code dropdown}(id, items, value?, action?). */
     public static DropdownBuilder dropdown(String id) {
         return new DropdownBuilder(id);
@@ -208,6 +213,16 @@ public final class Ui {
     /** A tabular grid: {@code table}(columns, rows). */
     public static TableBuilder table() {
         return new TableBuilder();
+    }
+
+    /** {@code tree}(items, onSelect?) with nested item specs. */
+    public static TreeBuilder tree() {
+        return new TreeBuilder();
+    }
+
+    /** One {@code tree} item spec: {@code label}, {@code icon?}, {@code expanded?}, {@code action?}, {@code items?}. */
+    public static TreeItemBuilder treeItem(String label) {
+        return new TreeItemBuilder(label);
     }
 
     /** A horizontal rule: {@code divider}. */
@@ -1309,9 +1324,9 @@ public final class Ui {
      * and friends are overridden with the input border spec literals
      * ({@code underline/outline/none}).
      */
-    public static final class InputBuilder extends NodeBuilder<InputBuilder> {
+    public static class InputBuilder extends NodeBuilder<InputBuilder> {
 
-        private InputBuilder(String id) {
+        protected InputBuilder(String id) {
             props.put("id", id);
         }
 
@@ -1673,6 +1688,87 @@ public final class Ui {
             props.put("decoration", value);
             return this;
         }
+
+        /** The maximum line count. */
+        public InputBuilder maxLines(int value) {
+            props.put("maxLines", value);
+            return this;
+        }
+
+        /** The decoration prefix text. */
+        public InputBuilder prefix(String value) {
+            props.put("prefix", value);
+            return this;
+        }
+
+        /** The decoration suffix text. */
+        public InputBuilder suffix(String value) {
+            props.put("suffix", value);
+            return this;
+        }
+
+        /** The border when focused with an error; validated like {@link #border(String)}. */
+        public InputBuilder focusedErrorBorder(String value) {
+            props.put("focusedErrorBorder",
+                    UiEnums.require("focusedErrorBorder", value, UiEnums.INPUT_BORDER));
+            return this;
+        }
+
+        /** The border when disabled; validated like {@link #border(String)}. */
+        public InputBuilder disabledBorder(String value) {
+            props.put("disabledBorder", UiEnums.require("disabledBorder", value, UiEnums.INPUT_BORDER));
+            return this;
+        }
+
+        /** The label floating behavior: {@code never/always/auto}; validated. */
+        public InputBuilder floatingLabelBehavior(String value) {
+            props.put("floatingLabelBehavior",
+                    UiEnums.require("floatingLabelBehavior", value, UiEnums.FLOATING_LABEL_BEHAVIOR));
+            return this;
+        }
+
+        /** The semantics counter text. */
+        public InputBuilder semanticCounterText(String value) {
+            props.put("semanticCounterText", value);
+            return this;
+        }
+
+        /** The text alignment; validated. */
+        public InputBuilder textAlign(String value) {
+            props.put("textAlign", UiEnums.require("textAlign", value, UiEnums.TEXT_ALIGN));
+            return this;
+        }
+
+        /** The input text direction: {@code ltr/rtl}; validated. */
+        public InputBuilder textDirection(String value) {
+            props.put("textDirection", UiEnums.require("textDirection", value, UiEnums.TEXT_DIRECTION));
+            return this;
+        }
+
+        /** The scroll padding (a number, an array or a padding map). */
+        public InputBuilder scrollPadding(Object value) {
+            props.put("scrollPadding", value);
+            return this;
+        }
+
+        /** The restoration id. */
+        public InputBuilder restorationId(String value) {
+            props.put("restorationId", value);
+            return this;
+        }
+    }
+
+    /** {@code textarea}(id) — the full {@code input} prop set; the client defaults {@code multiline} to true. */
+    public static final class TextareaBuilder extends InputBuilder {
+
+        private TextareaBuilder(String id) {
+            super(id);
+        }
+
+        @Override
+        String type() {
+            return "textarea";
+        }
     }
 
     /** {@code dropdown}(id, items, value?, action?) with the full dropdown parity. */
@@ -1741,6 +1837,12 @@ public final class Ui {
         /** The alignment; validated. */
         public DropdownBuilder alignment(String value) {
             props.put("alignment", UiEnums.require("alignment", value, UiEnums.ALIGNMENT));
+            return this;
+        }
+
+        /** The menu corner radius. */
+        public DropdownBuilder borderRadius(Number value) {
+            props.put("borderRadius", value);
             return this;
         }
 
@@ -1910,6 +2012,12 @@ public final class Ui {
             return this;
         }
 
+        /** The track outline color. */
+        public ToggleBuilder trackOutline(String value) {
+            props.put("trackOutline", value);
+            return this;
+        }
+
         /** The thumb icon name. */
         public ToggleBuilder thumbIcon(String value) {
             props.put("thumbIcon", value);
@@ -2018,6 +2126,12 @@ public final class Ui {
         /** The drag-end action. */
         public SliderBuilder onChangeEnd(Map<String, Object> value) {
             props.put("onChangeEnd", value);
+            return this;
+        }
+
+        /** The accessibility value template; {@code {value}} is replaced with the current value. */
+        public SliderBuilder semanticFormatterCallback(String value) {
+            props.put("semanticFormatterCallback", value);
             return this;
         }
     }
@@ -2198,6 +2312,38 @@ public final class Ui {
             return this;
         }
 
+        /** Appends one column with a width and a sort flag. */
+        public TableBuilder column(String label, Object width, boolean sortable) {
+            Map<String, Object> column = new LinkedHashMap<>();
+            column.put("label", label);
+            if (width != null) {
+                column.put("width", width);
+            }
+            if (sortable) {
+                column.put("sortable", true);
+            }
+            columns().add(column);
+            return this;
+        }
+
+        /**
+         * Appends one column with a width, a sort flag and a cell alignment
+         * ({@code left/right/center/justify/start/end}); validated.
+         */
+        public TableBuilder column(String label, Object width, boolean sortable, String align) {
+            Map<String, Object> column = new LinkedHashMap<>();
+            column.put("label", label);
+            if (width != null) {
+                column.put("width", width);
+            }
+            if (sortable) {
+                column.put("sortable", true);
+            }
+            column.put("align", UiEnums.require("align", align, UiEnums.TEXT_ALIGN));
+            columns().add(column);
+            return this;
+        }
+
         /** Appends one row of cells (nodes or strings). */
         public TableBuilder row(Object... cells) {
             rows().add(List.of(cells));
@@ -2219,6 +2365,12 @@ public final class Ui {
         /** The row tap action. */
         public TableBuilder onRowTap(Map<String, Object> value) {
             props.put("onRowTap", value);
+            return this;
+        }
+
+        /** The sortable header tap action; fires with {@code {column, ascending}} merged into its payload. */
+        public TableBuilder onSort(Map<String, Object> value) {
+            props.put("onSort", value);
             return this;
         }
 
@@ -2250,6 +2402,97 @@ public final class Ui {
             @SuppressWarnings("unchecked")
             List<Object> rows = (List<Object>) props.computeIfAbsent("rows", key -> new ArrayList<>());
             return rows;
+        }
+    }
+
+    /** {@code tree}(items, onSelect?) with nested item specs and per-item expand/collapse. */
+    public static final class TreeBuilder extends NodeBuilder<TreeBuilder> {
+
+        private TreeBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "tree";
+        }
+
+        /** Appends one item with a label. */
+        public TreeBuilder item(String label) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("label", label);
+            items().add(item);
+            return this;
+        }
+
+        /** Appends one finished item spec ({@link Ui#treeItem(String)}). */
+        public TreeBuilder item(TreeItemBuilder item) {
+            items().add(item.build());
+            return this;
+        }
+
+        /** The select action; fires with the selected item merged into its payload. */
+        public TreeBuilder onSelect(Map<String, Object> value) {
+            props.put("onSelect", value);
+            return this;
+        }
+
+        private List<Object> items() {
+            @SuppressWarnings("unchecked")
+            List<Object> items = (List<Object>) props.computeIfAbsent("items", key -> new ArrayList<>());
+            return items;
+        }
+    }
+
+    /** {@code tree} item spec: {@code label}, {@code icon?}, {@code expanded?}, {@code action?}, {@code items?}. */
+    public static final class TreeItemBuilder {
+
+        private final Map<String, Object> spec = new LinkedHashMap<>();
+
+        private TreeItemBuilder(String label) {
+            spec.put("label", label);
+        }
+
+        /** The leading icon name. */
+        public TreeItemBuilder icon(String value) {
+            spec.put("icon", value);
+            return this;
+        }
+
+        /** Whether the item starts expanded. */
+        public TreeItemBuilder expanded(boolean value) {
+            spec.put("expanded", value);
+            return this;
+        }
+
+        /** The select action of this item. */
+        public TreeItemBuilder action(Map<String, Object> value) {
+            spec.put("action", value);
+            return this;
+        }
+
+        /** Appends one nested child item with a label. */
+        public TreeItemBuilder item(String label) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("label", label);
+            items().add(item);
+            return this;
+        }
+
+        /** Appends one finished nested child spec. */
+        public TreeItemBuilder item(TreeItemBuilder child) {
+            items().add(child.build());
+            return this;
+        }
+
+        /** The finished item spec, in insertion order. */
+        public Map<String, Object> build() {
+            return new LinkedHashMap<>(spec);
+        }
+
+        private List<Object> items() {
+            @SuppressWarnings("unchecked")
+            List<Object> items = (List<Object>) spec.computeIfAbsent("items", key -> new ArrayList<>());
+            return items;
         }
     }
 

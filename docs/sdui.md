@@ -439,6 +439,7 @@ Layout primitives:
 | `table` | `onRowTap` | action | — | row tap action |
 | `table` | `stickyHeader` | bool | `false` | header stays visible while scrolling |
 | `table` | `sort` | object | — | current sort `{column, ascending}` |
+| `table` | `onSort` | action | — | sortable header tap; fires with `{column, ascending}` merged into the payload |
 | `table` | `empty` | node | — | rendered when `rows` is missing or empty |
 | `tree` | `items` | item array | — | nested items, see the item table below |
 | `tree` | `onSelect` | action | — | fired with the selected item |
@@ -569,20 +570,28 @@ Control primitives:
 | `input` | `cursorColor` | color | — | cursor color |
 | `input` | `mouseCursor` | cursor | — | mouse cursor |
 | `input` | `textAlign` | text align | — | text alignment |
+| `input` | `scrollPadding` | padding | — | scroll padding |
+| `input` | `restorationId` | string | — | restoration id |
 | `input` | `hintText` | string | — | decoration hint |
 | `input` | `helperText` | string | — | decoration helper |
 | `input` | `labelText` | string | — | decoration label |
 | `input` | `prefixIcon` | icon name | — | decoration prefix icon |
 | `input` | `suffixIcon` | icon name | — | decoration suffix icon |
 | `input` | `counterText` | string | — | decoration counter |
+| `input` | `semanticCounterText` | string | — | semantics counter text |
+| `input` | `prefix` | string | — | decoration prefix text |
+| `input` | `suffix` | string | — | decoration suffix text |
 | `input` | `fillColor` | color | — | decoration fill color |
 | `input` | `filled` | bool | `false` | decoration filled |
 | `input` | `hoverColor` | color | — | decoration hover color |
 | `input` | `focusColor` | color | — | decoration focus color |
-| `input` | `border` | border spec | — | input border: `underline/outline/none` (overrides the universal decoration on this node) |
+| `input` | `floatingLabelBehavior` | `never`/`always`/`auto` | `auto` | label floating |
+| `input` | `border` | border spec | — | input border: `underline/outline/none` or a `{style?, width?, radius?, color?}` map (overrides the universal decoration on this node) |
 | `input` | `enabledBorder` | border spec | — | border when enabled |
 | `input` | `focusedBorder` | border spec | — | border when focused |
 | `input` | `errorBorder` | border spec | — | border on error |
+| `input` | `focusedErrorBorder` | border spec | — | border when focused with an error |
+| `input` | `disabledBorder` | border spec | — | border when disabled |
 | `input` | `contentPadding` | padding | — | decoration content padding |
 | `input` | `isDense` | bool | — | dense decoration |
 | `input` | `isCollapsed` | bool | — | collapsed decoration |
@@ -637,6 +646,7 @@ Control primitives:
 | `switch` | `inactiveTrackColor` | color | — | track color when off |
 | `switch` | `thumbColor` | color | — | thumb color |
 | `switch` | `trackColor` | color | — | track color |
+| `switch` | `trackOutline` | color | — | track outline color |
 | `switch` | `thumbIcon` | icon name | — | thumb icon |
 | `switch` | `mouseCursor` | cursor | — | mouse cursor |
 | `switch` | `splashRadius` | num | — | splash radius |
@@ -653,6 +663,7 @@ Control primitives:
 | `slider` | `inactiveColor` | color | — | inactive color |
 | `slider` | `thumbColor` | color | — | thumb color |
 | `slider` | `overlayColor` | color | — | overlay color |
+| `slider` | `semanticFormatterCallback` | string | — | accessibility value template; `{value}` is replaced with the current value |
 | `slider` | `mouseCursor` | cursor | — | mouse cursor |
 | `slider` | `onChangeStart` | action | — | drag start |
 | `slider` | `onChangeEnd` | action | — | drag end |

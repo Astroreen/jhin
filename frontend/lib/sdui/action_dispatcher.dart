@@ -104,9 +104,11 @@ class ActionDispatcher {
 
   /// Validates one included field against its `value`; returns the inline
   /// error to show (its `errorText`, or a neutral default), or null when
-  /// valid. Only `input` nodes carry validation props (§8.3).
+  /// valid. Only `input`/`textarea` nodes carry validation props (§2.6).
   static String? validateField(UiNode? field, Object? value) {
-    if (field == null || field.type != 'input') return null;
+    if (field == null || field.type != 'input' && field.type != 'textarea') {
+      return null;
+    }
     final text = value?.toString() ?? '';
     final errorText =
         field.stringProp('errorText') ?? 'Invalid value';
@@ -139,13 +141,14 @@ class ActionDispatcher {
     return null;
   }
 
-  /// The typed include value of one field (§8.4): `input`→string,
+  /// The typed include value of one field (§8.4): `input`/`textarea`→string,
   /// `checkbox`/`switch`→bool, `slider`→double, `dropdown`→the item's
   /// `value`; anything else is passed through as-is. Returns [_omit] when
   /// the field has no value to send (e.g. a dropdown with no selection).
   static Object? includeValue(UiNode? field, Object? value) {
     switch (field?.type) {
       case 'input':
+      case 'textarea':
         return value?.toString() ?? '';
       case 'checkbox':
       case 'switch':

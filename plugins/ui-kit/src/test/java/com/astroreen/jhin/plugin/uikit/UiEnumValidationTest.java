@@ -263,8 +263,32 @@ class UiEnumValidationTest {
             assertThatCode(() -> Ui.input("i").enabledBorder(literal)).doesNotThrowAnyException();
             assertThatCode(() -> Ui.input("i").focusedBorder(literal)).doesNotThrowAnyException();
             assertThatCode(() -> Ui.input("i").errorBorder(literal)).doesNotThrowAnyException();
+            assertThatCode(() -> Ui.input("i").focusedErrorBorder(literal)).doesNotThrowAnyException();
+            assertThatCode(() -> Ui.input("i").disabledBorder(literal)).doesNotThrowAnyException();
+            assertThatCode(() -> Ui.textarea("t").border(literal)).doesNotThrowAnyException();
         }
         assertThatThrownBy(() -> Ui.input("i").border("dashed")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Ui.textarea("t").disabledBorder("dashed")).isInstanceOf(IllegalArgumentException.class);
+
+        for (String literal : List.of("never", "always", "auto")) {
+            assertThatCode(() -> Ui.input("i").floatingLabelBehavior(literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.input("i").floatingLabelBehavior("sometimes"))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        for (String literal : List.of("left", "right", "center", "justify", "start", "end")) {
+            assertThatCode(() -> Ui.input("i").textAlign(literal)).doesNotThrowAnyException();
+            assertThatCode(() -> Ui.table().column("C", 1, true, literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.input("i").textAlign("sideways")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Ui.table().column("C", 1, true, "sideways"))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        for (String literal : List.of("ltr", "rtl")) {
+            assertThatCode(() -> Ui.input("i").textDirection(literal)).doesNotThrowAnyException();
+        }
+        assertThatThrownBy(() -> Ui.input("i").textDirection("upsideDown"))
+                .isInstanceOf(IllegalArgumentException.class);
 
         for (String literal : List.of(
                 "system", "none", "click", "text", "forbidden", "grab", "grabbing", "wait", "precise",

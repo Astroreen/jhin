@@ -1,7 +1,7 @@
 /**
- * Fixture generator for the golden gallery harness (T57): builds &gt;=84
+ * Fixture generator for the golden gallery harness (T57): builds &gt;=88
  * {@link UiNode} fixtures through the real {@link Ui} builders, covering all
- * 56 current primitives ({@code BuilderProbe.BUILDERS}) with a basic and a
+ * 58 current primitives ({@code BuilderProbe.BUILDERS}) with a basic and a
  * prop-heavy variant each, and emits them as a generated Dart list consumed
  * by {@code frontend/test/gallery/golden_test.dart}.
  *
@@ -46,12 +46,12 @@ class GalleryDump {
     private static final Path COVERAGE_OUTPUT =
             Path.of("build", "gallery", "coverage.txt").toAbsolutePath().normalize();
 
-    /** The 56 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set, the T60 rich_text/code_block text set, the T61 icon/icon_button set, the T63 list_row/badge/chip/avatar/skeleton set, the T64 menu/sheet/dialog/banner set and the T65 tabs/segmented/shell set). */
+    /** The 58 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set, the T60 rich_text/code_block text set, the T61 icon/icon_button set, the T63 list_row/badge/chip/avatar/skeleton set, the T64 menu/sheet/dialog/banner set, the T65 tabs/segmented/shell set and the T66 textarea/tree set). */
     private static final List<String> EXPECTED_PRIMITIVES = List.of(
             "screen", "nav", "container", "card", "text", "markdown", "rich_text",
-            "code_block", "button", "input",
+            "code_block", "button", "input", "textarea",
             "dropdown", "checkbox", "switch", "slider", "form", "list", "stream_view",
-            "table", "divider", "spacer", "progress", "image", "figure", "chart_line",
+            "table", "tree", "divider", "spacer", "progress", "image", "figure", "chart_line",
             "chart_bar", "chart_pie", "drawer",
             "box", "row", "column", "flex", "expanded", "flexible", "sized_box",
             "align", "center", "aspect_ratio",
@@ -247,6 +247,20 @@ class GalleryDump {
                 .keyboard("email").required(false)
                 .build()));
 
+        // textarea
+        all.add(new Fixture("fixture-textarea-basic", Ui.textarea("ta")
+                .id("fixture-textarea-basic")
+                .label("Notes")
+                .minLines(1).maxLines(8)
+                .build()));
+        all.add(new Fixture("fixture-textarea-propheavy", heavy(Ui.textarea("propheavy"), "textarea-propheavy")
+                .label("Prop Heavy Textarea").hintText("Write here").helperText("Helper")
+                .counterText("0/200")
+                .minLines(1).maxLines(8).maxLength(200).maxLengthEnforcement("enforced")
+                .textCapitalization("sentences").textInputAction("newline")
+                .fillColor("$color.accent").filled(true).border("outline")
+                .build()));
+
         // dropdown
         all.add(new Fixture("fixture-dropdown-basic", Ui.dropdown("d1")
                 .id("fixture-dropdown-basic")
@@ -333,6 +347,20 @@ class GalleryDump {
                 .column("Col A", 1).column("Col B", 2).column("Col C")
                 .row("1", "2", "3")
                 .row(Ui.text("x").build(), "y", "z")
+                .build()));
+
+        // tree
+        all.add(new Fixture("fixture-tree-basic", Ui.tree()
+                .id("fixture-tree-basic")
+                .item("Root")
+                .item(Ui.treeItem("Branch").expanded(true).item("Leaf"))
+                .build()));
+        all.add(new Fixture("fixture-tree-propheavy", heavy(Ui.tree(), "tree-propheavy")
+                .item(Ui.treeItem("Branch")
+                        .icon("folder").expanded(true)
+                        .action(action("tree-select"))
+                        .item(Ui.treeItem("Leaf").icon("description")))
+                .onSelect(action("tree-select"))
                 .build()));
 
         // divider
@@ -910,7 +938,7 @@ class GalleryDump {
     void dumpGallery() throws IOException {
         List<Fixture> all = fixtures();
 
-        assertThat(all).hasSizeGreaterThanOrEqualTo(84);
+        assertThat(all).hasSizeGreaterThanOrEqualTo(88);
 
         Map<String, Integer> perType = new TreeMap<>();
         for (Fixture f : all) {
