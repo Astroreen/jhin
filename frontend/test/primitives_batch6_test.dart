@@ -121,13 +121,13 @@ void main() {
       }
 
       // The recorded render dump for .sisyphus/evidence/T61/sampled.txt.
-      print('T61_SAMPLED_BEGIN');
+      debugPrint('T61_SAMPLED_BEGIN');
       for (var i = 0; i < sampled.length; i++) {
         final data = kIconRegistry[sampled[i]]!;
-        print('${sampled[i]} -> IconData(0x${data.codePoint.toRadixString(16)}, '
+        debugPrint('${sampled[i]} -> IconData(0x${data.codePoint.toRadixString(16)}, '
             'fontFamily: ${data.fontFamily}) rendered as Icon');
       }
-      print('T61_SAMPLED_END');
+      debugPrint('T61_SAMPLED_END');
     });
 
     test('the registry holds every generated name (>= 1800)', () {
@@ -243,13 +243,13 @@ void main() {
       );
 
       // The recorded degrade dump for .sisyphus/evidence/T61/unknown-icon.txt.
-      print('T61_UNKNOWN_ICON_BEGIN');
-      print('node: {type: icon, icon: definitely_not_an_icon, size: 24}');
-      print('rendered: Icon(icon: null, size: 24) — empty icon, no exception');
+      debugPrint('T61_UNKNOWN_ICON_BEGIN');
+      debugPrint('node: {type: icon, icon: definitely_not_an_icon, size: 24}');
+      debugPrint('rendered: Icon(icon: null, size: 24) — empty icon, no exception');
       for (final line in logs) {
-        print('debugPrint: $line');
+        debugPrint('debugPrint: $line');
       }
-      print('T61_UNKNOWN_ICON_END');
+      debugPrint('T61_UNKNOWN_ICON_END');
     });
 
     testWidgets('an unknown icon_button icon name degrades the same way',

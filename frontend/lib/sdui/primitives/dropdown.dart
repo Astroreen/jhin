@@ -28,13 +28,18 @@ Widget buildDropdown(BuildContext context, UiNode node, RenderContext ctx) {
   }
   final current = fieldValue(ctx, node);
   final action = asMap(node.props['action']);
+  // Universal `enabled: false` (§2.1) drops the change interaction — the
+  // field keeps its layout and renders disabled.
+  final enabled = node.boolProp('enabled') != false;
   return DropdownButtonFormField<Object?>(
     initialValue: current,
     items: items,
     decoration: InputDecoration(labelText: node.stringProp('label')),
-    onChanged: (value) {
-      ctx.setState(id, value);
-      if (action != null) ctx.dispatch(action);
-    },
+    onChanged: !enabled
+        ? null
+        : (value) {
+            ctx.setState(id, value);
+            if (action != null) ctx.dispatch(action);
+          },
   );
 }

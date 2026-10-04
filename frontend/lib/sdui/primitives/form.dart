@@ -35,7 +35,7 @@ Widget buildForm(BuildContext context, UiNode node, RenderContext ctx) {
       ...fields,
       if (submit != null)
         ElevatedButton(
-          onPressed: action == null
+          onPressed: action == null || node.boolProp('enabled') == false
               ? null
               : () => ctx.dispatch(_submitAction(node, action)),
           child: Text(label is String ? label : 'Submit'),

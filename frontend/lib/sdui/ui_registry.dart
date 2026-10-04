@@ -204,7 +204,10 @@ class UiRegistry {
   /// The universal prop surface (§2.1), applied in the fixed wrapping order
   /// of §2.3: text style → DecoratedBox → Padding(padding) →
   /// ConstrainedBox → AspectRatio → Opacity → Transform → Clip → Align →
-  /// Tooltip → gesture → Semantics → Flexible/Expanded → Padding(margin).
+  /// Tooltip → gesture → Focus → Semantics → MouseRegion →
+  /// Flexible/Expanded → Padding(margin) (the §2.3 note fixes `MouseRegion`
+  /// outermost of the interaction cluster and `Focus` between the gesture
+  /// wrapper and `Semantics`).
   ///
   /// Deterministic and tested; every step degrades silently on malformed
   /// props (§2.4).
@@ -304,8 +307,16 @@ class UiRegistry {
     // 12. gesture wrapper.
     result = _applyGesture(context, node, result, ctx);
 
+    // 12b. Focus (focusable) — between the gesture wrapper and Semantics
+    // (the §2.3 note).
+    result = _applyFocus(result, node);
+
     // 13. Semantics.
     result = _applySemantics(result, node);
+
+    // 13b. MouseRegion (cursor) — the outermost wrapper of the interaction
+    // cluster (the §2.3 note).
+    result = _applyCursor(result, node);
 
     // 14 + 15. Flexible/Expanded (flex/fit) and Padding(margin).
     result = _applyFlexAndMargin(
@@ -897,52 +908,92 @@ Widget _applyClip(Widget result, UiNode node, JhinTokens tokens) {
   }
 }
 
+/// Primitives that already own their interaction — their own `action`
+/// handler and tap target (`button`, `icon_button`, `dropdown`) — so the
+/// gesture wrapper must not add a nested second dispatch handler for them
+/// (the §2.3 note).
+const Set<String> _interactivePrimitives = {'button', 'icon_button', 'dropdown'};
+
 /// The gesture wrapper (§2.3 step 12): `InkWell` when the node sits on a
 /// Material surface, `GestureDetector` otherwise. `action`/`onTap` drive
-/// the tap, `onLongPress` the long press, `confirm` shows a dialog first,
-/// `enabled: false` drops the interaction entirely (layout is kept).
+/// the tap, `onLongPress` the long press — with both present the tap rides
+/// the `InkWell` and the long press an outer `GestureDetector`, so a tap
+/// fires only `onTap` and a long press only `onLongPress`. `confirm` gates
+/// every dispatch (a decline dispatches nothing), `enabled: false` drops
+/// the interaction entirely (layout is kept). A primitive that already
+/// owns its interaction keeps its own handler and is left untouched.
 Widget _applyGesture(
   BuildContext context,
   UiNode node,
   Widget result,
   RenderContext ctx,
 ) {
+  if (_interactivePrimitives.contains(node.type)) return result;
   if (node.boolProp('enabled') == false) return result;
   final action = asMap(node.props['action']) ?? asMap(node.props['onTap']);
-  final rawLongPress = asMap(node.props['onLongPress']);
-  if (action == null && rawLongPress == null) return result;
-  void tap() {
-    if (action == null) return;
+  final longPressAction = asMap(node.props['onLongPress']);
+  if (action == null && longPressAction == null) return result;
+
+  void dispatch(Map<String, dynamic> act) {
     final confirm = node.stringProp('confirm');
     if (confirm != null && confirm.isNotEmpty) {
-      ctx.confirm(confirm, () => ctx.dispatch(action));
+      ctx.confirm(confirm, () => ctx.dispatch(act));
     } else {
-      ctx.dispatch(action);
+      ctx.dispatch(act);
     }
   }
 
-  void longPress() {
-    if (rawLongPress != null) ctx.dispatch(rawLongPress);
+  void tap() {
+    if (action != null) dispatch(action);
   }
 
-  final cursor = parseMouseCursor(node.stringProp('cursor'));
+  void longPress() {
+    if (longPressAction != null) dispatch(longPressAction);
+  }
+
+  // An absent `cursor` leaves the InkWell cursor at its default; an
+  // unknown literal degrades to the default cursor (§2.4), the same value
+  // the outer MouseRegion gets (the §2.3 note).
+  final rawCursor = node.stringProp('cursor');
+  final cursor = rawCursor == null || rawCursor.isEmpty
+      ? null
+      : parseMouseCursor(rawCursor) ?? MouseCursor.defer;
   final onMaterial = context.findAncestorWidgetOfExactType<Material>() != null;
   if (onMaterial) {
-    return InkWell(
-      onTap: action == null ? null : tap,
-      onLongPress: rawLongPress == null ? null : longPress,
-      mouseCursor: cursor,
-      child: result,
-    );
+    if (action == null) {
+      return GestureDetector(onLongPress: longPress, child: result);
+    }
+    final ink = InkWell(onTap: tap, mouseCursor: cursor, child: result);
+    return longPressAction == null
+        ? ink
+        : GestureDetector(onLongPress: longPress, child: ink);
   }
-  // GestureDetector has no cursor of its own; a MouseRegion carries it.
+  return GestureDetector(
+    onTap: action == null ? null : tap,
+    onLongPress: longPressAction == null ? null : longPress,
+    child: result,
+  );
+}
+
+/// The `Focus` wrapper (`focusable`; the §2.3 note places it between the
+/// gesture wrapper and `Semantics`): only `focusable: true` participates
+/// in focus traversal, and `enabled: false` gates it with the rest of the
+/// interaction (§2.1).
+Widget _applyFocus(Widget result, UiNode node) {
+  if (node.boolProp('enabled') == false) return result;
+  if (node.boolProp('focusable') != true) return result;
+  return Focus(child: result);
+}
+
+/// The `MouseRegion` wrapper (`cursor`; the §2.3 note places it outermost
+/// in the interaction cluster): the mapped [SystemMouseCursors] literal,
+/// or the default cursor for an unknown literal (§2.4) — never a throw.
+Widget _applyCursor(Widget result, UiNode node) {
+  final raw = node.stringProp('cursor');
+  if (raw == null || raw.isEmpty) return result;
   return MouseRegion(
-    cursor: cursor ?? MouseCursor.defer,
-    child: GestureDetector(
-      onTap: action == null ? null : tap,
-      onLongPress: rawLongPress == null ? null : longPress,
-      child: result,
-    ),
+    cursor: parseMouseCursor(raw) ?? MouseCursor.defer,
+    child: result,
   );
 }
 

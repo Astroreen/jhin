@@ -20,7 +20,10 @@ Widget buildButton(BuildContext context, UiNode node, RenderContext ctx) {
   final icon = iconFor(node.stringProp('icon'));
   final action = asMap(node.props['action']);
   final confirm = node.stringProp('confirm');
-  final VoidCallback? onPressed = action == null
+  // Universal `enabled: false` (§2.1) gates the button's own dispatch just
+  // like the gesture wrapper gates the universal one.
+  final enabled = node.boolProp('enabled') != false;
+  final VoidCallback? onPressed = action == null || !enabled
       ? null
       : () {
           if (confirm != null && confirm.isNotEmpty) {

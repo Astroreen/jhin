@@ -1,0 +1,53 @@
+T62 interaction wrap cluster (docs/sdui.md §2.3 + the §2.3 note)
+
+Asserted ancestor order, innermost-first (§2.3 runs inner -> outer):
+  Tooltip -> InkWell -> GestureDetector(onLongPress) -> Focus ->
+  Semantics -> MouseRegion
+MouseRegion is the outermost wrapper of the interaction cluster and
+Focus sits between the gesture wrapper and Semantics (the §2.3 note).
+
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch7_test.dart
+00:00 +0: T62 order — the §2.3 wrap order of the interaction cluster T62 order: the interaction cluster wraps in the documented wrap order
+T62_TREE_BEGIN
+widget tree excerpt, innermost-first (§2.3 runs inner -> outer):
+  Column
+  DecoratedBox
+  Padding
+  MouseRegion
+  Semantics
+  Listener
+  _ExclusiveMouseRegion
+  Semantics
+  _OverlayPortal
+  OverlayPortal
+  RawTooltip
+  Tooltip
+  Listener
+  RawGestureDetector
+  GestureDetector
+  Semantics
+  DefaultSelectionStyle
+  Builder
+  MouseRegion
+  Semantics
+  _FocusInheritedScope
+  Focus
+  _ActionsScope
+  Actions
+  _ParentInkResponseProvider
+  _InkResponseStateWidget
+  InkWell
+  Listener
+  _GestureSemantics
+  RawGestureDetector
+  GestureDetector
+  Semantics
+  _FocusInheritedScope
+  Focus
+  Semantics
+  MouseRegion
+  Padding
+  _Host
+cluster indices (innermost-first): Tooltip=11 InkWell=26 GestureDetector=30 Focus=33 Semantics=34 MouseRegion=35
+T62_TREE_END
+00:00 +1: All tests passed!

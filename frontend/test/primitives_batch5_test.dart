@@ -510,12 +510,12 @@ void main() {
 
       // The recorded fixture and tree dump for
       // .sisyphus/evidence/T60/markdown-tree.txt.
-      print('T60_MARKDOWN_FIXTURE_BEGIN');
-      print(_fixture);
-      print('T60_MARKDOWN_FIXTURE_END');
-      print('T60_MARKDOWN_TREE_BEGIN');
-      print(_tree(nodes));
-      print('T60_MARKDOWN_TREE_END');
+      debugPrint('T60_MARKDOWN_FIXTURE_BEGIN');
+      debugPrint(_fixture);
+      debugPrint('T60_MARKDOWN_FIXTURE_END');
+      debugPrint('T60_MARKDOWN_TREE_BEGIN');
+      debugPrint(_tree(nodes));
+      debugPrint('T60_MARKDOWN_TREE_END');
     });
 
     testWidgets('the markdown fixture renders its blocks as widgets',

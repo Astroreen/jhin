@@ -291,6 +291,8 @@ The universal surface wraps the primitive in a deterministic order (tested):
 14. `Flexible`/`Expanded` (`flex`/`fit`);
 15. `Padding` (`margin`).
 
+The interaction cluster (steps 11–13) carries two fixed extra wrappers: `MouseRegion` (`cursor`) is the outermost wrapper of the cluster and `Focus` (`focusable`) sits between the gesture wrapper and `Semantics`; the gesture wrapper is skipped for primitives that already own their interaction (`button`, `icon_button`, `dropdown`), so no node ever carries two dispatch handlers.
+
 ### 2.4 Degradation rules
 
 - An unknown `type` renders a muted `Unsupported UI element: <type>` card.

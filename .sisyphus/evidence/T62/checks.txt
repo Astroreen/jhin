@@ -1,0 +1,14 @@
+ok: hardcode scan clean: rg 'EdgeInsets\.all\(1[12]\)|maxHeight: 240|height: 160' frontend/lib = 0 hits
+Analyzing frontend...                                           
+No issues found! (ran in 1.0s)
+ok: flutter analyze clean
+ok: frontend suite green (scripts/qa/flutter-test.sh; transcript in test.txt)
+ok: ui-kit module suite green (conformance untouched by T62 — no builder props added; appended to test.txt)
+ok: tree.txt written: the §2.3 interaction cluster order recorded and asserted
+ok: no-op.txt written: declined confirm and enabled:false dispatch nothing
+goldens: 176 committed baselines; the gallery golden tests
+run inside the full suite above and stayed green — the interaction
+props changed no pixels (no baseline was touched: nothing in this
+QA flow writes goldens)
+ok: golden comparison green inside the suite — no pixel deltas (176 baselines)
+happy exit code 0
