@@ -56,7 +56,7 @@ Fields:
 
 - `id` — unique plugin id (lowercase, dotted);
 - `version` — semver of the plugin;
-- `apiVersion` — must equal the SDK api version;
+- `apiVersion` — must equal the SDK api version (currently `1`);
 - `name`, `description` — human-readable identity;
 - `mainClass` — the fully qualified class implementing `JhinPlugin`;
 - `exports` — package names made visible to dependants;
@@ -95,13 +95,21 @@ runtime; consumers depend on the plugin and look the service up.
 The Flutter client hardcodes exactly one screen — the client-owned
 server-profile surface (add-server and profile switching) — and one endpoint:
 the bootstrap fetch (`GET /_jhin/bootstrap`). Everything else is server-driven
-UI over the 25 fixed primitives: screen, container, card, text, button, input,
-checkbox, switch, slider, dropdown, form, list, table, nav, drawer, divider,
-spacer, progress, image, figure, markdown, stream_view, chart_bar, chart_line,
-chart_pie. An unknown primitive renders a placeholder card; the client never
-crashes on server content. The kernel itself owns only two endpoints —
-`GET /_jhin/health` and `GET /_jhin/bootstrap` — with a bootstrap fallback
-that any plugin may override.
+UI over the primitive catalog: since contract level 2 the primitives are a
+catalog of 58 (layout, text, controls, surfaces, data, nav — see
+`docs/sdui.md` §2.5), no longer a fixed list of 25. An unknown primitive
+renders a placeholder card; the client never crashes on server content. The
+kernel itself owns only two endpoints — `GET /_jhin/health` and
+`GET /_jhin/bootstrap` — with a bootstrap fallback that any plugin may
+override.
+
+Bootstrap negotiation: the payload carries
+`contract {api: 2, minApi: 2, schema: 3, minSchema: 3}` and every client
+request advertises `X-Jhin-Client: api=…; version=…; schema=…; caps=…`
+(`docs/sdui.md` §1, §6). Release builds of the client must pass
+`--no-tree-shake-icons`: `frontend/lib/design/icon_registry.dart` resolves
+8825 `IconData` lookups dynamically, so the icon tree-shaker cannot see which
+glyphs are used and would strip them.
 
 ## Rules
 
@@ -122,7 +130,7 @@ The old v1 backend is gone. The repository is a composite Gradle build:
 ```
 ├── AGENTS.md                this file
 ├── README.md                user-facing overview
-├── settings.gradle          composite build: sdk, kernel, 11 plugins
+├── settings.gradle          composite build: sdk, kernel, 12 plugins
 ├── build.gradle             root aggregate
 ├── gradlew gradlew.bat      Gradle wrapper
 ├── devenv.nix               dev shell (product itself never requires nix)
@@ -139,11 +147,12 @@ The old v1 backend is gone. The repository is a composite Gradle build:
 │   ├── ui-kit/              jhin.ui-kit
 │   ├── ui-default/          jhin.ui
 │   ├── reload/              jhin.reload
+│   ├── qa-mock-llm/         jhin.qa-mock-llm
 │   └── example/             jhin.example
 ├── frontend/                Flutter SDUI runtime (Android / Linux / Web)
 ├── deploy/                  restart loop, systemd example, run notes
 ├── scripts/qa/              QA scripts
-├── docs/                    architecture, plugin development, SDUI (T42), VSCode troubleshooting
+├── docs/                    architecture, plugin development, SDUI (T42), updates, VSCode troubleshooting
 └── .opencode/               plugin-authoring skill and command (T43)
 ```
 
@@ -169,6 +178,9 @@ The old v1 backend is gone. The repository is a composite Gradle build:
   owner, action dispatch and the session stream endpoint.
 - `plugins/reload/` (`jhin.reload`) — `POST /admin/reload` restarts the host
   under the deploy restart loop.
+- `plugins/qa-mock-llm/` (`jhin.qa-mock-llm`) — deterministic mock LLM
+  factories for tests and QA (scripted replies, title and failure scripts);
+  never ships in the release bundle.
 - `plugins/example/` (`jhin.example`) — the copy-paste template demonstrating
   every extension surface; start from `plugins/example/README.md`.
 

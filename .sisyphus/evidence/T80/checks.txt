@@ -1,0 +1,9 @@
+ok: UiConformanceTest green: 0 undocumented keys, 0 unreachable doc keys (conformance.txt)
+ok: AGENTS.md lists qa-mock-llm: 'qa-mock-llm' hits AGENTS.md
+ok: plugin-dev.md documents ctx.sched(): 'ctx\.sched' hits docs/plugin-dev.md
+ok: plugin-dev.md documents SessionLifecycleService: 'SessionLifecycleService' hits docs/plugin-dev.md
+ok: plugin-dev.md documents TitleService: 'TitleService' hits docs/plugin-dev.md
+ok: plugin-dev.md documents UndoJournal: 'UndoJournal' hits docs/plugin-dev.md
+ok: plugin-dev.md documents RunActivityService: 'RunActivityService' hits docs/plugin-dev.md
+ok: plugin-dev.md documents session_updated: 'session_updated' hits docs/plugin-dev.md
+ok: README.md documents --no-tree-shake-icons: '--no-tree-shake-icons' hits README.md

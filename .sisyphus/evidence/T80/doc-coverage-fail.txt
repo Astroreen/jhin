@@ -1,0 +1,5 @@
+=== deliberate wrong expectation ===
+pattern: UndoJournal
+file:    docs/plugin-dev.md
+486:**`UndoJournal`** — the short undo window over lifecycle operations (5 s by
+

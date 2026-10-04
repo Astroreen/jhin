@@ -10,7 +10,7 @@ client renders the UI on Android, Linux desktop and Web.
 ```
 +--------------------------------------------------------------+
 |  Flutter SDUI client (Android / Linux / Web)                 |
-|  renders server-authored JSON over 25 fixed primitives       |
+|  renders server-authored JSON over a catalog of 58           |
 +-------------------------------+------------------------------+
                                 | JSON + SSE
 +-------------------------------v------------------------------+
@@ -94,6 +94,24 @@ used and would strip them from the font. The flag keeps the full Material
 icon font in the binary; the size cost is accepted. Debug builds are
 unaffected (no icon tree shaking runs there).
 
+## Updating and upgrades
+
+Upgrades apply themselves; there is no manual migration step:
+
+- **Host data.** Database migrations run automatically on every start, before
+  any plugin loads; applied versions are recorded and skipped afterwards —
+  restarting the host is the whole upgrade procedure.
+- **Client data.** The client's persisted store is a versioned envelope; its
+  migrations run automatically at client startup (see
+  [docs/updates.md](docs/updates.md)).
+- **Version gate.** When the client build and the server disagree about the
+  wire contract or the data schema, the client shows a built-in "update
+  required" surface instead of product screens (the bootstrap `contract` block
+  is what is compared).
+- **Downgrades never destroy data.** Values written by a newer schema are
+  quarantined (`migration.quarantine`) rather than deleted, so returning to an
+  older build loses nothing.
+
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md) — runtime architecture: boot
@@ -103,8 +121,8 @@ unaffected (no icon tree shaking runs there).
   `PluginContext` reference, one example per extension surface, plugin-to-plugin
   APIs, agent SPI chains, troubleshooting, packaging.
 - [docs/sdui.md](docs/sdui.md) — the server-driven UI contract: bootstrap
-  payload, the 25 primitives, action protocol, client directives, stream
-  frames, expressions and caching.
+  payload, the primitive catalog (58 primitives), action protocol, client
+  directives, stream frames, expressions and caching.
 
 Service deployment (restart loop, systemd unit, data directory):
 [deploy/README.md](deploy/README.md). Architecture principles and the

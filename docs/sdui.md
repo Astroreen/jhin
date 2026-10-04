@@ -329,7 +329,7 @@ The interaction cluster (steps 11–13) carries two fixed extra wrappers: `Mouse
 
 ### 2.5 Primitive catalog
 
-Contract level 2 grows the catalog from 25 to 56 primitives. `container`
+Contract level 2 grows the catalog from 25 to 58 primitives. `container`
 stays as the legacy name; `box` is its superset.
 
 - Layout — `screen`, `shell`, `container`, `box`, `row`, `column`, `flex`,

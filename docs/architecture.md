@@ -21,7 +21,8 @@ For writing plugins see [plugin-dev.md](plugin-dev.md); for the UI contract see
 3. **Flutter SDUI client** (`frontend/`) — a thin server-driven-UI renderer for
    Android, Linux desktop and Web. It hardcodes exactly one screen (the
    server-profile surface) and one endpoint (`GET /_jhin/bootstrap`); everything
-   else is server-authored JSON over 25 fixed primitives.
+   else is server-authored JSON over the primitive catalog (58 primitives at
+   contract level 2, see [sdui.md](sdui.md) section 2.5).
 
 A bare kernel is not a product: it answers only `GET /_jhin/health` and
 `GET /_jhin/bootstrap` and reports an empty UI until plugins are installed.
@@ -320,7 +321,78 @@ Every decision is logged on one line and every record write goes through the
 shared write lane. A jar that cannot be read or copied is logged and skipped; a
 database failure aborts the run.
 
-## 6. Security model notes
+### 5.6 Scheduler seam
+
+`ctx.sched()` hands plugins the host scheduler (`SchedulerRegistry`,
+implemented by `kernel/…/sched/SchedulerRegistryImpl.java`) — one shared
+`ScheduledExecutorService` for the whole host (daemon threads `jhin-sched-1`
+and `jhin-sched-2`; the pool size is a host constant):
+
+- `schedule(TaskSpec)` runs `TaskSpec.oneShot(name, delayMs, run)` or
+  `TaskSpec.periodic(name, initialDelayMs, periodMs, run)`; scheduling a name
+  that already exists cancels the previous task and installs the new one.
+- `cancel(name)` is idempotent; `names()` lists the live task names.
+- A throwing periodic run stays scheduled; a one-shot that throws is simply
+  done.
+- Shutdown is bounded: the scheduler stops accepting work and the kernel joins
+  it for at most 5 seconds before moving on to the rest of the shutdown
+  sequence, interrupting if needed. Nothing scheduled survives a restart;
+  durable state belongs in the database.
+
+## 6. UI and client internals
+
+### 6.1 Design-token layer
+
+All visual constants of the client live in one place:
+`frontend/lib/design/tokens.dart` (`JhinTokens`: spacing, radius, typography,
+elevation, motion and semantic colors) and `frontend/lib/design/theme.dart`
+(`JhinTheme.from` / `JhinTheme.fromBootstrap` build the theme from the
+bootstrap `theme`, `tokens` and `density` blocks; `JhinDesignScope` is the
+inherited widget that hands it down the tree). Node props may reference tokens
+by name as `$token` strings; the client resolves every `$…` reference against
+the theme at render time. Widgets below the token layer do not hardcode colors
+or paddings.
+
+### 6.2 The `Ui` builder lattice
+
+`plugins/ui-kit/` is API-only: `UiNode` (the JSON-shaped node model) and the
+fluent `Ui` builder over the primitive catalog. Builders are composed through
+a small capability lattice — `has` plus the mixins `HasBox`, `HasText`,
+`HasFlex`, `HasInteraction`, `HasChildren` and `HasItems` — so each builder
+exposes exactly the prop surface its primitives accept, and every setter
+funnels through one `PropSink` into the node's JSON map. `UiEnums` validates
+enum-valued props at build time and `UiTokens` holds the token names the
+builder may emit. `UiConformanceTest` keeps the emittable keys and the
+[sdui.md](sdui.md) tables in lock-step (section 2.6).
+
+### 6.3 Versioned client store
+
+The client's persisted blob is an envelope — `{schema, app, writtenAt, data}` —
+owned by `frontend/lib/store/versioned_store.dart`. Migrations run
+automatically at startup: `StoreMigration` steps (v1 → v2 → v3) under the six
+`MigrationRunner` rules documented in [updates.md](updates.md). A value whose
+migration throws is copied to `migration.quarantine:<key>:<schema>` and
+recorded in `migration.quarantine` instead of being dropped — downgrades never
+destroy data. `frontend/lib/boot/version_gate.dart` compares the on-disk
+schema with the bootstrap `contract` block (`schema` / `minSchema`) and shows
+the built-in "update required" surface instead of product screens on mismatch.
+
+### 6.4 Keyboard layer
+
+`frontend/lib/sdui/keyboard/` turns key events into named commands:
+`CommandRegistry` (the fixed set of 25 command ids), `WhenContexts` (the
+`when` expression context), `Keymap` (binding resolution, last match wins) and
+`KeymapStore` (user overrides). Defaults ship in the bootstrap `keymap` array;
+the server negotiates overrides through the `X-Jhin-Keybindings` header
+([sdui.md](sdui.md) section 8).
+
+### 6.5 Gallery and golden harness
+
+The ui-kit `GalleryDump` probe writes a gallery of every primitive into
+`frontend/test/gallery/`, where widget tests render it and compare against
+goldens. Any primitive, prop or token change surfaces as a golden diff there.
+
+## 7. Security model notes
 
 - HTTP-level guarding is a filter's job (`jhin.security` registers the bearer
   filter and the TLS keystore generator). With no filter registered the host
@@ -329,7 +401,7 @@ database failure aborts the run.
   enforces confinement at the application layer only.
 - Stored API keys are not encrypted at rest in this MVP.
 
-## 7. What the kernel deliberately does not do
+## 8. What the kernel deliberately does not do
 
 - No worker protocol, no remote tool execution, no multi-instance sync.
 - No hot-swap class reload inside a running JVM (`jhin.reload` restarts the

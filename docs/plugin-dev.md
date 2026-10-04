@@ -444,6 +444,68 @@ Rules that bite in practice:
   classes (the `Class.forName` probe pattern in
   `plugins/example/src/main/java/com/astroreen/jhin/plugin/example/ExamplePlugin.java`).
 
+### 4.1 The `jhin.sessions` service APIs
+
+`jhin.sessions` publishes its lifecycle and metadata contracts as services in
+the exported package `com.astroreen.jhin.plugin.sessions.api`. Depend on the
+plugin and look each contract up with `ctx.services().find(…)`; lookups are
+live, so a provider installed later appears in later calls.
+
+**`SessionLifecycleService`** — the mutating lifecycle operations. Every
+successful call updates the row, bumps `updatedAt` and emits one
+`session_updated` event:
+
+| Call | Effect |
+|------|--------|
+| `settle(id, SettleReason)` / `unsettle(id)` | close the thread and reopen it |
+| `pin(id, order)` / `unpin(id)` | pin to the top of the sidebar / release |
+| `snooze(id, untilTs)` / `snoozeFor(id, durationMs)` / `wake(id)` | hide the thread until a timestamp, or bring it back |
+| `archive(id)` / `restore(id)` | put the thread away and bring it back |
+| `setAutoSettle(id, enabled)` | per-session opt-out of the inactivity sweep |
+| `regenerateTitle(id)` | re-ask the title SPI (not undoable) |
+
+`SettleReason` is the wire enum of settle causes — `manual`, `inactive`,
+`closed`, `pr_merged`, `other` — with `wire()` / `fromWire(String)` mapping to
+the JSON names.
+
+**Clear-aware patch** — `SessionStore.patch(id, patch, Set<ClearableField>)`
+(and the `accountId` overload) writes the listed nullable columns back to
+`NULL` alongside the non-null fields of the patch; the plain
+`patch(id, patch)` never clears anything. `ClearableField` enumerates the
+nullable columns a clear-aware patch may reset.
+
+**`TitleService`** — the SPI that proposes a session title from its event
+history: `String regenerate(Session session, List<EventRecord> history)`. The
+sessions plugin defines the type and calls it; the run owner (`jhin.agent`'s
+`TitleServiceImpl`) implements and publishes it. Contract: the result is never
+`null` or blank — an implementation with nothing better falls back to the
+current title instead of failing. Look it up at call time
+(`services().find(TitleService.class)`), never cache it across the registry
+lifetime.
+
+**`UndoJournal`** — the short undo window over lifecycle operations (5 s by
+default): `record(sessionId, OpKind, previousSnapshot)` (the lifecycle service
+calls it before each write), `undo(sessionId)` and `undoLatest()` restore the
+snapshot through the clear-aware patch and emit `session_updated`. `OpKind`
+has one constant per undoable operation (settle, unpin, snooze, archive, …);
+title regeneration is deliberately absent. Consecutive same-kind operations on
+one session inside the window coalesce to the oldest snapshot; an expired
+entry answers empty and mutates nothing. The journal is in-memory and
+per-process: a second host instance gets its own empty journal (single-instance
+assumption).
+
+**`RunActivityService`** — the optional run-owner seam of the auto-settle
+sweep: `boolean hasPendingApproval(String sessionId)`. The inactivity sweep
+must not settle a session waiting on a tool-call approval; live runs are
+detected from the run table, pending gates are asked of this service. With no
+publisher the sweep settles on inactivity alone; a throwing implementation is
+treated as blocked and the session is retried next sweep.
+
+**`EventType.session_updated`** — the stream event (wire name
+`session_updated`) every successful lifecycle operation emits; the payload is
+the updated session as JSON. SSE consumers de-duplicate by sequence number as
+usual (see [architecture.md](architecture.md) section 5.4).
+
 ## 5. Agent SPI chain semantics
 
 The agent plugin (`jhin.agent`) exports `com.astroreen.jhin.plugin.agent.api`.
