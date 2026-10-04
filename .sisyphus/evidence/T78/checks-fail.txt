@@ -1,0 +1,1 @@
+FAIL: deliberately wrong expectation: the invalid hex save persisted accent not-a-color (it is blocked; see .sisyphus/evidence/T78/bootstrap-fail.json)

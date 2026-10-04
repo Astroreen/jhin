@@ -160,7 +160,7 @@ class ScreensTest {
     @Test
     void settingsScreenCarriesTheAccountInfoAndTheClientOwnedControls() {
         Map<String, Object> json = SettingsScreen.render(
-                Optional.of("acc-1"), true, false, keymapFixture(), Map.of()).toJson();
+                Optional.of("acc-1"), true, false, keymapFixture(), Map.of(), UiSettings.Snapshot.defaults()).toJson();
 
         assertThat(stringsIn(json)).anyMatch(text -> text.contains("Signed in as acc-1"));
         assertThat(opsIn(json)).contains("openProfiles", "clearToken", "openUrl");
@@ -170,9 +170,9 @@ class ScreensTest {
     @Test
     void settingsScreenReloadButtonAppearsOnlyWithTheReloadPlugin() {
         Map<String, Object> withReload = SettingsScreen.render(
-                Optional.empty(), true, true, keymapFixture(), Map.of()).toJson();
+                Optional.empty(), true, true, keymapFixture(), Map.of(), UiSettings.Snapshot.defaults()).toJson();
         Map<String, Object> without = SettingsScreen.render(
-                Optional.empty(), true, false, keymapFixture(), Map.of()).toJson();
+                Optional.empty(), true, false, keymapFixture(), Map.of(), UiSettings.Snapshot.defaults()).toJson();
 
         assertThat(labels(withReload)).contains("Reload");
         assertThat(castMap(button(withReload, "Reload").get("action")))
@@ -183,7 +183,7 @@ class ScreensTest {
     @Test
     void settingsScreenShowsNotSignedInWithoutAPrincipal() {
         Map<String, Object> json = SettingsScreen.render(
-                Optional.empty(), true, false, keymapFixture(), Map.of()).toJson();
+                Optional.empty(), true, false, keymapFixture(), Map.of(), UiSettings.Snapshot.defaults()).toJson();
 
         assertThat(stringsIn(json)).contains("Not signed in");
     }
@@ -192,7 +192,8 @@ class ScreensTest {
     void settingsScreenKeyboardRowsShowTheEffectiveChords() {
         Map<String, Object> json = SettingsScreen.render(
                 Optional.empty(), true, false, keymapFixture(),
-                Map.of("composer.send", "mod+shift+enter")).toJson();
+                Map.of("composer.send", "mod+shift+enter"),
+                UiSettings.Snapshot.defaults()).toJson();
 
         assertThat(stringsIn(json)).contains("composer.send", "palette.open");
         // The client override wins per command; un-overridden commands keep
@@ -224,18 +225,17 @@ class ScreensTest {
     }
 
     @Test
-    void pluginsScreenIsATableOfTheLoadedCatalog() {
+    void pluginsScreenIsACardOfListRowsOfTheLoadedCatalog() {
         List<KernelInfo.Loaded> plugins = List.of(
                 new KernelInfo.Loaded("jhin.ui", "0.2.0", "UI", List.of()),
                 new KernelInfo.Loaded("jhin.sessions", "0.2.0", "Sessions", List.of()));
 
         Map<String, Object> json = PluginsScreen.render(plugins).toJson();
 
-        List<Map<String, Object>> tables = nodesOfType(json, "table");
-        assertThat(tables).hasSize(1);
-        assertThat(castList(tables.get(0).get("columns")).toString())
-                .contains("Id", "Version", "Name");
-        assertThat(stringsIn(json)).contains("jhin.ui", "jhin.sessions", "0.2.0");
+        assertThat(nodesOfType(json, "card")).isNotEmpty();
+        List<Map<String, Object>> rows = nodesOfType(json, "list_row");
+        assertThat(rows).hasSize(2);
+        assertThat(stringsIn(json)).contains("jhin.ui", "jhin.sessions", "0.2.0", "UI", "Sessions");
     }
 
     @Test
@@ -250,7 +250,8 @@ class ScreensTest {
     void registryAddsConnectForSecurityAndProvidersForTheLlmService() {
         FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
         services.publish(ProviderRegistry.class, providers);
-        Screens screens = new Screens(store, events, services, kernel(), EVERYTHING);
+        Screens screens = new Screens(store, events, services, kernel(), EVERYTHING,
+                UiSettings.open(tmp));
 
         Set<String> ids = screens.screens(Optional.empty(), Map.of()).keySet();
         assertThat(ids).contains("connect", "sessions", "settings", "plugins", "providers");
@@ -259,7 +260,8 @@ class ScreensTest {
     @Test
     void registryKeepsProvidersOutWhileTheServiceIsMissing() {
         FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
-        Screens screens = new Screens(store, events, services, kernel(), EVERYTHING);
+        Screens screens = new Screens(store, events, services, kernel(), EVERYTHING,
+                UiSettings.open(tmp));
 
         assertThat(screens.screens(Optional.empty(), Map.of()).keySet()).doesNotContain("providers");
     }
@@ -278,7 +280,8 @@ class ScreensTest {
     }
 
     private Screens registry(Features features) {
-        return new Screens(store, events, new FakePluginContext.FakeServices(), kernel(), features);
+        return new Screens(store, events, new FakePluginContext.FakeServices(), kernel(),
+                features, UiSettings.open(tmp));
     }
 
     /** The default keymap rows the Keyboard section renders. */

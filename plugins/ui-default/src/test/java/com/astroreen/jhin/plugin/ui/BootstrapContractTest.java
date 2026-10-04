@@ -19,12 +19,14 @@ import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.sdk.http.ClientInfo;
 import com.astroreen.jhin.sdk.http.HttpResponse;
 import com.astroreen.jhin.sdk.json.Json;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class BootstrapContractTest {
 
@@ -41,6 +43,9 @@ class BootstrapContractTest {
     };
 
     private final CapabilityTailor tailor = new CapabilityTailor(NO_EVENTS);
+
+    @TempDir
+    Path tmp;
 
     // ---- top-level payload shape (docs/sdui.md section 1) ----
 
@@ -292,7 +297,8 @@ class BootstrapContractTest {
     }
 
     private Map<String, Object> bootstrap(ClientInfo client) {
-        BootstrapRoute route = new BootstrapRoute(screens(), false, tailor);
+        BootstrapRoute route = new BootstrapRoute(screens(), false, tailor,
+                UiSettings.open(tmp));
         HttpResponse response = route.handle(request(client));
         assertThat(response.status()).isEqualTo(200);
         return Json.readMap(new String(response.body()));

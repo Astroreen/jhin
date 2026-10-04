@@ -173,7 +173,8 @@ class BootstrapRouteTest {
     private Map<String, Object> bootstrap(boolean securityPresent, FakeHttpRequest req,
                                           ScreenRegistry registry) {
         CapabilityTailor tailor = new CapabilityTailor(eventLog);
-        BootstrapRoute route = new BootstrapRoute(registry, securityPresent, tailor);
+        BootstrapRoute route = new BootstrapRoute(registry, securityPresent, tailor,
+                UiSettings.open(tmp));
         HttpResponse response = route.handle(req);
         assertThat(response.status()).isEqualTo(200);
         return Json.readMap(new String(response.body()));

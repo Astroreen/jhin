@@ -1,0 +1,1790 @@
+{
+  "before": {
+    "api": 2,
+    "contract": {
+      "api": 2,
+      "minApi": 2,
+      "minSchema": 3,
+      "schema": 3
+    },
+    "density": "comfortable",
+    "empty": false,
+    "entry": "sessions",
+    "fallbacks": {
+      "error": {
+        "children": [
+          {
+            "style": "body",
+            "text": "The server could not render this screen.",
+            "type": "text"
+          },
+          {
+            "action": {
+              "op": "reloadBootstrap"
+            },
+            "label": "Retry",
+            "style": "primary",
+            "type": "button"
+          },
+          {
+            "action": {
+              "op": "openProfiles"
+            },
+            "label": "Change server",
+            "style": "text",
+            "type": "button"
+          }
+        ],
+        "title": "Something went wrong",
+        "type": "card"
+      },
+      "offline": {
+        "children": [
+          {
+            "style": "body",
+            "text": "The server is unreachable. Your screens are shown from the cache.",
+            "type": "text"
+          },
+          {
+            "action": {
+              "op": "refresh"
+            },
+            "label": "Retry",
+            "style": "primary",
+            "type": "button"
+          }
+        ],
+        "title": "Offline",
+        "type": "card"
+      }
+    },
+    "keymap": [
+      {
+        "command": "composer.send",
+        "key": "mod+enter",
+        "when": "composerFocus"
+      },
+      {
+        "command": "composer.sendAndNew",
+        "key": "ctrl+alt+enter",
+        "when": "composerFocus"
+      },
+      {
+        "command": "composer.newline",
+        "key": "shift+enter",
+        "when": "composerFocus"
+      },
+      {
+        "command": "composer.recallPrev",
+        "key": "mod+up",
+        "when": "composerFocus"
+      },
+      {
+        "command": "composer.recallNext",
+        "key": "mod+down",
+        "when": "composerFocus"
+      },
+      {
+        "command": "palette.open",
+        "key": "ctrl+k"
+      },
+      {
+        "command": "thread.undo",
+        "key": "ctrl+z"
+      },
+      {
+        "command": "nav.back",
+        "key": "alt+left"
+      },
+      {
+        "command": "nav.forward",
+        "key": "alt+right"
+      },
+      {
+        "command": "thread.new",
+        "key": "mod+n"
+      }
+    ],
+    "screenEndpoint": "/ui/screen/{id}",
+    "screens": [
+      {
+        "id": "sessions",
+        "node": {
+          "body": {
+            "body": {
+              "children": [
+                {
+                  "style": "caption",
+                  "text": "Choose a thread from the sidebar to open the conversation.",
+                  "type": "text"
+                }
+              ],
+              "title": "Select a thread",
+              "type": "card"
+            },
+            "header": {
+              "align": "center",
+              "children": [
+                {
+                  "activeIndex": 0,
+                  "items": [
+                    {
+                      "label": "Sessions",
+                      "screen": "sessions"
+                    },
+                    {
+                      "label": "Settings",
+                      "screen": "settings"
+                    },
+                    {
+                      "label": "Plugins",
+                      "screen": "plugins"
+                    }
+                  ],
+                  "kind": "tabs",
+                  "type": "nav"
+                },
+                {
+                  "type": "spacer"
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "arrange-toggle",
+                    "path": "/ui/action/arrange-toggle",
+                    "payload": {
+                      "arrange": true
+                    }
+                  },
+                  "label": "Arrange threads",
+                  "style": "secondary",
+                  "type": "button"
+                }
+              ],
+              "type": "row"
+            },
+            "id": "sessions-shell",
+            "sidebar": {
+              "empty": {
+                "style": "caption",
+                "text": "No threads yet.",
+                "type": "text"
+              },
+              "sections": [
+                {
+                  "collapsed": false,
+                  "collapsible": false,
+                  "id": "section-pinned",
+                  "items": [],
+                  "label": "Pinned"
+                },
+                {
+                  "collapsed": false,
+                  "collapsible": false,
+                  "id": "section-active",
+                  "items": [],
+                  "label": "Active"
+                },
+                {
+                  "collapsed": false,
+                  "collapsible": false,
+                  "id": "section-snoozed",
+                  "items": [],
+                  "label": "Snoozed"
+                },
+                {
+                  "collapsed": true,
+                  "collapsible": true,
+                  "id": "section-settled",
+                  "items": [],
+                  "label": "Settled"
+                }
+              ],
+              "type": "list"
+            },
+            "type": "shell"
+          },
+          "title": "Sessions",
+          "type": "screen"
+        }
+      },
+      {
+        "id": "settings",
+        "node": {
+          "body": {
+            "children": [
+              {
+                "style": "h2",
+                "text": "Settings",
+                "type": "text"
+              },
+              {
+                "children": [
+                  {
+                    "id": "appearance",
+                    "segments": [
+                      {
+                        "label": "System",
+                        "value": "system"
+                      },
+                      {
+                        "label": "Light",
+                        "value": "light"
+                      },
+                      {
+                        "label": "Dark",
+                        "value": "dark"
+                      }
+                    ],
+                    "type": "segmented",
+                    "value": "system"
+                  },
+                  {
+                    "errorText": "Use #RRGGBB or #AARRGGBB",
+                    "id": "canvas",
+                    "label": "Canvas",
+                    "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                    "type": "input",
+                    "value": "#16161e"
+                  },
+                  {
+                    "errorText": "Use #RRGGBB or #AARRGGBB",
+                    "id": "accent",
+                    "label": "Accent",
+                    "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                    "type": "input",
+                    "value": "#7E57C2"
+                  },
+                  {
+                    "id": "density",
+                    "segments": [
+                      {
+                        "label": "Compact",
+                        "value": "compact"
+                      },
+                      {
+                        "label": "Comfortable",
+                        "value": "comfortable"
+                      },
+                      {
+                        "label": "Spacious",
+                        "value": "spacious"
+                      }
+                    ],
+                    "type": "segmented",
+                    "value": "comfortable"
+                  },
+                  {
+                    "id": "panelMotionMs",
+                    "label": "Panel animations",
+                    "max": 400.0,
+                    "min": 0.0,
+                    "step": 20.0,
+                    "type": "slider",
+                    "value": 0.0
+                  },
+                  {
+                    "action": {
+                      "include": [
+                        "appearance",
+                        "canvas",
+                        "accent",
+                        "density",
+                        "panelMotionMs"
+                      ],
+                      "method": "POST",
+                      "name": "save-appearance",
+                      "path": "/ui/action/save-appearance"
+                    },
+                    "label": "Save",
+                    "type": "button"
+                  }
+                ],
+                "title": "Appearance",
+                "type": "card"
+              },
+              {
+                "children": [
+                  {
+                    "id": "autoSettleDefault",
+                    "label": "Auto-settle idle threads",
+                    "type": "switch",
+                    "value": true
+                  },
+                  {
+                    "id": "inactivityDays",
+                    "label": "Settle after inactivity (days)",
+                    "max": 30.0,
+                    "min": 1.0,
+                    "step": 1.0,
+                    "type": "slider",
+                    "value": 3.0
+                  },
+                  {
+                    "enabled": false,
+                    "id": "settleOnPrMerged",
+                    "label": "Settle on PR merged",
+                    "tooltip": "PR linking is not enabled",
+                    "type": "switch",
+                    "value": false
+                  },
+                  {
+                    "action": {
+                      "include": [
+                        "autoSettleDefault",
+                        "inactivityDays"
+                      ],
+                      "method": "POST",
+                      "name": "save-thread-behavior",
+                      "path": "/ui/action/save-thread-behavior"
+                    },
+                    "label": "Save",
+                    "type": "button"
+                  }
+                ],
+                "title": "Thread behavior",
+                "type": "card"
+              },
+              {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "subtitle": "mod+enter",
+                        "title": "composer.send",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "composer.send"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "composer.send"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "ctrl+alt+enter",
+                        "title": "composer.sendAndNew",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "composer.sendAndNew"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "composer.sendAndNew"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "shift+enter",
+                        "title": "composer.newline",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "composer.newline"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "composer.newline"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "mod+up",
+                        "title": "composer.recallPrev",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "composer.recallPrev"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "composer.recallPrev"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "mod+down",
+                        "title": "composer.recallNext",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "composer.recallNext"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "composer.recallNext"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "ctrl+k",
+                        "title": "palette.open",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "palette.open"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "palette.open"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "ctrl+z",
+                        "title": "thread.undo",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "thread.undo"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "thread.undo"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "alt+left",
+                        "title": "nav.back",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "nav.back"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "nav.back"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "alt+right",
+                        "title": "nav.forward",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "nav.forward"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "nav.forward"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "mod+n",
+                        "title": "thread.new",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "thread.new"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "thread.new"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "action": {
+                          "method": "POST",
+                          "name": "keybind-restore",
+                          "path": "/ui/action/keybind-restore"
+                        },
+                        "label": "Restore defaults",
+                        "style": "secondary",
+                        "type": "button"
+                      }
+                    ],
+                    "direction": "column",
+                    "gap": 8,
+                    "type": "container"
+                  }
+                ],
+                "title": "Keyboard",
+                "type": "card"
+              },
+              {
+                "action": {
+                  "op": "openProfiles"
+                },
+                "label": "Change server",
+                "style": "secondary",
+                "type": "button"
+              },
+              {
+                "label": "Sign out",
+                "style": "danger",
+                "type": "button"
+              },
+              {
+                "label": "Help",
+                "style": "text",
+                "type": "button"
+              }
+            ],
+            "direction": "column",
+            "gap": 12,
+            "padding": 16,
+            "type": "container"
+          },
+          "title": "Settings",
+          "type": "screen"
+        }
+      },
+      {
+        "id": "plugins",
+        "node": {
+          "body": {
+            "children": [
+              {
+                "style": "h2",
+                "text": "Plugins",
+                "type": "text"
+              },
+              {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "subtitle": "Sessions",
+                        "title": "jhin.sessions",
+                        "trailing": {
+                          "label": "0.2.0",
+                          "type": "badge"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "UI Kit",
+                        "title": "jhin.ui-kit",
+                        "trailing": {
+                          "label": "0.2.0",
+                          "type": "badge"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "UI",
+                        "title": "jhin.ui",
+                        "trailing": {
+                          "label": "0.2.0",
+                          "type": "badge"
+                        },
+                        "type": "list_row"
+                      }
+                    ],
+                    "direction": "column",
+                    "gap": 8,
+                    "type": "container"
+                  }
+                ],
+                "title": "Plugins",
+                "type": "card"
+              }
+            ],
+            "direction": "column",
+            "gap": 12,
+            "padding": 16,
+            "type": "container"
+          },
+          "title": "Plugins",
+          "type": "screen"
+        }
+      }
+    ],
+    "theme": {
+      "accent": "#7E57C2",
+      "appearance": "system",
+      "canvas": "#16161e",
+      "colors": {
+        "error": "#f7768e",
+        "info": "#7aa2f7",
+        "success": "#9ece6a",
+        "warning": "#e0af68"
+      },
+      "mode": "system"
+    },
+    "title": "Jhin",
+    "tokens": {
+      "elevation": {
+        "lg": 8,
+        "md": 4,
+        "none": 0,
+        "sm": 1
+      },
+      "motion": {
+        "fast": 120,
+        "instant": 0,
+        "normal": 200,
+        "panel": 0,
+        "slow": 320
+      },
+      "radius": {
+        "full": 9999,
+        "lg": 14,
+        "md": 10,
+        "sm": 6
+      },
+      "spacing": {
+        "lg": 16,
+        "md": 12,
+        "sm": 8,
+        "xl": 24,
+        "xs": 4,
+        "xxl": 32
+      },
+      "typography": {
+        "body": {
+          "height": 1.5,
+          "size": 14,
+          "weight": 400
+        },
+        "h1": {
+          "height": 1.25,
+          "size": 28,
+          "weight": 700
+        },
+        "h2": {
+          "height": 1.3,
+          "size": 22,
+          "weight": 700
+        },
+        "h3": {
+          "height": 1.35,
+          "size": 18,
+          "weight": 600
+        },
+        "mono": {
+          "font": "monospace",
+          "height": 1.55,
+          "size": 13,
+          "weight": 400
+        },
+        "small": {
+          "height": 1.45,
+          "size": 12,
+          "weight": 400
+        }
+      }
+    }
+  },
+  "after": {
+    "api": 2,
+    "contract": {
+      "api": 2,
+      "minApi": 2,
+      "minSchema": 3,
+      "schema": 3
+    },
+    "density": "compact",
+    "empty": false,
+    "entry": "sessions",
+    "fallbacks": {
+      "error": {
+        "children": [
+          {
+            "style": "body",
+            "text": "The server could not render this screen.",
+            "type": "text"
+          },
+          {
+            "action": {
+              "op": "reloadBootstrap"
+            },
+            "label": "Retry",
+            "style": "primary",
+            "type": "button"
+          },
+          {
+            "action": {
+              "op": "openProfiles"
+            },
+            "label": "Change server",
+            "style": "text",
+            "type": "button"
+          }
+        ],
+        "title": "Something went wrong",
+        "type": "card"
+      },
+      "offline": {
+        "children": [
+          {
+            "style": "body",
+            "text": "The server is unreachable. Your screens are shown from the cache.",
+            "type": "text"
+          },
+          {
+            "action": {
+              "op": "refresh"
+            },
+            "label": "Retry",
+            "style": "primary",
+            "type": "button"
+          }
+        ],
+        "title": "Offline",
+        "type": "card"
+      }
+    },
+    "keymap": [
+      {
+        "command": "composer.send",
+        "key": "mod+enter",
+        "when": "composerFocus"
+      },
+      {
+        "command": "composer.sendAndNew",
+        "key": "ctrl+alt+enter",
+        "when": "composerFocus"
+      },
+      {
+        "command": "composer.newline",
+        "key": "shift+enter",
+        "when": "composerFocus"
+      },
+      {
+        "command": "composer.recallPrev",
+        "key": "mod+up",
+        "when": "composerFocus"
+      },
+      {
+        "command": "composer.recallNext",
+        "key": "mod+down",
+        "when": "composerFocus"
+      },
+      {
+        "command": "palette.open",
+        "key": "ctrl+k"
+      },
+      {
+        "command": "thread.undo",
+        "key": "ctrl+z"
+      },
+      {
+        "command": "nav.back",
+        "key": "alt+left"
+      },
+      {
+        "command": "nav.forward",
+        "key": "alt+right"
+      },
+      {
+        "command": "thread.new",
+        "key": "mod+n"
+      }
+    ],
+    "screenEndpoint": "/ui/screen/{id}",
+    "screens": [
+      {
+        "id": "sessions",
+        "node": {
+          "body": {
+            "body": {
+              "children": [
+                {
+                  "style": "caption",
+                  "text": "Choose a thread from the sidebar to open the conversation.",
+                  "type": "text"
+                }
+              ],
+              "title": "Select a thread",
+              "type": "card"
+            },
+            "header": {
+              "align": "center",
+              "children": [
+                {
+                  "activeIndex": 0,
+                  "items": [
+                    {
+                      "label": "Sessions",
+                      "screen": "sessions"
+                    },
+                    {
+                      "label": "Settings",
+                      "screen": "settings"
+                    },
+                    {
+                      "label": "Plugins",
+                      "screen": "plugins"
+                    }
+                  ],
+                  "kind": "tabs",
+                  "type": "nav"
+                },
+                {
+                  "type": "spacer"
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "arrange-toggle",
+                    "path": "/ui/action/arrange-toggle",
+                    "payload": {
+                      "arrange": true
+                    }
+                  },
+                  "label": "Arrange threads",
+                  "style": "secondary",
+                  "type": "button"
+                }
+              ],
+              "type": "row"
+            },
+            "id": "sessions-shell",
+            "sidebar": {
+              "empty": {
+                "style": "caption",
+                "text": "No threads yet.",
+                "type": "text"
+              },
+              "sections": [
+                {
+                  "collapsed": false,
+                  "collapsible": false,
+                  "id": "section-pinned",
+                  "items": [],
+                  "label": "Pinned"
+                },
+                {
+                  "collapsed": false,
+                  "collapsible": false,
+                  "id": "section-active",
+                  "items": [],
+                  "label": "Active"
+                },
+                {
+                  "collapsed": false,
+                  "collapsible": false,
+                  "id": "section-snoozed",
+                  "items": [],
+                  "label": "Snoozed"
+                },
+                {
+                  "collapsed": true,
+                  "collapsible": true,
+                  "id": "section-settled",
+                  "items": [],
+                  "label": "Settled"
+                }
+              ],
+              "type": "list"
+            },
+            "type": "shell"
+          },
+          "title": "Sessions",
+          "type": "screen"
+        }
+      },
+      {
+        "id": "settings",
+        "node": {
+          "body": {
+            "children": [
+              {
+                "style": "h2",
+                "text": "Settings",
+                "type": "text"
+              },
+              {
+                "children": [
+                  {
+                    "id": "appearance",
+                    "segments": [
+                      {
+                        "label": "System",
+                        "value": "system"
+                      },
+                      {
+                        "label": "Light",
+                        "value": "light"
+                      },
+                      {
+                        "label": "Dark",
+                        "value": "dark"
+                      }
+                    ],
+                    "type": "segmented",
+                    "value": "dark"
+                  },
+                  {
+                    "errorText": "Use #RRGGBB or #AARRGGBB",
+                    "id": "canvas",
+                    "label": "Canvas",
+                    "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                    "type": "input",
+                    "value": "#101018"
+                  },
+                  {
+                    "errorText": "Use #RRGGBB or #AARRGGBB",
+                    "id": "accent",
+                    "label": "Accent",
+                    "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                    "type": "input",
+                    "value": "#ff0000"
+                  },
+                  {
+                    "id": "density",
+                    "segments": [
+                      {
+                        "label": "Compact",
+                        "value": "compact"
+                      },
+                      {
+                        "label": "Comfortable",
+                        "value": "comfortable"
+                      },
+                      {
+                        "label": "Spacious",
+                        "value": "spacious"
+                      }
+                    ],
+                    "type": "segmented",
+                    "value": "compact"
+                  },
+                  {
+                    "id": "panelMotionMs",
+                    "label": "Panel animations",
+                    "max": 400.0,
+                    "min": 0.0,
+                    "step": 20.0,
+                    "type": "slider",
+                    "value": 200.0
+                  },
+                  {
+                    "action": {
+                      "include": [
+                        "appearance",
+                        "canvas",
+                        "accent",
+                        "density",
+                        "panelMotionMs"
+                      ],
+                      "method": "POST",
+                      "name": "save-appearance",
+                      "path": "/ui/action/save-appearance"
+                    },
+                    "label": "Save",
+                    "type": "button"
+                  }
+                ],
+                "title": "Appearance",
+                "type": "card"
+              },
+              {
+                "children": [
+                  {
+                    "id": "autoSettleDefault",
+                    "label": "Auto-settle idle threads",
+                    "type": "switch",
+                    "value": true
+                  },
+                  {
+                    "id": "inactivityDays",
+                    "label": "Settle after inactivity (days)",
+                    "max": 30.0,
+                    "min": 1.0,
+                    "step": 1.0,
+                    "type": "slider",
+                    "value": 3.0
+                  },
+                  {
+                    "enabled": false,
+                    "id": "settleOnPrMerged",
+                    "label": "Settle on PR merged",
+                    "tooltip": "PR linking is not enabled",
+                    "type": "switch",
+                    "value": false
+                  },
+                  {
+                    "action": {
+                      "include": [
+                        "autoSettleDefault",
+                        "inactivityDays"
+                      ],
+                      "method": "POST",
+                      "name": "save-thread-behavior",
+                      "path": "/ui/action/save-thread-behavior"
+                    },
+                    "label": "Save",
+                    "type": "button"
+                  }
+                ],
+                "title": "Thread behavior",
+                "type": "card"
+              },
+              {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "subtitle": "mod+enter",
+                        "title": "composer.send",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "composer.send"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "composer.send"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "ctrl+alt+enter",
+                        "title": "composer.sendAndNew",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "composer.sendAndNew"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "composer.sendAndNew"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "shift+enter",
+                        "title": "composer.newline",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "composer.newline"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "composer.newline"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "mod+up",
+                        "title": "composer.recallPrev",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "composer.recallPrev"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "composer.recallPrev"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "mod+down",
+                        "title": "composer.recallNext",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "composer.recallNext"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "composer.recallNext"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "ctrl+k",
+                        "title": "palette.open",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "palette.open"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "palette.open"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "ctrl+z",
+                        "title": "thread.undo",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "thread.undo"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "thread.undo"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "alt+left",
+                        "title": "nav.back",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "nav.back"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "nav.back"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "alt+right",
+                        "title": "nav.forward",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "nav.forward"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "nav.forward"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "mod+n",
+                        "title": "thread.new",
+                        "trailing": {
+                          "children": [
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-edit",
+                                "path": "/ui/action/keybind-edit",
+                                "payload": {
+                                  "command": "thread.new"
+                                }
+                              },
+                              "label": "Edit",
+                              "style": "secondary",
+                              "type": "button"
+                            },
+                            {
+                              "action": {
+                                "method": "POST",
+                                "name": "keybind-reset",
+                                "path": "/ui/action/keybind-reset",
+                                "payload": {
+                                  "command": "thread.new"
+                                }
+                              },
+                              "label": "Reset",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "action": {
+                          "method": "POST",
+                          "name": "keybind-restore",
+                          "path": "/ui/action/keybind-restore"
+                        },
+                        "label": "Restore defaults",
+                        "style": "secondary",
+                        "type": "button"
+                      }
+                    ],
+                    "direction": "column",
+                    "gap": 8,
+                    "type": "container"
+                  }
+                ],
+                "title": "Keyboard",
+                "type": "card"
+              },
+              {
+                "action": {
+                  "op": "openProfiles"
+                },
+                "label": "Change server",
+                "style": "secondary",
+                "type": "button"
+              },
+              {
+                "label": "Sign out",
+                "style": "danger",
+                "type": "button"
+              },
+              {
+                "label": "Help",
+                "style": "text",
+                "type": "button"
+              }
+            ],
+            "direction": "column",
+            "gap": 12,
+            "padding": 16,
+            "type": "container"
+          },
+          "title": "Settings",
+          "type": "screen"
+        }
+      },
+      {
+        "id": "plugins",
+        "node": {
+          "body": {
+            "children": [
+              {
+                "style": "h2",
+                "text": "Plugins",
+                "type": "text"
+              },
+              {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "subtitle": "Sessions",
+                        "title": "jhin.sessions",
+                        "trailing": {
+                          "label": "0.2.0",
+                          "type": "badge"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "UI Kit",
+                        "title": "jhin.ui-kit",
+                        "trailing": {
+                          "label": "0.2.0",
+                          "type": "badge"
+                        },
+                        "type": "list_row"
+                      },
+                      {
+                        "subtitle": "UI",
+                        "title": "jhin.ui",
+                        "trailing": {
+                          "label": "0.2.0",
+                          "type": "badge"
+                        },
+                        "type": "list_row"
+                      }
+                    ],
+                    "direction": "column",
+                    "gap": 8,
+                    "type": "container"
+                  }
+                ],
+                "title": "Plugins",
+                "type": "card"
+              }
+            ],
+            "direction": "column",
+            "gap": 12,
+            "padding": 16,
+            "type": "container"
+          },
+          "title": "Plugins",
+          "type": "screen"
+        }
+      }
+    ],
+    "theme": {
+      "accent": "#ff0000",
+      "appearance": "dark",
+      "canvas": "#101018",
+      "colors": {
+        "error": "#f7768e",
+        "info": "#7aa2f7",
+        "success": "#9ece6a",
+        "warning": "#e0af68"
+      },
+      "mode": "dark"
+    },
+    "title": "Jhin",
+    "tokens": {
+      "elevation": {
+        "lg": 8,
+        "md": 4,
+        "none": 0,
+        "sm": 1
+      },
+      "motion": {
+        "fast": 120,
+        "instant": 0,
+        "normal": 200,
+        "panel": 200,
+        "slow": 320
+      },
+      "radius": {
+        "full": 9999,
+        "lg": 14,
+        "md": 10,
+        "sm": 6
+      },
+      "spacing": {
+        "lg": 16,
+        "md": 12,
+        "sm": 8,
+        "xl": 24,
+        "xs": 4,
+        "xxl": 32
+      },
+      "typography": {
+        "body": {
+          "height": 1.5,
+          "size": 14,
+          "weight": 400
+        },
+        "h1": {
+          "height": 1.25,
+          "size": 28,
+          "weight": 700
+        },
+        "h2": {
+          "height": 1.3,
+          "size": 22,
+          "weight": 700
+        },
+        "h3": {
+          "height": 1.35,
+          "size": 18,
+          "weight": 600
+        },
+        "mono": {
+          "font": "monospace",
+          "height": 1.55,
+          "size": 13,
+          "weight": 400
+        },
+        "small": {
+          "height": 1.45,
+          "size": 12,
+          "weight": 400
+        }
+      }
+    }
+  }
+}

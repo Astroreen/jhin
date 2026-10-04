@@ -49,16 +49,6 @@ final class BootstrapRoute {
     /** The product title shown by the runtime. */
     private static final String TITLE = "Jhin";
 
-    /** Default theme seed values (docs/sdui.md section 1); a future plugin
-     * config layer overrides these per-key — none exists yet, so these are
-     * exactly what every client sees today. */
-    private static final String APPEARANCE = "system";
-    private static final String CANVAS = "#16161e";
-    private static final String ACCENT = "#7E57C2";
-
-    /** Default control density (docs/sdui.md section 1). */
-    private static final String DENSITY = "comfortable";
-
     /** The client-owned "update required" screen id (docs/sdui.md section 6,
      * docs/updates.md section 3 rule 6) — chrome, never a server-authored
      * node tree (C-10); only ever set as {@code entry} for a client that
@@ -68,11 +58,14 @@ final class BootstrapRoute {
     private final ScreenRegistry registry;
     private final boolean securityPresent;
     private final CapabilityTailor tailor;
+    private final UiSettings settings;
 
-    BootstrapRoute(ScreenRegistry registry, boolean securityPresent, CapabilityTailor tailor) {
+    BootstrapRoute(ScreenRegistry registry, boolean securityPresent, CapabilityTailor tailor,
+                   UiSettings settings) {
         this.registry = registry;
         this.securityPresent = securityPresent;
         this.tailor = tailor;
+        this.settings = settings;
     }
 
     /**
@@ -85,6 +78,7 @@ final class BootstrapRoute {
     HttpResponse handle(HttpRequest req) {
         ClientInfo client = req.client();
         boolean level2 = tailor.isLevel2(client);
+        UiSettings.Snapshot snapshot = settings.current();
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("api", tailor.negotiatedApi(client));
@@ -93,10 +87,10 @@ final class BootstrapRoute {
         if (level2) {
             payload.put("contract", contract());
         }
-        payload.put("theme", theme(level2));
+        payload.put("theme", theme(level2, snapshot));
         if (level2) {
-            payload.put("tokens", TokenDefaults.tokens());
-            payload.put("density", DENSITY);
+            payload.put("tokens", TokenDefaults.tokens(snapshot.panelMotionMs()));
+            payload.put("density", snapshot.density());
             payload.put("keymap", DefaultKeymap.entries());
         }
         payload.put("entry", entry(req));
@@ -170,25 +164,28 @@ final class BootstrapRoute {
 
     /**
      * The {@code theme} block: the full level-2 shape, or the Appendix A
-     * reduction ({@code seedColor}+{@code mode}) at level 1.
+     * reduction ({@code seedColor}+{@code mode}) at level 1. The seed values
+     * come from the persisted {@code jhin.ui} settings (T78), so a
+     * {@code save-appearance} shows up in the next bootstrap.
      *
-     * @param level2 whether the negotiated contract level is 2
+     * @param level2   whether the negotiated contract level is 2
+     * @param snapshot the effective settings
      * @return the theme block for that level
      */
-    private Map<String, Object> theme(boolean level2) {
+    private Map<String, Object> theme(boolean level2, UiSettings.Snapshot snapshot) {
         if (!level2) {
             Map<String, Object> reduced = new LinkedHashMap<>();
-            reduced.put("seedColor", ACCENT);
-            reduced.put("mode", APPEARANCE);
+            reduced.put("seedColor", snapshot.accent());
+            reduced.put("mode", snapshot.appearance());
             return reduced;
         }
         Map<String, Object> theme = new LinkedHashMap<>();
-        theme.put("appearance", APPEARANCE);
-        theme.put("canvas", CANVAS);
-        theme.put("accent", ACCENT);
+        theme.put("appearance", snapshot.appearance());
+        theme.put("canvas", snapshot.canvas());
+        theme.put("accent", snapshot.accent());
         theme.put("colors", colors());
         // Legacy level-1 spelling of the same idea; MUST equal `appearance` (docs/sdui.md section 1).
-        theme.put("mode", APPEARANCE);
+        theme.put("mode", snapshot.appearance());
         return theme;
     }
 

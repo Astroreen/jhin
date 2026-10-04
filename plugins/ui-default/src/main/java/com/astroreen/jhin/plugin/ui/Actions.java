@@ -3,7 +3,7 @@
  * action, registered always and degrading to an explanatory toast when the
  * plugin that would serve it is not loaded.
  *
- * <p>Names, exhaustively (23):
+ * <p>Names, exhaustively (25):
  * <ul>
  *   <li>{@code enroll} — redeem an enrollment code, answer
  *       {@code [setToken, navigate:sessions]} (jhin.security);</li>
@@ -22,6 +22,10 @@
  *       / {@code keybind-restore} — the T70 keybinding surface: the rebind
  *       sheet and the feedback directives; the user keymap itself is
  *       persisted client-side (see {@code KeybindActions});</li>
+ *   <li>{@code save-appearance} / {@code save-thread-behavior} — the T78
+ *       settings surface: persist the Appearance / Thread-behavior cards
+ *       into the jhin.ui settings store and answer {@code reloadBootstrap}
+ *       / {@code refresh} (see {@code SettingsActions});</li>
  *   <li>the T76 thread-row table of {@code SessionActions} — {@code pin},
  *       {@code unpin}, {@code settle}, {@code unsettle}, {@code snooze},
  *       {@code wake}, {@code archive}, {@code restore},
@@ -58,10 +62,12 @@ final class Actions {
      * @param store    the session store of jhin.sessions
      * @param services the cross-plugin service registry
      * @param features which optional integrations are loaded
+     * @param settings the jhin.ui settings store (T78 settings actions)
      * @return action name to handler
      */
     static Map<String, ActionRoute.ActionHandler> build(
-            SessionStore store, ServiceRegistry services, Features features) {
+            SessionStore store, ServiceRegistry services, Features features,
+            UiSettings settings) {
         Map<String, ActionRoute.ActionHandler> handlers = new LinkedHashMap<>();
         handlers.put("enroll", enroll(services, features));
         handlers.put("create-session", new CreateSessionAction(store)::handle);
@@ -75,6 +81,8 @@ final class Actions {
         handlers.put("keybind-save", KeybindActions::save);
         handlers.put("keybind-reset", KeybindActions::reset);
         handlers.put("keybind-restore", KeybindActions::restore);
+        handlers.put("save-appearance", SettingsActions.saveAppearance(settings));
+        handlers.put("save-thread-behavior", SettingsActions.saveThreadBehavior(settings));
         registerThreadRowActions(handlers, store, services, features);
         return Map.copyOf(handlers);
     }

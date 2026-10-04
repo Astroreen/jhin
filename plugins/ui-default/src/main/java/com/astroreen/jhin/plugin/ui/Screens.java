@@ -37,14 +37,16 @@ final class Screens implements ScreenRegistry {
     private final ServiceRegistry services;
     private final KernelInfo kernel;
     private final Features features;
+    private final UiSettings settings;
 
     Screens(SessionStore store, EventLog events, ServiceRegistry services,
-            KernelInfo kernel, Features features) {
+            KernelInfo kernel, Features features, UiSettings settings) {
         this.store = store;
         this.events = events;
         this.services = services;
         this.kernel = kernel;
         this.features = features;
+        this.settings = settings;
     }
 
     @Override
@@ -58,7 +60,7 @@ final class Screens implements ScreenRegistry {
                 store, account, providersPresent(), false));
         screens.put("settings", () -> SettingsScreen.render(
                 account, features.security(), features.reload(),
-                DefaultKeymap.entries(), overrides));
+                DefaultKeymap.entries(), overrides, settings.current()));
         screens.put("plugins", () -> PluginsScreen.render(kernel.plugins()));
         if (providersPresent()) {
             ProviderRegistry providers = providerRegistry().orElseThrow();

@@ -78,14 +78,16 @@ public final class UiPlugin implements JhinPlugin {
                 probe.test(AGENT_API),
                 Integrations.loaded(ctx.kernel(), RELOAD_ID));
 
-        ScreenRegistry screens = new Screens(store, events, ctx.services(), ctx.kernel(), features);
+        UiSettings settings = new UiSettings(ctx.config(), ctx.dataDir());
+        ScreenRegistry screens = new Screens(store, events, ctx.services(), ctx.kernel(),
+                features, settings);
         CapabilityTailor tailor = new CapabilityTailor(events);
         streamRoute = new StreamRoute(store, events, ctx.streams());
         ctx.onShutdown(streamRoute::shutdown);
         Map<String, ActionRoute.ActionHandler> handlers =
-                Actions.build(store, ctx.services(), features);
+                Actions.build(store, ctx.services(), features, settings);
 
-        BootstrapRoute bootstrap = new BootstrapRoute(screens, features.security(), tailor);
+        BootstrapRoute bootstrap = new BootstrapRoute(screens, features.security(), tailor, settings);
         ScreenRoute screen = new ScreenRoute(screens, tailor);
         ActionRoute action = new ActionRoute(handlers);
         SearchRoute search = new SearchRoute(store, events);

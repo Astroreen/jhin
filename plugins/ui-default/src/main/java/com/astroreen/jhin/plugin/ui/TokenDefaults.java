@@ -2,8 +2,10 @@
  * Built-in design-token defaults of the level-2 bootstrap {@code tokens}
  * block (docs/sdui.md section 1). Every value here mirrors the client's own
  * built-in default exactly, so a level-2 client is fully styled even before
- * any screen is authored; a future config layer may override individual
- * values, but the shape and the defaults themselves are fixed here.
+ * any screen is authored; the {@code motion.panel} duration is the one
+ * configurable value — it comes from the {@code jhin.ui} settings store
+ * ({@code panelMotionMs}, see {@link UiSettings}) and is passed in per
+ * bootstrap.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -18,14 +20,19 @@ final class TokenDefaults {
     private TokenDefaults() {
     }
 
-    /** The full {@code tokens} block: {@code spacing/radius/typography/elevation/motion}. */
-    static Map<String, Object> tokens() {
+    /**
+     * The full {@code tokens} block: {@code spacing/radius/typography/elevation/motion}.
+     *
+     * @param panelMs the persisted {@code motion.panel} duration (0–400)
+     * @return the tokens block
+     */
+    static Map<String, Object> tokens(int panelMs) {
         Map<String, Object> tokens = new LinkedHashMap<>();
         tokens.put("spacing", spacing());
         tokens.put("radius", radius());
         tokens.put("typography", typography());
         tokens.put("elevation", elevation());
-        tokens.put("motion", motion());
+        tokens.put("motion", motion(panelMs));
         return tokens;
     }
 
@@ -86,13 +93,13 @@ final class TokenDefaults {
     }
 
     /** {@code tokens.motion}: the duration scale, {@code panel} configurable. */
-    private static Map<String, Object> motion() {
+    private static Map<String, Object> motion(int panelMs) {
         Map<String, Object> motion = new LinkedHashMap<>();
         motion.put("instant", 0);
         motion.put("fast", 120);
         motion.put("normal", 200);
         motion.put("slow", 320);
-        motion.put("panel", DEFAULT_PANEL_MS);
+        motion.put("panel", panelMs);
         return motion;
     }
 }

@@ -1,6 +1,7 @@
 /**
  * The {@code providers} screen: CRUD over the LLM provider registry, the
- * UI face of the {@code /providers} routes.
+ * UI face of the {@code /providers} routes, rendered as {@code card} +
+ * {@code list_row} + {@code form}.
  *
  * <p>The create form's format dropdown is populated from the registered
  * factory formats ({@code GET /providers/formats} semantics); each row shows
@@ -42,25 +43,31 @@ public final class ProvidersScreen {
                 .gap(12)
                 .padding(16)
                 .child(Ui.text("Providers").style("h2").build())
-                .child(Ui.form()
-                        .field(Ui.text("Format").style("caption").build())
-                        .field(format.build())
-                        .field(Ui.input("model").label("Model").required(true).build())
-                        .field(Ui.input("apiKey").label("API key").obscure(true).build())
-                        .field(Ui.input("baseUrl").label("Base URL")
-                                .placeholder("Provider default").build())
-                        .submit("Add provider", ActionDescriptors.of("create-provider", null,
-                                List.of("format", "model", "apiKey", "baseUrl")))
+                .child(Ui.card()
+                        .title("Add provider")
+                        .child(Ui.form()
+                                .field(Ui.text("Format").style("caption").build())
+                                .field(format.build())
+                                .field(Ui.input("model").label("Model").required(true).build())
+                                .field(Ui.input("apiKey").label("API key").obscure(true).build())
+                                .field(Ui.input("baseUrl").label("Base URL")
+                                        .placeholder("Provider default").build())
+                                .submit("Add provider", ActionDescriptors.of("create-provider", null,
+                                        List.of("format", "model", "apiKey", "baseUrl")))
+                                .build())
                         .build());
         if (records.isEmpty()) {
-            body.child(Ui.text("No providers configured.").style("caption").build());
+            body.child(Ui.card()
+                    .title("Configured")
+                    .child(Ui.text("No providers configured.").style("caption").build())
+                    .build());
         } else {
-            Ui.ListBuilder rows = Ui.list();
+            Ui.ContainerBuilder rows = Ui.container().direction("column").gap(8);
             for (ProviderRecord record : records) {
-                rows.item(Ui.card()
+                rows.child(Ui.listRow()
                         .title(record.format() + " — " + record.model())
-                        .child(Ui.text("id: " + record.id()).style("mono").build())
-                        .child(Ui.button("Delete")
+                        .subtitle("id: " + record.id())
+                        .trailing(Ui.button("Delete")
                                 .style("danger")
                                 .confirm("Delete this provider?")
                                 .action(ActionDescriptors.of(
@@ -68,7 +75,10 @@ public final class ProvidersScreen {
                                 .build())
                         .build());
             }
-            body.child(rows.build());
+            body.child(Ui.card()
+                    .title("Configured")
+                    .child(rows.build())
+                    .build());
         }
         return Ui.screen().title("Providers").body(body.build()).build();
     }

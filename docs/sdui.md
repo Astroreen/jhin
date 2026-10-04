@@ -145,6 +145,31 @@ keeps the built-in. All numbers are logical px; `typography.*.weight` is
   (`mod+enter`; `mod` is Cmd on macOS, Ctrl elsewhere); `when` is a command
   context name evaluated client-side.
 
+The shipped default `keymap` (the `jhin.ui` payload, in registration order):
+
+| `key` | `command` | `when` |
+|-------|-----------|--------|
+| `mod+enter` | `composer.send` | `composerFocus` |
+| `ctrl+alt+enter` | `composer.sendAndNew` | `composerFocus` |
+| `shift+enter` | `composer.newline` | `composerFocus` |
+| `mod+up` | `composer.recallPrev` | `composerFocus` |
+| `mod+down` | `composer.recallNext` | `composerFocus` |
+| `ctrl+k` | `palette.open` | — |
+| `ctrl+z` | `thread.undo` | — |
+| `alt+left` | `nav.back` | — |
+| `alt+right` | `nav.forward` | — |
+| `mod+n` | `thread.new` | — |
+
+The `theme`/`density`/`tokens.motion.panel` seed values are not fixed
+constants: the `jhin.ui` plugin persists them server-side (its `settings.json`
+over the `jhin.ui` config section, keys `appearance`, `canvas`, `accent`,
+`density`, `panelMotionMs`) and the settings screen's `save-appearance` action
+writes them, so the next bootstrap carries the saved values. The same store
+holds the thread-behavior proxy keys `autoSettleDefault` and `inactivityDays`
+(`save-thread-behavior`); they are `jhin.ui`-owned preferences — the
+auto-settle sweep threshold itself stays the `jhin.sessions.inactivityMs`
+operator config.
+
 Node shape everywhere (section 2):
 
 ```json

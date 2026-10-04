@@ -1,6 +1,6 @@
 /**
- * The {@code plugins} screen: a read-only table of the plugin catalog behind
- * {@code GET /_jhin/health}.
+ * The {@code plugins} screen: a read-only catalog of the loaded plugins behind
+ * {@code GET /_jhin/health}, rendered as {@code card} + {@code list_row} rows.
  *
  * <p>The rows are the loaded plugins of the current load pass ({@code id},
  * {@code version}, {@code name} — exactly the health payload's {@code plugins}
@@ -34,16 +34,23 @@ public final class PluginsScreen {
                 .padding(16)
                 .child(Ui.text("Plugins").style("h2").build());
         if (plugins.isEmpty()) {
-            body.child(Ui.text("No plugins loaded.").style("caption").build());
+            body.child(Ui.card()
+                    .title("Plugins")
+                    .child(Ui.text("No plugins loaded.").style("caption").build())
+                    .build());
         } else {
-            Ui.TableBuilder table = Ui.table()
-                    .column("Id")
-                    .column("Version")
-                    .column("Name");
+            Ui.ContainerBuilder rows = Ui.container().direction("column").gap(8);
             for (KernelInfo.Loaded plugin : plugins) {
-                table.row(plugin.id(), plugin.version(), plugin.name());
+                rows.child(Ui.listRow()
+                        .title(plugin.id())
+                        .subtitle(plugin.name())
+                        .trailing(Ui.badge().label(plugin.version()).build())
+                        .build());
             }
-            body.child(table.build());
+            body.child(Ui.card()
+                    .title("Plugins")
+                    .child(rows.build())
+                    .build());
         }
         return Ui.screen().title("Plugins").body(body.build()).build();
     }

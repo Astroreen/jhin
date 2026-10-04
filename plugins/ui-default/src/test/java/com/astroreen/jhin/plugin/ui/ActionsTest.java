@@ -53,7 +53,8 @@ class ActionsTest {
                 new FakeEnrollmentService());
         services.publish(com.astroreen.jhin.plugin.agent.api.RunService.class, runs);
         services.publish(ProviderRegistry.class, providers);
-        handlers = Actions.build(store, services, new Features(true, true, true, true));
+        handlers = Actions.build(store, services, new Features(true, true, true, true),
+                UiSettings.open(tmp));
     }
 
     @AfterEach
@@ -372,12 +373,14 @@ class ActionsTest {
     void absentIntegrationsAnswerWithExplanatoryToasts() {
         FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
         Map<String, ActionRoute.ActionHandler> degraded =
-                Actions.build(store, services, new Features(false, false, false, false));
+                Actions.build(store, services, new Features(false, false, false, false),
+                        UiSettings.open(tmp));
 
         assertThat(degraded.keySet()).containsExactlyInAnyOrder(
                 "enroll", "create-session", "send", "cancel",
                 "create-provider", "delete-provider", "reload", "undo",
                 "keybind-edit", "keybind-save", "keybind-reset", "keybind-restore",
+                "save-appearance", "save-thread-behavior",
                 "pin", "unpin", "settle", "unsettle", "snooze", "wake",
                 "archive", "restore", "regenerate-title", "reorder",
                 "delete-session", "arrange-toggle");

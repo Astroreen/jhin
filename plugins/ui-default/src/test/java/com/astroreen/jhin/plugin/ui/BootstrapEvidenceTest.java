@@ -61,7 +61,8 @@ class BootstrapEvidenceTest {
     void writesTheQaFixtures() throws IOException {
         Files.createDirectories(EVIDENCE_DIR);
         CapabilityTailor tailor = new CapabilityTailor(eventLog);
-        BootstrapRoute route = new BootstrapRoute(screens(), false, tailor);
+        BootstrapRoute route = new BootstrapRoute(screens(), false, tailor,
+                UiSettings.open(tmp));
 
         dump(route, "bootstrap-api2.json", new ClientInfo(2, "0.3.0", 3, Set.of("sse")));
         dump(route, "bootstrap-api1.json", new ClientInfo(1, "0.3.0", 1, Set.of("sse")));
