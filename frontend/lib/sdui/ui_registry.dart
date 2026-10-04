@@ -8,6 +8,7 @@ import 'primitives/align_primitive.dart';
 import 'primitives/aspect_ratio_primitive.dart';
 import 'primitives/avatar.dart';
 import 'primitives/badge.dart';
+import 'primitives/banner.dart';
 import 'primitives/box.dart';
 import 'primitives/button.dart';
 import 'primitives/card.dart';
@@ -20,6 +21,7 @@ import 'primitives/chip.dart';
 import 'primitives/code_block.dart';
 import 'primitives/column.dart';
 import 'primitives/container.dart';
+import 'primitives/dialog.dart';
 import 'primitives/divider.dart';
 import 'primitives/drawer.dart';
 import 'primitives/dropdown.dart';
@@ -36,6 +38,7 @@ import 'primitives/input.dart';
 import 'primitives/list.dart';
 import 'primitives/list_row.dart';
 import 'primitives/markdown.dart';
+import 'primitives/menu.dart';
 import 'primitives/nav.dart';
 import 'primitives/positioned.dart';
 import 'primitives/progress.dart';
@@ -43,6 +46,7 @@ import 'primitives/rich_text.dart';
 import 'primitives/row.dart';
 import 'primitives/screen.dart';
 import 'primitives/scroll.dart';
+import 'primitives/sheet.dart';
 import 'primitives/sized_box.dart';
 import 'primitives/skeleton.dart';
 import 'primitives/slider.dart';
@@ -122,6 +126,10 @@ class UiRegistry {
       'chip': buildChip,
       'avatar': buildAvatar,
       'skeleton': buildSkeleton,
+      'menu': buildMenu,
+      'sheet': buildSheet,
+      'dialog': buildDialog,
+      'banner': buildBanner,
     });
     return registry;
   }
@@ -920,14 +928,15 @@ Widget _applyClip(Widget result, UiNode node, JhinTokens tokens) {
 
 /// Primitives that already own their interaction — their own `action`
 /// handler and tap target (`button`, `icon_button`, `dropdown`, `list_row`,
-/// `chip`) — so the gesture wrapper must not add a nested second dispatch
-/// handler for them (the §2.3 note).
+/// `chip`, `menu`) — so the gesture wrapper must not add a nested second
+/// dispatch handler for them (the §2.3 note).
 const Set<String> _interactivePrimitives = {
   'button',
   'icon_button',
   'dropdown',
   'list_row',
   'chip',
+  'menu',
 };
 
 /// The gesture wrapper (§2.3 step 12): `InkWell` when the node sits on a

@@ -61,8 +61,10 @@ abstract interface class DirectiveHost {
   /// `toast`(text, style?) — shows a transient message.
   Future<void> toast(String text, String? style);
 
-  /// `dialog`(node) — shows a modal node.
-  Future<void> dialog(Map<String, dynamic> node);
+  /// `dialog`(node, kind?) — shows a modal node. `kind: "sheet"` opens a
+  /// bottom sheet; an absent kind keeps the dialog presentation; an unknown
+  /// kind degrades to a `card` render of the content (§2.4).
+  Future<void> dialog(Map<String, dynamic> node, {String? kind});
 
   /// `dismissDialog` — closes the modal node.
   Future<void> dismissDialog();
@@ -146,7 +148,8 @@ class DirectiveExecutor {
       case 'dialog':
         final node = map['node'];
         if (node is! Map) return _malformed(op, map);
-        return host.dialog(Map<String, dynamic>.from(node));
+        return host.dialog(Map<String, dynamic>.from(node),
+            kind: map['kind']?.toString());
       case 'dismissDialog':
         return host.dismissDialog();
       case 'setState':

@@ -46,7 +46,7 @@ class GalleryDump {
     private static final Path COVERAGE_OUTPUT =
             Path.of("build", "gallery", "coverage.txt").toAbsolutePath().normalize();
 
-    /** The 49 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set, the T60 rich_text/code_block text set, the T61 icon/icon_button set and the T63 list_row/badge/chip/avatar/skeleton set). */
+    /** The 53 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set, the T60 rich_text/code_block text set, the T61 icon/icon_button set, the T63 list_row/badge/chip/avatar/skeleton set and the T64 menu/sheet/dialog/banner set). */
     private static final List<String> EXPECTED_PRIMITIVES = List.of(
             "screen", "nav", "container", "card", "text", "markdown", "rich_text",
             "code_block", "button", "input",
@@ -57,7 +57,8 @@ class GalleryDump {
             "align", "center", "aspect_ratio",
             "stack", "positioned", "wrap", "grid", "scroll",
             "icon", "icon_button",
-            "list_row", "badge", "chip", "avatar", "skeleton");
+            "list_row", "badge", "chip", "avatar", "skeleton",
+            "menu", "sheet", "dialog", "banner");
 
     private static Map<String, Object> action(String name) {
         Map<String, Object> action = new LinkedHashMap<>();
@@ -735,6 +736,92 @@ class GalleryDump {
                 .width(240)
                 .height(40)
                 .shimmer(true)
+                .build()));
+
+        // menu
+        all.add(new Fixture("fixture-menu-basic", Ui.menu()
+                .id("fixture-menu-basic")
+                .trigger(Ui.button("Open")
+                        .action(action("menu-basic"))
+                        .build())
+                .item(entry("label", "Open",
+                        "action", action("menu-open")))
+                .item(entry("label", "Save",
+                        "icon", "save",
+                        "action", action("menu-save")))
+                .build()));
+        all.add(new Fixture("fixture-menu-propheavy", heavy(Ui.menu(), "menu-propheavy")
+                .trigger(Ui.iconButton()
+                        .icon("more_vert")
+                        .action(action("menu-propheavy-trigger"))
+                        .build())
+                .item(Ui.menuItem("Open")
+                        .icon("settings")
+                        .action(action("menu-open"))
+                        .build())
+                .item(Ui.menuItem("Delete")
+                        .danger(true)
+                        .confirm("Delete it?")
+                        .action(action("menu-delete"))
+                        .build())
+                .item(Ui.menuItem("Disabled")
+                        .disabled(true)
+                        .action(action("menu-disabled"))
+                        .build())
+                .item(Ui.menuItem("divider")
+                        .divider(true)
+                        .build())
+                .breakpoint(900)
+                .build()));
+
+        // sheet
+        all.add(new Fixture("fixture-sheet-basic", Ui.sheet()
+                .id("fixture-sheet-basic")
+                .title("Sheet")
+                .body(Ui.text("Sheet body").build())
+                .build()));
+        all.add(new Fixture("fixture-sheet-propheavy", heavy(Ui.sheet(), "sheet-propheavy")
+                .title(Ui.text("Prop heavy sheet").style("body").build())
+                .body(Ui.text("Body").style("small").build())
+                .footer(Ui.button("Done")
+                        .style("secondary")
+                        .action(action("sheet-done"))
+                        .build())
+                .height(320)
+                .dismissible(false)
+                .build()));
+
+        // dialog
+        all.add(new Fixture("fixture-dialog-basic", Ui.dialog()
+                .id("fixture-dialog-basic")
+                .title("Delete plugin?")
+                .content(Ui.text("This cannot be undone.").build())
+                .build()));
+        all.add(new Fixture("fixture-dialog-propheavy", heavy(Ui.dialog(), "dialog-propheavy")
+                .title(Ui.text("Prop heavy dialog").style("h3").build())
+                .content(Ui.text("Confirm the action.").style("body").build())
+                .action(Ui.button("Cancel")
+                        .style("text")
+                        .action(action("dialog-cancel"))
+                        .build())
+                .action(Ui.button("Delete")
+                        .style("danger")
+                        .action(action("dialog-delete"))
+                        .build())
+                .build()));
+
+        // banner
+        all.add(new Fixture("fixture-banner-basic", Ui.banner()
+                .id("fixture-banner-basic")
+                .content(Ui.text("Offline mode").build())
+                .build()));
+        all.add(new Fixture("fixture-banner-propheavy", heavy(Ui.banner(), "banner-propheavy")
+                .content(Ui.text("Sync paused").style("body").build())
+                .action(Ui.button("Undo")
+                        .style("text")
+                        .action(action("banner-undo"))
+                        .build())
+                .onDismiss(action("banner-dismiss"))
                 .build()));
 
         return all;

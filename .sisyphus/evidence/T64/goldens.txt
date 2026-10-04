@@ -1,0 +1,27 @@
+T64 golden delta (frontend/test/gallery/goldens)
+
+New T64 baselines are created once by:
+  scripts/qa/flutter-test.sh test/gallery --update-goldens
+Pre-existing baselines must stay byte-identical (0 modified).
+
+modified pre-existing baselines: 0 (want 0)
+new baselines: 16 (the 8 T64 gallery fixtures x light/dark)
+total baseline PNGs: 213
+
+git status --porcelain frontend/test/gallery/goldens/:
+?? frontend/test/gallery/goldens/fixture-banner-basic-dark.png
+?? frontend/test/gallery/goldens/fixture-banner-basic-light.png
+?? frontend/test/gallery/goldens/fixture-banner-propheavy-dark.png
+?? frontend/test/gallery/goldens/fixture-banner-propheavy-light.png
+?? frontend/test/gallery/goldens/fixture-dialog-basic-dark.png
+?? frontend/test/gallery/goldens/fixture-dialog-basic-light.png
+?? frontend/test/gallery/goldens/fixture-dialog-propheavy-dark.png
+?? frontend/test/gallery/goldens/fixture-dialog-propheavy-light.png
+?? frontend/test/gallery/goldens/fixture-menu-basic-dark.png
+?? frontend/test/gallery/goldens/fixture-menu-basic-light.png
+?? frontend/test/gallery/goldens/fixture-menu-propheavy-dark.png
+?? frontend/test/gallery/goldens/fixture-menu-propheavy-light.png
+?? frontend/test/gallery/goldens/fixture-sheet-basic-dark.png
+?? frontend/test/gallery/goldens/fixture-sheet-basic-light.png
+?? frontend/test/gallery/goldens/fixture-sheet-propheavy-dark.png
+?? frontend/test/gallery/goldens/fixture-sheet-propheavy-light.png

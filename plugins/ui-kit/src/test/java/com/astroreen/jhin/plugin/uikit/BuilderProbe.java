@@ -81,6 +81,10 @@ final class BuilderProbe {
         BUILDERS.put(Ui.ChipBuilder.class, Ui::chip);
         BUILDERS.put(Ui.AvatarBuilder.class, Ui::avatar);
         BUILDERS.put(Ui.SkeletonBuilder.class, Ui::skeleton);
+        BUILDERS.put(Ui.MenuBuilder.class, Ui::menu);
+        BUILDERS.put(Ui.SheetBuilder.class, Ui::sheet);
+        BUILDERS.put(Ui.DialogBuilder.class, Ui::dialog);
+        BUILDERS.put(Ui.BannerBuilder.class, Ui::banner);
     }
 
     /**

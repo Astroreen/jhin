@@ -55,7 +55,7 @@ class _ToastHost implements DirectiveHost {
   Future<void> openProfiles() async {}
 
   @override
-  Future<void> dialog(Map<String, dynamic> node) async {}
+  Future<void> dialog(Map<String, dynamic> node, {String? kind}) async {}
 
   @override
   Future<void> dismissDialog() async {}

@@ -365,6 +365,31 @@ public final class Ui {
         return new SkeletonBuilder();
     }
 
+    /** A popup menu: {@code menu}(trigger, items, breakpoint?). */
+    public static MenuBuilder menu() {
+        return new MenuBuilder();
+    }
+
+    /** One {@code menu} item spec ({@code {label, icon?, action?, confirm?, disabled?, divider?, danger?}}). */
+    public static MenuItemBuilder menuItem(String label) {
+        return new MenuItemBuilder(label);
+    }
+
+    /** A modal bottom sheet: {@code sheet}(title?, body?, footer?, height?, dismissible?). */
+    public static SheetBuilder sheet() {
+        return new SheetBuilder();
+    }
+
+    /** An AlertDialog-shaped node: {@code dialog}(title?, content?, actions?). */
+    public static DialogBuilder dialog() {
+        return new DialogBuilder();
+    }
+
+    /** A persistent notice: {@code banner}(content?, actions?, onDismiss?). */
+    public static BannerBuilder banner() {
+        return new BannerBuilder();
+    }
+
     /**
      * Base of every builder: the universal optional fields of docs/sdui.md
      * section 2.1 (Meta, Box, Text, Flex, Interaction/A11y groups) through
@@ -3312,6 +3337,256 @@ public final class Ui {
         public SkeletonBuilder shimmer(boolean value) {
             props.put("shimmer", value);
             return this;
+        }
+    }
+
+    /** {@code menu}(trigger, items, breakpoint?) — a popup menu over a trigger node. */
+    public static final class MenuBuilder extends ItemBuilder<MenuBuilder> {
+
+        private MenuBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "menu";
+        }
+
+        /** The trigger node that opens the menu. */
+        public MenuBuilder trigger(UiNode node) {
+            props.put("trigger", node);
+            return this;
+        }
+
+        /** The trigger as a string (the text shorthand). */
+        public MenuBuilder trigger(String text) {
+            props.put("trigger", text);
+            return this;
+        }
+
+        /** The width below which the menu opens as a bottom sheet. */
+        public MenuBuilder breakpoint(Number value) {
+            props.put("breakpoint", value);
+            return this;
+        }
+
+        /** Appends one label-only item ({@code {label}}). */
+        public MenuBuilder item(String label) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("label", label);
+            items().add(item);
+            return this;
+        }
+    }
+
+    /**
+     * The spec builder of one {@code menu} item ({@code {label, icon?,
+     * action?, confirm?, disabled?, divider?, danger?}}): see
+     * {@link Ui#menuItem(String)}. Finished with {@link #build()}, the spec
+     * is appended through {@link ItemBuilder#item(Map)}.
+     */
+    public static final class MenuItemBuilder {
+
+        private final Map<String, Object> spec = new LinkedHashMap<>();
+
+        private MenuItemBuilder(String label) {
+            spec.put("label", label);
+        }
+
+        /** The leading icon name. */
+        public MenuItemBuilder icon(String value) {
+            spec.put("icon", value);
+            return this;
+        }
+
+        /** The dispatch action. */
+        public MenuItemBuilder action(Map<String, Object> value) {
+            spec.put("action", value);
+            return this;
+        }
+
+        /** The confirmation prompt gating the dispatch. */
+        public MenuItemBuilder confirm(String value) {
+            spec.put("confirm", value);
+            return this;
+        }
+
+        /** The disabled entry (dispatches nothing). */
+        public MenuItemBuilder disabled(boolean value) {
+            spec.put("disabled", value);
+            return this;
+        }
+
+        /** Whether the entry renders as a divider. */
+        public MenuItemBuilder divider(boolean value) {
+            spec.put("divider", value);
+            return this;
+        }
+
+        /** The destructive styling flag. */
+        public MenuItemBuilder danger(boolean value) {
+            spec.put("danger", value);
+            return this;
+        }
+
+        /** The finished item spec, in insertion order. */
+        public Map<String, Object> build() {
+            return new LinkedHashMap<>(spec);
+        }
+    }
+
+    /** {@code sheet}(title?, body?, footer?, height?, dismissible?) — a modal bottom sheet surface. */
+    public static final class SheetBuilder extends NodeBuilder<SheetBuilder> {
+
+        private SheetBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "sheet";
+        }
+
+        /** The sheet title (a string or a node). */
+        public SheetBuilder title(String value) {
+            props.put("title", value);
+            return this;
+        }
+
+        /** The sheet title node. */
+        public SheetBuilder title(UiNode node) {
+            props.put("title", node);
+            return this;
+        }
+
+        /** The sheet body node. */
+        public SheetBuilder body(UiNode node) {
+            props.put("body", node);
+            return this;
+        }
+
+        /** The sheet body as a string (the text shorthand). */
+        public SheetBuilder body(String text) {
+            props.put("body", text);
+            return this;
+        }
+
+        /** The footer row node. */
+        public SheetBuilder footer(UiNode node) {
+            props.put("footer", node);
+            return this;
+        }
+
+        /** The footer as a string (the text shorthand). */
+        public SheetBuilder footer(String text) {
+            props.put("footer", text);
+            return this;
+        }
+
+        /** Whether the sheet can be dismissed (default {@code true}). */
+        public SheetBuilder dismissible(boolean value) {
+            props.put("dismissible", value);
+            return this;
+        }
+    }
+
+    /** {@code dialog}(title?, content?, actions?) — an AlertDialog-shaped node. */
+    public static final class DialogBuilder extends NodeBuilder<DialogBuilder> {
+
+        private DialogBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "dialog";
+        }
+
+        /** The dialog title (a string or a node). */
+        public DialogBuilder title(String value) {
+            props.put("title", value);
+            return this;
+        }
+
+        /** The dialog title node. */
+        public DialogBuilder title(UiNode node) {
+            props.put("title", node);
+            return this;
+        }
+
+        /** The dialog content node. */
+        public DialogBuilder content(UiNode node) {
+            props.put("content", node);
+            return this;
+        }
+
+        /** The dialog content as a string (the text shorthand). */
+        public DialogBuilder content(String text) {
+            props.put("content", text);
+            return this;
+        }
+
+        /** Appends one action button node (the {@code actions} array). */
+        public DialogBuilder action(UiNode node) {
+            actions().add(node);
+            return this;
+        }
+
+        /** Sets the action button nodes wholesale. */
+        public DialogBuilder actions(List<Object> nodes) {
+            props.put("actions", nodes);
+            return this;
+        }
+
+        private List<Object> actions() {
+            @SuppressWarnings("unchecked")
+            List<Object> actions = (List<Object>) props.computeIfAbsent("actions", key -> new ArrayList<>());
+            return actions;
+        }
+    }
+
+    /** {@code banner}(content?, actions?, onDismiss?) — a persistent notice. */
+    public static final class BannerBuilder extends NodeBuilder<BannerBuilder> {
+
+        private BannerBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "banner";
+        }
+
+        /** The notice content node. */
+        public BannerBuilder content(UiNode node) {
+            props.put("content", node);
+            return this;
+        }
+
+        /** The notice content as a string (the text shorthand). */
+        public BannerBuilder content(String text) {
+            props.put("content", text);
+            return this;
+        }
+
+        /** Appends one action button node (the {@code actions} array). */
+        public BannerBuilder action(UiNode node) {
+            actions().add(node);
+            return this;
+        }
+
+        /** Sets the action button nodes wholesale. */
+        public BannerBuilder actions(List<Object> nodes) {
+            props.put("actions", nodes);
+            return this;
+        }
+
+        /** The dismiss action; without it the dismiss affordance is hidden. */
+        public BannerBuilder onDismiss(Map<String, Object> value) {
+            props.put("onDismiss", value);
+            return this;
+        }
+
+        private List<Object> actions() {
+            @SuppressWarnings("unchecked")
+            List<Object> actions = (List<Object>) props.computeIfAbsent("actions", key -> new ArrayList<>());
+            return actions;
         }
     }
 }

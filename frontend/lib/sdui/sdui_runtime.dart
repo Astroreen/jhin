@@ -11,6 +11,7 @@ import '../core/tls/tls_trust.dart';
 import '../design/theme.dart';
 import 'action_dispatcher.dart';
 import 'directives.dart';
+import 'primitives/sheet.dart';
 import 'render_context.dart';
 import 'ui_node.dart';
 import 'ui_registry.dart';
@@ -103,6 +104,7 @@ class SduiRuntime extends ChangeNotifier
   String _entryId = '';
   Map<String, dynamic>? _fallbacks;
   Widget Function(BuildContext)? _dialogBuilder;
+  bool _dialogAtBottom = false;
   String? _toastText;
   String? _toastStyle;
   Timer? _toastTimer;
@@ -148,12 +150,15 @@ class SduiRuntime extends ChangeNotifier
                 dismissible: true,
                 color: Colors.black45,
                 onDismiss: () => unawaited(dismissDialog())),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: dialog(context),
+            if (_dialogAtBottom)
+              Align(alignment: Alignment.bottomCenter, child: dialog(context))
+            else
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: dialog(context),
+                ),
               ),
-            ),
           ],
         ),
       ));
@@ -551,22 +556,45 @@ class SduiRuntime extends ChangeNotifier
   }
 
   @override
-  Future<void> dialog(Map<String, dynamic> node) async {
-    _dialogBuilder = (context) {
-      final entry = _stack.isEmpty ? _standalone : _stack.last;
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: _contextFor(entry).build(context, UiNode.fromJson(node)),
-        ),
-      );
-    };
+  Future<void> dialog(Map<String, dynamic> node, {String? kind}) async {
+    final entry = _stack.isEmpty ? _standalone : _stack.last;
+    final ctx = _contextFor(entry);
+    switch (kind) {
+      case 'sheet':
+        _dialogAtBottom = true;
+        _dialogBuilder = (context) => buildSheetChrome(
+              context,
+              ctx.build(context, UiNode.fromJson(node)),
+            );
+      case null:
+        _dialogAtBottom = false;
+        _dialogBuilder = (context) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: ctx.build(context, UiNode.fromJson(node)),
+            ),
+          );
+        };
+      default:
+        // An unknown kind degrades to a `card` render of the content (§2.4):
+        // the node is shown inside a `card` primitive, never a crash.
+        _dialogAtBottom = false;
+        _dialogBuilder = (context) {
+          final card = UiNode.fromJson({
+            'type': 'card',
+            'children': [node],
+          });
+          return ctx.build(context, card);
+        };
+    }
     notifyListeners();
   }
 
   @override
   Future<void> dismissDialog() async {
     _dialogBuilder = null;
+    _dialogAtBottom = false;
     notifyListeners();
   }
 
@@ -604,6 +632,7 @@ class SduiRuntime extends ChangeNotifier
   }
 
   void _showConfirm(String message, VoidCallback onConfirm) {
+    _dialogAtBottom = false;
     _dialogBuilder = (context) => Card(
           child: Padding(
             padding: const EdgeInsets.all(16),

@@ -1,0 +1,23 @@
+T64 open-menu widget tree excerpt (docs/sdui.md §2.6 `menu`)
+
+The trigger tap opens the popup with exactly 4 items: two action
+items (one `danger`+`confirm`), one `disabled` entry and one
+`divider` entry (acceptance 1).
+
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch9_test.dart
+00:00 +0: menu trigger tap opens the menu with exactly 4 items
+T64_MENU_TREE_BEGIN
+widget tree excerpt of the open menu (popup route):
+  PopupMenuButton<int>
+  PopupMenuItem<int>
+  PopupMenuItem<int>
+  PopupMenuItem<int>
+  PopupMenuDivider
+  Divider
+  item[0] {label: Open, icon: settings, action: {name: open, method: POST, path: /ui/action/open}}
+  item[1] {label: Delete, danger: true, confirm: Delete it?, action: {name: delete, method: POST, path: /ui/action/delete}}
+  item[2] {label: Disabled, disabled: true, action: {name: disabled, method: POST, path: /ui/action/disabled}}
+  item[3] {divider: true}
+T64_MENU_TREE items=4 entries=4 labels=Open|Delete|Disabled|divider
+T64_MENU_TREE_END
+00:00 +1: All tests passed!
