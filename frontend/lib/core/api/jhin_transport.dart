@@ -164,6 +164,14 @@ class JhinTransport {
     return _decodeObject(response.body);
   }
 
+  /// `GET {baseUrl}{path}` → decoded JSON list (T69: the session list of
+  /// `GET /sessions` is a bare array).
+  Future<List<dynamic>> getJsonList(String path) async {
+    final response = await _send('GET', _resolve(path));
+    _ensureSuccess(response);
+    return _decodeList(response.body);
+  }
+
   /// `POST {baseUrl}{path}` with a JSON-encoded [body] → decoded JSON object.
   Future<Map<String, dynamic>> postJson(String path, Object body) async {
     final response = await _send('POST', _resolve(path), body: body);
@@ -246,6 +254,17 @@ class JhinTransport {
     final decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
       throw FormatException('expected JSON object, got: $body');
+    }
+    return decoded;
+  }
+
+  static List<dynamic> _decodeList(String body) {
+    if (body.isEmpty) {
+      return <dynamic>[];
+    }
+    final decoded = jsonDecode(body);
+    if (decoded is! List) {
+      throw FormatException('expected JSON list, got: $body');
     }
     return decoded;
   }

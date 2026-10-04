@@ -13,7 +13,7 @@ import 'package:jhin/core/tls/tls_trust.dart';
 /// Implements the transport interface so the production wiring stays
 /// untouched; SSE and POST are not scripted and throw.
 class FakeTransport implements JhinTransport {
-  FakeTransport({this.bootstrap, this.healthInfo, this.error});
+  FakeTransport({this.bootstrap, this.healthInfo, this.error, this.list = const []});
 
   /// Payload returned by `GET /_jhin/bootstrap`.
   Map<String, dynamic>? bootstrap;
@@ -23,6 +23,9 @@ class FakeTransport implements JhinTransport {
 
   /// When set, every call throws it (poisoned transport).
   Object? error;
+
+  /// Payload returned by `GET` list endpoints (`getJsonList`).
+  List<dynamic> list;
 
   /// Recorded call names, for assertions.
   final List<String> calls = [];
@@ -57,6 +60,14 @@ class FakeTransport implements JhinTransport {
     final failure = error;
     if (failure != null) throw failure;
     return bootstrap!;
+  }
+
+  @override
+  Future<List<dynamic>> getJsonList(String path) async {
+    calls.add('getJsonList:$path');
+    final failure = error;
+    if (failure != null) throw failure;
+    return list;
   }
 
   @override

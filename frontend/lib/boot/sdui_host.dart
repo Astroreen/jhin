@@ -6,6 +6,7 @@ import '../sdui/keyboard/command_registry.dart';
 import '../sdui/keyboard/command_shortcuts.dart';
 import '../sdui/keyboard/composer_commands.dart';
 import '../sdui/keyboard/keymap.dart';
+import '../sdui/keyboard/palette.dart';
 import '../sdui/keyboard/when_context.dart';
 import 'boot_error.dart';
 import 'empty_state.dart';
@@ -35,6 +36,9 @@ class SduiHost extends StatefulWidget {
     this.commandRegistry,
     this.whenContext,
     this.keymapOverrides = const <Object?>[],
+    this.runDirectives,
+    this.onAppearanceChanged,
+    this.accentPresets = const <String>[],
   });
 
   /// Profile the bootstrap is bound to.
@@ -66,6 +70,19 @@ class SduiHost extends StatefulWidget {
   /// (`{'rules': [{command, keys}]}`) arrive here; T67 leaves it empty.
   final List<Object?> keymapOverrides;
 
+  /// Runs a client-directive list through the live runtime (T69): undo
+  /// feedback, palette navigation and error toasts ride through it. Absent
+  /// → the T69 commands degrade to silent no-ops (never a crash).
+  final Future<void> Function(List<dynamic> directives)? runDirectives;
+
+  /// Fired after the client appearance preferences change (T69) so the app
+  /// shell can regenerate the theme. Absent → a no-op.
+  final VoidCallback? onAppearanceChanged;
+
+  /// The accent presets `theme.pick` cycles through (T69): the server
+  /// theme's `accent` plus its `colors{}` values.
+  final List<String> accentPresets;
+
   @override
   State<SduiHost> createState() => _SduiHostState();
 }
@@ -85,6 +102,7 @@ class _SduiHostState extends State<SduiHost> {
   bool _ownsWhen = false;
   Keymap _keymap = Keymap.empty;
   late ComposerBinding _composerBinding;
+  late PaletteCommands _paletteCommands;
 
   @override
   void initState() {
@@ -107,8 +125,22 @@ class _SduiHostState extends State<SduiHost> {
       ),
       post: widget.transport.postJson,
     );
+    // Registers the T69 commands (palette, thread jumping, undo,
+    // appearance/theme) and owns the palette overlay model.
+    _paletteCommands = PaletteCommands(
+      registry: _registry,
+      whenContext: _when,
+      post: widget.transport.postJson,
+      getList: widget.transport.getJsonList,
+      storage: widget.storage,
+      runDirectives: widget.runDirectives ?? _noDirectives,
+      onAppearanceChanged: widget.onAppearanceChanged ?? () {},
+      accentPresets: widget.accentPresets,
+    );
     _load();
   }
+
+  static Future<void> _noDirectives(List<dynamic> directives) async {}
 
   @override
   void dispose() {
@@ -126,7 +158,8 @@ class _SduiHostState extends State<SduiHost> {
           rawKeymap is List ? rawKeymap : const <Object?>[],
           widget.keymapOverrides,
         )
-        .withDefaults(ComposerCommands.defaultKeymapRules);
+        .withDefaults(ComposerCommands.defaultKeymapRules)
+        .withDefaults(PaletteCommands.defaultKeymapRules);
   }
 
   Future<void> _load() async {
@@ -186,6 +219,22 @@ class _SduiHostState extends State<SduiHost> {
                       onPressed: widget.onOpenProfiles,
                     ),
                   ),
+                ),
+              ),
+              // The command palette (T69): client-owned chrome painted last,
+              // exactly like the Change-server button — a hostile server can
+              // never suppress it. Positioned so an open overlay covers the
+              // body without a closed one collapsing the stack's sizing.
+              Positioned.fill(
+                child: ListenableBuilder(
+                  listenable: _paletteCommands.controller,
+                  builder: (context, _) {
+                    if (!_paletteCommands.controller.isOpen) {
+                      return const SizedBox.shrink();
+                    }
+                    return CommandPalette(
+                        controller: _paletteCommands.controller);
+                  },
                 ),
               ),
             ],

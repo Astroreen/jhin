@@ -1,0 +1,8 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/keyboard/palette_test.dart
+00:00 +0: /home/astroreen/Documents/jhin/frontend/test/keyboard/thread_commands_test.dart: thread.undo T69 evidence/undo-window: a nothing-to-undo answer runs its toast (no-window no-op)
+evidence/undo-window: nothing-to-undo toast='Nothing to undo' style=error
+00:00 +1: /home/astroreen/Documents/jhin/frontend/test/keyboard/thread_commands_test.dart: thread.undo T69 evidence/undo-window: a 404 (undo endpoint absent) toasts and never crashes
+evidence/undo-window: 404 toast='Nothing to undo' crashed=false
+00:00 +2: /home/astroreen/Documents/jhin/frontend/test/keyboard/thread_commands_test.dart: thread.undo T69 evidence/undo-window: success directives run
+evidence/undo-window: success directives=toast,refresh
+00:00 +3: All tests passed!

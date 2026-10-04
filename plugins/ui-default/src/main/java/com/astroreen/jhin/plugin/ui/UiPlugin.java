@@ -1,7 +1,7 @@
 /**
  * Entry point of the default SDUI plugin: resolves the session services of
  * {@code jhin.sessions}, detects which optional integrations are loaded,
- * assembles the default screens, the action table and the four routes and
+ * assembles the default screens, the action table and the five routes and
  * registers them. {@code GET /_jhin/bootstrap} replaces the kernel fallback on
  * the same path silently (a plugin route always supersedes a fallback).
  *
@@ -58,8 +58,9 @@ public final class UiPlugin implements JhinPlugin {
     }
 
     /**
-     * Publishes nothing and registers the bootstrap, screen, action and stream
-     * routes. Optional integrations degrade: without the security plugin there
+     * Publishes nothing and registers the bootstrap, screen, action, search
+     * and stream routes. Optional integrations degrade: without the security
+     * plugin there
      * is no enroll screen, without the LLM plugin no providers screen, without
      * the agent plugin the run actions answer with a toast.
      *
@@ -87,11 +88,16 @@ public final class UiPlugin implements JhinPlugin {
         BootstrapRoute bootstrap = new BootstrapRoute(screens, features.security(), tailor);
         ScreenRoute screen = new ScreenRoute(screens, tailor);
         ActionRoute action = new ActionRoute(handlers);
+        SearchRoute search = new SearchRoute(store, events);
         ctx.http().route(new RouteSpec("GET", "/_jhin/bootstrap", bootstrap::handle));
         ctx.http().route(new RouteSpec("GET", "/ui/screen/{id}", screen::handle));
+        // The literal `search` segment wins over the `{name}` capture of the
+        // action route (RouteMatcher prefers literal segments), so the
+        // palette search answers its own result-list shape.
+        ctx.http().route(new RouteSpec("POST", "/ui/action/search", search::handle));
         ctx.http().route(new RouteSpec("POST", "/ui/action/{name}", action::handle));
         ctx.http().route(new RouteSpec("GET", "/ui/stream/session/{id}", streamRoute::handle));
-        ctx.log().info("ui plugin started: bootstrap, screen, action and stream routes registered");
+        ctx.log().info("ui plugin started: bootstrap, screen, action, search and stream routes registered");
     }
 
     /**

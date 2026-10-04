@@ -76,6 +76,15 @@ class ScriptedTransport implements JhinTransport {
   }
 
   @override
+  Future<List<dynamic>> getJsonList(String path) async {
+    calls.add(ScriptedCall('GET', path, null));
+    final route = routes[path];
+    if (route is Exception) throw route;
+    if (route is List) return route;
+    throw StateError('no scripted list route for $path');
+  }
+
+  @override
   Future<Map<String, dynamic>> postJson(String path, Object body) async {
     calls.add(ScriptedCall('POST', path, body));
     return onPost?.call(path, body) ?? <String, dynamic>{};

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'boot/add_server_screen.dart';
@@ -9,6 +11,7 @@ import 'core/api/jhin_transport.dart';
 import 'core/auth/app_storage.dart';
 import 'core/tls/tls_trust.dart';
 import 'design/theme.dart';
+import 'sdui/keyboard/palette.dart';
 import 'sdui/sdui_runtime.dart';
 import 'store/migrations/migration_runner.dart';
 import 'store/migrations/store_migrations.dart';
@@ -143,6 +146,14 @@ class _JhinAppState extends State<JhinApp> {
   /// arrives (via [RendererEnv.onTheme]).
   JhinTheme _design = JhinTheme.fallback();
 
+  /// The bootstrap payload the current [_design] was generated from (T69);
+  /// kept so an appearance change can regenerate the design in place.
+  Map<String, dynamic>? _lastPayload;
+
+  /// Client appearance overrides (T69) from `StoreKeys.appearance`:
+  /// `themeMode` / `accent` win over the server theme when set.
+  Map<String, dynamic> _appearance = const {};
+
   /// Regenerates the design from a bootstrap payload. The runtime fires
   /// this during build (the host hands the payload to the renderer), so the
   /// rebuild is deferred past the current frame. Also extracts the
@@ -151,7 +162,8 @@ class _JhinAppState extends State<JhinApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       setState(() {
-        _design = JhinTheme.fromBootstrap(payload);
+        _lastPayload = payload;
+        _design = _designFrom(payload);
         final contract = payload['contract'];
         if (contract is Map) {
           final minSchema = contract['minSchema'];
@@ -161,6 +173,65 @@ class _JhinAppState extends State<JhinApp> {
     });
   }
 
+  /// The design of [payload] with the client appearance overrides (T69)
+  /// applied over the server `theme` block — the persisted `themeMode` /
+  /// `accent` win when set. The rebuild rides the existing theme mechanism
+  /// ([JhinTheme.fromBootstrap] over the patched payload).
+  JhinTheme _designFrom(Map<String, dynamic> payload) {
+    final patched = Map<String, dynamic>.from(payload);
+    final theme = <String, dynamic>{};
+    final rawTheme = payload['theme'];
+    if (rawTheme is Map) {
+      theme.addAll(Map<String, dynamic>.from(rawTheme));
+    }
+    final mode = _appearance['themeMode'];
+    if (mode is String && mode.isNotEmpty) theme['appearance'] = mode;
+    final accent = _appearance['accent'];
+    if (accent is String && accent.isNotEmpty) theme['accent'] = accent;
+    patched['theme'] = theme;
+    return JhinTheme.fromBootstrap(patched);
+  }
+
+  /// Re-reads the persisted appearance and regenerates the design (T69:
+  /// `appearance.cycle` / `theme.pick`).
+  Future<void> _reloadAppearance() async {
+    final prefs = await AppearancePrefs.read(_storage);
+    if (!mounted) return;
+    setState(() {
+      _appearance = prefs;
+      final payload = _lastPayload;
+      _design =
+          payload == null ? _designFrom(const {}) : _designFrom(payload);
+    });
+  }
+
+  /// Runs a client-directive list through the live runtime (T69); a no-op
+  /// when the renderer is not the SDUI runtime.
+  Future<void> _runDirectives(List<dynamic> directives) {
+    final renderer = _renderer;
+    if (renderer is SduiRuntime) return renderer.runDirectives(directives);
+    return Future<void>.value();
+  }
+
+  /// The accent presets `theme.pick` cycles through (T69): the server
+  /// theme's `accent` plus its `colors{}` values, in payload order.
+  List<String> _accentPresets() {
+    final theme = _lastPayload?['theme'];
+    if (theme is! Map) return const [];
+    final out = <String>[];
+    final accent = theme['accent'];
+    if (accent is String && accent.isNotEmpty) out.add(accent);
+    final colors = theme['colors'];
+    if (colors is Map) {
+      for (final value in colors.values) {
+        if (value is String && value.isNotEmpty && !out.contains(value)) {
+          out.add(value);
+        }
+      }
+    }
+    return out;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -168,6 +239,7 @@ class _JhinAppState extends State<JhinApp> {
   }
 
   Future<void> _reload() async {
+    final prefs = await AppearancePrefs.read(_storage);
     final profiles = await _storage.readProfiles();
     final activeId = await _storage.readActiveProfileId();
     ServerProfile? active;
@@ -177,6 +249,7 @@ class _JhinAppState extends State<JhinApp> {
     active ??= profiles.isEmpty ? null : profiles.first;
     if (!mounted) return;
     setState(() {
+      _appearance = prefs;
       _active = active;
       _ready = true;
     });
@@ -219,6 +292,9 @@ class _JhinAppState extends State<JhinApp> {
         transport: _createTransport(active),
         renderer: _rendererFor(active),
         onOpenProfiles: _openProfiles,
+        runDirectives: _runDirectives,
+        onAppearanceChanged: () => unawaited(_reloadAppearance()),
+        accentPresets: _accentPresets(),
       );
     }
 

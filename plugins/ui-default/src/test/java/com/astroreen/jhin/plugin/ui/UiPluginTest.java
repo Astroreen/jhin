@@ -47,7 +47,7 @@ class UiPluginTest {
     }
 
     @Test
-    void registersTheFourRoutes() {
+    void registersTheFiveRoutes() {
         start(NONE);
 
         List<RouteSpec> routes = context.routes();
@@ -56,6 +56,7 @@ class UiPluginTest {
                 .containsExactlyInAnyOrder(
                         org.assertj.core.groups.Tuple.tuple("GET", "/_jhin/bootstrap"),
                         org.assertj.core.groups.Tuple.tuple("GET", "/ui/screen/{id}"),
+                        org.assertj.core.groups.Tuple.tuple("POST", "/ui/action/search"),
                         org.assertj.core.groups.Tuple.tuple("POST", "/ui/action/{name}"),
                         org.assertj.core.groups.Tuple.tuple("GET", "/ui/stream/session/{id}"));
     }
