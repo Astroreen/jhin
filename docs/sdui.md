@@ -948,6 +948,24 @@ payloads:
 | `error` | `{"message": …}` |
 | `session_updated` | the updated session record — translated into a `patch` frame so sidebar rows update live |
 
+The `session_updated` patch targets the sidebar row node `session-row:<id>`
+and carries the row props below (absent fields become `null`, so cleared
+lifecycle state resets the row). A sidebar row node carries the same prop
+names, so every patch lands on matching keys:
+
+| Row | Prop | Meaning |
+|-----|------|---------|
+| `session-row` | `title` | the thread title |
+| `session-row` | `workdir` | the working directory |
+| `session-row` | `status` | the free-form session status |
+| `session-row` | `pinned` | the pin flag |
+| `session-row` | `pinnedOrder` | the pinned position, or `null` |
+| `session-row` | `settledAt` | the settle time, or `null` |
+| `session-row` | `snoozedUntil` | the sleep-until time, or `null` |
+| `session-row` | `archivedAt` | the archive time, or `null` |
+| `session-row` | `settledReason` | the settle reason, or `null` |
+| `session-row` | `sortOrder` | the manual position, or `null` |
+
 ## 6. Client capabilities and schema negotiation
 
 The `X-Jhin-Client` header is

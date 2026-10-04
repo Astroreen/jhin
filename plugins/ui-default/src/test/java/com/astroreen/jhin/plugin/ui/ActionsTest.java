@@ -377,9 +377,14 @@ class ActionsTest {
         assertThat(degraded.keySet()).containsExactlyInAnyOrder(
                 "enroll", "create-session", "send", "cancel",
                 "create-provider", "delete-provider", "reload", "undo",
-                "keybind-edit", "keybind-save", "keybind-reset", "keybind-restore");
+                "keybind-edit", "keybind-save", "keybind-reset", "keybind-restore",
+                "pin", "unpin", "settle", "unsettle", "snooze", "wake",
+                "archive", "restore", "regenerate-title", "reorder",
+                "delete-session", "arrange-toggle");
         for (String name : List.of("enroll", "send", "cancel",
-                "create-provider", "delete-provider", "undo")) {
+                "create-provider", "delete-provider", "undo",
+                "pin", "unpin", "settle", "unsettle", "snooze", "wake",
+                "archive", "restore", "regenerate-title", "reorder")) {
             List<Map<String, Object>> ops = degraded.get(name).handle(request(), Map.of());
             assertThat(ops).as(name).hasSize(1);
             assertThat(ops.get(0)).as(name).containsEntry("op", "toast");

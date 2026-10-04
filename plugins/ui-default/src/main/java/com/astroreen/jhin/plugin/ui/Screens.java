@@ -51,7 +51,7 @@ final class Screens implements ScreenRegistry {
             screens.put("connect", EnrollScreen::render);
         }
         screens.put("sessions", () -> SessionsScreen.render(
-                store, account, providersPresent()));
+                store, account, providersPresent(), false));
         screens.put("settings", () -> SettingsScreen.render(
                 account, features.security(), features.reload(),
                 DefaultKeymap.entries(), overrides));

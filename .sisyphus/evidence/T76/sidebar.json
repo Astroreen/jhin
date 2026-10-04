@@ -1,0 +1,1037 @@
+{
+  "type": "list",
+  "sections": [
+    {
+      "label": "Pinned",
+      "id": "section-pinned",
+      "collapsible": false,
+      "collapsed": false,
+      "items": [
+        {
+          "type": "list_row",
+          "id": "session-row:90891515-4e47-4613-9418-fcb6aa144abb",
+          "title": "pin-plain",
+          "subtitle": "/tmp/t76/pin-plain",
+          "badge": {
+            "type": "badge",
+            "label": "active"
+          },
+          "trailing": {
+            "type": "menu",
+            "trigger": {
+              "type": "icon_button",
+              "icon": "more_vert",
+              "action": {
+                "path": "/ui/action/noop",
+                "method": "POST",
+                "name": "noop"
+              }
+            },
+            "items": [
+              {
+                "label": "Unpin",
+                "icon": "keep_off",
+                "action": {
+                  "path": "/ui/action/unpin",
+                  "method": "POST",
+                  "name": "unpin",
+                  "payload": {
+                    "id": "90891515-4e47-4613-9418-fcb6aa144abb"
+                  }
+                }
+              },
+              {
+                "label": "Settle",
+                "icon": "done",
+                "action": {
+                  "path": "/ui/action/settle",
+                  "method": "POST",
+                  "name": "settle",
+                  "payload": {
+                    "id": "90891515-4e47-4613-9418-fcb6aa144abb"
+                  }
+                }
+              },
+              {
+                "label": "Snooze…",
+                "icon": "snooze",
+                "action": {
+                  "path": "/ui/action/snooze",
+                  "method": "POST",
+                  "name": "snooze",
+                  "payload": {
+                    "id": "90891515-4e47-4613-9418-fcb6aa144abb"
+                  }
+                }
+              },
+              {
+                "label": "Wake",
+                "icon": "notifications",
+                "action": {
+                  "path": "/ui/action/wake",
+                  "method": "POST",
+                  "name": "wake",
+                  "payload": {
+                    "id": "90891515-4e47-4613-9418-fcb6aa144abb"
+                  }
+                }
+              },
+              {
+                "label": "Archive",
+                "icon": "archive",
+                "action": {
+                  "path": "/ui/action/archive",
+                  "method": "POST",
+                  "name": "archive",
+                  "payload": {
+                    "id": "90891515-4e47-4613-9418-fcb6aa144abb"
+                  }
+                },
+                "confirm": "Archive this thread?"
+              },
+              {
+                "label": "Regenerate title",
+                "icon": "title",
+                "action": {
+                  "path": "/ui/action/regenerate-title",
+                  "method": "POST",
+                  "name": "regenerate-title",
+                  "payload": {
+                    "id": "90891515-4e47-4613-9418-fcb6aa144abb"
+                  }
+                }
+              },
+              {
+                "label": "Delete",
+                "icon": "delete",
+                "action": {
+                  "path": "/ui/action/delete-session",
+                  "method": "POST",
+                  "name": "delete-session",
+                  "payload": {
+                    "id": "90891515-4e47-4613-9418-fcb6aa144abb"
+                  }
+                },
+                "confirm": "Delete this thread? This cannot be undone.",
+                "danger": true
+              }
+            ]
+          },
+          "dragHandle": false,
+          "action": {
+            "op": "navigate",
+            "screen": "chat:90891515-4e47-4613-9418-fcb6aa144abb"
+          },
+          "workdir": "/tmp/t76/pin-plain",
+          "status": "active",
+          "pinned": true,
+          "pinnedOrder": 1,
+          "settledAt": null,
+          "snoozedUntil": null,
+          "archivedAt": null,
+          "settledReason": null,
+          "sortOrder": null
+        },
+        {
+          "type": "list_row",
+          "id": "session-row:24703393-6138-4d53-b6eb-475c20cdfde8",
+          "title": "pin-settled",
+          "subtitle": "/tmp/t76/pin-settled",
+          "badge": {
+            "type": "badge",
+            "label": "active"
+          },
+          "trailing": {
+            "type": "menu",
+            "trigger": {
+              "type": "icon_button",
+              "icon": "more_vert",
+              "action": {
+                "path": "/ui/action/noop",
+                "method": "POST",
+                "name": "noop"
+              }
+            },
+            "items": [
+              {
+                "label": "Unpin",
+                "icon": "keep_off",
+                "action": {
+                  "path": "/ui/action/unpin",
+                  "method": "POST",
+                  "name": "unpin",
+                  "payload": {
+                    "id": "24703393-6138-4d53-b6eb-475c20cdfde8"
+                  }
+                }
+              },
+              {
+                "label": "Un-settle",
+                "icon": "undo",
+                "action": {
+                  "path": "/ui/action/unsettle",
+                  "method": "POST",
+                  "name": "unsettle",
+                  "payload": {
+                    "id": "24703393-6138-4d53-b6eb-475c20cdfde8"
+                  }
+                }
+              },
+              {
+                "label": "Snooze…",
+                "icon": "snooze",
+                "action": {
+                  "path": "/ui/action/snooze",
+                  "method": "POST",
+                  "name": "snooze",
+                  "payload": {
+                    "id": "24703393-6138-4d53-b6eb-475c20cdfde8"
+                  }
+                }
+              },
+              {
+                "label": "Wake",
+                "icon": "notifications",
+                "action": {
+                  "path": "/ui/action/wake",
+                  "method": "POST",
+                  "name": "wake",
+                  "payload": {
+                    "id": "24703393-6138-4d53-b6eb-475c20cdfde8"
+                  }
+                }
+              },
+              {
+                "label": "Archive",
+                "icon": "archive",
+                "action": {
+                  "path": "/ui/action/archive",
+                  "method": "POST",
+                  "name": "archive",
+                  "payload": {
+                    "id": "24703393-6138-4d53-b6eb-475c20cdfde8"
+                  }
+                },
+                "confirm": "Archive this thread?"
+              },
+              {
+                "label": "Regenerate title",
+                "icon": "title",
+                "action": {
+                  "path": "/ui/action/regenerate-title",
+                  "method": "POST",
+                  "name": "regenerate-title",
+                  "payload": {
+                    "id": "24703393-6138-4d53-b6eb-475c20cdfde8"
+                  }
+                }
+              },
+              {
+                "label": "Delete",
+                "icon": "delete",
+                "action": {
+                  "path": "/ui/action/delete-session",
+                  "method": "POST",
+                  "name": "delete-session",
+                  "payload": {
+                    "id": "24703393-6138-4d53-b6eb-475c20cdfde8"
+                  }
+                },
+                "confirm": "Delete this thread? This cannot be undone.",
+                "danger": true
+              }
+            ]
+          },
+          "dragHandle": false,
+          "action": {
+            "op": "navigate",
+            "screen": "chat:24703393-6138-4d53-b6eb-475c20cdfde8"
+          },
+          "workdir": "/tmp/t76/pin-settled",
+          "status": "active",
+          "pinned": true,
+          "pinnedOrder": 2,
+          "settledAt": 1791125088228,
+          "snoozedUntil": null,
+          "archivedAt": null,
+          "settledReason": "manual",
+          "sortOrder": null
+        }
+      ]
+    },
+    {
+      "label": "Active",
+      "id": "section-active",
+      "collapsible": false,
+      "collapsed": false,
+      "items": [
+        {
+          "type": "list_row",
+          "id": "session-row:ea645e13-63a7-4a47-9a94-36423f36bb6a",
+          "title": "act-expired",
+          "subtitle": "/tmp/t76/act-expired",
+          "badge": {
+            "type": "badge",
+            "label": "active"
+          },
+          "trailing": {
+            "type": "menu",
+            "trigger": {
+              "type": "icon_button",
+              "icon": "more_vert",
+              "action": {
+                "path": "/ui/action/noop",
+                "method": "POST",
+                "name": "noop"
+              }
+            },
+            "items": [
+              {
+                "label": "Pin",
+                "icon": "keep",
+                "action": {
+                  "path": "/ui/action/pin",
+                  "method": "POST",
+                  "name": "pin",
+                  "payload": {
+                    "id": "ea645e13-63a7-4a47-9a94-36423f36bb6a"
+                  }
+                }
+              },
+              {
+                "label": "Settle",
+                "icon": "done",
+                "action": {
+                  "path": "/ui/action/settle",
+                  "method": "POST",
+                  "name": "settle",
+                  "payload": {
+                    "id": "ea645e13-63a7-4a47-9a94-36423f36bb6a"
+                  }
+                }
+              },
+              {
+                "label": "Snooze…",
+                "icon": "snooze",
+                "action": {
+                  "path": "/ui/action/snooze",
+                  "method": "POST",
+                  "name": "snooze",
+                  "payload": {
+                    "id": "ea645e13-63a7-4a47-9a94-36423f36bb6a"
+                  }
+                }
+              },
+              {
+                "label": "Wake",
+                "icon": "notifications",
+                "action": {
+                  "path": "/ui/action/wake",
+                  "method": "POST",
+                  "name": "wake",
+                  "payload": {
+                    "id": "ea645e13-63a7-4a47-9a94-36423f36bb6a"
+                  }
+                }
+              },
+              {
+                "label": "Archive",
+                "icon": "archive",
+                "action": {
+                  "path": "/ui/action/archive",
+                  "method": "POST",
+                  "name": "archive",
+                  "payload": {
+                    "id": "ea645e13-63a7-4a47-9a94-36423f36bb6a"
+                  }
+                },
+                "confirm": "Archive this thread?"
+              },
+              {
+                "label": "Regenerate title",
+                "icon": "title",
+                "action": {
+                  "path": "/ui/action/regenerate-title",
+                  "method": "POST",
+                  "name": "regenerate-title",
+                  "payload": {
+                    "id": "ea645e13-63a7-4a47-9a94-36423f36bb6a"
+                  }
+                }
+              },
+              {
+                "label": "Delete",
+                "icon": "delete",
+                "action": {
+                  "path": "/ui/action/delete-session",
+                  "method": "POST",
+                  "name": "delete-session",
+                  "payload": {
+                    "id": "ea645e13-63a7-4a47-9a94-36423f36bb6a"
+                  }
+                },
+                "confirm": "Delete this thread? This cannot be undone.",
+                "danger": true
+              }
+            ]
+          },
+          "dragHandle": false,
+          "action": {
+            "op": "navigate",
+            "screen": "chat:ea645e13-63a7-4a47-9a94-36423f36bb6a"
+          },
+          "workdir": "/tmp/t76/act-expired",
+          "status": "active",
+          "pinned": false,
+          "pinnedOrder": null,
+          "settledAt": null,
+          "snoozedUntil": 1791125088976,
+          "archivedAt": null,
+          "settledReason": null,
+          "sortOrder": null
+        },
+        {
+          "type": "list_row",
+          "id": "session-row:76c0553c-9514-4ff4-ad1c-4c4348a2a4f4",
+          "title": "act-ordered",
+          "subtitle": "/tmp/t76/act-ordered",
+          "badge": {
+            "type": "badge",
+            "label": "active"
+          },
+          "trailing": {
+            "type": "menu",
+            "trigger": {
+              "type": "icon_button",
+              "icon": "more_vert",
+              "action": {
+                "path": "/ui/action/noop",
+                "method": "POST",
+                "name": "noop"
+              }
+            },
+            "items": [
+              {
+                "label": "Pin",
+                "icon": "keep",
+                "action": {
+                  "path": "/ui/action/pin",
+                  "method": "POST",
+                  "name": "pin",
+                  "payload": {
+                    "id": "76c0553c-9514-4ff4-ad1c-4c4348a2a4f4"
+                  }
+                }
+              },
+              {
+                "label": "Settle",
+                "icon": "done",
+                "action": {
+                  "path": "/ui/action/settle",
+                  "method": "POST",
+                  "name": "settle",
+                  "payload": {
+                    "id": "76c0553c-9514-4ff4-ad1c-4c4348a2a4f4"
+                  }
+                }
+              },
+              {
+                "label": "Snooze…",
+                "icon": "snooze",
+                "action": {
+                  "path": "/ui/action/snooze",
+                  "method": "POST",
+                  "name": "snooze",
+                  "payload": {
+                    "id": "76c0553c-9514-4ff4-ad1c-4c4348a2a4f4"
+                  }
+                }
+              },
+              {
+                "label": "Wake",
+                "icon": "notifications",
+                "action": {
+                  "path": "/ui/action/wake",
+                  "method": "POST",
+                  "name": "wake",
+                  "payload": {
+                    "id": "76c0553c-9514-4ff4-ad1c-4c4348a2a4f4"
+                  }
+                }
+              },
+              {
+                "label": "Archive",
+                "icon": "archive",
+                "action": {
+                  "path": "/ui/action/archive",
+                  "method": "POST",
+                  "name": "archive",
+                  "payload": {
+                    "id": "76c0553c-9514-4ff4-ad1c-4c4348a2a4f4"
+                  }
+                },
+                "confirm": "Archive this thread?"
+              },
+              {
+                "label": "Regenerate title",
+                "icon": "title",
+                "action": {
+                  "path": "/ui/action/regenerate-title",
+                  "method": "POST",
+                  "name": "regenerate-title",
+                  "payload": {
+                    "id": "76c0553c-9514-4ff4-ad1c-4c4348a2a4f4"
+                  }
+                }
+              },
+              {
+                "label": "Delete",
+                "icon": "delete",
+                "action": {
+                  "path": "/ui/action/delete-session",
+                  "method": "POST",
+                  "name": "delete-session",
+                  "payload": {
+                    "id": "76c0553c-9514-4ff4-ad1c-4c4348a2a4f4"
+                  }
+                },
+                "confirm": "Delete this thread? This cannot be undone.",
+                "danger": true
+              }
+            ]
+          },
+          "dragHandle": false,
+          "action": {
+            "op": "navigate",
+            "screen": "chat:76c0553c-9514-4ff4-ad1c-4c4348a2a4f4"
+          },
+          "workdir": "/tmp/t76/act-ordered",
+          "status": "active",
+          "pinned": false,
+          "pinnedOrder": null,
+          "settledAt": null,
+          "snoozedUntil": null,
+          "archivedAt": null,
+          "settledReason": null,
+          "sortOrder": null
+        },
+        {
+          "type": "list_row",
+          "id": "session-row:5f10607c-09d6-401a-815c-7590936a04be",
+          "title": "act-plain",
+          "subtitle": "/tmp/t76/act-plain",
+          "badge": {
+            "type": "badge",
+            "label": "active"
+          },
+          "trailing": {
+            "type": "menu",
+            "trigger": {
+              "type": "icon_button",
+              "icon": "more_vert",
+              "action": {
+                "path": "/ui/action/noop",
+                "method": "POST",
+                "name": "noop"
+              }
+            },
+            "items": [
+              {
+                "label": "Pin",
+                "icon": "keep",
+                "action": {
+                  "path": "/ui/action/pin",
+                  "method": "POST",
+                  "name": "pin",
+                  "payload": {
+                    "id": "5f10607c-09d6-401a-815c-7590936a04be"
+                  }
+                }
+              },
+              {
+                "label": "Settle",
+                "icon": "done",
+                "action": {
+                  "path": "/ui/action/settle",
+                  "method": "POST",
+                  "name": "settle",
+                  "payload": {
+                    "id": "5f10607c-09d6-401a-815c-7590936a04be"
+                  }
+                }
+              },
+              {
+                "label": "Snooze…",
+                "icon": "snooze",
+                "action": {
+                  "path": "/ui/action/snooze",
+                  "method": "POST",
+                  "name": "snooze",
+                  "payload": {
+                    "id": "5f10607c-09d6-401a-815c-7590936a04be"
+                  }
+                }
+              },
+              {
+                "label": "Wake",
+                "icon": "notifications",
+                "action": {
+                  "path": "/ui/action/wake",
+                  "method": "POST",
+                  "name": "wake",
+                  "payload": {
+                    "id": "5f10607c-09d6-401a-815c-7590936a04be"
+                  }
+                }
+              },
+              {
+                "label": "Archive",
+                "icon": "archive",
+                "action": {
+                  "path": "/ui/action/archive",
+                  "method": "POST",
+                  "name": "archive",
+                  "payload": {
+                    "id": "5f10607c-09d6-401a-815c-7590936a04be"
+                  }
+                },
+                "confirm": "Archive this thread?"
+              },
+              {
+                "label": "Regenerate title",
+                "icon": "title",
+                "action": {
+                  "path": "/ui/action/regenerate-title",
+                  "method": "POST",
+                  "name": "regenerate-title",
+                  "payload": {
+                    "id": "5f10607c-09d6-401a-815c-7590936a04be"
+                  }
+                }
+              },
+              {
+                "label": "Delete",
+                "icon": "delete",
+                "action": {
+                  "path": "/ui/action/delete-session",
+                  "method": "POST",
+                  "name": "delete-session",
+                  "payload": {
+                    "id": "5f10607c-09d6-401a-815c-7590936a04be"
+                  }
+                },
+                "confirm": "Delete this thread? This cannot be undone.",
+                "danger": true
+              }
+            ]
+          },
+          "dragHandle": false,
+          "action": {
+            "op": "navigate",
+            "screen": "chat:5f10607c-09d6-401a-815c-7590936a04be"
+          },
+          "workdir": "/tmp/t76/act-plain",
+          "status": "active",
+          "pinned": false,
+          "pinnedOrder": null,
+          "settledAt": null,
+          "snoozedUntil": null,
+          "archivedAt": null,
+          "settledReason": null,
+          "sortOrder": null
+        }
+      ]
+    },
+    {
+      "label": "Snoozed",
+      "id": "section-snoozed",
+      "collapsible": false,
+      "collapsed": false,
+      "items": [
+        {
+          "type": "list_row",
+          "id": "session-row:09fafca5-069f-4415-b78b-ad7e3745a89d",
+          "title": "snoozed",
+          "subtitle": "/tmp/t76/snoozed",
+          "badge": {
+            "type": "badge",
+            "label": "active"
+          },
+          "trailing": {
+            "type": "menu",
+            "trigger": {
+              "type": "icon_button",
+              "icon": "more_vert",
+              "action": {
+                "path": "/ui/action/noop",
+                "method": "POST",
+                "name": "noop"
+              }
+            },
+            "items": [
+              {
+                "label": "Pin",
+                "icon": "keep",
+                "action": {
+                  "path": "/ui/action/pin",
+                  "method": "POST",
+                  "name": "pin",
+                  "payload": {
+                    "id": "09fafca5-069f-4415-b78b-ad7e3745a89d"
+                  }
+                }
+              },
+              {
+                "label": "Settle",
+                "icon": "done",
+                "action": {
+                  "path": "/ui/action/settle",
+                  "method": "POST",
+                  "name": "settle",
+                  "payload": {
+                    "id": "09fafca5-069f-4415-b78b-ad7e3745a89d"
+                  }
+                }
+              },
+              {
+                "label": "Snooze…",
+                "icon": "snooze",
+                "action": {
+                  "path": "/ui/action/snooze",
+                  "method": "POST",
+                  "name": "snooze",
+                  "payload": {
+                    "id": "09fafca5-069f-4415-b78b-ad7e3745a89d"
+                  }
+                }
+              },
+              {
+                "label": "Wake",
+                "icon": "notifications",
+                "action": {
+                  "path": "/ui/action/wake",
+                  "method": "POST",
+                  "name": "wake",
+                  "payload": {
+                    "id": "09fafca5-069f-4415-b78b-ad7e3745a89d"
+                  }
+                }
+              },
+              {
+                "label": "Archive",
+                "icon": "archive",
+                "action": {
+                  "path": "/ui/action/archive",
+                  "method": "POST",
+                  "name": "archive",
+                  "payload": {
+                    "id": "09fafca5-069f-4415-b78b-ad7e3745a89d"
+                  }
+                },
+                "confirm": "Archive this thread?"
+              },
+              {
+                "label": "Regenerate title",
+                "icon": "title",
+                "action": {
+                  "path": "/ui/action/regenerate-title",
+                  "method": "POST",
+                  "name": "regenerate-title",
+                  "payload": {
+                    "id": "09fafca5-069f-4415-b78b-ad7e3745a89d"
+                  }
+                }
+              },
+              {
+                "label": "Delete",
+                "icon": "delete",
+                "action": {
+                  "path": "/ui/action/delete-session",
+                  "method": "POST",
+                  "name": "delete-session",
+                  "payload": {
+                    "id": "09fafca5-069f-4415-b78b-ad7e3745a89d"
+                  }
+                },
+                "confirm": "Delete this thread? This cannot be undone.",
+                "danger": true
+              }
+            ]
+          },
+          "dragHandle": false,
+          "action": {
+            "op": "navigate",
+            "screen": "chat:09fafca5-069f-4415-b78b-ad7e3745a89d"
+          },
+          "workdir": "/tmp/t76/snoozed",
+          "status": "active",
+          "pinned": false,
+          "pinnedOrder": null,
+          "settledAt": null,
+          "snoozedUntil": 1791128688588,
+          "archivedAt": null,
+          "settledReason": null,
+          "sortOrder": null
+        }
+      ]
+    },
+    {
+      "label": "Settled",
+      "id": "section-settled",
+      "collapsible": true,
+      "collapsed": true,
+      "items": [
+        {
+          "type": "list_row",
+          "id": "session-row:45011759-0017-4924-9bbb-2897d29ff06d",
+          "title": "settled-two",
+          "subtitle": "/tmp/t76/settled-two",
+          "badge": {
+            "type": "badge",
+            "label": "active"
+          },
+          "trailing": {
+            "type": "menu",
+            "trigger": {
+              "type": "icon_button",
+              "icon": "more_vert",
+              "action": {
+                "path": "/ui/action/noop",
+                "method": "POST",
+                "name": "noop"
+              }
+            },
+            "items": [
+              {
+                "label": "Pin",
+                "icon": "keep",
+                "action": {
+                  "path": "/ui/action/pin",
+                  "method": "POST",
+                  "name": "pin",
+                  "payload": {
+                    "id": "45011759-0017-4924-9bbb-2897d29ff06d"
+                  }
+                }
+              },
+              {
+                "label": "Un-settle",
+                "icon": "undo",
+                "action": {
+                  "path": "/ui/action/unsettle",
+                  "method": "POST",
+                  "name": "unsettle",
+                  "payload": {
+                    "id": "45011759-0017-4924-9bbb-2897d29ff06d"
+                  }
+                }
+              },
+              {
+                "label": "Snooze…",
+                "icon": "snooze",
+                "action": {
+                  "path": "/ui/action/snooze",
+                  "method": "POST",
+                  "name": "snooze",
+                  "payload": {
+                    "id": "45011759-0017-4924-9bbb-2897d29ff06d"
+                  }
+                }
+              },
+              {
+                "label": "Wake",
+                "icon": "notifications",
+                "action": {
+                  "path": "/ui/action/wake",
+                  "method": "POST",
+                  "name": "wake",
+                  "payload": {
+                    "id": "45011759-0017-4924-9bbb-2897d29ff06d"
+                  }
+                }
+              },
+              {
+                "label": "Archive",
+                "icon": "archive",
+                "action": {
+                  "path": "/ui/action/archive",
+                  "method": "POST",
+                  "name": "archive",
+                  "payload": {
+                    "id": "45011759-0017-4924-9bbb-2897d29ff06d"
+                  }
+                },
+                "confirm": "Archive this thread?"
+              },
+              {
+                "label": "Regenerate title",
+                "icon": "title",
+                "action": {
+                  "path": "/ui/action/regenerate-title",
+                  "method": "POST",
+                  "name": "regenerate-title",
+                  "payload": {
+                    "id": "45011759-0017-4924-9bbb-2897d29ff06d"
+                  }
+                }
+              },
+              {
+                "label": "Delete",
+                "icon": "delete",
+                "action": {
+                  "path": "/ui/action/delete-session",
+                  "method": "POST",
+                  "name": "delete-session",
+                  "payload": {
+                    "id": "45011759-0017-4924-9bbb-2897d29ff06d"
+                  }
+                },
+                "confirm": "Delete this thread? This cannot be undone.",
+                "danger": true
+              }
+            ]
+          },
+          "dragHandle": false,
+          "action": {
+            "op": "navigate",
+            "screen": "chat:45011759-0017-4924-9bbb-2897d29ff06d"
+          },
+          "workdir": "/tmp/t76/settled-two",
+          "status": "active",
+          "pinned": false,
+          "pinnedOrder": null,
+          "settledAt": 1791125088824,
+          "snoozedUntil": null,
+          "archivedAt": null,
+          "settledReason": "manual",
+          "sortOrder": null
+        },
+        {
+          "type": "list_row",
+          "id": "session-row:3e6d9dd2-6827-4d8d-a20b-d4701a651db6",
+          "title": "settled-one",
+          "subtitle": "/tmp/t76/settled-one",
+          "badge": {
+            "type": "badge",
+            "label": "active"
+          },
+          "trailing": {
+            "type": "menu",
+            "trigger": {
+              "type": "icon_button",
+              "icon": "more_vert",
+              "action": {
+                "path": "/ui/action/noop",
+                "method": "POST",
+                "name": "noop"
+              }
+            },
+            "items": [
+              {
+                "label": "Pin",
+                "icon": "keep",
+                "action": {
+                  "path": "/ui/action/pin",
+                  "method": "POST",
+                  "name": "pin",
+                  "payload": {
+                    "id": "3e6d9dd2-6827-4d8d-a20b-d4701a651db6"
+                  }
+                }
+              },
+              {
+                "label": "Un-settle",
+                "icon": "undo",
+                "action": {
+                  "path": "/ui/action/unsettle",
+                  "method": "POST",
+                  "name": "unsettle",
+                  "payload": {
+                    "id": "3e6d9dd2-6827-4d8d-a20b-d4701a651db6"
+                  }
+                }
+              },
+              {
+                "label": "Snooze…",
+                "icon": "snooze",
+                "action": {
+                  "path": "/ui/action/snooze",
+                  "method": "POST",
+                  "name": "snooze",
+                  "payload": {
+                    "id": "3e6d9dd2-6827-4d8d-a20b-d4701a651db6"
+                  }
+                }
+              },
+              {
+                "label": "Wake",
+                "icon": "notifications",
+                "action": {
+                  "path": "/ui/action/wake",
+                  "method": "POST",
+                  "name": "wake",
+                  "payload": {
+                    "id": "3e6d9dd2-6827-4d8d-a20b-d4701a651db6"
+                  }
+                }
+              },
+              {
+                "label": "Archive",
+                "icon": "archive",
+                "action": {
+                  "path": "/ui/action/archive",
+                  "method": "POST",
+                  "name": "archive",
+                  "payload": {
+                    "id": "3e6d9dd2-6827-4d8d-a20b-d4701a651db6"
+                  }
+                },
+                "confirm": "Archive this thread?"
+              },
+              {
+                "label": "Regenerate title",
+                "icon": "title",
+                "action": {
+                  "path": "/ui/action/regenerate-title",
+                  "method": "POST",
+                  "name": "regenerate-title",
+                  "payload": {
+                    "id": "3e6d9dd2-6827-4d8d-a20b-d4701a651db6"
+                  }
+                }
+              },
+              {
+                "label": "Delete",
+                "icon": "delete",
+                "action": {
+                  "path": "/ui/action/delete-session",
+                  "method": "POST",
+                  "name": "delete-session",
+                  "payload": {
+                    "id": "3e6d9dd2-6827-4d8d-a20b-d4701a651db6"
+                  }
+                },
+                "confirm": "Delete this thread? This cannot be undone.",
+                "danger": true
+              }
+            ]
+          },
+          "dragHandle": false,
+          "action": {
+            "op": "navigate",
+            "screen": "chat:3e6d9dd2-6827-4d8d-a20b-d4701a651db6"
+          },
+          "workdir": "/tmp/t76/settled-one",
+          "status": "active",
+          "pinned": false,
+          "pinnedOrder": null,
+          "settledAt": 1791125088715,
+          "snoozedUntil": null,
+          "archivedAt": null,
+          "settledReason": "manual",
+          "sortOrder": null
+        }
+      ]
+    }
+  ]
+}

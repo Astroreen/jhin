@@ -82,25 +82,25 @@ class ScreensTest {
     }
 
     @Test
-    void sessionsScreenRowsNavigateToChatAndTheFormCreatesSessions() {
+    void sessionsScreenIsAThreadShellWhoseRowsNavigateToChat() {
         Session session = store.create("demo", "/tmp/work");
 
-        Map<String, Object> json = SessionsScreen.render(store, Optional.empty(), false).toJson();
+        Map<String, Object> json = SessionsScreen.render(store, Optional.empty(), false, false)
+                .toJson();
 
-        assertThat(opsIn(json)).contains("navigate");
+        assertThat(typesIn(json)).contains("shell", "list", "list_row");
         assertThat(screensOf(json)).contains("chat:" + session.id());
-        Map<String, Object> submit = castMap(findSubmit(json));
-        assertThat(castMap(submit.get("action")))
-                .containsEntry("name", "create-session")
-                .containsEntry("path", "/ui/action/create-session");
-        assertThat(castList(castMap(submit.get("action")).get("include")))
-                .containsExactly("title", "workdir");
+        assertThat(nodesOfType(json, "list_row"))
+                .extracting(row -> row.get("id"))
+                .contains("session-row:" + session.id());
     }
 
     @Test
     void sessionsScreenDrawerLinksDependOnTheLoadedPlugins() {
-        Map<String, Object> bare = SessionsScreen.render(store, Optional.empty(), false).toJson();
-        Map<String, Object> linked = SessionsScreen.render(store, Optional.empty(), true).toJson();
+        Map<String, Object> bare = SessionsScreen.render(store, Optional.empty(), false, false)
+                .toJson();
+        Map<String, Object> linked = SessionsScreen.render(store, Optional.empty(), true, false)
+                .toJson();
 
         assertThat(screensOf(bare)).contains("sessions", "settings", "plugins");
         assertThat(screensOf(bare)).doesNotContain("providers");
@@ -108,14 +108,11 @@ class ScreensTest {
     }
 
     @Test
-    void sessionsScreenKeepsTheActivityStreamOfTheNewestSession() {
-        Session session = store.create("demo", "/tmp/work");
+    void sessionsScreenBodyIsTheChatPlaceholder() {
+        Map<String, Object> json = SessionsScreen.render(store, Optional.empty(), false, false)
+                .toJson();
 
-        Map<String, Object> json = SessionsScreen.render(store, Optional.empty(), false).toJson();
-
-        List<Map<String, Object>> streams = nodesOfType(json, "stream_view");
-        assertThat(streams).hasSize(1);
-        assertThat(streams.get(0)).containsEntry("topic", "/ui/stream/session/" + session.id());
+        assertThat(stringsIn(json)).contains("Select a thread");
     }
 
     @Test

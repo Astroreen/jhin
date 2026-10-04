@@ -1,0 +1,1 @@
+FAIL: deliberately wrong expectation: the pinned+settled session appears in Settled too (see .sisyphus/evidence/T76/priority-fail.txt)

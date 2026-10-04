@@ -3,7 +3,7 @@
  * action, registered always and degrading to an explanatory toast when the
  * plugin that would serve it is not loaded.
  *
- * <p>Names, exhaustively (12):
+ * <p>Names, exhaustively (23):
  * <ul>
  *   <li>{@code enroll} — redeem an enrollment code, answer
  *       {@code [setToken, navigate:sessions]} (jhin.security);</li>
@@ -21,7 +21,13 @@
  *   <li>{@code keybind-edit} / {@code keybind-save} / {@code keybind-reset}
  *       / {@code keybind-restore} — the T70 keybinding surface: the rebind
  *       sheet and the feedback directives; the user keymap itself is
- *       persisted client-side (see {@code KeybindActions}).</li>
+ *       persisted client-side (see {@code KeybindActions});</li>
+ *   <li>the T76 thread-row table of {@code SessionActions} — {@code pin},
+ *       {@code unpin}, {@code settle}, {@code unsettle}, {@code snooze},
+ *       {@code wake}, {@code archive}, {@code restore},
+ *       {@code regenerate-title}, {@code reorder}, {@code delete-session}
+ *       and {@code arrange-toggle}, forwarding to the lifecycle service of
+ *       jhin.sessions (always loaded).</li>
  * </ul>
  *
  * <p>The optional integrations are constructed behind their flag, so a
@@ -32,6 +38,7 @@ package com.astroreen.jhin.plugin.ui;
 import com.astroreen.jhin.plugin.agent.api.RunService;
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
 import com.astroreen.jhin.plugin.security.api.EnrollmentService;
+import com.astroreen.jhin.plugin.sessions.api.SessionLifecycleService;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
 import com.astroreen.jhin.plugin.sessions.api.UndoJournal;
 import com.astroreen.jhin.sdk.ServiceRegistry;
@@ -68,7 +75,44 @@ final class Actions {
         handlers.put("keybind-save", KeybindActions::save);
         handlers.put("keybind-reset", KeybindActions::reset);
         handlers.put("keybind-restore", KeybindActions::restore);
+        registerThreadRowActions(handlers, store, services, features);
         return Map.copyOf(handlers);
+    }
+
+    /**
+     * Registers the T76 thread-row actions: the lifecycle forwards of
+     * {@link SessionActions} plus the arrange toggle. The lifecycle service
+     * of jhin.sessions is part of the mandatory session API, so its absence
+     * degrades to the explanatory toast like every optional integration.
+     */
+    private static void registerThreadRowActions(
+            Map<String, ActionRoute.ActionHandler> handlers,
+            SessionStore store, ServiceRegistry services, Features features) {
+        Optional<SessionLifecycleService> lifecycle =
+                services.find(SessionLifecycleService.class);
+        if (lifecycle.isPresent()) {
+            SessionLifecycleService service = lifecycle.orElseThrow();
+            handlers.put("pin", SessionActions.pin(service));
+            handlers.put("unpin", SessionActions.unpin(service));
+            handlers.put("settle", SessionActions.settle(service));
+            handlers.put("unsettle", SessionActions.unsettle(service));
+            handlers.put("snooze", SessionActions.snooze(service));
+            handlers.put("wake", SessionActions.wake(service));
+            handlers.put("archive", SessionActions.archive(service));
+            handlers.put("restore", SessionActions.restore(service));
+            handlers.put("regenerate-title", SessionActions.regenerateTitle(service));
+            handlers.put("reorder", SessionActions.reorder(service));
+        } else {
+            ActionRoute.ActionHandler unavailable = (req, payload) -> ActionSupport.error(
+                    "The session lifecycle service is unavailable.");
+            for (String name : List.of("pin", "unpin", "settle", "unsettle", "snooze",
+                    "wake", "archive", "restore", "regenerate-title", "reorder")) {
+                handlers.put(name, unavailable);
+            }
+        }
+        handlers.put("delete-session", SessionActions.deleteSession(store));
+        handlers.put("arrange-toggle", SessionActions.arrangeToggle(store,
+                () -> features.llm() && services.find(ProviderRegistry.class).isPresent()));
     }
 
     /** The enroll handler, or its absent-plugin stand-in. */

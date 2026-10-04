@@ -1,0 +1,159 @@
+{
+  "type": "list",
+  "sections": [
+    {
+      "label": "Pinned",
+      "id": "section-pinned",
+      "collapsible": false,
+      "collapsed": false,
+      "items": [
+        {
+          "type": "list_row",
+          "id": "session-row:15649016-e87b-4380-9710-d5c63775bc29",
+          "title": "pin-settled",
+          "subtitle": "/tmp/t76/pin-settled",
+          "badge": {
+            "type": "badge",
+            "label": "active"
+          },
+          "trailing": {
+            "type": "menu",
+            "trigger": {
+              "type": "icon_button",
+              "icon": "more_vert",
+              "action": {
+                "path": "/ui/action/noop",
+                "method": "POST",
+                "name": "noop"
+              }
+            },
+            "items": [
+              {
+                "label": "Unpin",
+                "icon": "keep_off",
+                "action": {
+                  "path": "/ui/action/unpin",
+                  "method": "POST",
+                  "name": "unpin",
+                  "payload": {
+                    "id": "15649016-e87b-4380-9710-d5c63775bc29"
+                  }
+                }
+              },
+              {
+                "label": "Un-settle",
+                "icon": "undo",
+                "action": {
+                  "path": "/ui/action/unsettle",
+                  "method": "POST",
+                  "name": "unsettle",
+                  "payload": {
+                    "id": "15649016-e87b-4380-9710-d5c63775bc29"
+                  }
+                }
+              },
+              {
+                "label": "Snooze…",
+                "icon": "snooze",
+                "action": {
+                  "path": "/ui/action/snooze",
+                  "method": "POST",
+                  "name": "snooze",
+                  "payload": {
+                    "id": "15649016-e87b-4380-9710-d5c63775bc29"
+                  }
+                }
+              },
+              {
+                "label": "Wake",
+                "icon": "notifications",
+                "action": {
+                  "path": "/ui/action/wake",
+                  "method": "POST",
+                  "name": "wake",
+                  "payload": {
+                    "id": "15649016-e87b-4380-9710-d5c63775bc29"
+                  }
+                }
+              },
+              {
+                "label": "Archive",
+                "icon": "archive",
+                "action": {
+                  "path": "/ui/action/archive",
+                  "method": "POST",
+                  "name": "archive",
+                  "payload": {
+                    "id": "15649016-e87b-4380-9710-d5c63775bc29"
+                  }
+                },
+                "confirm": "Archive this thread?"
+              },
+              {
+                "label": "Regenerate title",
+                "icon": "title",
+                "action": {
+                  "path": "/ui/action/regenerate-title",
+                  "method": "POST",
+                  "name": "regenerate-title",
+                  "payload": {
+                    "id": "15649016-e87b-4380-9710-d5c63775bc29"
+                  }
+                }
+              },
+              {
+                "label": "Delete",
+                "icon": "delete",
+                "action": {
+                  "path": "/ui/action/delete-session",
+                  "method": "POST",
+                  "name": "delete-session",
+                  "payload": {
+                    "id": "15649016-e87b-4380-9710-d5c63775bc29"
+                  }
+                },
+                "confirm": "Delete this thread? This cannot be undone.",
+                "danger": true
+              }
+            ]
+          },
+          "dragHandle": false,
+          "action": {
+            "op": "navigate",
+            "screen": "chat:15649016-e87b-4380-9710-d5c63775bc29"
+          },
+          "workdir": "/tmp/t76/pin-settled",
+          "status": "active",
+          "pinned": true,
+          "pinnedOrder": null,
+          "settledAt": 1791125094814,
+          "snoozedUntil": null,
+          "archivedAt": null,
+          "settledReason": "manual",
+          "sortOrder": null
+        }
+      ]
+    },
+    {
+      "label": "Active",
+      "id": "section-active",
+      "collapsible": false,
+      "collapsed": false,
+      "items": []
+    },
+    {
+      "label": "Snoozed",
+      "id": "section-snoozed",
+      "collapsible": false,
+      "collapsed": false,
+      "items": []
+    },
+    {
+      "label": "Settled",
+      "id": "section-settled",
+      "collapsible": true,
+      "collapsed": true,
+      "items": []
+    }
+  ]
+}
