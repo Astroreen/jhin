@@ -17,7 +17,7 @@ final class Migrations {
      * @return the migration list handed to {@code ctx.db().migrate()}
      */
     static List<MigrationSpec> all() {
-        return List.of(v1());
+        return List.of(v1(), v2());
     }
 
     /**
@@ -57,6 +57,31 @@ final class Migrations {
                 );
                 CREATE INDEX jhin_sessions_events_ts_idx ON jhin_sessions_events(ts);
                 CREATE INDEX jhin_sessions_runs_session_idx ON jhin_sessions_runs(session_id);
+                """);
+    }
+
+    /**
+     * V2: the lifecycle columns of the sessions table — pin, settle, snooze,
+     * archive, ordering and the auto-settle flags. Purely additive
+     * {@code ALTER TABLE ADD COLUMN} statements, so a v1 database keeps every
+     * row. Columns carrying a {@code DEFAULT} ({@code pinned},
+     * {@code auto_settle}, {@code auto_settle_suppressed}) read back that
+     * default on pre-v2 rows; the remaining columns are nullable and read back
+     * {@code NULL}.
+     *
+     * @return migration version 2
+     */
+    static MigrationSpec v2() {
+        return new MigrationSpec(2, """
+                ALTER TABLE jhin_sessions_sessions ADD COLUMN pinned INT DEFAULT 0;
+                ALTER TABLE jhin_sessions_sessions ADD COLUMN pinned_order INT;
+                ALTER TABLE jhin_sessions_sessions ADD COLUMN settled_at INT;
+                ALTER TABLE jhin_sessions_sessions ADD COLUMN snoozed_until INT;
+                ALTER TABLE jhin_sessions_sessions ADD COLUMN archived_at INT;
+                ALTER TABLE jhin_sessions_sessions ADD COLUMN auto_settle INT DEFAULT 1;
+                ALTER TABLE jhin_sessions_sessions ADD COLUMN sort_order INT;
+                ALTER TABLE jhin_sessions_sessions ADD COLUMN settled_reason TEXT;
+                ALTER TABLE jhin_sessions_sessions ADD COLUMN auto_settle_suppressed INT DEFAULT 0;
                 """);
     }
 }

@@ -19,6 +19,10 @@ import java.util.UUID;
 
 final class SessionStoreImpl implements SessionStore {
 
+    /** List order of every view: pinned first, then the manual positions. */
+    private static final String LIST_ORDER =
+            " ORDER BY pinned DESC, pinned_order ASC, sort_order ASC, created_at DESC, id";
+
     private final DbAccess db;
 
     SessionStoreImpl(DbAccess db) {
@@ -66,12 +70,22 @@ final class SessionStoreImpl implements SessionStore {
 
     @Override
     public List<Session> list() {
-        return listByAccount(null);
+        return listByAccount(null, null);
     }
 
     @Override
     public List<Session> list(String accountId) {
-        return listByAccount(accountId);
+        return listByAccount(accountId, null);
+    }
+
+    @Override
+    public List<Session> list(StatusFilter filter) {
+        return listByAccount(null, filter);
+    }
+
+    @Override
+    public List<Session> list(String accountId, StatusFilter filter) {
+        return listByAccount(accountId, filter);
     }
 
     @Override
@@ -111,16 +125,40 @@ final class SessionStoreImpl implements SessionStore {
         });
     }
 
-    private List<Session> listByAccount(String accountId) {
-        String sql = accountId == null
-                ? "SELECT * FROM jhin_sessions_sessions ORDER BY created_at DESC, id"
-                : "SELECT * FROM jhin_sessions_sessions WHERE account_id = ?"
-                        + " ORDER BY created_at DESC, id";
+    private List<Session> listByAccount(String accountId, StatusFilter filter) {
+        long now = System.currentTimeMillis();
+        List<String> where = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        if (accountId != null) {
+            where.add("account_id = ?");
+            params.add(accountId);
+        }
+        if (filter == null) {
+            where.add("archived_at IS NULL");
+        } else {
+            switch (filter) {
+                case ACTIVE -> {
+                    where.add("settled_at IS NULL AND archived_at IS NULL"
+                            + " AND (snoozed_until IS NULL OR snoozed_until <= ?)");
+                    params.add(now);
+                }
+                case SNOOZED -> {
+                    where.add("snoozed_until > ?");
+                    params.add(now);
+                }
+                case SETTLED -> where.add("settled_at IS NOT NULL");
+                case ARCHIVED -> where.add("archived_at IS NOT NULL");
+                case ALL -> { }
+            }
+        }
+        String sql = "SELECT * FROM jhin_sessions_sessions"
+                + (where.isEmpty() ? "" : " WHERE " + String.join(" AND ", where))
+                + LIST_ORDER;
         return db.read(connection -> {
             List<Session> out = new ArrayList<>();
             try (PreparedStatement query = connection.prepareStatement(sql)) {
-                if (accountId != null) {
-                    query.setString(1, accountId);
+                for (int i = 0; i < params.size(); i++) {
+                    query.setObject(i + 1, params.get(i));
                 }
                 try (ResultSet rs = query.executeQuery()) {
                     while (rs.next()) {
@@ -143,27 +181,52 @@ final class SessionStoreImpl implements SessionStore {
         if (patch.isEmpty()) {
             return current.get();
         }
-        String title = patch.title() != null ? patch.title() : current.get().title();
-        String workdir = patch.workdir() != null ? patch.workdir() : current.get().workdir();
-        String model = patch.model() != null ? patch.model() : current.get().model();
-        String providerId = patch.providerId() != null ? patch.providerId() : current.get().providerId();
-        String status = patch.status() != null ? patch.status() : current.get().status();
+        Session base = current.get();
+        String title = patch.title() != null ? patch.title() : base.title();
+        String workdir = patch.workdir() != null ? patch.workdir() : base.workdir();
+        String model = patch.model() != null ? patch.model() : base.model();
+        String providerId = patch.providerId() != null ? patch.providerId() : base.providerId();
+        String status = patch.status() != null ? patch.status() : base.status();
+        boolean pinned = patch.pinned() != null ? patch.pinned() : base.pinned();
+        Integer pinnedOrder = patch.pinnedOrder() != null ? patch.pinnedOrder() : base.pinnedOrder();
+        Long settledAt = patch.settledAt() != null ? patch.settledAt() : base.settledAt();
+        Long snoozedUntil = patch.snoozedUntil() != null ? patch.snoozedUntil() : base.snoozedUntil();
+        Long archivedAt = patch.archivedAt() != null ? patch.archivedAt() : base.archivedAt();
+        boolean autoSettle = patch.autoSettle() != null ? patch.autoSettle() : base.autoSettle();
+        Integer sortOrder = patch.sortOrder() != null ? patch.sortOrder() : base.sortOrder();
+        String settledReason = patch.settledReason() != null ? patch.settledReason() : base.settledReason();
+        boolean autoSettleSuppressed = patch.autoSettleSuppressed() != null
+                ? patch.autoSettleSuppressed() : base.autoSettleSuppressed();
         long updatedAt = System.currentTimeMillis();
         return db.write(connection -> {
             try (PreparedStatement update = connection.prepareStatement(
                     "UPDATE jhin_sessions_sessions SET title = ?, workdir = ?, model = ?,"
-                            + " provider_id = ?, status = ?, updated_at = ? WHERE id = ?")) {
+                            + " provider_id = ?, status = ?, pinned = ?, pinned_order = ?,"
+                            + " settled_at = ?, snoozed_until = ?, archived_at = ?,"
+                            + " auto_settle = ?, sort_order = ?, settled_reason = ?,"
+                            + " auto_settle_suppressed = ?, updated_at = ? WHERE id = ?")) {
                 update.setString(1, title);
                 update.setString(2, workdir);
                 update.setString(3, model);
                 update.setString(4, providerId);
                 update.setString(5, status);
-                update.setLong(6, updatedAt);
-                update.setString(7, id);
+                update.setBoolean(6, pinned);
+                update.setObject(7, pinnedOrder);
+                update.setObject(8, settledAt);
+                update.setObject(9, snoozedUntil);
+                update.setObject(10, archivedAt);
+                update.setBoolean(11, autoSettle);
+                update.setObject(12, sortOrder);
+                update.setString(13, settledReason);
+                update.setBoolean(14, autoSettleSuppressed);
+                update.setLong(15, updatedAt);
+                update.setString(16, id);
                 update.executeUpdate();
             }
-            return new Session(id, current.get().accountId(), title, workdir,
-                    model, providerId, status, current.get().createdAt(), updatedAt);
+            return new Session(id, base.accountId(), title, workdir,
+                    model, providerId, status, base.createdAt(), updatedAt,
+                    pinned, pinnedOrder, settledAt, snoozedUntil, archivedAt,
+                    autoSettle, sortOrder, settledReason, autoSettleSuppressed);
         });
     }
 
@@ -200,7 +263,26 @@ final class SessionStoreImpl implements SessionStore {
                 rs.getString("provider_id"),
                 rs.getString("status"),
                 rs.getLong("created_at"),
-                rs.getLong("updated_at"));
+                rs.getLong("updated_at"),
+                rs.getBoolean("pinned"),
+                nullableInt(rs, "pinned_order"),
+                nullableLong(rs, "settled_at"),
+                nullableLong(rs, "snoozed_until"),
+                nullableLong(rs, "archived_at"),
+                rs.getBoolean("auto_settle"),
+                nullableInt(rs, "sort_order"),
+                rs.getString("settled_reason"),
+                rs.getBoolean("auto_settle_suppressed"));
+    }
+
+    private static Integer nullableInt(ResultSet rs, String column) throws SQLException {
+        int value = rs.getInt(column);
+        return rs.wasNull() ? null : value;
+    }
+
+    private static Long nullableLong(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
     }
 
     private static void requireText(String value, String name) {

@@ -6,8 +6,11 @@
  * the caller thread against a fresh connection, writes are serialized through a
  * single executor thread (one unit at a time, in submission order), unchecked
  * exceptions from a work unit propagate unchanged and {@link java.sql.SQLException}s
- * are wrapped into {@code PluginException}. Deliberately independent of the
- * kernel module: a plugin only ever sees the SDK at runtime.
+ * are wrapped into {@code PluginException}. {@link #migrate} mirrors the kernel
+ * migration bookkeeper: applied versions are recorded in
+ * {@code _jhin_plugin_schema} and skipped on later calls, so migrating twice is
+ * a no-op. Deliberately independent of the kernel module: a plugin only ever
+ * sees the SDK at runtime.
  */
 package com.astroreen.jhin.plugin.sessions;
 
@@ -18,15 +21,24 @@ import com.astroreen.jhin.sdk.db.SqlWork;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 final class TestDbAccess implements DbAccess, AutoCloseable {
+
+    /** Plugin id recorded in the migration bookkeeping table. */
+    private static final String PLUGIN_ID = "jhin.sessions";
 
     private final Path file;
     private final ExecutorService writer;
@@ -52,16 +64,48 @@ final class TestDbAccess implements DbAccess, AutoCloseable {
 
     @Override
     public void migrate(List<MigrationSpec> migrations) {
-        for (MigrationSpec migration : migrations) {
-            write(connection -> {
+        write(connection -> {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("""
+                        CREATE TABLE IF NOT EXISTS _jhin_plugin_schema(
+                            plugin_id TEXT,
+                            version INT,
+                            applied_at INT,
+                            PRIMARY KEY(plugin_id, version)
+                        )""");
+            }
+            Set<Integer> applied = new HashSet<>();
+            try (PreparedStatement query = connection.prepareStatement(
+                    "SELECT version FROM _jhin_plugin_schema WHERE plugin_id = ?")) {
+                query.setString(1, PLUGIN_ID);
+                try (ResultSet rs = query.executeQuery()) {
+                    while (rs.next()) {
+                        applied.add(rs.getInt(1));
+                    }
+                }
+            }
+            List<MigrationSpec> ordered = new ArrayList<>(migrations);
+            ordered.sort(Comparator.comparingInt(MigrationSpec::version));
+            for (MigrationSpec migration : ordered) {
+                if (!applied.add(migration.version())) {
+                    continue;
+                }
                 try (Statement statement = connection.createStatement()) {
                     for (String piece : split(migration.sql())) {
                         statement.execute(piece);
                     }
                 }
-                return null;
-            });
-        }
+                try (PreparedStatement record = connection.prepareStatement(
+                        "INSERT INTO _jhin_plugin_schema (plugin_id, version, applied_at)"
+                                + " VALUES (?, ?, ?)")) {
+                    record.setString(1, PLUGIN_ID);
+                    record.setInt(2, migration.version());
+                    record.setLong(3, System.currentTimeMillis());
+                    record.executeUpdate();
+                }
+            }
+            return null;
+        });
     }
 
     @Override

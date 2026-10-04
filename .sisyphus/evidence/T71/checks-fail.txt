@@ -1,0 +1,7 @@
+ok: :jhin-plugin-sessions:test green (37 tests; transcript in test.txt)
+ok: upgrade dumps copied (before.sql = v1 schema, after.sql = v2 schema)
+ok: pre-v2 rows read back pinned=0, auto_settle=1, auto_settle_suppressed=0, others NULL
+ok: negative probes recorded (v2 re-run is a no-op, patch-unknown throws PluginException)
+T71 QA --fail: deliberate wrong expectation (pre-v2 rows have pinned=1)
+FAIL: pre-v2 rows have pinned=1 — the deliberate wrong expectation failed as designed (rows.json shows pinned=0)
+FAIL: --fail mode: intentional failure-path exit

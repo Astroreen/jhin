@@ -17,7 +17,8 @@ public interface SessionStore {
 
     /**
      * Creates a session owned by the given account. The id is generated, the
-     * status starts as {@code active}, model and provider are unset.
+     * status starts as {@code active}, model and provider are unset. The
+     * session starts unpinned and unsettled with auto-settle enabled.
      *
      * @param accountId the owning account
      * @param title     the session title
@@ -59,20 +60,40 @@ public interface SessionStore {
     Optional<Session> get(String accountId, String id);
 
     /**
-     * Lists all sessions, newest first, unscoped. Called when no principal is
-     * present.
+     * Lists the default view of all sessions, unscoped: every non-archived
+     * session ordered by {@code pinned DESC, pinned_order ASC, sort_order ASC,
+     * created_at DESC}. Called when no principal is present.
      *
-     * @return all sessions ordered by creation time descending
+     * @return the non-archived sessions, pinned first
      */
     List<Session> list();
 
     /**
-     * Lists the sessions of one account, newest first.
+     * Lists the default view of one account's sessions: every non-archived
+     * session ordered by {@code pinned DESC, pinned_order ASC, sort_order ASC,
+     * created_at DESC}.
      *
      * @param accountId the owning account
-     * @return the sessions of the account ordered by creation time descending
+     * @return the non-archived sessions of the account, pinned first
      */
     List<Session> list(String accountId);
+
+    /**
+     * Lists all sessions of all accounts through one status filter, unscoped.
+     *
+     * @param filter the status view to apply
+     * @return the matching sessions, pinned first
+     */
+    List<Session> list(StatusFilter filter);
+
+    /**
+     * Lists the sessions of one account through one status filter.
+     *
+     * @param accountId the owning account
+     * @param filter    the status view to apply
+     * @return the matching sessions of the account, pinned first
+     */
+    List<Session> list(String accountId, StatusFilter filter);
 
     /**
      * Applies a partial update, unscoped. Fields left {@code null} in the
@@ -117,6 +138,34 @@ public interface SessionStore {
     boolean delete(String accountId, String id);
 
     /**
+     * Status view for list queries.
+     *
+     * <p>The filters are independent predicates and may overlap: a settled
+     * session whose {@code snoozed_until} is still in the future matches both
+     * {@link #SETTLED} and {@link #SNOOZED}. {@link #ACTIVE} is the exact
+     * complement of the union of the other three. Pinning never changes the
+     * status classification: a pinned and settled session is still
+     * {@link #SETTLED}.
+     */
+    enum StatusFilter {
+
+        /** Not settled, not archived and not snoozed right now. */
+        ACTIVE,
+
+        /** {@code snoozed_until} is strictly in the future. */
+        SNOOZED,
+
+        /** {@code settled_at} is set. */
+        SETTLED,
+
+        /** {@code archived_at} is set. */
+        ARCHIVED,
+
+        /** Every session, archived ones included. */
+        ALL
+    }
+
+    /**
      * Partial session update: {@code null} fields keep their current values.
      *
      * @param title      new title, or {@code null}
@@ -124,8 +173,48 @@ public interface SessionStore {
      * @param model      new model, or {@code null}
      * @param providerId new provider id, or {@code null}
      * @param status     new status, or {@code null}
+     * @param pinned     new pinned flag, or {@code null}
+     * @param pinnedOrder new pinned position, or {@code null}
+     * @param settledAt  new settle time, epoch milliseconds, or {@code null}
+     * @param snoozedUntil new sleep-until time, epoch milliseconds, or
+     *                   {@code null}
+     * @param archivedAt new archive time, epoch milliseconds, or {@code null}
+     * @param autoSettle new auto-settle flag, or {@code null}
+     * @param sortOrder  new manual position, or {@code null}
+     * @param settledReason new settle reason, or {@code null}
+     * @param autoSettleSuppressed new auto-settle suppression flag, or
+     *                   {@code null}
      */
-    record Patch(String title, String workdir, String model, String providerId, String status) {
+    record Patch(
+            String title,
+            String workdir,
+            String model,
+            String providerId,
+            String status,
+            Boolean pinned,
+            Integer pinnedOrder,
+            Long settledAt,
+            Long snoozedUntil,
+            Long archivedAt,
+            Boolean autoSettle,
+            Integer sortOrder,
+            String settledReason,
+            Boolean autoSettleSuppressed) {
+
+        /**
+         * Backward-compatible constructor over the pre-lifecycle fields; the
+         * lifecycle fields stay {@code null} and change nothing.
+         *
+         * @param title      new title, or {@code null}
+         * @param workdir    new workdir, or {@code null}
+         * @param model      new model, or {@code null}
+         * @param providerId new provider id, or {@code null}
+         * @param status     new status, or {@code null}
+         */
+        public Patch(String title, String workdir, String model, String providerId, String status) {
+            this(title, workdir, model, providerId, status,
+                    null, null, null, null, null, null, null, null, null);
+        }
 
         /**
          * @return {@code true} when every field is {@code null} and the patch
@@ -133,7 +222,11 @@ public interface SessionStore {
          */
         public boolean isEmpty() {
             return title == null && workdir == null && model == null
-                    && providerId == null && status == null;
+                    && providerId == null && status == null
+                    && pinned == null && pinnedOrder == null && settledAt == null
+                    && snoozedUntil == null && archivedAt == null && autoSettle == null
+                    && sortOrder == null && settledReason == null
+                    && autoSettleSuppressed == null;
         }
     }
 }

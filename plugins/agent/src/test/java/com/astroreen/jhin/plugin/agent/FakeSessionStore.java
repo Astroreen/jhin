@@ -8,6 +8,7 @@ package com.astroreen.jhin.plugin.agent;
 
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -54,12 +55,48 @@ final class FakeSessionStore implements SessionStore {
 
     @Override
     public List<Session> list() {
-        return List.copyOf(sessions.values());
+        return list(null, null);
     }
 
     @Override
     public List<Session> list(String accountId) {
-        return list().stream().filter(session -> session.accountId().equals(accountId)).toList();
+        return list(accountId, null);
+    }
+
+    @Override
+    public List<Session> list(StatusFilter filter) {
+        return list(null, filter);
+    }
+
+    @Override
+    public List<Session> list(String accountId, StatusFilter filter) {
+        long now = System.currentTimeMillis();
+        return sessions.values().stream()
+                .filter(session -> accountId == null || session.accountId().equals(accountId))
+                .filter(session -> matches(session, filter, now))
+                .sorted(Comparator
+                        .comparing(Session::pinned, Comparator.reverseOrder())
+                        .thenComparing(Session::pinnedOrder,
+                                Comparator.nullsFirst(Comparator.naturalOrder()))
+                        .thenComparing(Session::sortOrder,
+                                Comparator.nullsFirst(Comparator.naturalOrder()))
+                        .thenComparing(Session::createdAt, Comparator.reverseOrder())
+                        .thenComparing(Session::id))
+                .toList();
+    }
+
+    private static boolean matches(Session session, StatusFilter filter, long now) {
+        if (filter == null) {
+            return session.archivedAt() == null;
+        }
+        return switch (filter) {
+            case ACTIVE -> session.settledAt() == null && session.archivedAt() == null
+                    && (session.snoozedUntil() == null || session.snoozedUntil() <= now);
+            case SNOOZED -> session.snoozedUntil() != null && session.snoozedUntil() > now;
+            case SETTLED -> session.settledAt() != null;
+            case ARCHIVED -> session.archivedAt() != null;
+            case ALL -> true;
+        };
     }
 
     @Override
@@ -77,7 +114,17 @@ final class FakeSessionStore implements SessionStore {
                 patch.providerId() == null ? current.providerId() : patch.providerId(),
                 patch.status() == null ? current.status() : patch.status(),
                 current.createdAt(),
-                System.currentTimeMillis());
+                System.currentTimeMillis(),
+                patch.pinned() != null ? patch.pinned() : current.pinned(),
+                patch.pinnedOrder() != null ? patch.pinnedOrder() : current.pinnedOrder(),
+                patch.settledAt() != null ? patch.settledAt() : current.settledAt(),
+                patch.snoozedUntil() != null ? patch.snoozedUntil() : current.snoozedUntil(),
+                patch.archivedAt() != null ? patch.archivedAt() : current.archivedAt(),
+                patch.autoSettle() != null ? patch.autoSettle() : current.autoSettle(),
+                patch.sortOrder() != null ? patch.sortOrder() : current.sortOrder(),
+                patch.settledReason() != null ? patch.settledReason() : current.settledReason(),
+                patch.autoSettleSuppressed() != null
+                        ? patch.autoSettleSuppressed() : current.autoSettleSuppressed());
         sessions.put(id, updated);
         return updated;
     }
