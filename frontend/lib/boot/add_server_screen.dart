@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api/jhin_transport.dart';
 import '../core/auth/app_storage.dart';
 import '../core/tls/tls_trust.dart';
+import '../design/theme.dart';
 
 /// Outcome of probing a candidate server before its profile exists.
 class ProbeResult {
@@ -109,13 +110,17 @@ class _AddServerScreenState extends State<AddServerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final spacing = JhinDesignScope.of(context).tokens.spacing;
     return Scaffold(
       appBar: AppBar(title: Text(_isEdit ? 'Edit server' : 'Add server')),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.symmetric(
+              horizontal: spacing.lg,
+              vertical: spacing.lg,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

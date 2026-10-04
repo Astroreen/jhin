@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../design/theme.dart';
+
 /// Built-in empty-server state (§8.1): a bare kernel with no UI plugin.
 ///
 /// One of the only two widgets allowed to carry product-neutral copy (D-25);
 /// the copy stays server-agnostic because the kernel bootstrap fallback
-/// (`{"api":1,"empty":true,…}`) is generic by design (D-7).
+/// (`{"api":1,"empty":true,…}`) is generic by design (D-7). It doubles as
+/// the client fallback art when the payload carries no `fallbacks` key.
+///
+/// Styling comes from the design tokens ([JhinDesignScope]) — no hardcoded
+/// layout numbers or colors (T79).
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -24,23 +30,28 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = JhinDesignScope.of(context).tokens;
+    final spacing = tokens.spacing;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.symmetric(
+            horizontal: spacing.xl,
+            vertical: spacing.xl,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'This server has no UI plugin installed',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                style: tokens.typography.h3,
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: spacing.sm),
               Text('Kernel version: $kernelVersion'),
               Text('Plugins installed: $pluginCount'),
-              const SizedBox(height: 20),
+              SizedBox(height: spacing.lg),
               if (onChangeServer != null)
                 FilledButton(
                   key: const Key('change-server'),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jhin/boot/version_gate.dart';
+import 'package:jhin/design/theme.dart';
 import 'package:jhin/main.dart';
 import 'package:jhin/store/migrations/migration_runner.dart';
 import 'package:jhin/core/auth/string_store.dart';
@@ -76,6 +77,71 @@ void main() {
       expect(find.textContaining('jhin.profiles'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('version-gate-dismiss')));
+      expect(dismissed, isTrue);
+    });
+
+    testWidgets('T79: the surfaces are token-styled and dismissible',
+        (tester) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final design = JhinTheme.from(
+        density: 'comfortable',
+        tokens: {
+          'spacing': {'xl': 60, 'md': 50},
+        },
+      );
+      var dismissed = false;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: JhinDesignScope(
+            design: design,
+            child: Column(
+              children: [
+                Expanded(
+                  child: VersionGate(
+                    mode: VersionGateMode.updateRequired,
+                    onDiskSchema: 2,
+                    minSchema: 3,
+                    onDismiss: () => dismissed = true,
+                  ),
+                ),
+                VersionGate(
+                  mode: VersionGateMode.newerVersion,
+                  quarantinedKeys: const [],
+                  onDismiss: () => dismissed = true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
+
+      // Both surfaces pad themselves from `$spacing.*` (xl / md), never
+      // from hardcoded numbers.
+      expect(
+        find.byWidgetPredicate((w) =>
+            w is Padding && w.padding == const EdgeInsets.symmetric(
+                horizontal: 60, vertical: 60)),
+        findsOneWidget,
+      );
+      expect(
+        find.byWidgetPredicate((w) =>
+            w is Padding && w.padding == const EdgeInsets.symmetric(
+                horizontal: 50, vertical: 50)),
+        findsNWidgets(2),
+      );
+
+      // The update-required title reads the `h3` typography token.
+      final title = tester.widget<Text>(find.text('Update required'));
+      expect(title.style, design.tokens.typography.h3);
+
+      // The banner dismisses (never blocks boot destructively); both
+      // surfaces share the dismiss key, either one flips the flag.
+      await tester.tap(find.byKey(const Key('version-gate-dismiss')).first);
       expect(dismissed, isTrue);
     });
   });

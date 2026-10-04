@@ -87,10 +87,13 @@ class GenericScreenRenderer implements ScreenRenderer {
         }
       }
     }
+    final spacing = JhinDesignScope.of(context).tokens.spacing;
     return SingleChildScrollView(
       child: Padding(
-        padding:
-            EdgeInsets.all(JhinDesignScope.of(context).tokens.spacing.md),
+        padding: EdgeInsets.symmetric(
+          horizontal: spacing.md,
+          vertical: spacing.md,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

@@ -4,6 +4,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart' hide ActionDispatcher;
 
+import '../boot/empty_state.dart';
+import '../boot/loading_frame.dart';
 import '../boot/screen_renderer.dart';
 import '../core/api/jhin_transport.dart';
 import '../core/auth/app_storage.dart';
@@ -194,21 +196,25 @@ class SduiRuntime extends ChangeNotifier
   Widget _buildTop(BuildContext context) {
     if (_stack.isEmpty) return const SizedBox.shrink();
     final entry = _stack.last;
+    // Stale-while-revalidate (§8.7): a previous screen stays visible while
+    // the fetch runs; with no previous screen the built-in loading frame
+    // (T79) shows — never a bare spinner.
     if (entry.node != null) {
       return _contextFor(entry).build(context, entry.node!);
     }
     if (entry.loading) {
-      return const Center(child: CircularProgressIndicator());
+      return _contextFor(entry).build(context, loadingFrameNode());
     }
     final fallback = _fallbacks?['error'];
     if (fallback is Map) {
       return _contextFor(entry).build(context, UiNode.fromJson(fallback));
     }
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text('Failed to load screen "${entry.id}"'),
-      ),
+    // Missing `fallbacks` key: the built-in EmptyState is the client
+    // fallback art (T79) — the app never shows a bare box.
+    return EmptyState(
+      kernelVersion: 'unknown',
+      pluginCount: 0,
+      onChangeServer: onOpenProfiles,
     );
   }
 

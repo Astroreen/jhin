@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../design/theme.dart';
+
 /// Built-in bootstrap failure state (§8.1): the server could not be reached
 /// and nothing is cached for this profile (§8.7).
 ///
 /// One of the only two widgets allowed to carry product-neutral copy (D-25).
 /// Actions: Retry re-runs the bootstrap fetch; Change server opens the
 /// client-owned server-profile surface.
+///
+/// Styling comes from the design tokens ([JhinDesignScope]) — no hardcoded
+/// layout numbers or colors (T79).
 class BootError extends StatelessWidget {
   const BootError({
     super.key,
@@ -25,30 +30,35 @@ class BootError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = JhinDesignScope.of(context).tokens;
+    final spacing = tokens.spacing;
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.symmetric(
+            horizontal: spacing.xl,
+            vertical: spacing.xl,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'Could not reach this server',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                style: tokens.typography.h3,
               ),
               if (error != null) ...[
-                const SizedBox(height: 12),
+                SizedBox(height: spacing.sm),
                 Text(
                   error!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontFamily: 'monospace'),
+                  style: tokens.typography.mono,
                 ),
               ],
-              const SizedBox(height: 20),
+              SizedBox(height: spacing.lg),
               Wrap(
-                spacing: 12,
+                spacing: spacing.md,
                 alignment: WrapAlignment.center,
                 children: [
                   if (onRetry != null)

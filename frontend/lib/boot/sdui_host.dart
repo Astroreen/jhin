@@ -10,6 +10,7 @@ import '../sdui/keyboard/palette.dart';
 import '../sdui/keyboard/when_context.dart';
 import 'boot_error.dart';
 import 'empty_state.dart';
+import 'loading_frame.dart';
 import 'screen_renderer.dart';
 
 /// Bootstrap host (§8.1): fetches `GET /_jhin/bootstrap` for the bound
@@ -265,7 +266,9 @@ class _SduiHostState extends State<SduiHost> {
   Widget _body() {
     switch (_phase) {
       case _Phase.loading:
-        return const Center(child: CircularProgressIndicator());
+        // The built-in loading frame (T79) through the renderer seam — the
+        // skeleton, never a bare spinner.
+        return widget.renderer.buildNode(context, loadingFrameJson);
       case _Phase.tree:
         return widget.renderer.buildScreen(context, _payload!);
       case _Phase.empty:

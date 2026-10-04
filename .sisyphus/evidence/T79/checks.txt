@@ -1,0 +1,26 @@
+ok: hardcode scan clean: rg 'EdgeInsets\.all\(' frontend/lib/boot = 0 hits (T79 acceptance)
+ok: hardcode scan clean: rg 'EdgeInsets\.all\(1[12]\)|maxHeight: 240|height: 160' frontend/lib = 0 hits
+Analyzing frontend...                                           
+No issues found! (ran in 0.8s)
+ok: flutter analyze clean
+ok: frontend suite green (test/boot + test/gallery; transcript in test.txt)
+ok: ui-default module suite green (level-2 fallbacks shape assertions; appended to test.txt)
+ok: theme-corrupt.txt written: an unparseable theme boots on the built-in defaults
+ok: states/ holds the 5 state goldens (offline, error, empty, version-gate, loading)
+
+T79 golden delta:
+  new state baselines (frontend/test/boot/goldens): 5 (want 5)
+  modified new baselines: 0 (want 0)
+  new gallery baselines: 0 (want 0)
+  modified pre-existing gallery baselines: 0 (want 0)
+
+git status --porcelain -uall frontend/test/boot/goldens/:
+?? frontend/test/boot/goldens/state-empty.png
+?? frontend/test/boot/goldens/state-error.png
+?? frontend/test/boot/goldens/state-loading.png
+?? frontend/test/boot/goldens/state-offline.png
+?? frontend/test/boot/goldens/state-version-gate.png
+
+git status --porcelain -uall frontend/test/gallery/goldens/:
+ok: golden delta recorded: 5 new state baselines, 0 modified pre-existing baselines
+happy exit code 0

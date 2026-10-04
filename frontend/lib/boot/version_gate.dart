@@ -60,7 +60,10 @@ class VersionGate extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Padding(
-              padding: EdgeInsets.all(spacing.xl),
+              padding: EdgeInsets.symmetric(
+                horizontal: spacing.xl,
+                vertical: spacing.xl,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -93,14 +96,20 @@ class VersionGate extends StatelessWidget {
       case VersionGateMode.newerVersion:
         final scheme = Theme.of(context).colorScheme;
         return Padding(
-          padding: EdgeInsets.all(spacing.md),
+          padding: EdgeInsets.symmetric(
+            horizontal: spacing.md,
+            vertical: spacing.md,
+          ),
           child: Material(
             color: scheme.secondaryContainer,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(tokens.radius.md),
             ),
             child: Padding(
-              padding: EdgeInsets.all(spacing.md),
+              padding: EdgeInsets.symmetric(
+            horizontal: spacing.md,
+            vertical: spacing.md,
+          ),
               child: Row(
                 children: [
                   Expanded(

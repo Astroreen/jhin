@@ -37,6 +37,10 @@ class BootstrapRouteTest {
     /** Client declaring nothing. */
     private static final ClientInfo NO_CAPS = new ClientInfo(1, "0.2.0", Set.of());
 
+    /** A contract level 2 client with every capability and the current schema. */
+    private static final ClientInfo LEVEL2_CAPS =
+            new ClientInfo(2, "0.3.0", 3, Set.of("sse", "open_url", "secure_storage", "multi_profile"));
+
     @TempDir
     Path tmp;
 
@@ -122,6 +126,40 @@ class BootstrapRouteTest {
         assertThat(fallbacks.keySet()).containsExactlyInAnyOrder("offline", "error");
         assertThat(castMap(fallbacks.get("offline"))).containsEntry("type", "card");
         assertThat(castMap(fallbacks.get("error"))).containsEntry("type", "card");
+    }
+
+    @Test
+    void level1FallbacksKeepTheClassicCardArt() {
+        Map<String, Object> payload = bootstrap(false, request(FULL_CAPS), screens());
+
+        Map<String, Object> fallbacks = castMap(payload.get("fallbacks"));
+        String offline = String.valueOf(fallbacks.get("offline"));
+        String error = String.valueOf(fallbacks.get("error"));
+        // Level 1 is exactly the Appendix A art: no skeleton, no token refs.
+        assertThat(offline).doesNotContain("skeleton").doesNotContain("$");
+        assertThat(error).doesNotContain("skeleton").doesNotContain("$");
+        assertThat(typesIn(fallbacks)).containsExactlyInAnyOrder("card", "text", "button");
+    }
+
+    @Test
+    void level2FallbacksAreTokenDrivenSkeletonCompositions() {
+        Map<String, Object> payload = bootstrap(false, request(LEVEL2_CAPS), screens());
+
+        Map<String, Object> fallbacks = castMap(payload.get("fallbacks"));
+        for (String key : new String[] {"offline", "error"}) {
+            Map<String, Object> art = castMap(fallbacks.get(key));
+            assertThat(art).containsEntry("type", "card");
+            // card + skeleton + button composition.
+            assertThat(typesIn(art)).contains("card", "skeleton", "button");
+        }
+        assertThat(opsIn(castMap(fallbacks.get("offline")))).contains("refresh");
+        // Token-driven layout and colors, resolved client-side (§2.2).
+        String offline = String.valueOf(fallbacks.get("offline"));
+        String error = String.valueOf(fallbacks.get("error"));
+        assertThat(offline).contains("$spacing.lg", "$spacing.md", "$color.accent", "$radius.md");
+        assertThat(error).contains("$spacing.lg", "$spacing.md", "$color.error", "$radius.md");
+        assertThat(opsIn(castMap(fallbacks.get("error"))))
+                .contains("reloadBootstrap", "openProfiles");
     }
 
     @Test

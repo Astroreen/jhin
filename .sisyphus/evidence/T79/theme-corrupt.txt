@@ -1,0 +1,9 @@
+T79 unparseable-theme proof (never blocks boot, falls back to defaults)
+
+The bootstrap payload carries a `theme` that cannot be parsed;
+the app must boot the tree on the built-in default theme (T53
+wiring: JhinTheme.fromBootstrap degrades, never throws).
+
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/boot/state_test.dart
+00:00 +0: T79 client fallbacks over missing server art an unparseable theme never blocks boot (falls back to defaults)
+00:00 +1: All tests passed!

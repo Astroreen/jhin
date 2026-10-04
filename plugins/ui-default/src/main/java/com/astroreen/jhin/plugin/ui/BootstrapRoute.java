@@ -30,6 +30,7 @@ package com.astroreen.jhin.plugin.ui;
 
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
+import com.astroreen.jhin.plugin.uikit.UiTokens;
 import com.astroreen.jhin.sdk.ApiVersion;
 import com.astroreen.jhin.sdk.http.ClientInfo;
 import com.astroreen.jhin.sdk.http.HttpRequest;
@@ -134,16 +135,71 @@ final class BootstrapRoute {
         return out;
     }
 
-    /** The server-authored offline and error art, tailored like any node. */
+    /**
+     * The server-authored offline and error art, tailored like any node.
+     *
+     * <p>At contract level 2 the art is the token-driven composition of
+     * {@link #offlineArt()} / {@link #errorArt()} — a {@code card} carrying a
+     * {@code skeleton} placeholder frame and the retry {@code button}, with
+     * every layout and color value a {@code $token} reference (docs/sdui.md
+     * section 2.2) resolved client-side. Below level 2 the classic
+     * card+text+button art is emitted instead, so a level-1 payload keeps
+     * exactly its level-1 behaviour (no skeleton, no token references).
+     */
     private Map<String, Object> fallbacks(HttpRequest req) {
+        boolean level2 = tailor.isLevel2(req.client());
         Map<String, Object> fallbacks = new LinkedHashMap<>();
-        fallbacks.put("offline", tailor.tailor(offlineNode(), req.client()).toJson());
-        fallbacks.put("error", tailor.tailor(errorNode(), req.client()).toJson());
+        fallbacks.put("offline",
+                tailor.tailor(level2 ? offlineArt() : classicOfflineNode(), req.client()).toJson());
+        fallbacks.put("error",
+                tailor.tailor(level2 ? errorArt() : classicErrorNode(), req.client()).toJson());
         return fallbacks;
     }
 
-    /** Product-neutral offline art: a card with a retry affordance. */
-    private UiNode offlineNode() {
+    /** Token-driven offline art (level 2): card + skeleton frame + retry button. */
+    private UiNode offlineArt() {
+        return Ui.card()
+                .title("Offline")
+                .padding(UiTokens.spacing.lg())
+                .child(Ui.text("The server is unreachable. Your screens are shown from the cache.")
+                        .style("body").build())
+                .child(placeholderFrame(UiTokens.color.accent()))
+                .child(Ui.button("Retry").style("primary").action(Directives.refresh()).build())
+                .build();
+    }
+
+    /** Token-driven error art (level 2): card + skeleton frame + retry and change-server buttons. */
+    private UiNode errorArt() {
+        return Ui.card()
+                .title("Something went wrong")
+                .padding(UiTokens.spacing.lg())
+                .child(Ui.text("The server could not render this screen.").style("body").build())
+                .child(placeholderFrame(UiTokens.color.error()))
+                .child(Ui.button("Retry").style("primary").action(Directives.reloadBootstrap()).build())
+                .child(Ui.button("Change server").style("text").action(Directives.openProfiles()).build())
+                .build();
+    }
+
+    /**
+     * The skeleton placeholder frame of the fallback art: a token-padded,
+     * token-bordered box around a two-line skeleton — "your screens are
+     * shown from the cache" made visible instead of a gray box.
+     *
+     * @param borderColor the {@code $color.*} reference of the frame border
+     * @return the placeholder frame node
+     */
+    private static UiNode placeholderFrame(String borderColor) {
+        return Ui.container()
+                .padding(UiTokens.spacing.md())
+                .border(borderColor)
+                .borderWidth(1)
+                .borderRadius(UiTokens.radius.md())
+                .child(Ui.skeleton().variant("text").lines(2).shimmer(true).build())
+                .build();
+    }
+
+    /** Level-1 offline art (Appendix A behaviour, unchanged): a card with a retry affordance. */
+    private UiNode classicOfflineNode() {
         return Ui.card()
                 .title("Offline")
                 .child(Ui.text("The server is unreachable. Your screens are shown from the cache.")
@@ -152,8 +208,8 @@ final class BootstrapRoute {
                 .build();
     }
 
-    /** Product-neutral error art: a card with retry and change-server affordances. */
-    private UiNode errorNode() {
+    /** Level-1 error art (Appendix A behaviour, unchanged): retry and change-server affordances. */
+    private UiNode classicErrorNode() {
         return Ui.card()
                 .title("Something went wrong")
                 .child(Ui.text("The server could not render this screen.").style("body").build())
