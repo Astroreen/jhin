@@ -1,0 +1,18 @@
+ok: hardcode scan clean: rg 'EdgeInsets\.all\(1[12]\)|maxHeight: 240|height: 160' frontend/lib = 0 hits
+Analyzing frontend...                                           
+No issues found! (ran in 0.8s)
+ok: flutter analyze clean
+ok: frontend suite green (scripts/qa/flutter-test.sh; transcript in test.txt)
+ok: ui-kit module suite green (conformance passes with the T63 builders; appended to test.txt)
+ok: empty-section.txt written: empty section shows label + empty node, chip without onDeleted hides the delete affordance
+ok: thread-row.png copied (acceptance 8 composition golden)
+ok: goldens.txt written: 0 modified pre-existing baselines, 21 new T63 baselines (197 total)
+
+golden baselines: 197 (21 new for T63, 0 modified)
+
+T63 empty-section re-verification (--fail mode):
+T63_EMPTY_SECTION label=Section-C-shown empty-node=Nothing-here-shown
+ok: --fail proof tests passed: empty section shows its label and the empty node
+wrong expectation tripped: the evidence records label=Section-C-shown, not hidden
+--fail exit code 1 (intentional failure-path exit)
+FAIL: --fail mode: intentional failure-path exit

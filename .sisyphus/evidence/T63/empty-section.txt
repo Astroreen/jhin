@@ -1,0 +1,14 @@
+T63 empty-section and hidden-affordance proofs (docs/sdui.md §2.6)
+
+A section with empty items still shows its label and renders the
+list's `empty` node (acceptance 6). A chip without an `onDeleted`
+action renders no delete affordance (acceptance 3).
+
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch8_test.dart
+00:00 +0: list sections empty section shows its label and the empty node
+T63_EMPTY_SECTION label=Section-C-shown empty-node=Nothing-here-shown
+00:00 +1: All tests passed!
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch8_test.dart
+00:00 +0: chip onDeleted without an action shows no delete affordance
+T63_CHIP_HIDDEN affordance=absent (no onDeleted action)
+00:00 +1: All tests passed!

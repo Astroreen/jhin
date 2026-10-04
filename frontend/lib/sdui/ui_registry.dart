@@ -6,6 +6,8 @@ import '../design/tokens.dart';
 import 'expr.dart';
 import 'primitives/align_primitive.dart';
 import 'primitives/aspect_ratio_primitive.dart';
+import 'primitives/avatar.dart';
+import 'primitives/badge.dart';
 import 'primitives/box.dart';
 import 'primitives/button.dart';
 import 'primitives/card.dart';
@@ -14,6 +16,7 @@ import 'primitives/chart_bar.dart';
 import 'primitives/chart_line.dart';
 import 'primitives/chart_pie.dart';
 import 'primitives/checkbox.dart';
+import 'primitives/chip.dart';
 import 'primitives/code_block.dart';
 import 'primitives/column.dart';
 import 'primitives/container.dart';
@@ -31,6 +34,7 @@ import 'primitives/icon_button.dart';
 import 'primitives/image.dart';
 import 'primitives/input.dart';
 import 'primitives/list.dart';
+import 'primitives/list_row.dart';
 import 'primitives/markdown.dart';
 import 'primitives/nav.dart';
 import 'primitives/positioned.dart';
@@ -40,6 +44,7 @@ import 'primitives/row.dart';
 import 'primitives/screen.dart';
 import 'primitives/scroll.dart';
 import 'primitives/sized_box.dart';
+import 'primitives/skeleton.dart';
 import 'primitives/slider.dart';
 import 'primitives/spacer.dart';
 import 'primitives/stack.dart';
@@ -112,6 +117,11 @@ class UiRegistry {
       'scroll': buildScroll,
       'icon': buildIcon,
       'icon_button': buildIconButton,
+      'list_row': buildListRow,
+      'badge': buildBadge,
+      'chip': buildChip,
+      'avatar': buildAvatar,
+      'skeleton': buildSkeleton,
     });
     return registry;
   }
@@ -909,10 +919,16 @@ Widget _applyClip(Widget result, UiNode node, JhinTokens tokens) {
 }
 
 /// Primitives that already own their interaction — their own `action`
-/// handler and tap target (`button`, `icon_button`, `dropdown`) — so the
-/// gesture wrapper must not add a nested second dispatch handler for them
-/// (the §2.3 note).
-const Set<String> _interactivePrimitives = {'button', 'icon_button', 'dropdown'};
+/// handler and tap target (`button`, `icon_button`, `dropdown`, `list_row`,
+/// `chip`) — so the gesture wrapper must not add a nested second dispatch
+/// handler for them (the §2.3 note).
+const Set<String> _interactivePrimitives = {
+  'button',
+  'icon_button',
+  'dropdown',
+  'list_row',
+  'chip',
+};
 
 /// The gesture wrapper (§2.3 step 12): `InkWell` when the node sits on a
 /// Material surface, `GestureDetector` otherwise. `action`/`onTap` drive

@@ -154,6 +154,15 @@ final class UiEnums {
     /** docs/sdui.md 2.6 {@code icon_button} {@code visualDensity} (the section 1 density literals). */
     static final Set<String> VISUAL_DENSITY = Set.of("compact", "comfortable", "spacious");
 
+    /** docs/sdui.md 2.6 {@code chip} {@code variant}. */
+    static final Set<String> CHIP_VARIANT = Set.of("assist", "filter", "input", "action");
+
+    /** docs/sdui.md 2.6 {@code avatar} {@code shape}. */
+    static final Set<String> AVATAR_SHAPE = Set.of("circle", "square");
+
+    /** docs/sdui.md 2.6 {@code skeleton} {@code variant}. */
+    static final Set<String> SKELETON_VARIANT = Set.of("text", "circle", "rect", "list");
+
     /** Builder-specific literal overrides: entries are {@code <BuilderSimpleName>.<prop>}. */
     private static final Map<String, Set<String>> SPECIFIC = Map.ofEntries(
             Map.entry("ButtonBuilder.style", BUTTON_STYLE),
@@ -168,7 +177,10 @@ final class UiEnums {
             Map.entry("WrapBuilder.direction", WRAP_DIRECTION),
             Map.entry("WrapBuilder.alignment", WRAP_ALIGNMENT),
             Map.entry("WrapBuilder.runAlignment", WRAP_ALIGNMENT),
-            Map.entry("WrapBuilder.crossAxisAlignment", WRAP_ALIGNMENT));
+            Map.entry("WrapBuilder.crossAxisAlignment", WRAP_ALIGNMENT),
+            Map.entry("ChipBuilder.variant", CHIP_VARIANT),
+            Map.entry("AvatarBuilder.shape", AVATAR_SHAPE),
+            Map.entry("SkeletonBuilder.variant", SKELETON_VARIANT));
 
     /** Global prop-name to literal-set lookup, used by the conformance probe. */
     private static final Map<String, Set<String>> BY_KEY = Map.ofEntries(

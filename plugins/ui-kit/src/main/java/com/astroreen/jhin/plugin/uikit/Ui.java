@@ -340,6 +340,31 @@ public final class Ui {
         return new IconButtonBuilder();
     }
 
+    /** A list row: {@code list_row}(leading?, title?, subtitle?, trailing?, badge?, selected?, dragHandle?). */
+    public static ListRowBuilder listRow() {
+        return new ListRowBuilder();
+    }
+
+    /** A badge: {@code badge}(label?, count?, dot?, color?, max?). */
+    public static BadgeBuilder badge() {
+        return new BadgeBuilder();
+    }
+
+    /** A chip: {@code chip}(label, icon?, avatar?, selected?, onDeleted?, variant?). */
+    public static ChipBuilder chip() {
+        return new ChipBuilder();
+    }
+
+    /** An avatar: {@code avatar}(image?, initials?, icon?, color?, size?, shape?). */
+    public static AvatarBuilder avatar() {
+        return new AvatarBuilder();
+    }
+
+    /** A skeleton placeholder: {@code skeleton}(variant?, lines?, width?, height?, shimmer?). */
+    public static SkeletonBuilder skeleton() {
+        return new SkeletonBuilder();
+    }
+
     /**
      * Base of every builder: the universal optional fields of docs/sdui.md
      * section 2.1 (Meta, Box, Text, Flex, Interaction/A11y groups) through
@@ -3064,6 +3089,228 @@ public final class Ui {
         /** The ButtonStyle map (see docs/sdui.md section 2.6). */
         public IconButtonBuilder style(Map<String, Object> value) {
             props.put("style", value);
+            return this;
+        }
+    }
+
+    /** The {@code list_row} primitive: row slots plus the visual drag handle. */
+    public static final class ListRowBuilder extends NodeBuilder<ListRowBuilder> {
+
+        private ListRowBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "list_row";
+        }
+
+        /** The leading widget node. */
+        public ListRowBuilder leading(UiNode node) {
+            props.put("leading", node);
+            return this;
+        }
+
+        /** The title string shorthand. */
+        public ListRowBuilder title(String text) {
+            props.put("title", text);
+            return this;
+        }
+
+        /** The title node. */
+        public ListRowBuilder title(UiNode node) {
+            props.put("title", node);
+            return this;
+        }
+
+        /** The subtitle string shorthand. */
+        public ListRowBuilder subtitle(String text) {
+            props.put("subtitle", text);
+            return this;
+        }
+
+        /** The subtitle node. */
+        public ListRowBuilder subtitle(UiNode node) {
+            props.put("subtitle", node);
+            return this;
+        }
+
+        /** The trailing widget node. */
+        public ListRowBuilder trailing(UiNode node) {
+            props.put("trailing", node);
+            return this;
+        }
+
+        /** The badge widget node. */
+        public ListRowBuilder badge(UiNode node) {
+            props.put("badge", node);
+            return this;
+        }
+
+        /** Whether the row shows the selected tint. */
+        public ListRowBuilder selected(boolean value) {
+            props.put("selected", value);
+            return this;
+        }
+
+        /** Whether the visual drag affordance renders (reorder goes through actions). */
+        public ListRowBuilder dragHandle(boolean value) {
+            props.put("dragHandle", value);
+            return this;
+        }
+    }
+
+    /** The {@code badge} primitive: label/count/dot with the {@code max} cap. */
+    public static final class BadgeBuilder extends NodeBuilder<BadgeBuilder> {
+
+        private BadgeBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "badge";
+        }
+
+        /** The badge label. */
+        public BadgeBuilder label(String value) {
+            props.put("label", value);
+            return this;
+        }
+
+        /** The badge count. */
+        public BadgeBuilder count(Number value) {
+            props.put("count", value);
+            return this;
+        }
+
+        /** The count cap; counts above render as {@code <max>+}. */
+        public BadgeBuilder max(Number value) {
+            props.put("max", value);
+            return this;
+        }
+
+        /** Whether the badge renders as a bare dot. */
+        public BadgeBuilder dot(boolean value) {
+            props.put("dot", value);
+            return this;
+        }
+    }
+
+    /** The {@code chip} primitive: label plus the variant literal set. */
+    public static final class ChipBuilder extends NodeBuilder<ChipBuilder> {
+
+        private ChipBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "chip";
+        }
+
+        /** The chip label (required by the contract). */
+        public ChipBuilder label(String value) {
+            props.put("label", value);
+            return this;
+        }
+
+        /** The leading icon name. */
+        public ChipBuilder icon(String value) {
+            props.put("icon", value);
+            return this;
+        }
+
+        /** The leading avatar node. */
+        public ChipBuilder avatar(UiNode node) {
+            props.put("avatar", node);
+            return this;
+        }
+
+        /** The selected state. */
+        public ChipBuilder selected(boolean value) {
+            props.put("selected", value);
+            return this;
+        }
+
+        /** The delete action; without it the delete affordance is hidden. */
+        public ChipBuilder onDeleted(Map<String, Object> value) {
+            props.put("onDeleted", value);
+            return this;
+        }
+
+        /** The variant: {@code assist/filter/input/action}; validated. */
+        public ChipBuilder variant(String value) {
+            props.put("variant", UiEnums.require("variant", value, UiEnums.CHIP_VARIANT));
+            return this;
+        }
+    }
+
+    /** The {@code avatar} primitive: image/initials/icon fallback chain. */
+    public static final class AvatarBuilder extends NodeBuilder<AvatarBuilder> {
+
+        private AvatarBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "avatar";
+        }
+
+        /** The image src or dataUri. */
+        public AvatarBuilder image(String value) {
+            props.put("image", value);
+            return this;
+        }
+
+        /** The initials fallback. */
+        public AvatarBuilder initials(String value) {
+            props.put("initials", value);
+            return this;
+        }
+
+        /** The icon fallback. */
+        public AvatarBuilder icon(String value) {
+            props.put("icon", value);
+            return this;
+        }
+
+        /** The diameter. */
+        public AvatarBuilder size(Number value) {
+            props.put("size", value);
+            return this;
+        }
+
+        /** The shape: {@code circle/square}; validated. */
+        public AvatarBuilder shape(String value) {
+            props.put("shape", UiEnums.require("shape", value, UiEnums.AVATAR_SHAPE));
+            return this;
+        }
+    }
+
+    /** The {@code skeleton} primitive: placeholder shapes with the shimmer. */
+    public static final class SkeletonBuilder extends NodeBuilder<SkeletonBuilder> {
+
+        private SkeletonBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "skeleton";
+        }
+
+        /** The variant: {@code text/circle/rect/list}; validated. */
+        public SkeletonBuilder variant(String value) {
+            props.put("variant", UiEnums.require("variant", value, UiEnums.SKELETON_VARIANT));
+            return this;
+        }
+
+        /** The line count for {@code text}/{@code list}. */
+        public SkeletonBuilder lines(int value) {
+            props.put("lines", value);
+            return this;
+        }
+
+        /** Whether the shimmer animation runs (collapses under reduced motion). */
+        public SkeletonBuilder shimmer(boolean value) {
+            props.put("shimmer", value);
             return this;
         }
     }

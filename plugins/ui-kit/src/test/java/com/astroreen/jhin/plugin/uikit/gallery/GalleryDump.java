@@ -46,7 +46,7 @@ class GalleryDump {
     private static final Path COVERAGE_OUTPUT =
             Path.of("build", "gallery", "coverage.txt").toAbsolutePath().normalize();
 
-    /** The 44 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set, the T60 rich_text/code_block text set and the T61 icon/icon_button set). */
+    /** The 49 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set, the T60 rich_text/code_block text set, the T61 icon/icon_button set and the T63 list_row/badge/chip/avatar/skeleton set). */
     private static final List<String> EXPECTED_PRIMITIVES = List.of(
             "screen", "nav", "container", "card", "text", "markdown", "rich_text",
             "code_block", "button", "input",
@@ -56,7 +56,8 @@ class GalleryDump {
             "box", "row", "column", "flex", "expanded", "flexible", "sized_box",
             "align", "center", "aspect_ratio",
             "stack", "positioned", "wrap", "grid", "scroll",
-            "icon", "icon_button");
+            "icon", "icon_button",
+            "list_row", "badge", "chip", "avatar", "skeleton");
 
     private static Map<String, Object> action(String name) {
         Map<String, Object> action = new LinkedHashMap<>();
@@ -666,6 +667,74 @@ class GalleryDump {
                 .visualDensity("compact").enableFeedback(false)
                 .splashRadius(24)
                 .style(entry("backgroundColor", "#EEF5DB", "elevation", 2))
+                .build()));
+
+        // list_row
+        all.add(new Fixture("fixture-list_row-basic", Ui.listRow()
+                .id("fixture-list_row-basic")
+                .leading(Ui.icon().icon("person").build())
+                .title("Inbox")
+                .subtitle("3 unread")
+                .build()));
+        all.add(new Fixture("fixture-list_row-propheavy", heavy(Ui.listRow(), "list_row-propheavy")
+                .leading(Ui.avatar().initials("JD").size(40).color("$color.accentMuted").build())
+                .title(Ui.text("Thread").style("body").build())
+                .subtitle("you: pushing the patch")
+                .trailing(Ui.icon().icon("more_vert").build())
+                .badge(Ui.badge().count(3).color("$color.accent").build())
+                .selected(true)
+                .dragHandle(true)
+                .build()));
+
+        // badge
+        all.add(new Fixture("fixture-badge-basic", Ui.badge()
+                .id("fixture-badge-basic")
+                .count(3)
+                .build()));
+        all.add(new Fixture("fixture-badge-propheavy", heavy(Ui.badge(), "badge-propheavy")
+                .label("New")
+                .color("$color.accent")
+                .count(150)
+                .max(99)
+                .dot(false)
+                .build()));
+
+        // chip
+        all.add(new Fixture("fixture-chip-basic", Ui.chip()
+                .id("fixture-chip-basic")
+                .label("Filter")
+                .build()));
+        all.add(new Fixture("fixture-chip-propheavy", heavy(Ui.chip(), "chip-propheavy")
+                .label("Assigned")
+                .variant("filter")
+                .icon("star")
+                .selected(true)
+                .onDeleted(action("chip-remove"))
+                .build()));
+
+        // avatar
+        all.add(new Fixture("fixture-avatar-basic", Ui.avatar()
+                .id("fixture-avatar-basic")
+                .initials("JD")
+                .build()));
+        all.add(new Fixture("fixture-avatar-propheavy", heavy(Ui.avatar(), "avatar-propheavy")
+                .icon("person")
+                .color("$color.accent")
+                .size(48)
+                .shape("square")
+                .build()));
+
+        // skeleton
+        all.add(new Fixture("fixture-skeleton-basic", Ui.skeleton()
+                .id("fixture-skeleton-basic")
+                .variant("text")
+                .build()));
+        all.add(new Fixture("fixture-skeleton-propheavy", heavy(Ui.skeleton(), "skeleton-propheavy")
+                .variant("list")
+                .lines(2)
+                .width(240)
+                .height(40)
+                .shimmer(true)
                 .build()));
 
         return all;
