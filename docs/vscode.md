@@ -87,6 +87,40 @@ them. The template also logs a harmless `Could not read script
 output when it is still evaluated in place; it is noise, not a Jhin build
 failure.
 
+`java.import.exclusions` alone does not stop this. That key belongs to
+`redhat.java`, while nested-build discovery belongs to `vscjava.vscode-gradle`
+and is governed by `gradle.nestedProjects` — see the next section.
+
+### Import stalls on a `jhin-plugin-*` POM download
+
+Symptom: the *Java Build Status* item sits on a single line and never
+advances, with no error anywhere, for example
+
+```
+null Build Server Task - Download https://repo.maven.apache.org/maven2/com/astroreen/jhin-plugin-qa-mock-llm/0.2.0/jhin-plugin-qa-mock-llm-0.2.0.pom not found [Done]
+```
+
+Cause: `gradle.nestedProjects` was `true` (the extension default is `false`,
+but a *user*-level `settings.json` can override it). With it on, the Gradle
+extension discovers every nested `settings.gradle` and configures it as its
+own root build — and every directory under `plugins/` is a valid standalone
+build. A plugin configured outside the root composite gets no dependency
+substitution, so `mavenLocal()` / `mavenCentral()` from
+`gradle/plugin-conventions.gradle` take over and an internal coordinate such
+as `com.astroreen:jhin-plugin-qa-mock-llm:0.2.0` (declared in
+`plugins/agent/build.gradle`) escapes to Maven Central, 404s and leaves the
+import stuck. The same discovery pass pulls in `frontend/android` and the
+`.opencode/` template, which is where the stray Gradle 9.2.0 and JDK 17
+daemons come from.
+
+Fix: `"gradle.nestedProjects": false`, which overrides the user-level value
+for this workspace only. It lives in the `generate-vscode-settings` template
+in `devenv.nix`, not in the generated `.vscode/settings.json` — patching the
+generated file is undone by the next shell entry. Re-enter the devenv shell
+to regenerate, then restart VSCode fully; a language-server restart is not
+enough. If the scaffold template was already configured in place, delete its
+leftover `.opencode/skill/jhin-plugin/template/.gradle` cache.
+
 ### Language server becomes a zombie
 
 Symptoms: syntax colouring still works (that is client-side TextMate
@@ -111,6 +145,9 @@ trade-off, and enabling it again only changes warnings, never resolution.
 - `java.gradle.buildServer.enabled: "on"` — BSP, required (see above).
 - `java.import.exclusions` — keep `**/frontend/**`, `**/.gradle*/**`,
   `**/.opencode/**`, `**/build/**`.
+- `gradle.nestedProjects: false` — required even though it is the extension
+  default, because a user-level `settings.json` may set it to `true`; see
+  "Import stalls on a `jhin-plugin-*` POM download".
 - `java.jdt.ls.java.home` / `java.import.gradle.java.home` — pinned to the
   nix openjdk 21 store path; update them together when the nix store path
   changes.
@@ -119,3 +156,10 @@ trade-off, and enabling it again only changes warnings, never resolution.
 
 Note: `.vscode/` is gitignored on purpose (machine-specific store paths).
 This document is the shared part.
+
+`.vscode/settings.json` is **generated**, not hand-maintained: the
+`generate-vscode-settings` script in `devenv.nix` rewrites it on every shell
+entry (it runs from `enterShell`). A manual edit survives only until the next
+`direnv`/`devenv` shell, which is how settings from this list have silently
+disappeared before. Change the template in `devenv.nix` and re-enter the
+shell; never patch the generated file as the fix.

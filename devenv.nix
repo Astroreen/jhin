@@ -226,8 +226,27 @@ in
     # is a Gradle composite (settings.gradle with the sdk, kernel and eleven
     # plugin included builds), so java.import.gradle.enabled imports that one
     # root build and everything it includes. java.import.exclusions keeps
-    # build outputs (**/dist/**, **/.gradle_home/**) and the Flutter tree
-    # (**/frontend/**) out of the Java importer.
+    # build outputs (**/dist/**, **/.gradle_home/**), the Flutter tree
+    # (**/frontend/**) and the scaffold template (**/.opencode/**) out of the
+    # Java importer.
+    #
+    # Three keys here are load-bearing for the composite import and must not
+    # be dropped from this template - the file is regenerated on every shell
+    # entry, so editing .vscode/settings.json by hand does not survive:
+    #   - java.gradle.buildServer.enabled: "on" selects the BSP importer;
+    #     the classic Buildship importer resolves every composite-substituted
+    #     dependency to nothing.
+    #   - gradle.nestedProjects: false stops the Gradle extension from
+    #     configuring each plugin directory as its own root build. Outside the
+    #     root composite there is no dependency substitution, so internal
+    #     coordinates such as com.astroreen:jhin-plugin-qa-mock-llm:0.2.0
+    #     escape to Maven Central, 404 and stall the import. The extension
+    #     default is already false, but a user-level settings.json may set it
+    #     to true, and only the workspace value overrides that.
+    #   - **/.opencode/** in java.import.exclusions keeps the scaffold
+    #     template (a standalone build with a deliberately unresolvable
+    #     apply from) out of the import.
+    # See docs/vscode.md for the symptoms each one produces.
     generate-vscode-settings.exec = ''
     mkdir -p .vscode
     settings_tmp=$(mktemp)
@@ -242,6 +261,8 @@ in
     { "name": "JavaSE-17", "path": "${jdk17.home}" }
   ],
 
+  "java.gradle.buildServer.enabled": "on",
+  "gradle.nestedProjects": false,
   "java.import.gradle.enabled": true,
   "java.import.gradle.wrapper.enabled": true,
   "java.import.maven.enabled": false,
@@ -259,7 +280,8 @@ in
     "**/.direnv/**",
     "**/.gradle/**",
     "**/.gradle_home/**",
-    "**/frontend/**"
+    "**/frontend/**",
+    "**/.opencode/**"
   ],
 
   "java.references.includeDecompiledSources": true,
