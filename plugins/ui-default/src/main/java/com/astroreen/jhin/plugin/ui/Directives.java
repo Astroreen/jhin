@@ -85,6 +85,35 @@ public final class Directives {
         return toast;
     }
 
+    /**
+     * {@code toast}(text, style, action, duration): the undo-notice toast
+     * (T98) — the 5&nbsp;s undo pattern of the {@code toast_stack} item: the
+     * notice text, the inline {@code action} the client renders as the
+     * {@code Undo} button and the visible window in ms (the upstream window
+     * is 5000, {@code showThreadUndoNotice.ts:104-112}). The client renders
+     * an action-carrying toast through the undo-notice card look
+     * ({@code SidebarThreadUndoNotice.tsx:17-26}: label + {@code Undo} +
+     * close).
+     *
+     * @param text     the notice text (the upstream wording, e.g.
+     *                 {@code "Settled 1 thread,"})
+     * @param action   the inline action descriptor (the {@code undo} action)
+     * @param duration the visible window in ms
+     * @return the toast directive with the {@code action} and {@code
+     *         duration} fields
+     */
+    public static Map<String, Object> toast(String text, Map<String, Object> action,
+                                            Number duration) {
+        Map<String, Object> toast = op("toast", "text", text);
+        if (action != null) {
+            toast.put("action", action);
+        }
+        if (duration != null) {
+            toast.put("duration", duration);
+        }
+        return toast;
+    }
+
     /** {@code dialog}(node): opens a dialog rendering the given node. */
     public static Map<String, Object> dialog(Map<String, Object> node) {
         return op("dialog", "node", node);

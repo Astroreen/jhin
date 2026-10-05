@@ -501,6 +501,7 @@ Layout primitives:
 | `list_row` | `statusIndicators` | string array | — | the leading status-indicator kinds (`working`, `idle`, `monitoring`, `needs-approval`, `needs-answer`, `failed`, `limited`, `snoozed`, `settled`, `unread`, `pinned`); an unknown kind falls back to `idle` and logs |
 | `list_row` | `hoverReveal` | bool | `false` | the trailing cluster fades in on hover or focus |
 | `list_row` | `searchMatch` | object | — | `{key, minChars?}` — the match pill shows in the trailing cluster when the UiState query under `key` is at least `minChars` (default 2) characters and matches the row's title or subtitle |
+| `list_row` | `commandSubtitle` | string | no | the command id text of a palette-sourced row (T98, the `ThreadCommandSubtitle` port) — the trailing muted marker; absent on rows the palette did not produce |
 | `list_row` | `dragging` | bool | `false` | the row renders as the lifted card (opaque surface + shadow) |
 | `table` | `columns` | column array | — | see the column table below |
 | `table` | `rows` | cell array | — | arrays of cells (node or string) |
@@ -897,6 +898,9 @@ Item and part shapes:
 | `menu` item | `disabled` | bool | no | disabled entry |
 | `menu` item | `divider` | bool | no | render as a divider |
 | `menu` item | `danger` | bool | no | destructive styling |
+| `menu` item | `children` | item array | no | the nested submenu (T98), one level deep, same item shape; a popup opens a nested popup, a sheet renders the children as an indented group |
+| `menu` item | `checked` | bool | no | the radio-style check mark (T98, the `Auto-settle behavior` entries) |
+| `menu` item | `separatorBefore` | bool | no | render a divider above the entry (T98) |
 | `tabs` item | `label` | string | yes | visible label |
 | `tabs` item | `icon` | icon name | no | icon |
 | `tabs` item | `badge` | node | no | badge widget |
@@ -996,7 +1000,7 @@ node props (a button action may be one directive).
 | `clearToken` | — | drop the stored bearer token |
 | `setServerUrl` | `value` | rewrite the active profile URL and reboot against it |
 | `openProfiles` | — | open the client-owned server profile surface |
-| `toast` | `text`, `style?` | show a transient message (`style: "error"` for failures) |
+| `toast` | `text`, `style?`, `action?`, `duration?` | show a transient message (`style: "error"` for failures); with an `action` the toast is the T98 undo notice — it renders through the `toast_stack` undo-notice card look (label + `Undo` + close) for `duration` ms (default 5000, the upstream 5 s undo window) and dispatches the action on the `Undo` tap |
 | `dialog` | `node` | open a dialog rendering the given node (`kind: "sheet"` opens a bottom sheet) |
 | `dismissDialog` | — | close the open dialog |
 | `setState` | `id`, `value` | set one local `UiState` field (feeds `when` / `${…}`) |

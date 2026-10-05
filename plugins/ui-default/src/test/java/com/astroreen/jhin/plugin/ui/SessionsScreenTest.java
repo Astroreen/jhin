@@ -152,8 +152,11 @@ class SessionsScreenTest {
                 .containsKey("archivedAt")
                 .containsKey("settledReason")
                 .containsKey("sortOrder");
-        // The T97 row anatomy: the title is the semibold truncated text node.
-        assertThat(castMap(row.get("title"))).containsEntry("type", "text")
+        // The T97 row anatomy: the title slot is the T98 hover preview card
+        // over the semibold truncated text node.
+        Map<String, Object> card = castMap(row.get("title"));
+        assertThat(card).containsEntry("type", "hover_card");
+        assertThat(castMap(card.get("trigger"))).containsEntry("type", "text")
                 .containsEntry("text", "demo")
                 .containsEntry("fontSize", 14)
                 .containsEntry("fontWeight", 600);
@@ -168,12 +171,12 @@ class SessionsScreenTest {
         List<String> pinnedNames = menuActionNamesOf(rowOf(render(false), pinned.id()));
         List<String> settledNames = menuActionNamesOf(rowOf(render(false), settled.id()));
 
+        // The submenu parents (Snooze, Auto-settle behavior) carry no direct
+        // action — their children dispatch.
         assertThat(pinnedNames).containsExactly(
-                "unpin", "settle", "snooze", "wake", "archive", "regenerate-title",
-                "delete-session");
+                "unpin", "settle", "regenerate-title", "archive", "delete-session");
         assertThat(settledNames).containsExactly(
-                "pin", "unsettle", "snooze", "wake", "archive", "regenerate-title",
-                "delete-session");
+                "pin", "unsettle", "regenerate-title", "archive", "delete-session");
     }
 
     @Test
@@ -186,7 +189,7 @@ class SessionsScreenTest {
                 .allSatisfy(item -> assertThat(item).containsEntry("danger", true));
         assertThat(items).filteredOn(item -> item.containsKey("confirm"))
                 .extracting(item -> item.get("label"))
-                .containsExactly("Archive", "Delete");
+                .containsExactly("Archive thread", "Delete");
     }
 
     @Test
@@ -387,7 +390,10 @@ class SessionsScreenTest {
     private static List<String> menuActionNamesOf(Map<String, Object> row) {
         List<String> names = new ArrayList<>();
         for (Map<String, Object> item : menuItemsOf(row)) {
-            names.add(String.valueOf(castMap(item.get("action")).get("name")));
+            Map<String, Object> action = castMap(item.get("action"));
+            if (action != null) {
+                names.add(String.valueOf(action.get("name")));
+            }
         }
         return names;
     }

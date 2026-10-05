@@ -17,6 +17,7 @@ import 'action_dispatcher.dart';
 import 'directives.dart';
 import 'keyboard/keymap.dart';
 import 'primitives/sheet.dart';
+import 'primitives/toast_stack.dart' show ToastNoticeCard;
 import 'render_context.dart';
 import 'ui_node.dart';
 import 'ui_registry.dart';
@@ -120,6 +121,12 @@ class SduiRuntime extends ChangeNotifier
   String? _toastText;
   String? _toastStyle;
   Timer? _toastTimer;
+
+  /// The live undo notices (T98): `toast` directives carrying an inline
+  /// `action` render through the `toast_stack` undo-notice card look at the
+  /// bottom edge, each with its own window (the upstream 5 s undo window,
+  /// `showThreadUndoNotice.ts:104-112`).
+  final List<_UndoNotice> _notices = [];
   bool _disposed = false;
 
   // -------------------------------------------------------------------------
@@ -212,6 +219,35 @@ class SduiRuntime extends ChangeNotifier
               padding: EdgeInsets.all(tokens.spacing.md),
               child: Text(toast, style: const TextStyle(color: Colors.white)),
             ),
+          ),
+        ),
+      );
+    }
+    // The T98 undo notices: a `toast_stack` bottom stack of the notice
+    // cards — the newest at the bottom edge (the upstream frontmost-toast
+    // rule, `toast.tsx` viewport).
+    if (_notices.isNotEmpty) {
+      final tokens = JhinDesignScope.of(context).tokens;
+      children.add(
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: 16,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < _notices.length; i++) ...[
+                if (i > 0) SizedBox(height: tokens.spacing.sm),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  child: _UndoNoticeCard(
+                    runtime: this,
+                    notice: _notices[i],
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       );
@@ -651,7 +687,21 @@ class SduiRuntime extends ChangeNotifier
   }
 
   @override
-  Future<void> toast(String text, String? style) async {
+  Future<void> toast(String text, String? style,
+      {Map<String, dynamic>? action, int? durationMs}) async {
+    // The T98 undo notice: an action-carrying toast renders through the
+    // toast_stack undo-notice card at the bottom edge with its own window
+    // (default 5000 ms — the upstream 5 s undo window).
+    if (action != null) {
+      final notice = _UndoNotice(text, action);
+      notice.timer = Timer(
+        Duration(milliseconds: durationMs ?? 5000),
+        () => _dismissNotice(notice),
+      );
+      _notices.add(notice);
+      notifyListeners();
+      return;
+    }
     _toastText = text;
     _toastStyle = style;
     _toastTimer?.cancel();
@@ -661,6 +711,28 @@ class SduiRuntime extends ChangeNotifier
       notifyListeners();
     });
     notifyListeners();
+  }
+
+  /// Removes one live notice (window elapsed, undo tapped or dismissed).
+  void _dismissNotice(_UndoNotice notice) {
+    notice.timer?.cancel();
+    notice.timer = null;
+    if (_notices.remove(notice)) notifyListeners();
+  }
+
+  /// Runs the notice's inline action — a single directive map through the
+  /// dispatcher, a `{client: […]}` list through the directive executor —
+  /// then consumes the notice (the upstream undo consumes the notice).
+  Future<void> _runNoticeAction(_UndoNotice notice) async {
+    final action = notice.action;
+    final client = action['client'];
+    final entry = _stack.isEmpty ? _standalone : _stack.last;
+    if (client is List) {
+      await _executor.execute(List<Map<String, dynamic>>.from(client));
+    } else {
+      await _contextFor(entry).dispatch(Map<String, dynamic>.from(action));
+    }
+    _dismissNotice(notice);
   }
 
   @override
@@ -789,7 +861,46 @@ class SduiRuntime extends ChangeNotifier
   void dispose() {
     _disposed = true;
     _toastTimer?.cancel();
+    for (final notice in _notices) {
+      notice.timer?.cancel();
+      notice.timer = null;
+    }
+    _notices.clear();
     super.dispose();
+  }
+}
+
+/// One live undo notice (T98): the directive toast's text, inline action
+/// and its dismiss timer.
+class _UndoNotice {
+  _UndoNotice(this.text, this.action);
+
+  /// The notice text (the upstream wording, e.g. `Settled 1 thread,`).
+  final String text;
+
+  /// The inline action (the `undo` descriptor or a `{client: […]}` list).
+  final Map<String, dynamic> action;
+
+  /// The visible window; null once dismissed.
+  Timer? timer;
+}
+
+/// The notice card host: the shared [ToastNoticeCard] wired to the
+/// runtime's action dispatch and dismissal.
+class _UndoNoticeCard extends StatelessWidget {
+  const _UndoNoticeCard({required this.runtime, required this.notice});
+
+  final SduiRuntime runtime;
+  final _UndoNotice notice;
+
+  @override
+  Widget build(BuildContext context) {
+    return ToastNoticeCard(
+      text: notice.text,
+      action: notice.action,
+      onAction: () => runtime._runNoticeAction(notice),
+      onDismiss: () => runtime._dismissNotice(notice),
+    );
   }
 }
 

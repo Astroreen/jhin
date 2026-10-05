@@ -3667,6 +3667,17 @@ public final class Ui {
             props.put("dragging", value);
             return this;
         }
+
+        /**
+         * The T98 command-subtitle marker (the {@code ThreadCommandSubtitle}
+         * port): the command id text shown as the trailing muted marker when
+         * the row came from a palette search. Absent on rows the palette did
+         * not produce.
+         */
+        public ListRowBuilder commandSubtitle(String value) {
+            props.put("commandSubtitle", value);
+            return this;
+        }
     }
 
     /** The {@code badge} primitive: label/count/dot with the {@code max} cap. */
@@ -3929,6 +3940,29 @@ public final class Ui {
         /** The destructive styling flag. */
         public MenuItemBuilder danger(boolean value) {
             spec.put("danger", value);
+            return this;
+        }
+
+        /**
+         * The T98 submenu: the nested item specs (same shape, one level
+         * deep). A child carries {@code checked} for the radio-style
+         * entries; {@code separatorBefore} on the first child keeps the
+         * upstream group boundary.
+         */
+        public MenuItemBuilder children(List<Map<String, Object>> specs) {
+            spec.put("children", List.copyOf(specs));
+            return this;
+        }
+
+        /** The T98 checked mark (the radio-style submenu entries). */
+        public MenuItemBuilder checked(boolean value) {
+            spec.put("checked", value);
+            return this;
+        }
+
+        /** The T98 separator rendered above the entry. */
+        public MenuItemBuilder separatorBefore(boolean value) {
+            spec.put("separatorBefore", value);
             return this;
         }
 

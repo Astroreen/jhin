@@ -448,11 +448,13 @@ jq -e '.first.search == {key: "sidebarSearch", fields: ["title", "subtitle"]}' \
   || fail "the list search spec is wrong (row-anatomy.json)"
 ok "search spec: key sidebarSearch over the title/subtitle fields (row-anatomy.json)"
 
-# The row anatomy of the plain active row.
+# The row anatomy of the plain active row. Since T98 the title slot is the
+# hover preview card; the semibold truncated title is its trigger.
 row=$(row_of "$evidence/row-anatomy.json" "$active_id")
 jq -e '
-  .title.fontSize == 14 and .title.fontWeight == 600
-  and .title.maxLines == 1 and .title.ellipsis == true
+  .title.type == "hover_card" and .title.delay == 500 and .title.placement == "right"
+  and .title.trigger.fontSize == 14 and .title.trigger.fontWeight == 600
+  and .title.trigger.maxLines == 1 and .title.trigger.ellipsis == true
   and .subtitle.children[0].color == "$color.sidebar-muted-foreground"
   and .subtitle.children[1].id == "thread-context-chip"
   and .subtitle.children[1].tooltip == "Project: /tmp/active-thread"
@@ -463,7 +465,7 @@ jq -e '
   and .trailing.type == "menu"
 ' <<< "$row" > /dev/null \
   || fail "the row anatomy is wrong (row-anatomy.json)"
-ok "row anatomy: semibold truncated title, muted workdir + Project chip (px-1.5 py-0.5 text-xs tooltip), hover-revealed trailing with the search-match spec and the overflow menu (row-anatomy.json)"
+ok "row anatomy: hover-card-wrapped semibold truncated title, muted workdir + Project chip (px-1.5 py-0.5 text-xs tooltip), hover-revealed trailing with the search-match spec and the overflow menu (row-anatomy.json)"
 
 # The status kinds, one row per kind.
 assert_kinds() {

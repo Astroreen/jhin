@@ -280,6 +280,25 @@ void main() {
     expect(find.text('zzz'), findsNothing);
   });
 
+  testWidgets('the commandSubtitle marker renders as the trailing muted '
+      'command id text', (tester) async {
+    await _pump(
+      tester,
+      {
+        ..._row(hoverReveal: true),
+        'commandSubtitle': 'thread.pin',
+      },
+      size: const Size(500, 200),
+    );
+    expect(find.text('thread.pin'), findsOneWidget);
+  });
+
+  testWidgets('a row without commandSubtitle renders no marker',
+      (tester) async {
+    await _pump(tester, _row(hoverReveal: true));
+    expect(find.text('thread.pin'), findsNothing);
+  });
+
   testWidgets('the section filter keeps matching rows and renders the '
       'match-count line', (tester) async {
     final state = UiState()..setValue('sidebarSearch', 'login');

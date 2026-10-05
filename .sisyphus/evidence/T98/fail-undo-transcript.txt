@@ -1,0 +1,27 @@
+=== seed fail-undo ===
+POST /sessions
+resp: {"id":"f1722496-1621-4e66-bdc5-42a4958d66df","accountId":"local","title":"fail-undo","workdir":"/tmp/fail-undo","model":null,"providerId":null,"status":"active","createdAt":1791242317101,"updatedAt":1791242317101,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+=== action pin ===
+POST /ui/action/pin
+req:  {"action":"pin","payload":{"id":"f1722496-1621-4e66-bdc5-42a4958d66df"}}
+resp: {"client":[{"op":"refresh"}]}
+=== fetch-pinned ===
+GET /sessions/f1722496-1621-4e66-bdc5-42a4958d66df
+client: api=3; version=0.3.0; schema=4; caps=sse
+req:  
+status: 200
+resp: {"id":"f1722496-1621-4e66-bdc5-42a4958d66df","accountId":"local","title":"fail-undo","workdir":"/tmp/fail-undo","model":null,"providerId":null,"status":"active","createdAt":1791242317101,"updatedAt":1791242317148,"pinned":true,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=200, jq '.pinned == true'
+assert: ok
+=== action undo ===
+POST /ui/action/undo
+req:  {"action":"undo","payload":{}}
+resp: {"client":[{"op":"toast","text":"Nothing to undo","style":"error"}]}
+=== fetch-after-late-undo ===
+GET /sessions/f1722496-1621-4e66-bdc5-42a4958d66df
+client: api=3; version=0.3.0; schema=4; caps=sse
+req:  
+status: 200
+resp: {"id":"f1722496-1621-4e66-bdc5-42a4958d66df","accountId":"local","title":"fail-undo","workdir":"/tmp/fail-undo","model":null,"providerId":null,"status":"active","createdAt":1791242317101,"updatedAt":1791242317148,"pinned":true,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+assert: status=200, jq '.pinned == true'
+assert: ok

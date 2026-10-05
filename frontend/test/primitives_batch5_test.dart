@@ -25,7 +25,9 @@ class _ToastHost implements DirectiveHost {
   final List<String> toasts = [];
 
   @override
-  Future<void> toast(String text, String? style) async => toasts.add(text);
+  Future<void> toast(String text, String? style,
+      {Map<String, dynamic>? action, int? durationMs}) async =>
+      toasts.add(text);
 
   @override
   Future<void> navigate(String screen) async {}

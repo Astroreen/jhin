@@ -291,6 +291,94 @@ class ActionsTest {
         assertThat(store.get(session.id()).orElseThrow().settledAt()).isNull();
     }
 
+    // --- T98: the undo notices and the auto-settle action ---
+
+    private com.astroreen.jhin.plugin.sessions.api.SessionLifecycleService lifecycle() {
+        return services.find(
+                com.astroreen.jhin.plugin.sessions.api.SessionLifecycleService.class)
+                .orElseThrow();
+    }
+
+    @Test
+    void unpinAnswersTheUpstreamUndoNotice() {
+        Session session = store.create("demo", "/tmp/work");
+        lifecycle().pin(session.id(), null);
+
+        List<Map<String, Object>> ops = handlers.get("unpin")
+                .handle(request(), Map.of("id", session.id()));
+
+        assertThat(ops).extracting(op -> op.get("op")).containsExactly("toast", "refresh");
+        assertThat(ops.get(0)).containsEntry("op", "toast")
+                .containsEntry("text", "Unpinned 1 thread,")
+                .containsEntry("duration", 5_000L);
+        assertThat(castMap(ops.get(0).get("action"))).containsEntry("name", "undo")
+                .containsEntry("path", "/ui/action/undo");
+        // The undo inside the window restores the pin.
+        assertThat(handlers.get("undo").handle(request(), Map.of())).hasSize(2);
+        assertThat(store.get(session.id()).orElseThrow().pinned()).isTrue();
+    }
+
+    @Test
+    void settleSnoozeAndArchiveAnswerTheirUpstreamNotices() {
+        Session session = store.create("demo", "/tmp/work");
+
+        assertThat(handlers.get("settle").handle(request(), Map.of("id", session.id()))
+                .get(0)).containsEntry("text", "Settled 1 thread,");
+        lifecycle().unsettle(session.id());
+        assertThat(handlers.get("snooze")
+                .handle(request(), Map.of("id", session.id(), "durationMs", 60_000L))
+                .get(0)).containsEntry("text", "Snoozed 1 thread,");
+        lifecycle().wake(session.id());
+        assertThat(handlers.get("archive").handle(request(), Map.of("id", session.id()))
+                .get(0)).containsEntry("text", "Archived 1 thread,");
+    }
+
+    @Test
+    void pinAnswersRefreshWithoutANotice() {
+        Session session = store.create("demo", "/tmp/work");
+
+        List<Map<String, Object>> ops = handlers.get("pin")
+                .handle(request(), Map.of("id", session.id()));
+
+        // Upstream parity: pinning shows no undo notice
+        // (useThreadActions.ts has no showThreadUndoNotice call in pinThread).
+        assertThat(ops).extracting(op -> op.get("op")).containsExactly("refresh");
+    }
+
+    @Test
+    void autoSettleWritesTheFlagAndAnswersRefresh() {
+        Session session = store.create("demo", "/tmp/work");
+        assertThat(store.get(session.id()).orElseThrow().autoSettle()).isTrue();
+
+        List<Map<String, Object>> ops = handlers.get("auto-settle")
+                .handle(request(), Map.of("id", session.id(), "enabled", false));
+
+        assertThat(ops).extracting(op -> op.get("op")).containsExactly("refresh");
+        assertThat(store.get(session.id()).orElseThrow().autoSettle()).isFalse();
+    }
+
+    @Test
+    void autoSettleRequiresTheEnabledBoolean() {
+        Session session = store.create("demo", "/tmp/work");
+
+        List<Map<String, Object>> ops = handlers.get("auto-settle")
+                .handle(request(), Map.of("id", session.id()));
+
+        assertThat(ops.get(0)).containsEntry("op", "toast")
+                .containsEntry("style", "error");
+    }
+
+    @Test
+    void demoSnoozeAnswersDismissDialogAndThePreviewToast() {
+        List<Map<String, Object>> ops = handlers.get("demo-snooze")
+                .handle(request(), Map.of());
+
+        assertThat(ops).extracting(op -> op.get("op"))
+                .containsExactly("dismissDialog", "toast");
+        assertThat(ops.get(1)).containsEntry("text",
+                "Custom snooze is a preview in this build.");
+    }
+
     @Test
     void undoWithoutAnEntryAnswersNothingToUndo() {
         List<Map<String, Object>> ops = handlers.get("undo").handle(request(), Map.of());
@@ -383,11 +471,12 @@ class ActionsTest {
                 "save-appearance", "save-thread-behavior",
                 "pin", "unpin", "settle", "unsettle", "snooze", "wake",
                 "archive", "restore", "regenerate-title", "reorder",
-                "delete-session", "arrange-toggle");
+                "auto-settle", "delete-session", "arrange-toggle", "demo-snooze");
         for (String name : List.of("enroll", "send", "cancel",
                 "create-provider", "delete-provider", "undo",
                 "pin", "unpin", "settle", "unsettle", "snooze", "wake",
-                "archive", "restore", "regenerate-title", "reorder")) {
+                "archive", "restore", "regenerate-title", "reorder",
+                "auto-settle")) {
             List<Map<String, Object>> ops = degraded.get(name).handle(request(), Map.of());
             assertThat(ops).as(name).hasSize(1);
             assertThat(ops.get(0)).as(name).containsEntry("op", "toast");

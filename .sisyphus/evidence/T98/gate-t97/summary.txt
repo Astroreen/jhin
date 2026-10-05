@@ -1,0 +1,31 @@
+# T97 sidebar header + row anatomy + status indicators summary
+
+header: bold Jhin wordmark, Search threads input (state key
+sidebarSearch), New thread primary button opening the new-thread
+dialog (the form submits the real create-session action),
+demo-marked collapsed-state chevron
+
+footer: Online status dot (the ConnectionStatusDot port), account
+chip (initials avatar + handle), Settings (navigate settings),
+profile switch (the client-owned openProfiles directive)
+
+search: the list search spec filters the section items client-side
+against title/subtitle (ASCII case-folded), the match-count line
+renders above the sections, the search-match pill shows from two
+characters in the hover-revealed trailing cluster
+
+row anatomy: status indicator cluster -> semibold truncated title ->
+muted workdir + Project context chip (px-1.5 py-0.5 text-xs,
+tooltip Project: ...) -> trailing (search-match marker + overflow
+menu, revealed on hover); row states default/hover
+(sidebar-row-hover)/selected (sidebar-row-active + ring)/dragging
+
+status kinds: working (pulse), idle (12 px circle), monitoring
+(eye), needs-approval/needs-answer (alert-circle), failed
+(alert-triangle), limited (zap), snoozed (pause), settled
+(check-circle), unread (6 px dot, ping), pinned (lock); unknown
+statuses fall back to idle and log; the icon mapping is
+icon-map.json
+
+level-2 downgrade: the split panes become children, the sections
+pass through unchanged

@@ -5,7 +5,7 @@
  * routes serve) and answering with a screen refresh so the sidebar sections
  * re-resolve.
  *
- * <p>Names, exhaustively (12):
+ * <p>Names, exhaustively (13):
  * <ul>
  *   <li>{@code pin} / {@code unpin} — the pin setting;</li>
  *   <li>{@code settle} / {@code unsettle} — the settle transition
@@ -15,6 +15,8 @@
  *       {@code sheet} whose buttons dispatch this same action;</li>
  *   <li>{@code wake} — clears the snooze;</li>
  *   <li>{@code archive} / {@code restore} — the archive transition;</li>
+ *   <li>{@code auto-settle} — the {@code Auto-settle behavior} submenu
+ *       entries (T98) write the {@code auto_settle} flag;</li>
  *   <li>{@code regenerate-title} — the title regeneration seam;</li>
  *   <li>{@code reorder} — persists the posted full id order;</li>
  *   <li>{@code delete-session} — deletes the thread;</li>
@@ -23,8 +25,15 @@
  *       client-side).</li>
  * </ul>
  *
- * <p>Every failure degrades to one error toast: an unknown id, an invalid
- * transition, a missing title service or a malformed payload.
+ * <p>Since T98 the undoable transitions answer the upstream undo notice —
+ * the {@code toast} directive carrying the {@code undo} action and the
+ * 5&nbsp;s window ({@code Unpinned}/{@code Settled}/{@code Snoozed}/
+ * {@code Archived} 1 thread,) before the refresh, the wording of
+ * {@code SidebarThreadUndoNotice.tsx:15,20}; pinning, waking, unsetting and
+ * restoring show no notice (upstream parity — only the four labels of
+ * {@code showThreadUndoNotice.ts:12} exist). Every failure degrades to one
+ * error toast: an unknown id, an invalid transition, a missing title service
+ * or a malformed payload.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -46,6 +55,14 @@ import java.util.function.Function;
 
 final class SessionActions {
 
+    /**
+     * The undo-notice window of the T98 toasts: the upstream 5&nbsp;s undo
+     * window ({@code showThreadUndoNotice.ts:104-112}, commit {@code
+     * 37de6cb}), carried as the toast {@code duration} so the client card
+     * closes with it.
+     */
+    static final long UNDO_WINDOW_MS = 5_000L;
+
     /** The snooze duration choices of the {@code Snooze\u2026} sheet. */
     private static final List<Map<String, Object>> SNOOZE_DURATIONS = List.of(
             Map.of("label", "15 minutes", "durationMs", 900_000L),
@@ -57,46 +74,73 @@ final class SessionActions {
     private SessionActions() {
     }
 
-    /** {@code pin}: pins the session. */
+    /** {@code pin}: pins the session. Upstream shows no undo notice for pinning. */
     static ActionRoute.ActionHandler pin(SessionLifecycleService lifecycle) {
         return (req, payload) -> lifecycleOp(payload,
-                id -> lifecycle.pin(id, null));
+                id -> lifecycle.pin(id, null), null);
     }
 
-    /** {@code unpin}: unpins the session. */
+    /** {@code unpin}: unpins the session, answering the {@code Unpinned} undo notice. */
     static ActionRoute.ActionHandler unpin(SessionLifecycleService lifecycle) {
-        return (req, payload) -> lifecycleOp(payload, lifecycle::unpin);
+        return (req, payload) -> lifecycleOp(payload, lifecycle::unpin, "Unpinned");
     }
 
-    /** {@code settle}: settles the session by hand. */
+    /** {@code settle}: settles the session by hand, answering the {@code Settled} notice. */
     static ActionRoute.ActionHandler settle(SessionLifecycleService lifecycle) {
         return (req, payload) -> lifecycleOp(payload,
-                id -> lifecycle.settle(id, SettleReason.MANUAL));
+                id -> lifecycle.settle(id, SettleReason.MANUAL), "Settled");
     }
 
-    /** {@code unsettle}: reopens the session. */
+    /** {@code unsettle}: reopens the session. Upstream shows no undo notice. */
     static ActionRoute.ActionHandler unsettle(SessionLifecycleService lifecycle) {
-        return (req, payload) -> lifecycleOp(payload, lifecycle::unsettle);
+        return (req, payload) -> lifecycleOp(payload, lifecycle::unsettle, null);
     }
 
-    /** {@code wake}: clears the snooze. */
+    /** {@code wake}: clears the snooze. Upstream shows no undo notice. */
     static ActionRoute.ActionHandler wake(SessionLifecycleService lifecycle) {
-        return (req, payload) -> lifecycleOp(payload, lifecycle::wake);
+        return (req, payload) -> lifecycleOp(payload, lifecycle::wake, null);
     }
 
-    /** {@code archive}: archives the session. */
+    /** {@code archive}: archives the session, answering the {@code Archived} notice. */
     static ActionRoute.ActionHandler archive(SessionLifecycleService lifecycle) {
-        return (req, payload) -> lifecycleOp(payload, lifecycle::archive);
+        return (req, payload) -> lifecycleOp(payload, lifecycle::archive, "Archived");
     }
 
     /** {@code restore}: restores the session from the archive. */
     static ActionRoute.ActionHandler restore(SessionLifecycleService lifecycle) {
-        return (req, payload) -> lifecycleOp(payload, lifecycle::restore);
+        return (req, payload) -> lifecycleOp(payload, lifecycle::restore, null);
     }
 
-    /** {@code regenerate-title}: regenerates the session title. */
+    /** {@code regenerate-title}: regenerates the session title (not undoable). */
     static ActionRoute.ActionHandler regenerateTitle(SessionLifecycleService lifecycle) {
-        return (req, payload) -> lifecycleOp(payload, lifecycle::regenerateTitle);
+        return (req, payload) -> lifecycleOp(payload, lifecycle::regenerateTitle, null);
+    }
+
+    /**
+     * {@code auto-settle}: the {@code Auto-settle behavior} submenu entries
+     * (T98) — sets the {@code auto_settle} flag through the lifecycle
+     * service. A setting, not a transition: no undo notice (the upstream
+     * opt-out is a checked submenu, {@code threadActionMenu.logic.ts:184-204}).
+     */
+    static ActionRoute.ActionHandler autoSettle(SessionLifecycleService lifecycle) {
+        return (req, payload) -> {
+            String id = ActionSupport.text(payload, "id");
+            if (id == null) {
+                return ActionSupport.error("A session id is required.");
+            }
+            Object raw = payload.get("enabled");
+            if (!(raw instanceof Boolean enabled)) {
+                return ActionSupport.error("An enabled boolean is required.");
+            }
+            try {
+                lifecycle.setAutoSettle(id, enabled);
+                return List.of(Directives.refresh());
+            } catch (LifecycleException e) {
+                return ActionSupport.error(messageOf(e));
+            } catch (IllegalArgumentException e) {
+                return ActionSupport.error(messageOf(e));
+            }
+        };
     }
 
     /**
@@ -117,7 +161,7 @@ final class SessionActions {
             }
             return lifecycleOp(payload, key -> until != null
                     ? lifecycle.snooze(key, until)
-                    : lifecycle.snoozeFor(key, durationMs));
+                    : lifecycle.snoozeFor(key, durationMs), "Snoozed");
         };
     }
 
@@ -203,16 +247,28 @@ final class SessionActions {
                 .build();
     }
 
-    /** Runs one lifecycle operation and answers a refresh or an error toast. */
+    /**
+     * Runs one lifecycle operation and answers a refresh or an error toast.
+     * With a non-null {@code notice} label the success answer leads with the
+     * T98 undo notice — the upstream wording {@code <label> 1 thread,}
+     * ({@code SidebarThreadUndoNotice.tsx:15,20}) carrying the {@code undo}
+     * action and the 5&nbsp;s window — before the refresh.
+     */
     private static List<Map<String, Object>> lifecycleOp(
-            Map<String, Object> payload, Function<String, Session> op) {
+            Map<String, Object> payload, Function<String, Session> op, String notice) {
         String id = ActionSupport.text(payload, "id");
         if (id == null) {
             return ActionSupport.error("A session id is required.");
         }
         try {
             op.apply(id);
-            return List.of(Directives.refresh());
+            if (notice == null) {
+                return List.of(Directives.refresh());
+            }
+            return List.of(
+                    Directives.toast(notice + " 1 thread,",
+                            ActionDescriptors.of("undo"), UNDO_WINDOW_MS),
+                    Directives.refresh());
         } catch (LifecycleException e) {
             return ActionSupport.error(messageOf(e));
         } catch (IllegalArgumentException e) {

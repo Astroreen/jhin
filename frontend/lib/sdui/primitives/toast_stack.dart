@@ -208,78 +208,13 @@ class _ToastStackState extends State<_ToastStack> {
   }
 
   Widget _itemCard(BuildContext context, _LiveToast toast) {
-    final design = JhinDesignScope.of(context);
-    final tokens = design.tokens;
-    final material = JhinDesignScope.materialOf(context);
-    final brightness = Theme.brightnessOf(context);
-    final remPx = design.switches.fontSizes.sizeInterface.toDouble();
-    final radius = jhinSurfaceRadius(tokens.surface, 'md', remPx: remPx) ??
-        BorderRadius.circular(8);
     final spec = toast.spec;
-    final fill = design.colorOf('popover', brightness: brightness) ??
-        material.colorScheme.surfaceContainerHighest;
-    final foreground = design.colorOf('popover-foreground', brightness: brightness) ??
-        material.colorScheme.onSurface;
-    final muted = design.colorOf('muted-foreground', brightness: brightness) ??
-        material.colorScheme.onSurfaceVariant;
-    final bodySize = _textTokenPx(tokens.surface, 'sm', remPx) ?? 14;
-
-    final IconData? icon;
-    final Color? iconColor;
-    switch (spec.style) {
-      case 'error':
-        icon = iconFor('error');
-        iconColor = material.colorScheme.error;
-      case 'success':
-        icon = iconFor('check_circle');
-        iconColor = design.colorOf('success', brightness: brightness) ??
-            material.colorScheme.primary;
-      default:
-        icon = null;
-        iconColor = null;
-    }
-
-    return Material(
-      type: MaterialType.card,
-      color: fill,
-      shadowColor: material.colorScheme.shadow,
-      elevation: tokens.elevation.md,
-      borderRadius: radius,
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          tokens.spacing.md,
-          tokens.spacing.sm,
-          tokens.spacing.xs,
-          tokens.spacing.sm,
-        ),
-        child: Row(
-          children: [
-            if (icon != null) ...[
-              Icon(icon, size: 16, color: iconColor),
-              SizedBox(width: tokens.spacing.sm),
-            ],
-            Expanded(
-              child: Text(
-                spec.text,
-                style: TextStyle(fontSize: bodySize, color: foreground),
-              ),
-            ),
-            if (spec.action != null)
-              TextButton(
-                onPressed: () => _runAction(toast),
-                child: const Text('Undo'),
-              ),
-            SizedBox(width: tokens.spacing.xs),
-            _DismissOrb(
-              onPressed: () => _dismiss(toast),
-              color: muted,
-              borderColor: design.colorOf('border', brightness: brightness) ??
-                  material.dividerColor,
-            ),
-          ],
-        ),
-      ),
+    return ToastNoticeCard(
+      text: spec.text,
+      style: spec.style,
+      action: spec.action,
+      onAction: spec.action == null ? null : () => _runAction(toast),
+      onDismiss: () => _dismiss(toast),
     );
   }
 
@@ -323,6 +258,117 @@ class _ToastStackState extends State<_ToastStack> {
         ),
       ),
       child: const SizedBox.shrink(),
+    );
+  }
+}
+
+/// One notice card — the upstream undo-notice look
+/// (`SidebarThreadUndoNotice.tsx:17-26`: the notice text, the `Undo` inline
+/// button, the close control) over the upstream toast geometry: the popover
+/// fill at the `radius.md` control radius, the md elevation, `text.sm`
+/// (14 px) body, the corner dismiss orb (`toast.tsx:97-102`).
+///
+/// Shared by the `toast_stack` items and the runtime's action-carrying
+/// `toast` directive (T98): the undo notice is the same card wherever it
+/// surfaces from.
+class ToastNoticeCard extends StatelessWidget {
+  const ToastNoticeCard({
+    super.key,
+    required this.text,
+    this.style,
+    this.action,
+    this.onAction,
+    this.onDismiss,
+  });
+
+  /// The notice text.
+  final String text;
+
+  /// The optional style tint (`error`/`success`).
+  final String? style;
+
+  /// The inline action spec (the 5 s undo pattern); null hides the button.
+  final Map<String, dynamic>? action;
+
+  /// The action tap (null without an [action]).
+  final VoidCallback? onAction;
+
+  /// The dismiss-orb tap.
+  final VoidCallback? onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final design = JhinDesignScope.of(context);
+    final tokens = design.tokens;
+    final material = JhinDesignScope.materialOf(context);
+    final brightness = Theme.brightnessOf(context);
+    final remPx = design.switches.fontSizes.sizeInterface.toDouble();
+    final radius = jhinSurfaceRadius(tokens.surface, 'md', remPx: remPx) ??
+        BorderRadius.circular(8);
+    final fill = design.colorOf('popover', brightness: brightness) ??
+        material.colorScheme.surfaceContainerHighest;
+    final foreground = design.colorOf('popover-foreground', brightness: brightness) ??
+        material.colorScheme.onSurface;
+    final muted = design.colorOf('muted-foreground', brightness: brightness) ??
+        material.colorScheme.onSurfaceVariant;
+    final bodySize = _textTokenPx(tokens.surface, 'sm', remPx) ?? 14;
+
+    final IconData? icon;
+    final Color? iconColor;
+    switch (style) {
+      case 'error':
+        icon = iconFor('error');
+        iconColor = material.colorScheme.error;
+      case 'success':
+        icon = iconFor('check_circle');
+        iconColor = design.colorOf('success', brightness: brightness) ??
+            material.colorScheme.primary;
+      default:
+        icon = null;
+        iconColor = null;
+    }
+
+    return Material(
+      type: MaterialType.card,
+      color: fill,
+      shadowColor: material.colorScheme.shadow,
+      elevation: tokens.elevation.md,
+      borderRadius: radius,
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          tokens.spacing.md,
+          tokens.spacing.sm,
+          tokens.spacing.xs,
+          tokens.spacing.sm,
+        ),
+        child: Row(
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 16, color: iconColor),
+              SizedBox(width: tokens.spacing.sm),
+            ],
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(fontSize: bodySize, color: foreground),
+              ),
+            ),
+            if (action != null)
+              TextButton(
+                onPressed: onAction,
+                child: const Text('Undo'),
+              ),
+            SizedBox(width: tokens.spacing.xs),
+            _DismissOrb(
+              onPressed: onDismiss ?? () {},
+              color: muted,
+              borderColor: design.colorOf('border', brightness: brightness) ??
+                  material.dividerColor,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

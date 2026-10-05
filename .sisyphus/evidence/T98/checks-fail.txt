@@ -1,0 +1,10 @@
+ok: kernel booted for the failure path (fail-boot/kernel.log)
+ok: pinned the session (fail-undo-transcript.txt)
+ok: the session is pinned before the window closes (fail-undo-transcript.txt)
+ok: the undo at 6 s answered the nothing_to_undo error toast (fail-undo-transcript.txt)
+ok: the late undo restored nothing: the session is still pinned (fail-undo-transcript.txt)
+FAIL: the undo at 6 s answered Undone (as designed)
+  the journal window closed; the answer is the nothing_to_undo
+  error toast and the pin survives; session id: f1722496-1621-4e66-bdc5-42a4958d66df
+  (fail-undo-transcript.txt)
+FAIL: deliberately wrong expectation: the late undo restores the pin (it does not; see .sisyphus/evidence/T98/fail-undo-transcript.txt)

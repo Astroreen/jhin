@@ -13,16 +13,19 @@ import 'sheet.dart' show buildSheetChrome;
 /// Tapping the trigger opens a `PopupMenuButton` over the item list; below
 /// `breakpoint` (or 900 when unset) the same items open as a modal bottom
 /// sheet. Each item is `{label, icon?, action?, confirm?, disabled?, divider?,
-/// danger?}` (§2.6): `divider: true` renders a `Divider` entry, `disabled`
-/// dispatches nothing, `danger` paints the label in the scheme error color
-/// and `confirm` gates the dispatch through `RenderContext.confirm` (a
-/// decline dispatches nothing) — the same confirm-gate the §2.3 gesture
-/// wrapper uses. A string item promotes to `{label: …}`. The trigger is
-/// wrapped in `AbsorbPointer` so its own `action`/`onTap` handlers cannot
-/// swallow the tap — the trigger's tap opens the menu — and the `menu` node
-/// itself is in the `_interactivePrimitives` set (its universal `action` is
-/// not wired to a tap; item actions are). With no items the trigger renders
-/// without a popup.
+/// danger?, children?, checked?, separatorBefore?}` (§2.6): `divider: true`
+/// renders a `Divider` entry, `disabled` dispatches nothing, `danger` paints
+/// the label in the scheme error color, `confirm` gates the dispatch through
+/// `RenderContext.confirm` (a decline dispatches nothing), `children` (T98)
+/// opens the nested submenu — a second popup over the popup route, an
+/// indented group in the sheet —, `checked` (T98) marks the radio-style
+/// entries with the leading check and `separatorBefore` (T98) renders a
+/// divider above the entry. A string item promotes to `{label: …}`. The
+/// trigger is wrapped in `AbsorbPointer` so its own `action`/`onTap`
+/// handlers cannot swallow the tap — the trigger's tap opens the menu — and
+/// the `menu` node itself is in the `_interactivePrimitives` set (its
+/// universal `action` is not wired to a tap; item actions are). With no
+/// items the trigger renders without a popup.
 ///
 /// T87: `glass: true` applies the upstream `dropdown-glass` treatment
 /// (index.css:405-419). The sheet presentation carries the full recipe
@@ -70,11 +73,41 @@ Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
         entries.add(const PopupMenuDivider());
         continue;
       }
-      entries.add(PopupMenuItem<int>(
-        value: i,
-        enabled: item['disabled'] != true,
-        child: _menuItemRow(menuContext, item),
-      ));
+      if (item['separatorBefore'] == true) {
+        entries.add(const PopupMenuDivider());
+      }
+      final children = item['children'];
+      if (children is List && children.isNotEmpty) {
+        // The T98 submenu: a nested popup over the popup route; selecting a
+        // child pops both routes and dispatches the child action.
+        entries.add(
+          PopupMenuItem<int>(
+            value: i,
+            enabled: item['disabled'] != true,
+            child: Builder(
+              builder: (menuContext) => PopupMenuButton<int>(
+                itemBuilder: (innerContext) =>
+                    _submenuEntries(menuContext, children, dispatchItem),
+                onSelected: (childIndex) {
+                  Navigator.of(menuContext).pop();
+                  dispatchItem(
+                    Map<String, dynamic>.from(children[childIndex] as Map),
+                  );
+                },
+                child: _menuItemRow(menuContext, item, submenu: true),
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
+      entries.add(
+        PopupMenuItem<int>(
+          value: i,
+          enabled: item['disabled'] != true,
+          child: _menuItemRow(menuContext, item),
+        ),
+      );
     }
     return entries;
   }
@@ -88,28 +121,56 @@ Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
               showModalBottomSheet<void>(
                 context: context,
                 builder: (sheetContext) {
-                  final list = Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (var i = 0; i < items.length; i++)
-                        if (items[i]['divider'] == true)
-                          const Divider(height: 1)
-                        else
-                          ListTile(
-                            enabled: items[i]['disabled'] != true,
-                            leading: _menuLeadingIcon(items[i]),
-                            title: _menuItemRow(sheetContext, items[i]),
-                            onTap: () {
-                              Navigator.of(sheetContext).pop();
-                              dispatchItem(items[i]);
-                            },
-                          ),
-                    ],
+                  final list = SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var i = 0; i < items.length; i++) ...[
+                          if (items[i]['separatorBefore'] == true ||
+                              items[i]['divider'] == true)
+                            const Divider(height: 1),
+                          if (_childrenOf(items[i]) case final children
+                              when children.isNotEmpty) ...[
+                            ListTile(
+                              enabled: false,
+                              leading: _menuLeadingIcon(items[i]),
+                              title: _menuItemRow(sheetContext, items[i]),
+                            ),
+                            for (final child in children)
+                              ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 32,
+                                ),
+                                enabled: child['disabled'] != true,
+                                leading: _menuLeadingIcon(child),
+                                title: _menuItemRow(sheetContext, child),
+                                onTap: () {
+                                  Navigator.of(sheetContext).pop();
+                                  dispatchItem(child);
+                                },
+                              ),
+                          ] else
+                            ListTile(
+                              enabled: items[i]['disabled'] != true,
+                              leading: _menuLeadingIcon(items[i]),
+                              title: _menuItemRow(sheetContext, items[i]),
+                              onTap: () {
+                                Navigator.of(sheetContext).pop();
+                                dispatchItem(items[i]);
+                              },
+                            ),
+                        ],
+                      ],
+                    ),
                   );
                   return SafeArea(
                     child: glass
-                        ? buildSheetChrome(sheetContext, list,
-                            glass: true, glassTint: glassTintOf(node))
+                        ? buildSheetChrome(
+                            sheetContext,
+                            list,
+                            glass: true,
+                            glassTint: glassTintOf(node),
+                          )
                         : list,
                   );
                 },
@@ -127,6 +188,45 @@ Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
   );
 }
 
+/// The submenu children of one item; empty when the item has none.
+List<Map<String, dynamic>> _childrenOf(Map<String, dynamic> item) {
+  final children = item['children'];
+  if (children is! List) return const [];
+  return [
+    for (final child in children)
+      if (child is Map) Map<String, dynamic>.from(child),
+  ];
+}
+
+/// The nested submenu entries of one popup item (T98): the same item shape,
+/// one level deep — the upstream submenu rule
+/// (`threadActionMenu.logic.ts:147-154,190-201`).
+List<PopupMenuEntry<int>> _submenuEntries(
+  BuildContext menuContext,
+  List<dynamic> children,
+  void Function(Map<String, dynamic>) dispatch,
+) {
+  final entries = <PopupMenuEntry<int>>[];
+  for (var i = 0; i < children.length; i++) {
+    final child = Map<String, dynamic>.from(children[i] as Map);
+    if (child['divider'] == true) {
+      entries.add(const PopupMenuDivider());
+      continue;
+    }
+    if (child['separatorBefore'] == true) {
+      entries.add(const PopupMenuDivider());
+    }
+    entries.add(
+      PopupMenuItem<int>(
+        value: i,
+        enabled: child['disabled'] != true,
+        child: _menuItemRow(menuContext, child),
+      ),
+    );
+  }
+  return entries;
+}
+
 /// The dropdown-glass fill for the popup route (T87): the recipe fill only —
 /// a route popup cannot host a `BackdropFilter`, so the blur degrades to
 /// the translucent fill (the documented route-popup degradation). [tint]
@@ -138,15 +238,16 @@ Color _menuGlassFill(BuildContext context, {Color? tint}) {
   final recipe = JhinMenuGlassRecipe.of(
     design.tokens.surface,
     brightness,
-    popover: design.colorOf('popover', brightness: brightness) ??
+    popover:
+        design.colorOf('popover', brightness: brightness) ??
         scheme.surfaceContainerHighest,
-    foreground: design.colorOf('foreground', brightness: brightness) ??
+    foreground:
+        design.colorOf('foreground', brightness: brightness) ??
         scheme.onSurface,
   );
   if (tint == null) return recipe.fill;
   return Color.alphaBlend(
-    tint.withValues(
-        alpha: (tint.a * jhinGlassTintAlpha).clamp(0.0, 1.0)),
+    tint.withValues(alpha: (tint.a * jhinGlassTintAlpha).clamp(0.0, 1.0)),
     recipe.fill,
   );
 }
@@ -157,20 +258,37 @@ Widget? _menuLeadingIcon(Map<String, dynamic> item) {
   return icon == null ? null : Icon(icon, size: 18);
 }
 
-/// One menu item row: optional leading icon and the label — in the scheme
-/// error color when `danger` is set (§2.6 "destructive styling").
-Widget _menuItemRow(BuildContext context, Map<String, dynamic> item) {
+/// One menu item row: optional leading icon, the checked mark (T98) and the
+/// label — in the scheme error color when `danger` is set (§2.6 "destructive
+/// styling"); a submenu entry (T98) carries the trailing chevron.
+Widget _menuItemRow(
+  BuildContext context,
+  Map<String, dynamic> item, {
+  bool submenu = false,
+}) {
   final label = item['label'] is String ? item['label'] as String : '';
   final icon = iconFor(item['icon'] is String ? item['icon'] as String : null);
   final danger = item['danger'] == true;
+  final checked = item['checked'] == true;
   final style = danger
       ? TextStyle(color: JhinDesignScope.materialOf(context).colorScheme.error)
       : null;
   return Row(
-    mainAxisSize: MainAxisSize.min,
     children: [
+      if (checked) ...[
+        Icon(
+          Icons.check,
+          size: 16,
+          color: JhinDesignScope.materialOf(context).colorScheme.primary,
+        ),
+        const SizedBox(width: 6),
+      ],
       if (icon != null) ...[Icon(icon, size: 18), const SizedBox(width: 8)],
-      Text(label, style: style),
+      Flexible(child: Text(label, style: style, maxLines: 1)),
+      if (submenu) ...[
+        const SizedBox(width: 12),
+        const Icon(Icons.chevron_right, size: 16),
+      ],
     ],
   );
 }

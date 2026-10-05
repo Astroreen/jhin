@@ -14,6 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.ui.screens.SidebarBuilder;
 import com.astroreen.jhin.plugin.uikit.UiNode;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -305,16 +306,34 @@ class SidebarBuilderTest {
     // --- T97: row anatomy ---
 
     @Test
-    void rowTitleIsSemiboldTruncatedText() {
+    void rowTitleIsTheHoverCardOverTheSemiboldTruncatedText() {
         Map<String, Object> row = rowOf("demo");
 
-        Map<String, Object> title = castMap(row.get("title"));
-        assertThat(title).containsEntry("type", "text")
+        // T98: the title slot is the hover preview card; the trigger is the
+        // semibold truncated title text.
+        Map<String, Object> card = castMap(row.get("title"));
+        assertThat(card).containsEntry("type", "hover_card")
+                .containsEntry("delay", 500)
+                .containsEntry("placement", "right");
+        Map<String, Object> trigger = castMap(card.get("trigger"));
+        assertThat(trigger).containsEntry("type", "text")
                 .containsEntry("text", "demo")
                 .containsEntry("fontSize", 14)
                 .containsEntry("fontWeight", 600)
                 .containsEntry("maxLines", 1)
                 .containsEntry("ellipsis", true);
+        Map<String, Object> content = castMap(card.get("content"));
+        assertThat(content).containsEntry("id", "thread-hover-card");
+        List<Object> children = castList(content.get("children"));
+        assertThat(castMap(children.get(0))).containsEntry("text", "demo")
+                .containsEntry("fontSize", 12)
+                .containsEntry("fontWeight", 500);
+        Map<String, Object> workdirRow = castMap(children.get(1));
+        assertThat(castMap(castList(workdirRow.get("children")).get(0)))
+                .containsEntry("icon", "folder");
+        assertThat(castMap(castList(workdirRow.get("children")).get(1)))
+                .containsEntry("text", "/tmp/demo")
+                .containsEntry("color", "$color.sidebar-muted-foreground");
     }
 
     @Test
@@ -377,6 +396,233 @@ class SidebarBuilderTest {
 
         assertThat(row.get("status")).isEqualTo("bogus-status");
         assertThat(row.get("statusIndicators")).isEqualTo(List.of("idle"));
+    }
+
+    // --- T98: thread action menu ---
+
+    /** The items of one row's overflow menu. */
+    private static List<Map<String, Object>> menuItemsOf(String id) {
+        return menuItemsOf(id, "active", false);
+    }
+
+    private static List<Map<String, Object>> menuItemsOf(String id, PatchBuilder patch) {
+        Map<String, Object> row = rowsOf(SidebarBuilder.build(
+                List.of(session(id, NOW - 10, patch)), NOW, false)).get(0);
+        return castList(castMap(row.get("trailing")).get("items")).stream()
+                .map(SidebarBuilderTest::castMap)
+                .toList();
+    }
+
+    private static List<Map<String, Object>> menuItemsOf(String id, String status,
+                                                         boolean arrange) {
+        Map<String, Object> row = rowsOf(SidebarBuilder.build(
+                List.of(session(id, NOW - 10, status)), NOW, arrange)).get(0);
+        return castList(castMap(row.get("trailing")).get("items")).stream()
+                .map(SidebarBuilderTest::castMap)
+                .toList();
+    }
+
+    /** The labels of one item list, in order. */
+    private static List<String> labelsOfItems(List<Map<String, Object>> items) {
+        return items.stream().map(item -> String.valueOf(item.get("label"))).toList();
+    }
+
+    @Test
+    void menuCarriesTheUpstreamItemSetInOrder() {
+        assertThat(labelsOfItems(menuItemsOf("demo"))).containsExactly(
+                "Pin thread", "Settle thread", "Snooze", "Regenerate title",
+                "Auto-settle behavior", "Archive thread", "Delete");
+    }
+
+    @Test
+    void pinAndUnpinAreConditionalWithTheUpstreamLabelsAndIcons() {
+        Map<String, Object> pin = menuItemsOf("demo").get(0);
+        assertThat(pin).containsEntry("label", "Pin thread")
+                .containsEntry("icon", "keep");
+        assertThat(castMap(pin.get("action")))
+                .containsEntry("name", "pin")
+                .containsEntry("path", "/ui/action/pin");
+        assertThat(castMap(pin.get("action")).get("payload"))
+                .isEqualTo(Map.of("id", "demo"));
+
+        Map<String, Object> unpin = menuItemsOf("pinned", patch().pinned(true).pinnedOrder(1))
+                .get(0);
+        assertThat(unpin).containsEntry("label", "Unpin thread")
+                .containsEntry("icon", "keep_off");
+        assertThat(castMap(unpin.get("action"))).containsEntry("name", "unpin");
+    }
+
+    @Test
+    void settleAndUnsettleAreConditionalWithTheUpstreamLabels() {
+        Map<String, Object> settle = menuItemsOf("demo").get(1);
+        assertThat(settle).containsEntry("label", "Settle thread")
+                .containsEntry("icon", "check_circle");
+        assertThat(castMap(settle.get("action"))).containsEntry("name", "settle");
+
+        Map<String, Object> unsettled = menuItemsOf("settled", patch().settledAt(NOW - 5))
+                .get(1);
+        assertThat(unsettled).containsEntry("label", "Un-settle thread")
+                .containsEntry("icon", "check_circle");
+        assertThat(castMap(unsettled.get("action"))).containsEntry("name", "unsettle");
+    }
+
+    @Test
+    void snoozeCarriesTheUpstreamPresetSubmenuPlusCustom() {
+        Map<String, Object> snooze = menuItemsOf("demo").get(2);
+        assertThat(snooze).containsEntry("label", "Snooze")
+                .containsEntry("icon", "schedule");
+        List<Map<String, Object>> children = castList(snooze.get("children")).stream()
+                .map(SidebarBuilderTest::castMap)
+                .toList();
+        // The upstream preset labels carry the whenLabel time column
+        // (threadActionMenu.logic.ts:148-151); the exact clock depends on
+        // the host zone, so only the shape is asserted here.
+        assertThat(children.size()).isGreaterThanOrEqualTo(4);
+        assertThat(String.valueOf(children.get(0).get("label")))
+                .startsWith("In 1 hour (").endsWith(")");
+        assertThat(String.valueOf(children.get(1).get("label")))
+                .startsWith("In 3 hours (").endsWith(")");
+        // Every preset dispatches the real snooze action with a future
+        // `until`.
+        for (int i = 0; i < children.size() - 1; i++) {
+            Map<String, Object> action = castMap(children.get(i).get("action"));
+            assertThat(action).containsEntry("name", "snooze");
+            assertThat(((Number) castMap(action.get("payload")).get("until")).longValue())
+                    .isGreaterThan(NOW);
+        }
+        // Custom… opens the decorative picker dialog.
+        Map<String, Object> custom = children.get(children.size() - 1);
+        assertThat(custom).containsEntry("label", "Custom…")
+                .containsEntry("separatorBefore", true);
+        assertThat(castMap(custom.get("action"))).containsEntry("op", "dialog");
+    }
+
+    @Test
+    void snoozedRowsShowWakeInsteadOfTheSubmenu() {
+        Map<String, Object> wake = menuItemsOf("snoozed",
+                patch().snoozedUntil(NOW + 60_000)).get(2);
+        assertThat(wake).containsEntry("label", "Wake thread")
+                .containsEntry("icon", "schedule");
+        assertThat(castMap(wake.get("action"))).containsEntry("name", "wake");
+        assertThat(wake).doesNotContainKey("children");
+    }
+
+    @Test
+    void snoozePresetsFollowTheUpstreamCalendarRules() {
+        ZoneId utc = ZoneId.of("UTC");
+        // 1970-01-12T00:16:40Z is a Monday 00:16: This evening (18:00) is
+        // offered, Next week lands on next Monday 09:00, distinct from
+        // Tomorrow.
+        List<SidebarBuilder.SnoozePreset> presets =
+                SidebarBuilder.snoozePresets(NOW, utc);
+        assertThat(presets.stream().map(SidebarBuilder.SnoozePreset::label))
+                .containsExactly("In 1 hour", "In 3 hours", "This evening",
+                        "Tomorrow", "Next week");
+        assertThat(presets.get(0).whenLabel()).isEqualTo("1:16 AM");
+        assertThat(presets.get(2).whenLabel()).isEqualTo("6:00 PM");
+        assertThat(presets.get(3).whenLabel()).isEqualTo("9:00 AM");
+        assertThat(presets.get(4).whenLabel()).isEqualTo("Mon 9:00 AM");
+
+        // A Sunday 09:30 (1970-01-04): This evening is offered, and Next
+        // week collapses onto Tomorrow (both Monday 09:00).
+        long sundayMorning = 3 * 86_400_000L + 9 * 3_600_000L + 1_800_000L;
+        List<SidebarBuilder.SnoozePreset> sunday =
+                SidebarBuilder.snoozePresets(sundayMorning, utc);
+        assertThat(sunday.stream().map(SidebarBuilder.SnoozePreset::label))
+                .containsExactly("In 1 hour", "In 3 hours", "This evening",
+                        "Tomorrow");
+
+        // A Tuesday 19:30 (1970-01-06): This evening is within the past —
+        // dropped; Next week (Monday 09:00) is distinct from Tomorrow.
+        long tuesdayEvening = 5 * 86_400_000L + 19 * 3_600_000L + 1_800_000L;
+        assertThat(SidebarBuilder.snoozePresets(tuesdayEvening, utc)
+                .stream().map(SidebarBuilder.SnoozePreset::label))
+                .containsExactly("In 1 hour", "In 3 hours", "Tomorrow",
+                        "Next week");
+    }
+
+    @Test
+    void regenerateTitleCarriesTheGroupSeparator() {
+        Map<String, Object> regenerate = menuItemsOf("demo").get(3);
+        assertThat(regenerate).containsEntry("label", "Regenerate title")
+                .containsEntry("icon", "refresh")
+                .containsEntry("separatorBefore", true);
+        assertThat(castMap(regenerate.get("action")))
+                .containsEntry("name", "regenerate-title");
+    }
+
+    @Test
+    void autoSettleSubmenuCarriesTheCheckedRadioEntries() {
+        Map<String, Object> autoSettle = menuItemsOf("demo").get(4);
+        assertThat(autoSettle).containsEntry("label", "Auto-settle behavior")
+                .containsEntry("icon", "timer");
+        List<Map<String, Object>> children = castList(autoSettle.get("children")).stream()
+                .map(SidebarBuilderTest::castMap)
+                .toList();
+        assertThat(labelsOfItems(children)).containsExactly("Enabled", "Disabled");
+        assertThat(children.get(0)).containsEntry("checked", true);
+        assertThat(children.get(1)).containsEntry("checked", false);
+        assertThat(castMap(children.get(0).get("action")))
+                .containsEntry("name", "auto-settle");
+        assertThat(castMap(children.get(0).get("action")).get("payload"))
+                .isEqualTo(Map.of("id", "demo", "enabled", true));
+        assertThat(castMap(children.get(1).get("action")).get("payload"))
+                .isEqualTo(Map.of("id", "demo", "enabled", false));
+    }
+
+    @Test
+    void archiveSitsAboveTheSeparatorAndDeleteIsDestructive() {
+        List<Map<String, Object>> items = menuItemsOf("demo");
+        Map<String, Object> archive = items.get(5);
+        assertThat(archive).containsEntry("label", "Archive thread")
+                .containsEntry("icon", "archive")
+                .containsEntry("separatorBefore", true)
+                .containsEntry("confirm", "Archive this thread?");
+        assertThat(castMap(archive.get("action"))).containsEntry("name", "archive");
+
+        Map<String, Object> delete = items.get(6);
+        assertThat(delete).containsEntry("label", "Delete")
+                .containsEntry("icon", "delete")
+                .containsEntry("danger", true)
+                .containsEntry("confirm", "Delete this thread? This cannot be undone.");
+        assertThat(castMap(delete.get("action"))).containsEntry("name", "delete-session");
+    }
+
+    @Test
+    void arrangeModeAddsTheMoveEntriesBeforeArchive() {
+        Map<String, Object> row = rowsOf(SidebarBuilder.build(
+                List.of(session("first", NOW - 20), session("demo", NOW - 10)),
+                NOW, true)).stream()
+                .filter(r -> "session-row:demo".equals(r.get("id")))
+                .findFirst().orElseThrow();
+        List<Map<String, Object>> items = castList(
+                castMap(row.get("trailing")).get("items")).stream()
+                .map(SidebarBuilderTest::castMap)
+                .toList();
+        assertThat(labelsOfItems(items)).containsExactly(
+                "Pin thread", "Settle thread", "Snooze", "Regenerate title",
+                "Auto-settle behavior", "Move up", "Move down",
+                "Archive thread", "Delete");
+        Map<String, Object> up = items.get(5);
+        assertThat(castMap(up.get("action"))).containsEntry("name", "reorder");
+        // The demo row sorts first in the section (updatedAt DESC), so the
+        // move-up entry is disabled and the move-down one is not.
+        assertThat(up).containsEntry("disabled", true);
+        Map<String, Object> down = items.get(6);
+        assertThat(castMap(down.get("action"))).containsEntry("name", "reorder");
+        assertThat(down).containsEntry("disabled", false);
+    }
+
+    @Test
+    void customSnoozeDialogIsTheDemoShell() {
+        UiNode dialog = SidebarBuilder.customSnoozeDialog("demo");
+        Map<String, Object> json = dialog.toJson();
+        assertThat(json).containsEntry("id", "custom-snooze-dialog")
+                .containsEntry("demo", true);
+        Map<String, Object> form = castMap(castList(json.get("children")).get(1));
+        Map<String, Object> submit = castMap(form.get("submit"));
+        assertThat(submit).containsEntry("label", "Confirm");
+        assertThat(castMap(submit.get("action"))).containsEntry("name", "demo-snooze");
     }
 
     // --- fixtures ---

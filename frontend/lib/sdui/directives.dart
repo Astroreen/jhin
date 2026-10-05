@@ -58,8 +58,13 @@ abstract interface class DirectiveHost {
   /// `openProfiles` — opens the client-owned profile surface.
   Future<void> openProfiles();
 
-  /// `toast`(text, style?) — shows a transient message.
-  Future<void> toast(String text, String? style);
+  /// `toast`(text, style?) — shows a transient message. An `action`-carrying
+  /// toast is the T98 undo notice: it renders through the `toast_stack`
+  /// undo-notice card look (label + `Undo` + close) for `durationMs`
+  /// (default 5000 — the upstream 5 s undo window) and dispatches the
+  /// action on the `Undo` tap.
+  Future<void> toast(String text, String? style,
+      {Map<String, dynamic>? action, int? durationMs});
 
   /// `dialog`(node, kind?) — shows a modal node. `kind: "sheet"` opens a
   /// bottom sheet; an absent kind keeps the dialog presentation; an unknown
@@ -144,7 +149,14 @@ class DirectiveExecutor {
       case 'toast':
         final text = _string(map['text']);
         if (text == null) return _malformed(op, map);
-        return host.toast(text, _string(map['style']));
+        final action = map['action'];
+        final duration = map['duration'];
+        return host.toast(
+          text,
+          _string(map['style']),
+          action: action is Map ? Map<String, dynamic>.from(action) : null,
+          durationMs: duration is num ? duration.round() : null,
+        );
       case 'dialog':
         final node = map['node'];
         if (node is! Map) return _malformed(op, map);

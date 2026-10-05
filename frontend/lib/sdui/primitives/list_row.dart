@@ -191,9 +191,15 @@ Widget _trailingCluster(
   Widget trailing,
 ) {
   final match = _matchPill(context, node, state, searchMatch);
-  final cluster = match == null
-      ? trailing
-      : Row(mainAxisSize: MainAxisSize.min, children: [match, trailing]);
+  final command = node.stringProp('commandSubtitle');
+  final clusterChildren = <Widget>[
+    if (command case final String cmd when cmd.isNotEmpty) _commandMarker(context, cmd),
+    ?match,
+    trailing,
+  ];
+  final cluster = clusterChildren.length == 1
+      ? clusterChildren.single
+      : Row(mainAxisSize: MainAxisSize.min, children: clusterChildren);
   if (reveal == null) return cluster;
   return ValueListenableBuilder<bool>(
     valueListenable: reveal,
@@ -201,6 +207,23 @@ Widget _trailingCluster(
       opacity: visible ? 1 : 0,
       duration: const Duration(milliseconds: 120),
       child: cluster,
+    ),
+  );
+}
+
+/// The T98 command-subtitle marker (the `ThreadCommandSubtitle` port): the
+/// command id text of a palette-sourced row, rendered as the muted `text-xs`
+/// marker (`ThreadCommandSubtitle.tsx:64-70` — `text-xs
+/// text-muted-foreground/70`, commit 37de6cb). Absent on rows the palette
+/// did not produce.
+Widget _commandMarker(BuildContext context, String command) {
+  final theme = JhinDesignScope.materialOf(context);
+  final tokens = JhinDesignScope.of(context).tokens;
+  return Text(
+    command,
+    style: tokens.typography.small.copyWith(
+      fontSize: 12,
+      color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
     ),
   );
 }
