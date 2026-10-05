@@ -226,14 +226,19 @@ class JhinTheme {
   }
 
   /// Applies `colors{}` overrides to the scheme roles they map to:
-  /// `accent`→primary, `onAccent`→onPrimary, `onCanvas`→onSurface,
-  /// `surface`→surface, `error`→error, `outline`→outline. The remaining
-  /// token names (`success`, `warning`, `info`, `accentHover`,
-  /// `accentMuted`, …) stay palette-only.
+  /// `primary`/`accent`→primary, `primary-foreground`/`onAccent`→onPrimary,
+  /// `onCanvas`→onSurface, `surface`→surface, `error`→error,
+  /// `outline`→outline. The token-named pair (`primary`,
+  /// `primary-foreground`) wins when both spellings are present: the
+  /// generated palette carries them with upstream's meaning (`--primary` is
+  /// the companion message action, index.css:1246), while `accent` keeps
+  /// the brand-seed reading of the §1 example. The remaining token names
+  /// (`success`, `warning`, `info`, `accentHover`, `accentMuted`, …) stay
+  /// palette-only.
   static ColorScheme _applyOverrides(ColorScheme scheme, Map<String, Color> overrides) {
     return scheme.copyWith(
-      primary: overrides['accent'] ?? overrides['primary'],
-      onPrimary: overrides['onAccent'],
+      primary: overrides['primary'] ?? overrides['accent'],
+      onPrimary: overrides['primary-foreground'] ?? overrides['onAccent'],
       onSurface: overrides['onCanvas'],
       surface: overrides['surface'],
       error: overrides['error'],

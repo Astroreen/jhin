@@ -28,6 +28,7 @@
  */
 package com.astroreen.jhin.plugin.ui;
 
+import com.astroreen.jhin.plugin.uikit.PaletteGen;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.UiTokens;
@@ -239,20 +240,22 @@ final class BootstrapRoute {
         theme.put("appearance", snapshot.appearance());
         theme.put("canvas", snapshot.canvas());
         theme.put("accent", snapshot.accent());
-        theme.put("colors", colors());
+        theme.put("colors", colors(snapshot));
         // Legacy level-1 spelling of the same idea; MUST equal `appearance` (docs/sdui.md section 1).
         theme.put("mode", snapshot.appearance());
         return theme;
     }
 
-    /** Default {@code theme.colors} overrides (docs/sdui.md section 1 example). */
-    private Map<String, Object> colors() {
-        Map<String, Object> colors = new LinkedHashMap<>();
-        colors.put("error", "#f7768e");
-        colors.put("success", "#9ece6a");
-        colors.put("warning", "#e0af68");
-        colors.put("info", "#7aa2f7");
-        return colors;
+    /**
+     * The {@code theme.colors} block: the palette {@link PaletteGen}
+     * generates from the saved seeds. docs/sdui.md section 1 lets
+     * {@code colors} overrides win over the client's own generation, so
+     * pinning the full generated map makes the bootstrap reflect the
+     * server-side palette exactly (T84).
+     */
+    private Map<String, Object> colors(UiSettings.Snapshot snapshot) {
+        return new LinkedHashMap<>(PaletteGen.generate(
+                snapshot.appearance(), snapshot.canvas(), snapshot.accent()));
     }
 
     /** The caller's account id for request-scoped screens. */

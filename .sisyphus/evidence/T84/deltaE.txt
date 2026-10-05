@@ -1,0 +1,5 @@
+T84_DELTA: t3-chat background 0.000 ring 0.001 update 0.001
+T84_DELTA: grove background 0.171 ring 0.301 update 0.301
+T84_DELTA: ocean background 0.279 ring 0.111 update 0.111
+T84_DELTA: ember background 0.321 ring 0.314 update 0.314
+T84_DELTA: iris background 0.425 ring 0.491 update 0.491

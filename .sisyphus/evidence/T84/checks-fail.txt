@@ -1,0 +1,8 @@
+FAIL: the generator threw the typed PaletteError for canvas "not-a-colour" (rejected as designed)
+  probe: PaletteGenTest.unparsableSeedsRaisePaletteError green (see /home/astroreen/Documents/jhin/.sisyphus/evidence/T84/test-fail.txt)
+  probe: PaletteGenTest.unknownAppearanceRaisesPaletteError green (see /home/astroreen/Documents/jhin/.sisyphus/evidence/T84/test-fail.txt)
+ok: --fail probe: PaletteError raised for "not-a-colour" and for an unknown appearance (test-fail.txt)
+FAIL: canvas "not-a-colour" was answered with the documented error (rejected as designed)
+  server: errorText patch on the canvas field, error toast, nothing persisted (validation-fail.txt)
+ok: --fail probe: the server answered the unparsable canvas with the documented error, no crash (validation-fail.txt)
+FAIL: deliberately wrong expectation: the generator accepted the unparsable canvas "not-a-colour" (it raises PaletteError; see /home/astroreen/Documents/jhin/.sisyphus/evidence/T84/checks-fail.txt)
