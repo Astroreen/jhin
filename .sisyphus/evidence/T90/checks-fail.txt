@@ -1,0 +1,5 @@
+ok: a drag below min snaps back: the divider held at the min clamp 208, not 168 (probe-clamp.txt)
+FAIL: the divider followed the pointer below the min clamp (as designed)
+  clamp probe: failed as required, actual divider width stayed at the clamped 208 (probe-clamp.txt)
+  fixture removed again; the tree is clean
+FAIL: deliberately wrong expectation: the broken below-min drag probe is still in the tree (it is removed; see .sisyphus/evidence/T90/probe-clamp.txt)

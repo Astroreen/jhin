@@ -52,6 +52,7 @@ import 'primitives/shell.dart';
 import 'primitives/sized_box.dart';
 import 'primitives/skeleton.dart';
 import 'primitives/slider.dart';
+import 'primitives/split.dart';
 import 'primitives/spacer.dart';
 import 'primitives/stack.dart';
 import 'primitives/stream_view.dart';
@@ -140,6 +141,7 @@ class UiRegistry {
       'tabs': buildTabs,
       'segmented': buildSegmented,
       'shell': buildShell,
+      'split': buildSplit,
     });
     return registry;
   }

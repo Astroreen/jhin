@@ -1,0 +1,1 @@
+{"type":"split","id":"split-sidebar","first":{"type":"text","text":"Sidebar pane"},"second":{"type":"text","text":"Main pane"},"axis":"horizontal","initial":256,"min":208,"max":640,"minSecond":640,"persistKey":"chat_thread_sidebar_width","handleStyle":"rail"}

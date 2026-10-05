@@ -179,6 +179,19 @@ class UiRegressionTest {
                 .glass(true).glassTint("$color.warning")
                 .build());
 
+        // T90: the level-3 resizable two-pane split with the persisted
+        // divider — the wire shape the client's drag/clamp/persist logic
+        // renders (the sidebar metrics are the upstream defaults).
+        nodes.add(Ui.split()
+                .id("split-sidebar")
+                .first(Ui.text("Sidebar pane").build())
+                .second(Ui.text("Main pane").build())
+                .axis("horizontal")
+                .initial(256).min(208).max(640).minSecond(640)
+                .persistKey("chat_thread_sidebar_width")
+                .handleStyle("rail")
+                .build());
+
         return nodes;
     }
 
@@ -188,7 +201,7 @@ class UiRegressionTest {
             "stream_view", "table", "divider", "spacer", "progress", "image",
             "figure", "chart_line", "chart_bar", "chart_pie", "drawer",
             "glass-card", "glass-sheet", "glass-dialog", "glass-menu",
-            "glass-banner");
+            "glass-banner", "split");
 
     @Test
     void wireShapesAreByteIdenticalToTheCapturedFixtures() throws IOException {

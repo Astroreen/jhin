@@ -33,6 +33,8 @@ class RenderContext {
     this.root,
     this.canPop,
     this.onBack,
+    this.readPersisted,
+    this.writePersisted,
   });
 
   /// Local state of the screen being rendered (§8.7).
@@ -77,6 +79,17 @@ class RenderContext {
   /// Pops the current screen off the runtime stack; null when there is no
   /// stack to pop.
   final VoidCallback? onBack;
+
+  /// Reads one persisted client-store value by key — the persistence seam
+  /// of stateful primitives (`split`'s `persistKey` divider position, T90).
+  /// Null when no store backs this context (bare harnesses): the primitive
+  /// then keeps its in-memory value only.
+  final Future<Object?> Function(String key)? readPersisted;
+
+  /// Writes one persisted client-store value by key (enveloped at the
+  /// current store schema). Fire-and-forget; null behaves like
+  /// [readPersisted] null — the value stays in memory.
+  final Future<void> Function(String key, Object? value)? writePersisted;
 
   /// Builds one node with patch overlays applied; every node goes through
   /// the registry so `when`, interpolation, `$token` resolution and

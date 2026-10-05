@@ -44,6 +44,7 @@ import com.astroreen.jhin.plugin.uikit.has.HasFlex;
 import com.astroreen.jhin.plugin.uikit.has.HasGlass;
 import com.astroreen.jhin.plugin.uikit.has.HasInteraction;
 import com.astroreen.jhin.plugin.uikit.has.HasItems;
+import com.astroreen.jhin.plugin.uikit.has.HasSplit;
 import com.astroreen.jhin.plugin.uikit.has.HasText;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -430,6 +431,18 @@ public final class Ui {
     /** An app shell: {@code shell}(sidebar?, header?, body?, detail?, rail?, breakpoint?, sidebarWidth?, sidebarCollapsedWidth?, collapsible?, collapsed?). */
     public static ShellBuilder shell() {
         return new ShellBuilder();
+    }
+
+    /**
+     * A resizable two-pane layout: {@code split}(first, second, axis?,
+     * initial?, min?, max?, minSecond?, persistKey?, handleStyle?). The
+     * client defaults come from the layout token family — {@code initial}
+     * from {@code layout.sidebarWidth} (256), {@code min} from
+     * {@code layout.sidebarMinWidth} (208) and {@code minSecond} from
+     * {@code layout.mainMinWidth} (640).
+     */
+    public static SplitBuilder split() {
+        return new SplitBuilder();
     }
 
     /** One {@code nav} item spec ({@code {label, icon?, screen?, action?, badge?, count?, section?, enabled?}}). */
@@ -4212,6 +4225,87 @@ public final class Ui {
      * {@link Ui#navItem(String)}. Finished with {@link #build()}, the spec is
      * appended through {@link ItemBuilder#item(Map)}.
      */
+    /**
+     * {@code split}(first, second, axis?, initial?, min?, max?, minSecond?,
+     * persistKey?, handleStyle?) — the level-3 resizable two-pane layout
+     * (docs/sdui.md section 2.6). A level-2 client receives the node
+     * degraded to a {@code column} by the server's downgrade map.
+     */
+    public static final class SplitBuilder extends NodeBuilder<SplitBuilder>
+            implements HasSplit<SplitBuilder> {
+
+        private SplitBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "split";
+        }
+
+        /** The leading pane (required). */
+        @Override
+        public SplitBuilder first(UiNode node) {
+            props.put("first", node);
+            return this;
+        }
+
+        /** The trailing pane (required). */
+        @Override
+        public SplitBuilder second(UiNode node) {
+            props.put("second", node);
+            return this;
+        }
+
+        /** The pane direction: {@code horizontal} (default) or {@code vertical}. */
+        @Override
+        public SplitBuilder axis(String value) {
+            props.put("axis", UiEnums.require("axis", value, UiEnums.SPLIT_AXIS));
+            return this;
+        }
+
+        /** The initial divider position in px from the leading edge. */
+        @Override
+        public SplitBuilder initial(Number value) {
+            props.put("initial", value);
+            return this;
+        }
+
+        /** The minimum first-pane extent in px. */
+        @Override
+        public SplitBuilder min(Number value) {
+            props.put("min", value);
+            return this;
+        }
+
+        /** The maximum first-pane extent in px. */
+        @Override
+        public SplitBuilder max(Number value) {
+            props.put("max", value);
+            return this;
+        }
+
+        /** The minimum second-pane extent in px (the 640 main-content minimum upstream). */
+        @Override
+        public SplitBuilder minSecond(Number value) {
+            props.put("minSecond", value);
+            return this;
+        }
+
+        /** The client store key the divider position persists under (written at drag end). */
+        @Override
+        public SplitBuilder persistKey(String value) {
+            props.put("persistKey", value);
+            return this;
+        }
+
+        /** The drag-handle look: {@code rail} (default), {@code grip} or {@code invisible}. */
+        @Override
+        public SplitBuilder handleStyle(String value) {
+            props.put("handleStyle", UiEnums.require("handleStyle", value, UiEnums.HANDLE_STYLE));
+            return this;
+        }
+    }
+
     public static final class NavItemBuilder {
 
         private final Map<String, Object> spec = new LinkedHashMap<>();

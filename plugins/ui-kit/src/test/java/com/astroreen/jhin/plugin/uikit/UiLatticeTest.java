@@ -14,6 +14,7 @@ import com.astroreen.jhin.plugin.uikit.has.HasFlex;
 import com.astroreen.jhin.plugin.uikit.has.HasGlass;
 import com.astroreen.jhin.plugin.uikit.has.HasInteraction;
 import com.astroreen.jhin.plugin.uikit.has.HasItems;
+import com.astroreen.jhin.plugin.uikit.has.HasSplit;
 import com.astroreen.jhin.plugin.uikit.has.HasText;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -39,7 +40,8 @@ class UiLatticeTest {
                 new Group(HasInteraction.class, Ui::container),
                 new Group(HasChildren.class, Ui::card),
                 new Group(HasItems.class, Ui::list),
-                new Group(HasGlass.class, Ui::card));
+                new Group(HasGlass.class, Ui::card),
+                new Group(HasSplit.class, Ui::split));
 
         return groups.stream().map(group -> {
             List<DynamicTest> tests = new ArrayList<>();

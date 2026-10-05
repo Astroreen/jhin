@@ -328,6 +328,9 @@ class SduiRuntime extends ChangeNotifier
       runDirectives: _executor.execute,
       onClientAction: keymapStore?.applyAction,
     );
+    // The client-store seam of stateful primitives (`split`'s persisted
+    // divider, T90): routed through the profile storage when present.
+    final store = storage;
     return RenderContext(
       state: entry.state,
       registry: registry,
@@ -345,6 +348,10 @@ class SduiRuntime extends ChangeNotifier
       root: () => entry.node ?? UiNode(type: 'text', props: const {}),
       canPop: () => _stack.length > 1,
       onBack: () => unawaited(back()),
+      readPersisted: store == null ? null : (key) => store.readData(key),
+      writePersisted: store == null
+          ? null
+          : (key, value) => store.writeEnvelope(key, value),
     );
   }
 

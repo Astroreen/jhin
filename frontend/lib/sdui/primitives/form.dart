@@ -50,6 +50,8 @@ Widget buildForm(BuildContext context, UiNode node, RenderContext ctx) {
           confirm: ctx.confirm,
           canPop: ctx.canPop,
           onBack: ctx.onBack,
+          readPersisted: ctx.readPersisted,
+          writePersisted: ctx.writePersisted,
         );
   final fields = buildNodeList(context, fieldCtx, rawFields);
   final submit = asMap(node.props['submit']);

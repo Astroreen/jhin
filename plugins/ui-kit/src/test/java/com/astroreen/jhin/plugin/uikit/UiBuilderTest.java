@@ -6,6 +6,7 @@
 package com.astroreen.jhin.plugin.uikit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.astroreen.jhin.sdk.json.Json;
 import java.util.LinkedHashMap;
@@ -137,6 +138,42 @@ class UiBuilderTest {
         UiNode card = Ui.card().title("t").child("only text").build();
         assertThat(card.children()).containsExactly("only text");
         assertThat(castList(card.toJson().get("children"))).containsExactly("only text");
+    }
+
+    /** T90: the level-3 {@code split} builder lands its documented prop keys. */
+    @Test
+    void splitWireShapeCarriesTheResizablePaneProps() {
+        Map<String, Object> split = Ui.split()
+                .first(Ui.text("First").build())
+                .second(Ui.text("Second").build())
+                .axis("horizontal")
+                .initial(256)
+                .min(208)
+                .max(640)
+                .minSecond(640)
+                .persistKey("chat_thread_sidebar_width")
+                .handleStyle("rail")
+                .build().toJson();
+        assertThat(split).containsEntry("type", "split")
+                .containsEntry("axis", "horizontal")
+                .containsEntry("initial", 256)
+                .containsEntry("min", 208)
+                .containsEntry("max", 640)
+                .containsEntry("minSecond", 640)
+                .containsEntry("persistKey", "chat_thread_sidebar_width")
+                .containsEntry("handleStyle", "rail");
+        assertThat(split).containsKey("first").containsKey("second");
+    }
+
+    /** T90: unknown split enum literals throw at build time (a builder bug). */
+    @Test
+    void splitRejectsUnknownEnumLiterals() {
+        assertThatThrownBy(() -> Ui.split().axis("diagonal"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown axis literal");
+        assertThatThrownBy(() -> Ui.split().handleStyle("wire"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown handleStyle literal");
     }
 
     @SuppressWarnings("unchecked")

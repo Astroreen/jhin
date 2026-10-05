@@ -90,6 +90,7 @@ final class BuilderProbe {
         BUILDERS.put(Ui.TabsBuilder.class, Ui::tabs);
         BUILDERS.put(Ui.SegmentedBuilder.class, Ui::segmented);
         BUILDERS.put(Ui.ShellBuilder.class, Ui::shell);
+        BUILDERS.put(Ui.SplitBuilder.class, Ui::split);
     }
 
     /**
