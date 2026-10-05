@@ -1,0 +1,6 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/primitive_purity_test.dart
+00:00 +0: /home/astroreen/Documents/jhin/frontend/test/sdui/primitive_purity_test.dart: no literal colour or EdgeInsets.all in the primitive sources
+00:00 +1: /home/astroreen/Documents/jhin/frontend/test/sdui/reduced_motion_test.dart: T86 — reduced motion disables the animated skeleton the skeleton runs no ticker under reduced motion
+00:00 +2: /home/astroreen/Documents/jhin/frontend/test/sdui/reduced_motion_test.dart: T86 — reduced motion disables the animated skeleton the skeleton animates without the switch
+00:00 +3: /home/astroreen/Documents/jhin/frontend/test/sdui/reduced_motion_test.dart: T86 — the chat lane widths default 46rem, wide 72rem, full 100% (null px)
+00:00 +4: All tests passed!

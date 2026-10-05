@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../design/theme.dart';
+import '../../design/tokens.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -21,42 +22,67 @@ import '../ui_registry.dart';
 /// the box is taller than the panel, i.e. without `height`). The same chrome
 /// opens over the `dialog` directive with `kind: "sheet"` through
 /// [buildSheetChrome].
+///
+/// T87: `glass: true` renders the panel with the upstream `surface-glass`
+/// treatment (index.css:334-342) instead of the opaque Material surface.
 Widget buildSheet(BuildContext context, UiNode node, RenderContext ctx) =>
     _SheetView(node: node, ctx: ctx);
 
 /// The bottom-sheet panel chrome shared by the `sheet` primitive and the
 /// `dialog` directive's `kind: "sheet"` presentation: rounded top corners
-/// over a drag handle and the given content.
-Widget buildSheetChrome(BuildContext context, Widget content) {
+/// over a drag handle and the given content. [glass] switches the panel to
+/// the `surface-glass` treatment (T87).
+Widget buildSheetChrome(
+  BuildContext context,
+  Widget content, {
+  bool glass = false,
+}) {
+  final design = JhinDesignScope.of(context);
   final theme = JhinDesignScope.materialOf(context);
-  final tokens = JhinDesignScope.of(context).tokens;
+  final tokens = design.tokens;
+  final brightness = Theme.brightnessOf(context);
+  final body = Padding(
+    padding: insetAll(tokens.spacing.md),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Center(
+          child: Container(
+            width: 32,
+            height: 4,
+            decoration: BoxDecoration(
+              color: theme.dividerColor,
+              borderRadius: BorderRadius.circular(tokens.radius.full),
+            ),
+          ),
+        ),
+        SizedBox(height: tokens.spacing.sm),
+        content,
+      ],
+    ),
+  );
+  if (glass) {
+    return jhinGlassSurface(
+      context,
+      surface: tokens.surface,
+      fill: design.colorOf('background', brightness: brightness) ??
+          theme.colorScheme.surface,
+      borderRadius: jhinSurfaceRadius(
+        tokens.surface,
+        'xl2',
+        remPx: design.switches.fontSizes.sizeInterface.toDouble(),
+      ),
+      child: body,
+    );
+  }
   return Material(
     color: theme.colorScheme.surface,
     elevation: tokens.elevation.md,
     borderRadius:
         BorderRadius.vertical(top: Radius.circular(tokens.radius.lg)),
     clipBehavior: Clip.antiAlias,
-    child: Padding(
-      padding: insetAll(tokens.spacing.md),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 32,
-              height: 4,
-              decoration: BoxDecoration(
-                color: theme.dividerColor,
-                borderRadius: BorderRadius.circular(tokens.radius.full),
-              ),
-            ),
-          ),
-          SizedBox(height: tokens.spacing.sm),
-          content,
-        ],
-      ),
-    ),
+    child: body,
   );
 }
 
@@ -97,7 +123,11 @@ class _SheetViewState extends State<_SheetView> {
             alignment: Alignment.bottomCenter,
             child: SizedBox(
               height: panelHeight,
-              child: buildSheetChrome(context, _body(context, node, ctx)),
+              child: buildSheetChrome(
+                context,
+                _body(context, node, ctx),
+                glass: node.boolProp('glass') == true,
+              ),
             ),
           ),
         ],

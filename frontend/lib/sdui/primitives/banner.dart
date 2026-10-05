@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../design/theme.dart';
+import '../../design/tokens.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -14,6 +15,12 @@ import '../ui_registry.dart';
 /// dispatches `onDismiss` through the same confirm-gate as the §2.3 gesture
 /// wrapper (the node's `confirm`, when set) and then removes the banner
 /// from the tree. Missing content degrades to a visible placeholder.
+///
+/// T87: `glass: true` renders the upstream `alert-glass` treatment
+/// (index.css:344-374) — the backdrop blurred and saturated, the
+/// background fill at the glass opacity; the variant tint stays
+/// transparent until the `glassTint` prop lands (T89), matching the
+/// upstream default `--alert-glass-tint: transparent`.
 Widget buildBanner(BuildContext context, UiNode node, RenderContext ctx) =>
     _Banner(node: node, ctx: ctx);
 
@@ -42,36 +49,54 @@ class _BannerState extends State<_Banner> {
       if (widget != null) actions.add(widget);
     }
     final onDismiss = asMap(node.props['onDismiss']);
-    final tokens = JhinDesignScope.of(context).tokens;
-    return Material(
-      color: JhinDesignScope.materialOf(context).colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: insetAll(tokens.spacing.md),
-        child: Row(
-          children: [
-            Expanded(child: content ?? degradedBox(context, 'Missing content')),
-            ...actions,
-            if (onDismiss != null)
-              IconButton(
-                icon: const Icon(Icons.close),
-                tooltip: 'Dismiss',
-                visualDensity: VisualDensity.compact,
-                onPressed: () {
-                  final confirm = node.stringProp('confirm');
-                  if (confirm != null && confirm.isNotEmpty) {
-                    ctx.confirm(confirm, () {
-                      ctx.dispatch(onDismiss);
-                      if (mounted) setState(() => _visible = false);
-                    });
-                  } else {
+    final design = JhinDesignScope.of(context);
+    final tokens = design.tokens;
+    final brightness = Theme.brightnessOf(context);
+    final row = Padding(
+      padding: insetAll(tokens.spacing.md),
+      child: Row(
+        children: [
+          Expanded(child: content ?? degradedBox(context, 'Missing content')),
+          ...actions,
+          if (onDismiss != null)
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Dismiss',
+              visualDensity: VisualDensity.compact,
+              onPressed: () {
+                final confirm = node.stringProp('confirm');
+                if (confirm != null && confirm.isNotEmpty) {
+                  ctx.confirm(confirm, () {
                     ctx.dispatch(onDismiss);
-                    setState(() => _visible = false);
-                  }
-                },
-              ),
-          ],
-        ),
+                    if (mounted) setState(() => _visible = false);
+                  });
+                } else {
+                  ctx.dispatch(onDismiss);
+                  setState(() => _visible = false);
+                }
+              },
+            ),
+        ],
       ),
+    );
+    if (node.boolProp('glass') == true) {
+      return jhinGlassSurface(
+        context,
+        surface: tokens.surface,
+        fill: design.colorOf('background', brightness: brightness) ??
+            JhinDesignScope.materialOf(context).colorScheme.surface,
+        borderRadius: jhinSurfaceRadius(
+          tokens.surface,
+          'xl',
+          remPx: design.switches.fontSizes.sizeInterface.toDouble(),
+        ),
+        child: row,
+      );
+    }
+    return Material(
+      color: JhinDesignScope.materialOf(context)
+          .colorScheme.surfaceContainerHighest,
+      child: row,
     );
   }
 }

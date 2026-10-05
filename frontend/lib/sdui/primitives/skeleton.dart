@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../../design/theme.dart';
+import '../../design/tokens.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 
 /// `skeleton` (§2.6): `variant: text|circle|rect|list` (default `text`),
 /// `lines` (default 3), `width`, `height`, `shimmer` (default `true`).
 ///
-/// The shimmer animation runs on the JhinDesignScope motion tokens and
-/// collapses to a static placeholder when `shimmer` is off or
-/// `MediaQuery.disableAnimations` zeroes the motion (the §2.1 reduced-motion
-/// rule) — no ticker runs in that mode.
+/// T87: the animation is the upstream `skeleton` duty-cycle ported
+/// verbatim (index.css:283-299) — one opacity pulse per container on the
+/// stepped [JhinSkeletonCurve] (8 discrete updates per 2.4s cycle, the
+/// duration from the `motion.skeleton` token), replacing the moving
+/// gradient shimmer. The pulse collapses to a static placeholder when
+/// `shimmer` is off or the reduced-motion rule zeroes the motion (§2.1) —
+/// no ticker runs in that mode.
 Widget buildSkeleton(BuildContext context, UiNode node, RenderContext ctx) {
   return _Skeleton(node: node);
 }
@@ -50,13 +54,22 @@ class _SkeletonState extends State<_Skeleton>
 
   void _syncMotion() {
     final shimmer = widget.node.boolProp('shimmer') != false;
-    final motion = JhinDesignScope.of(context).tokens.motion;
-    final animated = shimmer && motion.normal > Duration.zero;
+    final design = JhinDesignScope.of(context);
+    final animated = shimmer &&
+        design.switches.skeletonEnabled &&
+        design.tokens.motion.normal > Duration.zero;
     if (animated) {
-      _controller ??= AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 1200),
-      )..repeat();
+      final duration = jhinDutyCycleDuration(
+        design.tokens.surface,
+        'skeleton',
+        fallback: kSkeletonCycle,
+      );
+      if (_controller == null) {
+        _controller = AnimationController(vsync: this, duration: duration)
+          ..repeat();
+      } else {
+        _controller!.duration = duration;
+      }
     } else {
       _controller?.dispose();
       _controller = null;
@@ -68,7 +81,6 @@ class _SkeletonState extends State<_Skeleton>
     final node = widget.node;
     final theme = JhinDesignScope.materialOf(context);
     final base = theme.colorScheme.surfaceContainerHighest;
-    final highlight = theme.colorScheme.surfaceContainerLow;
     final variant = node.stringProp('variant') ?? 'text';
     final width = node.numProp('width')?.toDouble();
     final height = node.numProp('height')?.toDouble();
@@ -92,7 +104,6 @@ class _SkeletonState extends State<_Skeleton>
             width: w,
             height: h,
             base: base,
-            highlight: highlight,
             circle: circle,
           );
 
@@ -152,21 +163,8 @@ class _SkeletonState extends State<_Skeleton>
     if (controller == null) return sized;
     return AnimatedBuilder(
       animation: controller,
-      builder: (context, child) => ShaderMask(
-        blendMode: BlendMode.srcATop,
-        shaderCallback: (rect) {
-          final value = controller.value;
-          return LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [base, highlight, base],
-            stops: [
-              (value - 0.3).clamp(0.0, 1.0),
-              value.clamp(0.0, 1.0),
-              (value + 0.3).clamp(0.0, 1.0),
-            ],
-          ).createShader(rect);
-        },
+      builder: (context, child) => Opacity(
+        opacity: const JhinSkeletonCurve().valueAt(controller.value),
         child: child,
       ),
       child: sized,
@@ -177,7 +175,6 @@ class _SkeletonState extends State<_Skeleton>
     required double width,
     required double height,
     required Color base,
-    required Color highlight,
     bool circle = false,
   }) {
     return Container(

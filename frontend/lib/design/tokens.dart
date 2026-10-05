@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -1344,4 +1345,603 @@ class JhinSwitches {
         sizePromptRaw,
         sizeCodeRaw,
       );
+}
+
+// ---------------------------------------------------------------------------
+// T87: glass, shadow, duty-cycled motion and safe-area token plumbing.
+// Every value below was verified against the upstream checkout (commit
+// 37de6cb), apps/web/src/index.css; the anchors are cited per definition.
+// ---------------------------------------------------------------------------
+
+/// The reserved id of the composer surface (T87): the container node the
+/// composer shadow and the bottom safe-area inset attach to (the server
+/// builds it in `ChatScreen.composer`; the client recognizes the id the
+/// same way the composer field recognizes `kComposerFieldId`).
+const String kComposerSurfaceId = 'composer';
+
+/// Parses a CSS time (`'2.4s'`, `'200ms'`, or a bare millisecond number)
+/// into a [Duration]; null when malformed (§2.4 degrade).
+Duration? parseCssDuration(Object? raw) {
+  if (raw is num) return raw < 0 ? null : Duration(milliseconds: raw.round());
+  if (raw is! String) return null;
+  final match =
+      RegExp(r'^\s*([0-9.]+)(ms|s)\s*$').firstMatch(raw.trim());
+  if (match == null) return null;
+  final value = double.tryParse(match.group(1)!);
+  if (value == null || value < 0) return null;
+  final micros = value * (match.group(2) == 's' ? 1000000 : 1000);
+  return Duration(microseconds: micros.round());
+}
+
+/// Parses one CSS length (`12px`, `0.625rem` × [remPx], or the §4.3 radius
+/// form `calc(0.625rem + 4px)`); null when malformed (§2.4 degrade).
+double? parseCssLength(Object? raw, {double remPx = 16}) {
+  if (raw is num) return raw.toDouble();
+  if (raw is! String) return null;
+  final text = raw.trim();
+  final calc = RegExp(r'^calc\((.+)\)$').firstMatch(text);
+  if (calc != null) {
+    final parts = calc.group(1)!.trim().split(RegExp(r'\s+'));
+    if (parts.length != 3 || (parts[1] != '+' && parts[1] != '-')) return null;
+    final a = _singleCssLength(parts[0], remPx);
+    final b = _singleCssLength(parts[2], remPx);
+    if (a == null || b == null) return null;
+    return parts[1] == '+' ? a + b : a - b;
+  }
+  return _singleCssLength(text, remPx);
+}
+
+double? _singleCssLength(String text, double remPx) {
+  final match = RegExp(r'^\s*(-?[0-9.]+)(px|rem)?\s*$').firstMatch(text);
+  if (match == null) return null;
+  final value = double.tryParse(match.group(1)!);
+  if (value == null) return null;
+  return match.group(2) == 'rem' ? value * remPx : value;
+}
+
+/// Parses a CSS color in the space syntax the token surface uses
+/// (`rgb(0 0 0 / 40%)`, `rgb(217 217 217)`, alpha as `%` or a fraction) or
+/// a `#rrggbb`/`#aarrggbb` hex; null when malformed (§2.4 degrade).
+Color? parseCssColor(String raw) {
+  final text = raw.trim();
+  final fn = RegExp(r'^rgba?\(([^)]*)\)$').firstMatch(text);
+  if (fn != null) {
+    final parts = fn
+        .group(1)!
+        .split(RegExp(r'[\s/,]+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
+    if (parts.length != 3 && parts.length != 4) return null;
+    double? channel(String item) {
+      if (item.endsWith('%')) {
+        final pct = double.tryParse(item.substring(0, item.length - 1));
+        return pct == null ? null : (pct / 100 * 255).roundToDouble();
+      }
+      return double.tryParse(item);
+    }
+
+    final red = channel(parts[0]);
+    final green = channel(parts[1]);
+    final blue = channel(parts[2]);
+    if (red == null || green == null || blue == null) return null;
+    var alpha = 1.0;
+    if (parts.length == 4) {
+      alpha = parts[3].endsWith('%')
+          ? (double.tryParse(parts[3].substring(0, parts[3].length - 1)) ?? 0) /
+              100
+          : (double.tryParse(parts[3]) ?? 0);
+    }
+    return Color.fromRGBO(
+      red.round().clamp(0, 255),
+      green.round().clamp(0, 255),
+      blue.round().clamp(0, 255),
+      alpha.clamp(0.0, 1.0),
+    );
+  }
+  if (text.startsWith('#')) {
+    var hex = text.substring(1);
+    if (hex.length == 6) hex = 'FF$hex';
+    if (hex.length == 8) {
+      final parsed = int.tryParse(hex, radix: 16);
+      if (parsed != null) return Color(parsed);
+    }
+  }
+  return null;
+}
+
+/// Parses a CSS box-shadow (`0 12px 28px -18px rgb(0 0 0 / 40%)`) into a
+/// [BoxShadow]; null when malformed (§2.4 degrade). Only the outer-shadow
+/// form the token surface carries is parsed — the inset control shades go
+/// through [parseCssInsetShadow].
+BoxShadow? parseCssBoxShadow(String raw) {
+  final text = raw.trim();
+  final colorStart = text.indexOf(RegExp(r'rgb\(|#'));
+  if (colorStart <= 0) return null;
+  final color = parseCssColor(text.substring(colorStart));
+  if (color == null) return null;
+  final lengths = text
+      .substring(0, colorStart)
+      .trim()
+      .split(RegExp(r'\s+'))
+      .map((item) => _singleCssLength(item, 16))
+      .toList();
+  if (lengths.length < 2 || lengths.take(2).any((item) => item == null)) {
+    return null;
+  }
+  double at(int index) =>
+      index < lengths.length ? lengths[index] ?? 0 : 0.0;
+  return BoxShadow(
+    color: color,
+    offset: Offset(lengths[0]!, lengths[1]!),
+    blurRadius: at(2),
+    spreadRadius: at(3),
+  );
+}
+
+/// One inset control shade (index.css:188-189): CSS paints it inside the
+/// top edge; Flutter has no inset box-shadow, so the port is the 1px top
+/// line the button press states paint ([JhinInsetShadow]).
+JhinInsetShadow? parseCssInsetShadow(String raw) {
+  final shadow = parseCssBoxShadow(raw);
+  if (shadow == null) return null;
+  return JhinInsetShadow(
+    color: shadow.color,
+    offset: shadow.offset.dy,
+  );
+}
+
+/// Parses a `cubic-bezier(x1, y1, x2, y2)` string into a [Cubic]; null when
+/// malformed (§2.4 degrade).
+Cubic? parseCubicBezier(String raw) {
+  final match = RegExp(r'^cubic-bezier\(([^)]*)\)$').firstMatch(raw.trim());
+  if (match == null) return null;
+  final parts = match
+      .group(1)!
+      .split(',')
+      .map((part) => double.tryParse(part.trim()))
+      .toList();
+  if (parts.length != 4 || parts.any((part) => part == null)) return null;
+  return Cubic(parts[0]!, parts[1]!, parts[2]!, parts[3]!);
+}
+
+/// The `--ease-drawer` curve (index.css:190) — the standard page/dialog
+/// transition curve (T87). Parsed from the `motion.easeDrawer` token;
+/// malformed keeps the upstream constant.
+Curve jhinEaseDrawerCurve(JhinTokenSurface surface) {
+  final raw = surface.value('motion', 'easeDrawer');
+  if (raw is String) {
+    return parseCubicBezier(raw) ?? const Cubic(0.32, 0.72, 0.0, 1.0);
+  }
+  return const Cubic(0.32, 0.72, 0.0, 1.0);
+}
+
+/// The upstream duty-cycle constants (index.css:216-220): skeleton 2.4s,
+/// status-pulse 2s, status-ping 2s.
+const Duration kSkeletonCycle = Duration(milliseconds: 2400);
+const Duration kStatusPulseCycle = Duration(milliseconds: 2000);
+const Duration kStatusPingCycle = Duration(milliseconds: 2000);
+
+/// One duty-cycle duration (`skeleton` | `statusPulse` | `statusPing`)
+/// parsed from the `motion` family; malformed keeps the upstream constant.
+Duration jhinDutyCycleDuration(
+  JhinTokenSurface surface,
+  String key, {
+  required Duration fallback,
+}) {
+  final raw = surface.value('motion', key);
+  return parseCssDuration(raw) ?? fallback;
+}
+
+/// One duty-cycle waveform: the stepped keyframe body of an upstream CSS
+/// animation, sampled by cycle progress. Not a [Curve] — the Curve
+/// contract pins t=0→0 and t=1→1 (curves.dart:84-97), which the keyframe
+/// bodies violate (they start and end at opacity 1); the
+/// [AnimationController] drives the cycle and the widget maps its value
+/// through [valueAt].
+abstract interface class JhinDutyCycle {
+  /// The animated value at the cycle progress [t] (0–1).
+  double valueAt(double t);
+}
+
+/// The `skeleton` duty-cycle waveform (index.css:283-299) ported verbatim:
+/// stops at 0/42/50/92/100% with opacity 1, 1, 0.55, 0.55, 1 and steps(4)
+/// on every segment — 8 discrete opacity updates per 2.4s cycle (the
+/// upstream comment's "~14 updates instead of ~288 at 120Hz" is prose, not
+/// a normative count; the measured count is asserted in motion_test).
+class JhinSkeletonCurve implements JhinDutyCycle {
+  const JhinSkeletonCurve();
+
+  static const List<double> _stops = [0.0, 0.42, 0.50, 0.92, 1.0];
+  static const List<double> _values = [1.0, 1.0, 0.55, 0.55, 1.0];
+
+  @override
+  double valueAt(double t) => _steppedKeyframes(t, _stops, _values, 4);
+}
+
+/// The `status-pulse` duty-cycle waveform (index.css:302-315) ported
+/// verbatim: stops at 0/40/50/90/100% with opacity 1, 1, 0.5, 0.5, 1 and
+/// steps(6) on every segment — 12 discrete updates per 2s cycle.
+class JhinStatusPulseCurve implements JhinDutyCycle {
+  const JhinStatusPulseCurve();
+
+  static const List<double> _stops = [0.0, 0.40, 0.50, 0.90, 1.0];
+  static const List<double> _values = [1.0, 1.0, 0.5, 0.5, 1.0];
+
+  @override
+  double valueAt(double t) => _steppedKeyframes(t, _stops, _values, 6);
+}
+
+/// The `status-ping` duty-cycle waveform (index.css:317-327) ported
+/// verbatim: the burst progress runs 0→1 with steps(8) over the first 40%
+/// of the cycle (opacity 0.9→0, scale 0.75→2) and holds invisible for the
+/// rest. Upstream declares steps(8) here — the plan's "steps(6)" wording is
+/// a discrepancy recorded in the T87 evidence; the checkout is
+/// authoritative.
+class JhinStatusPingCurve implements JhinDutyCycle {
+  const JhinStatusPingCurve();
+
+  @override
+  double valueAt(double t) {
+    if (t >= 0.4) return 1.0;
+    final p = (t / 0.4).clamp(0.0, 1.0);
+    return (p * 8).floor() / 8;
+  }
+
+  /// The ping opacity at the burst progress: 0.9 → 0.
+  static double opacityAt(double progress) => 0.9 * (1 - progress);
+
+  /// The ping scale at the burst progress: 0.75 → 2.
+  static double scaleAt(double progress) => 0.75 + 1.25 * progress;
+}
+
+/// One segment of a CSS stepped keyframe animation: the piecewise
+/// interpolation over [stops]/[values] with `steps([steps])` timing on
+/// every segment (the upstream keyframes declare the same timing function
+/// per stop).
+double _steppedKeyframes(
+  double t,
+  List<double> stops,
+  List<double> values,
+  int steps,
+) {
+  if (t <= 0) return values.first;
+  if (t >= 1) return values.last;
+  for (var i = 0; i < stops.length - 1; i++) {
+    if (t < stops[i + 1]) {
+      final span = stops[i + 1] - stops[i];
+      final p = span <= 0 ? 1.0 : (t - stops[i]) / span;
+      final stepped = (p * steps).floor() / steps;
+      return values[i] + (values[i + 1] - values[i]) * stepped;
+    }
+  }
+  return values.last;
+}
+
+/// The safe-area utilities (index.css:1031-1042, `pt-safe`/`pb-safe`/
+/// `pl-safe`/`pr-safe`): `max(env(safe-area-inset-*), 0px)` as
+/// [EdgeInsets] from [MediaQuery.padding]. The shell consumes the full set
+/// in T96; the composer surface applies the bottom inset now (T87).
+EdgeInsets jhinSafeAreaPadding(
+  BuildContext context, {
+  bool top = false,
+  bool bottom = false,
+  bool left = false,
+  bool right = false,
+}) {
+  final padding = MediaQuery.paddingOf(context);
+  double side(double value) => value.isFinite && value > 0 ? value : 0;
+  return EdgeInsets.only(
+    top: top ? side(padding.top) : 0,
+    right: right ? side(padding.right) : 0,
+    bottom: bottom ? side(padding.bottom) : 0,
+    left: left ? side(padding.left) : 0,
+  );
+}
+
+/// Collapses a `{light, dark}` variant map the way `JhinTheme.resolve`
+/// does — the token-layer local copy so the T87 helpers need no theme
+/// import (the theme layer imports this one).
+Object? _collapseVariant(Object? value, bool dark) {
+  if (value is Map) {
+    final map = Map<String, Object?>.from(value);
+    if (map.containsKey('light') && map.containsKey('dark')) {
+      return dark ? map['dark'] : map['light'];
+    }
+  }
+  return value;
+}
+
+/// The resolved glass recipe (§4.3 `glass`; index.css:116-118 light,
+/// :146-147 dark): the backdrop blur (12/16px), the fill opacity (80%)
+/// and the backdrop saturation (1.14/1.08).
+class JhinGlass {
+  const JhinGlass({
+    required this.blur,
+    required this.opacity,
+    required this.saturation,
+  });
+
+  /// The backdrop blur radius (px).
+  final double blur;
+
+  /// The fill opacity (0–1; the `80%` token).
+  final double opacity;
+
+  /// The backdrop saturation multiplier.
+  final double saturation;
+
+  /// Whether the current platform composites [BackdropFilter] layers.
+  /// Flutter composites them on every shipped target today; the web
+  /// target's cost is UNVERIFIED (§15.4) — goldens run on the VM target
+  /// and record it. Tests force the degradation through
+  /// [debugBackdropSupport].
+  static bool? debugBackdropSupport;
+
+  static bool get supported => debugBackdropSupport ?? true;
+
+  /// Resolves the recipe for one brightness; malformed token values keep
+  /// the upstream constants (§2.4 degrade).
+  factory JhinGlass.of(JhinTokenSurface surface, Brightness brightness) {
+    final dark = brightness == Brightness.dark;
+    final fallback = JhinGlass(
+      blur: dark ? 16 : 12,
+      opacity: 0.8,
+      saturation: dark ? 1.08 : 1.14,
+    );
+    final rawBlur = _collapseVariant(surface.value('glass', 'blur'), dark);
+    final rawOpacity = surface.value('glass', 'opacity');
+    final rawSaturation =
+        _collapseVariant(surface.value('glass', 'saturation'), dark);
+    return JhinGlass(
+      blur: rawBlur is num && rawBlur > 0 ? rawBlur.toDouble() : fallback.blur,
+      opacity: _opacity(rawOpacity) ?? fallback.opacity,
+      saturation: rawSaturation is num && rawSaturation > 0
+          ? rawSaturation.toDouble()
+          : fallback.saturation,
+    );
+  }
+
+  /// `'80%'` → 0.8; a fraction ≤ 1 passes through, a bare number > 1 reads
+  /// as a percentage.
+  static double? _opacity(Object? raw) {
+    if (raw is num) {
+      final value = raw.toDouble();
+      return value > 1 ? value / 100 : value;
+    }
+    if (raw is String) {
+      final text = raw.trim();
+      final pct = text.endsWith('%')
+          ? double.tryParse(text.substring(0, text.length - 1))
+          : double.tryParse(text);
+      if (pct == null) return null;
+      return pct > 1 ? pct / 100 : pct;
+    }
+    return null;
+  }
+}
+
+/// The CSS `saturate(s)` filter matrix (SVG feColorMatrix type="saturate")
+/// as a [ColorFilter] — the `saturate(var(--glass-saturation))` half of the
+/// upstream backdrop recipe.
+ColorFilter jhinSaturationFilter(double saturation) {
+  final s = saturation.clamp(0.0, 10.0);
+  final inv = 1 - s;
+  const lr = 0.213;
+  const lg = 0.715;
+  const lb = 0.072;
+  return ColorFilter.matrix(<double>[
+    lr + s * (1 - lr), lg * inv, lb * inv, 0, 0,
+    lr * inv, lg + s * (1 - lg), lb * inv, 0, 0,
+    lr * inv, lg * inv, lb + s * (1 - lb), 0, 0,
+    0, 0, 0, 1, 0,
+  ]);
+}
+
+/// The glass surface wrapper (T87): the upstream `backdrop-filter:
+/// blur(…) saturate(…)` recipe (index.css:336-337) as a [BackdropFilter]
+/// (blur first, then the saturation matrix — `ImageFilter.compose` applies
+/// `inner` first), the fill faded to the glass opacity on top, and the
+/// upstream `@supports not (backdrop-filter: …)` degradation to the solid
+/// fill (index.css:339-341).
+Widget jhinGlassSurface(
+  BuildContext context, {
+  required JhinTokenSurface surface,
+  required Widget child,
+  required Color fill,
+  BorderRadius? borderRadius,
+  Border? border,
+  List<BoxShadow> shadows = const [],
+  Color? insetTop,
+}) {
+  final glass = JhinGlass.of(surface, Theme.brightnessOf(context));
+  final faded = fill.withValues(
+      alpha: (fill.a * glass.opacity).clamp(0.0, 1.0));
+  if (!JhinGlass.supported) {
+    // Degradation: the solid fill wins (index.css:339-341); the border and
+    // radius stay, the backdrop treatment and the inset line drop.
+    return Container(
+      decoration: BoxDecoration(
+        color: fill,
+        border: border,
+        borderRadius: borderRadius,
+      ),
+      child: child,
+    );
+  }
+  Widget panel = Container(
+    decoration: BoxDecoration(
+      color: faded,
+      border: border,
+      borderRadius: borderRadius,
+    ),
+    child: child,
+  );
+  if (insetTop != null) {
+    panel = Stack(children: [
+      panel,
+      Positioned(
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 1,
+        child: IgnorePointer(child: ColoredBox(color: insetTop)),
+      ),
+    ]);
+  }
+  return Container(
+    decoration: BoxDecoration(
+      borderRadius: borderRadius,
+      boxShadow: shadows.isEmpty ? null : shadows,
+    ),
+    child: ClipRRect(
+      borderRadius: borderRadius ?? BorderRadius.zero,
+      child: BackdropFilter(
+        filter: ImageFilter.compose(
+          outer: jhinSaturationFilter(glass.saturation),
+          inner: ImageFilter.blur(
+              sigmaX: glass.blur, sigmaY: glass.blur),
+        ),
+        child: panel,
+      ),
+    ),
+  );
+}
+
+/// A §4.3 radius key (`sm`…`xl3`) resolved to a [BorderRadius] against
+/// [remPx] (the interface font size, the rem base); null when the token is
+/// malformed.
+BorderRadius? jhinSurfaceRadius(
+  JhinTokenSurface surface,
+  String key, {
+  required double remPx,
+}) {
+  final px = parseCssLength(surface.value('radius', key), remPx: remPx);
+  return px == null ? null : BorderRadius.circular(px);
+}
+
+/// The `--shadow-composer` elevation (index.css:193-194) as a [BoxShadow];
+/// null when the token is malformed.
+BoxShadow? jhinComposerShadow(JhinTokenSurface surface, Brightness brightness) {
+  final raw = _collapseVariant(surface.value('shadow', 'composer'),
+      brightness == Brightness.dark);
+  return raw is String ? parseCssBoxShadow(raw) : null;
+}
+
+/// One inset control shade: the 1px top edge line the press states paint.
+class JhinInsetShadow {
+  const JhinInsetShadow({required this.color, required this.offset});
+
+  /// The line color.
+  final Color color;
+
+  /// The CSS inset offset (the line thickness in px).
+  final double offset;
+}
+
+/// The `--inset-shadow-control-highlight` rest state (index.css:188).
+JhinInsetShadow? jhinControlHighlight(JhinTokenSurface surface) {
+  final raw = surface.value('shadow', 'controlHighlight');
+  return raw is String ? parseCssInsetShadow(raw) : null;
+}
+
+/// The `--inset-shadow-control-pressed` press state (index.css:189).
+JhinInsetShadow? jhinControlPressed(JhinTokenSurface surface) {
+  final raw = surface.value('shadow', 'controlPressed');
+  return raw is String ? parseCssInsetShadow(raw) : null;
+}
+
+/// The dialog-glass recipe (index.css:376-399): the translucent fill, the
+/// contrast border, the outer shadows and the dark inset top line (the CSS
+/// `inset 0 1px` half of the dark shadow, ported as the top line).
+class JhinDialogGlassRecipe {
+  const JhinDialogGlassRecipe({
+    required this.fill,
+    required this.borderColor,
+    required this.shadows,
+    this.insetTop,
+  });
+
+  /// The panel fill (the background at the glass opacity).
+  final Color fill;
+
+  /// The border color (the contrast foreground at 10%).
+  final Color borderColor;
+
+  /// The outer shadows (`0 24px 64px -24px rgb(0 0 0 / 65%)` light,
+  /// `0 24px 72px -20px rgb(0 0 0 / 90%)` dark).
+  final List<BoxShadow> shadows;
+
+  /// The dark inset top line (`inset 0 1px rgb(255 255 255 / 4%)`).
+  final Color? insetTop;
+
+  /// The dialog-backdrop scrim (index.css:391-398): the background at 60%
+  /// (64% dark) behind a 4px blur.
+  static Color backdropFill(
+    JhinTokenSurface surface,
+    Brightness brightness, {
+    required Color background,
+  }) {
+    return background.withValues(
+        alpha: background.a * (brightness == Brightness.dark ? 0.64 : 0.60));
+  }
+
+  /// The dialog-backdrop blur (index.css:393-394).
+  static const double backdropBlur = 4;
+
+  /// Resolves the recipe for one brightness over the theme's background and
+  /// contrast foreground.
+  factory JhinDialogGlassRecipe.of(
+    JhinTokenSurface surface,
+    Brightness brightness, {
+    required Color background,
+    required Color foreground,
+  }) {
+    final dark = brightness == Brightness.dark;
+    final glass = JhinGlass.of(surface, brightness);
+    return JhinDialogGlassRecipe(
+      fill: background.withValues(
+          alpha: (background.a * glass.opacity).clamp(0.0, 1.0)),
+      borderColor:
+          foreground.withValues(alpha: foreground.a * 0.10),
+      shadows: [
+        BoxShadow(
+          color: const Color(0xFF000000).withValues(alpha: dark ? 0.90 : 0.65),
+          offset: const Offset(0, 24),
+          blurRadius: dark ? 72 : 64,
+          spreadRadius: dark ? -20 : -24,
+        ),
+      ],
+      insetTop: dark
+          ? const Color(0xFFFFFFFF).withValues(alpha: 0.04)
+          : null,
+    );
+  }
+}
+
+/// The dropdown-glass recipe (index.css:405-419): the popover fill mixed
+/// `color-mix(in srgb, popover 18%, popover at the glass opacity)` and the
+/// contrast border at 10%.
+class JhinMenuGlassRecipe {
+  const JhinMenuGlassRecipe({required this.fill, required this.borderColor});
+
+  /// The menu fill.
+  final Color fill;
+
+  /// The border color.
+  final Color borderColor;
+
+  factory JhinMenuGlassRecipe.of(
+    JhinTokenSurface surface,
+    Brightness brightness, {
+    required Color popover,
+    required Color foreground,
+  }) {
+    final glass = JhinGlass.of(surface, brightness);
+    final faded = popover.withValues(
+        alpha: (popover.a * glass.opacity).clamp(0.0, 1.0));
+    return JhinMenuGlassRecipe(
+      fill: jhinMixSrgb(popover, faded, 0.82),
+      borderColor: foreground.withValues(alpha: foreground.a * 0.10),
+    );
+  }
 }

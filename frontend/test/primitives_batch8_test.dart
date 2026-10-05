@@ -325,7 +325,7 @@ void main() {
       expect(_bones(tester), findsNWidgets(3));
     });
 
-    testWidgets('disableAnimations collapses the shimmer to static',
+    testWidgets('disableAnimations collapses the pulse to static',
         (tester) async {
       await _pumpNode(tester, {
         'type': 'skeleton',
@@ -334,16 +334,21 @@ void main() {
       }, disableAnimations: true);
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.byType(ShaderMask), findsNothing);
+      // The T87 duty-cycle pulse rides an Opacity; no ticker under reduced
+      // motion, so no Opacity wrapper is mounted and nothing animates.
+      expect(find.byType(Opacity), findsNothing);
       expect(tester.binding.transientCallbackCount, 0);
     });
 
-    testWidgets('the shimmer runs when motion is allowed', (tester) async {
+    testWidgets('the duty-cycle pulse runs when motion is allowed',
+        (tester) async {
       await _pumpNode(tester, {
         'type': 'skeleton',
         'variant': 'rect',
       });
-      expect(find.byType(ShaderMask), findsOneWidget);
+      // The stepped opacity pulse (T87): the Opacity wrapper over the bones
+      // driven by the repeating AnimationController.
+      expect(find.byType(Opacity), findsOneWidget);
       expect(tester.binding.transientCallbackCount, greaterThan(0));
     });
   });

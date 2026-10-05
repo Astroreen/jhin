@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart' hide ActionDispatcher;
 
@@ -11,6 +12,7 @@ import '../core/api/jhin_transport.dart';
 import '../core/auth/app_storage.dart';
 import '../core/tls/tls_trust.dart';
 import '../design/theme.dart';
+import '../design/tokens.dart';
 import 'action_dispatcher.dart';
 import 'directives.dart';
 import 'keyboard/keymap.dart';
@@ -114,6 +116,7 @@ class SduiRuntime extends ChangeNotifier
   Map<String, dynamic>? _fallbacks;
   Widget Function(BuildContext)? _dialogBuilder;
   bool _dialogAtBottom = false;
+  bool _dialogGlass = false;
   String? _toastText;
   String? _toastStyle;
   Timer? _toastTimer;
@@ -147,50 +150,133 @@ class SduiRuntime extends ChangeNotifier
   // -------------------------------------------------------------------------
 
   Widget _buildRoot(BuildContext context) {
-    final children = <Widget>[
-      Positioned.fill(child: _buildTop(context)),
-    ];
+    final children = <Widget>[Positioned.fill(child: _buildTop(context))];
     final dialog = _dialogBuilder;
     if (dialog != null) {
-      children.add(Positioned.fill(
-        child: Stack(
-          children: [
-            ModalBarrier(
-                dismissible: true,
-                color: Colors.black45,
-                onDismiss: () => unawaited(dismissDialog())),
-            if (_dialogAtBottom)
-              Align(alignment: Alignment.bottomCenter, child: dialog(context))
-            else
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: dialog(context),
+      final glassBackdrop = _dialogGlass && JhinGlass.supported;
+      children.add(
+        Positioned.fill(
+          child: Stack(
+            children: [
+              if (glassBackdrop)
+                Positioned.fill(child: _dialogBackdropScrim(context))
+              else
+                Positioned.fill(
+                  child: ModalBarrier(
+                    dismissible: true,
+                    color: Colors.black45,
+                    onDismiss: () => unawaited(dismissDialog()),
+                  ),
                 ),
-              ),
-          ],
+              if (glassBackdrop)
+                Positioned.fill(
+                  child: ModalBarrier(
+                    dismissible: true,
+                    onDismiss: () => unawaited(dismissDialog()),
+                  ),
+                ),
+              if (_dialogAtBottom)
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _dialogTransition(
+                    context,
+                    dialog(context),
+                    slide: true,
+                  ),
+                )
+              else
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: _dialogTransition(context, dialog(context)),
+                  ),
+                ),
+            ],
+          ),
         ),
-      ));
+      );
     }
     final toast = _toastText;
     if (toast != null) {
       final tokens = JhinDesignScope.of(context).tokens;
-      children.add(Positioned(
-        left: 16,
-        right: 16,
-        bottom: 16,
-        child: Material(
-          elevation: 4,
-          borderRadius: BorderRadius.circular(8),
-          color: _toastColor(context, _toastStyle),
-          child: Padding(
-            padding: EdgeInsets.all(tokens.spacing.md),
-            child: Text(toast, style: const TextStyle(color: Colors.white)),
+      children.add(
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: 16,
+          child: Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(8),
+            color: _toastColor(context, _toastStyle),
+            child: Padding(
+              padding: EdgeInsets.all(tokens.spacing.md),
+              child: Text(toast, style: const TextStyle(color: Colors.white)),
+            ),
           ),
         ),
-      ));
+      );
     }
     return Stack(children: children);
+  }
+
+  /// The `dialog-backdrop` scrim (T87, index.css:391-398): the background
+  /// at 60% (64% dark) behind a 4px blur, shown behind a glass dialog
+  /// instead of the plain black45 barrier.
+  Widget _dialogBackdropScrim(BuildContext context) {
+    final design = JhinDesignScope.of(context);
+    final brightness = Theme.brightnessOf(context);
+    final background =
+        design.colorOf('background', brightness: brightness) ??
+        JhinDesignScope.materialOf(context).colorScheme.surface;
+    return BackdropFilter(
+      filter: ImageFilter.blur(
+        sigmaX: JhinDialogGlassRecipe.backdropBlur,
+        sigmaY: JhinDialogGlassRecipe.backdropBlur,
+      ),
+      child: ColoredBox(
+        color: JhinDialogGlassRecipe.backdropFill(
+          design.tokens.surface,
+          brightness,
+          background: background,
+        ),
+      ),
+    );
+  }
+
+  /// The standard dialog transition (T87): `--ease-drawer`
+  /// (index.css:190) over `motion.normal`, a fade with a 0.95→1 scale for
+  /// the centered presentation (the upstream `starting:scale-95
+  /// starting:opacity-0` pattern, ChatComposer.tsx:397) and a 16px
+  /// translate-up for the sheet presentation (dialog-styles.ts:14
+  /// `data-starting-style:translate-y-4`). Reduced motion collapses it.
+  Widget _dialogTransition(
+    BuildContext context,
+    Widget child, {
+    bool slide = false,
+  }) {
+    final design = JhinDesignScope.of(context);
+    final duration = design.switches.reducedMotion
+        ? Duration.zero
+        : design.tokens.motion.normal;
+    if (duration <= Duration.zero) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: duration,
+      curve: jhinEaseDrawerCurve(design.tokens.surface),
+      builder: (context, value, inner) {
+        final offset = slide ? Offset(0, 16 * (1 - value)) : Offset.zero;
+        return Opacity(
+          opacity: value.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: offset,
+            child: slide
+                ? inner
+                : Transform.scale(scale: 0.95 + 0.05 * value, child: inner),
+          ),
+        );
+      },
+      child: child,
+    );
   }
 
   Widget _buildTop(BuildContext context) {
@@ -574,13 +660,18 @@ class SduiRuntime extends ChangeNotifier
   Future<void> dialog(Map<String, dynamic> node, {String? kind}) async {
     final entry = _stack.isEmpty ? _standalone : _stack.last;
     final ctx = _contextFor(entry);
+    // The node arrives in the flat wire shape ({type, ...props}); accept a
+    // nested props map too.
+    final props = node['props'];
+    _dialogGlass =
+        node['glass'] == true || (props is Map && props['glass'] == true);
     switch (kind) {
       case 'sheet':
         _dialogAtBottom = true;
         _dialogBuilder = (context) => buildSheetChrome(
-              context,
-              ctx.build(context, UiNode.fromJson(node)),
-            );
+          context,
+          ctx.build(context, UiNode.fromJson(node)),
+        );
       case null:
         _dialogAtBottom = false;
         _dialogBuilder = (context) {
@@ -610,6 +701,7 @@ class SduiRuntime extends ChangeNotifier
   Future<void> dismissDialog() async {
     _dialogBuilder = null;
     _dialogAtBottom = false;
+    _dialogGlass = false;
     notifyListeners();
   }
 

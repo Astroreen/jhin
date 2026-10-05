@@ -1,0 +1,5 @@
+ok: goldens produced on the flutter_test VM target (Flutter 3.47.0 • channel stable • https://github.com/flutter/flutter.git)
+ok: Flutter design suites green (147 tests; transcript in flutter-design.txt)
+ok: Flutter sdui suites green: the purity gate stays clean (flutter-sdui.txt)
+ok: goldens: 6 frames written (dialog glass light/dark, solid degradation, composer shadow, safe-area, skeleton stepped mid-frame); glass differs from solid (goldens/)
+ok: golden verification pass byte-identical (flutter-goldens-verify.txt)

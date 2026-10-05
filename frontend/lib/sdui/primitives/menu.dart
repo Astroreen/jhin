@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../design/theme.dart';
+import '../../design/tokens.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
+import 'sheet.dart' show buildSheetChrome;
 
 /// `menu` (§2.6): `trigger` (node), `items` (item array), `breakpoint` (num,
 /// default 900).
@@ -21,6 +23,12 @@ import '../ui_registry.dart';
 /// itself is in the `_interactivePrimitives` set (its universal `action` is
 /// not wired to a tap; item actions are). With no items the trigger renders
 /// without a popup.
+///
+/// T87: `glass: true` applies the upstream `dropdown-glass` treatment
+/// (index.css:405-419). The sheet presentation carries the full recipe
+/// (backdrop blur + saturation, the mixed popover fill); the popup route
+/// cannot host a `BackdropFilter`, so it takes the recipe fill only — the
+/// documented route-popup degradation.
 Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
   final trigger = buildChildProp(context, ctx, node.props['trigger']);
   if (trigger == null) {
@@ -40,6 +48,7 @@ Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
 
   final breakpoint = node.numProp('breakpoint')?.toDouble() ?? 900;
   final enabled = node.boolProp('enabled') != false;
+  final glass = node.boolProp('glass') == true;
 
   void dispatchItem(Map<String, dynamic> item) {
     final action = asMap(item['action']);
@@ -77,8 +86,8 @@ Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
           : () {
               showModalBottomSheet<void>(
                 context: context,
-                builder: (sheetContext) => SafeArea(
-                  child: Column(
+                builder: (sheetContext) {
+                  final list = Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       for (var i = 0; i < items.length; i++)
@@ -95,8 +104,13 @@ Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
                             },
                           ),
                     ],
-                  ),
-                ),
+                  );
+                  return SafeArea(
+                    child: glass
+                        ? buildSheetChrome(sheetContext, list, glass: true)
+                        : list,
+                  );
+                },
               );
             },
       child: guarded,
@@ -104,10 +118,29 @@ Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
   }
   return PopupMenuButton<int>(
     enabled: enabled,
+    color: glass ? _menuGlassFill(context) : null,
     itemBuilder: popupEntries,
     onSelected: (index) => dispatchItem(items[index]),
     child: guarded,
   );
+}
+
+/// The dropdown-glass fill for the popup route (T87): the recipe fill only —
+/// a route popup cannot host a `BackdropFilter`, so the blur degrades to
+/// the translucent fill (the documented route-popup degradation).
+Color _menuGlassFill(BuildContext context) {
+  final design = JhinDesignScope.of(context);
+  final brightness = Theme.brightnessOf(context);
+  final scheme = JhinDesignScope.materialOf(context).colorScheme;
+  final recipe = JhinMenuGlassRecipe.of(
+    design.tokens.surface,
+    brightness,
+    popover: design.colorOf('popover', brightness: brightness) ??
+        scheme.surfaceContainerHighest,
+    foreground: design.colorOf('foreground', brightness: brightness) ??
+        scheme.onSurface,
+  );
+  return recipe.fill;
 }
 
 /// The optional leading icon of one menu item (null without an `icon` name).

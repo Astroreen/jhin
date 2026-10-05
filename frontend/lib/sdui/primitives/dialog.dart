@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
+import '../../design/tokens.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -14,6 +16,13 @@ import '../ui_registry.dart';
 /// content is a legal confirm shape. The `dialog` directive (§4) opens this
 /// shape modally; an unknown directive `kind` degrades to a `card` render of
 /// the content (§2.4).
+///
+/// T87: `glass: true` renders the upstream `dialog-glass` treatment
+/// (index.css:376-390) — the backdrop blurred and saturated, the
+/// background fill at the glass opacity, the contrast border at 10%, the
+/// outer dialog shadows and (dark) the inset top line — instead of the
+/// Material alert surface. The modal backdrop scrim (`dialog-backdrop`,
+/// index.css:391-398) rides the `dialog` directive presentation.
 Widget buildDialog(BuildContext context, UiNode node, RenderContext ctx) {
   final titleProp = node.props['title'];
   final Widget? title = titleProp == null
@@ -27,9 +36,74 @@ Widget buildDialog(BuildContext context, UiNode node, RenderContext ctx) {
     final widget = buildChildProp(context, ctx, raw);
     if (widget != null) actions.add(widget);
   }
+  if (node.boolProp('glass') == true) {
+    return _glassDialog(context, title, content, actions);
+  }
   return AlertDialog(
     title: title,
     content: content,
     actions: actions.isEmpty ? null : actions,
+  );
+}
+
+/// The dialog-glass panel: the [jhinGlassSurface] recipe of
+/// `JhinDialogGlassRecipe` over the AlertDialog slot column.
+Widget _glassDialog(
+  BuildContext context,
+  Widget? title,
+  Widget? content,
+  List<Widget> actions,
+) {
+  final design = JhinDesignScope.of(context);
+  final tokens = design.tokens;
+  final brightness = Theme.brightnessOf(context);
+  final scheme = JhinDesignScope.materialOf(context).colorScheme;
+  final recipe = JhinDialogGlassRecipe.of(
+    tokens.surface,
+    brightness,
+    background: design.colorOf('background', brightness: brightness) ??
+        scheme.surface,
+    foreground: design.colorOf('foreground', brightness: brightness) ??
+        scheme.onSurface,
+  );
+  return jhinGlassSurface(
+    context,
+    surface: tokens.surface,
+    fill: recipe.fill,
+    borderRadius: jhinSurfaceRadius(
+      tokens.surface,
+      'xl2',
+      remPx: design.switches.fontSizes.sizeInterface.toDouble(),
+    ),
+    border: Border.all(color: recipe.borderColor),
+    shadows: recipe.shadows,
+    insetTop: recipe.insetTop,
+    child: Padding(
+      padding: insetAll(tokens.spacing.lg),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (title != null)
+            Padding(
+              padding: EdgeInsets.only(bottom: tokens.spacing.sm),
+              child: title,
+            ),
+          ?content,
+          if (actions.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(top: tokens.spacing.sm),
+              child: Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: Wrap(
+                  alignment: WrapAlignment.end,
+                  spacing: tokens.spacing.sm,
+                  children: actions,
+                ),
+              ),
+            ),
+        ],
+      ),
+    ),
   );
 }

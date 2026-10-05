@@ -1,0 +1,10 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/design/t87_golden_test.dart
+00:00 +0: the glass dialog blurs the backdrop (light)
+00:00 +1: the glass dialog blurs the backdrop (dark)
+00:00 +2: without backdrop support the dialog degrades to the solid fill
+00:00 +3: the blur is visible: the glass and solid renders differ
+00:00 +4: the composer surface carries the composer shadow and the bottom safe-area inset
+00:00 +5: the safe-area helpers apply the four sides
+00:00 +6: the skeleton mid-animation frame is the stepped 0.55 dip
+00:00 +7: (tearDownAll)
+00:00 +7: All tests passed!

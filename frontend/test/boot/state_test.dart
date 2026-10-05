@@ -32,8 +32,8 @@ void main() {
 
       expect(find.text('Offline'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
-      // The skeleton bones shimmer while motion is allowed.
-      expect(find.byType(ShaderMask), findsWidgets);
+      // The skeleton bones run the stepped pulse while motion is allowed.
+      expect(find.byType(Opacity), findsWidgets);
     });
 
     testWidgets('the error art renders its card, skeleton and both buttons',
@@ -45,7 +45,7 @@ void main() {
       expect(find.text('Something went wrong'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
       expect(find.text('Change server'), findsOneWidget);
-      expect(find.byType(ShaderMask), findsWidgets);
+      expect(find.byType(Opacity), findsWidgets);
     });
 
     test('the compositions carry the card/skeleton/button node kinds', () {
@@ -138,7 +138,7 @@ void main() {
       // The fetch is gated: navigation returns while it is still in flight.
       unawaited(runtime.navigate('next'));
       await tester.pump();
-      expect(find.byType(ShaderMask), findsWidgets);
+      expect(find.byType(Opacity), findsWidgets);
       expect(find.byType(CircularProgressIndicator), findsNothing);
 
       gate.complete({'type': 'text', 'text': 'next-screen'});
@@ -170,14 +170,14 @@ void main() {
       unawaited(runtime.refresh());
       await tester.pump();
       expect(find.text('details-v1'), findsOneWidget);
-      expect(find.byType(ShaderMask), findsNothing);
+      expect(find.byType(Opacity), findsNothing);
 
       gate.complete({'type': 'text', 'text': 'details-v2'});
       await tester.pumpAndSettle();
       expect(find.text('details-v2'), findsOneWidget);
     });
 
-    testWidgets('the loading frame skeleton has no shimmer under '
+    testWidgets('the loading frame skeleton has no pulse under '
         'disableAnimations', (tester) async {
       await tester.pumpWidget(harnessHost(
         design,
@@ -186,7 +186,7 @@ void main() {
       ));
       await tester.pump();
       expect(tester.takeException(), isNull);
-      expect(find.byType(ShaderMask), findsNothing);
+      expect(find.byType(Opacity), findsNothing);
     });
   });
 
