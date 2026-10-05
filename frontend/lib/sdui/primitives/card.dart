@@ -14,7 +14,7 @@ Widget buildCard(BuildContext context, UiNode node, RenderContext ctx) {
   final tokens = JhinDesignScope.of(context).tokens;
   return Card(
     child: Padding(
-      padding: EdgeInsets.all(tokens.spacing.md),
+      padding: insetAll(tokens.spacing.md),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -13,12 +13,20 @@ import 'tokens.dart';
 /// light one); on-colors are picked by luminance; `colors{}` overrides win
 /// last, by token name. Invalid hex values degrade to the defaults
 /// (`#7E57C2` accent, `#16161e` canvas) — never throws.
+///
+/// T86: the theme also carries the runtime switches ([JhinSwitches], parsed
+/// from the client appearance prefs) and resolves the `contrast-*`
+/// indirection per brightness ([colorOf]): every contrast foreground is the
+/// two-stage `color-mix` of its source toward its surface and then toward
+/// the target — black in light, white in dark — with the boost percentages
+/// from the appearance contrast pref.
 class JhinTheme {
   JhinTheme({
     required this.light,
     required this.dark,
     required this.themeMode,
     required this.tokens,
+    this.switches = JhinSwitches.defaults,
   });
 
   /// Default accent when the payload has none (or an invalid one).
@@ -47,12 +55,14 @@ class JhinTheme {
     Map<String, dynamic>? tokens,
     Object? density,
     Map<String, dynamic>? motion,
+    Map<Object?, Object?>? prefs,
   }) {
     final accentColor = parseColor(accent) ?? defaultAccent;
     final canvasColor = parseColor(canvas) ?? defaultCanvas;
     final parsedDensity = JhinDensity.parse(density);
     final lattice = JhinTokens.fromOverrides(tokens,
         density: parsedDensity, motion: motion);
+    final switches = JhinSwitches.parse(prefs);
 
     final canvasIsDark = canvasColor.computeLuminance() < 0.5;
     final onCanvas = _readableOn(canvasColor);
@@ -88,17 +98,22 @@ class JhinTheme {
     };
 
     return JhinTheme(
-      light: _lightTheme(lightScheme, lattice, parsedDensity),
-      dark: _darkTheme(darkScheme, lattice, parsedDensity),
+      light: _lightTheme(lightScheme, lattice, parsedDensity, switches),
+      dark: _darkTheme(darkScheme, lattice, parsedDensity, switches),
       themeMode: _themeMode(appearance ?? mode),
       tokens: lattice.withColors(palette),
+      switches: switches,
     );
   }
 
   /// Builds the theme pair from a whole bootstrap payload (§1): reads
   /// `theme`, `tokens` and `density`; absent or malformed payload → the
-  /// built-in defaults.
-  factory JhinTheme.fromBootstrap(Map<String, dynamic>? payload) {
+  /// built-in defaults. [prefs] carries the client-side appearance switches
+  /// (T86) — the contrast pref, the data switches and the font prefs.
+  factory JhinTheme.fromBootstrap(
+    Map<String, dynamic>? payload, {
+    Map<Object?, Object?>? prefs,
+  }) {
     final map = payload ?? const {};
     final theme = map['theme'] is Map
         ? Map<String, dynamic>.from(map['theme'] as Map)
@@ -117,6 +132,7 @@ class JhinTheme {
       colors: colors,
       tokens: tokens,
       density: map['density'],
+      prefs: prefs,
     );
   }
 
@@ -132,6 +148,10 @@ class JhinTheme {
   /// The token lattice; `colors` carries the `$color.*` palette.
   final JhinTokens tokens;
 
+  /// The runtime switches (T86): contrast pref, chat width, diff colour
+  /// scheme, density, reduced motion and the font prefs.
+  final JhinSwitches switches;
+
   /// The fallback theme: built-in tokens, default accent/canvas, system
   /// appearance. Used when no bootstrap theme has arrived (or no scope is
   /// installed above the node).
@@ -144,7 +164,73 @@ class JhinTheme {
         dark: dark,
         themeMode: themeMode,
         tokens: tokens.withZeroMotion(),
+        switches: switches,
       );
+
+  /// The contrast-resolved `contrast-*` colors for the light brightness
+  /// (T86): the two-stage mixes of the `contrast` sub-map with the boost
+  /// percentages from the appearance pref.
+  late final Map<String, Color> contrastLight = _contrastFor(false);
+
+  /// The contrast-resolved `contrast-*` colors for the dark brightness.
+  late final Map<String, Color> contrastDark = _contrastFor(true);
+
+  Map<String, Color> _contrastFor(bool isDark) => resolveContrastColors(
+        palette: _basePalette(
+          isDark ? dark.colorScheme : light.colorScheme,
+          tokens.colors,
+        ),
+        dark: isDark,
+        contrast: switches.contrast,
+      );
+
+  /// The palette the contrast recipes resolve against: the theme palette
+  /// (`theme.colors`, the PaletteGen names) wins; the assembled scheme fills
+  /// the recipe inputs a bare theme leaves out.
+  static Map<String, Color> _basePalette(
+    ColorScheme scheme,
+    Map<String, Color> palette,
+  ) =>
+      {
+        'accent': scheme.primary,
+        'accent-foreground': scheme.onPrimary,
+        'background': scheme.surface,
+        'border': scheme.outline,
+        'card': scheme.surfaceContainerHighest,
+        'card-foreground': scheme.onSurface,
+        'foreground': scheme.onSurface,
+        'icon-muted': scheme.onSurfaceVariant,
+        'input': scheme.outlineVariant,
+        'message': scheme.surfaceContainer,
+        'message-foreground': scheme.onSurface,
+        'muted-foreground': scheme.onSurfaceVariant,
+        'placeholder': scheme.onSurfaceVariant,
+        'popover': scheme.surfaceContainerHighest,
+        'popover-foreground': scheme.onSurface,
+        'secondary': scheme.surfaceContainerHigh,
+        'secondary-foreground': scheme.onSurface,
+        'secondary-label': scheme.onSurfaceVariant,
+        'sidebar': scheme.surfaceContainerLow,
+        'sidebar-border': scheme.outline,
+        'sidebar-foreground': scheme.onSurface,
+        'sidebar-muted-foreground': scheme.onSurfaceVariant,
+        ...palette,
+      };
+
+  /// Resolves one token-surface `color` name against the active theme
+  /// (T86): a `var(--contrast-*)` reference reads the contrast-resolved map
+  /// for [brightness], any other `var(--*)` reference reads the palette,
+  /// and a bare palette name falls back to the palette itself. Unknown
+  /// names resolve to null — the caller keeps the literal (§2.4).
+  Color? colorOf(String name, {Brightness brightness = Brightness.light}) {
+    final raw = tokens.surface.value('color', name);
+    if (raw is String && raw.startsWith('var(--') && raw.endsWith(')')) {
+      final varName = raw.substring(6, raw.length - 1);
+      final contrast = brightness == Brightness.dark ? contrastDark : contrastLight;
+      return contrast[varName] ?? tokens.colors[varName];
+    }
+    return tokens.colors[name];
+  }
 
   /// Resolves one token-surface key against the active theme (§4.3): a
   /// `{light, dark}` variant map collapses to the [brightness] entry, a
@@ -152,9 +238,15 @@ class JhinTheme {
   /// concern), and everything else is the mirrored value — including the
   /// `text` `{size, lineHeight}` pairs, which are not theme-dependent.
   ///
-  /// Unknown families and keys resolve to null — never throws.
+  /// The `color` family resolves through [colorOf] (the contrast
+  /// indirection, T86). Unknown families and keys resolve to null — never
+  /// throws.
   Object? resolve(String family, String key,
       {Brightness brightness = Brightness.light}) {
+    if (family == 'color') {
+      return colorOf(key, brightness: brightness) ??
+          tokens.surface.value(family, key);
+    }
     final value = tokens.surface.value(family, key);
     if (value is Map) {
       final map = Map<String, Object?>.from(value);
@@ -250,39 +342,92 @@ class JhinTheme {
     ColorScheme scheme,
     JhinTokens tokens,
     JhinDensity density,
+    JhinSwitches switches,
   ) =>
-      ThemeData(
-        useMaterial3: true,
-        colorScheme: scheme,
-        visualDensity: density.visualDensity,
-        textTheme: _textTheme(tokens.typography, scheme.onSurface),
-        scaffoldBackgroundColor: scheme.surface,
-      );
+      _themeData(scheme, tokens, density, switches);
 
   static ThemeData _darkTheme(
     ColorScheme scheme,
     JhinTokens tokens,
     JhinDensity density,
+    JhinSwitches switches,
   ) =>
-      ThemeData(
-        useMaterial3: true,
-        colorScheme: scheme,
-        visualDensity: density.visualDensity,
-        textTheme: _textTheme(tokens.typography, scheme.onSurface),
-        scaffoldBackgroundColor: scheme.surface,
-      );
+      _themeData(scheme, tokens, density, switches);
+
+  /// The [ThemeData] assembled from the token layer (T86): the scheme from
+  /// the palette generation, the visual density from the §1 density, the
+  /// text theme from the typography seeds scaled by the interface font size
+  /// (the upstream root font-size scales every rem-based dimension,
+  /// appearanceFonts.ts:95-99) and the resolved sans stack as the default
+  /// family (the user pref prepended, appearanceFonts.ts:58-61).
+  static ThemeData _themeData(
+    ColorScheme scheme,
+    JhinTokens tokens,
+    JhinDensity density,
+    JhinSwitches switches,
+  ) {
+    final (family, fallback) = _familyParts(switches.fontFamilies.sans);
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      visualDensity: density.visualDensity,
+      fontFamily: family.isEmpty ? null : family,
+      fontFamilyFallback: fallback.isEmpty ? null : fallback,
+      textTheme: _textTheme(tokens.typography, scheme.onSurface, switches),
+      scaffoldBackgroundColor: scheme.surface,
+    );
+  }
+
+  /// Splits a CSS font-family stack into Flutter's `fontFamily` +
+  /// `fontFamilyFallback`: the first family leads, the rest back it up.
+  /// Quotes are stripped (Flutter matches family names unquoted) and empty
+  /// entries dropped.
+  static (String, List<String>) _familyParts(String stack) {
+    final parts = <String>[];
+    final buffer = StringBuffer();
+    var inQuote = false;
+    for (var i = 0; i < stack.length; i++) {
+      final ch = stack[i];
+      if (ch == '"' || ch == "'") {
+        inQuote = !inQuote;
+        continue;
+      }
+      if (ch == ',' && !inQuote) {
+        parts.add(buffer.toString().trim());
+        buffer.clear();
+        continue;
+      }
+      buffer.write(ch);
+    }
+    parts.add(buffer.toString().trim());
+    final clean = parts.where((part) => part.isNotEmpty).toList();
+    if (clean.isEmpty) return ('', const []);
+    return (clean.first, clean.sublist(1));
+  }
 
   /// The token typography seeds as the Material roles the primitives read:
   /// h1→headlineMedium, h2→headlineSmall, h3→titleLarge, body→bodyMedium,
-  /// small→bodySmall.
-  static TextTheme _textTheme(JhinTypography typography, Color onSurface) =>
-      TextTheme(
-        headlineMedium: typography.h1.copyWith(color: onSurface),
-        headlineSmall: typography.h2.copyWith(color: onSurface),
-        titleLarge: typography.h3.copyWith(color: onSurface),
-        bodyMedium: typography.body.copyWith(color: onSurface),
-        bodySmall: typography.small.copyWith(color: onSurface),
-      );
+  /// small→bodySmall. Every size scales by the interface font size over its
+  /// 16px base (the rem equivalent); at the default 16 the seeds stand
+  /// unchanged.
+  static TextTheme _textTheme(
+    JhinTypography typography,
+    Color onSurface,
+    JhinSwitches switches,
+  ) {
+    final scale = switches.fontSizes.sizeInterface / 16.0;
+    TextStyle role(TextStyle style) => style.copyWith(
+          fontSize: scale == 1.0 ? null : (style.fontSize ?? 14) * scale,
+          color: onSurface,
+        );
+    return TextTheme(
+      headlineMedium: role(typography.h1),
+      headlineSmall: role(typography.h2),
+      titleLarge: role(typography.h3),
+      bodyMedium: role(typography.body),
+      bodySmall: role(typography.small),
+    );
+  }
 }
 
 /// Installs the [JhinTheme] above the navigator content so every SDUI node
@@ -299,12 +444,16 @@ class JhinDesignScope extends InheritedWidget {
 
   /// The design in effect at [context]; the built-in fallback when no scope
   /// is installed (tests, bare harnesses). Never throws.
+  ///
+  /// Motion collapses to zero when the OS reduced-motion preference
+  /// (`MediaQuery.disableAnimations`, §1) OR the user's own reduced-motion
+  /// switch (T86) is on.
   static JhinTheme of(BuildContext context) {
     final scope =
         context.dependOnInheritedWidgetOfExactType<JhinDesignScope>();
     var design = scope?.design ?? JhinTheme.fallback();
     final media = MediaQuery.maybeOf(context);
-    if (media?.disableAnimations ?? false) {
+    if ((media?.disableAnimations ?? false) || design.switches.reducedMotion) {
       design = design.withZeroMotion();
     }
     return design;

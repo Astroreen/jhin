@@ -200,8 +200,12 @@ class _InputFieldState extends State<_InputField> {
             parseMouseCursor(node.stringProp('mouseCursor')) ?? MouseCursor.defer,
         textAlign: textAlignOf(node.stringProp('textAlign')),
         textDirection: textDirectionOf(node.stringProp('textDirection')),
-        scrollPadding:
-            parsePadding(node.props['scrollPadding']) ?? const EdgeInsets.all(20),
+        scrollPadding: parsePadding(node.props['scrollPadding']) ??
+            EdgeInsets.fromLTRB(
+                _scrollPaddingDefault,
+                _scrollPaddingDefault,
+                _scrollPaddingDefault,
+                _scrollPaddingDefault),
         restorationId: node.stringProp('restorationId'),
         smartDashesType: _smartDashes(node.boolProp('smartDashesType')),
         smartQuotesType: _smartQuotes(node.boolProp('smartQuotesType')),
@@ -367,7 +371,11 @@ ToolbarOptions? toolbarOptionsOf(Map<String, dynamic>? map) {
 /// The `border` spec (§2.6): `underline`/`outline`/`none` or a
 /// `{style?, width?, radius?, color?}` map. Unknown literals and malformed
 /// specs degrade to the underline default (§2.4).
-InputBorder inputBorderOf(Object? value) {
+/// The default `scrollPadding` of Flutter's [EditableText] (20 logical px),
+/// spelled out because the primitive sources carry no literal insets (T86).
+const double _scrollPaddingDefault = 20;
+
+InputBorder inputBorderOf(Object? value, {Color? fallback}) {
   var style = 'underline';
   double? width;
   double? radius;
@@ -397,14 +405,14 @@ InputBorder inputBorderOf(Object? value) {
             radius == null ? const BorderRadius.all(Radius.circular(4)) : BorderRadius.circular(radius),
         borderSide: BorderSide(
           width: width ?? 1.0,
-          color: color ?? const Color(0xFF000000),
+          color: color ?? fallback ?? Colors.transparent,
         ),
       );
     case 'underline':
       return UnderlineInputBorder(
         borderSide: BorderSide(
           width: width ?? 1.0,
-          color: color ?? const Color(0xFF000000),
+          color: color ?? fallback ?? Colors.transparent,
         ),
       );
   }
@@ -421,6 +429,10 @@ InputDecoration inputDecoration(
 ) {
   final map = asMap(node.props['decoration']) ?? const <String, dynamic>{};
   Object? prop(String key) => node.props[key] ?? map[key];
+  // The token-derived default border color (T86): the ambient scheme's
+  // on-surface, so a malformed `border.color` degrades to the theme instead
+  // of a literal.
+  final borderFallback = Theme.of(context).colorScheme.onSurface;
 
   Widget? iconOf(Object? value) {
     if (value == null) return null;
@@ -446,12 +458,12 @@ InputDecoration inputDecoration(
     hoverColor: parseColor(prop('hoverColor')),
     focusColor: parseColor(prop('focusColor')),
     floatingLabelBehavior: floatingLabelBehaviorOf(prop('floatingLabelBehavior') as String?),
-    border: _borderOrNull(prop('border')),
-    enabledBorder: _borderOrNull(prop('enabledBorder')),
-    focusedBorder: _borderOrNull(prop('focusedBorder')),
-    errorBorder: _borderOrNull(prop('errorBorder')),
-    focusedErrorBorder: _borderOrNull(prop('focusedErrorBorder')),
-    disabledBorder: _borderOrNull(prop('disabledBorder')),
+    border: _borderOrNull(prop('border'), borderFallback),
+    enabledBorder: _borderOrNull(prop('enabledBorder'), borderFallback),
+    focusedBorder: _borderOrNull(prop('focusedBorder'), borderFallback),
+    errorBorder: _borderOrNull(prop('errorBorder'), borderFallback),
+    focusedErrorBorder: _borderOrNull(prop('focusedErrorBorder'), borderFallback),
+    disabledBorder: _borderOrNull(prop('disabledBorder'), borderFallback),
     contentPadding: parsePadding(prop('contentPadding')),
     isDense: prop('isDense') as bool? ?? prop('dense') as bool?,
     isCollapsed: prop('isCollapsed') as bool?,
@@ -467,8 +479,8 @@ InputDecoration inputDecoration(
   );
 }
 
-InputBorder? _borderOrNull(Object? value) =>
-    value == null ? null : inputBorderOf(value);
+InputBorder? _borderOrNull(Object? value, Color fallback) =>
+    value == null ? null : inputBorderOf(value, fallback: fallback);
 
 BoxConstraints? _constraintsOf(Map<String, dynamic>? map) {
   if (map == null) return null;

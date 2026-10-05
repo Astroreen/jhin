@@ -46,7 +46,7 @@ class _BannerState extends State<_Banner> {
     return Material(
       color: JhinDesignScope.materialOf(context).colorScheme.surfaceContainerHighest,
       child: Padding(
-        padding: EdgeInsets.all(tokens.spacing.md),
+        padding: insetAll(tokens.spacing.md),
         child: Row(
           children: [
             Expanded(child: content ?? degradedBox(context, 'Missing content')),

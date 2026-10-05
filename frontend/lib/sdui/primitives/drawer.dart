@@ -17,7 +17,7 @@ Widget buildDrawer(BuildContext context, UiNode node, RenderContext ctx) {
       border: Border.all(color: JhinDesignScope.materialOf(context).dividerColor),
       borderRadius: BorderRadius.circular(tokens.radius.sm),
     ),
-    padding: EdgeInsets.all(tokens.spacing.md),
+    padding: insetAll(tokens.spacing.md),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,

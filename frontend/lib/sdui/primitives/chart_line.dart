@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../design/theme.dart';
+import '../../design/tokens.dart' show kChartAxisColor;
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -61,7 +62,7 @@ class LineChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final axis = Paint()
-      ..color = const Color(0xFF9E9E9E)
+      ..color = kChartAxisColor
       ..strokeWidth = 1;
     canvas.drawLine(Offset.zero, Offset(0, size.height), axis);
     canvas.drawLine(

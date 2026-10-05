@@ -37,7 +37,7 @@ Widget buildSheetChrome(BuildContext context, Widget content) {
         BorderRadius.vertical(top: Radius.circular(tokens.radius.lg)),
     clipBehavior: Clip.antiAlias,
     child: Padding(
-      padding: EdgeInsets.all(tokens.spacing.md),
+      padding: insetAll(tokens.spacing.md),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

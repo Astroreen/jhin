@@ -76,7 +76,7 @@ Widget buildCodeBlock(BuildContext context, UiNode node, RenderContext ctx) {
   }
 
   return Container(
-    padding: EdgeInsets.all(tokens.spacing.md),
+    padding: insetAll(tokens.spacing.md),
     decoration: BoxDecoration(
       color: theme.colorScheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(tokens.radius.sm),

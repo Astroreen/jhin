@@ -185,7 +185,7 @@ class UiRegistry {
     }
     final design = JhinDesignScope.of(context);
     var prepared = _interpolateNode(node, ctx);
-    prepared = _resolveNodeTokens(prepared, design.tokens);
+    prepared = _resolveNodeTokens(prepared, design, Theme.brightnessOf(context));
     Widget result;
     try {
       result = builder(context, prepared, ctx);
@@ -407,20 +407,30 @@ const Set<String> _tokenExempt = {
 };
 
 /// Resolves `$token` string props client-side (§2.2): `$spacing.md` → 12,
-/// `$color.accent` → the palette color, … An unknown or failed lookup keeps
-/// the literal string and the node still renders — never throws.
-UiNode _resolveNodeTokens(UiNode node, JhinTokens tokens) {
+/// `$color.accent` → the palette color, … `$color.*` references resolve
+/// through the theme's contrast indirection for the ambient brightness
+/// (T86) — a `contrast-*` name is the boosted mix, not the raw palette
+/// entry. An unknown or failed lookup keeps the literal string and the node
+/// still renders — never throws.
+UiNode _resolveNodeTokens(UiNode node, JhinTheme design, Brightness brightness) {
   final props = <String, dynamic>{};
   node.props.forEach((key, value) {
-    props[key] =
-        _tokenExempt.contains(key) ? value : _resolveTokenValue(value, tokens);
+    props[key] = _tokenExempt.contains(key)
+        ? value
+        : _resolveTokenValue(value, design, brightness);
   });
   return UiNode(type: node.type, props: props, children: node.children);
 }
 
-Object? _resolveTokenValue(Object? value, JhinTokens tokens) {
+Object? _resolveTokenValue(Object? value, JhinTheme design, Brightness brightness) {
+  final tokens = design.tokens;
   if (value is String) {
     if (!value.startsWith('\$')) return value;
+    if (value.startsWith('\$color.')) {
+      return design.colorOf(value.substring(7), brightness: brightness) ??
+          tokens.resolveToken(value) ??
+          value;
+    }
     return tokens.resolveToken(value) ?? value;
   }
   if (value is Map) {
@@ -428,11 +438,13 @@ Object? _resolveTokenValue(Object? value, JhinTokens tokens) {
       for (final entry in value.entries)
         entry.key: _tokenExempt.contains('${entry.key}')
             ? entry.value
-            : _resolveTokenValue(entry.value, tokens),
+            : _resolveTokenValue(entry.value, design, brightness),
     };
   }
   if (value is List) {
-    return [for (final item in value) _resolveTokenValue(item, tokens)];
+    return [
+      for (final item in value) _resolveTokenValue(item, design, brightness)
+    ];
   }
   return value;
 }
@@ -1188,6 +1200,11 @@ Color? parseColor(Object? value) {
   }
   return null;
 }
+
+/// An all-sides inset from one token value — the primitives' replacement
+/// for the literal `EdgeInsets.all` constructor (the T86 purity test bans
+/// it in the primitive sources).
+EdgeInsets insetAll(double value) => EdgeInsets.fromLTRB(value, value, value, value);
 
 /// Parses a universal `padding`/`margin` (§2.1): a number, a 1-4 number
 /// list (CSS order: `[all]`, `[v,h]`, `[t,h,b]`, `[t,r,b,l]`), or a

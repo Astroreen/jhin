@@ -205,7 +205,7 @@ Widget _pillBar(
   final scheme = JhinDesignScope.materialOf(context).colorScheme;
   final tokens = JhinDesignScope.of(context).tokens;
   return Container(
-    padding: EdgeInsets.all(tokens.spacing.xs),
+    padding: insetAll(tokens.spacing.xs),
     decoration: BoxDecoration(
       color: scheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(tokens.radius.lg),
@@ -247,7 +247,7 @@ Widget _segmentedBar(
   final tokens = JhinDesignScope.of(context).tokens;
   final radius = BorderRadius.circular(tokens.radius.sm);
   return Container(
-    padding: EdgeInsets.all(tokens.spacing.xs),
+    padding: insetAll(tokens.spacing.xs),
     decoration: BoxDecoration(
       border: Border.all(color: scheme.outline),
       borderRadius: radius,

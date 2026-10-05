@@ -68,7 +68,10 @@ Widget buildIconButton(BuildContext context, UiNode node, RenderContext ctx) {
     visualDensity: _visualDensity(node.stringProp('visualDensity')),
     enableFeedback: node.boolProp('enableFeedback'),
     splashRadius: _positive(node.numProp('splashRadius')?.toDouble()),
-    style: _buttonStyle(node.props['style'], tokens),
+    style: _buttonStyle(
+        node.props['style'],
+        tokens,
+        JhinDesignScope.materialOf(context).colorScheme.onSurface),
   );
 }
 
@@ -133,7 +136,7 @@ VisualDensity? _visualDensity(String? value) {
 /// `padding`, `minimumSize`, `maximumSize`, `fixedSize`, `side`, `shape`,
 /// `mouseCursor`, `visualDensity`, `alignment`, `enableFeedback`,
 /// `animationDuration`, `tapTargetSize`.
-ButtonStyle? _buttonStyle(Object? value, JhinTokens tokens) {
+ButtonStyle? _buttonStyle(Object? value, JhinTokens tokens, Color fallback) {
   if (value is! Map) return null;
   final map = Map<String, dynamic>.from(value);
 
@@ -156,13 +159,13 @@ ButtonStyle? _buttonStyle(Object? value, JhinTokens tokens) {
     );
   }
 
-  BorderSide? side() {
+  BorderSide? side(Color fallback) {
     final raw = map['side'];
     if (raw is! Map) return null;
     final spec = Map<String, dynamic>.from(raw);
     final width = spec['width'];
     return BorderSide(
-      color: parseColor(spec['color']) ?? const Color(0xFF000000),
+      color: parseColor(spec['color']) ?? fallback,
       width: width is num && width.toDouble().isFinite && width > 0
           ? width.toDouble()
           : 1.0,
@@ -192,7 +195,7 @@ ButtonStyle? _buttonStyle(Object? value, JhinTokens tokens) {
   final minimumSize = size('minimumSize');
   final maximumSize = size('maximumSize');
   final fixedSize = size('fixedSize');
-  final sideValue = side();
+  final sideValue = side(fallback);
   final shapeValue = shape();
   final mouseCursor = parseMouseCursor(
       map['mouseCursor'] is String ? map['mouseCursor'] as String : null);

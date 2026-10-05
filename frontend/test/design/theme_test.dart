@@ -247,4 +247,171 @@ void main() {
       expect(captured!.tokens.motion.fast, const Duration(milliseconds: 120));
     });
   });
+
+  group('T86 — the contrast indirection', () {
+    test('colorOf resolves the contrast foreground through the boost', () {
+      final palette = {
+        'foreground': '#c9c9d4',
+        'background': '#16161e',
+      };
+      final theme = JhinTheme.from(
+        canvas: '#16161e',
+        accent: '#7e57c2',
+        appearance: 'dark',
+        colors: palette,
+        prefs: {'appearanceContrast': 130},
+      );
+      final neutral = JhinTheme.from(
+        canvas: '#16161e',
+        accent: '#7e57c2',
+        appearance: 'dark',
+        colors: palette,
+      );
+      final boosted = theme.colorOf('foreground', brightness: Brightness.dark);
+      final plain = neutral.colorOf('foreground', brightness: Brightness.dark);
+      expect(boosted, isNotNull);
+      expect(plain, isNotNull);
+      // The boost pulls the dark foreground toward the white target (the
+      // near-white palette foreground can saturate at pure white).
+      expect(boosted, isNot(plain));
+      expect(boosted!.computeLuminance(),
+          greaterThanOrEqualTo(plain!.computeLuminance()));
+    });
+
+    test('the light target is black: the boost darkens the foreground', () {
+      final palette = {
+        'foreground': '#3a3a44',
+        'background': '#f5f5f5',
+      };
+      final theme = JhinTheme.from(
+        canvas: '#f5f5f5',
+        accent: '#7e57c2',
+        appearance: 'light',
+        colors: palette,
+        prefs: {'contrastBoost': 40},
+      );
+      final boosted = theme.colorOf('foreground', brightness: Brightness.light)!;
+      final plain = JhinTheme.from(
+        canvas: '#f5f5f5',
+        accent: '#7e57c2',
+        appearance: 'light',
+        colors: palette,
+      ).colorOf('foreground', brightness: Brightness.light)!;
+      // The near-black palette foreground can saturate at pure black.
+      expect(boosted, isNot(plain));
+      expect(boosted.computeLuminance(), lessThanOrEqualTo(plain.computeLuminance()));
+    });
+
+    test('boost 0 keeps every contrast color at its source', () {
+      final theme = JhinTheme.from();
+      final palette = theme.tokens.colors;
+      final contrast = theme.contrastLight;
+      expect(contrast['contrast-foreground'],
+          palette['foreground'] ?? theme.light.colorScheme.onSurface);
+    });
+
+    test('the contrast maps carry every recipe name', () {
+      final theme = JhinTheme.from();
+      for (final name in const [
+        'contrast-accent-foreground',
+        'contrast-border',
+        'contrast-card-foreground',
+        'contrast-foreground',
+        'contrast-icon-muted',
+        'contrast-input',
+        'contrast-message-foreground',
+        'contrast-muted-foreground',
+        'contrast-placeholder',
+        'contrast-popover-foreground',
+        'contrast-secondary-foreground',
+        'contrast-secondary-label',
+        'contrast-sidebar-border',
+        'contrast-sidebar-foreground',
+        'contrast-sidebar-muted-foreground',
+      ]) {
+        expect(theme.contrastLight[name], isNotNull, reason: name);
+        expect(theme.contrastDark[name], isNotNull, reason: name);
+      }
+    });
+
+    test('resolve(color, …) routes through the contrast indirection', () {
+      final theme = JhinTheme.from(
+        appearance: 'dark',
+        prefs: {'appearanceContrast': 150},
+      );
+      final resolved = theme.resolve('color', 'foreground',
+          brightness: Brightness.dark);
+      expect(resolved, isA<Color>());
+      expect(resolved, theme.contrastDark['contrast-foreground']);
+    });
+
+    test('the theme carries the parsed switches', () {
+      final theme = JhinTheme.from(prefs: const {
+        'chatWidth': 'wide',
+        'diffColorScheme': 'blue-orange',
+        'reducedMotion': true,
+        'sizeCode': 15,
+      });
+      expect(theme.switches.chatWidth, JhinChatWidth.wide);
+      expect(theme.switches.diffColorScheme, JhinDiffColorScheme.blueOrange);
+      expect(theme.switches.reducedMotion, isTrue);
+      expect(theme.switches.fontSizes.sizeCode, 15);
+    });
+  });
+
+  group('T86 — the ThemeData assembly', () {
+    test('the resolved sans stack is the default font family', () {
+      final theme = JhinTheme.from(prefs: {'fontSans': 'My Serif'});
+      // The user family leads the stack; the fixed stack backs it up.
+      expect(theme.light.textTheme.bodyMedium!.fontFamily, 'My Serif');
+      expect(
+          theme.light.textTheme.bodyMedium!.fontFamilyFallback!.first,
+          '-apple-system');
+      expect(JhinTheme.from().light.textTheme.bodyMedium!.fontFamily,
+          '-apple-system');
+    });
+
+    test('the interface size scales the text theme over the 16px base', () {
+      final scaled = JhinTheme.from(prefs: {'sizeInterface': 20});
+      final plain = JhinTheme.from();
+      expect(
+        scaled.light.textTheme.bodyMedium!.fontSize!,
+        closeTo(plain.light.textTheme.bodyMedium!.fontSize! * 20 / 16, 0.01),
+      );
+      // At the default 16 the seeds stand unchanged.
+      expect(plain.light.textTheme.bodyMedium!.fontSize, 14);
+    });
+  });
+
+  group('T86 — reduced motion from the switches', () {
+    testWidgets('the user switch collapses motion like the OS pref',
+        (tester) async {
+      JhinTheme? captured;
+      await tester.pumpWidget(JhinDesignScope(
+        design: JhinTheme.from(prefs: {'reducedMotion': true}),
+        child: Builder(
+          builder: (context) {
+            captured = JhinDesignScope.of(context);
+            return const SizedBox();
+          },
+        ),
+      ));
+      expect(captured!.tokens.motion.fast, Duration.zero);
+      expect(captured!.tokens.motion.panel, Duration.zero);
+    });
+
+    testWidgets('without the switch the server durations stand', (tester) async {
+      JhinTheme? captured;
+      await tester.pumpWidget(JhinDesignScope(
+        design: JhinTheme.from(),
+        child: Builder(
+          builder: (context) {
+            captured = JhinDesignScope.of(context);
+            return const SizedBox();
+          },
+        ),
+      ));
+      expect(captured!.tokens.motion.fast, const Duration(milliseconds: 120));
+    });
+  });
 }

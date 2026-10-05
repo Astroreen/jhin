@@ -196,4 +196,266 @@ void main() {
       expect(tokens.resolveToken('not-a-token'), isNull);
     });
   });
+
+  group('T86 — font roles (settings.ts:122-139)', () {
+    test('defaults: interface 16, prompt 14 (effective 16), code 13', () {
+      final sizes = resolveFontSizes();
+      expect(sizes.sizeInterface, 16);
+      expect(sizes.sizePrompt, 16);
+      expect(sizes.sizeCode, 13);
+    });
+
+    test('clamps: interface 12-20, prompt 12-20, code 10-18', () {
+      expect(resolveFontSizes(interface: 5).sizeInterface, 12);
+      expect(resolveFontSizes(interface: 99).sizeInterface, 20);
+      expect(resolveFontSizes(prompt: 5).sizePrompt, 16);
+      expect(resolveFontSizes(prompt: 99).sizePrompt, 20);
+      expect(resolveFontSizes(code: 5).sizeCode, 10);
+      expect(resolveFontSizes(code: 99).sizeCode, 18);
+    });
+
+    test('the prompt floor is max(size, 16)', () {
+      expect(resolveFontSizes(prompt: 12).sizePrompt, 16);
+      expect(resolveFontSizes(prompt: 15).sizePrompt, 16);
+      expect(resolveFontSizes(prompt: 17).sizePrompt, 17);
+    });
+
+    test('malformed values degrade to the defaults', () {
+      expect(resolveFontSizes(interface: 'nope').sizeInterface, 16);
+      expect(resolveFontSizes(prompt: true).sizePrompt, 16);
+    });
+  });
+
+  group('T86 — font stacks (appearanceFonts.ts:16-61)', () {
+    test('the default stacks are the stylesheet strings verbatim', () {
+      expect(kSansFontStack,
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif');
+      expect(kMonoFontStack,
+          'ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas,'
+          ' "Liberation Mono", monospace');
+    });
+
+    test('a user family is prepended to the stack', () {
+      final families = resolveFontFamilies(sans: 'Comic Sans');
+      // A multi-word name gets quoted (appearanceFonts.ts:33-44).
+      expect(families.sans, '"Comic Sans", $kSansFontStack');
+      expect(families.mono, kMonoFontStack);
+    });
+
+    test('multi-family lists keep their order and get quoted', () {
+      final families = resolveFontFamilies(mono: 'My Mono, System Mono');
+      // Multi-word names get quoted (appearanceFonts.ts:33-44).
+      expect(families.mono, '"My Mono", "System Mono", $kMonoFontStack');
+    });
+
+    test('already-quoted and ident names pass through unquoted', () {
+      final families = resolveFontFamilies(sans: '"My Font", Roboto');
+      expect(families.sans, '"My Font", Roboto, $kSansFontStack');
+    });
+
+    test('an empty or blank pref keeps the default stack', () {
+      expect(resolveFontFamilies(sans: '  ').sans, kSansFontStack);
+      expect(resolveFontFamilies(sans: null).sans, kSansFontStack);
+    });
+
+    test('the composer falls back to the resolved sans stack', () {
+      final families = resolveFontFamilies(sans: 'A', composer: 'B');
+      expect(families.composer, 'B, A, $kSansFontStack');
+      expect(resolveFontFamilies().composer, isNull);
+    });
+  });
+
+  group('T86 — contrast percentages (settings.ts:100-107, appearanceContrast.ts)', () {
+    test('the default pref 100 mixes nothing', () {
+      const c = JhinContrast.neutral;
+      expect(c.base, 100);
+      expect(c.boost, 0);
+      expect(c.borderBoost, 0);
+    });
+
+    test('pref 130 boosts 30% and the border a quarter of it', () {
+      final c = JhinContrast.fromPref(130);
+      expect(c.base, 100);
+      expect(c.boost, 30);
+      expect(c.borderBoost, 7);
+    });
+
+    test('pref 200 boosts 100% and the border 25%', () {
+      final c = JhinContrast.fromPref(200);
+      expect(c.boost, 100);
+      expect(c.borderBoost, 25);
+    });
+
+    test('pref 70 softens the base to 70% with no boost', () {
+      final c = JhinContrast.fromPref(70);
+      expect(c.base, 70);
+      expect(c.boost, 0);
+      expect(c.borderBoost, 0);
+    });
+
+    test('out-of-range and malformed prefs degrade to the default', () {
+      expect(JhinContrast.fromPref(10).pref, 100);
+      expect(JhinContrast.fromPref(999).pref, 100);
+      expect(JhinContrast.fromPref('nope').pref, 100);
+    });
+  });
+
+  group('T86 — contrast mixes', () {
+    test('srgb mix lerps the channels and the alpha', () {
+      final mixed = jhinMixSrgb(
+          const Color(0xFF000000), const Color(0xFFFFFFFF), 0.5);
+      expect(mixed, const Color(0xFF808080));
+      final faded = jhinMixSrgb(
+          const Color(0xFF102030), const Color(0x00000000), 0.5);
+      expect(faded.a, closeTo(0.5, 0.001));
+    });
+
+    test('oklab mix moves toward the target monotonically', () {
+      const black = Color(0xFF000000);
+      const white = Color(0xFFFFFFFF);
+      final quarter = jhinMixOklab(black, white, 0.25);
+      final half = jhinMixOklab(black, white, 0.5);
+      final threeQuarters = jhinMixOklab(black, white, 0.75);
+      expect(quarter.computeLuminance(), lessThan(half.computeLuminance()));
+      expect(half.computeLuminance(), lessThan(threeQuarters.computeLuminance()));
+      // The mix endpoints are the inputs.
+      expect(jhinMixOklab(black, white, 0.0), black);
+      expect(jhinMixOklab(black, white, 1.0), white);
+    });
+
+    test('resolveContrastColors boosts the foreground toward the dark target',
+        () {
+      final palette = {
+        'foreground': const Color(0xFFAAAAAA),
+        'background': const Color(0xFF111111),
+      };
+      final neutral = resolveContrastColors(
+          palette: palette, dark: true, contrast: JhinContrast.neutral);
+      final boosted = resolveContrastColors(
+          palette: palette,
+          dark: true,
+          contrast: JhinContrast.fromPercent(130));
+      expect(neutral['contrast-foreground'], const Color(0xFFAAAAAA));
+      final boostedColor = boosted['contrast-foreground']!;
+      // The boost pulls the foreground toward white in dark mode.
+      expect(boostedColor.computeLuminance(),
+          greaterThan(const Color(0xFFAAAAAA).computeLuminance()));
+    });
+
+    test('the border boost mixes toward the palette foreground, not the target',
+        () {
+      final palette = {
+        'border': const Color(0x66222222),
+        'foreground': const Color(0xFFEEEEEE),
+      };
+      final boosted = resolveContrastColors(
+          palette: palette,
+          dark: true,
+          contrast: JhinContrast.fromPercent(200));
+      final border = boosted['contrast-border']!;
+      // 25% toward #EEEEEE: the red channel rises from 0x22 toward 0xEE
+      // (the component accessors are 0-1 normalized).
+      expect(border.r, greaterThan(0x22 / 255.0));
+      expect(border.a, lessThan(1.0));
+    });
+  });
+
+  group('T86 — the data switches', () {
+    test('chat width: default 46rem, wide 72rem, full 100%', () {
+      expect(JhinSwitches.defaults.chatLaneRem, 46);
+      expect(
+          JhinSwitches.parse({'chatWidth': 'wide'}).chatLaneRem, 72);
+      expect(
+          JhinSwitches.parse({'chatWidth': 'full'}).chatLaneRem, isNull);
+      // The upstream literal `comfortable` parses to the default lane.
+      expect(
+          JhinSwitches.parse({'chatWidth': 'comfortable'}).chatLaneRem, 46);
+      // The lane width scales with the interface size (the root font-size).
+      expect(JhinSwitches.defaults.chatLaneWidthPx(), 46 * 16.0);
+      expect(
+        JhinSwitches.parse({'chatWidth': 'wide'}).chatLaneWidthPx(),
+        72 * 16.0,
+      );
+      expect(
+          JhinSwitches.parse({'chatWidth': 'full'}).chatLaneWidthPx(), isNull);
+    });
+
+    test('the diff colour scheme parses both spellings', () {
+      expect(JhinSwitches.defaults.diffColorScheme,
+          JhinDiffColorScheme.defaultScheme);
+      expect(
+          JhinSwitches.parse({'diffColorScheme': 'blue-orange'})
+              .diffColorScheme,
+          JhinDiffColorScheme.blueOrange);
+      expect(
+          JhinSwitches.parse({'diffColorScheme': 'red-green'})
+              .diffColorScheme,
+          JhinDiffColorScheme.defaultScheme);
+    });
+
+    test('reduced motion disables the duty-cycles and collapses the panel',
+        () {
+      final on = JhinSwitches.parse({'reducedMotion': true});
+      expect(on.reducedMotion, isTrue);
+      expect(on.statusPulseEnabled, isFalse);
+      expect(on.statusPingEnabled, isFalse);
+      expect(on.skeletonEnabled, isFalse);
+      expect(on.resolveMotionPanel(const Duration(milliseconds: 200)),
+          Duration.zero);
+      final off = JhinSwitches.defaults;
+      expect(off.skeletonEnabled, isTrue);
+      expect(off.resolveMotionPanel(const Duration(milliseconds: 200)),
+          const Duration(milliseconds: 200));
+    });
+
+    test('the contrast pref parses from both spellings', () {
+      expect(JhinSwitches.parse({'appearanceContrast': 130}).contrast.boost,
+          30);
+      expect(JhinSwitches.parse({'contrastBoost': 30}).contrast.boost, 30);
+      expect(JhinSwitches.parse({'appearanceContrast': 70}).contrast.base, 70);
+      expect(JhinSwitches.defaults.contrast, JhinContrast.neutral);
+    });
+
+    test('density parses through the §1 lattice', () {
+      expect(JhinSwitches.parse({'density': 'compact'}).density,
+          JhinDensity.compact);
+      expect(JhinSwitches.parse({'density': 'nonsense'}).density,
+          JhinDensity.comfortable);
+    });
+  });
+
+  group('T86 — the diff colours', () {
+    test('the default scheme keeps the theme tokens', () {
+      const added = Color(0xFF00B981);
+      const removed = Color(0xFFE40016);
+      final colors = resolveDiffColors(
+        scheme: JhinDiffColorScheme.defaultScheme,
+        themeAdded: added,
+        themeRemoved: removed,
+        dark: false,
+      );
+      expect(colors.added, added);
+      expect(colors.removed, removed);
+    });
+
+    test('blue-orange swaps the lanes to the fixed pair', () {
+      final light = resolveDiffColors(
+        scheme: JhinDiffColorScheme.blueOrange,
+        themeAdded: const Color(0xFF00B981),
+        themeRemoved: const Color(0xFFE40016),
+        dark: false,
+      );
+      final dark = resolveDiffColors(
+        scheme: JhinDiffColorScheme.blueOrange,
+        themeAdded: const Color(0xFF00B981),
+        themeRemoved: const Color(0xFFE40016),
+        dark: true,
+      );
+      // Blue addition, orange removal; the dark slot is the lighter pair.
+      expect(light.added.computeLuminance(),
+          lessThan(dark.added.computeLuminance()));
+      expect(light.removed, isNot(dark.removed));
+      expect(light.added, isNot(light.removed));
+    });
+  });
 }

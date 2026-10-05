@@ -1,4 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
+import 'palette_gen.dart';
 
 /// Design-token lattice of the SDUI contract (docs/sdui.md §1).
 ///
@@ -713,3 +717,631 @@ const Map<String, Map<String, Object?>> _defaults = {
     'sheet': 46,
   },
 };
+
+// ---------------------------------------------------------------------------
+// T86: contrast indirection, runtime switches and per-role font resolution.
+// Every value below is verified against the upstream checkout (commit
+// 37de6cb): packages/contracts/src/settings.ts, apps/web/src/appearanceFonts.ts
+// and apps/web/src/index.css.
+// ---------------------------------------------------------------------------
+
+/// Font-size clamps (settings.ts:122-139): interface 12-20 default 16,
+/// prompt 12-20 default 14, code 10-18 default 13.
+const int kFontInterfaceMin = 12;
+const int kFontInterfaceMax = 20;
+const int kFontInterfaceDefault = 16;
+const int kFontPromptMin = 12;
+const int kFontPromptMax = 20;
+const int kFontPromptDefault = 14;
+const int kFontCodeMin = 10;
+const int kFontCodeMax = 18;
+const int kFontCodeDefault = 13;
+
+/// The effective prompt size: `max(size, 16)`. Upstream clamps the composer
+/// to 16px on touch inputs only (index.css:131
+/// `--font-size-prompt-touch: max(var(--font-size-prompt, 1rem), 16px)`);
+/// the plan applies the floor unconditionally (T86 step 4).
+int jhinEffectivePromptFontSize(int size) => size < 16 ? 16 : size;
+
+int _clampFont(Object? raw, int min, int max, int fallback) {
+  final value = raw is num ? raw.round() : fallback;
+  return value < min ? min : (value > max ? max : value);
+}
+
+/// The three resolved font roles (settings.ts:122-139 clamps; the prompt
+/// role renders at [jhinEffectivePromptFontSize]).
+@immutable
+class JhinFontSizes {
+  const JhinFontSizes({
+    this.sizeInterface = kFontInterfaceDefault,
+    this.sizePrompt = kFontPromptDefault,
+    this.sizeCode = kFontCodeDefault,
+  });
+
+  final int sizeInterface;
+  final int sizePrompt;
+  final int sizeCode;
+
+  @override
+  bool operator ==(Object other) =>
+      other is JhinFontSizes &&
+      other.sizeInterface == sizeInterface &&
+      other.sizePrompt == sizePrompt &&
+      other.sizeCode == sizeCode;
+
+  @override
+  int get hashCode => Object.hash(sizeInterface, sizePrompt, sizeCode);
+}
+
+/// Resolves the three font roles from raw pref values (null = default).
+JhinFontSizes resolveFontSizes({
+  Object? interface,
+  Object? prompt,
+  Object? code,
+}) {
+  return JhinFontSizes(
+    sizeInterface: _clampFont(
+      interface,
+      kFontInterfaceMin,
+      kFontInterfaceMax,
+      kFontInterfaceDefault,
+    ),
+    sizePrompt: jhinEffectivePromptFontSize(_clampFont(
+      prompt,
+      kFontPromptMin,
+      kFontPromptMax,
+      kFontPromptDefault,
+    )),
+    sizeCode: _clampFont(
+      code,
+      kFontCodeMin,
+      kFontCodeMax,
+      kFontCodeDefault,
+    ),
+  );
+}
+
+/// The stylesheet stacks verbatim (index.css:167-169; the same strings the
+/// server mirrors in `UiTokens.FONT_VALUES`).
+const String kSansFontStack =
+    '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+const String kMonoFontStack =
+    'ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas,'
+    ' "Liberation Mono", monospace';
+
+/// Quotes one font family name (appearanceFonts.ts:33-44): already-quoted
+/// names and simple idents pass through, everything else gets double quotes
+/// with inner quotes stripped.
+String _quoteFontFamilyName(String name) {
+  final bare = name.trim();
+  if (bare.isEmpty) return '';
+  if (bare.length >= 2 &&
+      (bare.startsWith("'") || bare.startsWith('"')) &&
+      bare.endsWith(bare[0])) {
+    return bare;
+  }
+  if (RegExp(r'^[a-zA-Z][a-zA-Z0-9-]*$').hasMatch(bare)) return bare;
+  return '"${bare.replaceAll('"', '')}"';
+}
+
+/// Normalizes a user-entered family list into a safe CSS font-family list,
+/// or null when the input is effectively empty (appearanceFonts.ts:47-55).
+String? cssFontFamilies(String? input) {
+  if (input == null) return null;
+  final families = <String>[];
+  for (final raw in input.split(',')) {
+    final quoted = _quoteFontFamilyName(raw);
+    if (quoted.isNotEmpty) families.add(quoted);
+  }
+  return families.isEmpty ? null : families.join(', ');
+}
+
+/// The full stack a preference resolves to: custom families before the
+/// default (appearanceFonts.ts:58-61).
+String fontStack(String? custom, String defaultStack) {
+  final families = cssFontFamilies(custom);
+  return families == null ? defaultStack : '$families, $defaultStack';
+}
+
+/// The resolved font families: the user pref prepended to the fixed stacks.
+@immutable
+class JhinFontFamilies {
+  const JhinFontFamilies({
+    this.sans = kSansFontStack,
+    this.mono = kMonoFontStack,
+    this.composer,
+  });
+
+  final String sans;
+  final String mono;
+
+  /// The composer family; null = whatever the sans preference resolves to
+  /// (appearanceFonts.ts:110 — the composer falls back to `var(--font-sans)`).
+  final String? composer;
+
+  @override
+  bool operator ==(Object other) =>
+      other is JhinFontFamilies &&
+      other.sans == sans &&
+      other.mono == mono &&
+      other.composer == composer;
+
+  @override
+  int get hashCode => Object.hash(sans, mono, composer);
+}
+
+/// Resolves the font families from raw pref values (null = untouched stack).
+JhinFontFamilies resolveFontFamilies({Object? sans, Object? mono, Object? composer}) {
+  final sansStack = fontStack(sans is String ? sans : null, kSansFontStack);
+  final monoStack = fontStack(mono is String ? mono : null, kMonoFontStack);
+  final composerCustom = composer is String ? composer : null;
+  return JhinFontFamilies(
+    sans: sansStack,
+    mono: monoStack,
+    composer: composerCustom == null || composerCustom.trim().isEmpty
+        ? null
+        : fontStack(composerCustom, sansStack),
+  );
+}
+
+/// The contrast indirection (settings.ts:100-107, appearanceContrast.ts:3-11):
+/// the appearance pref is a percentage 50-200 (default 100). Above 100 it
+/// boosts every contrast foreground toward the target (black in light, white
+/// in dark); below 100 it softens the foreground toward its own surface.
+@immutable
+class JhinContrast {
+  const JhinContrast({
+    this.pref = 100,
+    this.base = 100,
+    this.boost = 0,
+    this.borderBoost = 0,
+  });
+
+  /// The raw appearance pref (50-200).
+  final int pref;
+
+  /// `--appearance-contrast-base`: min(pref, 100)%.
+  final int base;
+
+  /// `--appearance-contrast-boost`: max(pref - 100, 0)%.
+  final int boost;
+
+  /// `--appearance-contrast-border-boost`: boost / 4.
+  final int borderBoost;
+
+  /// The default: no mixing at all.
+  static const JhinContrast neutral = JhinContrast();
+
+  /// Parses the appearance pref; out-of-range or malformed values degrade to
+  /// the default 100 (settings.ts:100-107).
+  factory JhinContrast.fromPref(Object? raw) {
+    final value = raw is num ? raw.round() : 100;
+    final pref = value < 50 ? 100 : (value > 200 ? 100 : value);
+    return JhinContrast.fromPercent(pref);
+  }
+
+  /// Builds from a percentage (100 = no change).
+  factory JhinContrast.fromPercent(int pref) {
+    final clamped = pref < 50 ? 50 : (pref > 200 ? 200 : pref);
+    final boost = clamped > 100 ? clamped - 100 : 0;
+    return JhinContrast(
+      pref: clamped,
+      base: clamped < 100 ? clamped : 100,
+      boost: boost,
+      borderBoost: boost ~/ 4,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is JhinContrast &&
+      other.pref == pref &&
+      other.base == base &&
+      other.boost == boost &&
+      other.borderBoost == borderBoost;
+
+  @override
+  int get hashCode => Object.hash(pref, base, boost, borderBoost);
+}
+
+/// `color-mix(in srgb, A t%, B)` with premultiplied alpha (CSS color-mix
+/// mixes the alpha channel the same way).
+Color jhinMixSrgb(Color a, Color b, double t) {
+  final double outAlpha = a.a + (b.a - a.a) * t;
+  if (outAlpha <= 0) return const Color(0x00000000);
+  double mixPm(double channelA, double channelB) =>
+      channelA * a.a + (channelB * b.a - channelA * a.a) * t;
+  final double red = mixPm(a.r, b.r) / outAlpha;
+  final double green = mixPm(a.g, b.g) / outAlpha;
+  final double blue = mixPm(a.b, b.b) / outAlpha;
+  return Color.fromRGBO(
+    (red * 255.0).round().clamp(0, 255),
+    (green * 255.0).round().clamp(0, 255),
+    (blue * 255.0).round().clamp(0, 255),
+    outAlpha,
+  );
+}
+
+/// `color-mix(in oklab, A t%, B)`: the mix runs in OKLab (the palette
+/// generator's own OKLCH pipeline supplies the conversion both ways).
+Color jhinMixOklab(Color a, Color b, double t) {
+  if (t <= 0) return a;
+  if (t >= 1) return b;
+  final Lch first = fromRgb(Rgb(a.r * 255.0, a.g * 255.0, a.b * 255.0));
+  final Lch second = fromRgb(Rgb(b.r * 255.0, b.g * 255.0, b.b * 255.0));
+  const double deg = 180.0 / math.pi;
+  final double a1 = first.c * math.cos(first.h / deg);
+  final double b1 = first.c * math.sin(first.h / deg);
+  final double a2 = second.c * math.cos(second.h / deg);
+  final double b2 = second.c * math.sin(second.h / deg);
+  final double l = first.l + (second.l - first.l) * t;
+  final double oa = a1 + (a2 - a1) * t;
+  final double ob = b1 + (b2 - b1) * t;
+  final Rgb mixed = toRgb(Lch(
+    l,
+    math.sqrt(oa * oa + ob * ob),
+    math.atan2(ob, oa) * deg,
+  ));
+  return Color.fromARGB(
+    (a.a + (b.a - a.a) * t) * 255.0 ~/ 1.0,
+    mixed.r.round(),
+    mixed.g.round(),
+    mixed.b.round(),
+  );
+}
+
+/// Scales the alpha of [color] by [factor] (the srgb mix against
+/// `transparent`: the channels stay, the alpha shrinks).
+Color _scaleAlpha(Color color, double factor) =>
+    color.withValues(alpha: (color.a * factor).clamp(0.0, 1.0));
+
+/// One contrast recipe (index.css:1505-1614): how a `--contrast-*` name is
+/// derived from its source variable. The two-stage form is
+/// `color-mix(space, color-mix(space, source base%, baseTarget), boostTarget boost%)`
+/// where the border family mixes against `transparent` first and toward a
+/// palette foreground with the border boost second.
+class _ContrastRecipe {
+  const _ContrastRecipe(
+    this.source,
+    this.baseTarget, {
+    this.oklab = true,
+    this.border = false,
+  });
+
+  /// The palette name of the source variable (`--foreground` etc.).
+  final String source;
+
+  /// The palette name of the stage-1 mix target; empty = `transparent`
+  /// (srgb only, the alpha scales).
+  final String baseTarget;
+
+  /// `in oklab` (foregrounds) or `in srgb` (borders and inputs).
+  final bool oklab;
+
+  /// The stage-2 boost uses `--appearance-contrast-border-boost` and a
+  /// palette foreground instead of the black/white target.
+  final bool border;
+}
+
+/// The recipes of the `contrast` sub-map (index.css:1505-1614), keyed by the
+/// `--contrast-*` name without its prefix.
+const Map<String, _ContrastRecipe> _contrastRecipes = {
+  'accent-foreground': _ContrastRecipe('accent-foreground', 'accent'),
+  'border': _ContrastRecipe('border', '', oklab: false, border: true),
+  'card-foreground': _ContrastRecipe('card-foreground', 'card'),
+  'foreground': _ContrastRecipe('foreground', 'background'),
+  'icon-muted': _ContrastRecipe('icon-muted', 'background'),
+  'input': _ContrastRecipe('input', '', oklab: false, border: true),
+  'message-foreground': _ContrastRecipe('message-foreground', 'message'),
+  'muted-foreground': _ContrastRecipe('muted-foreground', 'background'),
+  'placeholder': _ContrastRecipe('placeholder', 'background'),
+  'popover-foreground': _ContrastRecipe('popover-foreground', 'popover'),
+  'secondary-foreground': _ContrastRecipe('secondary-foreground', 'secondary'),
+  'secondary-label': _ContrastRecipe('secondary-label', 'background'),
+  'sidebar-border':
+      _ContrastRecipe('sidebar-border', '', oklab: false, border: true),
+  'sidebar-foreground': _ContrastRecipe('sidebar-foreground', 'sidebar'),
+  'sidebar-muted-foreground':
+      _ContrastRecipe('sidebar-muted-foreground', 'sidebar'),
+};
+
+/// The palette names the stage-2 border boost mixes toward
+/// (index.css:1514-1516, :1529-1530, :1620-1621).
+const Map<String, String> _borderBoostTargets = {
+  'border': 'foreground',
+  'input': 'foreground',
+  'sidebar-border': 'sidebar-foreground',
+};
+
+/// Resolves every `contrast-*` name for one brightness: the two-stage mix of
+/// [_contrastRecipes] with [contrast] percentages, the palette supplying the
+/// sources and the target black in light / white in dark (index.css:94,143).
+Map<String, Color> resolveContrastColors({
+  required Map<String, Color> palette,
+  required bool dark,
+  JhinContrast contrast = JhinContrast.neutral,
+}) {
+  final Color target =
+      dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000);
+  final out = <String, Color>{};
+  _contrastRecipes.forEach((name, recipe) {
+    final source = palette[recipe.source] ?? target;
+    final Color stage1;
+    if (recipe.baseTarget.isEmpty) {
+      stage1 = _scaleAlpha(source, contrast.base / 100.0);
+    } else {
+      final baseTarget = palette[recipe.baseTarget] ?? target;
+      final mix = recipe.oklab ? jhinMixOklab : jhinMixSrgb;
+      // `color-mix(A p%, B)` = p% A + (100-p)% B: the mix fraction runs
+      // toward the base target, so the weight of the source is the base.
+      stage1 = mix(source, baseTarget, 1.0 - contrast.base / 100.0);
+    }
+    final boostPct =
+        (recipe.border ? contrast.borderBoost : contrast.boost) / 100.0;
+    if (boostPct <= 0) {
+      out['contrast-$name'] = stage1;
+      return;
+    }
+    final boostTargetName = _borderBoostTargets[name];
+    final boostTarget = boostTargetName == null
+        ? target
+        : (palette[boostTargetName] ?? target);
+    final mix = recipe.oklab ? jhinMixOklab : jhinMixSrgb;
+    out['contrast-$name'] = mix(stage1, boostTarget, boostPct);
+  });
+  return out;
+}
+
+/// The chat-width switch (settings.ts:292 `comfortable|wide|full`; the plan
+/// spells the default `default` — both parse to [normal]).
+enum JhinChatWidth { normal, wide, full }
+
+/// The diff colour scheme (settings.ts:289 `red-green|blue-orange`; the plan
+/// spells the default `default` — both parse to [defaultScheme]).
+enum JhinDiffColorScheme { defaultScheme, blueOrange }
+
+/// The blue-orange diff palette (index.css:2041-2045): Tailwind v4.3.3
+/// blue-600/400 and orange-600/400, converted through the palette
+/// generator's own OKLCH pipeline for internal consistency (T84 convention).
+final Color kDiffBlueLight = _diffColor(const Lch(0.546, 0.245, 262.881));
+final Color kDiffBlueDark = _diffColor(const Lch(0.707, 0.165, 254.624));
+final Color kDiffOrangeLight = _diffColor(const Lch(0.646, 0.222, 41.116));
+final Color kDiffOrangeDark = _diffColor(const Lch(0.75, 0.183, 55.934));
+
+Color _diffColor(Lch color) {
+  final Rgb rgb = toRgb(color);
+  return Color.fromARGB(
+    255,
+    rgb.r.round(),
+    rgb.g.round(),
+    rgb.b.round(),
+  );
+}
+
+/// The diff colours resolved as values (index.css:2025-2028, :2041-2045):
+/// the default scheme keeps the theme's own diff tokens; blue-orange swaps
+/// the lanes to the fixed blue/orange pair.
+@immutable
+class JhinDiffColors {
+  const JhinDiffColors({required this.added, required this.removed});
+
+  final Color added;
+  final Color removed;
+
+  @override
+  bool operator ==(Object other) =>
+      other is JhinDiffColors &&
+      other.added == added &&
+      other.removed == removed;
+
+  @override
+  int get hashCode => Object.hash(added, removed);
+}
+
+JhinDiffColors resolveDiffColors({
+  required JhinDiffColorScheme scheme,
+  required Color themeAdded,
+  required Color themeRemoved,
+  required bool dark,
+}) {
+  return switch (scheme) {
+    JhinDiffColorScheme.defaultScheme =>
+      JhinDiffColors(added: themeAdded, removed: themeRemoved),
+    JhinDiffColorScheme.blueOrange => JhinDiffColors(
+        added: dark ? kDiffBlueDark : kDiffBlueLight,
+        removed: dark ? kDiffOrangeDark : kDiffOrangeLight,
+      ),
+  };
+}
+
+/// The §8.3 data-viz palette: the categorical series colors of the chart
+/// primitives, carried here in the token layer so no primitive source
+/// contains a literal colour (the T86 purity rule). The axis gray mirrors
+/// the upstream chart axis stroke.
+const List<Color> kChartPalette = [
+  Color(0xFF7E57C2),
+  Color(0xFF26A69A),
+  Color(0xFFFF7043),
+  Color(0xFF42A5F5),
+  Color(0xFFEC407A),
+  Color(0xFF9CCC65),
+];
+
+/// The chart axis stroke (§8.3).
+const Color kChartAxisColor = Color(0xFF9E9E9E);
+
+/// The runtime switches (T86): the client-side appearance preferences the
+/// theme and the primitives resolve as values. Parsed from the appearance
+/// store map; unknown keys and malformed values degrade to the defaults.
+@immutable
+class JhinSwitches {
+  const JhinSwitches({
+    this.contrast = JhinContrast.neutral,
+    this.chatWidth = JhinChatWidth.normal,
+    this.diffColorScheme = JhinDiffColorScheme.defaultScheme,
+    this.density = JhinDensity.comfortable,
+    this.reducedMotion = false,
+    this.fontSans,
+    this.fontMono,
+    this.fontComposer,
+    Object? sizeInterface,
+    Object? sizePrompt,
+    Object? sizeCode,
+  })  : sizeInterfaceRaw = sizeInterface,
+        sizePromptRaw = sizePrompt,
+        sizeCodeRaw = sizeCode;
+
+  /// The contrast indirection percentages.
+  final JhinContrast contrast;
+
+  /// The chat lane width switch.
+  final JhinChatWidth chatWidth;
+
+  /// The diff colour scheme switch.
+  final JhinDiffColorScheme diffColorScheme;
+
+  /// The control density (the §1 lattice density).
+  final JhinDensity density;
+
+  /// The reduced-motion preference: collapses `motion.panel` to 0 and
+  /// disables the `statusPulse` / `statusPing` / `skeleton` duty-cycles.
+  final bool reducedMotion;
+
+  /// The user font-family prefs (prepended to the fixed stacks).
+  final String? fontSans;
+  final String? fontMono;
+  final String? fontComposer;
+
+  final Object? sizeInterfaceRaw;
+  final Object? sizePromptRaw;
+  final Object? sizeCodeRaw;
+
+  static const JhinSwitches defaults = JhinSwitches();
+
+  /// Parses the appearance prefs map. Accepted keys: `appearanceContrast`
+  /// (50-200, the upstream spelling) and `contrastBoost` (0-100, the direct
+  /// boost spelling — the plan's wording); `chatWidth` (`default`/`wide`/
+  /// `full`, `comfortable` accepted for the upstream literal); `diffColorScheme`
+  /// (`default`/`blue-orange`, `red-green` accepted); `density`;
+  /// `reducedMotion`; `fontSans`/`fontMono`/`fontComposer`;
+  /// `sizeInterface`/`sizePrompt`/`sizeCode`.
+  factory JhinSwitches.parse(Map<Object?, Object?>? prefs) {
+    if (prefs == null) return JhinSwitches.defaults;
+    final appearanceContrast = prefs['appearanceContrast'];
+    final directBoost = prefs['contrastBoost'];
+    final JhinContrast contrast;
+    if (appearanceContrast is num) {
+      contrast = JhinContrast.fromPref(appearanceContrast);
+    } else if (directBoost is num) {
+      final boost = directBoost.round().clamp(0, 100);
+      contrast = JhinContrast.fromPercent(100 + boost);
+    } else {
+      contrast = JhinContrast.neutral;
+    }
+
+    final widthRaw = prefs['chatWidth'];
+    final chatWidth = switch (widthRaw) {
+      'wide' => JhinChatWidth.wide,
+      'full' => JhinChatWidth.full,
+      _ => JhinChatWidth.normal,
+    };
+
+    final schemeRaw = prefs['diffColorScheme'];
+    final diffColorScheme = schemeRaw == 'blue-orange'
+        ? JhinDiffColorScheme.blueOrange
+        : JhinDiffColorScheme.defaultScheme;
+
+    final motionRaw = prefs['reducedMotion'];
+    final reducedMotion = motionRaw == true || motionRaw == 'true';
+
+    String? family(Object? raw) =>
+        raw is String && raw.trim().isNotEmpty ? raw : null;
+
+    return JhinSwitches(
+      contrast: contrast,
+      chatWidth: chatWidth,
+      diffColorScheme: diffColorScheme,
+      density: JhinDensity.parse(prefs['density']),
+      reducedMotion: reducedMotion,
+      fontSans: family(prefs['fontSans']),
+      fontMono: family(prefs['fontMono']),
+      fontComposer: family(prefs['fontComposer']),
+      sizeInterface: prefs['sizeInterface'],
+      sizePrompt: prefs['sizePrompt'],
+      sizeCode: prefs['sizeCode'],
+    );
+  }
+
+  /// The three resolved font roles.
+  JhinFontSizes get fontSizes => resolveFontSizes(
+        interface: sizeInterfaceRaw,
+        prompt: sizePromptRaw,
+        code: sizeCodeRaw,
+      );
+
+  /// The resolved font families (the user prefs prepended).
+  JhinFontFamilies get fontFamilies => resolveFontFamilies(
+        sans: fontSans,
+        mono: fontMono,
+        composer: fontComposer,
+      );
+
+  /// The chat lane width in rem (index.css:128, :2031-2038): 46 / 72 / null
+  /// for `full` (100%).
+  double? get chatLaneRem => switch (chatWidth) {
+        JhinChatWidth.normal => 46,
+        JhinChatWidth.wide => 72,
+        JhinChatWidth.full => null,
+      };
+
+  /// The chat lane width in logical px at the resolved interface size (the
+  /// upstream root font-size scales every rem); null = full width.
+  double? chatLaneWidthPx() {
+    final rem = chatLaneRem;
+    return rem == null ? null : rem * fontSizes.sizeInterface;
+  }
+
+  /// The resolved `motion.panel`: 0 under reduced motion, the configured
+  /// duration otherwise.
+  Duration resolveMotionPanel(Duration configured) =>
+      reducedMotion ? Duration.zero : configured;
+
+  /// The `statusPulse` duty-cycle enabled (off under reduced motion).
+  bool get statusPulseEnabled => !reducedMotion;
+
+  /// The `statusPing` duty-cycle enabled (off under reduced motion).
+  bool get statusPingEnabled => !reducedMotion;
+
+  /// The `skeleton` animation enabled (off under reduced motion).
+  bool get skeletonEnabled => !reducedMotion;
+
+  @override
+  bool operator ==(Object other) =>
+      other is JhinSwitches &&
+      other.contrast == contrast &&
+      other.chatWidth == chatWidth &&
+      other.diffColorScheme == diffColorScheme &&
+      other.density == density &&
+      other.reducedMotion == reducedMotion &&
+      other.fontSans == fontSans &&
+      other.fontMono == fontMono &&
+      other.fontComposer == fontComposer &&
+      other.sizeInterfaceRaw == sizeInterfaceRaw &&
+      other.sizePromptRaw == sizePromptRaw &&
+      other.sizeCodeRaw == sizeCodeRaw;
+
+  @override
+  int get hashCode => Object.hash(
+        contrast,
+        chatWidth,
+        diffColorScheme,
+        density,
+        reducedMotion,
+        fontSans,
+        fontMono,
+        fontComposer,
+        sizeInterfaceRaw,
+        sizePromptRaw,
+        sizeCodeRaw,
+      );
+}

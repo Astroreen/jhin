@@ -6,6 +6,7 @@ import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
 import 'chart_common.dart';
+import '../../design/tokens.dart' show kChartAxisColor;
 
 /// `chart_bar` (§8.3): `items: [{label, value, color?}]` (one series) or
 /// `series: [{label?, color?, values: [{label, value}]}]` (grouped series).
@@ -113,7 +114,7 @@ class BarChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final axis = Paint()
-      ..color = const Color(0xFF9E9E9E)
+      ..color = kChartAxisColor
       ..strokeWidth = 1;
     canvas.drawLine(
         Offset(0, size.height), Offset(size.width, size.height), axis);

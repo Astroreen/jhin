@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../design/icon_registry.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
+import '../../design/theme.dart';
 import '../ui_registry.dart' show iconFor, parseColor;
 import 'flex_common.dart' show parseTextDirection;
 
@@ -37,7 +38,8 @@ Widget buildIcon(BuildContext context, UiNode node, RenderContext ctx) {
     weight: _positive(node.numProp('weight')?.toDouble()),
     grade: _finite(node.numProp('grade')?.toDouble()),
     opticalSize: _positive(node.numProp('opticalSize')?.toDouble()),
-    shadows: _shadows(node.listProp('shadows')),
+    shadows: _shadows(node.listProp('shadows'),
+        JhinDesignScope.materialOf(context).colorScheme.onSurface),
     blendMode: parseBlendMode(node.stringProp('blendMode')),
   );
 }
@@ -77,17 +79,17 @@ double? _finite(double? value) {
 /// `shadows` (§2.6): the shadow-array form of the §2.1 shadow spec
 /// (`{color, blur, spread, offset: [x, y]}`), one [Shadow] per entry.
 /// Malformed entries are skipped — never a crash.
-List<Shadow>? _shadows(List<Object?>? raw) {
+List<Shadow>? _shadows(List<Object?>? raw, Color fallback) {
   if (raw == null || raw.isEmpty) return null;
   final out = <Shadow>[];
   for (final item in raw) {
-    final shadow = _shadowEntry(item);
+    final shadow = _shadowEntry(item, fallback);
     if (shadow != null) out.add(shadow);
   }
   return out.isEmpty ? null : out;
 }
 
-Shadow? _shadowEntry(Object? value) {
+Shadow? _shadowEntry(Object? value, Color fallback) {
   if (value is num) {
     final blur = value.toDouble();
     if (!blur.isFinite || blur < 0) return null;
@@ -104,7 +106,7 @@ Shadow? _shadowEntry(Object? value) {
       ? (offset[1] as num).toDouble()
       : 0.0;
   return Shadow(
-    color: parseColor(map['color']) ?? const Color(0xFF000000),
+    color: parseColor(map['color']) ?? fallback,
     blurRadius: blur is num && blur.toDouble().isFinite && blur >= 0
         ? blur.toDouble()
         : 0,

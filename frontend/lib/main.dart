@@ -183,7 +183,10 @@ class _JhinAppState extends State<JhinApp> {
   /// The design of [payload] with the client appearance overrides (T69)
   /// applied over the server `theme` block — the persisted `themeMode` /
   /// `accent` win when set. The rebuild rides the existing theme mechanism
-  /// ([JhinTheme.fromBootstrap] over the patched payload).
+  /// ([JhinTheme.fromBootstrap] over the patched payload). The whole
+  /// appearance map also feeds the runtime switches (T86): the contrast
+  /// pref, chat width, diff colour scheme, density, reduced motion and the
+  /// font prefs.
   JhinTheme _designFrom(Map<String, dynamic> payload) {
     final patched = Map<String, dynamic>.from(payload);
     final theme = <String, dynamic>{};
@@ -196,7 +199,7 @@ class _JhinAppState extends State<JhinApp> {
     final accent = _appearance['accent'];
     if (accent is String && accent.isNotEmpty) theme['accent'] = accent;
     patched['theme'] = theme;
-    return JhinTheme.fromBootstrap(patched);
+    return JhinTheme.fromBootstrap(patched, prefs: _appearance);
   }
 
   /// Re-reads the persisted appearance and regenerates the design (T69:

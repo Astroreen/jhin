@@ -1,21 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../../design/tokens.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
 
-/// Shared chart assets (§8.3): palette, series parsing, legend.
-const List<Color> chartPalette = [
-  Color(0xFF7E57C2),
-  Color(0xFF26A69A),
-  Color(0xFFFF7043),
-  Color(0xFF42A5F5),
-  Color(0xFFEC407A),
-  Color(0xFF9CCC65),
-];
+/// Shared chart assets (§8.3): palette, series parsing, legend. The
+/// categorical palette and the axis stroke live in the token layer
+/// (`kChartPalette` / `kChartAxisColor`) — no literal colour here (T86).
 
 /// Series color by index (cycling), unless the series overrides it.
 Color chartColor(int index, {Color? override}) =>
-    override ?? chartPalette[index % chartPalette.length];
+    override ?? kChartPalette[index % kChartPalette.length];
 
 /// Series/category label: `label`, falling back to v1's `name`.
 String chartLabel(Map<String, dynamic> item) {
