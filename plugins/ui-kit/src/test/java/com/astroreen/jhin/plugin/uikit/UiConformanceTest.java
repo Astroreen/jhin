@@ -147,6 +147,114 @@ class UiConformanceTest {
     }
 
     /**
+     * T94 closes phase B: every node type the builders can emit is in the
+     * docs/sdui.md section 2.5 catalog, and the catalog carries no type no
+     * builder emits. The catalog is exactly 68 names — the 64 builder types
+     * (58 of level 2 plus the six level-3 primitives) plus the four level-3
+     * universal prop names ({@code glass}, {@code demo}, {@code statusPulse},
+     * {@code safeArea}), which are props of the universal surface, not node
+     * types. Doc/code drift is a test failure; the fix is to align them,
+     * never to weaken this test.
+     */
+    @Test
+    void everyEmittedNodeTypeIsInTheSection25Catalog() throws IOException {
+        Set<String> catalog = section25Catalog();
+
+        Map<Class<?>, String> typesByBuilder = BuilderProbe.probeAllTypes();
+        assertThat(typesByBuilder).hasSize(BuilderProbe.BUILDERS.size());
+        Set<String> emitted = new TreeSet<>(typesByBuilder.values());
+
+        // The per-type containment first: a type missing from the doc fails
+        // with the type name in the message (the T94 --fail probe greps it).
+        for (Map.Entry<Class<?>, String> entry : typesByBuilder.entrySet()) {
+            assertThat(catalog)
+                    .as("builder %s emits type %s missing from the docs/sdui.md section 2.5 catalog",
+                            entry.getKey().getSimpleName(), entry.getValue())
+                    .contains(entry.getValue());
+        }
+
+        Set<String> universal = Set.of("glass", "demo", "statusPulse", "safeArea");
+        Set<String> catalogTypes = new TreeSet<>(catalog);
+        catalogTypes.removeAll(universal);
+        assertThat(catalogTypes).as("catalog types minus the four universal prop names")
+                .isEqualTo(emitted);
+        assertThat(catalog).as("the section 2.5 catalog parsed from docs/sdui.md").hasSize(68);
+    }
+
+    /**
+     * The level-3 universal props land exactly on their documented surfaces:
+     * {@code statusPulse} is a typed setter of {@code progress} alone (the
+     * three duty-cycle modes reach the wire, unknown literals throw),
+     * {@code demo} is a typed setter of the decorative {@code diff_view}
+     * alone, and the {@code safeArea} group is a universal escape-hatch prop
+     * every builder accepts.
+     */
+    @Test
+    void level3UniversalPropsLandOnTheirDocumentedSurfaces() {
+        assertThat(Ui.progress().statusPulse("pulse").build().toJson()).containsEntry("statusPulse", "pulse");
+        assertThat(Ui.progress().statusPulse("ping").build().toJson()).containsEntry("statusPulse", "ping");
+        assertThat(Ui.progress().statusPulse("skeleton").build().toJson()).containsEntry("statusPulse", "skeleton");
+        assertThatThrownBy(() -> Ui.progress().statusPulse("blink"))
+                .as("unknown statusPulse literal")
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown statusPulse literal");
+
+        assertThat(Ui.diffView().demo(true).build().toJson()).containsEntry("demo", true);
+
+        Map<String, Object> safeArea = Map.of("top", true, "bottom", true);
+        assertThat(Ui.box().set("safeArea", safeArea).build().toJson()).containsEntry("safeArea", safeArea);
+        assertThat(Ui.text("probe").set("safeArea", true).build().toJson()).containsEntry("safeArea", true);
+
+        Map<Class<?>, Set<String>> keysByBuilder = BuilderProbe.probeAllKeys();
+        assertThat(keysByBuilder.entrySet().stream()
+                .filter(entry -> entry.getValue().contains("statusPulse"))
+                .map(Map.Entry::getKey)
+                .toList())
+                .as("statusPulse is a typed setter of progress alone")
+                .containsExactly(Ui.ProgressBuilder.class);
+        assertThat(keysByBuilder.entrySet().stream()
+                .filter(entry -> entry.getValue().contains("demo"))
+                .map(Map.Entry::getKey)
+                .toList())
+                .as("demo is a typed setter of the decorative diff_view alone")
+                .containsExactly(Ui.DiffViewBuilder.class);
+    }
+
+    /**
+     * The primitive names of the docs/sdui.md section 2.5 catalog: every
+     * backtick span of the bullet list (including its wrapped continuation
+     * lines) between the section headings.
+     */
+    private static Set<String> section25Catalog() throws IOException {
+        assertThat(DOC).as("docs/sdui.md exists relative to the module").exists();
+        Set<String> names = new TreeSet<>();
+        boolean inSection = false;
+        for (String line : Files.readAllLines(DOC, StandardCharsets.UTF_8)) {
+            if (line.startsWith("### 2.5 ")) {
+                inSection = true;
+                continue;
+            }
+            if (inSection && line.startsWith("### ")) {
+                break;
+            }
+            if (!inSection) {
+                continue;
+            }
+            String stripped = line.strip();
+            boolean bullet = stripped.startsWith("- ");
+            boolean continuation = line.startsWith("  ") && !stripped.isEmpty();
+            if (!bullet && !continuation) {
+                continue;
+            }
+            Matcher span = BACKTICK.matcher(line);
+            while (span.find()) {
+                names.add(span.group(1));
+            }
+        }
+        return names;
+    }
+
+    /**
      * Every identifier mentioned in any table row of the doc. Deliberately a
      * superset of the prop-name column: the check only needs to catch keys
      * the doc never mentions.

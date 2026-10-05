@@ -111,10 +111,12 @@ class PrimitiveCatalogTest {
     void theCatalogListsExactly68PrimitivesIncludingTheLevel3Set() throws IOException {
         Set<String> catalog = documentedCatalog();
 
-        assertThat(catalog).hasSize(68);
+        // The containment first: a missing level-3 name fails with the name
+        // in the message (the T94 --fail probe greps it).
         assertThat(catalog).contains(
                 "split", "hover_card", "toast_stack", "kbd", "scroll_fade", "diff_view",
                 "glass", "demo", "statusPulse", "safeArea");
+        assertThat(catalog).hasSize(68);
     }
 
     /**

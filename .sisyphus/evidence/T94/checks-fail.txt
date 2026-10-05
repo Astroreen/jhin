@@ -1,0 +1,7 @@
+ok: docs/sdui.md section 2.5 temporarily lacks split (67 names; backup taken, trap restores it)
+ok: the conformance guard tripped: both suites failed naming split (probe-catalog.txt)
+ok: docs/sdui.md restored (68 names again)
+FAIL: the conformance guard tripped as designed (split removed from the catalog, both suites failed)
+  ui-kit UiConformanceTest and ui-default PrimitiveCatalogTest failed naming split (probe-catalog.txt)
+  docs/sdui.md restored and re-verified (68 names)
+FAIL: deliberately wrong expectation: the catalog guard did not trip (it did; see .sisyphus/evidence/T94/probe-catalog.txt)

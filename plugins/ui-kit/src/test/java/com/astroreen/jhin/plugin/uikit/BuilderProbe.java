@@ -118,6 +118,24 @@ final class BuilderProbe {
         return keys;
     }
 
+    /**
+     * Builds every builder (every setter invoked, exactly like
+     * {@link #probeAllKeys()}) and returns the emitted node type per builder
+     * class — the inventory the conformance test checks against the
+     * docs/sdui.md section 2.5 catalog.
+     */
+    static Map<Class<?>, String> probeAllTypes() {
+        Map<Class<?>, String> types = new LinkedHashMap<>();
+        for (Map.Entry<Class<?>, Supplier<Object>> entry : BUILDERS.entrySet()) {
+            Object builder = entry.getValue().get();
+            for (Method method : setterMethods(entry.getKey())) {
+                invoke(builder, entry.getKey(), method);
+            }
+            types.put(entry.getKey(), ((Ui.NodeBuilder<?>) builder).build().type());
+        }
+        return types;
+    }
+
     /** The public single- to three-argument fluent setters of one builder class. */
     static List<Method> setterMethods(Class<?> builder) {
         Set<String> seen = new HashSet<>();

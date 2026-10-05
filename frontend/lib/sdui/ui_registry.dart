@@ -159,6 +159,10 @@ class UiRegistry {
 
   final Map<String, UiBuilder> _builders;
 
+  /// The registered primitive type names (T94 conformance surface: the
+  /// catalog test asserts this set against docs/sdui.md §2.5).
+  Set<String> get registeredTypes => Set.unmodifiable(_builders.keys.toSet());
+
   /// Registers (or overrides) one builder.
   void register(String type, UiBuilder builder) => _builders[type] = builder;
 

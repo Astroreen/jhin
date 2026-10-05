@@ -17,6 +17,7 @@ import com.astroreen.jhin.plugin.uikit.has.HasHoverCard;
 import com.astroreen.jhin.plugin.uikit.has.HasInteraction;
 import com.astroreen.jhin.plugin.uikit.has.HasItems;
 import com.astroreen.jhin.plugin.uikit.has.HasKbd;
+import com.astroreen.jhin.plugin.uikit.has.HasScrollFade;
 import com.astroreen.jhin.plugin.uikit.has.HasSplit;
 import com.astroreen.jhin.plugin.uikit.has.HasText;
 import com.astroreen.jhin.plugin.uikit.has.HasToastStack;
@@ -28,6 +29,7 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.DynamicContainer;
 import org.junit.jupiter.api.DynamicNode;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
 class UiLatticeTest {
@@ -49,6 +51,7 @@ class UiLatticeTest {
                 new Group(HasHoverCard.class, Ui::hoverCard),
                 new Group(HasKbd.class, Ui::kbd),
                 new Group(HasToastStack.class, Ui::toastStack),
+                new Group(HasScrollFade.class, Ui::scrollFade),
                 new Group(HasDiffView.class, Ui::diffView));
 
         return groups.stream().map(group -> {
@@ -61,7 +64,7 @@ class UiLatticeTest {
                     continue;
                 }
                 tests.add(DynamicTest.dynamicTest(
-                        method.getName() + " -> " + BuilderProbe.wireKey(method),
+                        method.getName() + " -> " + wireKey(group, method),
                         () -> assertWireKey(group, method)));
             }
             return DynamicContainer.dynamicContainer(group.iface().getSimpleName(), tests);
@@ -86,7 +89,41 @@ class UiLatticeTest {
         UiNode node = ((Ui.NodeBuilder<?>) builder).build();
         Map<String, Object> json = node.toJson();
         assertThat(json).as("wire key of %s#%s", group.iface().getSimpleName(), method.getName())
-                .containsKey(BuilderProbe.wireKey(method));
+                .containsKey(wireKey(group, method));
+    }
+
+    /**
+     * The wire key of one lattice method. {@code HasScrollFade.child} is the
+     * one deliberate exception to the name rule: it lands the {@code child}
+     * wire prop (the single wrapped scrollable), not the {@code children}
+     * array — docs/sdui.md section 2.6.
+     */
+    private static String wireKey(Group group, Method method) {
+        if (group.iface() == HasScrollFade.class && method.getName().equals("child")) {
+            return "child";
+        }
+        return BuilderProbe.wireKey(method);
+    }
+
+    /**
+     * T92: the level-3 {@code statusPulse} universal prop has no {@code Has*}
+     * group — it is a typed setter of {@code progress} alone — and lands its
+     * exact wire key.
+     */
+    @Test
+    void statusPulseLandsItsWireKey() {
+        assertThat(Ui.progress().statusPulse("pulse").build().toJson()).containsKey("statusPulse");
+    }
+
+    /**
+     * T88/T92: the level-3 {@code safeArea} group is a universal escape-hatch
+     * prop (no typed setter) every builder accepts; it lands its exact wire
+     * key with the per-edge object shape intact.
+     */
+    @Test
+    void safeAreaLandsItsWireKey() {
+        Map<String, Object> edges = Map.of("top", true, "bottom", true);
+        assertThat(Ui.box().set("safeArea", edges).build().toJson()).containsEntry("safeArea", edges);
     }
 
     private interface Supplier<T> {
