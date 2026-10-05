@@ -15,7 +15,7 @@
  * IllegalArgumentException} on an unknown value — a builder bug is a
  * build-time failure, never a silent render-time degradation) and pass
  * everything else through to the wire shape; the client degrades malformed
- * props per node, never per screen. Token references ({@code $spacing.md},
+ * props per node, never per screen. Token references ({@code $space.commandContent},
  * {@code $color.accent}, …) are emitted as literal strings — see
  * {@link UiTokens}; resolution is client-side only.
  *
@@ -25,8 +25,8 @@
  *     .title("Jhin")
  *     .body(Ui.container()
  *         .direction("column")
- *         .gap(UiTokens.spacing.md())
- *         .padding(UiTokens.spacing.lg())
+ *         .gap(UiTokens.space("sidebarControlGap"))
+ *         .padding(UiTokens.space("commandContent"))
  *         .child(Ui.text("Hello").style("h2"))
  *         .child("plain string child"))
  *     .build();
@@ -104,13 +104,15 @@ public final class Ui {
     }
 
     /**
-     * A {@code borderRadius} token reference; see {@link UiTokens#radius}.
+     * A {@code borderRadius} token reference: a {@code $radius.*} string as
+     * produced by {@link UiTokens#radius}. Build the reference through
+     * {@code UiTokens.radius(key)} so an unknown key fails at build time.
      *
      * @param token the {@code $radius} token
      * @return the token unchanged
      */
     public static String radius(String token) {
-        return UiTokens.radius(token);
+        return token;
     }
 
     // --- primitive factories ---

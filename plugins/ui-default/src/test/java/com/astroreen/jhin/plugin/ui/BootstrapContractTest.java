@@ -16,6 +16,7 @@ import com.astroreen.jhin.plugin.sessions.api.EventRecord;
 import com.astroreen.jhin.plugin.sessions.api.EventType;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
+import com.astroreen.jhin.plugin.uikit.UiTokens;
 import com.astroreen.jhin.sdk.http.ClientInfo;
 import com.astroreen.jhin.sdk.http.HttpResponse;
 import com.astroreen.jhin.sdk.json.Json;
@@ -58,7 +59,7 @@ class BootstrapContractTest {
         assertThat(contract).containsEntry("api", 2).containsEntry("minApi", 2)
                 .containsEntry("schema", 3).containsEntry("minSchema", 3);
         Map<String, Object> tokens = castMap(payload.get("tokens"));
-        assertThat(castMap(tokens.get("spacing"))).containsEntry("md", 12);
+        assertThat(castMap(tokens.get("motion"))).containsEntry("panel", 0);
         assertThat(payload).containsEntry("density", "comfortable");
         List<Object> keymap = castList(payload.get("keymap"));
         assertThat(keymap.size()).isGreaterThanOrEqualTo(8);
@@ -66,6 +67,68 @@ class BootstrapContractTest {
         assertThat(theme).containsKeys("appearance", "canvas", "accent", "colors", "mode");
         assertThat(theme.get("accent")).isEqualTo("#7E57C2");
         assertThat(theme.get("mode")).isEqualTo(theme.get("appearance"));
+    }
+
+    /** T83: the tokens block carries every family of the token surface. */
+    @Test
+    void tokensCarryTheFullTokenSurface() {
+        Map<String, Object> payload = bootstrap(new ClientInfo(2, "0.3.0", 3, Set.of()));
+        Map<String, Object> tokens = castMap(payload.get("tokens"));
+
+        assertThat(tokens.keySet()).containsExactlyInAnyOrder(
+                "color", "radius", "text", "font", "space", "layout",
+                "glass", "motion", "shadow", "scroll", "z");
+
+        Map<String, Object> color = castMap(tokens.get("color"));
+        assertThat(color).containsEntry("sidebar-row-hover", "var(--sidebar-row-hover)");
+        assertThat(castMap(color.get("contrast"))).containsEntry("foreground",
+                UiTokens.CONTRAST_VALUES.get("foreground"));
+        assertThat(color.keySet()).containsAll(UiTokens.COLOR_KEYS);
+
+        assertThat(castMap(tokens.get("radius")))
+                .containsEntry("base", "0.625rem")
+                .containsEntry("sm", "calc(0.625rem - 4px)")
+                .containsEntry("xl3", "calc(0.625rem + 12px)");
+        assertThat(castMap(tokens.get("layout")))
+                .containsEntry("topbarHeight", 52)
+                .containsEntry("chatContentMaxWidth", "46rem")
+                .containsEntry("threadDetailsPanelWidth", "17.5rem")
+                .containsEntry("sidebarWidth", 256)
+                .containsEntry("sidebarMinWidth", 208)
+                .containsEntry("mainMinWidth", 640);
+        assertThat(castMap(tokens.get("motion")))
+                .containsEntry("panel", 0)
+                .containsEntry("easeDrawer", "cubic-bezier(0.32, 0.72, 0, 1)")
+                .containsEntry("skeleton", "2.4s")
+                .containsEntry("statusPulse", "2s")
+                .containsEntry("statusPing", "2s")
+                .containsEntry("reduced", false);
+        assertThat(castMap(tokens.get("z"))).containsEntry("sheet", 46);
+        assertThat(castMap(tokens.get("glass")))
+                .containsEntry("opacity", "80%");
+        assertThat(castMap(tokens.get("text")).keySet())
+                .containsExactlyInAnyOrderElementsOf(UiTokens.TEXT_KEYS);
+        assertThat(castMap(tokens.get("font")))
+                .containsEntry("sizeInterface", 16)
+                .containsEntry("sizePrompt", 14)
+                .containsEntry("sizeCode", 13);
+        assertThat(castMap(tokens.get("space")).keySet())
+                .containsExactlyInAnyOrderElementsOf(UiTokens.SPACE_KEYS);
+        assertThat(castMap(tokens.get("shadow")).keySet())
+                .containsExactlyInAnyOrderElementsOf(UiTokens.SHADOW_KEYS);
+        assertThat(castMap(tokens.get("scroll")).keySet())
+                .containsExactlyInAnyOrderElementsOf(UiTokens.SCROLL_KEYS);
+    }
+
+    /** T83: the saved panel duration lands in tokens.motion.panel. */
+    @Test
+    void tokensMotionPanelFollowsTheSavedDuration() {
+        UiSettings settings = UiSettings.open(tmp);
+        settings.saveAppearance("system", "#16161e", "#7E57C2", "comfortable", 200);
+        Map<String, Object> payload = bootstrap(settings, new ClientInfo(2, "0.3.0", 3, Set.of()));
+
+        assertThat(castMap(castMap(payload.get("tokens")).get("motion")))
+                .containsEntry("panel", 200);
     }
 
     @Test
@@ -297,8 +360,11 @@ class BootstrapContractTest {
     }
 
     private Map<String, Object> bootstrap(ClientInfo client) {
-        BootstrapRoute route = new BootstrapRoute(screens(), false, tailor,
-                UiSettings.open(tmp));
+        return bootstrap(UiSettings.open(tmp), client);
+    }
+
+    private Map<String, Object> bootstrap(UiSettings settings, ClientInfo client) {
+        BootstrapRoute route = new BootstrapRoute(screens(), false, tailor, settings);
         HttpResponse response = route.handle(request(client));
         assertThat(response.status()).isEqualTo(200);
         return Json.readMap(new String(response.body()));

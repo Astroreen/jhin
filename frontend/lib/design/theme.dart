@@ -146,6 +146,28 @@ class JhinTheme {
         tokens: tokens.withZeroMotion(),
       );
 
+  /// Resolves one token-surface key against the active theme (§4.3): a
+  /// `{light, dark}` variant map collapses to the [brightness] entry, a
+  /// `{base, sm}` map to its base step (the responsive bump is a layout
+  /// concern), and everything else is the mirrored value — including the
+  /// `text` `{size, lineHeight}` pairs, which are not theme-dependent.
+  ///
+  /// Unknown families and keys resolve to null — never throws.
+  Object? resolve(String family, String key,
+      {Brightness brightness = Brightness.light}) {
+    final value = tokens.surface.value(family, key);
+    if (value is Map) {
+      final map = Map<String, Object?>.from(value);
+      if (map.containsKey('light') && map.containsKey('dark')) {
+        return brightness == Brightness.dark ? map['dark'] : map['light'];
+      }
+      if (map.containsKey('base') && map.containsKey('sm')) {
+        return map['base'];
+      }
+    }
+    return value;
+  }
+
   static ThemeMode _themeMode(Object? appearance) {
     switch (appearance) {
       case 'light':

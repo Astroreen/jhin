@@ -61,6 +61,31 @@ class UiEnumValidationTest {
         assertThatThrownBy(() -> Ui.container().shadow("nope")).isInstanceOf(IllegalArgumentException.class);
     }
 
+    // --- token key group (T83) ---
+
+    @Test
+    void tokenKeysValidateAgainstTheirFamilyVocabulary() {
+        assertThatCode(() -> Ui.container().color(UiTokens.color("sidebar-row-hover")))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> Ui.container().borderRadius(UiTokens.radius("xl3")))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> Ui.container().shadow(UiTokens.shadow("composer")))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void unknownTokenKeysAreRejectedLikeUnknownEnumLiterals() {
+        assertThatThrownBy(() -> Ui.container().color(UiTokens.color("no-such-token")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown token");
+        assertThatThrownBy(() -> UiTokens.radius("no-such-token"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown token");
+        assertThatThrownBy(() -> UiTokens.motion("no-such-token"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown token");
+    }
+
     // --- Text group ---
 
     @Test

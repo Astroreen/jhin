@@ -23,6 +23,7 @@ class JhinTokens {
     this.density = JhinDensity.comfortable,
     this.sizes = defaultSizes,
     this.colors = const {},
+    this.surface = const JhinTokenSurface({}),
   });
 
   /// Built-in defaults (§1), optionally overridden key-by-key.
@@ -30,7 +31,8 @@ class JhinTokens {
       JhinTokens.fromOverrides(null, density: density);
 
   /// Builds the lattice from a bootstrap `tokens` override map (§1):
-  /// `{spacing: {…}, radius: {…}, typography: {…}, elevation: {…}, motion: {…}}`.
+  /// `{spacing: {…}, radius: {…}, typography: {…}, elevation: {…}, motion: {…}}`
+  /// plus the token-surface families (§4.3) mirrored into [JhinTokenSurface].
   ///
   /// [density] scales the final spacing values; [motion] (a raw ms map)
   /// merges over `tokens.motion` and wins. Unknown or malformed keys keep
@@ -80,6 +82,7 @@ class JhinTokens {
       ),
       motion: JhinMotion.fromMs(motionRaw),
       density: parsedDensity,
+      surface: JhinTokenSurface.fromOverrides(raw),
     );
   }
 
@@ -108,6 +111,10 @@ class JhinTokens {
 
   /// Theme palette for `$color.*` lookups (§2.2); filled by `JhinTheme`.
   final Map<String, Color> colors;
+
+  /// The token surface of §4.3 (`color`…`z`) mirrored from the bootstrap
+  /// `tokens` block; resolved per theme by `JhinTheme.resolve`.
+  final JhinTokenSurface surface;
 
   /// Client-side `$size.*` constants (§2.2). Not server-overridable: the
   /// bootstrap `tokens` block defines no `size` group.
@@ -138,6 +145,7 @@ class JhinTokens {
         density: density,
         sizes: sizes,
         colors: colors,
+        surface: surface,
       );
 
   /// A copy with [palette] installed as the `$color.*` lookup table.
@@ -150,6 +158,7 @@ class JhinTokens {
         density: density,
         sizes: sizes,
         colors: palette,
+        surface: surface,
       );
 
   /// Resolves one `$token` reference (§2.2): `$spacing.md` → 12,
@@ -449,3 +458,258 @@ class JhinMotion {
         panel: Duration.zero,
       );
 }
+
+/// The token surface of §4.3: the eleven families (`color`, `radius`, `text`,
+/// `font`, `space`, `layout`, `glass`, `motion`, `shadow`, `scroll`, `z`)
+/// mirrored key-for-key and value-for-value from the bootstrap `tokens` block
+/// (and from `UiTokens` on the server).
+///
+/// Value shapes mirror the block. CSS values that keep a unit or a composite
+/// form are verbatim strings (`'0.625rem'`, `'80%'`, `'2.4s'`, `rgb(…)`,
+/// `calc(…)`, `cubic-bezier(…)`); plain pixel lengths and unitless numbers
+/// are numbers (a `px` length loses its unit); theme-dependent values are
+/// `{light, dark}` maps and the responsive gutter is a `{base, sm}` map —
+/// `JhinTheme.resolve` collapses both against the active theme and viewport.
+class JhinTokenSurface {
+  const JhinTokenSurface(this.families);
+
+  /// The mirrored families: family name → key → value.
+  final Map<String, Map<String, Object?>> families;
+
+  /// The built-in mirror of the upstream surface (the fallback layer the
+  /// server ships too).
+  factory JhinTokenSurface.defaults() => JhinTokenSurface(_defaults);
+
+  /// Merges a bootstrap `tokens` map over the built-in mirror, key by key.
+  /// Unknown families and keys are ignored — never throws.
+  factory JhinTokenSurface.fromOverrides(Map<String, dynamic>? overrides) {
+    final raw = overrides ?? const {};
+    final merged = <String, Map<String, Object?>>{};
+    for (final family in _defaults.keys) {
+      final base = _defaults[family]!;
+      final incoming = raw[family];
+      if (incoming is! Map) {
+        merged[family] = base;
+        continue;
+      }
+      final out = Map<String, Object?>.from(base);
+      for (final entry in incoming.entries) {
+        if (base.containsKey(entry.key)) out[entry.key] = entry.value;
+      }
+      merged[family] = out;
+    }
+    return JhinTokenSurface(merged);
+  }
+
+  static const Set<String> familyNames = {
+    'color', 'radius', 'text', 'font', 'space', 'layout',
+    'glass', 'motion', 'shadow', 'scroll', 'z',
+  };
+
+  /// The keys of one family (empty for an unknown family).
+  Set<String> keys(String family) =>
+      familyNames.contains(family) ? _defaults[family]!.keys.toSet() : const {};
+
+  /// The raw mirrored value of one key (null for an unknown family or key).
+  Object? value(String family, String key) {
+    final familyMap = families[family];
+    return familyMap == null ? null : familyMap[key];
+  }
+
+  /// The whole family map (empty for an unknown family).
+  Map<String, Object?> family(String name) => families[name] ?? const {};
+}
+
+/// The built-in mirror: same keys, same values, same shapes as the server's
+/// `UiTokens` surface. Keep the two in lockstep — `BootstrapContractTest` and
+/// `token_surface_test.dart` pin the shared spot checks.
+const Map<String, Map<String, Object?>> _defaults = {
+  'color': {
+    'accent': 'var(--accent)',
+    'accent-foreground': 'var(--contrast-accent-foreground)',
+    'background': 'var(--background)',
+    'border': 'var(--contrast-border)',
+    'card': 'var(--card)',
+    'card-foreground': 'var(--contrast-card-foreground)',
+    'code': 'var(--code-background)',
+    'code-foreground': 'var(--code-foreground)',
+    'destructive': 'var(--destructive)',
+    'destructive-foreground': 'var(--destructive-foreground)',
+    'diff-addition': 'var(--diff-addition)',
+    'diff-addition-foreground': 'var(--diff-addition-foreground)',
+    'diff-deletion': 'var(--diff-deletion)',
+    'diff-deletion-foreground': 'var(--diff-deletion-foreground)',
+    'error': 'var(--error)',
+    'error-foreground': 'var(--error-foreground)',
+    'error-surface': 'var(--error-surface)',
+    'foreground': 'var(--contrast-foreground)',
+    'icon-muted': 'var(--contrast-icon-muted)',
+    'info': 'var(--info)',
+    'info-foreground': 'var(--info-foreground)',
+    'input': 'var(--contrast-input)',
+    'message': 'var(--message-surface)',
+    'message-action': 'var(--message-action)',
+    'message-action-foreground': 'var(--message-action-foreground)',
+    'message-action-hover': 'var(--message-action-hover)',
+    'message-foreground': 'var(--contrast-message-foreground)',
+    'muted': 'var(--muted)',
+    'muted-foreground': 'var(--contrast-muted-foreground)',
+    'placeholder': 'var(--contrast-placeholder)',
+    'popover': 'var(--popover)',
+    'popover-foreground': 'var(--contrast-popover-foreground)',
+    'primary': 'var(--primary)',
+    'primary-foreground': 'var(--primary-foreground)',
+    'ring': 'var(--ring)',
+    'secondary': 'var(--secondary)',
+    'secondary-foreground': 'var(--contrast-secondary-foreground)',
+    'secondary-label': 'var(--contrast-secondary-label)',
+    'sidebar': 'var(--sidebar)',
+    'sidebar-border': 'var(--contrast-sidebar-border)',
+    'sidebar-control-surface': 'var(--sidebar-control-surface)',
+    'sidebar-foreground': 'var(--contrast-sidebar-foreground)',
+    'sidebar-muted-foreground': 'var(--contrast-sidebar-muted-foreground)',
+    'sidebar-row-active': 'var(--sidebar-row-active)',
+    'sidebar-row-hover': 'var(--sidebar-row-hover)',
+    'sidebar-row-selected': 'var(--sidebar-row-selected)',
+    'success': 'var(--success)',
+    'success-foreground': 'var(--success-foreground)',
+    'surface-raised': 'var(--surface-raised)',
+    'tool-error-icon': 'var(--tool-error-icon)',
+    'update': 'var(--update)',
+    'update-foreground': 'var(--update-foreground)',
+    'update-surface': 'var(--update-surface)',
+    'warning': 'var(--warning)',
+    'warning-foreground': 'var(--warning-foreground)',
+    'warning-surface': 'var(--warning-surface)',
+    'contrast': {
+      'accent-foreground': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--accent-foreground) var(--appearance-contrast-base), var(--accent)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+      'border': 'color-mix(in srgb, color-mix(in srgb,'
+          ' var(--border) var(--appearance-contrast-base), transparent),'
+          ' var(--foreground) var(--appearance-contrast-border-boost))',
+      'card-foreground': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--card-foreground) var(--appearance-contrast-base), var(--card)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+      'foreground': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--foreground) var(--appearance-contrast-base), var(--background)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+      'icon-muted': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--icon-muted) var(--appearance-contrast-base), var(--background)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+      'input': 'color-mix(in srgb, color-mix(in srgb,'
+          ' var(--input) var(--appearance-contrast-base), transparent),'
+          ' var(--foreground) var(--appearance-contrast-border-boost))',
+      'message-foreground': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--message-foreground) var(--appearance-contrast-base),'
+          ' var(--message-surface)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+      'muted-foreground': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--muted-foreground) var(--appearance-contrast-base),'
+          ' var(--background)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+      'placeholder': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--placeholder) var(--appearance-contrast-base), var(--background)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+      'popover-foreground': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--popover-foreground) var(--appearance-contrast-base),'
+          ' var(--popover)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+      'secondary-foreground': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--secondary-foreground) var(--appearance-contrast-base),'
+          ' var(--secondary)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+      'secondary-label': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--secondary-label) var(--appearance-contrast-base),'
+          ' var(--background)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+      'sidebar-border': 'color-mix(in srgb, color-mix(in srgb,'
+          ' var(--sidebar-border) var(--appearance-contrast-base), transparent),'
+          ' var(--sidebar-foreground) var(--appearance-contrast-border-boost))',
+      'sidebar-foreground': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--sidebar-foreground) var(--appearance-contrast-base),'
+          ' var(--sidebar)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+      'sidebar-muted-foreground': 'color-mix(in oklab, color-mix(in oklab,'
+          ' var(--sidebar-muted-foreground) var(--appearance-contrast-base),'
+          ' var(--sidebar)),'
+          ' var(--appearance-contrast-target) var(--appearance-contrast-boost))',
+    },
+  },
+  'radius': {
+    'base': '0.625rem',
+    'sm': 'calc(0.625rem - 4px)',
+    'md': 'calc(0.625rem - 2px)',
+    'lg': '0.625rem',
+    'xl': 'calc(0.625rem + 4px)',
+    'xl2': 'calc(0.625rem + 8px)',
+    'xl3': 'calc(0.625rem + 12px)',
+  },
+  'text': {
+    'xs5': {'size': '0.4375rem', 'lineHeight': '1'},
+    'xs4': {'size': '0.5rem', 'lineHeight': '1'},
+    'xs3': {'size': '0.625rem', 'lineHeight': 'calc(0.875 / 0.625)'},
+    'xs2': {'size': '0.6875rem', 'lineHeight': 'calc(1 / 0.6875)'},
+    'xs': {'size': '0.75rem', 'lineHeight': 'calc(1 / 0.75)'},
+    'sm': {'size': '0.875rem', 'lineHeight': 'calc(1.25 / 0.875)'},
+    'base': {'size': '1rem', 'lineHeight': 'calc(1.5 / 1)'},
+    'lg': {'size': '1.125rem', 'lineHeight': 'calc(1.75 / 1.125)'},
+    'xl': {'size': '1.25rem', 'lineHeight': 'calc(1.75 / 1.25)'},
+  },
+  'font': {
+    'sans': '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+    'mono': 'ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas,'
+        ' "Liberation Mono", monospace',
+    'composer': '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+    'sizeInterface': 16,
+    'sizePrompt': 14,
+    'sizeCode': 13,
+  },
+  'space': {
+    'control': '0.5rem',
+    'sidebarContent': '0.5rem',
+    'sidebarControlGap': '0.5rem',
+    'sidebarRowContent': '0.625rem',
+    'commandShell': '0.5rem',
+    'commandContent': '1rem',
+    'floatingContent': '0.75rem',
+    'workspaceGutter': {'base': '0.75rem', 'sm': '1.25rem'},
+  },
+  'layout': {
+    'topbarHeight': 52,
+    'chatContentMaxWidth': '46rem',
+    'threadDetailsPanelWidth': '17.5rem',
+    'sidebarWidth': 256,
+    'sidebarMinWidth': 208,
+    'mainMinWidth': 640,
+  },
+  'glass': {
+    'blur': {'light': 12, 'dark': 16},
+    'opacity': '80%',
+    'saturation': {'light': 1.14, 'dark': 1.08},
+  },
+  'motion': {
+    'panel': 0,
+    'easeDrawer': 'cubic-bezier(0.32, 0.72, 0, 1)',
+    'skeleton': '2.4s',
+    'statusPulse': '2s',
+    'statusPing': '2s',
+    'reduced': false,
+  },
+  'shadow': {
+    'composer': {
+      'light': '0 12px 28px -18px rgb(0 0 0 / 40%)',
+      'dark': '0 14px 32px -18px rgb(0 0 0 / 75%)',
+    },
+    'controlHighlight': '0 1px rgb(255 255 255 / 16%)',
+    'controlPressed': '0 1px rgb(0 0 0 / 8%)',
+  },
+  'scroll': {
+    'width': 6,
+    'thumb': {'light': 'rgb(217 217 217)', 'dark': 'rgb(255 255 255 / 8%)'},
+    'thumbHover': {'light': 'rgb(191 191 191)', 'dark': 'rgb(255 255 255 / 12%)'},
+  },
+  'z': {
+    'sheet': 46,
+  },
+};
