@@ -48,6 +48,7 @@ import 'primitives/rich_text.dart';
 import 'primitives/row.dart';
 import 'primitives/screen.dart';
 import 'primitives/scroll.dart';
+import 'primitives/scroll_fade.dart';
 import 'primitives/segmented.dart';
 import 'primitives/sheet.dart';
 import 'primitives/shell.dart';
@@ -148,6 +149,7 @@ class UiRegistry {
       'hover_card': buildHoverCard,
       'kbd': buildKbd,
       'toast_stack': buildToastStack,
+      'scroll_fade': buildScrollFade,
     });
     return registry;
   }

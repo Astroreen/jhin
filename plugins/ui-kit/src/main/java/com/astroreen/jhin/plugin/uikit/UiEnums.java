@@ -184,6 +184,15 @@ final class UiEnums {
     /** docs/sdui.md 2.6 {@code toast_stack} item {@code style} (like the {@code toast} directive). */
     static final Set<String> TOAST_STYLE = Set.of("error", "success");
 
+    /** docs/sdui.md 2.6 {@code scroll_fade} {@code edge}. */
+    static final Set<String> SCROLL_FADE_EDGE = Set.of("top", "bottom", "start", "end");
+
+    /** docs/sdui.md 2.6 {@code scroll_fade} {@code mode}. */
+    static final Set<String> SCROLL_FADE_MODE = Set.of("topbar", "virtualized");
+
+    /** docs/sdui.md 2.1 level-3 universal {@code statusPulse} (the progress duty-cycle modes). */
+    static final Set<String> STATUS_PULSE = Set.of("pulse", "ping", "skeleton", "none");
+
     /** Builder-specific literal overrides: entries are {@code <BuilderSimpleName>.<prop>}. */
     private static final Map<String, Set<String>> SPECIFIC = Map.ofEntries(
             Map.entry("ButtonBuilder.style", BUTTON_STYLE),
@@ -210,7 +219,10 @@ final class UiEnums {
             Map.entry("SplitBuilder.handleStyle", HANDLE_STYLE),
             Map.entry("HoverCardBuilder.placement", HOVER_PLACEMENT),
             Map.entry("ToastStackBuilder.direction", TOAST_DIRECTION),
-            Map.entry("ToastItemBuilder.style", TOAST_STYLE));
+            Map.entry("ToastItemBuilder.style", TOAST_STYLE),
+            Map.entry("ScrollFadeBuilder.edge", SCROLL_FADE_EDGE),
+            Map.entry("ScrollFadeBuilder.mode", SCROLL_FADE_MODE),
+            Map.entry("ProgressBuilder.statusPulse", STATUS_PULSE));
 
     /** Global prop-name to literal-set lookup, used by the conformance probe. */
     private static final Map<String, Set<String>> BY_KEY = Map.ofEntries(

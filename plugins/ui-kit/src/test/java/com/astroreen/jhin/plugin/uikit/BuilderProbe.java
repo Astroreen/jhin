@@ -94,6 +94,7 @@ final class BuilderProbe {
         BUILDERS.put(Ui.HoverCardBuilder.class, Ui::hoverCard);
         BUILDERS.put(Ui.KbdBuilder.class, Ui::kbd);
         BUILDERS.put(Ui.ToastStackBuilder.class, Ui::toastStack);
+        BUILDERS.put(Ui.ScrollFadeBuilder.class, Ui::scrollFade);
     }
 
     /**

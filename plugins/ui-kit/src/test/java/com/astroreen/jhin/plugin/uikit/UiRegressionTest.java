@@ -228,6 +228,26 @@ class UiRegressionTest {
                 .item(Ui.toastItem("Saved").style("success"))
                 .build());
 
+        // T92: the level-3 scroll fade — the topbar recipe band at the top
+        // edge over the wrapped scrollable, at the 1.5rem default height
+        // (the wire shape the client's dstIn ShaderMask renders).
+        nodes.add(Ui.scrollFade()
+                .id("scroll-fade-top")
+                .child(Ui.text("Scrollable body").build())
+                .edge("top")
+                .height(24)
+                .mode("topbar")
+                .build());
+
+        // T92: the duty-cycled status indicator — the progress node carrying
+        // the level-3 statusPulse mode (the 2 s stepped status pulse the
+        // client renders as the attention dot).
+        nodes.add(Ui.progress()
+                .id("status-pulse")
+                .kind("linear")
+                .statusPulse("pulse")
+                .build());
+
         return nodes;
     }
 
@@ -237,7 +257,8 @@ class UiRegressionTest {
             "stream_view", "table", "divider", "spacer", "progress", "image",
             "figure", "chart_line", "chart_bar", "chart_pie", "drawer",
             "glass-card", "glass-sheet", "glass-dialog", "glass-menu",
-            "glass-banner", "split", "hover_card", "kbd", "toast_stack");
+            "glass-banner", "split", "hover_card", "kbd", "toast_stack",
+            "scroll_fade", "status-pulse");
 
     @Test
     void wireShapesAreByteIdenticalToTheCapturedFixtures() throws IOException {

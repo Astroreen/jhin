@@ -122,6 +122,22 @@
         "type": "progress"
       },
       {
+        "id": "probe-ping",
+        "kind": "linear",
+        "type": "progress"
+      },
+      {
+        "id": "probe-skeleton",
+        "kind": "linear",
+        "type": "progress"
+      },
+      {
+        "id": "probe-complete",
+        "kind": "linear",
+        "type": "progress",
+        "value": 1.0
+      },
+      {
         "demo": true,
         "id": "probe-demo",
         "label": "Decorative",

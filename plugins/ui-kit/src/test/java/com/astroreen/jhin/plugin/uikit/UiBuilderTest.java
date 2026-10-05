@@ -247,6 +247,63 @@ class UiBuilderTest {
                 .hasMessageContaining("unknown style literal");
     }
 
+    /**
+     * T92: the level-3 {@code scroll_fade} builder lands the wrapped child
+     * and the fade props. The {@code child} setter writes the {@code child}
+     * wire prop — not the {@code children} array — which is why this group
+     * is covered here and not in the {@code Has*} lattice test (whose wire
+     * key rule maps {@code child} to the children array).
+     */
+    @Test
+    void scrollFadeWireShapeCarriesTheFadeProps() {
+        Map<String, Object> fade = Ui.scrollFade()
+                .id("probe-scroll-fade")
+                .child(Ui.text("Scrollable body").build())
+                .edge("top")
+                .height(24)
+                .mode("topbar")
+                .build().toJson();
+        assertThat(fade).containsEntry("type", "scroll_fade")
+                .containsEntry("id", "probe-scroll-fade")
+                .containsEntry("edge", "top")
+                .containsEntry("height", 24)
+                .containsEntry("mode", "topbar");
+        assertThat(castMap(fade.get("child"))).containsEntry("type", "text");
+    }
+
+    /** T92: unknown scroll_fade enum literals throw at build time (a builder bug). */
+    @Test
+    void scrollFadeRejectsUnknownEnumLiterals() {
+        assertThatThrownBy(() -> Ui.scrollFade().edge("diagonal"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown edge literal");
+        assertThatThrownBy(() -> Ui.scrollFade().mode("weird"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown mode literal");
+    }
+
+    /** T92: the progress builder lands the level-3 duty-cycle mode. */
+    @Test
+    void progressWireShapeCarriesTheStatusPulseMode() {
+        Map<String, Object> progress = Ui.progress()
+                .id("probe-pulse")
+                .kind("linear")
+                .statusPulse("ping")
+                .build().toJson();
+        assertThat(progress).containsEntry("type", "progress")
+                .containsEntry("id", "probe-pulse")
+                .containsEntry("kind", "linear")
+                .containsEntry("statusPulse", "ping");
+    }
+
+    /** T92: unknown statusPulse literals throw at build time (a builder bug). */
+    @Test
+    void progressRejectsUnknownStatusPulseLiterals() {
+        assertThatThrownBy(() -> Ui.progress().statusPulse("blink"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown statusPulse literal");
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> castMap(Object value) {
         return (Map<String, Object>) value;

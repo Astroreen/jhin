@@ -46,10 +46,10 @@ import com.astroreen.jhin.plugin.uikit.has.HasHoverCard;
 import com.astroreen.jhin.plugin.uikit.has.HasInteraction;
 import com.astroreen.jhin.plugin.uikit.has.HasItems;
 import com.astroreen.jhin.plugin.uikit.has.HasKbd;
+import com.astroreen.jhin.plugin.uikit.has.HasScrollFade;
 import com.astroreen.jhin.plugin.uikit.has.HasSplit;
 import com.astroreen.jhin.plugin.uikit.has.HasText;
 import com.astroreen.jhin.plugin.uikit.has.HasToastStack;
-import com.astroreen.jhin.plugin.uikit.has.HasText;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -476,6 +476,17 @@ public final class Ui {
      */
     public static ToastStackBuilder toastStack() {
         return new ToastStackBuilder();
+    }
+
+    /**
+     * An alpha fade over a scrollable's edge: {@code scroll_fade}(child,
+     * edge?, height?, mode?). The {@code topbar} mode paints the static
+     * seven-stop band (the messages-timeline recipe), the {@code
+     * virtualized} mode the scroll-aware two-stop band (the lazy-list
+     * recipe — an edge fades only while content hides beyond it).
+     */
+    public static ScrollFadeBuilder scrollFade() {
+        return new ScrollFadeBuilder();
     }
 
     /** One {@code toast_stack} item spec ({@code {text, style?, action?, duration?}}). */
@@ -2662,6 +2673,17 @@ public final class Ui {
             props.put("value", value);
             return this;
         }
+
+        /**
+         * The level-3 duty-cycle mode (docs/sdui.md section 2.1): {@code
+         * pulse}, {@code ping}, {@code skeleton} or {@code none}; validated.
+         * A complete indicator ({@code value >= 1.0}) never animates
+         * client-side.
+         */
+        public ProgressBuilder statusPulse(String value) {
+            props.put("statusPulse", UiEnums.require("statusPulse", value, UiEnums.STATUS_PULSE));
+            return this;
+        }
     }
 
     /** {@code image}(src|dataUri, width?, height?, fit?) — width/height come from the universal lattice. */
@@ -4518,6 +4540,52 @@ public final class Ui {
         /** The finished item spec, in insertion order. */
         public Map<String, Object> build() {
             return new LinkedHashMap<>(spec);
+        }
+    }
+
+    /**
+     * {@code scroll_fade}(child, edge?, height?, mode?) — the level-3 alpha
+     * fade over a scrollable's edge (docs/sdui.md section 2.6). A level-2
+     * client receives the node degraded to a {@code scroll} wrapping the
+     * same child by the server's downgrade map.
+     */
+    public static final class ScrollFadeBuilder extends NodeBuilder<ScrollFadeBuilder>
+            implements HasScrollFade<ScrollFadeBuilder> {
+
+        private ScrollFadeBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "scroll_fade";
+        }
+
+        /** The scrollable the fade wraps (required; the client degrades a missing child visibly). */
+        @Override
+        public ScrollFadeBuilder child(UiNode node) {
+            props.put("child", node);
+            return this;
+        }
+
+        /** The scrolled edge: {@code top} (default), {@code bottom}, {@code start} or {@code end}; validated. */
+        @Override
+        public ScrollFadeBuilder edge(String value) {
+            props.put("edge", UiEnums.require("edge", value, UiEnums.SCROLL_FADE_EDGE));
+            return this;
+        }
+
+        /** The fade extent in px (default 24 — the 1.5rem titlebar fade height). */
+        @Override
+        public ScrollFadeBuilder height(Number value) {
+            props.put("height", value);
+            return this;
+        }
+
+        /** The recipe: {@code topbar} (static band, default) or {@code virtualized} (scroll-aware); validated. */
+        @Override
+        public ScrollFadeBuilder mode(String value) {
+            props.put("mode", UiEnums.require("mode", value, UiEnums.SCROLL_FADE_MODE));
+            return this;
         }
     }
 

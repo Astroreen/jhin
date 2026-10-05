@@ -1,5 +1,5 @@
---- .sisyphus/evidence/T88/downgrade-l2.json	2026-10-05 19:52:25.887679165 +0300
-+++ .sisyphus/evidence/T88/downgrade-l3.json	2026-10-05 19:52:25.841680543 +0300
+--- .sisyphus/evidence/T88/downgrade-l2.json	2026-10-05 22:40:02.915230769 +0300
++++ .sisyphus/evidence/T88/downgrade-l3.json	2026-10-05 22:40:02.870231759 +0300
 @@ -2,61 +2,105 @@
    "body": {
      "children": [
@@ -172,7 +172,7 @@
          "id": "probe-glass-menu",
          "items": [
            {
-@@ -113,12 +165,15 @@
+@@ -113,27 +165,33 @@
            "text": "Blurred backdrop banner",
            "type": "text"
          },
@@ -188,3 +188,21 @@
          "type": "progress"
        },
        {
+         "id": "probe-ping",
+         "kind": "linear",
++        "statusPulse": "ping",
+         "type": "progress"
+       },
+       {
+         "id": "probe-skeleton",
+         "kind": "linear",
++        "statusPulse": "skeleton",
+         "type": "progress"
+       },
+       {
+         "id": "probe-complete",
+         "kind": "linear",
++        "statusPulse": "ping",
+         "type": "progress",
+         "value": 1.0
+       },

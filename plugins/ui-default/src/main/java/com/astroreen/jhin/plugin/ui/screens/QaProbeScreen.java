@@ -8,8 +8,10 @@
  * {@code jhin.ui} config key {@code qaProbe} (default off) and no screen
  * links here.
  *
- * <p>The level-3 primitives have no typed {@code Ui} builders yet (they land
- * with their own todos), so the nodes are authored directly on the
+ * <p>The typed {@code Ui} builders exist for the primitives their todos
+ * landed ({@code split}, {@code hover_card}, {@code toast_stack}, {@code
+ * kbd}, {@code scroll_fade}, T92's {@code statusPulse} progress modes); the
+ * not-yet-typed ones ({@code diff_view}) are authored directly on the
  * {@link UiNode} wire model.
  */
 package com.astroreen.jhin.plugin.ui.screens;
@@ -40,6 +42,9 @@ public final class QaProbeScreen {
                         .child(glassMenu())
                         .child(glassBanner())
                         .child(pulseProgress())
+                        .child(pingProgress())
+                        .child(skeletonProgress())
+                        .child(completeProgress())
                         .child(demoButton())
                         .child(safeAreaBox())
                         .build())
@@ -89,14 +94,15 @@ public final class QaProbeScreen {
                 "chord", "mod+shift+m"), List.of());
     }
 
-    /** The scroll fade around one child. */
+    /** The scroll fade around one child (the typed T92 builder). */
     private static UiNode scrollFade() {
-        return new UiNode("scroll_fade", Map.ofEntries(
-                Map.entry("id", "probe-scroll-fade"),
-                Map.entry("edge", "top"),
-                Map.entry("height", 24),
-                Map.entry("mode", "topbar"),
-                Map.entry("child", Ui.text("Scrollable body").build())), List.of());
+        return Ui.scrollFade()
+                .id("probe-scroll-fade")
+                .edge("top")
+                .height(24)
+                .mode("topbar")
+                .child(Ui.text("Scrollable body").build())
+                .build();
     }
 
     /** The decorative diff renderer. */
@@ -179,10 +185,26 @@ public final class QaProbeScreen {
 
     /** An indicator carrying the level-3 universal {@code statusPulse}. */
     private static UiNode pulseProgress() {
-        return new UiNode("progress", Map.of(
-                "id", "probe-pulse",
-                "kind", "linear",
-                "statusPulse", "pulse"), List.of());
+        return Ui.progress().id("probe-pulse").kind("linear").statusPulse("pulse").build();
+    }
+
+    /** An indicator carrying the ping mode (the unread-dot ring). */
+    private static UiNode pingProgress() {
+        return Ui.progress().id("probe-ping").kind("linear").statusPulse("ping").build();
+    }
+
+    /** An indicator carrying the skeleton mode (the 2.4 s shimmer). */
+    private static UiNode skeletonProgress() {
+        return Ui.progress().id("probe-skeleton").kind("linear").statusPulse("skeleton").build();
+    }
+
+    /**
+     * The complete indicator: {@code value 1.0} plus the ping mode — the
+     * complete bar wins, the client must not animate it (the T92 --fail
+     * probe asserts the static render over the wire).
+     */
+    private static UiNode completeProgress() {
+        return Ui.progress().id("probe-complete").kind("linear").value(1.0).statusPulse("ping").build();
     }
 
     /** A decorative node carrying the universal {@code demo} marker (kept at level 2). */

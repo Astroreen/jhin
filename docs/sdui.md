@@ -803,6 +803,7 @@ Surface primitives:
 | `progress` | `kind` | `linear`/`circular` | `linear` | kind |
 | `progress` | `value` | num | — | 0..1; omitted = indeterminate |
 | `progress` | `color` | color | — | color |
+| `progress` | `statusPulse` | `pulse`/`ping`/`skeleton`/`none` | `none` | the duty-cycled attention indicator (section 2.1 level 3): `pulse` runs the 2 s stepped status pulse, `ping` the 2 s ping ring, `skeleton` the 2.4 s shimmer — the mode renders the indicator dot (the upstream status-pill treatment); a complete indicator (`value` ≥ 1.0) renders the static complete bar and never animates; reduced motion collapses every mode to the static dot |
 | `image` | `src` | string | — | image URL (`src` or `dataUri` required) |
 | `image` | `dataUri` | string | — | inline data |
 | `image` | `width` | num | — | width |
