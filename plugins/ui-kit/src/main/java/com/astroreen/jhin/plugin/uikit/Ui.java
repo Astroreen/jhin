@@ -7,7 +7,11 @@
  * implemented once in {@link NodeBuilder} through the {@code Has*} lattice of
  * the {@code has} package (Box, Text, Flex, Interaction); parent builders add
  * {@code children} ({@link ParentBuilder}) and item-taking builders add
- * {@code items} ({@link ItemBuilder}). Every Flutter parameter of the widget
+ * {@code items} ({@link ItemBuilder}). The level-3 glass group
+ * ({@link com.astroreen.jhin.plugin.uikit.has.HasGlass}) is accepted on
+ * exactly the five glass-capable surfaces — card, sheet, dialog, menu and
+ * banner; every other builder rejects it through the escape hatch. Every
+ * Flutter parameter of the widget
  * a primitive renders has exactly one typed setter; unset params are simply
  * absent from the emitted JSON so the client uses its token defaults.
  *
@@ -37,6 +41,7 @@ package com.astroreen.jhin.plugin.uikit;
 import com.astroreen.jhin.plugin.uikit.has.HasBox;
 import com.astroreen.jhin.plugin.uikit.has.HasChildren;
 import com.astroreen.jhin.plugin.uikit.has.HasFlex;
+import com.astroreen.jhin.plugin.uikit.has.HasGlass;
 import com.astroreen.jhin.plugin.uikit.has.HasInteraction;
 import com.astroreen.jhin.plugin.uikit.has.HasItems;
 import com.astroreen.jhin.plugin.uikit.has.HasText;
@@ -456,6 +461,10 @@ public final class Ui {
 
         @Override
         public B set(String key, Object value) {
+            if (!glassCapable() && (key.equals("glass") || key.equals("glassTint"))) {
+                throw new IllegalArgumentException("unsupported prop " + key + " on " + type()
+                        + " — only card, sheet, dialog, menu and banner accept it");
+            }
             props.put(key, value);
             return self();
         }
@@ -463,6 +472,15 @@ public final class Ui {
         @Override
         public Map<String, Object> props() {
             return props;
+        }
+
+        /**
+         * Whether this builder is one of the five glass-capable surfaces
+         * (docs/sdui.md section 2.1); the escape hatch rejects the glass
+         * keys everywhere else with the standard unsupported-prop error.
+         */
+        boolean glassCapable() {
+            return false;
         }
 
         // --- Meta group ---
@@ -1062,7 +1080,7 @@ public final class Ui {
     }
 
     /** {@code card}(title?, children). */
-    public static final class CardBuilder extends ParentBuilder<CardBuilder> {
+    public static final class CardBuilder extends ParentBuilder<CardBuilder> implements HasGlass<CardBuilder> {
 
         private CardBuilder() {
         }
@@ -1070,6 +1088,25 @@ public final class Ui {
         @Override
         String type() {
             return "card";
+        }
+
+        @Override
+        boolean glassCapable() {
+            return true;
+        }
+
+        /** The level-3 {@code glass} prop: the glass surface treatment. */
+        @Override
+        public CardBuilder glass(boolean value) {
+            props.put("glass", value);
+            return this;
+        }
+
+        /** The level-3 {@code glassTint} prop: the tint colour of the glass fill. */
+        @Override
+        public CardBuilder glassTint(String value) {
+            props.put("glassTint", value);
+            return this;
         }
 
         /** The card title. */
@@ -3632,7 +3669,7 @@ public final class Ui {
     }
 
     /** {@code menu}(trigger, items, breakpoint?) — a popup menu over a trigger node. */
-    public static final class MenuBuilder extends ItemBuilder<MenuBuilder> {
+    public static final class MenuBuilder extends ItemBuilder<MenuBuilder> implements HasGlass<MenuBuilder> {
 
         private MenuBuilder() {
         }
@@ -3640,6 +3677,25 @@ public final class Ui {
         @Override
         String type() {
             return "menu";
+        }
+
+        @Override
+        boolean glassCapable() {
+            return true;
+        }
+
+        /** The level-3 {@code glass} prop: the glass surface treatment. */
+        @Override
+        public MenuBuilder glass(boolean value) {
+            props.put("glass", value);
+            return this;
+        }
+
+        /** The level-3 {@code glassTint} prop: the tint colour of the glass fill. */
+        @Override
+        public MenuBuilder glassTint(String value) {
+            props.put("glassTint", value);
+            return this;
         }
 
         /** The trigger node that opens the menu. */
@@ -3726,7 +3782,7 @@ public final class Ui {
     }
 
     /** {@code sheet}(title?, body?, footer?, height?, dismissible?) — a modal bottom sheet surface. */
-    public static final class SheetBuilder extends NodeBuilder<SheetBuilder> {
+    public static final class SheetBuilder extends NodeBuilder<SheetBuilder> implements HasGlass<SheetBuilder> {
 
         private SheetBuilder() {
         }
@@ -3734,6 +3790,25 @@ public final class Ui {
         @Override
         String type() {
             return "sheet";
+        }
+
+        @Override
+        boolean glassCapable() {
+            return true;
+        }
+
+        /** The level-3 {@code glass} prop: the glass surface treatment. */
+        @Override
+        public SheetBuilder glass(boolean value) {
+            props.put("glass", value);
+            return this;
+        }
+
+        /** The level-3 {@code glassTint} prop: the tint colour of the glass fill. */
+        @Override
+        public SheetBuilder glassTint(String value) {
+            props.put("glassTint", value);
+            return this;
         }
 
         /** The sheet title (a string or a node). */
@@ -3780,7 +3855,7 @@ public final class Ui {
     }
 
     /** {@code dialog}(title?, content?, actions?) — an AlertDialog-shaped node. */
-    public static final class DialogBuilder extends NodeBuilder<DialogBuilder> {
+    public static final class DialogBuilder extends NodeBuilder<DialogBuilder> implements HasGlass<DialogBuilder> {
 
         private DialogBuilder() {
         }
@@ -3788,6 +3863,25 @@ public final class Ui {
         @Override
         String type() {
             return "dialog";
+        }
+
+        @Override
+        boolean glassCapable() {
+            return true;
+        }
+
+        /** The level-3 {@code glass} prop: the glass surface treatment. */
+        @Override
+        public DialogBuilder glass(boolean value) {
+            props.put("glass", value);
+            return this;
+        }
+
+        /** The level-3 {@code glassTint} prop: the tint colour of the glass fill. */
+        @Override
+        public DialogBuilder glassTint(String value) {
+            props.put("glassTint", value);
+            return this;
         }
 
         /** The dialog title (a string or a node). */
@@ -3834,7 +3928,7 @@ public final class Ui {
     }
 
     /** {@code banner}(content?, actions?, onDismiss?) — a persistent notice. */
-    public static final class BannerBuilder extends NodeBuilder<BannerBuilder> {
+    public static final class BannerBuilder extends NodeBuilder<BannerBuilder> implements HasGlass<BannerBuilder> {
 
         private BannerBuilder() {
         }
@@ -3842,6 +3936,25 @@ public final class Ui {
         @Override
         String type() {
             return "banner";
+        }
+
+        @Override
+        boolean glassCapable() {
+            return true;
+        }
+
+        /** The level-3 {@code glass} prop: the glass surface treatment. */
+        @Override
+        public BannerBuilder glass(boolean value) {
+            props.put("glass", value);
+            return this;
+        }
+
+        /** The level-3 {@code glassTint} prop: the tint colour of the glass fill. */
+        @Override
+        public BannerBuilder glassTint(String value) {
+            props.put("glassTint", value);
+            return this;
         }
 
         /** The notice content node. */

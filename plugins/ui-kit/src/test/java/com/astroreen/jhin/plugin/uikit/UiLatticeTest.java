@@ -11,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.astroreen.jhin.plugin.uikit.has.HasBox;
 import com.astroreen.jhin.plugin.uikit.has.HasChildren;
 import com.astroreen.jhin.plugin.uikit.has.HasFlex;
+import com.astroreen.jhin.plugin.uikit.has.HasGlass;
 import com.astroreen.jhin.plugin.uikit.has.HasInteraction;
 import com.astroreen.jhin.plugin.uikit.has.HasItems;
 import com.astroreen.jhin.plugin.uikit.has.HasText;
@@ -37,7 +38,8 @@ class UiLatticeTest {
                 new Group(HasFlex.class, Ui::container),
                 new Group(HasInteraction.class, Ui::container),
                 new Group(HasChildren.class, Ui::card),
-                new Group(HasItems.class, Ui::list));
+                new Group(HasItems.class, Ui::list),
+                new Group(HasGlass.class, Ui::card));
 
         return groups.stream().map(group -> {
             List<DynamicTest> tests = new ArrayList<>();

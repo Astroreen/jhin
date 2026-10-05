@@ -1,5 +1,5 @@
---- .sisyphus/evidence/T88/downgrade-l2.json	2026-10-05 18:26:29.810557434 +0300
-+++ .sisyphus/evidence/T88/downgrade-l3.json	2026-10-05 18:26:29.765558428 +0300
+--- .sisyphus/evidence/T88/downgrade-l2.json	2026-10-05 19:52:25.887679165 +0300
++++ .sisyphus/evidence/T88/downgrade-l3.json	2026-10-05 19:52:25.841680543 +0300
 @@ -2,61 +2,105 @@
    "body": {
      "children": [
@@ -22,8 +22,6 @@
 +        "handleStyle": "rail",
          "id": "probe-split",
 -        "type": "column"
--      },
--      {
 +        "initial": 256,
 +        "max": 640,
 +        "min": 208,
@@ -34,8 +32,8 @@
 +          "type": "text"
 +        },
 +        "type": "split"
-+      },
-+      {
+       },
+       {
 +        "content": {
 +          "text": "Hover content",
 +          "type": "text"
@@ -140,13 +138,48 @@
        },
        {
          "children": [
-@@ -65,12 +109,14 @@
+@@ -65,6 +109,8 @@
              "type": "text"
            }
          ],
 +        "glass": true,
++        "glassTint": "$color.destructive",
          "id": "probe-glass",
          "type": "card"
+       },
+@@ -73,6 +119,8 @@
+           "text": "Blurred backdrop sheet",
+           "type": "text"
+         },
++        "glass": true,
++        "glassTint": "$color.destructive",
+         "id": "probe-glass-sheet",
+         "title": "Glass sheet",
+         "type": "sheet"
+@@ -88,11 +136,15 @@
+           "text": "Blurred backdrop dialog",
+           "type": "text"
+         },
++        "glass": true,
++        "glassTint": "$color.destructive",
+         "id": "probe-glass-dialog",
+         "title": "Glass dialog",
+         "type": "dialog"
+       },
+       {
++        "glass": true,
++        "glassTint": "$color.destructive",
+         "id": "probe-glass-menu",
+         "items": [
+           {
+@@ -113,12 +165,15 @@
+           "text": "Blurred backdrop banner",
+           "type": "text"
+         },
++        "glass": true,
++        "glassTint": "$color.warning",
+         "id": "probe-glass-banner",
+         "type": "banner"
        },
        {
          "id": "probe-pulse",

@@ -853,6 +853,47 @@ class GalleryDump {
                 .onDismiss(action("banner-dismiss"))
                 .build()));
 
+        // T89: the five glass-capable surfaces with the level-3 glass group
+        // (glass + glassTint) — the light/dark gallery goldens pin the
+        // surface-glass, alert-glass, dialog-glass and dropdown-glass
+        // recipes over the striped gallery surface.
+        all.add(new Fixture("fixture-glass-card", Ui.card()
+                .id("fixture-glass-card")
+                .title("Glass card")
+                .glass(true)
+                .glassTint("$color.destructive")
+                .child(Ui.text("Blurred backdrop card").build())
+                .build()));
+        all.add(new Fixture("fixture-glass-sheet", Ui.sheet()
+                .id("fixture-glass-sheet")
+                .title("Glass sheet")
+                .body(Ui.text("Blurred backdrop sheet").build())
+                .glass(true)
+                .glassTint("$color.destructive")
+                .build()));
+        all.add(new Fixture("fixture-glass-dialog", Ui.dialog()
+                .id("fixture-glass-dialog")
+                .title("Glass dialog")
+                .content(Ui.text("Blurred backdrop dialog").build())
+                .action(Ui.button("Close").style("secondary").build())
+                .glass(true)
+                .glassTint("$color.destructive")
+                .build()));
+        all.add(new Fixture("fixture-glass-menu", Ui.menu()
+                .id("fixture-glass-menu")
+                .trigger(Ui.button("Open menu").build())
+                .item("One")
+                .item("Two")
+                .glass(true)
+                .glassTint("$color.destructive")
+                .build()));
+        all.add(new Fixture("fixture-glass-banner", Ui.banner()
+                .id("fixture-glass-banner")
+                .content(Ui.text("Blurred backdrop banner").build())
+                .glass(true)
+                .glassTint("$color.warning")
+                .build()));
+
         // tabs
         all.add(new Fixture("fixture-tabs-basic", Ui.tabs()
                 .id("fixture-tabs-basic")

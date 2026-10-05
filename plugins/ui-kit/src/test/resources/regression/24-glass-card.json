@@ -1,0 +1,1 @@
+{"type":"card","id":"glass-card","title":"Glass card","glass":true,"glassTint":"$color.destructive","children":[{"type":"text","text":"Blurred backdrop card"}]}

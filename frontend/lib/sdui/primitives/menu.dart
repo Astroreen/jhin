@@ -28,7 +28,8 @@ import 'sheet.dart' show buildSheetChrome;
 /// (index.css:405-419). The sheet presentation carries the full recipe
 /// (backdrop blur + saturation, the mixed popover fill); the popup route
 /// cannot host a `BackdropFilter`, so it takes the recipe fill only — the
-/// documented route-popup degradation.
+/// documented route-popup degradation. T89: `glassTint` paints the 4% tint
+/// wash over the glass fill (both presentations).
 Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
   final trigger = buildChildProp(context, ctx, node.props['trigger']);
   if (trigger == null) {
@@ -107,7 +108,8 @@ Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
                   );
                   return SafeArea(
                     child: glass
-                        ? buildSheetChrome(sheetContext, list, glass: true)
+                        ? buildSheetChrome(sheetContext, list,
+                            glass: true, glassTint: glassTintOf(node))
                         : list,
                   );
                 },
@@ -118,7 +120,7 @@ Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
   }
   return PopupMenuButton<int>(
     enabled: enabled,
-    color: glass ? _menuGlassFill(context) : null,
+    color: glass ? _menuGlassFill(context, tint: glassTintOf(node)) : null,
     itemBuilder: popupEntries,
     onSelected: (index) => dispatchItem(items[index]),
     child: guarded,
@@ -127,8 +129,9 @@ Widget buildMenu(BuildContext context, UiNode node, RenderContext ctx) {
 
 /// The dropdown-glass fill for the popup route (T87): the recipe fill only —
 /// a route popup cannot host a `BackdropFilter`, so the blur degrades to
-/// the translucent fill (the documented route-popup degradation).
-Color _menuGlassFill(BuildContext context) {
+/// the translucent fill (the documented route-popup degradation). [tint]
+/// is the T89 `glassTint` wash composited over the fill.
+Color _menuGlassFill(BuildContext context, {Color? tint}) {
   final design = JhinDesignScope.of(context);
   final brightness = Theme.brightnessOf(context);
   final scheme = JhinDesignScope.materialOf(context).colorScheme;
@@ -140,7 +143,12 @@ Color _menuGlassFill(BuildContext context) {
     foreground: design.colorOf('foreground', brightness: brightness) ??
         scheme.onSurface,
   );
-  return recipe.fill;
+  if (tint == null) return recipe.fill;
+  return Color.alphaBlend(
+    tint.withValues(
+        alpha: (tint.a * jhinGlassTintAlpha).clamp(0.0, 1.0)),
+    recipe.fill,
+  );
 }
 
 /// The optional leading icon of one menu item (null without an `icon` name).

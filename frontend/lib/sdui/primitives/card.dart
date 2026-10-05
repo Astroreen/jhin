@@ -14,7 +14,8 @@ import '../ui_registry.dart';
 /// T87: `glass: true` renders the upstream `surface-glass` treatment
 /// (index.css:334-342) — the backdrop blurred by `glass.blur` and
 /// saturated by `glass.saturation`, the background fill at `glass.opacity`
-/// — instead of the Material card surface.
+/// — instead of the Material card surface. T89: `glassTint` paints the
+/// 4% tint wash over the glass fill.
 Widget buildCard(BuildContext context, UiNode node, RenderContext ctx) {
   final title = node.stringProp('title');
   final design = JhinDesignScope.of(context);
@@ -50,6 +51,7 @@ Widget buildCard(BuildContext context, UiNode node, RenderContext ctx) {
         'xl',
         remPx: design.switches.fontSizes.sizeInterface.toDouble(),
       ),
+      tint: glassTintOf(node),
       child: content,
     );
   }

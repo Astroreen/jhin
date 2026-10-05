@@ -19,6 +19,7 @@
 package com.astroreen.jhin.plugin.uikit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -91,6 +92,58 @@ class UiConformanceTest {
     void escapeHatchStillEmitsArbitraryKeys() {
         UiNode node = Ui.divider().set("madeUpProp", 1).build();
         assertThat(node.toJson()).containsEntry("madeUpProp", 1);
+    }
+
+    /**
+     * The level-3 glass group (docs/sdui.md section 2.1) is accepted on
+     * exactly the five glass-capable surfaces — {@code card}, {@code sheet},
+     * {@code dialog}, {@code menu} and {@code banner} — and rejected
+     * everywhere else with the standard unsupported-prop error path.
+     */
+    @Test
+    void glassIsAcceptedOnExactlyTheFiveGlassSurfaces() {
+        Map<String, Object> card = Ui.card().glass(true).glassTint("$color.destructive").build().toJson();
+        assertThat(card).containsEntry("glass", true).containsEntry("glassTint", "$color.destructive");
+        Map<String, Object> sheet = Ui.sheet().glass(true).glassTint("$color.destructive").build().toJson();
+        assertThat(sheet).containsEntry("glass", true).containsEntry("glassTint", "$color.destructive");
+        Map<String, Object> dialog = Ui.dialog().glass(true).glassTint("$color.destructive").build().toJson();
+        assertThat(dialog).containsEntry("glass", true).containsEntry("glassTint", "$color.destructive");
+        Map<String, Object> menu = Ui.menu().glass(true).glassTint("$color.destructive").build().toJson();
+        assertThat(menu).containsEntry("glass", true).containsEntry("glassTint", "$color.destructive");
+        Map<String, Object> banner = Ui.banner().glass(true).glassTint("$color.warning").build().toJson();
+        assertThat(banner).containsEntry("glass", true).containsEntry("glassTint", "$color.warning");
+
+        for (Ui.NodeBuilder<?> builder : List.of(
+                Ui.text("probe"), Ui.container(), Ui.button("probe"), Ui.divider(), Ui.progress())) {
+            assertThatThrownBy(() -> builder.set("glass", true))
+                    .as("glass on %s", builder.type())
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("unsupported prop");
+            assertThatThrownBy(() -> builder.set("glassTint", "$color.destructive"))
+                    .as("glassTint on %s", builder.type())
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("unsupported prop");
+        }
+    }
+
+    /**
+     * The reflection probe inventory agrees: {@code glass}/{@code glassTint}
+     * are emittable by exactly the five glass-capable builders and by no
+     * other builder in the catalog.
+     */
+    @Test
+    void theProbeEmitsGlassOnlyOnTheFiveGlassSurfaces() {
+        Map<Class<?>, Set<String>> keysByBuilder = BuilderProbe.probeAllKeys();
+        Set<Class<?>> glassBuilders = keysByBuilder.entrySet().stream()
+                .filter(entry -> entry.getValue().contains("glass"))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+        assertThat(glassBuilders).containsExactlyInAnyOrder(
+                Ui.CardBuilder.class,
+                Ui.SheetBuilder.class,
+                Ui.DialogBuilder.class,
+                Ui.MenuBuilder.class,
+                Ui.BannerBuilder.class);
     }
 
     /**

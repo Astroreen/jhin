@@ -287,13 +287,14 @@ primitives.
 | A11y | `excludeSemantics` | bool | `false` | exclude descendant semantics; the semantics label/hint/value props above wire into the same `Semantics` wrapper |
 
 The level-3 universal surface (contract level 3, section 2.5). A level-2
-client never receives `glass` or `statusPulse` — the server strips them at
-the source (section 6) — while `demo` and the `safeArea` group are inert
-markers a level-2 client ignores:
+client never receives `glass`, `glassTint` or `statusPulse` — the server
+strips them at the source (section 6) — while `demo` and the `safeArea` group
+are inert markers a level-2 client ignores:
 
 | Group | Prop | Type | Default | Meaning |
 |-------|------|------|---------|---------|
 | Level 3 | `glass` | bool | `false` | render the node's surface with the glass treatment: a backdrop blur at the token blur radius, a tinted fill at the token opacity and the token saturation (`tokens.glass`). Only the five glass-capable surfaces honour it — `card`, `sheet`, `dialog`, `menu`, `banner` — other nodes ignore it. Without backdrop support (or below level 3, where it is stripped) the surface degrades to a solid fill at the tint colour |
+| Level 3 | `glassTint` | color or token | — | the tint colour of the glass fill (the upstream `--alert-glass-tint`): a `$color.*` token or hex literal, painted as a 4% wash over the glass fill. Only the five glass-capable surfaces honour it; without backdrop support the wash drops with the glass fill (the solid fill wins) |
 | Level 3 | `demo` | bool | `false` | the node is decorative: interactive but non-functional — it dispatches inline directives only (`setState`/`patch`/`dialog`/`toast`, never a server-side write) and the client renders the shared disabled-affordance marker for it. Every interactive node without a real effect MUST carry it |
 | Level 3 | `statusPulse` | `pulse`/`ping`/`skeleton`/`none` | `none` | duty-cycled attention indicator on indicator-bearing nodes (`progress`): `pulse` runs the 2 s status pulse, `ping` the 2 s ping ring, `skeleton` the 2.4 s shimmer (the `tokens.motion` duty cycles). Other nodes ignore it; the OS reduced-motion preference collapses every mode to a static render |
 | Safe area | `safeArea` | bool or object | — | extends the node's padding by the platform safe-area insets (`MediaQuery.padding`): `true` covers all four edges, or `{top, bottom, left, right}` bools select per-edge. Edges the platform reports as zero add nothing |
@@ -364,7 +365,9 @@ grows it to 68. `container` stays as the legacy name; `box` is its superset.
 The four universal additions are props of the universal surface (section
 2.1), not node types; they are listed here because the contract catalog —
 the set of names a server may emit on a node — is what this section defines.
-Every primitive accepts the full universal surface of section 2.1 in addition
+The `glass` prop carries the optional `glassTint` companion (the tint colour
+of the glass fill, section 2.1). Every primitive accepts the full universal
+surface of section 2.1 in addition
 to the props listed below. Required props are listed first; the Default
 column shows the built-in default, `—` means no default (prop absent).
 
@@ -1100,6 +1103,7 @@ client cannot parse):
 | `scroll_fade` | `scroll` wrapping the same child (the fade gradient is dropped) |
 | `diff_view` | `code_block` carrying the file name and the hunk headers as the code text |
 | universal `glass` | stripped — surfaces render solid |
+| universal `glassTint` | stripped — the tint wash drops with the glass fill |
 | universal `statusPulse` | stripped — indicators render static |
 | universal `demo` | kept — an inert marker for a level-2 client |
 | `safeArea` group | kept — an inert marker for a level-2 client |

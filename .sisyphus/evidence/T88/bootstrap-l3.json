@@ -1437,8 +1437,65 @@
                 }
               ],
               "glass": true,
+              "glassTint": "$color.destructive",
               "id": "probe-glass",
               "type": "card"
+            },
+            {
+              "body": {
+                "text": "Blurred backdrop sheet",
+                "type": "text"
+              },
+              "glass": true,
+              "glassTint": "$color.destructive",
+              "id": "probe-glass-sheet",
+              "title": "Glass sheet",
+              "type": "sheet"
+            },
+            {
+              "actions": [
+                {
+                  "label": "Close",
+                  "type": "button"
+                }
+              ],
+              "content": {
+                "text": "Blurred backdrop dialog",
+                "type": "text"
+              },
+              "glass": true,
+              "glassTint": "$color.destructive",
+              "id": "probe-glass-dialog",
+              "title": "Glass dialog",
+              "type": "dialog"
+            },
+            {
+              "glass": true,
+              "glassTint": "$color.destructive",
+              "id": "probe-glass-menu",
+              "items": [
+                {
+                  "label": "One"
+                },
+                {
+                  "label": "Two"
+                }
+              ],
+              "trigger": {
+                "label": "Open menu",
+                "type": "button"
+              },
+              "type": "menu"
+            },
+            {
+              "content": {
+                "text": "Blurred backdrop banner",
+                "type": "text"
+              },
+              "glass": true,
+              "glassTint": "$color.warning",
+              "id": "probe-glass-banner",
+              "type": "banner"
             },
             {
               "id": "probe-pulse",

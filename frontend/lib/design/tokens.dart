@@ -1720,6 +1720,11 @@ class JhinGlass {
   }
 }
 
+/// The alpha of the `glassTint` wash over the glass fill: upstream paints
+/// `color-mix(in srgb, var(--alert-glass-tint) 4%, transparent)` over the
+/// glass background (index.css:346-352).
+const double jhinGlassTintAlpha = 0.04;
+
 /// The CSS `saturate(s)` filter matrix (SVG feColorMatrix type="saturate")
 /// as a [ColorFilter] — the `saturate(var(--glass-saturation))` half of the
 /// upstream backdrop recipe.
@@ -1743,6 +1748,12 @@ ColorFilter jhinSaturationFilter(double saturation) {
 /// `inner` first), the fill faded to the glass opacity on top, and the
 /// upstream `@supports not (backdrop-filter: …)` degradation to the solid
 /// fill (index.css:339-341).
+///
+/// T89: [tint] is the `glassTint` prop (§2.1 level 3) — the upstream
+/// `--alert-glass-tint` wash (index.css:346-352): a [jhinGlassTintAlpha]
+/// layer of the colour painted over the glass fill, under the content. The
+/// degradation drops it with the glass fill (the `@supports` rule replaces
+/// the whole background).
 Widget jhinGlassSurface(
   BuildContext context, {
   required JhinTokenSurface surface,
@@ -1752,13 +1763,15 @@ Widget jhinGlassSurface(
   Border? border,
   List<BoxShadow> shadows = const [],
   Color? insetTop,
+  Color? tint,
 }) {
   final glass = JhinGlass.of(surface, Theme.brightnessOf(context));
   final faded = fill.withValues(
       alpha: (fill.a * glass.opacity).clamp(0.0, 1.0));
   if (!JhinGlass.supported) {
     // Degradation: the solid fill wins (index.css:339-341); the border and
-    // radius stay, the backdrop treatment and the inset line drop.
+    // radius stay, the backdrop treatment, the inset line and the tint wash
+    // drop.
     return Container(
       decoration: BoxDecoration(
         color: fill,
@@ -1774,7 +1787,20 @@ Widget jhinGlassSurface(
       border: border,
       borderRadius: borderRadius,
     ),
-    child: child,
+    child: tint == null
+        ? child
+        : Stack(children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: ColoredBox(
+                  color: tint.withValues(
+                      alpha:
+                          (tint.a * jhinGlassTintAlpha).clamp(0.0, 1.0)),
+                ),
+              ),
+            ),
+            child,
+          ]),
   );
   if (insetTop != null) {
     panel = Stack(children: [

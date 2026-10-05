@@ -18,9 +18,10 @@ import '../ui_registry.dart';
 ///
 /// T87: `glass: true` renders the upstream `alert-glass` treatment
 /// (index.css:344-374) — the backdrop blurred and saturated, the
-/// background fill at the glass opacity; the variant tint stays
-/// transparent until the `glassTint` prop lands (T89), matching the
-/// upstream default `--alert-glass-tint: transparent`.
+/// background fill at the glass opacity. T89: `glassTint` is the upstream
+/// `--alert-glass-tint` — the tint colour painted as a 4% wash over the
+/// glass fill (the server picks the variant token: destructive for error,
+/// info, success, warning).
 Widget buildBanner(BuildContext context, UiNode node, RenderContext ctx) =>
     _Banner(node: node, ctx: ctx);
 
@@ -90,6 +91,7 @@ class _BannerState extends State<_Banner> {
           'xl',
           remPx: design.switches.fontSizes.sizeInterface.toDouble(),
         ),
+        tint: glassTintOf(node),
         child: row,
       );
     }

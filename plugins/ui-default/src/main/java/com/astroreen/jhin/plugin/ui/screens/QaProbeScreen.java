@@ -35,6 +35,10 @@ public final class QaProbeScreen {
                         .child(scrollFade())
                         .child(diffView())
                         .child(glassCard())
+                        .child(glassSheet())
+                        .child(glassDialog())
+                        .child(glassMenu())
+                        .child(glassBanner())
                         .child(pulseProgress())
                         .child(demoButton())
                         .child(safeAreaBox())
@@ -115,9 +119,62 @@ public final class QaProbeScreen {
 
     /** A glass-capable surface carrying the level-3 universal {@code glass}. */
     private static UiNode glassCard() {
-        return new UiNode("card", Map.of(
-                "id", "probe-glass",
-                "glass", true), List.of(Ui.text("Glass card").build()));
+        return Ui.card()
+                .id("probe-glass")
+                .glass(true)
+                .glassTint("$color.destructive")
+                .child(Ui.text("Glass card").build())
+                .build();
+    }
+
+    /**
+     * The five glass-capable surfaces with the full level-3 glass group
+     * (T89): {@code glass} plus {@code glassTint}, authored through the real
+     * typed builders. The tint is the upstream {@code --alert-glass-tint}
+     * semantics — a {@code $color} token washed at 4% over the glass fill.
+     */
+    private static UiNode glassSheet() {
+        return Ui.sheet()
+                .id("probe-glass-sheet")
+                .title("Glass sheet")
+                .body(Ui.text("Blurred backdrop sheet").build())
+                .glass(true)
+                .glassTint("$color.destructive")
+                .build();
+    }
+
+    /** The glass dialog over the {@code dialog-glass} recipe. */
+    private static UiNode glassDialog() {
+        return Ui.dialog()
+                .id("probe-glass-dialog")
+                .title("Glass dialog")
+                .content(Ui.text("Blurred backdrop dialog").build())
+                .action(Ui.button("Close").build())
+                .glass(true)
+                .glassTint("$color.destructive")
+                .build();
+    }
+
+    /** The glass menu over the {@code dropdown-glass} recipe. */
+    private static UiNode glassMenu() {
+        return Ui.menu()
+                .id("probe-glass-menu")
+                .trigger(Ui.button("Open menu").build())
+                .item("One")
+                .item("Two")
+                .glass(true)
+                .glassTint("$color.destructive")
+                .build();
+    }
+
+    /** The glass banner over the {@code alert-glass} recipe. */
+    private static UiNode glassBanner() {
+        return Ui.banner()
+                .id("probe-glass-banner")
+                .content(Ui.text("Blurred backdrop banner").build())
+                .glass(true)
+                .glassTint("$color.warning")
+                .build();
     }
 
     /** An indicator carrying the level-3 universal {@code statusPulse}. */

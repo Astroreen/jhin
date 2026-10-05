@@ -19,8 +19,9 @@
  *       {@code column} of texts, {@code kbd} to a {@code text},
  *       {@code scroll_fade} to a {@code scroll}, {@code diff_view} to a
  *       {@code code_block}) and the level-3 universal props
- *       {@code glass}/{@code statusPulse} are stripped ({@code demo} and the
- *       {@code safeArea} group survive as inert markers);</li>
+ *       {@code glass}/{@code glassTint}/{@code statusPulse} are stripped
+ *       ({@code demo} and the {@code safeArea} group survive as inert
+ *       markers);</li>
  *   <li>below the negotiated level 2, every level-2-only primitive degrades
  *       to its level-1 equivalent per the docs/sdui.md section 6 downgrade
  *       table, applied after the level-3 step.</li>
@@ -105,7 +106,7 @@ final class CapabilityTailor {
      * from every node below level 3. {@code demo} and the {@code safeArea}
      * group are deliberately kept — both are inert markers.
      */
-    private static final Set<String> LEVEL3_STRIPPED_PROPS = Set.of("glass", "statusPulse");
+    private static final Set<String> LEVEL3_STRIPPED_PROPS = Set.of("glass", "glassTint", "statusPulse");
 
     /** The universal props carried onto a {@code hover_card} trigger. */
     private static final List<String> UNIVERSAL_PLUS_TOOLTIP =

@@ -148,6 +148,37 @@ class UiRegressionTest {
 
         nodes.add(Ui.drawer().title("Drawer").child(Ui.text("d").build()).build());
 
+        // T89: the five glass-capable surfaces with the level-3 glass group
+        // (glass + glassTint) — the wire shapes the client's glass recipes
+        // (surface-glass, alert-glass, dialog-glass, dropdown-glass) render.
+        nodes.add(Ui.card()
+                .id("glass-card").title("Glass card")
+                .glass(true).glassTint("$color.destructive")
+                .child(Ui.text("Blurred backdrop card").build())
+                .build());
+        nodes.add(Ui.sheet()
+                .id("glass-sheet").title("Glass sheet")
+                .body(Ui.text("Blurred backdrop sheet").build())
+                .glass(true).glassTint("$color.destructive")
+                .build());
+        nodes.add(Ui.dialog()
+                .id("glass-dialog").title("Glass dialog")
+                .content(Ui.text("Blurred backdrop dialog").build())
+                .action(Ui.button("Close").build())
+                .glass(true).glassTint("$color.destructive")
+                .build());
+        nodes.add(Ui.menu()
+                .id("glass-menu")
+                .trigger(Ui.button("Open menu").build())
+                .item("One").item("Two")
+                .glass(true).glassTint("$color.destructive")
+                .build());
+        nodes.add(Ui.banner()
+                .id("glass-banner")
+                .content(Ui.text("Blurred backdrop banner").build())
+                .glass(true).glassTint("$color.warning")
+                .build());
+
         return nodes;
     }
 
@@ -155,7 +186,9 @@ class UiRegressionTest {
             "screen", "nav", "card", "text", "markdown", "button", "input",
             "dropdown", "checkbox", "switch", "slider", "form", "list",
             "stream_view", "table", "divider", "spacer", "progress", "image",
-            "figure", "chart_line", "chart_bar", "chart_pie", "drawer");
+            "figure", "chart_line", "chart_bar", "chart_pie", "drawer",
+            "glass-card", "glass-sheet", "glass-dialog", "glass-menu",
+            "glass-banner");
 
     @Test
     void wireShapesAreByteIdenticalToTheCapturedFixtures() throws IOException {

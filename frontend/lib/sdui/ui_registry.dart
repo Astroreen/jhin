@@ -1201,6 +1201,11 @@ Color? parseColor(Object? value) {
   return null;
 }
 
+/// The `glassTint` prop (§2.1 level 3): the tint colour of the glass fill —
+/// a resolved `$color.*` token arrives as a [Color], a literal as a hex
+/// string. Null without the prop or on an unparseable value (§2.4 degrade).
+Color? glassTintOf(UiNode node) => parseColor(node.props['glassTint']);
+
 /// An all-sides inset from one token value — the primitives' replacement
 /// for the literal `EdgeInsets.all` constructor (the T86 purity test bans
 /// it in the primitive sources).

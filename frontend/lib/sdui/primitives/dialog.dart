@@ -22,7 +22,8 @@ import '../ui_registry.dart';
 /// background fill at the glass opacity, the contrast border at 10%, the
 /// outer dialog shadows and (dark) the inset top line — instead of the
 /// Material alert surface. The modal backdrop scrim (`dialog-backdrop`,
-/// index.css:391-398) rides the `dialog` directive presentation.
+/// index.css:391-398) rides the `dialog` directive presentation. T89:
+/// `glassTint` paints the 4% tint wash over the glass fill.
 Widget buildDialog(BuildContext context, UiNode node, RenderContext ctx) {
   final titleProp = node.props['title'];
   final Widget? title = titleProp == null
@@ -37,7 +38,8 @@ Widget buildDialog(BuildContext context, UiNode node, RenderContext ctx) {
     if (widget != null) actions.add(widget);
   }
   if (node.boolProp('glass') == true) {
-    return _glassDialog(context, title, content, actions);
+    return _glassDialog(context, title, content, actions,
+        tint: glassTintOf(node));
   }
   return AlertDialog(
     title: title,
@@ -47,13 +49,15 @@ Widget buildDialog(BuildContext context, UiNode node, RenderContext ctx) {
 }
 
 /// The dialog-glass panel: the [jhinGlassSurface] recipe of
-/// `JhinDialogGlassRecipe` over the AlertDialog slot column.
+/// `JhinDialogGlassRecipe` over the AlertDialog slot column. [tint] is the
+/// T89 `glassTint` wash over the glass fill.
 Widget _glassDialog(
   BuildContext context,
   Widget? title,
   Widget? content,
-  List<Widget> actions,
-) {
+  List<Widget> actions, {
+  Color? tint,
+}) {
   final design = JhinDesignScope.of(context);
   final tokens = design.tokens;
   final brightness = Theme.brightnessOf(context);
@@ -78,6 +82,7 @@ Widget _glassDialog(
     border: Border.all(color: recipe.borderColor),
     shadows: recipe.shadows,
     insetTop: recipe.insetTop,
+    tint: tint,
     child: Padding(
       padding: insetAll(tokens.spacing.lg),
       child: Column(

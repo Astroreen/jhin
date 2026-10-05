@@ -1,0 +1,22 @@
+# goldens diffstat (T89)
+
+## git diff --stat (tracked golden sources)
+ frontend/test/gallery/gallery_nodes.dart | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+## new golden files (git status --porcelain)
+?? frontend/test/gallery/goldens/fixture-glass-banner-dark.png
+?? frontend/test/gallery/goldens/fixture-glass-banner-light.png
+?? frontend/test/gallery/goldens/fixture-glass-card-dark.png
+?? frontend/test/gallery/goldens/fixture-glass-card-light.png
+?? frontend/test/gallery/goldens/fixture-glass-dialog-dark.png
+?? frontend/test/gallery/goldens/fixture-glass-dialog-light.png
+?? frontend/test/gallery/goldens/fixture-glass-menu-dark.png
+?? frontend/test/gallery/goldens/fixture-glass-menu-light.png
+?? frontend/test/gallery/goldens/fixture-glass-sheet-dark.png
+?? frontend/test/gallery/goldens/fixture-glass-sheet-light.png
+?? plugins/ui-kit/src/test/resources/regression/24-glass-card.json
+?? plugins/ui-kit/src/test/resources/regression/25-glass-sheet.json
+?? plugins/ui-kit/src/test/resources/regression/26-glass-dialog.json
+?? plugins/ui-kit/src/test/resources/regression/27-glass-menu.json
+?? plugins/ui-kit/src/test/resources/regression/28-glass-banner.json

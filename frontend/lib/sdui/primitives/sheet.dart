@@ -25,17 +25,20 @@ import '../ui_registry.dart';
 ///
 /// T87: `glass: true` renders the panel with the upstream `surface-glass`
 /// treatment (index.css:334-342) instead of the opaque Material surface.
+/// T89: `glassTint` paints the 4% tint wash over the glass fill.
 Widget buildSheet(BuildContext context, UiNode node, RenderContext ctx) =>
     _SheetView(node: node, ctx: ctx);
 
 /// The bottom-sheet panel chrome shared by the `sheet` primitive and the
 /// `dialog` directive's `kind: "sheet"` presentation: rounded top corners
 /// over a drag handle and the given content. [glass] switches the panel to
-/// the `surface-glass` treatment (T87).
+/// the `surface-glass` treatment (T87); [glassTint] is the T89 tint wash
+/// over the glass fill.
 Widget buildSheetChrome(
   BuildContext context,
   Widget content, {
   bool glass = false,
+  Color? glassTint,
 }) {
   final design = JhinDesignScope.of(context);
   final theme = JhinDesignScope.materialOf(context);
@@ -73,7 +76,11 @@ Widget buildSheetChrome(
         'xl2',
         remPx: design.switches.fontSizes.sizeInterface.toDouble(),
       ),
-      child: body,
+      tint: glassTint,
+      // The transparent Material keeps ink splashes of the hosted content
+      // (the menu sheet's ListTiles) visible over the translucent glass
+      // panel — without it the ListTile debug assertion fires.
+      child: Material(type: MaterialType.transparency, child: body),
     );
   }
   return Material(
@@ -127,6 +134,7 @@ class _SheetViewState extends State<_SheetView> {
                 context,
                 _body(context, node, ctx),
                 glass: node.boolProp('glass') == true,
+                glassTint: glassTintOf(node),
               ),
             ),
           ),
