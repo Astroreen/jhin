@@ -5,6 +5,7 @@ import 'package:jhin/core/auth/app_storage.dart';
 import 'package:jhin/core/auth/string_store.dart';
 import 'package:jhin/sdui/keyboard/composer_commands.dart';
 import 'package:jhin/store/versioned_store.dart';
+import 'package:jhin/store/migrations/store_migrations.dart';
 
 /// T68 composer history store: the per-profile sent-prompt history is
 /// enveloped at the current schema under `composer.history:<profileId>`.
@@ -19,7 +20,7 @@ void main() {
     storage = AppStorage(prefs: prefs, secrets: secrets);
   });
 
-  test('T68 history: entries persist enveloped at schema 3', () async {
+  test('T68 history: entries persist enveloped at the current schema', () async {
     final history =
         ComposerHistory(storage: storage, profileId: 'profile-a');
     await history.add('first');
@@ -28,7 +29,7 @@ void main() {
     final raw = await storage.readRaw('composer.history:profile-a');
     expect(raw, isNotNull);
     final envelope = jsonDecode(raw!) as Map<String, dynamic>;
-    expect(envelope['schema'], 3);
+    expect(envelope['schema'], StoreMigrations.current);
     expect((envelope['data'] as Map)['entries'], ['first', 'second']);
 
     final reloaded =

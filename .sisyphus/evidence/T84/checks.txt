@@ -1,4 +1,4 @@
-ok: ui-default and ui-kit suites green (278 tests; transcript in test.txt)
+ok: ui-default and ui-kit suites green (294 tests; transcript in test.txt)
 ok: flutter test/design/palette_gen_test.dart green (transcript in flutter.txt)
 ok: java-dart hex parity byte-exact over 9 vectors x 56 colours (palettes.json)
 ok: seed-determined roles within dE76 < 2 vs themePalettes.ts for the 5 built-in pairs (deltaE.txt)

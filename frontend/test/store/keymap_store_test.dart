@@ -6,6 +6,7 @@ import 'package:jhin/core/auth/app_storage.dart';
 import 'package:jhin/core/auth/string_store.dart';
 import 'package:jhin/sdui/keyboard/keymap.dart';
 import 'package:jhin/store/versioned_store.dart';
+import 'package:jhin/store/migrations/store_migrations.dart';
 
 import 'fixtures.dart';
 
@@ -35,7 +36,7 @@ void main() {
 
       // Store shape is the schema 3 envelope around {'rules': [...]}
       // (docs/updates.md §1).
-      expect(schemaOf(prefs, StoreKeys.keybindings), 3);
+      expect(schemaOf(prefs, StoreKeys.keybindings), StoreMigrations.current);
       expect(payloadOf(prefs, StoreKeys.keybindings), {
         'rules': [
           {'command': 'composer.send', 'keys': 'mod+shift+enter'}

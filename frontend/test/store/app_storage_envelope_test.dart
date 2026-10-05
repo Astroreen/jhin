@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jhin/core/auth/app_storage.dart';
 import 'package:jhin/core/auth/string_store.dart';
 import 'package:jhin/store/versioned_store.dart';
+import 'package:jhin/store/migrations/store_migrations.dart';
 
 import 'fixtures.dart';
 
@@ -24,7 +25,7 @@ void main() {
 
       final stored = decodeStoredValue(prefs.values[StoreKeys.profiles])!;
       expect(stored.hasEnvelope, isTrue);
-      expect(stored.schema, 3);
+      expect(stored.schema, StoreMigrations.current);
       expect(stored.app, kJhinAppVersion);
       expect(stored.data, isA<List>());
       expect((stored.data as List).single['label'], 'home');
@@ -39,7 +40,7 @@ void main() {
       final stored =
           decodeStoredValue(prefs.values[StoreKeys.activeProfileId])!;
       expect(stored.hasEnvelope, isTrue);
-      expect(stored.schema, 3);
+      expect(stored.schema, StoreMigrations.current);
       expect(stored.data, profile.id);
       expect(await storage.readActiveProfileId(), profile.id);
     });
@@ -100,13 +101,13 @@ void main() {
         'density': 'comfortable',
         'panelMotionMs': 0,
       });
-      expect(schemaOf(prefs, StoreKeys.appearance), 3);
+      expect(schemaOf(prefs, StoreKeys.appearance), StoreMigrations.current);
 
       // sessionState:<profileId> and commands.paletteHistory go through the
       // same enveloped path.
       await storage.writeEnvelope(StoreKeys.sessionState('p1'), {'stack': []});
       await storage.writeEnvelope(StoreKeys.paletteHistory, ['cmd']);
-      expect(schemaOf(prefs, 'sessionState:p1'), 3);
+      expect(schemaOf(prefs, 'sessionState:p1'), StoreMigrations.current);
       expect(await storage.readData('sessionState:p1'), {'stack': []});
       expect(await storage.readData(StoreKeys.paletteHistory), ['cmd']);
     });

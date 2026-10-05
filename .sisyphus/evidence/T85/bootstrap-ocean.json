@@ -1,0 +1,1587 @@
+{
+  "api": 2,
+  "contract": {
+    "api": 2,
+    "minApi": 2,
+    "minSchema": 3,
+    "schema": 3
+  },
+  "density": "comfortable",
+  "empty": false,
+  "entry": "sessions",
+  "fallbacks": {
+    "error": {
+      "children": [
+        {
+          "style": "body",
+          "text": "The server could not render this screen.",
+          "type": "text"
+        },
+        {
+          "border": "$color.error",
+          "borderRadius": "$radius.md",
+          "borderWidth": 1,
+          "children": [
+            {
+              "lines": 2,
+              "shimmer": true,
+              "type": "skeleton",
+              "variant": "text"
+            }
+          ],
+          "padding": "$spacing.md",
+          "type": "container"
+        },
+        {
+          "action": {
+            "op": "reloadBootstrap"
+          },
+          "label": "Retry",
+          "style": "primary",
+          "type": "button"
+        },
+        {
+          "action": {
+            "op": "openProfiles"
+          },
+          "label": "Change server",
+          "style": "text",
+          "type": "button"
+        }
+      ],
+      "padding": "$spacing.lg",
+      "title": "Something went wrong",
+      "type": "card"
+    },
+    "offline": {
+      "children": [
+        {
+          "style": "body",
+          "text": "The server is unreachable. Your screens are shown from the cache.",
+          "type": "text"
+        },
+        {
+          "border": "$color.accent",
+          "borderRadius": "$radius.md",
+          "borderWidth": 1,
+          "children": [
+            {
+              "lines": 2,
+              "shimmer": true,
+              "type": "skeleton",
+              "variant": "text"
+            }
+          ],
+          "padding": "$spacing.md",
+          "type": "container"
+        },
+        {
+          "action": {
+            "op": "refresh"
+          },
+          "label": "Retry",
+          "style": "primary",
+          "type": "button"
+        }
+      ],
+      "padding": "$spacing.lg",
+      "title": "Offline",
+      "type": "card"
+    }
+  },
+  "keymap": [
+    {
+      "command": "composer.send",
+      "key": "mod+enter",
+      "when": "composerFocus"
+    },
+    {
+      "command": "composer.sendAndNew",
+      "key": "ctrl+alt+enter",
+      "when": "composerFocus"
+    },
+    {
+      "command": "composer.newline",
+      "key": "shift+enter",
+      "when": "composerFocus"
+    },
+    {
+      "command": "composer.recallPrev",
+      "key": "mod+up",
+      "when": "composerFocus"
+    },
+    {
+      "command": "composer.recallNext",
+      "key": "mod+down",
+      "when": "composerFocus"
+    },
+    {
+      "command": "palette.open",
+      "key": "ctrl+k"
+    },
+    {
+      "command": "thread.undo",
+      "key": "ctrl+z"
+    },
+    {
+      "command": "nav.back",
+      "key": "alt+left"
+    },
+    {
+      "command": "nav.forward",
+      "key": "alt+right"
+    },
+    {
+      "command": "thread.new",
+      "key": "mod+n"
+    }
+  ],
+  "screenEndpoint": "/ui/screen/{id}",
+  "screens": [
+    {
+      "id": "sessions",
+      "node": {
+        "body": {
+          "body": {
+            "children": [
+              {
+                "style": "caption",
+                "text": "Choose a thread from the sidebar to open the conversation.",
+                "type": "text"
+              }
+            ],
+            "title": "Select a thread",
+            "type": "card"
+          },
+          "header": {
+            "align": "center",
+            "children": [
+              {
+                "activeIndex": 0,
+                "items": [
+                  {
+                    "label": "Sessions",
+                    "screen": "sessions"
+                  },
+                  {
+                    "label": "Settings",
+                    "screen": "settings"
+                  },
+                  {
+                    "label": "Plugins",
+                    "screen": "plugins"
+                  }
+                ],
+                "kind": "tabs",
+                "type": "nav"
+              },
+              {
+                "type": "spacer"
+              },
+              {
+                "action": {
+                  "method": "POST",
+                  "name": "arrange-toggle",
+                  "path": "/ui/action/arrange-toggle",
+                  "payload": {
+                    "arrange": true
+                  }
+                },
+                "label": "Arrange threads",
+                "style": "secondary",
+                "type": "button"
+              }
+            ],
+            "type": "row"
+          },
+          "id": "sessions-shell",
+          "sidebar": {
+            "empty": {
+              "style": "caption",
+              "text": "No threads yet.",
+              "type": "text"
+            },
+            "sections": [
+              {
+                "collapsed": false,
+                "collapsible": false,
+                "id": "section-pinned",
+                "items": [],
+                "label": "Pinned"
+              },
+              {
+                "collapsed": false,
+                "collapsible": false,
+                "id": "section-active",
+                "items": [],
+                "label": "Active"
+              },
+              {
+                "collapsed": false,
+                "collapsible": false,
+                "id": "section-snoozed",
+                "items": [],
+                "label": "Snoozed"
+              },
+              {
+                "collapsed": true,
+                "collapsible": true,
+                "id": "section-settled",
+                "items": [],
+                "label": "Settled"
+              }
+            ],
+            "type": "list"
+          },
+          "type": "shell"
+        },
+        "title": "Sessions",
+        "type": "screen"
+      }
+    },
+    {
+      "id": "settings",
+      "node": {
+        "body": {
+          "children": [
+            {
+              "style": "h2",
+              "text": "Settings",
+              "type": "text"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "child": {
+                            "border": "$color.border",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#fdf7fd",
+                                      "height": 24,
+                                      "id": "swatch-t3-chat-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#db2777",
+                                      "height": 24,
+                                      "id": "swatch-t3-chat-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "T3 Chat",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#db2777",
+                                        "height": 24,
+                                        "id": "chip-t3-chat-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#a3004c",
+                                        "height": 24,
+                                        "id": "chip-t3-chat-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-t3-chat",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "t3-chat"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        },
+                        {
+                          "child": {
+                            "border": "$color.border",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#f3f7f4",
+                                      "height": 24,
+                                      "id": "swatch-grove-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#1b7d50",
+                                      "height": 24,
+                                      "id": "swatch-grove-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "Grove",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#1b7d50",
+                                        "height": 24,
+                                        "id": "chip-grove-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#69d69a",
+                                        "height": 24,
+                                        "id": "chip-grove-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-grove",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "grove"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        },
+                        {
+                          "child": {
+                            "border": "$color.primary",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#f5f7f8",
+                                      "height": 24,
+                                      "id": "swatch-ocean-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#2672af",
+                                      "height": 24,
+                                      "id": "swatch-ocean-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "Ocean",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#2672af",
+                                        "height": 24,
+                                        "id": "chip-ocean-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#70b9ee",
+                                        "height": 24,
+                                        "id": "chip-ocean-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-ocean",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "ocean"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        }
+                      ],
+                      "gap": 8,
+                      "type": "row"
+                    },
+                    {
+                      "children": [
+                        {
+                          "child": {
+                            "border": "$color.border",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#f9f7f5",
+                                      "height": 24,
+                                      "id": "swatch-ember-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#ae552a",
+                                      "height": 24,
+                                      "id": "swatch-ember-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "Ember",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#ae552a",
+                                        "height": 24,
+                                        "id": "chip-ember-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#f09a64",
+                                        "height": 24,
+                                        "id": "chip-ember-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-ember",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "ember"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        },
+                        {
+                          "child": {
+                            "border": "$color.border",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#f8f7f9",
+                                      "height": 24,
+                                      "id": "swatch-iris-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#7253b9",
+                                      "height": 24,
+                                      "id": "swatch-iris-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "Iris",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#7253b9",
+                                        "height": 24,
+                                        "id": "chip-iris-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#9d7df2",
+                                        "height": 24,
+                                        "id": "chip-iris-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-iris",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "iris"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        },
+                        {
+                          "child": {
+                            "border": "$color.border",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#16161e",
+                                      "height": 24,
+                                      "id": "swatch-jhin-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#7E57C2",
+                                      "height": 24,
+                                      "id": "swatch-jhin-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "Jhin",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#7E57C2",
+                                        "height": 24,
+                                        "id": "chip-jhin-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#7E57C2",
+                                        "height": 24,
+                                        "id": "chip-jhin-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-jhin",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "jhin"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        }
+                      ],
+                      "gap": 8,
+                      "type": "row"
+                    }
+                  ],
+                  "direction": "column",
+                  "gap": 8,
+                  "type": "container"
+                },
+                {
+                  "id": "appearance",
+                  "segments": [
+                    {
+                      "label": "System",
+                      "value": "system"
+                    },
+                    {
+                      "label": "Light",
+                      "value": "light"
+                    },
+                    {
+                      "label": "Dark",
+                      "value": "dark"
+                    }
+                  ],
+                  "type": "segmented",
+                  "value": "light"
+                },
+                {
+                  "errorText": "Use #RRGGBB or #AARRGGBB",
+                  "id": "canvas",
+                  "label": "Canvas",
+                  "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                  "type": "input",
+                  "value": "#f5f7f8"
+                },
+                {
+                  "errorText": "Use #RRGGBB or #AARRGGBB",
+                  "id": "accent",
+                  "label": "Accent",
+                  "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                  "type": "input",
+                  "value": "#2672af"
+                },
+                {
+                  "id": "density",
+                  "segments": [
+                    {
+                      "label": "Compact",
+                      "value": "compact"
+                    },
+                    {
+                      "label": "Comfortable",
+                      "value": "comfortable"
+                    },
+                    {
+                      "label": "Spacious",
+                      "value": "spacious"
+                    }
+                  ],
+                  "type": "segmented",
+                  "value": "comfortable"
+                },
+                {
+                  "id": "panelMotionMs",
+                  "label": "Panel animations",
+                  "max": 400.0,
+                  "min": 0.0,
+                  "step": 20.0,
+                  "type": "slider",
+                  "value": 0.0
+                },
+                {
+                  "action": {
+                    "include": [
+                      "appearance",
+                      "themeId",
+                      "canvas",
+                      "accent",
+                      "density",
+                      "panelMotionMs"
+                    ],
+                    "method": "POST",
+                    "name": "save-appearance",
+                    "path": "/ui/action/save-appearance"
+                  },
+                  "label": "Save",
+                  "type": "button"
+                }
+              ],
+              "title": "Appearance",
+              "type": "card"
+            },
+            {
+              "children": [
+                {
+                  "id": "autoSettleDefault",
+                  "label": "Auto-settle idle threads",
+                  "type": "switch",
+                  "value": true
+                },
+                {
+                  "id": "inactivityDays",
+                  "label": "Settle after inactivity (days)",
+                  "max": 30.0,
+                  "min": 1.0,
+                  "step": 1.0,
+                  "type": "slider",
+                  "value": 3.0
+                },
+                {
+                  "enabled": false,
+                  "id": "settleOnPrMerged",
+                  "label": "Settle on PR merged",
+                  "tooltip": "PR linking is not enabled",
+                  "type": "switch",
+                  "value": false
+                },
+                {
+                  "action": {
+                    "include": [
+                      "autoSettleDefault",
+                      "inactivityDays"
+                    ],
+                    "method": "POST",
+                    "name": "save-thread-behavior",
+                    "path": "/ui/action/save-thread-behavior"
+                  },
+                  "label": "Save",
+                  "type": "button"
+                }
+              ],
+              "title": "Thread behavior",
+              "type": "card"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "subtitle": "mod+enter",
+                      "title": "composer.send",
+                      "trailing": {
+                        "children": [
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-edit",
+                              "path": "/ui/action/keybind-edit",
+                              "payload": {
+                                "command": "composer.send"
+                              }
+                            },
+                            "label": "Edit",
+                            "style": "secondary",
+                            "type": "button"
+                          },
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-reset",
+                              "path": "/ui/action/keybind-reset",
+                              "payload": {
+                                "command": "composer.send"
+                              }
+                            },
+                            "label": "Reset",
+                            "style": "text",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "subtitle": "ctrl+alt+enter",
+                      "title": "composer.sendAndNew",
+                      "trailing": {
+                        "children": [
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-edit",
+                              "path": "/ui/action/keybind-edit",
+                              "payload": {
+                                "command": "composer.sendAndNew"
+                              }
+                            },
+                            "label": "Edit",
+                            "style": "secondary",
+                            "type": "button"
+                          },
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-reset",
+                              "path": "/ui/action/keybind-reset",
+                              "payload": {
+                                "command": "composer.sendAndNew"
+                              }
+                            },
+                            "label": "Reset",
+                            "style": "text",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "subtitle": "shift+enter",
+                      "title": "composer.newline",
+                      "trailing": {
+                        "children": [
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-edit",
+                              "path": "/ui/action/keybind-edit",
+                              "payload": {
+                                "command": "composer.newline"
+                              }
+                            },
+                            "label": "Edit",
+                            "style": "secondary",
+                            "type": "button"
+                          },
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-reset",
+                              "path": "/ui/action/keybind-reset",
+                              "payload": {
+                                "command": "composer.newline"
+                              }
+                            },
+                            "label": "Reset",
+                            "style": "text",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "subtitle": "mod+up",
+                      "title": "composer.recallPrev",
+                      "trailing": {
+                        "children": [
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-edit",
+                              "path": "/ui/action/keybind-edit",
+                              "payload": {
+                                "command": "composer.recallPrev"
+                              }
+                            },
+                            "label": "Edit",
+                            "style": "secondary",
+                            "type": "button"
+                          },
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-reset",
+                              "path": "/ui/action/keybind-reset",
+                              "payload": {
+                                "command": "composer.recallPrev"
+                              }
+                            },
+                            "label": "Reset",
+                            "style": "text",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "subtitle": "mod+down",
+                      "title": "composer.recallNext",
+                      "trailing": {
+                        "children": [
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-edit",
+                              "path": "/ui/action/keybind-edit",
+                              "payload": {
+                                "command": "composer.recallNext"
+                              }
+                            },
+                            "label": "Edit",
+                            "style": "secondary",
+                            "type": "button"
+                          },
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-reset",
+                              "path": "/ui/action/keybind-reset",
+                              "payload": {
+                                "command": "composer.recallNext"
+                              }
+                            },
+                            "label": "Reset",
+                            "style": "text",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "subtitle": "ctrl+k",
+                      "title": "palette.open",
+                      "trailing": {
+                        "children": [
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-edit",
+                              "path": "/ui/action/keybind-edit",
+                              "payload": {
+                                "command": "palette.open"
+                              }
+                            },
+                            "label": "Edit",
+                            "style": "secondary",
+                            "type": "button"
+                          },
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-reset",
+                              "path": "/ui/action/keybind-reset",
+                              "payload": {
+                                "command": "palette.open"
+                              }
+                            },
+                            "label": "Reset",
+                            "style": "text",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "subtitle": "ctrl+z",
+                      "title": "thread.undo",
+                      "trailing": {
+                        "children": [
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-edit",
+                              "path": "/ui/action/keybind-edit",
+                              "payload": {
+                                "command": "thread.undo"
+                              }
+                            },
+                            "label": "Edit",
+                            "style": "secondary",
+                            "type": "button"
+                          },
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-reset",
+                              "path": "/ui/action/keybind-reset",
+                              "payload": {
+                                "command": "thread.undo"
+                              }
+                            },
+                            "label": "Reset",
+                            "style": "text",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "subtitle": "alt+left",
+                      "title": "nav.back",
+                      "trailing": {
+                        "children": [
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-edit",
+                              "path": "/ui/action/keybind-edit",
+                              "payload": {
+                                "command": "nav.back"
+                              }
+                            },
+                            "label": "Edit",
+                            "style": "secondary",
+                            "type": "button"
+                          },
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-reset",
+                              "path": "/ui/action/keybind-reset",
+                              "payload": {
+                                "command": "nav.back"
+                              }
+                            },
+                            "label": "Reset",
+                            "style": "text",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "subtitle": "alt+right",
+                      "title": "nav.forward",
+                      "trailing": {
+                        "children": [
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-edit",
+                              "path": "/ui/action/keybind-edit",
+                              "payload": {
+                                "command": "nav.forward"
+                              }
+                            },
+                            "label": "Edit",
+                            "style": "secondary",
+                            "type": "button"
+                          },
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-reset",
+                              "path": "/ui/action/keybind-reset",
+                              "payload": {
+                                "command": "nav.forward"
+                              }
+                            },
+                            "label": "Reset",
+                            "style": "text",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "subtitle": "mod+n",
+                      "title": "thread.new",
+                      "trailing": {
+                        "children": [
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-edit",
+                              "path": "/ui/action/keybind-edit",
+                              "payload": {
+                                "command": "thread.new"
+                              }
+                            },
+                            "label": "Edit",
+                            "style": "secondary",
+                            "type": "button"
+                          },
+                          {
+                            "action": {
+                              "method": "POST",
+                              "name": "keybind-reset",
+                              "path": "/ui/action/keybind-reset",
+                              "payload": {
+                                "command": "thread.new"
+                              }
+                            },
+                            "label": "Reset",
+                            "style": "text",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "keybind-restore",
+                        "path": "/ui/action/keybind-restore"
+                      },
+                      "label": "Restore defaults",
+                      "style": "secondary",
+                      "type": "button"
+                    }
+                  ],
+                  "direction": "column",
+                  "gap": 8,
+                  "type": "container"
+                }
+              ],
+              "title": "Keyboard",
+              "type": "card"
+            },
+            {
+              "action": {
+                "op": "openProfiles"
+              },
+              "label": "Change server",
+              "style": "secondary",
+              "type": "button"
+            },
+            {
+              "label": "Sign out",
+              "style": "danger",
+              "type": "button"
+            },
+            {
+              "label": "Help",
+              "style": "text",
+              "type": "button"
+            }
+          ],
+          "direction": "column",
+          "gap": 12,
+          "padding": 16,
+          "type": "container"
+        },
+        "title": "Settings",
+        "type": "screen"
+      }
+    },
+    {
+      "id": "plugins",
+      "node": {
+        "body": {
+          "children": [
+            {
+              "style": "h2",
+              "text": "Plugins",
+              "type": "text"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "subtitle": "Sessions",
+                      "title": "jhin.sessions",
+                      "trailing": {
+                        "label": "0.2.0",
+                        "type": "badge"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "subtitle": "UI Kit",
+                      "title": "jhin.ui-kit",
+                      "trailing": {
+                        "label": "0.2.0",
+                        "type": "badge"
+                      },
+                      "type": "list_row"
+                    },
+                    {
+                      "subtitle": "UI",
+                      "title": "jhin.ui",
+                      "trailing": {
+                        "label": "0.2.0",
+                        "type": "badge"
+                      },
+                      "type": "list_row"
+                    }
+                  ],
+                  "direction": "column",
+                  "gap": 8,
+                  "type": "container"
+                }
+              ],
+              "title": "Plugins",
+              "type": "card"
+            }
+          ],
+          "direction": "column",
+          "gap": 12,
+          "padding": 16,
+          "type": "container"
+        },
+        "title": "Plugins",
+        "type": "screen"
+      }
+    }
+  ],
+  "theme": {
+    "accent": "#2672af",
+    "appearance": "light",
+    "canvas": "#f5f7f8",
+    "colors": {
+      "accent": "#c0e1ff",
+      "accent-foreground": "#0a1723",
+      "background": "#f5f7f8",
+      "border": "#bad3ea",
+      "card": "#e7f3ff",
+      "card-foreground": "#0a1723",
+      "code": "#e0edf9",
+      "code-foreground": "#0a1723",
+      "destructive": "#fb2c36",
+      "destructive-foreground": "#c10007",
+      "diff-addition": "#00b981",
+      "diff-addition-foreground": "#009669",
+      "diff-deletion": "#fb2c36",
+      "diff-deletion-foreground": "#e40016",
+      "error": "#fb2c36",
+      "error-foreground": "#c10007",
+      "error-surface": "#f5e7e8",
+      "foreground": "#0a1723",
+      "icon-muted": "#677077",
+      "info": "#3280ff",
+      "info-foreground": "#1447e6",
+      "input": "#aac6e1",
+      "message": "#b4dbff",
+      "message-action": "#6f599e",
+      "message-action-foreground": "#fffaff",
+      "message-action-hover": "#5e488b",
+      "message-foreground": "#0a1723",
+      "muted": "#d9ecff",
+      "muted-foreground": "#5b6a79",
+      "placeholder": "#5a6875",
+      "popover": "#d1e0ef",
+      "popover-foreground": "#0a1723",
+      "primary": "#6f599e",
+      "primary-foreground": "#fffaff",
+      "ring": "#2672af",
+      "secondary": "#cde6ff",
+      "secondary-foreground": "#0a1723",
+      "secondary-label": "#677077",
+      "sidebar": "#d6ebff",
+      "sidebar-border": "#b7d3ee",
+      "sidebar-control-surface": "#cbe3f9",
+      "sidebar-foreground": "#0a1723",
+      "sidebar-muted-foreground": "#586877",
+      "sidebar-row-active": "#badeff",
+      "sidebar-row-hover": "#cde6ff",
+      "sidebar-row-selected": "#b4dbff",
+      "success": "#00b981",
+      "success-foreground": "#007857",
+      "surface-raised": "#d9e8f7",
+      "tool-error-icon": "#c10007",
+      "update": "#2672af",
+      "update-foreground": "#0a1723",
+      "update-surface": "#badeff",
+      "warning": "#fe9a00",
+      "warning-foreground": "#b64b00",
+      "warning-surface": "#f6f0e4"
+    },
+    "id": "ocean",
+    "mode": "light"
+  },
+  "title": "Jhin",
+  "tokens": {
+    "color": {
+      "accent": "var(--accent)",
+      "accent-foreground": "var(--contrast-accent-foreground)",
+      "background": "var(--background)",
+      "border": "var(--contrast-border)",
+      "card": "var(--card)",
+      "card-foreground": "var(--contrast-card-foreground)",
+      "code": "var(--code-background)",
+      "code-foreground": "var(--code-foreground)",
+      "contrast": {
+        "accent-foreground": "color-mix(in oklab, color-mix(in oklab, var(--accent-foreground) var(--appearance-contrast-base), var(--accent)), var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+        "border": "color-mix(in srgb, color-mix(in srgb, var(--border) var(--appearance-contrast-base), transparent), var(--foreground) var(--appearance-contrast-border-boost))",
+        "card-foreground": "color-mix(in oklab, color-mix(in oklab, var(--card-foreground) var(--appearance-contrast-base), var(--card)), var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+        "foreground": "color-mix(in oklab, color-mix(in oklab, var(--foreground) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+        "icon-muted": "color-mix(in oklab, color-mix(in oklab, var(--icon-muted) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+        "input": "color-mix(in srgb, color-mix(in srgb, var(--input) var(--appearance-contrast-base), transparent), var(--foreground) var(--appearance-contrast-border-boost))",
+        "message-foreground": "color-mix(in oklab, color-mix(in oklab, var(--message-foreground) var(--appearance-contrast-base), var(--message-surface)), var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+        "muted-foreground": "color-mix(in oklab, color-mix(in oklab, var(--muted-foreground) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+        "placeholder": "color-mix(in oklab, color-mix(in oklab, var(--placeholder) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+        "popover-foreground": "color-mix(in oklab, color-mix(in oklab, var(--popover-foreground) var(--appearance-contrast-base), var(--popover)), var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+        "secondary-foreground": "color-mix(in oklab, color-mix(in oklab, var(--secondary-foreground) var(--appearance-contrast-base), var(--secondary)), var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+        "secondary-label": "color-mix(in oklab, color-mix(in oklab, var(--secondary-label) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+        "sidebar-border": "color-mix(in srgb, color-mix(in srgb, var(--sidebar-border) var(--appearance-contrast-base), transparent), var(--sidebar-foreground) var(--appearance-contrast-border-boost))",
+        "sidebar-foreground": "color-mix(in oklab, color-mix(in oklab, var(--sidebar-foreground) var(--appearance-contrast-base), var(--sidebar)), var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+        "sidebar-muted-foreground": "color-mix(in oklab, color-mix(in oklab, var(--sidebar-muted-foreground) var(--appearance-contrast-base), var(--sidebar)), var(--appearance-contrast-target) var(--appearance-contrast-boost))"
+      },
+      "destructive": "var(--destructive)",
+      "destructive-foreground": "var(--destructive-foreground)",
+      "diff-addition": "var(--diff-addition)",
+      "diff-addition-foreground": "var(--diff-addition-foreground)",
+      "diff-deletion": "var(--diff-deletion)",
+      "diff-deletion-foreground": "var(--diff-deletion-foreground)",
+      "error": "var(--error)",
+      "error-foreground": "var(--error-foreground)",
+      "error-surface": "var(--error-surface)",
+      "foreground": "var(--contrast-foreground)",
+      "icon-muted": "var(--contrast-icon-muted)",
+      "info": "var(--info)",
+      "info-foreground": "var(--info-foreground)",
+      "input": "var(--contrast-input)",
+      "message": "var(--message-surface)",
+      "message-action": "var(--message-action)",
+      "message-action-foreground": "var(--message-action-foreground)",
+      "message-action-hover": "var(--message-action-hover)",
+      "message-foreground": "var(--contrast-message-foreground)",
+      "muted": "var(--muted)",
+      "muted-foreground": "var(--contrast-muted-foreground)",
+      "placeholder": "var(--contrast-placeholder)",
+      "popover": "var(--popover)",
+      "popover-foreground": "var(--contrast-popover-foreground)",
+      "primary": "var(--primary)",
+      "primary-foreground": "var(--primary-foreground)",
+      "ring": "var(--ring)",
+      "secondary": "var(--secondary)",
+      "secondary-foreground": "var(--contrast-secondary-foreground)",
+      "secondary-label": "var(--contrast-secondary-label)",
+      "sidebar": "var(--sidebar)",
+      "sidebar-border": "var(--contrast-sidebar-border)",
+      "sidebar-control-surface": "var(--sidebar-control-surface)",
+      "sidebar-foreground": "var(--contrast-sidebar-foreground)",
+      "sidebar-muted-foreground": "var(--contrast-sidebar-muted-foreground)",
+      "sidebar-row-active": "var(--sidebar-row-active)",
+      "sidebar-row-hover": "var(--sidebar-row-hover)",
+      "sidebar-row-selected": "var(--sidebar-row-selected)",
+      "success": "var(--success)",
+      "success-foreground": "var(--success-foreground)",
+      "surface-raised": "var(--surface-raised)",
+      "tool-error-icon": "var(--tool-error-icon)",
+      "update": "var(--update)",
+      "update-foreground": "var(--update-foreground)",
+      "update-surface": "var(--update-surface)",
+      "warning": "var(--warning)",
+      "warning-foreground": "var(--warning-foreground)",
+      "warning-surface": "var(--warning-surface)"
+    },
+    "font": {
+      "composer": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", system-ui, sans-serif",
+      "mono": "ui-monospace, \"SF Mono\", \"SFMono-Regular\", Menlo, Consolas, \"Liberation Mono\", monospace",
+      "sans": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", system-ui, sans-serif",
+      "sizeCode": 13,
+      "sizeInterface": 16,
+      "sizePrompt": 14
+    },
+    "glass": {
+      "blur": {
+        "dark": 16,
+        "light": 12
+      },
+      "opacity": "80%",
+      "saturation": {
+        "dark": 1.08,
+        "light": 1.14
+      }
+    },
+    "layout": {
+      "chatContentMaxWidth": "46rem",
+      "mainMinWidth": 640,
+      "sidebarMinWidth": 208,
+      "sidebarWidth": 256,
+      "threadDetailsPanelWidth": "17.5rem",
+      "topbarHeight": 52
+    },
+    "motion": {
+      "easeDrawer": "cubic-bezier(0.32, 0.72, 0, 1)",
+      "panel": 0,
+      "reduced": false,
+      "skeleton": "2.4s",
+      "statusPing": "2s",
+      "statusPulse": "2s"
+    },
+    "radius": {
+      "base": "0.625rem",
+      "lg": "0.625rem",
+      "md": "calc(0.625rem - 2px)",
+      "sm": "calc(0.625rem - 4px)",
+      "xl": "calc(0.625rem + 4px)",
+      "xl2": "calc(0.625rem + 8px)",
+      "xl3": "calc(0.625rem + 12px)"
+    },
+    "scroll": {
+      "thumb": {
+        "dark": "rgb(255 255 255 / 8%)",
+        "light": "rgb(217 217 217)"
+      },
+      "thumbHover": {
+        "dark": "rgb(255 255 255 / 12%)",
+        "light": "rgb(191 191 191)"
+      },
+      "width": 6
+    },
+    "shadow": {
+      "composer": {
+        "dark": "0 14px 32px -18px rgb(0 0 0 / 75%)",
+        "light": "0 12px 28px -18px rgb(0 0 0 / 40%)"
+      },
+      "controlHighlight": "0 1px rgb(255 255 255 / 16%)",
+      "controlPressed": "0 1px rgb(0 0 0 / 8%)"
+    },
+    "space": {
+      "commandContent": "1rem",
+      "commandShell": "0.5rem",
+      "control": "0.5rem",
+      "floatingContent": "0.75rem",
+      "sidebarContent": "0.5rem",
+      "sidebarControlGap": "0.5rem",
+      "sidebarRowContent": "0.625rem",
+      "workspaceGutter": {
+        "base": "0.75rem",
+        "sm": "1.25rem"
+      }
+    },
+    "text": {
+      "base": {
+        "lineHeight": "calc(1.5 / 1)",
+        "size": "1rem"
+      },
+      "lg": {
+        "lineHeight": "calc(1.75 / 1.125)",
+        "size": "1.125rem"
+      },
+      "sm": {
+        "lineHeight": "calc(1.25 / 0.875)",
+        "size": "0.875rem"
+      },
+      "xl": {
+        "lineHeight": "calc(1.75 / 1.25)",
+        "size": "1.25rem"
+      },
+      "xs": {
+        "lineHeight": "calc(1 / 0.75)",
+        "size": "0.75rem"
+      },
+      "xs2": {
+        "lineHeight": "calc(1 / 0.6875)",
+        "size": "0.6875rem"
+      },
+      "xs3": {
+        "lineHeight": "calc(0.875 / 0.625)",
+        "size": "0.625rem"
+      },
+      "xs4": {
+        "lineHeight": "1",
+        "size": "0.5rem"
+      },
+      "xs5": {
+        "lineHeight": "1",
+        "size": "0.4375rem"
+      }
+    },
+    "z": {
+      "sheet": 46
+    }
+  }
+}

@@ -18,10 +18,18 @@
  *   <li>{@code appearance} — {@code system}|{@code light}|{@code dark}
  *       (default {@code system}); surfaces as {@code theme.appearance} and
  *       the legacy {@code theme.mode} of the next bootstrap;</li>
- *   <li>{@code canvas} — {@code #RRGGBB} or {@code #AARRGGBB} (default
- *       {@code #16161e}); surfaces as {@code theme.canvas};</li>
- *   <li>{@code accent} — hex like canvas (default {@code #7E57C2}); surfaces
- *       as {@code theme.accent} and the level-1 {@code theme.seedColor};</li>
+ *   <li>{@code themeId} — one {@link com.astroreen.jhin.plugin.uikit.ThemeCatalog}
+ *       id (default {@code t3-chat}); surfaces as {@code theme.id} of the
+ *       next bootstrap. An unknown or reserved id (an appearance mode) falls
+ *       back to the default. Picking a theme re-derives the {@code canvas} /
+ *       {@code accent} seeds from the catalogue (T85);</li>
+ *   <li>{@code canvas} — {@code #RRGGBB} or {@code #AARRGGBB}; surfaces as
+ *       {@code theme.canvas}. The default is the resolved theme's seed pair
+ *       for the effective appearance (the {@code t3-chat} light canvas,
+ *       {@code #fdf7fd}, on a fresh install);</li>
+ *   <li>{@code accent} — hex like canvas (default the {@code t3-chat} light
+ *       accent, {@code #db2777}); surfaces as {@code theme.accent} and the
+ *       level-1 {@code theme.seedColor};</li>
  *   <li>{@code density} — {@code compact}|{@code comfortable}|{@code
  *       spacious} (default {@code comfortable}); surfaces as the top-level
  *       {@code density} of the next bootstrap;</li>
@@ -42,6 +50,7 @@
  */
 package com.astroreen.jhin.plugin.ui;
 
+import com.astroreen.jhin.plugin.uikit.ThemeCatalog;
 import com.astroreen.jhin.sdk.ConfigView;
 import com.astroreen.jhin.sdk.json.Json;
 import java.io.IOException;
@@ -57,6 +66,9 @@ public final class UiSettings {
 
     /** Settings key: theme mode ({@code system}|{@code light}|{@code dark}). */
     public static final String KEY_APPEARANCE = "appearance";
+
+    /** Settings key: the selected catalogue theme id (T85). */
+    public static final String KEY_THEME_ID = "themeId";
 
     /** Settings key: canvas seed color (hex). */
     public static final String KEY_CANVAS = "canvas";
@@ -79,11 +91,18 @@ public final class UiSettings {
     /** Built-in default theme mode. */
     static final String DEFAULT_APPEARANCE = "system";
 
-    /** Built-in default canvas seed color. */
-    static final String DEFAULT_CANVAS = "#16161e";
+    /** Built-in default theme id: the t3code stock theme (T85). */
+    static final String DEFAULT_THEME_ID = "t3-chat";
 
-    /** Built-in default accent seed color. */
-    static final String DEFAULT_ACCENT = "#7E57C2";
+    /**
+     * Built-in default canvas seed color: the default theme's light canvas.
+     * Derived from the catalogue so the default seeds and the default
+     * {@code theme.id} can never drift apart.
+     */
+    static final String DEFAULT_CANVAS = defaultSeed("canvas");
+
+    /** Built-in default accent seed color: the default theme's light accent. */
+    static final String DEFAULT_ACCENT = defaultSeed("accent");
 
     /** Built-in default control density. */
     static final String DEFAULT_DENSITY = "comfortable";
@@ -179,10 +198,13 @@ public final class UiSettings {
      */
     public synchronized Snapshot current() {
         Map<String, Object> saved = load();
+        String appearance = enumOf(saved, KEY_APPEARANCE, DEFAULT_APPEARANCE, "system", "light", "dark");
+        String themeId = themeIdOf(saved);
         return new Snapshot(
-                enumOf(saved, KEY_APPEARANCE, DEFAULT_APPEARANCE, "system", "light", "dark"),
-                hexOf(saved, KEY_CANVAS, DEFAULT_CANVAS),
-                hexOf(saved, KEY_ACCENT, DEFAULT_ACCENT),
+                appearance,
+                themeId,
+                hexOf(saved, KEY_CANVAS, defaultSeed(themeId, appearance, "canvas")),
+                hexOf(saved, KEY_ACCENT, defaultSeed(themeId, appearance, "accent")),
                 enumOf(saved, KEY_DENSITY, DEFAULT_DENSITY, "compact", "comfortable", "spacious"),
                 intOf(saved, KEY_PANEL_MOTION_MS, DEFAULT_PANEL_MOTION_MS,
                         MIN_PANEL_MOTION_MS, MAX_PANEL_MOTION_MS),
@@ -193,18 +215,25 @@ public final class UiSettings {
 
     /**
      * Persists one appearance save. Only the named keys are written; the
-     * thread-behavior keys keep their previous values.
+     * thread-behavior keys keep their previous values. A {@code null}
+     * {@code themeId} (a legacy save without the theme grid) leaves the
+     * previously selected theme in place.
      *
      * @param appearance    {@code system}|{@code light}|{@code dark}
+     * @param themeId       the selected catalogue theme id, {@code null} to
+     *                      keep the previous selection
      * @param canvas        canvas seed color, {@code #RRGGBB}/{@code #AARRGGBB}
      * @param accent        accent seed color, {@code #RRGGBB}/{@code #AARRGGBB}
      * @param density       {@code compact}|{@code comfortable}|{@code spacious}
      * @param panelMotionMs panel-animation duration, 0–400
      */
-    public synchronized void saveAppearance(String appearance, String canvas, String accent,
-                                            String density, int panelMotionMs) {
+    public synchronized void saveAppearance(String appearance, String themeId, String canvas,
+                                            String accent, String density, int panelMotionMs) {
         Map<String, Object> saved = load();
         saved.put(KEY_APPEARANCE, appearance);
+        if (themeId != null) {
+            saved.put(KEY_THEME_ID, themeId);
+        }
         saved.put(KEY_CANVAS, canvas);
         saved.put(KEY_ACCENT, accent);
         saved.put(KEY_DENSITY, density);
@@ -278,6 +307,34 @@ public final class UiSettings {
         return isHex(value) ? value : def;
     }
 
+    /**
+     * The saved theme id when it names a catalogue theme, else the default.
+     * A hand-edited settings file carrying an unknown id or an appearance
+     * mode falls back instead of poisoning the bootstrap.
+     */
+    private String themeIdOf(Map<String, Object> saved) {
+        String value = stringOf(saved, KEY_THEME_ID, DEFAULT_THEME_ID);
+        return ThemeCatalog.isThemeId(value) ? value : DEFAULT_THEME_ID;
+    }
+
+    /** The default theme's seed for the given role ({@code canvas}/{@code accent}). */
+    private static String defaultSeed(String role) {
+        ThemeCatalog.Theme theme = ThemeCatalog.get(DEFAULT_THEME_ID);
+        return "canvas".equals(role) ? theme.light().canvas() : theme.light().accent();
+    }
+
+    /**
+     * The seed default of the resolved theme for the effective appearance:
+     * used only when neither the saved document nor the config layer carries
+     * the key, so a saved theme without seeds (a config-layer {@code themeId})
+     * still answers a coherent pair. {@code system} resolves to the light
+     * pair, exactly like {@link ThemeCatalog.Theme#seeds}.
+     */
+    private static String defaultSeed(String themeId, String appearance, String role) {
+        ThemeCatalog.Seeds seeds = ThemeCatalog.get(themeId).seeds(appearance);
+        return "canvas".equals(role) ? seeds.canvas() : seeds.accent();
+    }
+
     /** One int key clamped to {@code [min, max]}; a non-numeric value falls back to the default. */
     private int intOf(Map<String, Object> saved, String key, int def, int min, int max) {
         Object value = saved.get(key);
@@ -328,6 +385,7 @@ public final class UiSettings {
      * payload see them.
      *
      * @param appearance    {@code system}|{@code light}|{@code dark}
+     * @param themeId       the selected catalogue theme id
      * @param canvas        canvas seed color
      * @param accent        accent seed color
      * @param density       {@code compact}|{@code comfortable}|{@code spacious}
@@ -337,6 +395,7 @@ public final class UiSettings {
      */
     public record Snapshot(
             String appearance,
+            String themeId,
             String canvas,
             String accent,
             String density,
@@ -346,7 +405,7 @@ public final class UiSettings {
 
         /** The snapshot of the built-in defaults (config layer absent). */
         public static Snapshot defaults() {
-            return new Snapshot(DEFAULT_APPEARANCE, DEFAULT_CANVAS, DEFAULT_ACCENT,
+            return new Snapshot(DEFAULT_APPEARANCE, DEFAULT_THEME_ID, DEFAULT_CANVAS, DEFAULT_ACCENT,
                     DEFAULT_DENSITY, DEFAULT_PANEL_MOTION_MS, DEFAULT_AUTO_SETTLE,
                     DEFAULT_INACTIVITY_DAYS);
         }

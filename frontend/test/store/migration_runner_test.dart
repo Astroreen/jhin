@@ -89,8 +89,8 @@ void main() {
 
         final report = await MigrationRunner().run(storage);
 
-        expect(schemaOf(prefs, StoreKeys.profiles), 3);
-        expect(schemaOf(prefs, StoreKeys.activeProfileId), 3);
+        expect(schemaOf(prefs, StoreKeys.profiles), StoreMigrations.current);
+        expect(schemaOf(prefs, StoreKeys.activeProfileId), StoreMigrations.current);
         expect(payloadOf(prefs, StoreKeys.activeProfileId), 'legacy-1');
         expect(await storage.readActiveProfileId(), 'legacy-1');
         expect(report.migratedKeys, containsAll(
@@ -147,7 +147,7 @@ void main() {
         expect(prefs.values['migration.backup:theme'], isNull);
         // The key is recorded in migration.quarantine (persisted, enveloped).
         expect(payloadOf(prefs, StoreKeys.quarantine), ['theme']);
-        expect(schemaOf(prefs, StoreKeys.quarantine), 3);
+        expect(schemaOf(prefs, StoreKeys.quarantine), StoreMigrations.current);
         expect(report.quarantinedKeys, ['theme']);
         expect(report.failures, 1);
       },
@@ -189,8 +189,8 @@ void main() {
         expect(report.quarantinedKeys, ['theme']);
         expect(prefs.values[StoreKeys.legacyTheme], '{"boom":true,"mode":"dark"}');
         // …and every other key still migrated.
-        expect(schemaOf(prefs, StoreKeys.profiles), 3);
-        expect(schemaOf(prefs, StoreKeys.activeProfileId), 3);
+        expect(schemaOf(prefs, StoreKeys.profiles), StoreMigrations.current);
+        expect(schemaOf(prefs, StoreKeys.activeProfileId), StoreMigrations.current);
         expect(report.migratedKeys,
             containsAll([StoreKeys.profiles, StoreKeys.activeProfileId]));
         // The app boots: profiles read cleanly.
@@ -240,10 +240,10 @@ void main() {
       final report = await MigrationRunner().run(storage);
 
       final target = StoreKeys.sessionState('legacy-1');
-      expect(schemaOf(prefs, target), 3);
+      expect(schemaOf(prefs, target), StoreMigrations.current);
       expect(payloadOf(prefs, target), jsonDecode(legacySessionStateRaw));
       // The legacy key is never destroyed — it stays, enveloped.
-      expect(schemaOf(prefs, StoreKeys.legacySessionState), 3);
+      expect(schemaOf(prefs, StoreKeys.legacySessionState), StoreMigrations.current);
       expect(payloadOf(prefs, StoreKeys.legacySessionState),
           jsonDecode(legacySessionStateRaw));
       expect(report.migratedKeys, contains(StoreKeys.legacySessionState));
@@ -254,7 +254,7 @@ void main() {
 
       await MigrationRunner().run(storage);
 
-      expect(schemaOf(prefs, StoreKeys.appearance), 3);
+      expect(schemaOf(prefs, StoreKeys.appearance), StoreMigrations.current);
       expect(payloadOf(prefs, StoreKeys.appearance), {
         'themeMode': 'dark',
         'textSize': 14,
@@ -262,7 +262,7 @@ void main() {
         'panelMotionMs': 0,
       });
       // The legacy theme key is never destroyed.
-      expect(schemaOf(prefs, StoreKeys.legacyTheme), 3);
+      expect(schemaOf(prefs, StoreKeys.legacyTheme), StoreMigrations.current);
       expect(payloadOf(prefs, StoreKeys.legacyTheme), {'mode': 'dark'});
     });
 
@@ -282,7 +282,7 @@ void main() {
 
       await MigrationRunner().run(storage);
 
-      expect(schemaOf(prefs, StoreKeys.keybindings), 3);
+      expect(schemaOf(prefs, StoreKeys.keybindings), StoreMigrations.current);
       expect(payloadOf(prefs, StoreKeys.keybindings), {
         'rules': [
           {'command': 'composer.send', 'keys': 'mod+shift+enter'}
@@ -302,7 +302,7 @@ void main() {
       });
       expect(payloadOf(prefs, StoreKeys.keybindings), {'rules': []});
       expect(payloadOf(prefs, StoreKeys.tokensEtag), {'etag': ''});
-      expect(schemaOf(prefs, StoreKeys.appearance), 3);
+      expect(schemaOf(prefs, StoreKeys.appearance), StoreMigrations.current);
     });
 
     test('a quarantined key migrates on a later healthy run and leaves the list',
@@ -315,7 +315,7 @@ void main() {
 
       // A later run without the throwing step migrates the key and clears it.
       await MigrationRunner().run(storage);
-      expect(schemaOf(prefs, StoreKeys.legacyTheme), 3);
+      expect(schemaOf(prefs, StoreKeys.legacyTheme), StoreMigrations.current);
       expect(payloadOf(prefs, StoreKeys.quarantine), isEmpty);
     });
 
@@ -328,7 +328,7 @@ void main() {
       final report = await MigrationRunner().run(storage);
 
       expect(prefs.values['migration.backup:jhin.profiles'], isNull);
-      expect(schemaOf(prefs, StoreKeys.profiles), 3);
+      expect(schemaOf(prefs, StoreKeys.profiles), StoreMigrations.current);
       expect(report.failures, 0);
     });
 

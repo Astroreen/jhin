@@ -15,7 +15,7 @@ Every non-secure persisted key in `AppStorage`/`SharedPreferences` gets an
 
 ```json
 {
-  "schema": 3,
+  "schema": 4,
   "app": "0.3.0",
   "writtenAt": "2026-10-03T09:30:00Z",
   "data": {
@@ -116,12 +116,13 @@ successful commit.
 
 ## 5. Schema steps
 
-`StoreMigrations.current` is `3`. The steps defined so far:
+`StoreMigrations.current` is `4`. The steps defined so far:
 
 | Step | What it does |
 |------|--------------|
 | 1 → 2 | wrap legacy blobs into the envelope and split `sessionState` per profile |
 | 2 → 3 | introduce `appearance` + `keybindings` + `tokensEtag` and migrate the old `theme` key into `appearance` |
+| 3 → 4 | persist the selected catalogue theme id: `appearance` gains `themeId` (default `t3-chat`), merged without clobbering (T85) |
 
 ## 6. How to add a migration step
 

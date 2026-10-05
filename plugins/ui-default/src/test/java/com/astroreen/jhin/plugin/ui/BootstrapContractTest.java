@@ -64,8 +64,12 @@ class BootstrapContractTest {
         List<Object> keymap = castList(payload.get("keymap"));
         assertThat(keymap.size()).isGreaterThanOrEqualTo(8);
         Map<String, Object> theme = castMap(payload.get("theme"));
-        assertThat(theme).containsKeys("appearance", "canvas", "accent", "colors", "mode");
-        assertThat(theme.get("accent")).isEqualTo("#7E57C2");
+        assertThat(theme).containsKeys("id", "appearance", "canvas", "accent", "colors", "mode");
+        // T85: the default theme is t3-chat and the default seeds are its
+        // light pair (the catalogue derives them; the literals pin the wire).
+        assertThat(theme.get("id")).isEqualTo("t3-chat");
+        assertThat(theme.get("accent")).isEqualTo("#db2777");
+        assertThat(theme.get("canvas")).isEqualTo("#fdf7fd");
         assertThat(theme.get("mode")).isEqualTo(theme.get("appearance"));
     }
 
@@ -124,7 +128,7 @@ class BootstrapContractTest {
     @Test
     void tokensMotionPanelFollowsTheSavedDuration() {
         UiSettings settings = UiSettings.open(tmp);
-        settings.saveAppearance("system", "#16161e", "#7E57C2", "comfortable", 200);
+        settings.saveAppearance("system", "jhin", "#16161e", "#7E57C2", "comfortable", 200);
         Map<String, Object> payload = bootstrap(settings, new ClientInfo(2, "0.3.0", 3, Set.of()));
 
         assertThat(castMap(castMap(payload.get("tokens")).get("motion")))

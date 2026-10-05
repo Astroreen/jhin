@@ -233,7 +233,11 @@ void main() {
       commands.controller.registry.dispatch('theme.pick');
       await settle();
 
-      expect(await AppearancePrefs.read(storage), isEmpty);
+      // T85: the reader merges the themeId default over an empty store;
+      // theme.pick itself still writes nothing.
+      final prefs = await AppearancePrefs.read(storage);
+      expect(prefs['themeId'], 't3-chat');
+      expect(prefs.containsKey('accent'), isFalse);
       expect(changes(), 0);
     });
   });

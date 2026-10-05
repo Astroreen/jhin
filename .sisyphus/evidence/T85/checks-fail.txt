@@ -1,0 +1,5 @@
+FAIL: themeId "nope" was answered with the documented error (rejected as designed)
+  server: errorText patch on the themeId field, error toast, nothing persisted (validation-fail.txt)
+  next bootstrap keeps the default theme t3-chat (bootstrap-fail.json)
+ok: --fail probe: unknown themeId rejected with [patch, toast] style:error, nothing persisted
+FAIL: deliberately wrong expectation: the unknown themeId "nope" was persisted (it is blocked; see .sisyphus/evidence/T85/bootstrap-fail.json)

@@ -5,9 +5,11 @@
  * loaded — the reload button.
  *
  * <p>Appearance (T78) edits the persisted {@code jhin.ui} settings of
- * {@link UiSettings}: theme mode, canvas/accent seed colors, control density
- * and the panel-animation duration. The Save button posts
- * {@code save-appearance} with the five field ids included; a valid save
+ * {@link UiSettings}: the six-theme catalogue grid (T85), theme mode,
+ * canvas/accent seed colors, control density and the panel-animation
+ * duration. Picking a theme card writes the {@code themeId} state key; the
+ * Save button posts {@code save-appearance} with the six field ids included
+ * and the server re-derives the seeds from the catalogue; a valid save
  * answers {@code reloadBootstrap}, so the next bootstrap carries the new
  * {@code theme}/{@code density}/{@code tokens.motion.panel}. The hex fields
  * carry {@code pattern}+{@code errorText} so an invalid color never leaves
@@ -33,8 +35,10 @@ package com.astroreen.jhin.plugin.ui.screens;
 
 import com.astroreen.jhin.plugin.ui.Directives;
 import com.astroreen.jhin.plugin.ui.UiSettings;
+import com.astroreen.jhin.plugin.uikit.ThemeCatalog;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
+import com.astroreen.jhin.plugin.uikit.UiTokens;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -52,6 +56,12 @@ public final class SettingsScreen {
 
     /** Field id of the theme-mode segmented control. */
     static final String ID_APPEARANCE = "appearance";
+
+    /** Prefix of the theme-card node ids: {@code theme-<id>} (T85). */
+    static final String ID_THEME_PREFIX = "theme-";
+
+    /** The UiState key the theme cards write the picked theme id into (T85). */
+    static final String ID_THEME_ID = "themeId";
 
     /** Field id of the canvas color input. */
     static final String ID_CANVAS = "canvas";
@@ -140,13 +150,17 @@ public final class SettingsScreen {
     }
 
     /**
-     * The Appearance card (T78): theme mode, canvas/accent seed colors,
-     * density and the panel-animation duration, saved through
-     * {@code save-appearance}.
+     * The Appearance card (T78 + T85): the six-theme grid, the theme mode,
+     * canvas/accent seed colors, density and the panel-animation duration,
+     * saved through {@code save-appearance}. Picking a theme card writes the
+     * {@code themeId} state key; the save re-derives the seeds from the
+     * catalogue server-side, so the hex fields always show the selected
+     * theme's derived pair after the round-trip.
      */
     private static UiNode appearanceCard(UiSettings.Snapshot settings) {
         return Ui.card()
                 .title("Appearance")
+                .child(themeGrid(settings))
                 .child(Ui.segmented()
                         .id(ID_APPEARANCE)
                         .segment("System", "system")
@@ -181,10 +195,79 @@ public final class SettingsScreen {
                         .build())
                 .child(Ui.button("Save")
                         .action(ActionDescriptors.of("save-appearance", null, List.of(
-                                ID_APPEARANCE, ID_CANVAS, ID_ACCENT,
+                                ID_APPEARANCE, ID_THEME_ID, ID_CANVAS, ID_ACCENT,
                                 ID_DENSITY, ID_PANEL_MOTION_MS)))
                         .build())
                 .build();
+    }
+
+    /**
+     * The theme grid (T85): three cards per row, one per catalogue theme.
+     * Each card carries the live swatch (the canvas and accent seeds of the
+     * effective appearance, converted server-side through the OKLCH port),
+     * the theme name and the light/dark preview chips (the accent seed of
+     * each pair). Tapping a card writes the {@code themeId} state key the
+     * Save action includes; the active theme's card is outlined in the
+     * primary color.
+     */
+    private static UiNode themeGrid(UiSettings.Snapshot settings) {
+        List<String> ids = ThemeCatalog.ids();
+        Ui.ContainerBuilder grid = Ui.container().direction("column").gap(8);
+        for (int start = 0; start < ids.size(); start += 3) {
+            Ui.RowBuilder row = Ui.row().gap(8);
+            for (int i = start; i < Math.min(start + 3, ids.size()); i++) {
+                row.child(Ui.expanded()
+                        .child(themeCard(ThemeCatalog.get(ids.get(i)), settings))
+                        .build());
+            }
+            grid.child(row.build());
+        }
+        return grid.build();
+    }
+
+    /** One theme card of the grid: swatch, name, light/dark chips, tap-to-pick. */
+    private static UiNode themeCard(ThemeCatalog.Theme theme, UiSettings.Snapshot settings) {
+        boolean active = theme.id().equals(settings.themeId());
+        ThemeCatalog.Seeds activeSeeds = theme.seeds(settings.appearance());
+        return Ui.box()
+                .id(ID_THEME_PREFIX + theme.id())
+                .padding(UiTokens.spacing.md())
+                .borderRadius(UiTokens.radius.md())
+                .borderWidth(1)
+                .border(active ? UiTokens.color("primary") : UiTokens.color("border"))
+                .onTap(Directives.setState(ID_THEME_ID, theme.id()))
+                .child(Ui.container()
+                        .direction("column")
+                        .gap(8)
+                        .child(Ui.row()
+                                .gap(8)
+                                .child(swatch("swatch-" + theme.id() + "-canvas", activeSeeds.canvas()))
+                                .child(swatch("swatch-" + theme.id() + "-accent", activeSeeds.accent()))
+                                .build())
+                        .child(Ui.text(theme.label()).style("body").build())
+                        .child(Ui.row()
+                                .gap(8)
+                                .child(Ui.chip().label("Light")
+                                        .avatar(swatch("chip-" + theme.id() + "-light",
+                                                theme.light().accent()))
+                                        .build())
+                                .child(Ui.chip().label("Dark")
+                                        .avatar(swatch("chip-" + theme.id() + "-dark",
+                                                theme.dark().accent()))
+                                        .build())
+                                .build())
+                        .build())
+                .build();
+    }
+
+    /** One color swatch: a fixed-size box painted with the given hex. */
+    private static UiNode swatch(String id, String hex) {
+        return Ui.sizedBox().id(id).width(40).height(24).color(hex).build();
+    }
+
+    /** One color swatch: a fixed-size box painted with the given hex. */
+    private static UiNode swatch(String hex) {
+        return Ui.sizedBox().width(40).height(24).color(hex).build();
     }
 
     /**

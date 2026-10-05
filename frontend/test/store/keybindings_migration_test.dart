@@ -5,6 +5,7 @@ import 'package:jhin/core/auth/app_storage.dart';
 import 'package:jhin/core/auth/string_store.dart';
 import 'package:jhin/store/migrations/migration_runner.dart';
 import 'package:jhin/store/versioned_store.dart';
+import 'package:jhin/store/migrations/store_migrations.dart';
 
 import 'fixtures.dart';
 
@@ -50,7 +51,7 @@ void main() {
 
       // The step seeds keybindings only when absent.
       expect(report.seededKeys, contains(StoreKeys.keybindings));
-      expect(schemaOf(prefs, StoreKeys.keybindings), 3);
+      expect(schemaOf(prefs, StoreKeys.keybindings), StoreMigrations.current);
       expect(payloadOf(prefs, StoreKeys.keybindings), {'rules': []});
 
       // Every pre-existing key keeps its exact data — never clobbered.

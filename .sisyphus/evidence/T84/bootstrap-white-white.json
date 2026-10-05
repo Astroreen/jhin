@@ -252,6 +252,481 @@
             {
               "children": [
                 {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "child": {
+                            "border": "$color.primary",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#fdf7fd",
+                                      "height": 24,
+                                      "id": "swatch-t3-chat-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#db2777",
+                                      "height": 24,
+                                      "id": "swatch-t3-chat-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "T3 Chat",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#db2777",
+                                        "height": 24,
+                                        "id": "chip-t3-chat-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#a3004c",
+                                        "height": 24,
+                                        "id": "chip-t3-chat-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-t3-chat",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "t3-chat"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        },
+                        {
+                          "child": {
+                            "border": "$color.border",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#f3f7f4",
+                                      "height": 24,
+                                      "id": "swatch-grove-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#1b7d50",
+                                      "height": 24,
+                                      "id": "swatch-grove-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "Grove",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#1b7d50",
+                                        "height": 24,
+                                        "id": "chip-grove-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#69d69a",
+                                        "height": 24,
+                                        "id": "chip-grove-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-grove",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "grove"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        },
+                        {
+                          "child": {
+                            "border": "$color.border",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#f5f7f8",
+                                      "height": 24,
+                                      "id": "swatch-ocean-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#2672af",
+                                      "height": 24,
+                                      "id": "swatch-ocean-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "Ocean",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#2672af",
+                                        "height": 24,
+                                        "id": "chip-ocean-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#70b9ee",
+                                        "height": 24,
+                                        "id": "chip-ocean-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-ocean",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "ocean"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        }
+                      ],
+                      "gap": 8,
+                      "type": "row"
+                    },
+                    {
+                      "children": [
+                        {
+                          "child": {
+                            "border": "$color.border",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#f9f7f5",
+                                      "height": 24,
+                                      "id": "swatch-ember-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#ae552a",
+                                      "height": 24,
+                                      "id": "swatch-ember-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "Ember",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#ae552a",
+                                        "height": 24,
+                                        "id": "chip-ember-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#f09a64",
+                                        "height": 24,
+                                        "id": "chip-ember-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-ember",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "ember"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        },
+                        {
+                          "child": {
+                            "border": "$color.border",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#f8f7f9",
+                                      "height": 24,
+                                      "id": "swatch-iris-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#7253b9",
+                                      "height": 24,
+                                      "id": "swatch-iris-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "Iris",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#7253b9",
+                                        "height": 24,
+                                        "id": "chip-iris-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#9d7df2",
+                                        "height": 24,
+                                        "id": "chip-iris-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-iris",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "iris"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        },
+                        {
+                          "child": {
+                            "border": "$color.border",
+                            "borderRadius": "$radius.md",
+                            "borderWidth": 1,
+                            "child": {
+                              "children": [
+                                {
+                                  "children": [
+                                    {
+                                      "color": "#16161e",
+                                      "height": 24,
+                                      "id": "swatch-jhin-canvas",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    },
+                                    {
+                                      "color": "#7E57C2",
+                                      "height": 24,
+                                      "id": "swatch-jhin-accent",
+                                      "type": "sized_box",
+                                      "width": 40
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                },
+                                {
+                                  "style": "body",
+                                  "text": "Jhin",
+                                  "type": "text"
+                                },
+                                {
+                                  "children": [
+                                    {
+                                      "avatar": {
+                                        "color": "#7E57C2",
+                                        "height": 24,
+                                        "id": "chip-jhin-light",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Light",
+                                      "type": "chip"
+                                    },
+                                    {
+                                      "avatar": {
+                                        "color": "#7E57C2",
+                                        "height": 24,
+                                        "id": "chip-jhin-dark",
+                                        "type": "sized_box",
+                                        "width": 40
+                                      },
+                                      "label": "Dark",
+                                      "type": "chip"
+                                    }
+                                  ],
+                                  "gap": 8,
+                                  "type": "row"
+                                }
+                              ],
+                              "direction": "column",
+                              "gap": 8,
+                              "type": "container"
+                            },
+                            "id": "theme-jhin",
+                            "onTap": {
+                              "id": "themeId",
+                              "op": "setState",
+                              "value": "jhin"
+                            },
+                            "padding": "$spacing.md",
+                            "type": "box"
+                          },
+                          "type": "expanded"
+                        }
+                      ],
+                      "gap": 8,
+                      "type": "row"
+                    }
+                  ],
+                  "direction": "column",
+                  "gap": 8,
+                  "type": "container"
+                },
+                {
                   "id": "appearance",
                   "segments": [
                     {
@@ -318,6 +793,7 @@
                   "action": {
                     "include": [
                       "appearance",
+                      "themeId",
                       "canvas",
                       "accent",
                       "density",
@@ -910,6 +1386,7 @@
       "warning-foreground": "#bb4d00",
       "warning-surface": "#fff7eb"
     },
+    "id": "t3-chat",
     "mode": "light"
   },
   "title": "Jhin",

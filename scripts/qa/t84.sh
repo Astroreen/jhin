@@ -196,7 +196,7 @@ if [ "$fail_mode" = "1" ]; then
   jq -e '[.client[] | select(.op == "toast")][0].style == "error"' <<< "$step_payload" > /dev/null \
     || fail "the unparsable canvas answer does not toast an error (validation-fail.txt)"
   fetch_bootstrap "$tx" "$evidence/bootstrap-fail.json"
-  jq -e '.theme.canvas == "#16161e"' "$evidence/bootstrap-fail.json" > /dev/null \
+  jq -e '.theme.canvas == "#fdf7fd"' "$evidence/bootstrap-fail.json" > /dev/null \
     || fail "the unparsable canvas was persisted (bootstrap-fail.json)"
   {
     echo "FAIL: canvas \"not-a-colour\" was answered with the documented error (rejected as designed)"

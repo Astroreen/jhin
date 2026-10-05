@@ -359,26 +359,37 @@ class _CommandPaletteState extends State<CommandPalette> {
 }
 
 /// Client appearance preferences persisted under [StoreKeys.appearance]
-/// (schema-3 envelope, docs/updates.md §1): `themeMode`
+/// (schema-4 envelope, docs/updates.md §1): `themeId` (T85, the selected
+/// catalogue theme, default `t3-chat`), `themeMode`
 /// (`system|light|dark`), `accent` and the T54 fields (`textSize`,
 /// `density`, `panelMotionMs`). Reads merge over the defaults; writes never
 /// drop fields a reader does not know.
 class AppearancePrefs {
   AppearancePrefs._();
 
+  /// The default theme id (T85): the t3code stock theme. Answers for stores
+  /// the 3→4 migration never touched (a fresh install seeds `appearance`
+  /// through the 2→3 defaults, which predate the field).
+  static const String defaultThemeId = 't3-chat';
+
   /// The theme-mode cycle of `appearance.cycle`: system → light → dark.
   static const List<String> modes = <String>['system', 'light', 'dark'];
 
-  /// The persisted preferences; empty when absent or unreadable (never
-  /// throws).
+  /// The persisted preferences with the [defaultThemeId] merged in; the
+  /// other fields answer empty when absent or unreadable (never throws).
   static Future<Map<String, dynamic>> read(AppStorage storage) async {
     try {
       final data = await storage.readData(StoreKeys.appearance);
-      if (data is Map) return Map<String, dynamic>.from(data);
+      if (data is Map) {
+        return <String, dynamic>{
+          'themeId': defaultThemeId,
+          ...Map<String, dynamic>.from(data),
+        };
+      }
     } catch (_) {
       // An unreadable appearance degrades to the defaults — never throws.
     }
-    return <String, dynamic>{};
+    return <String, dynamic>{'themeId': defaultThemeId};
   }
 
   /// Persists [prefs] enveloped at the current schema.

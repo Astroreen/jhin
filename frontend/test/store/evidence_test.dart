@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jhin/store/migrations/migration_runner.dart';
 import 'package:jhin/core/auth/string_store.dart';
 import 'package:jhin/store/versioned_store.dart';
+import 'package:jhin/store/migrations/store_migrations.dart';
 
 import 'fixtures.dart';
 
@@ -33,7 +34,7 @@ void main() {
       expect(profiles, hasLength(2));
       expect(profiles[0].id, 'legacy-1');
       expect(profiles[1].label, 'Work');
-      expect(schemaOf(prefs, StoreKeys.profiles), 3);
+      expect(schemaOf(prefs, StoreKeys.profiles), StoreMigrations.current);
       expect(payloadOf(prefs, StoreKeys.profiles), jsonDecode(legacyProfilesRaw));
       expect(payloadOf(prefs, 'sessionState:legacy-1'),
           jsonDecode(legacySessionStateRaw));

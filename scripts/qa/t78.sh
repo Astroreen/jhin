@@ -215,14 +215,14 @@ fetch_bootstrap "$tx" "$evidence/bootstrap-before.json"
 jq -e '.theme.appearance == "system" and .theme.mode == "system"' \
   "$evidence/bootstrap-before.json" > /dev/null \
   || fail "the default theme.appearance is not 'system' (bootstrap-before.json)"
-jq -e '.theme.canvas == "#16161e" and .theme.accent == "#7E57C2"' \
+jq -e '.theme.canvas == "#fdf7fd" and .theme.accent == "#db2777"' \
   "$evidence/bootstrap-before.json" > /dev/null \
   || fail "the default canvas/accent seeds are wrong (bootstrap-before.json)"
 jq -e '.density == "comfortable"' "$evidence/bootstrap-before.json" > /dev/null \
   || fail "the default density is not 'comfortable' (bootstrap-before.json)"
 jq -e '.tokens.motion.panel == 0' "$evidence/bootstrap-before.json" > /dev/null \
   || fail "the default tokens.motion.panel is not 0 (bootstrap-before.json)"
-ok "bootstrap defaults: appearance system, canvas #16161e, accent #7E57C2, density comfortable, motion.panel 0"
+ok "bootstrap defaults: theme.id t3-chat, appearance system, canvas #fdf7fd, accent #db2777, density comfortable, motion.panel 0"
 
 # --- 4. Invalid hex: errorText, no save ---
 validation="$evidence/validation.txt"
@@ -238,13 +238,13 @@ jq -e '[.client[] | select(.op == "patch")][0].props.errorText | contains("#RRGG
 jq -e '[.client[] | select(.op == "toast")][0].style == "error"' <<< "$step_payload" > /dev/null \
   || fail "the invalid hex answer does not toast an error (validation.txt)"
 fetch_bootstrap "$validation" "$evidence/bootstrap-after-invalid.json"
-jq -e '.theme.accent == "#7E57C2" and .theme.appearance == "system"' \
+jq -e '.theme.accent == "#db2777" and .theme.appearance == "system"' \
   "$evidence/bootstrap-after-invalid.json" > /dev/null \
   || fail "the invalid hex save changed the bootstrap (validation.txt)"
 {
   echo
   echo "assert: errorText patched on 'accent', error toast answered, nothing persisted"
-  echo "assert: next bootstrap still carries accent #7E57C2 and appearance system"
+  echo "assert: next bootstrap still carries accent #db2777 and appearance system"
 } >> "$validation"
 ok "invalid hex blocked: errorText on the accent field, no persistence (validation.txt)"
 
@@ -278,9 +278,9 @@ done
 jq -e '[.. | objects | select(.id? == "settleOnPrMerged")][0] | .type == "switch" and .enabled == false and .tooltip == "PR linking is not enabled"' \
   "$evidence/settings-tree.json" > /dev/null \
   || fail "the settle-on-PR-merged switch is not disabled with its tooltip (settings-tree.json)"
-jq -e '[.. | objects | select(.name? == "save-appearance")][0].include == ["appearance","canvas","accent","density","panelMotionMs"]' \
+jq -e '[.. | objects | select(.name? == "save-appearance")][0].include == ["appearance","themeId","canvas","accent","density","panelMotionMs"]' \
   "$evidence/settings-tree.json" > /dev/null \
-  || fail "the save-appearance action does not include the five field ids (settings-tree.json)"
+  || fail "the save-appearance action does not include the six field ids (settings-tree.json)"
 jq -e '[.. | objects | select(.name? == "keybind-edit")] | length >= 1' \
   "$evidence/settings-tree.json" > /dev/null \
   || fail "the T70 keyboard rows are missing (settings-tree.json)"

@@ -1,10 +1,11 @@
 /**
- * T78: the settings actions and the settings-driven bootstrap. The
+ * T78 + T85: the settings actions and the settings-driven bootstrap. The
  * {@code save-appearance} round-trip must show up in the next bootstrap
- * ({@code theme.appearance/canvas/accent}, {@code density},
- * {@code tokens.motion.panel}), an invalid hex color must be blocked without
- * persisting anything, the thread-behavior save must persist its proxy keys,
- * and the disabled "settle on PR merged" switch must carry its tooltip.
+ * ({@code theme.id/appearance/canvas/accent}, {@code density},
+ * {@code tokens.motion.panel}), an invalid hex color or an unknown theme id
+ * must be blocked without persisting anything, a theme save re-derives the
+ * seeds from the catalogue, the thread-behavior save must persist its proxy
+ * keys, and the disabled "settle on PR merged" switch must carry its tooltip.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -14,6 +15,7 @@ import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.EventRecord;
 import com.astroreen.jhin.plugin.sessions.api.EventType;
 import com.astroreen.jhin.plugin.ui.screens.SettingsScreen;
+import com.astroreen.jhin.plugin.uikit.ThemeCatalog;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.sdk.http.ClientInfo;
 import com.astroreen.jhin.sdk.http.HttpRequest;
@@ -79,7 +81,7 @@ class SettingsActionsTest {
     @Test
     void invalidHexIsBlockedAndNotPersisted() {
         UiSettings settings = UiSettings.open(tmp);
-        settings.saveAppearance("light", "#101018", "#00ff00", "spacious", 120);
+        settings.saveAppearance("light", null, "#101018", "#00ff00", "spacious", 120);
 
         List<Map<String, Object>> ops = SettingsActions.saveAppearance(settings)
                 .handle(request(), Map.of(
@@ -192,7 +194,7 @@ class SettingsActionsTest {
     @Test
     void settingsScreenRendersTheThreeSectionsWithTheCurrentValues() {
         UiSettings settings = UiSettings.open(tmp);
-        settings.saveAppearance("dark", "#101018", "#ff0000", "spacious", 200);
+        settings.saveAppearance("dark", null, "#101018", "#ff0000", "spacious", 200);
         settings.saveThreadBehavior(false, 14);
 
         Map<String, Object> json = SettingsScreen.render(
@@ -211,7 +213,7 @@ class SettingsActionsTest {
     }
 
     @Test
-    void appearanceSaveActionIncludesTheFiveFieldIds() {
+    void appearanceSaveActionIncludesTheSixFieldIds() {
         Map<String, Object> json = SettingsScreen.render(
                 Optional.empty(), false, false,
                 List.of(Map.of("key", "mod+enter", "command", "composer.send")),
@@ -221,7 +223,181 @@ class SettingsActionsTest {
         Map<String, Object> action = castMap(save.get("action"));
         assertThat(action).containsEntry("name", "save-appearance");
         assertThat(castList(action.get("include")))
-                .containsExactly("appearance", "canvas", "accent", "density", "panelMotionMs");
+                .containsExactly("appearance", "themeId", "canvas", "accent", "density", "panelMotionMs");
+    }
+
+    // --- T85: the theme catalogue ---
+
+    @Test
+    void themeSaveReDerivesTheSeedsFromTheCatalogue() {
+        UiSettings settings = UiSettings.open(tmp);
+
+        List<Map<String, Object>> ops = SettingsActions.saveAppearance(settings)
+                .handle(request(), Map.of(
+                        "appearance", "light",
+                        "themeId", "ocean",
+                        "density", "comfortable",
+                        "panelMotionMs", 0.0));
+
+        assertThat(ops.stream().map(op -> op.get("op")))
+                .containsExactly("toast", "reloadBootstrap");
+        UiSettings.Snapshot snapshot = settings.current();
+        assertThat(snapshot.themeId()).isEqualTo("ocean");
+        ThemeCatalog.Theme ocean = ThemeCatalog.get("ocean");
+        assertThat(snapshot.canvas()).isEqualTo(ocean.light().canvas());
+        assertThat(snapshot.accent()).isEqualTo(ocean.light().accent());
+
+        Map<String, Object> payload = bootstrap(settings);
+        Map<String, Object> theme = castMap(payload.get("theme"));
+        assertThat(theme).containsEntry("id", "ocean");
+        assertThat(theme).containsEntry("accent", ocean.light().accent());
+    }
+
+    @Test
+    void themeSaveUnderDarkAppearanceUsesTheDarkPair() {
+        UiSettings settings = UiSettings.open(tmp);
+
+        SettingsActions.saveAppearance(settings).handle(request(), Map.of(
+                "appearance", "dark",
+                "themeId", "ocean",
+                "density", "comfortable",
+                "panelMotionMs", 0.0));
+
+        UiSettings.Snapshot snapshot = settings.current();
+        ThemeCatalog.Theme ocean = ThemeCatalog.get("ocean");
+        assertThat(snapshot.canvas()).isEqualTo(ocean.dark().canvas());
+        assertThat(snapshot.accent()).isEqualTo(ocean.dark().accent());
+    }
+
+    @Test
+    void themeSaveUnderSystemAppearanceResolvesToTheLightPair() {
+        UiSettings settings = UiSettings.open(tmp);
+
+        SettingsActions.saveAppearance(settings).handle(request(), Map.of(
+                "appearance", "system",
+                "themeId", "grove",
+                "density", "comfortable",
+                "panelMotionMs", 0.0));
+
+        UiSettings.Snapshot snapshot = settings.current();
+        ThemeCatalog.Theme grove = ThemeCatalog.get("grove");
+        assertThat(snapshot.canvas()).isEqualTo(grove.light().canvas());
+        assertThat(snapshot.accent()).isEqualTo(grove.light().accent());
+    }
+
+    @Test
+    void jhinThemeReproducesThePrePlanPalette() {
+        UiSettings settings = UiSettings.open(tmp);
+
+        SettingsActions.saveAppearance(settings).handle(request(), Map.of(
+                "appearance", "dark",
+                "themeId", "jhin",
+                "density", "comfortable",
+                "panelMotionMs", 0.0));
+
+        UiSettings.Snapshot snapshot = settings.current();
+        assertThat(snapshot.canvas()).isEqualTo("#16161e");
+        assertThat(snapshot.accent()).isEqualTo("#7E57C2");
+    }
+
+    @Test
+    void unknownThemeIdIsBlockedAndNotPersisted() {
+        UiSettings settings = UiSettings.open(tmp);
+        settings.saveAppearance("light", null, "#101018", "#00ff00", "spacious", 120);
+
+        List<Map<String, Object>> ops = SettingsActions.saveAppearance(settings)
+                .handle(request(), Map.of(
+                        "appearance", "light",
+                        "themeId", "nope",
+                        "density", "comfortable",
+                        "panelMotionMs", 0.0));
+
+        assertThat(ops.stream().map(op -> op.get("op")))
+                .containsExactly("patch", "toast");
+        Map<String, Object> patch = castMap(ops.get(0));
+        assertThat(patch).containsEntry("id", "themeId");
+        assertThat(String.valueOf(castMap(patch.get("props")).get("errorText")))
+                .isEqualTo(SettingsActions.THEME_ERROR);
+        assertThat(String.valueOf(ops.get(1))).contains("error");
+
+        // Nothing was persisted: the previous save still answers.
+        UiSettings.Snapshot snapshot = settings.current();
+        assertThat(snapshot.themeId()).isEqualTo("t3-chat");
+        assertThat(snapshot.accent()).isEqualTo("#00ff00");
+    }
+
+    @Test
+    void reservedAppearanceModesAreRejectedAsThemeIds() {
+        UiSettings settings = UiSettings.open(tmp);
+
+        for (String reserved : List.of("system", "light", "dark")) {
+            List<Map<String, Object>> ops = SettingsActions.saveAppearance(settings)
+                    .handle(request(), Map.of(
+                            "appearance", "light",
+                            "themeId", reserved,
+                            "density", "comfortable",
+                            "panelMotionMs", 0.0));
+            assertThat(ops.stream().map(op -> op.get("op")))
+                    .as("themeId " + reserved)
+                    .containsExactly("patch", "toast");
+        }
+        assertThat(settings.current().themeId()).isEqualTo("t3-chat");
+    }
+
+    @Test
+    void legacySeedSaveWithoutThemeIdKeepsTheSelectedTheme() {
+        UiSettings settings = UiSettings.open(tmp);
+        SettingsActions.saveAppearance(settings).handle(request(), Map.of(
+                "appearance", "light",
+                "themeId", "ocean",
+                "density", "comfortable",
+                "panelMotionMs", 0.0));
+
+        // A raw T78-style save without themeId: the seeds persist as sent,
+        // the theme selection stays.
+        List<Map<String, Object>> ops = SettingsActions.saveAppearance(settings)
+                .handle(request(), Map.of(
+                        "appearance", "dark",
+                        "canvas", "#101018",
+                        "accent", "#ff0000",
+                        "density", "compact",
+                        "panelMotionMs", 200.0));
+
+        assertThat(ops.stream().map(op -> op.get("op")))
+                .containsExactly("toast", "reloadBootstrap");
+        UiSettings.Snapshot snapshot = settings.current();
+        assertThat(snapshot.themeId()).isEqualTo("ocean");
+        assertThat(snapshot.canvas()).isEqualTo("#101018");
+        assertThat(snapshot.accent()).isEqualTo("#ff0000");
+    }
+
+    @Test
+    void settingsScreenRendersTheSixThemeCards() {
+        Map<String, Object> json = SettingsScreen.render(
+                Optional.empty(), false, false,
+                List.of(Map.of("key", "mod+enter", "command", "composer.send")),
+                Map.of(), UiSettings.Snapshot.defaults()).toJson();
+
+        for (String id : ThemeCatalog.ids()) {
+            Map<String, Object> card = nodeWithId(json, "theme-" + id);
+            assertThat(card).as("the " + id + " theme card").isNotEmpty();
+            assertThat(card.get("type")).isEqualTo("box");
+            assertThat(card.get("onTap")).isNotNull();
+        }
+        // The active theme's card is outlined in the primary color.
+        Map<String, Object> active = nodeWithId(json, "theme-t3-chat");
+        assertThat(active.get("border")).isEqualTo("$color.primary");
+        // The card labels are the catalogue labels.
+        assertThat(labelsIn(json)).contains("T3 Chat", "Grove", "Ocean", "Ember", "Iris", "Jhin");
+        // Each card carries the light and dark preview chips.
+        Map<String, Object> ocean = nodeWithId(json, "theme-ocean");
+        List<String> chipLabels = new ArrayList<>();
+        walk(ocean, map -> {
+            if ("chip".equals(map.get("type")) && map.get("label") instanceof String label) {
+                chipLabels.add(label);
+            }
+        });
+        assertThat(chipLabels).containsExactly("Light", "Dark");
     }
 
     // --- helpers ---
@@ -264,17 +440,14 @@ class SettingsActionsTest {
         return found.get(0);
     }
 
-    /** Every {@code label} string in the tree. */
+    /** Every {@code label}, {@code title} or {@code text} string in the tree. */
     private static List<String> labelsIn(Object fragment) {
         List<String> labels = new ArrayList<>();
         walk(fragment, map -> {
-            Object label = map.get("label");
-            if (label instanceof String text) {
-                labels.add(text);
-            }
-            Object title = map.get("title");
-            if (title instanceof String text) {
-                labels.add(text);
+            for (String key : List.of("label", "title", "text")) {
+                if (map.get(key) instanceof String value) {
+                    labels.add(value);
+                }
             }
         });
         return labels;

@@ -8,14 +8,15 @@
  *
  * <p>Validation happens server-side as well as client-side (the fields carry
  * {@code pattern}/{@code errorText} for the client's zero-round-trip check):
- * an invalid hex color or an out-of-range value is never persisted. The
- * answer patches the offending input's {@code errorText} (both the flat prop
- * and the {@code decoration} map the client renders from) and toasts the
- * message, so a raw dispatch — a QA curl, a stale client — still shows why
- * nothing was saved.
+ * an invalid hex color, an out-of-range value or an unknown {@code themeId}
+ * is never persisted. The answer patches the offending input's
+ * {@code errorText} (both the flat prop and the {@code decoration} map the
+ * client renders from) and toasts the message, so a raw dispatch — a QA
+ * curl, a stale client — still shows why nothing was saved.
  */
 package com.astroreen.jhin.plugin.ui;
 
+import com.astroreen.jhin.plugin.uikit.ThemeCatalog;
 import com.astroreen.jhin.sdk.http.HttpRequest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -31,11 +32,24 @@ final class SettingsActions {
     /** The client-side hex pattern of the canvas/accent fields. */
     static final String HEX_PATTERN = "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$";
 
+    /** The theme-id validation message of the theme grid (T85). */
+    static final String THEME_ERROR = "Choose a theme from the catalogue";
+
     private SettingsActions() {
     }
 
     /**
      * {@code save-appearance}: validate and persist the Appearance card.
+     *
+     * <p>When the payload carries a {@code themeId} (T85) it must name a
+     * {@link ThemeCatalog} theme — the appearance modes {@code system},
+     * {@code light} and {@code dark} are reserved and rejected — and the
+     * canvas/accent seeds are re-derived from the catalogue for the saved
+     * appearance ({@code system} resolves to the light pair), so a raw
+     * dispatch cannot desynchronize a theme from its seeds. Without a
+     * {@code themeId} the save is the legacy T78 seed save: the payload's
+     * hex colors are validated and persisted as-is and the selected theme
+     * stays untouched.
      *
      * @param settings the settings store to persist into
      * @return the handler answering {@code [toast, reloadBootstrap]} on
@@ -44,6 +58,7 @@ final class SettingsActions {
     static ActionRoute.ActionHandler saveAppearance(UiSettings settings) {
         return (HttpRequest req, Map<String, Object> payload) -> {
             String appearance = ActionSupport.text(payload, UiSettings.KEY_APPEARANCE);
+            String themeId = ActionSupport.text(payload, UiSettings.KEY_THEME_ID);
             String canvas = ActionSupport.text(payload, UiSettings.KEY_CANVAS);
             String accent = ActionSupport.text(payload, UiSettings.KEY_ACCENT);
             String density = ActionSupport.text(payload, UiSettings.KEY_DENSITY);
@@ -54,10 +69,23 @@ final class SettingsActions {
             if (appearanceValue == null) {
                 return invalid(UiSettings.KEY_APPEARANCE, "Choose System, Light or Dark");
             }
-            if (canvas == null || !UiSettings.isHex(canvas)) {
+            String themeIdValue = null;
+            String canvasValue = canvas;
+            String accentValue = accent;
+            if (themeId != null) {
+                if (!ThemeCatalog.isThemeId(themeId)) {
+                    return invalid(UiSettings.KEY_THEME_ID, THEME_ERROR);
+                }
+                themeIdValue = themeId;
+                ThemeCatalog.Seeds seeds =
+                        ThemeCatalog.get(themeId).seeds(appearanceValue);
+                canvasValue = seeds.canvas();
+                accentValue = seeds.accent();
+            }
+            if (canvasValue == null || !UiSettings.isHex(canvasValue)) {
                 return invalid(UiSettings.KEY_CANVAS, HEX_ERROR);
             }
-            if (accent == null || !UiSettings.isHex(accent)) {
+            if (accentValue == null || !UiSettings.isHex(accentValue)) {
                 return invalid(UiSettings.KEY_ACCENT, HEX_ERROR);
             }
             String densityValue =
@@ -74,7 +102,8 @@ final class SettingsActions {
                 return invalid(UiSettings.KEY_PANEL_MOTION_MS, "Panel animations must be 0–400 ms");
             }
 
-            settings.saveAppearance(appearanceValue, canvas, accent, densityValue, panelMotionMs);
+            settings.saveAppearance(appearanceValue, themeIdValue, canvasValue, accentValue,
+                    densityValue, panelMotionMs);
             return List.of(
                     Directives.toast("Appearance saved", null),
                     Directives.reloadBootstrap());

@@ -223,7 +223,8 @@ final class BootstrapRoute {
      * The {@code theme} block: the full level-2 shape, or the Appendix A
      * reduction ({@code seedColor}+{@code mode}) at level 1. The seed values
      * come from the persisted {@code jhin.ui} settings (T78), so a
-     * {@code save-appearance} shows up in the next bootstrap.
+     * {@code save-appearance} shows up in the next bootstrap; {@code id} is
+     * the selected catalogue theme (T85).
      *
      * @param level2   whether the negotiated contract level is 2
      * @param snapshot the effective settings
@@ -237,6 +238,7 @@ final class BootstrapRoute {
             return reduced;
         }
         Map<String, Object> theme = new LinkedHashMap<>();
+        theme.put("id", snapshot.themeId());
         theme.put("appearance", snapshot.appearance());
         theme.put("canvas", snapshot.canvas());
         theme.put("accent", snapshot.accent());
