@@ -144,7 +144,7 @@ step() {
 # fetch_bootstrap <transcript> <out-payload>: the bootstrap payload
 fetch_bootstrap() {
   local tx=$1 out=$2
-  step "$tx" "bootstrap" GET /_jhin/bootstrap '' 200 '.api == 2'
+  step "$tx" "bootstrap" GET /_jhin/bootstrap '' 200 '.api == 3'
   jq -S . <<< "$step_payload" > "$out"
 }
 

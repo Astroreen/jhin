@@ -1,4 +1,4 @@
-# Jhin SDUI contract (level 2)
+# Jhin SDUI contract (level 3)
 
 The Flutter client is a server-driven-UI renderer: the server authors screens
 as JSON trees over a primitive catalog and the client renders them. The client
@@ -8,12 +8,14 @@ profile switching) — and one endpoint, the bootstrap fetch
 primitive renders a placeholder card and the client never crashes on server
 content.
 
-This document is the **normative wire contract, level 2** (`api: 2`). It
-defines what a level-2 client parses and what a level-2 server emits; the
+This document is the **normative wire contract, level 3** (`api: 3`). It
+defines what a level-3 client parses and what a level-3 server emits; the
 shape an `api=1` client still receives is summarized in
-[Appendix A](#appendix-a-contract-level-1). Server side: `plugins/ui-kit/`
-(the `Ui` builder over the catalog) and `plugins/ui-default/` (bootstrap,
-screens, actions, streams). Client side: `frontend/lib/sdui/`. See
+[Appendix A](#appendix-a-contract-level-1), and section 6 defines the
+level-3 → level-2 → level-1 downgrade chains for older clients. Server
+side: `plugins/ui-kit/` (the `Ui` builder over the catalog) and
+`plugins/ui-default/` (bootstrap, screens, actions, streams). Client side:
+`frontend/lib/sdui/`. See
 [architecture.md](architecture.md) for the runtime and
 [plugin-dev.md](plugin-dev.md) for writing plugins.
 
@@ -43,15 +45,15 @@ unchanged from level 1:
 }
 ```
 
-**`jhin.ui` payload, contract level 2** (a plugin route on the same path
+**`jhin.ui` payload, contract level 3** (a plugin route on the same path
 supersedes the fallback silently; `BootstrapRoute`):
 
 ```json
 {
-  "api": 2,
+  "api": 3,
   "empty": false,
   "title": "Jhin",
-  "contract": { "api": 2, "minApi": 2, "schema": 3, "minSchema": 3 },
+  "contract": { "api": 3, "minApi": 2, "schema": 4, "minSchema": 3 },
   "theme": {
     "appearance": "system",
     "canvas": "#16161e",
@@ -86,7 +88,7 @@ Top-level fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `api` | int | contract level the payload was produced at (`2`) |
+| `api` | int | contract level the payload was produced at (`3`) |
 | `empty` | bool | `true` tells the client to render its built-in empty state ("no UI plugin installed") instead of a screen stack |
 | `title` | string | product chrome title |
 | `contract` | object | version negotiation block, see below |
@@ -103,9 +105,9 @@ Top-level fields:
 
 | Key | Meaning |
 |-----|---------|
-| `api` | the server's wire contract level (`2`) |
+| `api` | the server's wire contract level (`3`) |
 | `minApi` | the lowest wire level the server still speaks |
-| `schema` | the client persisted-data schema version the server was built for (`3`, see [updates.md](updates.md)) |
+| `schema` | the client persisted-data schema version the server was built for (`4`, see [updates.md](updates.md)) |
 | `minSchema` | the lowest persisted-data schema the server accepts; a client whose on-disk schema is lower MUST refuse to render product screens and show the built-in `version_gate` "update required" surface |
 
 `theme` keys:
@@ -284,6 +286,18 @@ primitives.
 |-------|------|------|---------|---------|
 | A11y | `excludeSemantics` | bool | `false` | exclude descendant semantics; the semantics label/hint/value props above wire into the same `Semantics` wrapper |
 
+The level-3 universal surface (contract level 3, section 2.5). A level-2
+client never receives `glass` or `statusPulse` — the server strips them at
+the source (section 6) — while `demo` and the `safeArea` group are inert
+markers a level-2 client ignores:
+
+| Group | Prop | Type | Default | Meaning |
+|-------|------|------|---------|---------|
+| Level 3 | `glass` | bool | `false` | render the node's surface with the glass treatment: a backdrop blur at the token blur radius, a tinted fill at the token opacity and the token saturation (`tokens.glass`). Only the five glass-capable surfaces honour it — `card`, `sheet`, `dialog`, `menu`, `banner` — other nodes ignore it. Without backdrop support (or below level 3, where it is stripped) the surface degrades to a solid fill at the tint colour |
+| Level 3 | `demo` | bool | `false` | the node is decorative: interactive but non-functional — it dispatches inline directives only (`setState`/`patch`/`dialog`/`toast`, never a server-side write) and the client renders the shared disabled-affordance marker for it. Every interactive node without a real effect MUST carry it |
+| Level 3 | `statusPulse` | `pulse`/`ping`/`skeleton`/`none` | `none` | duty-cycled attention indicator on indicator-bearing nodes (`progress`): `pulse` runs the 2 s status pulse, `ping` the 2 s ping ring, `skeleton` the 2.4 s shimmer (the `tokens.motion` duty cycles). Other nodes ignore it; the OS reduced-motion preference collapses every mode to a static render |
+| Safe area | `safeArea` | bool or object | — | extends the node's padding by the platform safe-area insets (`MediaQuery.padding`): `true` covers all four edges, or `{top, bottom, left, right}` bools select per-edge. Edges the platform reports as zero add nothing |
+
 ### 2.2 Token references
 
 Any string prop whose value starts with `$` is a client-side token lookup:
@@ -329,22 +343,27 @@ The interaction cluster (steps 11–13) carries two fixed extra wrappers: `Mouse
 
 ### 2.5 Primitive catalog
 
-Contract level 2 grows the catalog from 25 to 58 primitives. `container`
-stays as the legacy name; `box` is its superset.
+Contract level 2 grew the catalog from 25 to 58 primitives; contract level 3
+grows it to 68. `container` stays as the legacy name; `box` is its superset.
 
 - Layout — `screen`, `shell`, `container`, `box`, `row`, `column`, `flex`,
   `expanded`, `flexible`, `stack`, `positioned`, `align`, `center`,
   `sized_box`, `aspect_ratio`, `wrap`, `grid`, `scroll`, `divider`, `spacer`,
-  `list`, `list_row`, `table`, `tree`
+  `list`, `list_row`, `table`, `tree`, `split`
 - Text — `text`, `rich_text`, `markdown`, `code_block`
 - Controls — `button`, `icon_button`, `icon`, `input`, `textarea`,
   `dropdown`, `checkbox`, `switch`, `slider`, `form`, `segmented`, `menu`,
-  `tabs`
+  `tabs`, `kbd`, `scroll_fade`
 - Surfaces — `card`, `drawer`, `sheet`, `dialog`, `banner`, `chip`, `badge`,
-  `avatar`, `skeleton`, `progress`, `image`, `figure`
-- Data — `stream_view`, `chart_line`, `chart_bar`, `chart_pie`
+  `avatar`, `skeleton`, `progress`, `image`, `figure`, `hover_card`,
+  `toast_stack`
+- Data — `stream_view`, `chart_line`, `chart_bar`, `chart_pie`, `diff_view`
 - Nav — `nav`
+- Universal additions (level 3) — `glass`, `demo`, `statusPulse`, `safeArea`
 
+The four universal additions are props of the universal surface (section
+2.1), not node types; they are listed here because the contract catalog —
+the set of names a server may emit on a node — is what this section defines.
 Every primitive accepts the full universal surface of section 2.1 in addition
 to the props listed below. Required props are listed first; the Default
 column shows the built-in default, `—` means no default (prop absent).
@@ -477,6 +496,19 @@ Layout primitives:
 | `table` | `empty` | node | — | rendered when `rows` is missing or empty |
 | `tree` | `items` | item array | — | nested items, see the item table below |
 | `tree` | `onSelect` | action | — | fired with the selected item |
+| `split` | `first` | node | — | leading pane (required) |
+| `split` | `second` | node | — | trailing pane (required) |
+| `split` | `axis` | `horizontal`/`vertical` | `horizontal` | pane direction |
+| `split` | `initial` | num | — | initial divider position (px from the leading edge) |
+| `split` | `min` | num | — | minimum first-pane extent |
+| `split` | `max` | num | — | maximum first-pane extent |
+| `split` | `minSecond` | num | — | minimum second-pane extent |
+| `split` | `persistKey` | string | — | client store key the divider position persists under |
+| `split` | `handleStyle` | `rail`/`grip`/`invisible` | `rail` | drag-handle look; the handle resizes by drag (mouse and touch) and by arrow keys (16 px steps) when focused |
+
+Level-3 degradation targets (applied by the server for a level-2 client,
+section 6): `split` degrades to a `column` — the two panes stack in order,
+the divider, the clamps and the persistence are lost.
 
 Text primitives:
 
@@ -714,6 +746,15 @@ Control primitives:
 | `tabs` | `items` | item array | — | see the tabs item table below |
 | `tabs` | `activeIndex` | int | 0 | selected tab; patchable via the node `id` |
 | `tabs` | `variant` | `underline`/`pill`/`segmented` | `underline` | visual variant |
+| `kbd` | `chord` | string | — | the chord to render as key pills (required); modifiers join with `+` and `mod` resolves per platform (Cmd on macOS, Ctrl elsewhere); unknown chord tokens render literally and log, never throw |
+| `scroll_fade` | `child` | node | — | the scrollable the fade wraps (required) |
+| `scroll_fade` | `edge` | `top`/`bottom`/`start`/`end` | `top` | scrolled edge the gradient paints at |
+| `scroll_fade` | `height` | num or token | 24 | fade extent (px) |
+| `scroll_fade` | `mode` | `topbar`/`virtualized` | `topbar` | fade recipe (`topbar` for chrome bars, `virtualized` for lazy lists) |
+
+Level-3 degradation targets: `kbd` degrades to a `text` carrying the chord
+string (mono style); `scroll_fade` degrades to a `scroll` wrapping the same
+child — the fade gradient is dropped.
 
 Surface primitives:
 
@@ -768,6 +809,18 @@ Surface primitives:
 | `figure` | `color` | color | — | fill color (required) |
 | `figure` | `width` | num | — | width (required) |
 | `figure` | `height` | num | — | height (required) |
+| `hover_card` | `trigger` | node | — | the node that opens the card on hover (required; tap-and-hold on touch) |
+| `hover_card` | `content` | node | — | card content (required) |
+| `hover_card` | `delay` | num | 500 | hover delay (ms) before the card opens |
+| `hover_card` | `placement` | `top`/`bottom`/`left`/`right` | `top` | card placement around the trigger; nesting-safe |
+| `toast_stack` | `items` | item array | — | the transient notices, see the item table below (required) |
+| `toast_stack` | `direction` | `top`/`bottom` | `bottom` | screen edge the stack grows from; items queue, each dismissible, each with its own window |
+
+Level-3 degradation targets: `hover_card` degrades to its `trigger` node with
+the universal props (including `tooltip`) merged onto it — the card content is
+dropped; `toast_stack` degrades to a `column` of plain `text` nodes, one per
+item — the `toast` directive remains the level-2 channel for transient
+notices.
 
 Data primitives:
 
@@ -783,6 +836,20 @@ Data primitives:
 | `chart_bar` | `items` | item array | — | `[{label, value, color?}]` (single series) |
 | `chart_bar` | `series` | series array | — | `[{label?, color?, values: [{label, value}]}]` (grouped) |
 | `chart_pie` | `items` | item array | — | `[{label, value, color?}]` |
+| `diff_view` | `file` | string | — | file path shown in the stat header |
+| `diff_view` | `language` | string | — | language label |
+| `diff_view` | `hunks` | hunk array | — | the diff hunks, see the hunk table below (required) |
+| `diff_view` | `view` | `unified`/`split` | `unified` | layout; toggling is a client-side `setState`/`patch`, no round-trip |
+| `diff_view` | `colorScheme` | `default`/`blue-orange` | `default` | diff colour scheme (the `data-diff-color-scheme` mapping) |
+| `diff_view` | `stats` | object | — | `{additions, deletions}` rendered as the green/red stat header |
+| `diff_view` | `demo` | bool | — | MUST be `true`: the view is decorative and renders from server-authored hunks only — no diff engine exists client-side or server-side |
+
+Level-3 degradation target: `diff_view` degrades to a `code_block` carrying
+the file name and the hunk headers as the code text.
+
+`diff_view` is decorative and always carries `demo: true` (section 2.1): it
+renders exactly the hunks the server authors, with the `diff-addition` /
+`diff-deletion` token backgrounds and line numbers; it computes nothing.
 
 Nav:
 
@@ -834,6 +901,12 @@ Item and part shapes:
 | `list` section | `collapsible` | bool | no | can collapse |
 | `list` section | `collapsed` | bool | no | initial collapsed state |
 | `list` section | `items` | node array | yes | section entries |
+| `toast_stack` item | `text` | string | yes | notice text |
+| `toast_stack` item | `style` | toast style | no | `error`/`success`, like the `toast` directive |
+| `toast_stack` item | `action` | action | no | inline action (the 5 s undo pattern) |
+| `toast_stack` item | `duration` | num | 5000 | visible window (ms) |
+| `diff_view` hunk | `header` | string | yes | hunk header line (the `@@ … @@` marker) |
+| `diff_view` hunk | `lines` | line array | yes | `[{kind: add/del/ctx/meta, oldNo, newNo, text}]`; `kind` colors the line, `oldNo`/`newNo` feed the line-number gutters |
 
 ## 3. Action protocol
 
@@ -997,21 +1070,43 @@ The `X-Jhin-Client` header is
 `api=<int>; version=<semver>; schema=<int>; caps=<comma-list>` (keys in any
 order, unknown keys ignored, all fields optional):
 
-- `api` — the wire contract level the client can parse (this plan's client
-  speaks `api=2`; an absent header behaves as `api=1`).
+- `api` — the wire contract level the client can parse (this repository's
+  client speaks `api=3`; an absent header behaves as `api=1`).
 - `version` — the client's own semver.
-- `schema` — the client's persisted-data schema version (starts at 3; an
-  absent value behaves as `1`).
+- `schema` — the client's persisted-data schema version (starts at 4, the
+  store chain v1→v4; an absent value behaves as `1`).
 - `caps` — capability names, comma-separated. Known names: `sse`,
   `tls_pinning`, `secure_storage`, `open_url`, `multi_profile`; the set only
   grows.
 
 The server replies at `min(client api, server api)` and never emits fields the
 negotiated level does not define. It must treat an absent capability as
-unsupported and degrade at the source (`CapabilityTailor`).
+unsupported and degrade at the source (`CapabilityTailor`). The negotiation
+is independent of the schema gate: a client whose `schema` is below
+`contract.minSchema` still receives a normal (tailored) payload whose `entry`
+names the client-owned `version_gate` surface, so a stale client shows the
+"update required" chrome instead of product screens and never crashes.
+
+**Level-3 → level-2 downgrade table** (applied when the negotiated api is 2 —
+the level-3 primitives and universal props are exactly the ones a level-2
+client cannot parse):
+
+| Level-3 primitive or prop | Degrades to |
+|---------------------------|-------------|
+| `split` | `column` (the two panes stack in order; divider, clamps and persistence are lost) |
+| `hover_card` | replaced by its `trigger` node with the universal props (including `tooltip`) merged onto it; the card content is dropped |
+| `toast_stack` | a `column` of plain `text` nodes, one per item; the `toast` directive remains the level-2 channel for the same transient notices |
+| `kbd` | `text` carrying the chord string (mono style) |
+| `scroll_fade` | `scroll` wrapping the same child (the fade gradient is dropped) |
+| `diff_view` | `code_block` carrying the file name and the hunk headers as the code text |
+| universal `glass` | stripped — surfaces render solid |
+| universal `statusPulse` | stripped — indicators render static |
+| universal `demo` | kept — an inert marker for a level-2 client |
+| `safeArea` group | kept — an inert marker for a level-2 client |
 
 **Level-2 → level-1 primitive downgrade table** (applied when the negotiated
-api is below 2):
+api is below 2; the level-3 table runs first, so a `split` arrives at this
+table already rewritten to a `column`, which this table does not touch):
 
 | Level-2 primitive | Degrades to |
 |-------------------|-------------|
@@ -1079,12 +1174,13 @@ persisted locally):
 screen cache, the `setScreen` overrides and the cached bootstrap first, then
 re-runs `GET /_jhin/bootstrap` and persists the fresh payload.
 
-**Payload versioning.** Cached payloads carry the `api` they were produced
-at. On an `app` or `api` change the client drops `cachedScreens` and
-revalidates `cachedBootstrap` — a stale screen built for api 1 must never be
-replayed into an api-2 renderer. This is the cache half of the data-upgrade
-system; the persisted-state half is specified in
-[updates.md](updates.md).
+**Payload versioning.** Cached payloads carry the `api` and the contract
+`schema` they were produced at. On an `app`, `api` or `schema` change the
+client drops `cachedScreens` and revalidates `cachedBootstrap` — a stale
+screen built for api 1 must never be replayed into an api-3 renderer, and a
+payload cached under schema 3 must never seed a schema-4 store. This is the
+cache half of the data-upgrade system; the persisted-state half is specified
+in [updates.md](updates.md).
 
 **Request enrichment: `X-Jhin-Keybindings`.** Every JSON request (screen
 fetch and action post) carries the caller's current user keymap overrides so

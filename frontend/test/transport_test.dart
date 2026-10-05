@@ -25,7 +25,8 @@ void expectClientHeader(RecordedRequest request) {
   expect(header, isNotNull, reason: '${request.method} ${request.path}');
   expect(
     header,
-    matches(RegExp(r'^api=1; version=\d+\.\d+\.\d+; caps=[a-z0-9_,]+$')),
+    matches(RegExp(
+        r'^api=3; version=\d+\.\d+\.\d+; schema=\d+; caps=[a-z0-9_,]+$')),
     reason: '${request.method} ${request.path}',
   );
   expect(header, buildXJhinClientHeader());

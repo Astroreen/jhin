@@ -7,13 +7,13 @@
 00:00 +5: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner rules (docs/updates.md §3) rule 4: one failing key quarantines itself; other keys still migrate
 00:00 +6: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner rules (docs/updates.md §3) rule 5: the report is produced before the first read
 00:00 +7: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) full chain: the real legacy profiles blob migrates 1→2→3 with identical data
-00:00 +8: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) the chain is 1→2→3→4 and the current schema is 4
-00:00 +9: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) the chain is 1→2→3→4 and the current schema is 4
+00:00 +8: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) step 1→2 splits the legacy sessionState per profile
+00:00 +9: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) step 2→3 migrates the old theme key into appearance
 00:00 +10: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) the chain is 1→2→3→4 and the current schema is 4
 00:00 +11: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) the chain is 1→2→3→4 and the current schema is 4
 00:00 +12: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) the chain is 1→2→3→4 and the current schema is 4
-00:00 +13: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) a quarantined key migrates on a later healthy run and leaves the list
-00:00 +14: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) a real schema-3 store gains themeId t3-chat and loses nothing
+00:00 +13: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) the chain is 1→2→3→4 and the current schema is 4
+00:00 +14: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) a backup left behind by a crash is restored before migrating
 00:00 +15: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) a real schema-3 store gains themeId t3-chat and loses nothing
 00:00 +16: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) a real schema-3 store gains themeId t3-chat and loses nothing
 00:00 +17: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) an appearance that already carries a themeId is never clobbered

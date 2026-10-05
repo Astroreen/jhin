@@ -2,18 +2,18 @@
 POST /sessions
 req:  {"title":"t81-idle","workdir":"/tmp/t81/idle"}
 status: 201
-resp: {"id":"86051831-d564-4133-a4d6-ea1c80fd88a7","accountId":"357737dd-d013-4d04-bff2-53970e30ecc4","title":"t81-idle","workdir":"/tmp/t81/idle","model":null,"providerId":null,"status":"active","createdAt":1791141296192,"updatedAt":1791141296192,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+resp: {"id":"a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f","accountId":"f137c1e6-5d68-441e-9306-0526b5809069","title":"t81-idle","workdir":"/tmp/t81/idle","model":null,"providerId":null,"status":"active","createdAt":1791214124192,"updatedAt":1791214124192,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
 assert: status=201, jq '.id | length > 0'
 assert: ok
 === seed ===
-idle:   86051831-d564-4133-a4d6-ea1c80fd88a7 (fresh, no pin, no run)
-pinned: 12cf8d7c-0584-40c8-95a3-f94f0516b2f3 (pinned order=1 since the first boot)
+idle:   a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f (fresh, no pin, no run)
+pinned: 30a712a3-f469-440f-a638-a3d99ec91e1f (pinned order=1 since the first boot)
 === backdate ===
-updated_at of the idle and the pinned session set to now-10s via sqlite3 on /tmp/e2e-lifecycle-home.1MpaSh/data/jhin.db
+updated_at of the idle and the pinned session set to now-10s via sqlite3 on /tmp/e2e-lifecycle-home.mxoeJj/data/jhin.db
 === sweep result (after 8 s, sweeps every 2 s) ===
-idle:   {"id":"86051831-d564-4133-a4d6-ea1c80fd88a7","accountId":"357737dd-d013-4d04-bff2-53970e30ecc4","title":"t81-idle","workdir":"/tmp/t81/idle","model":null,"providerId":null,"status":"active","createdAt":1791141296192,"updatedAt":1791141297106,"pinned":false,"pinnedOrder":null,"settledAt":1791141297104,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":"inactive","autoSettleSuppressed":false}
-pinned: {"id":"12cf8d7c-0584-40c8-95a3-f94f0516b2f3","accountId":"357737dd-d013-4d04-bff2-53970e30ecc4","title":"t81-pinned","workdir":"/tmp/t81/pinned","model":null,"providerId":null,"status":"active","createdAt":1791141286310,"updatedAt":1791141286257,"pinned":true,"pinnedOrder":1,"settledAt":1791141295154,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":"inactive","autoSettleSuppressed":false}
-settled: {"id":"6f26c6a1-7871-448a-bb09-646b1cd4bfd9","accountId":"357737dd-d013-4d04-bff2-53970e30ecc4","title":"t81-settled","workdir":"/tmp/t81/settled","model":null,"providerId":null,"status":"active","createdAt":1791141286350,"updatedAt":1791141286507,"pinned":false,"pinnedOrder":null,"settledAt":1791141286506,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":"manual","autoSettleSuppressed":false} (untouched since the first boot)
+idle:   {"id":"a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f","accountId":"f137c1e6-5d68-441e-9306-0526b5809069","title":"t81-idle","workdir":"/tmp/t81/idle","model":null,"providerId":null,"status":"active","createdAt":1791214124192,"updatedAt":1791214125383,"pinned":false,"pinnedOrder":null,"settledAt":1791214125382,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":"inactive","autoSettleSuppressed":false}
+pinned: {"id":"30a712a3-f469-440f-a638-a3d99ec91e1f","accountId":"f137c1e6-5d68-441e-9306-0526b5809069","title":"t81-pinned","workdir":"/tmp/t81/pinned","model":null,"providerId":null,"status":"active","createdAt":1791214114543,"updatedAt":1791214114248,"pinned":true,"pinnedOrder":1,"settledAt":1791214123450,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":"inactive","autoSettleSuppressed":false}
+settled: {"id":"fdd288ff-b009-4b94-b9f3-ce6b0197b7ec","accountId":"f137c1e6-5d68-441e-9306-0526b5809069","title":"t81-settled","workdir":"/tmp/t81/settled","model":null,"providerId":null,"status":"active","createdAt":1791214114579,"updatedAt":1791214114673,"pinned":false,"pinnedOrder":null,"settledAt":1791214114673,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":"manual","autoSettleSuppressed":false} (untouched since the first boot)
 assert idle: settled with settled_reason=inactive -- ok
 assert pinned: settled with settled_reason=inactive AND kept pinned/pinned_order -- ok
 assert settled: settled_reason stays manual -- ok

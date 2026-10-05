@@ -28,20 +28,38 @@ public final class ApiVersion {
     public static final int CURRENT = 1;
 
     /**
-     * The server-driven-UI wire contract level the server speaks. The client
-     * advertises the level it can parse ({@code X-Jhin-Client: api=…}); the
-     * server replies at the minimum of the two levels and never emits fields
-     * the negotiated level does not define (docs/sdui.md section 6).
+     * The server-driven-UI wire contract level the server speaks (level 3:
+     * the 68-primitive catalog and the level-3 universal props of
+     * docs/sdui.md section 2.5). The client advertises the level it can parse
+     * ({@code X-Jhin-Client: api=…}); the server replies at the minimum of
+     * the two levels and never emits fields the negotiated level does not
+     * define (docs/sdui.md section 6).
      */
-    public static final int SDUI_CONTRACT = 2;
+    public static final int SDUI_CONTRACT = 3;
 
     /**
-     * The current persisted-client state schema version. The client
+     * The lowest wire level the negotiation still tailors product content
+     * for: a level-2 client (the previous contract level) receives the
+     * level-3 → level-2 downgrade of docs/sdui.md section 6. Below it the
+     * payload keeps the level-1 compatibility shape (docs/sdui.md Appendix
+     * A) instead of the {@code contract} block.
+     */
+    public static final int SDUI_CONTRACT_MIN = 2;
+
+    /**
+     * The current persisted-client state schema version (4). The client
      * advertises the schema its on-disk data was written at
      * ({@code X-Jhin-Client: schema=…}); the bootstrap {@code contract}
      * carries the server's {@code minSchema} expectation (docs/updates.md).
      */
-    public static final int CLIENT_SCHEMA = 3;
+    public static final int CLIENT_SCHEMA = 4;
+
+    /**
+     * The lowest persisted-client schema the server accepts: a client whose
+     * declared schema is lower gets the {@code version_gate} entry
+     * (docs/sdui.md section 6, docs/updates.md section 3 rule 6).
+     */
+    public static final int CLIENT_SCHEMA_MIN = 3;
 
     private ApiVersion() {}
 }

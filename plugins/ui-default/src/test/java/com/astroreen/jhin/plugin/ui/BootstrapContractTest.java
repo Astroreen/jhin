@@ -1,7 +1,7 @@
 /**
- * T56: the level-2 bootstrap payload (contract/theme/tokens/density/keymap),
- * its api/schema negotiation and the level-2 -> level-1 primitive downgrade
- * table — docs/sdui.md sections 1 and 6.
+ * T56/T88: the level-2 bootstrap payload (contract/theme/tokens/density/keymap),
+ * its api/schema negotiation, the level-3 -> level-2 primitive downgrade
+ * table and the level-2 -> level-1 table — docs/sdui.md sections 1 and 6.
  *
  * <p>Uses a no-op {@link EventLog} since none of these cases touch a
  * {@code stream_view}; that degrade path (independent of the contract level)
@@ -51,13 +51,13 @@ class BootstrapContractTest {
     // ---- top-level payload shape (docs/sdui.md section 1) ----
 
     @Test
-    void api2PayloadCarriesTheFullLevel2Shape() {
-        Map<String, Object> payload = bootstrap(new ClientInfo(2, "0.3.0", 3, Set.of()));
+    void api3PayloadCarriesTheFullLevel2Shape() {
+        Map<String, Object> payload = bootstrap(new ClientInfo(3, "0.3.0", 4, Set.of()));
 
-        assertThat(payload).containsEntry("api", 2);
+        assertThat(payload).containsEntry("api", 3);
         Map<String, Object> contract = castMap(payload.get("contract"));
-        assertThat(contract).containsEntry("api", 2).containsEntry("minApi", 2)
-                .containsEntry("schema", 3).containsEntry("minSchema", 3);
+        assertThat(contract).containsEntry("api", 3).containsEntry("minApi", 2)
+                .containsEntry("schema", 4).containsEntry("minSchema", 3);
         Map<String, Object> tokens = castMap(payload.get("tokens"));
         assertThat(castMap(tokens.get("motion"))).containsEntry("panel", 0);
         assertThat(payload).containsEntry("density", "comfortable");
@@ -164,11 +164,11 @@ class BootstrapContractTest {
     }
 
     @Test
-    void apiAboveTwoNegotiatesDownToTwo() {
-        Map<String, Object> payload = bootstrap(new ClientInfo(5, "9.9.9", 3, Set.of()));
+    void apiAboveThreeNegotiatesDownToThree() {
+        Map<String, Object> payload = bootstrap(new ClientInfo(5, "9.9.9", 4, Set.of()));
 
-        assertThat(payload).containsEntry("api", 2);
-        assertThat(castMap(payload.get("contract"))).containsEntry("api", 2);
+        assertThat(payload).containsEntry("api", 3);
+        assertThat(castMap(payload.get("contract"))).containsEntry("api", 3);
     }
 
     // ---- entry / version gate (docs/sdui.md section 6, docs/updates.md rule 6) ----
@@ -178,6 +178,23 @@ class BootstrapContractTest {
         Map<String, Object> payload = bootstrap(new ClientInfo(2, "0.3.0", 1, Set.of()));
 
         assertThat(payload.get("entry")).isEqualTo("version_gate");
+    }
+
+    /** T88: schema 2 is below minSchema 3 — gated with HTTP 200, never a crash. */
+    @Test
+    void schema2ClientBelowMinSchema3GetsTheVersionGateEntry() {
+        Map<String, Object> payload = bootstrap(new ClientInfo(3, "0.3.0", 2, Set.of()));
+
+        assertThat(payload.get("entry")).isEqualTo("version_gate");
+        assertThat(castMap(payload.get("contract"))).containsEntry("minSchema", 3);
+    }
+
+    /** T88: schema 3 equals minSchema 3 — accepted, product screens follow. */
+    @Test
+    void schema3ClientAtMinSchemaKeepsTheProductEntry() {
+        Map<String, Object> payload = bootstrap(new ClientInfo(3, "0.3.0", 3, Set.of()));
+
+        assertThat(payload.get("entry")).isEqualTo("sessions");
     }
 
     @Test
@@ -344,6 +361,180 @@ class BootstrapContractTest {
         assertThat(degraded.props()).containsEntry("text", "Hello world");
     }
 
+    // ---- level-3 downgrade table (docs/sdui.md section 6, T88) ----
+
+    @Test
+    void splitDowngradesToAColumnStackingThePanes() {
+        UiNode split = new UiNode("split", Map.of(
+                "first", textNode("First pane"),
+                "second", textNode("Second pane"),
+                "axis", "horizontal",
+                "initial", 256,
+                "min", 208,
+                "minSecond", 640,
+                "persistKey", "qa_probe_split",
+                "handleStyle", "rail"), List.of());
+
+        UiNode degraded = tailor.tailor(split, level2());
+
+        assertThat(degraded.type()).isEqualTo("column");
+        assertThat(degraded.props()).doesNotContainKeys(
+                "first", "second", "axis", "initial", "min", "minSecond", "persistKey",
+                "handleStyle");
+        assertThat(degraded.children()).hasSize(2);
+    }
+
+    @Test
+    void hoverCardDegradesToItsTriggerKeepingTheTooltip() {
+        UiNode hoverCard = new UiNode("hover_card", Map.of(
+                "id", "probe-hover-card",
+                "tooltip", "kept tooltip",
+                "trigger", textNode("Hover trigger"),
+                "content", textNode("Hover content"),
+                "delay", 500,
+                "placement", "top"), List.of());
+
+        UiNode degraded = tailor.tailor(hoverCard, level2());
+
+        assertThat(degraded.type()).isEqualTo("text");
+        assertThat(degraded.props()).containsEntry("text", "Hover trigger")
+                .containsEntry("tooltip", "kept tooltip")
+                .containsEntry("id", "probe-hover-card")
+                .doesNotContainKeys("content", "delay", "placement");
+    }
+
+    @Test
+    void hoverCardWithoutATriggerDegradesToAnEmptyColumn() {
+        UiNode hoverCard = new UiNode("hover_card",
+                Map.of("content", textNode("Hover content")), List.of());
+
+        UiNode degraded = tailor.tailor(hoverCard, level2());
+
+        assertThat(degraded.type()).isEqualTo("column");
+        assertThat(degraded.children()).isEmpty();
+    }
+
+    @Test
+    void toastStackDegradesToAColumnOfTexts() {
+        UiNode toastStack = new UiNode("toast_stack", Map.of(
+                "id", "probe-toast-stack",
+                "direction", "bottom",
+                "items", List.of(
+                        Map.of("text", "Saved", "style", "success", "duration", 5000),
+                        Map.of("text", "Deleted"))), List.of());
+
+        UiNode degraded = tailor.tailor(toastStack, level2());
+
+        assertThat(degraded.type()).isEqualTo("column");
+        assertThat(degraded.props()).containsEntry("id", "probe-toast-stack")
+                .doesNotContainKeys("items", "direction");
+        assertThat(degraded.children()).hasSize(2);
+        assertThat(((UiNode) degraded.children().get(0)).props()).containsEntry("text", "Saved");
+        assertThat(((UiNode) degraded.children().get(1)).props()).containsEntry("text", "Deleted");
+    }
+
+    @Test
+    void kbdDegradesToMonoText() {
+        UiNode kbd = new UiNode("kbd", Map.of("id", "probe-kbd", "chord", "mod+shift+m"), List.of());
+
+        UiNode degraded = tailor.tailor(kbd, level2());
+
+        assertThat(degraded.type()).isEqualTo("text");
+        assertThat(degraded.props()).containsEntry("text", "mod+shift+m")
+                .containsEntry("style", "mono")
+                .doesNotContainKey("chord");
+    }
+
+    @Test
+    void scrollFadeDegradesToAScrollAroundTheSameChild() {
+        UiNode scrollFade = new UiNode("scroll_fade", Map.of(
+                "edge", "top",
+                "height", 24,
+                "mode", "topbar",
+                "child", textNode("Scrollable body")), List.of());
+
+        UiNode degraded = tailor.tailor(scrollFade, level2());
+
+        assertThat(degraded.type()).isEqualTo("scroll");
+        assertThat(degraded.props()).doesNotContainKeys("edge", "height", "mode", "child");
+        assertThat(degraded.children()).hasSize(1);
+    }
+
+    @Test
+    void diffViewDegradesToACodeBlockWithFileAndHeaders() {
+        UiNode diffView = new UiNode("diff_view", Map.ofEntries(
+                Map.entry("id", "probe-diff-view"),
+                Map.entry("file", "docs/sdui.md"),
+                Map.entry("language", "markdown"),
+                Map.entry("view", "unified"),
+                Map.entry("colorScheme", "default"),
+                Map.entry("stats", Map.of("additions", 2, "deletions", 1)),
+                Map.entry("demo", true),
+                Map.entry("hunks", List.of(
+                        Map.of("header", "@@ -1,3 +1,4 @@", "lines", List.of()),
+                        Map.of("header", "@@ -9,2 +10,3 @@", "lines", List.of())))),
+                List.of());
+
+        UiNode degraded = tailor.tailor(diffView, level2());
+
+        assertThat(degraded.type()).isEqualTo("code_block");
+        assertThat(degraded.props()).containsEntry("code", "docs/sdui.md\n@@ -1,3 +1,4 @@\n@@ -9,2 +10,3 @@")
+                .containsEntry("language", "markdown")
+                .containsEntry("demo", true)
+                .doesNotContainKeys("hunks", "view", "colorScheme", "stats");
+    }
+
+    @Test
+    void glassAndStatusPulseAreStrippedAndDemoSurvivesBelowLevel3() {
+        UiNode card = new UiNode("card", Map.of(
+                "id", "probe-glass",
+                "glass", true), List.of());
+        UiNode progress = new UiNode("progress", Map.of(
+                "id", "probe-pulse",
+                "kind", "linear",
+                "statusPulse", "pulse"), List.of());
+        UiNode button = new UiNode("button", Map.of(
+                "id", "probe-demo",
+                "label", "Decorative",
+                "demo", true), List.of());
+
+        assertThat(tailor.tailor(card, level2()).props()).doesNotContainKey("glass");
+        assertThat(tailor.tailor(progress, level2()).props()).doesNotContainKey("statusPulse")
+                .containsEntry("kind", "linear");
+        assertThat(tailor.tailor(button, level2()).props()).containsEntry("demo", true);
+    }
+
+    @Test
+    void level3NodesPassThroughAtLevel3() {
+        UiNode split = new UiNode("split", Map.of(
+                "first", textNode("First pane"),
+                "second", textNode("Second pane")), List.of());
+        UiNode card = new UiNode("card", Map.of("glass", true), List.of());
+
+        assertThat(tailor.tailor(split, level3()).type()).isEqualTo("split");
+        assertThat(tailor.tailor(card, level3()).props()).containsEntry("glass", true);
+    }
+
+    /** The level-3 downgrade chains into the level-2 one for an api=1 client. */
+    @Test
+    void level3AndLevel2DowngradesChainForALevel1Client() {
+        UiNode split = new UiNode("split", Map.of(
+                "first", textNode("First pane"),
+                "second", textNode("Second pane")), List.of());
+        UiNode kbd = new UiNode("kbd", Map.of("chord", "mod+shift+m"), List.of());
+
+        // split rewrites to a column in the level-3 step; the level-2 table
+        // (which maps `row`, not `column`) leaves it as the column it is.
+        UiNode degradedSplit = tailor.tailor(split, level1());
+        assertThat(degradedSplit.type()).isEqualTo("column");
+        assertThat(degradedSplit.children()).hasSize(2);
+
+        UiNode degradedKbd = tailor.tailor(kbd, level1());
+        assertThat(degradedKbd.type()).isEqualTo("text");
+        assertThat(degradedKbd.props()).containsEntry("text", "mod+shift+m")
+                .containsEntry("style", "mono");
+    }
+
     @Test
     void downgradeDoesNotApplyAtLevel2() {
         UiNode chip = new UiNode("chip", Map.of("label", "Beta"), List.of());
@@ -357,6 +548,14 @@ class BootstrapContractTest {
 
     private static ClientInfo level1() {
         return new ClientInfo(1, "0.3.0", 1, Set.of());
+    }
+
+    private static ClientInfo level2() {
+        return new ClientInfo(2, "0.3.0", 3, Set.of());
+    }
+
+    private static ClientInfo level3() {
+        return new ClientInfo(3, "0.3.0", 4, Set.of());
     }
 
     private static UiNode textNode(String text) {

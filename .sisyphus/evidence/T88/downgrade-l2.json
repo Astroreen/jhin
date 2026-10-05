@@ -1,0 +1,101 @@
+{
+  "body": {
+    "children": [
+      {
+        "children": [
+          {
+            "text": "First pane",
+            "type": "text"
+          },
+          {
+            "text": "Second pane",
+            "type": "text"
+          }
+        ],
+        "id": "probe-split",
+        "type": "column"
+      },
+      {
+        "id": "probe-hover-card",
+        "text": "Hover trigger",
+        "tooltip": "kept tooltip",
+        "type": "text"
+      },
+      {
+        "children": [
+          {
+            "text": "Saved",
+            "type": "text"
+          },
+          {
+            "text": "Deleted",
+            "type": "text"
+          }
+        ],
+        "id": "probe-toast-stack",
+        "type": "column"
+      },
+      {
+        "id": "probe-kbd",
+        "style": "mono",
+        "text": "mod+shift+m",
+        "type": "text"
+      },
+      {
+        "children": [
+          {
+            "text": "Scrollable body",
+            "type": "text"
+          }
+        ],
+        "id": "probe-scroll-fade",
+        "type": "scroll"
+      },
+      {
+        "code": "docs/sdui.md\n@@ -1,3 +1,4 @@",
+        "demo": true,
+        "id": "probe-diff-view",
+        "language": "markdown",
+        "type": "code_block"
+      },
+      {
+        "children": [
+          {
+            "text": "Glass card",
+            "type": "text"
+          }
+        ],
+        "id": "probe-glass",
+        "type": "card"
+      },
+      {
+        "id": "probe-pulse",
+        "kind": "linear",
+        "type": "progress"
+      },
+      {
+        "demo": true,
+        "id": "probe-demo",
+        "label": "Decorative",
+        "type": "button"
+      },
+      {
+        "children": [
+          {
+            "text": "Safe area body",
+            "type": "text"
+          }
+        ],
+        "id": "probe-safe-area",
+        "safeArea": {
+          "bottom": true,
+          "top": true
+        },
+        "type": "box"
+      }
+    ],
+    "type": "column"
+  },
+  "title": "QA level-3 probe",
+  "type": "screen"
+}

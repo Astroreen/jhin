@@ -75,8 +75,8 @@
 00:00 +73: /home/astroreen/Documents/jhin/frontend/test/design/t87_golden_test.dart: the glass dialog blurs the backdrop (light)
 00:00 +74: /home/astroreen/Documents/jhin/frontend/test/design/t87_golden_test.dart: the glass dialog blurs the backdrop (light)
 00:00 +75: /home/astroreen/Documents/jhin/frontend/test/design/t87_golden_test.dart: the glass dialog blurs the backdrop (light)
-00:00 +76: /home/astroreen/Documents/jhin/frontend/test/design/t87_golden_test.dart: the glass dialog blurs the backdrop (light)
-00:00 +77: /home/astroreen/Documents/jhin/frontend/test/design/t87_golden_test.dart: the glass dialog blurs the backdrop (light)
+00:00 +76: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:00 +77: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
 00:00 +78: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
 00:00 +79: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
 00:00 +80: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
@@ -84,15 +84,15 @@
 00:00 +82: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
 00:00 +83: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
 00:00 +84: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
-00:00 +85: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
-00:00 +86: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
-00:00 +87: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
-00:00 +88: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
-00:00 +89: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
-00:00 +90: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
-00:00 +91: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
-00:00 +92: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
-00:00 +93: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — token resolution (§2.2) $spacing.lg in padding → EdgeInsets.all(16)
+00:00 +85: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
+00:00 +86: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
+00:00 +87: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
+00:00 +88: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
+00:00 +89: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
+00:00 +90: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
+00:00 +91: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
+00:00 +92: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
+00:00 +93: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
 00:00 +94: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
 00:00 +95: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
 00:00 +96: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
@@ -111,7 +111,7 @@
 00:00 +109: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
 00:00 +110: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
 00:00 +111: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
-00:00 +112: /home/astroreen/Documents/jhin/frontend/test/design/token_fallback_test.dart: unknown token $spacing.nope: the literal is used and the node renders
+00:00 +112: /home/astroreen/Documents/jhin/frontend/test/design/motion_test.dart: T87 — the skeleton widget runs the stepped pulse the rendered opacity takes 8 discrete values per cycle
 00:00 +113: /home/astroreen/Documents/jhin/frontend/test/design/token_fallback_test.dart: unknown token $spacing.nope: the literal is used and the node renders
 00:00 +114: /home/astroreen/Documents/jhin/frontend/test/design/token_fallback_test.dart: unknown token $spacing.nope: the literal is used and the node renders
 00:00 +115: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
@@ -120,12 +120,12 @@
 00:00 +118: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
 00:00 +119: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
 00:00 +120: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
-00:01 +121: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
-00:01 +122: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
-00:01 +123: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
-00:01 +124: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
-00:01 +125: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
-00:01 +126: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:00 +121: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:00 +122: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:00 +123: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:00 +124: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:00 +125: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:00 +126: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
 00:01 +127: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
 00:01 +128: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
 00:01 +129: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
@@ -137,13 +137,13 @@
 00:01 +135: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
 00:01 +136: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
 00:01 +137: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
-00:01 +138: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — decoration, text style, gesture a tap on a node with an action dispatches it
-00:01 +139: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: without a payload the MaterialApp still carries the built-in defaults
-00:01 +140: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: without a payload the MaterialApp still carries the built-in defaults
-00:01 +141: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: without a payload the MaterialApp still carries the built-in defaults
-00:01 +142: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — decoration, text style, gesture onLongPress dispatches its own action
-00:01 +143: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — decoration, text style, gesture semantics props wire into a Semantics wrapper
-00:01 +144: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — degrade rules (§2.4) unknown primitive still renders the muted card
-00:01 +145: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — degrade rules (§2.4) malformed decoration props degrade, node renders
-00:01 +146: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — degrade rules (§2.4) a malformed constraint set degrades to no constraints
+00:01 +138: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:01 +139: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:01 +140: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:01 +141: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:01 +142: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: MaterialApp carries the generated theme pair from the bootstrap payload
+00:01 +143: /home/astroreen/Documents/jhin/frontend/test/design/universal_props_test.dart: Universal props — degrade rules (§2.4) unknown primitive still renders the muted card
+00:01 +144: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: without a payload the MaterialApp still carries the built-in defaults
+00:01 +145: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: without a payload the MaterialApp still carries the built-in defaults
+00:01 +146: /home/astroreen/Documents/jhin/frontend/test/design/theme_wiring_test.dart: without a payload the MaterialApp still carries the built-in defaults
 00:01 +147: All tests passed!

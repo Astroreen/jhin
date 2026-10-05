@@ -1,8 +1,8 @@
 {
   "jhin.profiles": {
-    "schema": 3,
+    "schema": 4,
     "app": "0.1.0",
-    "writtenAt": "2026-10-04T19:15:09.023128Z",
+    "writtenAt": "2026-10-05T15:28:57.058284Z",
     "data": [
       {
         "id": "legacy-1",
@@ -18,15 +18,15 @@
     ]
   },
   "jhin.activeProfileId": {
-    "schema": 3,
+    "schema": 4,
     "app": "0.1.0",
-    "writtenAt": "2026-10-04T19:15:09.021558Z",
+    "writtenAt": "2026-10-05T15:28:57.056617Z",
     "data": "legacy-1"
   },
   "sessionState": {
-    "schema": 3,
+    "schema": 4,
     "app": "0.1.0",
-    "writtenAt": "2026-10-04T19:15:09.023772Z",
+    "writtenAt": "2026-10-05T15:28:57.058984Z",
     "data": {
       "stack": [
         "screen:chat",
@@ -38,17 +38,17 @@
     }
   },
   "theme": {
-    "schema": 3,
+    "schema": 4,
     "app": "0.1.0",
-    "writtenAt": "2026-10-04T19:15:09.024037Z",
+    "writtenAt": "2026-10-05T15:28:57.059252Z",
     "data": {
       "mode": "dark"
     }
   },
   "sessionState:legacy-1": {
-    "schema": 3,
+    "schema": 4,
     "app": "0.1.0",
-    "writtenAt": "2026-10-04T19:15:09.023918Z",
+    "writtenAt": "2026-10-05T15:28:57.059133Z",
     "data": {
       "stack": [
         "screen:chat",
@@ -60,9 +60,9 @@
     }
   },
   "appearance": {
-    "schema": 3,
+    "schema": 4,
     "app": "0.1.0",
-    "writtenAt": "2026-10-04T19:15:09.024079Z",
+    "writtenAt": "2026-10-05T15:28:57.059297Z",
     "data": {
       "themeMode": "dark",
       "textSize": 14,
@@ -71,17 +71,17 @@
     }
   },
   "keybindings": {
-    "schema": 3,
+    "schema": 4,
     "app": "0.1.0",
-    "writtenAt": "2026-10-04T19:15:09.024273Z",
+    "writtenAt": "2026-10-05T15:28:57.059516Z",
     "data": {
       "rules": []
     }
   },
   "tokensEtag": {
-    "schema": 3,
+    "schema": 4,
     "app": "0.1.0",
-    "writtenAt": "2026-10-04T19:15:09.024463Z",
+    "writtenAt": "2026-10-05T15:28:57.059742Z",
     "data": {
       "etag": ""
     }

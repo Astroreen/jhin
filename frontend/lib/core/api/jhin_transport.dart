@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../store/migrations/store_migrations.dart';
 import '../sse/sse_client.dart';
 import '../sse/sse_stream.dart';
 import '../tls/tls_trust.dart';
@@ -14,7 +15,7 @@ export 'http_error.dart';
 /// `version:` field in `pubspec.yaml`. Locked to it by `client_header_test`.
 const String kJhinClientVersion = '0.1.0';
 
-/// Client capabilities advertised in `X-Jhin-Client` (D-22, api 1).
+/// Client capabilities advertised in `X-Jhin-Client` (D-22, api 3).
 ///
 /// Names are additive-only across frontend releases: `sse`, `tls_pinning`,
 /// `secure_storage`, `open_url`, `multi_profile`. The server degrades features
@@ -29,9 +30,15 @@ const List<String> kJhinClientCaps = [
 
 /// Builds the `X-Jhin-Client` header value (D-22).
 ///
-/// Format is strict: `api=1; version=x.y.z; caps=a,b,c`.
+/// Format is strict: `api=3; version=x.y.z; schema=4; caps=a,b,c`. The wire
+/// level is contract level 3 (docs/sdui.md §2.5 — an unknown primitive
+/// degrades to a placeholder card, the client never crashes on server
+/// content); the schema is the on-disk store schema this build writes
+/// (`StoreMigrations.current`), the value the server's `contract.minSchema`
+/// gate compares against.
 String buildXJhinClientHeader({String? version}) =>
-    'api=1; version=${version ?? kJhinClientVersion}; '
+    'api=3; version=${version ?? kJhinClientVersion}; '
+    'schema=${StoreMigrations.current}; '
     'caps=${kJhinClientCaps.join(',')}';
 
 /// One loaded plugin in a `/_jhin/health` payload (§6).

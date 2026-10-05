@@ -19,6 +19,7 @@ import com.astroreen.jhin.plugin.ui.screens.ChatScreen;
 import com.astroreen.jhin.plugin.ui.screens.EnrollScreen;
 import com.astroreen.jhin.plugin.ui.screens.PluginsScreen;
 import com.astroreen.jhin.plugin.ui.screens.ProvidersScreen;
+import com.astroreen.jhin.plugin.ui.screens.QaProbeScreen;
 import com.astroreen.jhin.plugin.ui.screens.SessionsScreen;
 import com.astroreen.jhin.plugin.ui.screens.SettingsScreen;
 import com.astroreen.jhin.sdk.ApiVersion;
@@ -85,7 +86,8 @@ class PrimitiveCatalogTest {
                 EnrollScreen.render().toJson(),
                 PluginsScreen.render(List.of(
                         new KernelInfo.Loaded("jhin.ui", "0.2.0", "UI", List.of()))).toJson(),
-                ProvidersScreen.render(providers, Optional.empty()).toJson());
+                ProvidersScreen.render(providers, Optional.empty()).toJson(),
+                QaProbeScreen.render().toJson());
 
         Set<String> used = new TreeSet<>();
         for (Map<String, Object> tree : trees) {
@@ -97,6 +99,22 @@ class PrimitiveCatalogTest {
         assertThat(undocumented)
                 .as("primitive types missing from the docs/sdui.md section 2.5 catalog")
                 .isEmpty();
+    }
+
+    /**
+     * T88: the contract level-3 catalog — docs/sdui.md section 2.5 lists
+     * exactly 68 primitives (the 58 of level 2 plus the six level-3
+     * primitives and the four level-3 universal names), and the six new
+     * primitives are documented before any screen may emit them.
+     */
+    @Test
+    void theCatalogListsExactly68PrimitivesIncludingTheLevel3Set() throws IOException {
+        Set<String> catalog = documentedCatalog();
+
+        assertThat(catalog).hasSize(68);
+        assertThat(catalog).contains(
+                "split", "hover_card", "toast_stack", "kbd", "scroll_fade", "diff_view",
+                "glass", "demo", "statusPulse", "safeArea");
     }
 
     /**

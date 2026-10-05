@@ -1,0 +1,3 @@
+ok: schema=2 bootstrap answers 200 with entry version_gate and minSchema 3 (version-gate.json)
+ok: the probe screen still renders for a schema=2 client: HTTP 200, no crash (version-gate.txt)
+FAIL: deliberately wrong expectation: the version_gate surface is client-owned chrome and never server-rendered (it is not in the screens list; see .sisyphus/evidence/T88/version-gate.json)

@@ -1,73 +1,79 @@
-22:14:40 T81 QA: full-bundle lifecycle e2e, upgrade path and contract-level downgrade
-22:14:40 evidence dir: .sisyphus/evidence/T81
-> Task :jhin-plugin-reload:processResources UP-TO-DATE
-> Task :jhin-plugin-llm-builtin:processResources UP-TO-DATE
-> Task :jhin-plugin-security:processResources UP-TO-DATE
-> Task :jhin-plugin-mcp:processResources UP-TO-DATE
+18:28:25 T81 QA: full-bundle lifecycle e2e, upgrade path and contract-level downgrade
+18:28:25 evidence dir: .sisyphus/evidence/T81
 > Task :jhin-plugin-llm:processResources UP-TO-DATE
 > Task :jhin-plugin-sessions:processResources UP-TO-DATE
 > Task :jhin-plugin-agent:processResources UP-TO-DATE
-> Task :jhin-plugin-tools-builtin:processResources UP-TO-DATE
-> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
-> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
 > Task :kernel:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
 > Task :sdk:compileJava UP-TO-DATE
 > Task :sdk:processResources NO-SOURCE
 > Task :sdk:classes UP-TO-DATE
+> Task :jhin-plugin-reload:processResources
+> Task :jhin-plugin-llm-builtin:processResources
+> Task :jhin-plugin-tools-builtin:processResources
+> Task :jhin-plugin-mcp:processResources
 > Task :sdk:jar UP-TO-DATE
-> Task :jhin-plugin-security:compileJava UP-TO-DATE
-> Task :jhin-plugin-security:classes UP-TO-DATE
 > Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
 > Task :jhin-plugin-ui-kit:classes UP-TO-DATE
-> Task :jhin-plugin-reload:compileJava UP-TO-DATE
-> Task :jhin-plugin-security:jar UP-TO-DATE
-> Task :jhin-plugin-reload:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
 > Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
 > Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
 > Task :jhin-plugin-sessions:compileJava UP-TO-DATE
 > Task :jhin-plugin-sessions:classes UP-TO-DATE
-> Task :jhin-plugin-reload:jar UP-TO-DATE
-> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
 > Task :jhin-plugin-llm:jar UP-TO-DATE
 > Task :jhin-plugin-sessions:jar UP-TO-DATE
 > Task :kernel:compileJava UP-TO-DATE
 > Task :kernel:classes UP-TO-DATE
 > Task :kernel:resolveMainClassName UP-TO-DATE
-> Task :jhin-plugin-llm-builtin:compileJava UP-TO-DATE
 > Task :jhin-plugin-agent:compileJava UP-TO-DATE
-> Task :jhin-plugin-llm-builtin:classes UP-TO-DATE
 > Task :jhin-plugin-agent:classes UP-TO-DATE
 > Task :jhin-plugin-agent:jar UP-TO-DATE
-> Task :jhin-plugin-llm-builtin:jar UP-TO-DATE
 > Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
-> Task :jhin-plugin-tools-builtin:compileJava UP-TO-DATE
 > Task :jhin-plugin-ui-default:classes UP-TO-DATE
-> Task :jhin-plugin-tools-builtin:classes UP-TO-DATE
-> Task :jhin-plugin-mcp:compileJava UP-TO-DATE
 > Task :jhin-plugin-ui-default:jar UP-TO-DATE
-> Task :jhin-plugin-tools-builtin:jar UP-TO-DATE
-> Task :jhin-plugin-mcp:classes UP-TO-DATE
-> Task :jhin-plugin-mcp:jar UP-TO-DATE
 > Task :kernel:bootJar UP-TO-DATE
+> Task :jhin-plugin-reload:compileJava
+> Task :jhin-plugin-reload:classes
+> Task :jhin-plugin-reload:jar
+> Task :jhin-plugin-llm-builtin:compileJava
+> Task :jhin-plugin-llm-builtin:classes
+> Task :jhin-plugin-mcp:compileJava
+> Task :jhin-plugin-mcp:classes
+> Task :jhin-plugin-tools-builtin:compileJava
+> Task :jhin-plugin-tools-builtin:classes
+> Task :jhin-plugin-tools-builtin:jar
+> Task :jhin-plugin-mcp:jar
+> Task :jhin-plugin-llm-builtin:jar
 
-BUILD SUCCESSFUL in 701ms
-36 actionable tasks: 36 up-to-date
+BUILD SUCCESSFUL in 2s
+36 actionable tasks: 12 executed, 24 up-to-date
 Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
 ok: kernel boot jar and the ten default plugin jars built
 > Task :jhin-plugin-sessions:processResources UP-TO-DATE
-> Task :jhin-plugin-sessions:processTestResources NO-SOURCE
 > Task :sdk:compileJava UP-TO-DATE
 > Task :sdk:processResources NO-SOURCE
 > Task :sdk:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:processTestResources NO-SOURCE
 > Task :sdk:jar UP-TO-DATE
 > Task :jhin-plugin-sessions:compileJava UP-TO-DATE
 > Task :jhin-plugin-sessions:classes UP-TO-DATE
-> Task :jhin-plugin-sessions:compileTestJava UP-TO-DATE
-> Task :jhin-plugin-sessions:testClasses UP-TO-DATE
-> Task :jhin-plugin-sessions:test FROM-CACHE
 
-BUILD SUCCESSFUL in 530ms
-6 actionable tasks: 1 from cache, 5 up-to-date
+> Task :jhin-plugin-sessions:compileTestJava
+Note: /home/astroreen/Documents/jhin/plugins/sessions/src/test/java/com/astroreen/jhin/plugin/sessions/EventRoutesTest.java uses unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+
+> Task :jhin-plugin-sessions:testClasses
+> Task :jhin-plugin-sessions:test
+
+[Incubating] Problems report is available at: file:///home/astroreen/Documents/jhin/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 2s
+6 actionable tasks: 2 executed, 4 up-to-date
 Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
 ok: v1 fixture written by V1FixtureTest (plugins/sessions/build/v1-fixture/jhin.db)
 > Task :kernel:processResources UP-TO-DATE
@@ -80,36 +86,36 @@ ok: v1 fixture written by V1FixtureTest (plugins/sessions/build/v1-fixture/jhin.
 > Task :kernel:resolveMainClassName UP-TO-DATE
 > Task :kernel:bootJar UP-TO-DATE
 
-BUILD SUCCESSFUL in 642ms
+BUILD SUCCESSFUL in 683ms
 6 actionable tasks: 6 up-to-date
 Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
-22:14:42.854 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
-22:14:43.045 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
-22:14:43.440 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
-22:14:43.485 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
-22:14:43.491 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
-22:14:43.492 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-lifecycle-home.1MpaSh/mcp.json; no MCP servers to start
-22:14:43.495 [main] INFO plugin.jhin.tools-builtin -- jhin.tools-builtin started: 8 tools: ls, write, read, edit, edit-diff, find, grep, bash
-22:14:43.507 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
-2026-10-04T22:14:43.925+03:00  INFO 2291717 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 2291717 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
-2026-10-04T22:14:43.926+03:00  INFO 2291717 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
-2026-10-04T22:14:44.392+03:00  INFO 2291717 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18481 (https)
-2026-10-04T22:14:44.402+03:00  INFO 2291717 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
-2026-10-04T22:14:44.403+03:00  INFO 2291717 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
-2026-10-04T22:14:44.419+03:00  INFO 2291717 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 461 ms
-2026-10-04T22:14:44.677+03:00  INFO 2291717 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18481], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
-2026-10-04T22:14:44.683+03:00  INFO 2291717 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18481 (https) with context path '/'
-2026-10-04T22:14:44.691+03:00  INFO 2291717 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.095 seconds (process running for 2.198)
+18:28:31.114 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+18:28:31.311 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
+18:28:31.584 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
+18:28:31.622 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+18:28:31.628 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
+18:28:31.629 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-lifecycle-home.mxoeJj/mcp.json; no MCP servers to start
+18:28:31.632 [main] INFO plugin.jhin.tools-builtin -- jhin.tools-builtin started: 8 tools: ls, write, read, edit, edit-diff, find, grep, bash
+18:28:31.646 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+2026-10-05T18:28:32.085+03:00  INFO 1395296 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 1395296 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-05T18:28:32.086+03:00  INFO 1395296 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-05T18:28:32.577+03:00  INFO 1395296 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18481 (https)
+2026-10-05T18:28:32.587+03:00  INFO 1395296 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-05T18:28:32.587+03:00  INFO 1395296 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-05T18:28:32.601+03:00  INFO 1395296 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 475 ms
+2026-10-05T18:28:32.882+03:00  INFO 1395296 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18481], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
+2026-10-05T18:28:32.889+03:00  INFO 1395296 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18481 (https) with context path '/'
+2026-10-05T18:28:32.896+03:00  INFO 1395296 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.165 seconds (process running for 2.153)
 ok: kernel booted with the ten default plugins on https://localhost:18481 (kernel.log)
 ok: health lists all ten plugins (health.json)
 ok: device enrolled through the CLI single-use code (enroll.json, cli-*.txt)
-ok: sidebar memberships at seed: Pinned=12cf8d7c-0584-40c8-95a3-f94f0516b2f3, Active=955a87a4-ece4-40e1-9961-2c487e038417, Settled=6f26c6a1-7871-448a-bb09-646b1cd4bfd9 (sidebar.json)
+ok: sidebar memberships at seed: Pinned=30a712a3-f469-440f-a638-a3d99ec91e1f, Active=2c176ea6-5a1f-42f8-be07-b2a2047f1c31, Settled=fdd288ff-b009-4b94-b9f3-ce6b0197b7ec (sidebar.json)
 ok: settle -> undo inside 5 s restores the session and its sidebar membership (undo-transcript.txt)
 ok: snooze/wake, pin/unpin and archive/restore move the sidebar membership (lifecycle-transcript.txt)
 ok: events.json holds 8 session_updated frames (raw in sse-raw.txt)
 ok: bootstrap api2 vs api1: level-1 shape carries zero level-2 keys (bootstrap-diff.txt)
-2026-10-04T22:14:51.416+03:00  INFO 2291717 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
-2026-10-04T22:14:51.568+03:00  INFO 2291717 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+2026-10-05T18:28:39.425+03:00  INFO 1395296 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-05T18:28:39.577+03:00  INFO 1395296 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
 > Task :kernel:processResources UP-TO-DATE
 > Task :sdk:compileJava UP-TO-DATE
 > Task :sdk:processResources NO-SOURCE
@@ -120,38 +126,38 @@ ok: bootstrap api2 vs api1: level-1 shape carries zero level-2 keys (bootstrap-d
 > Task :kernel:resolveMainClassName UP-TO-DATE
 > Task :kernel:bootJar UP-TO-DATE
 
-BUILD SUCCESSFUL in 604ms
+BUILD SUCCESSFUL in 697ms
 6 actionable tasks: 6 up-to-date
 Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
-22:14:52.696 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
-22:14:52.780 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
-22:14:52.861 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
-22:14:52.871 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
-22:14:52.877 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
-22:14:52.879 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-lifecycle-home.1MpaSh/mcp.json; no MCP servers to start
-22:14:52.882 [main] INFO plugin.jhin.tools-builtin -- jhin.tools-builtin started: 8 tools: ls, write, read, edit, edit-diff, find, grep, bash
-22:14:52.897 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
-2026-10-04T22:14:53.326+03:00  INFO 2292539 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 2292539 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
-2026-10-04T22:14:53.331+03:00  INFO 2292539 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
-2026-10-04T22:14:53.798+03:00  INFO 2292539 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18481 (https)
-2026-10-04T22:14:53.809+03:00  INFO 2292539 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
-2026-10-04T22:14:53.809+03:00  INFO 2292539 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
-2026-10-04T22:14:53.825+03:00  INFO 2292539 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 465 ms
-2026-10-04T22:14:54.083+03:00  INFO 2292539 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18481], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
-2026-10-04T22:14:54.090+03:00  INFO 2292539 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18481 (https) with context path '/'
-2026-10-04T22:14:54.097+03:00  INFO 2292539 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.104 seconds (process running for 1.806)
-2026-10-04T22:14:55.151+03:00  INFO 2292539 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 955a87a4-ece4-40e1-9961-2c487e038417 (inactive)
-2026-10-04T22:14:55.200+03:00  INFO 2292539 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 12cf8d7c-0584-40c8-95a3-f94f0516b2f3 (inactive)
-2026-10-04T22:14:55.201+03:00  INFO 2292539 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 2 of 2 candidates
+18:28:40.831 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+18:28:40.940 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
+18:28:41.028 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
+18:28:41.043 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+18:28:41.051 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
+18:28:41.052 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-lifecycle-home.mxoeJj/mcp.json; no MCP servers to start
+18:28:41.056 [main] INFO plugin.jhin.tools-builtin -- jhin.tools-builtin started: 8 tools: ls, write, read, edit, edit-diff, find, grep, bash
+18:28:41.074 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+2026-10-05T18:28:41.536+03:00  INFO 1396022 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 1396022 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-05T18:28:41.538+03:00  INFO 1396022 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-05T18:28:42.047+03:00  INFO 1396022 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18481 (https)
+2026-10-05T18:28:42.058+03:00  INFO 1396022 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-05T18:28:42.059+03:00  INFO 1396022 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-05T18:28:42.076+03:00  INFO 1396022 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 501 ms
+2026-10-05T18:28:42.354+03:00  INFO 1396022 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18481], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
+2026-10-05T18:28:42.363+03:00  INFO 1396022 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18481 (https) with context path '/'
+2026-10-05T18:28:42.375+03:00  INFO 1396022 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.191 seconds (process running for 1.97)
+2026-10-05T18:28:43.449+03:00  INFO 1396022 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 2c176ea6-5a1f-42f8-be07-b2a2047f1c31 (inactive)
+2026-10-05T18:28:43.491+03:00  INFO 1396022 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 30a712a3-f469-440f-a638-a3d99ec91e1f (inactive)
+2026-10-05T18:28:43.491+03:00  INFO 1396022 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 2 of 2 candidates
 ok: kernel restarted with inactivityMs=1000 and short sweep delays (sweep-boot/kernel.log)
-2026-10-04T22:14:57.158+03:00  INFO 2292539 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 86051831-d564-4133-a4d6-ea1c80fd88a7 (inactive)
-2026-10-04T22:14:57.159+03:00  INFO 2292539 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 1 of 1 candidates
-2026-10-04T22:14:59.101+03:00  INFO 2292539 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
-2026-10-04T22:15:01.101+03:00  INFO 2292539 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
-2026-10-04T22:15:03.101+03:00  INFO 2292539 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
+2026-10-05T18:28:45.434+03:00  INFO 1396022 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f (inactive)
+2026-10-05T18:28:45.435+03:00  INFO 1396022 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 1 of 1 candidates
+2026-10-05T18:28:47.383+03:00  INFO 1396022 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
+2026-10-05T18:28:49.382+03:00  INFO 1396022 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
+2026-10-05T18:28:51.382+03:00  INFO 1396022 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
 ok: sweep settles the idle and the pinned session (pin kept) (sweep-transcript.txt, sidebar-sweep.json)
-2026-10-04T22:15:04.389+03:00  INFO 2292539 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
-2026-10-04T22:15:04.391+03:00  INFO 2292539 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+2026-10-05T18:28:52.375+03:00  INFO 1396022 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-05T18:28:52.377+03:00  INFO 1396022 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
 > Task :kernel:processResources UP-TO-DATE
 > Task :sdk:compileJava UP-TO-DATE
 > Task :sdk:processResources NO-SOURCE
@@ -162,28 +168,28 @@ ok: sweep settles the idle and the pinned session (pin kept) (sweep-transcript.t
 > Task :kernel:resolveMainClassName UP-TO-DATE
 > Task :kernel:bootJar UP-TO-DATE
 
-BUILD SUCCESSFUL in 603ms
+BUILD SUCCESSFUL in 678ms
 6 actionable tasks: 6 up-to-date
 Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
-22:15:05.518 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
-22:15:05.695 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
-22:15:05.696 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
-22:15:05.698 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18483. Install a security plugin.
-2026-10-04T22:15:06.110+03:00  INFO 2293122 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 2293122 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
-2026-10-04T22:15:06.112+03:00  INFO 2293122 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
-2026-10-04T22:15:06.562+03:00  INFO 2293122 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18483 (http)
-2026-10-04T22:15:06.571+03:00  INFO 2293122 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
-2026-10-04T22:15:06.571+03:00  INFO 2293122 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
-2026-10-04T22:15:06.592+03:00  INFO 2293122 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 446 ms
-2026-10-04T22:15:06.795+03:00  INFO 2293122 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18483 (http) with context path '/'
-2026-10-04T22:15:06.802+03:00  INFO 2293122 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.027 seconds (process running for 1.66)
+18:28:53.579 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+18:28:53.760 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+18:28:53.760 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+18:28:53.762 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18483. Install a security plugin.
+2026-10-05T18:28:54.187+03:00  INFO 1396765 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 1396765 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-05T18:28:54.190+03:00  INFO 1396765 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-05T18:28:54.672+03:00  INFO 1396765 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18483 (http)
+2026-10-05T18:28:54.684+03:00  INFO 1396765 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-05T18:28:54.684+03:00  INFO 1396765 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-05T18:28:54.702+03:00  INFO 1396765 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 474 ms
+2026-10-05T18:28:54.902+03:00  INFO 1396765 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18483 (http) with context path '/'
+2026-10-05T18:28:54.909+03:00  INFO 1396765 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.069 seconds (process running for 1.72)
 ok: kernel booted against the v1 jhin.db (upgrade-boot/kernel.log)
-2026-10-04T22:15:07.531+03:00  INFO 2293122 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
-2026-10-04T22:15:07.534+03:00  INFO 2293122 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+2026-10-05T18:28:55.504+03:00  INFO 1396765 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-05T18:28:55.507+03:00  INFO 1396765 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
 ok: v1 jhin.db migrated in place: 9 columns added, 3 rows intact with defaults (upgrade-{before,after}.sql, upgrade-rows.json)
 00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart
 00:00 +0: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
 00:00 +1: T54 evidence fixtures a schema-9 blob is quarantined and the original survives
 00:00 +2: All tests passed!
 ok: client store: legacy schema:1 blobs migrate to envelopes (store/, store-test.txt)
-22:15:09 T81 QA green: lifecycle e2e, upgrade path and contract-level downgrade (evidence in .sisyphus/evidence/T81)
+18:28:57 T81 QA green: lifecycle e2e, upgrade path and contract-level downgrade (evidence in .sisyphus/evidence/T81)

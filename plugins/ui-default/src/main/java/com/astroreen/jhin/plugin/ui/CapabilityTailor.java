@@ -2,7 +2,7 @@
  * Server-side capability tailoring of UI nodes and the api/schema negotiation
  * arithmetic (docs/sdui.md section 6, D-22), applied at the source.
  *
- * <p>Three independent degradations, all applied before a node tree is
+ * <p>Four independent degradations, all applied before a node tree is
  * written into a payload:
  * <ul>
  *   <li>without the {@code sse} capability a {@code stream_view} node becomes a
@@ -13,9 +13,17 @@
  *   <li>inline directives embedded in node props (a button action, a submit
  *       action) are removed when the client cannot honour them — the same
  *       rule {@code Directives.filter} applies to directive lists;</li>
+ *   <li>below the negotiated level 3, the level-3 primitives degrade per the
+ *       docs/sdui.md section 6 table ({@code split} to a {@code column},
+ *       {@code hover_card} to its trigger, {@code toast_stack} to a
+ *       {@code column} of texts, {@code kbd} to a {@code text},
+ *       {@code scroll_fade} to a {@code scroll}, {@code diff_view} to a
+ *       {@code code_block}) and the level-3 universal props
+ *       {@code glass}/{@code statusPulse} are stripped ({@code demo} and the
+ *       {@code safeArea} group survive as inert markers);</li>
  *   <li>below the negotiated level 2, every level-2-only primitive degrades
  *       to its level-1 equivalent per the docs/sdui.md section 6 downgrade
- *       table, applied recursively.</li>
+ *       table, applied after the level-3 step.</li>
  * </ul>
  * Nested nodes are tailored recursively; universal props ({@code id},
  * {@code visible}, {@code padding}, {@code flex}, {@code when}) survive every
@@ -39,6 +47,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 final class CapabilityTailor {
 
@@ -77,6 +86,30 @@ final class CapabilityTailor {
             Map.entry("menu", "list"),
             Map.entry("tree", "list"),
             Map.entry("rich_text", "text"));
+
+    /**
+     * The level-3 -> level-2 primitive downgrade table (docs/sdui.md section
+     * 6); {@code hover_card} is not in it because its downgrade replaces the
+     * node instead of renaming it. A type absent from this map is emitted
+     * unchanged below level 3.
+     */
+    private static final Map<String, String> DOWNGRADE_LEVEL3_TYPES = Map.ofEntries(
+            Map.entry("split", "column"),
+            Map.entry("toast_stack", "column"),
+            Map.entry("kbd", "text"),
+            Map.entry("scroll_fade", "scroll"),
+            Map.entry("diff_view", "code_block"));
+
+    /**
+     * The level-3 universal props a level-2 client cannot honour; stripped
+     * from every node below level 3. {@code demo} and the {@code safeArea}
+     * group are deliberately kept — both are inert markers.
+     */
+    private static final Set<String> LEVEL3_STRIPPED_PROPS = Set.of("glass", "statusPulse");
+
+    /** The universal props carried onto a {@code hover_card} trigger. */
+    private static final List<String> UNIVERSAL_PLUS_TOOLTIP =
+            List.of("id", "visible", "padding", "flex", "when", "tooltip");
 
     private final EventLog events;
 
@@ -119,12 +152,23 @@ final class CapabilityTailor {
      * @return the node as the client can honour it
      */
     UiNode tailor(UiNode node, ClientInfo client) {
-        UiNode working = isLevel2(client) ? node : downgrade(node);
+        int level = negotiatedApi(client);
+        UiNode working = node;
+        if (level < 3) {
+            working = downgradeLevel3(working);
+        }
+        if (level < 2) {
+            working = downgrade(working);
+        }
         if ("stream_view".equals(working.type()) && !client.supports("sse")) {
             return snapshotList(working);
         }
+        boolean stripLevel3 = level < 3;
         Map<String, Object> props = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : working.props().entrySet()) {
+            if (stripLevel3 && LEVEL3_STRIPPED_PROPS.contains(entry.getKey())) {
+                continue;
+            }
             Object value = tailorValue(entry.getValue(), client);
             if (value != SKIP) {
                 props.put(entry.getKey(), value);
@@ -160,6 +204,152 @@ final class CapabilityTailor {
             return Directives.dropped(directive, client) ? SKIP : value;
         }
         return value;
+    }
+
+    // ------------------------------------------------------------------
+    // Level-3 -> level-2 primitive downgrade (docs/sdui.md section 6)
+    // ------------------------------------------------------------------
+
+    /**
+     * Degrades one level-3-only primitive to its level-2 equivalent: the
+     * {@link #DOWNGRADE_LEVEL3_TYPES} rename table plus the two special
+     * shapes — {@code hover_card} is replaced by its trigger node and
+     * {@code toast_stack} folds its items into a column of texts. A type
+     * outside the table is returned unchanged. Recursion into children
+     * happens in {@link #tailor} right after this call runs — this method
+     * only rewrites the node it is given, never its descendants directly.
+     *
+     * @param node the node as authored (level-3 shape)
+     * @return the node a level-2 client can render; the same instance when
+     *         the type is not level-3-only
+     */
+    private static UiNode downgradeLevel3(UiNode node) {
+        if ("hover_card".equals(node.type())) {
+            return hoverCardTrigger(node);
+        }
+        String degraded = DOWNGRADE_LEVEL3_TYPES.get(node.type());
+        if (degraded == null) {
+            return node;
+        }
+        Map<String, Object> props = new LinkedHashMap<>(node.props());
+        List<Object> children = new ArrayList<>(node.children());
+        switch (node.type()) {
+            case "split" -> {
+                Object first = props.remove("first");
+                Object second = props.remove("second");
+                Map<String, Object> universal = universalProps(props);
+                props.clear();
+                props.putAll(universal);
+                for (Object pane : new Object[] {first, second}) {
+                    if (pane != null) {
+                        children.add(pane);
+                    }
+                }
+            }
+            case "toast_stack" -> {
+                Object items = props.remove("items");
+                props.remove("direction");
+                Map<String, Object> universal = universalProps(props);
+                props.clear();
+                props.putAll(universal);
+                children.addAll(toastTexts(items));
+            }
+            case "kbd" -> {
+                Object chord = props.remove("chord");
+                Map<String, Object> universal = universalProps(props);
+                props.clear();
+                props.putAll(universal);
+                props.put("text", chord == null ? "" : String.valueOf(chord));
+                props.put("style", "mono");
+            }
+            case "scroll_fade" -> {
+                Object child = props.remove("child");
+                props.remove("edge");
+                props.remove("height");
+                props.remove("mode");
+                Map<String, Object> universal = universalProps(props);
+                props.clear();
+                props.putAll(universal);
+                if (child != null) {
+                    children.add(child);
+                }
+            }
+            case "diff_view" -> {
+                Object file = props.remove("file");
+                Object hunks = props.remove("hunks");
+                props.remove("view");
+                props.remove("colorScheme");
+                props.remove("stats");
+                props.put("code", diffCode(file, hunks));
+            }
+            default -> {
+                // type-only downgrade, no prop translation needed
+            }
+        }
+        return new UiNode(degraded, props, children);
+    }
+
+    /**
+     * The {@code hover_card} downgrade: the node is replaced by its
+     * {@code trigger} node with the universal props (including
+     * {@code tooltip}) merged onto it — the trigger's own props win — and
+     * the card content is dropped. Without a trigger the card degrades to an
+     * empty {@code column} carrying the universal props (nothing to show).
+     */
+    private static UiNode hoverCardTrigger(UiNode node) {
+        Map<String, Object> carried = new LinkedHashMap<>();
+        for (String key : UNIVERSAL_PLUS_TOOLTIP) {
+            if (node.props().containsKey(key)) {
+                carried.put(key, node.props().get(key));
+            }
+        }
+        Object trigger = node.props().get("trigger");
+        if (trigger instanceof UiNode inner) {
+            Map<String, Object> merged = new LinkedHashMap<>(inner.props());
+            carried.forEach(merged::putIfAbsent);
+            return new UiNode(inner.type(), merged, inner.children());
+        }
+        if (trigger instanceof String text && !text.isBlank()) {
+            return new UiNode("text", carried, List.of(text));
+        }
+        return new UiNode("column", carried, List.of());
+    }
+
+    /** One plain {@code text} node per {@code toast_stack} item (lossy, visible). */
+    private static List<Object> toastTexts(Object items) {
+        List<Object> texts = new ArrayList<>();
+        if (items instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map && map.get("text") != null) {
+                    texts.add(textNode(String.valueOf(map.get("text"))));
+                } else if (item instanceof String text) {
+                    texts.add(textNode(text));
+                }
+            }
+        }
+        return texts;
+    }
+
+    /**
+     * The {@code code} text of a degraded {@code diff_view}: the file name,
+     * then one hunk header per line.
+     */
+    private static String diffCode(Object file, Object hunks) {
+        StringBuilder code = new StringBuilder();
+        if (file != null) {
+            code.append(file);
+        }
+        if (hunks instanceof List<?> list) {
+            for (Object hunk : list) {
+                if (hunk instanceof Map<?, ?> map && map.get("header") != null) {
+                    if (code.length() > 0) {
+                        code.append('\n');
+                    }
+                    code.append(map.get("header"));
+                }
+            }
+        }
+        return code.toString();
     }
 
     // ------------------------------------------------------------------

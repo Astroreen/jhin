@@ -4,7 +4,8 @@
  * <p>This route silently replaces the kernel fallback on the same path, so the
  * payload below is what a client sees whenever this plugin is loaded. The
  * negotiated contract level ({@code min(client api, server api)},
- * docs/sdui.md section 6) decides the shape: at level 2 the payload carries
+ * docs/sdui.md section 6) decides the shape: at level 2 or higher the payload
+ * carries
  * the full set — {@code api}, {@code empty:false}, {@code title},
  * {@code contract}, {@code theme}, {@code tokens}, {@code density},
  * {@code keymap}, the {@code entry} screen id, the inline {@code screens},
@@ -13,13 +14,16 @@
  * {@code contract}/{@code tokens}/{@code density}/{@code keymap} are absent
  * and {@code theme} is reduced to {@code seedColor}+{@code mode}. The whole
  * payload is tailored to {@code X-Jhin-Client} (D-22) before it is written:
- * level-2-only primitives degrade per the docs/sdui.md section 6 table,
+ * level-3 primitives degrade per the docs/sdui.md section 6 table for a
+ * level-2 client (then the level-2 table for a level-1 client), the
+ * level-3 universal props {@code glass}/{@code statusPulse} are stripped,
  * stream views degrade to server-side list snapshots without {@code sse} and
  * directives the client cannot honour are dropped from node props.
  *
  * <p>Entry selection: {@code version_gate} when a client that already
  * declared {@code api >= 2} reports a persisted-data {@code schema} below
- * {@link ApiVersion#CLIENT_SCHEMA} (docs/sdui.md section 6, docs/updates.md
+ * {@link ApiVersion#CLIENT_SCHEMA_MIN} (docs/sdui.md section 6,
+ * docs/updates.md
  * section 3 rule 6) — gated on the raw declared api, not just the negotiated
  * one, because an api=1 client predates both the {@code schema} header field
  * and the version-gate screen itself and would not understand either;
@@ -106,16 +110,16 @@ final class BootstrapRoute {
     private Map<String, Object> contract() {
         Map<String, Object> contract = new LinkedHashMap<>();
         contract.put("api", ApiVersion.SDUI_CONTRACT);
-        contract.put("minApi", ApiVersion.SDUI_CONTRACT);
+        contract.put("minApi", ApiVersion.SDUI_CONTRACT_MIN);
         contract.put("schema", ApiVersion.CLIENT_SCHEMA);
-        contract.put("minSchema", ApiVersion.CLIENT_SCHEMA);
+        contract.put("minSchema", ApiVersion.CLIENT_SCHEMA_MIN);
         return contract;
     }
 
     /** The entry screen id for one caller; see the class doc for the version-gate rule. */
     private String entry(HttpRequest req) {
         ClientInfo client = req.client();
-        if (client.api() >= 2 && client.schema() < ApiVersion.CLIENT_SCHEMA) {
+        if (client.api() >= 2 && client.schema() < ApiVersion.CLIENT_SCHEMA_MIN) {
             return VERSION_GATE_SCREEN;
         }
         boolean signIn = securityPresent && !Principals.present(req);

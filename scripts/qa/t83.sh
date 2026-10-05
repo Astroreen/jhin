@@ -136,7 +136,7 @@ step() {
 # payload and a quick-reference dump of its tokens block
 fetch_bootstrap() {
   local tx=$1 out=$2 tokens=$3
-  step "$tx" "bootstrap" GET /_jhin/bootstrap '' 200 '.api == 2'
+  step "$tx" "bootstrap" GET /_jhin/bootstrap '' 200 '.api == 3'
   jq -S . <<< "$step_payload" > "$out"
   jq -S '.tokens' <<< "$step_payload" > "$tokens"
 }

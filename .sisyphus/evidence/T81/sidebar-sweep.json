@@ -9,7 +9,7 @@
       "items": [
         {
           "type": "list_row",
-          "id": "session-row:12cf8d7c-0584-40c8-95a3-f94f0516b2f3",
+          "id": "session-row:30a712a3-f469-440f-a638-a3d99ec91e1f",
           "title": "t81-pinned",
           "subtitle": "/tmp/t81/pinned",
           "badge": {
@@ -36,7 +36,7 @@
                   "method": "POST",
                   "name": "unpin",
                   "payload": {
-                    "id": "12cf8d7c-0584-40c8-95a3-f94f0516b2f3"
+                    "id": "30a712a3-f469-440f-a638-a3d99ec91e1f"
                   }
                 }
               },
@@ -48,7 +48,7 @@
                   "method": "POST",
                   "name": "unsettle",
                   "payload": {
-                    "id": "12cf8d7c-0584-40c8-95a3-f94f0516b2f3"
+                    "id": "30a712a3-f469-440f-a638-a3d99ec91e1f"
                   }
                 }
               },
@@ -60,7 +60,7 @@
                   "method": "POST",
                   "name": "snooze",
                   "payload": {
-                    "id": "12cf8d7c-0584-40c8-95a3-f94f0516b2f3"
+                    "id": "30a712a3-f469-440f-a638-a3d99ec91e1f"
                   }
                 }
               },
@@ -72,7 +72,7 @@
                   "method": "POST",
                   "name": "wake",
                   "payload": {
-                    "id": "12cf8d7c-0584-40c8-95a3-f94f0516b2f3"
+                    "id": "30a712a3-f469-440f-a638-a3d99ec91e1f"
                   }
                 }
               },
@@ -84,7 +84,7 @@
                   "method": "POST",
                   "name": "archive",
                   "payload": {
-                    "id": "12cf8d7c-0584-40c8-95a3-f94f0516b2f3"
+                    "id": "30a712a3-f469-440f-a638-a3d99ec91e1f"
                   }
                 },
                 "confirm": "Archive this thread?"
@@ -97,7 +97,7 @@
                   "method": "POST",
                   "name": "regenerate-title",
                   "payload": {
-                    "id": "12cf8d7c-0584-40c8-95a3-f94f0516b2f3"
+                    "id": "30a712a3-f469-440f-a638-a3d99ec91e1f"
                   }
                 }
               },
@@ -109,7 +109,7 @@
                   "method": "POST",
                   "name": "delete-session",
                   "payload": {
-                    "id": "12cf8d7c-0584-40c8-95a3-f94f0516b2f3"
+                    "id": "30a712a3-f469-440f-a638-a3d99ec91e1f"
                   }
                 },
                 "confirm": "Delete this thread? This cannot be undone.",
@@ -120,13 +120,13 @@
           "dragHandle": false,
           "action": {
             "op": "navigate",
-            "screen": "chat:12cf8d7c-0584-40c8-95a3-f94f0516b2f3"
+            "screen": "chat:30a712a3-f469-440f-a638-a3d99ec91e1f"
           },
           "workdir": "/tmp/t81/pinned",
           "status": "active",
           "pinned": true,
           "pinnedOrder": 1,
-          "settledAt": 1791141295154,
+          "settledAt": 1791214123450,
           "snoozedUntil": null,
           "archivedAt": null,
           "settledReason": "inactive",
@@ -156,7 +156,7 @@
       "items": [
         {
           "type": "list_row",
-          "id": "session-row:86051831-d564-4133-a4d6-ea1c80fd88a7",
+          "id": "session-row:a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f",
           "title": "t81-idle",
           "subtitle": "/tmp/t81/idle",
           "badge": {
@@ -183,7 +183,7 @@
                   "method": "POST",
                   "name": "pin",
                   "payload": {
-                    "id": "86051831-d564-4133-a4d6-ea1c80fd88a7"
+                    "id": "a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f"
                   }
                 }
               },
@@ -195,7 +195,7 @@
                   "method": "POST",
                   "name": "unsettle",
                   "payload": {
-                    "id": "86051831-d564-4133-a4d6-ea1c80fd88a7"
+                    "id": "a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f"
                   }
                 }
               },
@@ -207,7 +207,7 @@
                   "method": "POST",
                   "name": "snooze",
                   "payload": {
-                    "id": "86051831-d564-4133-a4d6-ea1c80fd88a7"
+                    "id": "a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f"
                   }
                 }
               },
@@ -219,7 +219,7 @@
                   "method": "POST",
                   "name": "wake",
                   "payload": {
-                    "id": "86051831-d564-4133-a4d6-ea1c80fd88a7"
+                    "id": "a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f"
                   }
                 }
               },
@@ -231,7 +231,7 @@
                   "method": "POST",
                   "name": "archive",
                   "payload": {
-                    "id": "86051831-d564-4133-a4d6-ea1c80fd88a7"
+                    "id": "a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f"
                   }
                 },
                 "confirm": "Archive this thread?"
@@ -244,7 +244,7 @@
                   "method": "POST",
                   "name": "regenerate-title",
                   "payload": {
-                    "id": "86051831-d564-4133-a4d6-ea1c80fd88a7"
+                    "id": "a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f"
                   }
                 }
               },
@@ -256,7 +256,7 @@
                   "method": "POST",
                   "name": "delete-session",
                   "payload": {
-                    "id": "86051831-d564-4133-a4d6-ea1c80fd88a7"
+                    "id": "a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f"
                   }
                 },
                 "confirm": "Delete this thread? This cannot be undone.",
@@ -267,13 +267,13 @@
           "dragHandle": false,
           "action": {
             "op": "navigate",
-            "screen": "chat:86051831-d564-4133-a4d6-ea1c80fd88a7"
+            "screen": "chat:a7b1bef8-b3f7-4f66-ad2b-b590e6ca802f"
           },
           "workdir": "/tmp/t81/idle",
           "status": "active",
           "pinned": false,
           "pinnedOrder": null,
-          "settledAt": 1791141297104,
+          "settledAt": 1791214125382,
           "snoozedUntil": null,
           "archivedAt": null,
           "settledReason": "inactive",
@@ -281,7 +281,7 @@
         },
         {
           "type": "list_row",
-          "id": "session-row:955a87a4-ece4-40e1-9961-2c487e038417",
+          "id": "session-row:2c176ea6-5a1f-42f8-be07-b2a2047f1c31",
           "title": "t81-active",
           "subtitle": "/tmp/t81/active",
           "badge": {
@@ -308,7 +308,7 @@
                   "method": "POST",
                   "name": "pin",
                   "payload": {
-                    "id": "955a87a4-ece4-40e1-9961-2c487e038417"
+                    "id": "2c176ea6-5a1f-42f8-be07-b2a2047f1c31"
                   }
                 }
               },
@@ -320,7 +320,7 @@
                   "method": "POST",
                   "name": "unsettle",
                   "payload": {
-                    "id": "955a87a4-ece4-40e1-9961-2c487e038417"
+                    "id": "2c176ea6-5a1f-42f8-be07-b2a2047f1c31"
                   }
                 }
               },
@@ -332,7 +332,7 @@
                   "method": "POST",
                   "name": "snooze",
                   "payload": {
-                    "id": "955a87a4-ece4-40e1-9961-2c487e038417"
+                    "id": "2c176ea6-5a1f-42f8-be07-b2a2047f1c31"
                   }
                 }
               },
@@ -344,7 +344,7 @@
                   "method": "POST",
                   "name": "wake",
                   "payload": {
-                    "id": "955a87a4-ece4-40e1-9961-2c487e038417"
+                    "id": "2c176ea6-5a1f-42f8-be07-b2a2047f1c31"
                   }
                 }
               },
@@ -356,7 +356,7 @@
                   "method": "POST",
                   "name": "archive",
                   "payload": {
-                    "id": "955a87a4-ece4-40e1-9961-2c487e038417"
+                    "id": "2c176ea6-5a1f-42f8-be07-b2a2047f1c31"
                   }
                 },
                 "confirm": "Archive this thread?"
@@ -369,7 +369,7 @@
                   "method": "POST",
                   "name": "regenerate-title",
                   "payload": {
-                    "id": "955a87a4-ece4-40e1-9961-2c487e038417"
+                    "id": "2c176ea6-5a1f-42f8-be07-b2a2047f1c31"
                   }
                 }
               },
@@ -381,7 +381,7 @@
                   "method": "POST",
                   "name": "delete-session",
                   "payload": {
-                    "id": "955a87a4-ece4-40e1-9961-2c487e038417"
+                    "id": "2c176ea6-5a1f-42f8-be07-b2a2047f1c31"
                   }
                 },
                 "confirm": "Delete this thread? This cannot be undone.",
@@ -392,13 +392,13 @@
           "dragHandle": false,
           "action": {
             "op": "navigate",
-            "screen": "chat:955a87a4-ece4-40e1-9961-2c487e038417"
+            "screen": "chat:2c176ea6-5a1f-42f8-be07-b2a2047f1c31"
           },
           "workdir": "/tmp/t81/active",
           "status": "active",
           "pinned": false,
           "pinnedOrder": null,
-          "settledAt": 1791141295104,
+          "settledAt": 1791214123386,
           "snoozedUntil": null,
           "archivedAt": null,
           "settledReason": "inactive",
@@ -406,7 +406,7 @@
         },
         {
           "type": "list_row",
-          "id": "session-row:6f26c6a1-7871-448a-bb09-646b1cd4bfd9",
+          "id": "session-row:fdd288ff-b009-4b94-b9f3-ce6b0197b7ec",
           "title": "t81-settled",
           "subtitle": "/tmp/t81/settled",
           "badge": {
@@ -433,7 +433,7 @@
                   "method": "POST",
                   "name": "pin",
                   "payload": {
-                    "id": "6f26c6a1-7871-448a-bb09-646b1cd4bfd9"
+                    "id": "fdd288ff-b009-4b94-b9f3-ce6b0197b7ec"
                   }
                 }
               },
@@ -445,7 +445,7 @@
                   "method": "POST",
                   "name": "unsettle",
                   "payload": {
-                    "id": "6f26c6a1-7871-448a-bb09-646b1cd4bfd9"
+                    "id": "fdd288ff-b009-4b94-b9f3-ce6b0197b7ec"
                   }
                 }
               },
@@ -457,7 +457,7 @@
                   "method": "POST",
                   "name": "snooze",
                   "payload": {
-                    "id": "6f26c6a1-7871-448a-bb09-646b1cd4bfd9"
+                    "id": "fdd288ff-b009-4b94-b9f3-ce6b0197b7ec"
                   }
                 }
               },
@@ -469,7 +469,7 @@
                   "method": "POST",
                   "name": "wake",
                   "payload": {
-                    "id": "6f26c6a1-7871-448a-bb09-646b1cd4bfd9"
+                    "id": "fdd288ff-b009-4b94-b9f3-ce6b0197b7ec"
                   }
                 }
               },
@@ -481,7 +481,7 @@
                   "method": "POST",
                   "name": "archive",
                   "payload": {
-                    "id": "6f26c6a1-7871-448a-bb09-646b1cd4bfd9"
+                    "id": "fdd288ff-b009-4b94-b9f3-ce6b0197b7ec"
                   }
                 },
                 "confirm": "Archive this thread?"
@@ -494,7 +494,7 @@
                   "method": "POST",
                   "name": "regenerate-title",
                   "payload": {
-                    "id": "6f26c6a1-7871-448a-bb09-646b1cd4bfd9"
+                    "id": "fdd288ff-b009-4b94-b9f3-ce6b0197b7ec"
                   }
                 }
               },
@@ -506,7 +506,7 @@
                   "method": "POST",
                   "name": "delete-session",
                   "payload": {
-                    "id": "6f26c6a1-7871-448a-bb09-646b1cd4bfd9"
+                    "id": "fdd288ff-b009-4b94-b9f3-ce6b0197b7ec"
                   }
                 },
                 "confirm": "Delete this thread? This cannot be undone.",
@@ -517,13 +517,13 @@
           "dragHandle": false,
           "action": {
             "op": "navigate",
-            "screen": "chat:6f26c6a1-7871-448a-bb09-646b1cd4bfd9"
+            "screen": "chat:fdd288ff-b009-4b94-b9f3-ce6b0197b7ec"
           },
           "workdir": "/tmp/t81/settled",
           "status": "active",
           "pinned": false,
           "pinnedOrder": null,
-          "settledAt": 1791141286506,
+          "settledAt": 1791214114673,
           "snoozedUntil": null,
           "archivedAt": null,
           "settledReason": "manual",

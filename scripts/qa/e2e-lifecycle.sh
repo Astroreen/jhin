@@ -446,9 +446,9 @@ curl -k -sS --max-time 10 -H "$client_hdr" "$base/_jhin/bootstrap" \
   > "$evidence/bootstrap-api2.json" || fail "GET /_jhin/bootstrap (api=2) failed"
 curl -k -sS --max-time 10 -H "$api1_hdr" "$base/_jhin/bootstrap" \
   > "$evidence/bootstrap-api1.json" || fail "GET /_jhin/bootstrap (api=1) failed"
-jq -e '.contract.api == 2 and .contract.minApi == 2 and .contract.schema == 3 and .contract.minSchema == 3' \
+jq -e '.contract.api == 3 and .contract.minApi == 2 and .contract.schema == 4 and .contract.minSchema == 3' \
   "$evidence/bootstrap-api2.json" > /dev/null \
-  || fail "api=2 bootstrap lacks the level-2 contract (see $evidence/bootstrap-api2.json)"
+  || fail "api=2 bootstrap lacks the level-3 contract (see $evidence/bootstrap-api2.json)"
 jq -e 'has("tokens") and has("keymap")' "$evidence/bootstrap-api2.json" > /dev/null \
   || fail "api=2 bootstrap lacks tokens/keymap (see $evidence/bootstrap-api2.json)"
 jq -e '(has("contract") or has("tokens") or has("density") or has("keymap")) | not' \

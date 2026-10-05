@@ -2,10 +2,10 @@
   "before": {
     "api": 2,
     "contract": {
-      "api": 2,
+      "api": 3,
       "minApi": 2,
       "minSchema": 3,
-      "schema": 3
+      "schema": 4
     },
     "density": "comfortable",
     "empty": false,
@@ -1589,10 +1589,10 @@
   "after": {
     "api": 2,
     "contract": {
-      "api": 2,
+      "api": 3,
       "minApi": 2,
       "minSchema": 3,
-      "schema": 3
+      "schema": 4
     },
     "density": "compact",
     "empty": false,

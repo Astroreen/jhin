@@ -46,6 +46,9 @@
  *       operator config read by jhin.sessions at startup and offers no write
  *       service, so this key persists the user preference only and does not
  *       reconfigure the sweep.</li>
+ *   <li>{@code qaProbe} — boolean (default {@code false}); the QA-only
+ *       switch that makes the level-3 probe screen resolvable (T88). The
+ *       settings screen never writes it.</li>
  * </ul>
  */
 package com.astroreen.jhin.plugin.ui;
@@ -88,6 +91,14 @@ public final class UiSettings {
     /** Settings key: thread-behavior inactivity slider (days). */
     public static final String KEY_INACTIVITY_DAYS = "inactivityDays";
 
+    /**
+     * Config key: the QA level-3 probe screen (T88). Operator/QA-only — the
+     * settings screen never writes it; when true the {@code qa-level3} probe
+     * screen (one node of every level-3 primitive) becomes resolvable under
+     * {@code GET /ui/screen/qa-level3}.
+     */
+    public static final String KEY_QA_PROBE = "qaProbe";
+
     /** Built-in default theme mode. */
     static final String DEFAULT_APPEARANCE = "system";
 
@@ -115,6 +126,9 @@ public final class UiSettings {
 
     /** Built-in default inactivity window (days): the jhin.sessions sweep default. */
     static final int DEFAULT_INACTIVITY_DAYS = 3;
+
+    /** Built-in default of the QA level-3 probe screen switch: off. */
+    static final boolean DEFAULT_QA_PROBE = false;
 
     /** Inactivity slider bounds (days). */
     public static final int MIN_INACTIVITY_DAYS = 1;
@@ -210,7 +224,8 @@ public final class UiSettings {
                         MIN_PANEL_MOTION_MS, MAX_PANEL_MOTION_MS),
                 boolOf(saved, KEY_AUTO_SETTLE_DEFAULT, DEFAULT_AUTO_SETTLE),
                 intOf(saved, KEY_INACTIVITY_DAYS, DEFAULT_INACTIVITY_DAYS,
-                        MIN_INACTIVITY_DAYS, MAX_INACTIVITY_DAYS));
+                        MIN_INACTIVITY_DAYS, MAX_INACTIVITY_DAYS),
+                boolOf(saved, KEY_QA_PROBE, DEFAULT_QA_PROBE));
     }
 
     /**
@@ -392,6 +407,9 @@ public final class UiSettings {
      * @param panelMotionMs panel-animation duration, 0–400
      * @param autoSettleDefault the thread-behavior auto-settle master switch
      * @param inactivityDays    the thread-behavior inactivity window, 1–30
+     * @param qaProbe           whether the QA level-3 probe screen resolves
+     *                          (T88; config/QA-only, never saved by the
+     *                          settings screen)
      */
     public record Snapshot(
             String appearance,
@@ -401,13 +419,14 @@ public final class UiSettings {
             String density,
             int panelMotionMs,
             boolean autoSettleDefault,
-            int inactivityDays) {
+            int inactivityDays,
+            boolean qaProbe) {
 
         /** The snapshot of the built-in defaults (config layer absent). */
         public static Snapshot defaults() {
             return new Snapshot(DEFAULT_APPEARANCE, DEFAULT_THEME_ID, DEFAULT_CANVAS, DEFAULT_ACCENT,
                     DEFAULT_DENSITY, DEFAULT_PANEL_MOTION_MS, DEFAULT_AUTO_SETTLE,
-                    DEFAULT_INACTIVITY_DAYS);
+                    DEFAULT_INACTIVITY_DAYS, DEFAULT_QA_PROBE);
         }
     }
 

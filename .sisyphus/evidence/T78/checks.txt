@@ -1,4 +1,4 @@
-ok: ui-default and ui-kit suites green (294 tests; transcript in test.txt)
+ok: ui-default and ui-kit suites green (307 tests; transcript in test.txt)
 ok: kernel booted with sessions, ui-kit and ui, without jhin.llm (kernel.log)
 ok: bootstrap defaults: theme.id t3-chat, appearance system, canvas #fdf7fd, accent #db2777, density comfortable, motion.panel 0
 ok: invalid hex blocked: errorText on the accent field, no persistence (validation.txt)
