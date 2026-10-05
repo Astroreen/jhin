@@ -91,6 +91,9 @@ final class BuilderProbe {
         BUILDERS.put(Ui.SegmentedBuilder.class, Ui::segmented);
         BUILDERS.put(Ui.ShellBuilder.class, Ui::shell);
         BUILDERS.put(Ui.SplitBuilder.class, Ui::split);
+        BUILDERS.put(Ui.HoverCardBuilder.class, Ui::hoverCard);
+        BUILDERS.put(Ui.KbdBuilder.class, Ui::kbd);
+        BUILDERS.put(Ui.ToastStackBuilder.class, Ui::toastStack);
     }
 
     /**
@@ -182,6 +185,9 @@ final class BuilderProbe {
         }
         if (type == Ui.TreeItemBuilder.class) {
             return Ui.treeItem("probe");
+        }
+        if (type == Ui.ToastItemBuilder.class) {
+            return Ui.toastItem("probe");
         }
         if (type == List.class) {
             // A mutable list: several wholesale setters store the instance and

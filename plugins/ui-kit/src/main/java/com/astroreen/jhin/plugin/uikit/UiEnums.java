@@ -175,6 +175,15 @@ final class UiEnums {
     /** docs/sdui.md 2.6 {@code split} {@code handleStyle}. */
     static final Set<String> HANDLE_STYLE = Set.of("rail", "grip", "invisible");
 
+    /** docs/sdui.md 2.6 {@code hover_card} {@code placement}. */
+    static final Set<String> HOVER_PLACEMENT = Set.of("top", "bottom", "left", "right");
+
+    /** docs/sdui.md 2.6 {@code toast_stack} {@code direction}. */
+    static final Set<String> TOAST_DIRECTION = Set.of("top", "bottom");
+
+    /** docs/sdui.md 2.6 {@code toast_stack} item {@code style} (like the {@code toast} directive). */
+    static final Set<String> TOAST_STYLE = Set.of("error", "success");
+
     /** Builder-specific literal overrides: entries are {@code <BuilderSimpleName>.<prop>}. */
     private static final Map<String, Set<String>> SPECIFIC = Map.ofEntries(
             Map.entry("ButtonBuilder.style", BUTTON_STYLE),
@@ -198,7 +207,10 @@ final class UiEnums {
             Map.entry("SkeletonBuilder.variant", SKELETON_VARIANT),
             Map.entry("TabsBuilder.variant", TAB_VARIANT),
             Map.entry("SplitBuilder.axis", SPLIT_AXIS),
-            Map.entry("SplitBuilder.handleStyle", HANDLE_STYLE));
+            Map.entry("SplitBuilder.handleStyle", HANDLE_STYLE),
+            Map.entry("HoverCardBuilder.placement", HOVER_PLACEMENT),
+            Map.entry("ToastStackBuilder.direction", TOAST_DIRECTION),
+            Map.entry("ToastItemBuilder.style", TOAST_STYLE));
 
     /** Global prop-name to literal-set lookup, used by the conformance probe. */
     private static final Map<String, Set<String>> BY_KEY = Map.ofEntries(
@@ -239,7 +251,8 @@ final class UiEnums {
             Map.entry("scrollDirection", SCROLL_DIRECTION),
             Map.entry("blendMode", BLEND_MODE),
             Map.entry("visualDensity", VISUAL_DENSITY),
-            Map.entry("handleStyle", HANDLE_STYLE));
+            Map.entry("handleStyle", HANDLE_STYLE),
+            Map.entry("placement", HOVER_PLACEMENT));
 
     private UiEnums() {
     }

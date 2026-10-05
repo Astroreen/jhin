@@ -42,9 +42,13 @@ import com.astroreen.jhin.plugin.uikit.has.HasBox;
 import com.astroreen.jhin.plugin.uikit.has.HasChildren;
 import com.astroreen.jhin.plugin.uikit.has.HasFlex;
 import com.astroreen.jhin.plugin.uikit.has.HasGlass;
+import com.astroreen.jhin.plugin.uikit.has.HasHoverCard;
 import com.astroreen.jhin.plugin.uikit.has.HasInteraction;
 import com.astroreen.jhin.plugin.uikit.has.HasItems;
+import com.astroreen.jhin.plugin.uikit.has.HasKbd;
 import com.astroreen.jhin.plugin.uikit.has.HasSplit;
+import com.astroreen.jhin.plugin.uikit.has.HasText;
+import com.astroreen.jhin.plugin.uikit.has.HasToastStack;
 import com.astroreen.jhin.plugin.uikit.has.HasText;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -443,6 +447,40 @@ public final class Ui {
      */
     public static SplitBuilder split() {
         return new SplitBuilder();
+    }
+
+    /**
+     * A hover-opened preview card: {@code hover_card}(trigger, content,
+     * delay?, placement?). The client opens the card after {@code delay} ms
+     * (default 500) of hover — tap-and-hold on touch — and degrades a
+     * missing content to the bare trigger.
+     */
+    public static HoverCardBuilder hoverCard() {
+        return new HoverCardBuilder();
+    }
+
+    /**
+     * A keyboard-hint pill row: {@code kbd}(chord). The chord splits on
+     * {@code +} and {@code mod} resolves per platform client-side (Cmd on
+     * macOS, Ctrl elsewhere).
+     */
+    public static KbdBuilder kbd() {
+        return new KbdBuilder();
+    }
+
+    /**
+     * A positioned stack of transient notices: {@code toast_stack}(items,
+     * direction?). Each item is {@code {text, style?, action?, duration?}} —
+     * the 5 s undo pattern is an item with an inline {@code action} and the
+     * default 5000 ms window.
+     */
+    public static ToastStackBuilder toastStack() {
+        return new ToastStackBuilder();
+    }
+
+    /** One {@code toast_stack} item spec ({@code {text, style?, action?, duration?}}). */
+    public static ToastItemBuilder toastItem(String text) {
+        return new ToastItemBuilder(text);
     }
 
     /** One {@code nav} item spec ({@code {label, icon?, screen?, action?, badge?, count?, section?, enabled?}}). */
@@ -4303,6 +4341,183 @@ public final class Ui {
         public SplitBuilder handleStyle(String value) {
             props.put("handleStyle", UiEnums.require("handleStyle", value, UiEnums.HANDLE_STYLE));
             return this;
+        }
+    }
+
+    /**
+     * {@code hover_card}(trigger, content, delay?, placement?) — the
+     * level-3 hover-opened preview card (docs/sdui.md section 2.6). A
+     * level-2 client receives the node replaced by its trigger (the
+     * universal props, including {@code tooltip}, merged onto it) by the
+     * server's downgrade map.
+     */
+    public static final class HoverCardBuilder extends NodeBuilder<HoverCardBuilder>
+            implements HasHoverCard<HoverCardBuilder> {
+
+        private HoverCardBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "hover_card";
+        }
+
+        /** The node that opens the card on hover (required). */
+        @Override
+        public HoverCardBuilder trigger(UiNode node) {
+            props.put("trigger", node);
+            return this;
+        }
+
+        /** The trigger as a string (the text shorthand). */
+        @Override
+        public HoverCardBuilder trigger(String text) {
+            props.put("trigger", text);
+            return this;
+        }
+
+        /** The card content (required). */
+        @Override
+        public HoverCardBuilder content(UiNode node) {
+            props.put("content", node);
+            return this;
+        }
+
+        /** The content as a string (the text shorthand). */
+        @Override
+        public HoverCardBuilder content(String text) {
+            props.put("content", text);
+            return this;
+        }
+
+        /** The hover delay in ms before the card opens (default 500). */
+        @Override
+        public HoverCardBuilder delay(Number value) {
+            props.put("delay", value);
+            return this;
+        }
+
+        /** The card placement: {@code top} (default), {@code bottom}, {@code left} or {@code right}. */
+        @Override
+        public HoverCardBuilder placement(String value) {
+            props.put("placement", UiEnums.require("placement", value, UiEnums.HOVER_PLACEMENT));
+            return this;
+        }
+    }
+
+    /**
+     * {@code kbd}(chord) — the level-3 keyboard-hint pill row (docs/sdui.md
+     * section 2.6). A level-2 client receives the node degraded to a mono
+     * {@code text} carrying the chord by the server's downgrade map.
+     */
+    public static final class KbdBuilder extends NodeBuilder<KbdBuilder>
+            implements HasKbd<KbdBuilder> {
+
+        private KbdBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "kbd";
+        }
+
+        /** The chord to render, modifiers joined with {@code +} (required). */
+        @Override
+        public KbdBuilder chord(String value) {
+            props.put("chord", value);
+            return this;
+        }
+    }
+
+    /**
+     * {@code toast_stack}(items, direction?) — the level-3 positioned stack
+     * of transient notices (docs/sdui.md section 2.6). A level-2 client
+     * receives the node degraded to a {@code column} of plain texts by the
+     * server's downgrade map.
+     */
+    public static final class ToastStackBuilder extends NodeBuilder<ToastStackBuilder>
+            implements HasToastStack<ToastStackBuilder> {
+
+        private ToastStackBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "toast_stack";
+        }
+
+        /** The collected item specs, in insertion order (the {@code items} prop). */
+        @SuppressWarnings("unchecked")
+        private List<Object> items() {
+            return (List<Object>) props.computeIfAbsent("items", key -> new ArrayList<>());
+        }
+
+        /** Appends one item spec ({@code {text, style?, action?, duration?}}). */
+        @Override
+        public ToastStackBuilder item(Map<String, Object> entry) {
+            items().add(entry);
+            return this;
+        }
+
+        /** Appends one text-only item. */
+        @Override
+        public ToastStackBuilder item(String text) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("text", text);
+            items().add(item);
+            return this;
+        }
+
+        /** Appends one item built through {@link Ui#toastItem(String)}. */
+        @Override
+        public ToastStackBuilder item(Ui.ToastItemBuilder entry) {
+            items().add(entry.build());
+            return this;
+        }
+
+        /** The screen edge the stack grows from: {@code bottom} (default) or {@code top}. */
+        @Override
+        public ToastStackBuilder direction(String value) {
+            props.put("direction", UiEnums.require("direction", value, UiEnums.TOAST_DIRECTION));
+            return this;
+        }
+    }
+
+    /**
+     * The spec builder of one {@code toast_stack} item ({@code {text,
+     * style?, action?, duration?}}): see {@link Ui#toastItem(String)}.
+     * Finished with {@link #build()}, the spec is appended through
+     * {@link ToastStackBuilder#item(Map)}.
+     */
+    public static final class ToastItemBuilder {
+
+        private final Map<String, Object> spec = new LinkedHashMap<>();
+
+        private ToastItemBuilder(String text) {
+            spec.put("text", text);
+        }
+
+        /** The toast style: {@code error} or {@code success} (like the {@code toast} directive). */
+        public ToastItemBuilder style(String value) {
+            spec.put("style", UiEnums.require("style", value, UiEnums.TOAST_STYLE));
+            return this;
+        }
+
+        /** The inline action (the 5 s undo pattern). */
+        public ToastItemBuilder action(Map<String, Object> value) {
+            spec.put("action", value);
+            return this;
+        }
+
+        /** The visible window in ms (default 5000). */
+        public ToastItemBuilder duration(Number value) {
+            spec.put("duration", value);
+            return this;
+        }
+
+        /** The finished item spec, in insertion order. */
+        public Map<String, Object> build() {
+            return new LinkedHashMap<>(spec);
         }
     }
 

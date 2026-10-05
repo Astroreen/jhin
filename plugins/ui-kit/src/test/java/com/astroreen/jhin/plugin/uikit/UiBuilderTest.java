@@ -176,6 +176,77 @@ class UiBuilderTest {
                 .hasMessageContaining("unknown handleStyle literal");
     }
 
+    /** T91: the level-3 {@code hover_card} builder lands its documented prop keys. */
+    @Test
+    void hoverCardWireShapeCarriesTheCardProps() {
+        Map<String, Object> card = Ui.hoverCard()
+                .id("probe-hover-card")
+                .trigger(Ui.text("Hover trigger").build())
+                .content(Ui.text("Hover content").build())
+                .delay(500)
+                .placement("top")
+                .build().toJson();
+        assertThat(card).containsEntry("type", "hover_card")
+                .containsEntry("id", "probe-hover-card")
+                .containsEntry("delay", 500)
+                .containsEntry("placement", "top");
+        assertThat(card).containsKey("trigger").containsKey("content");
+        // The string shorthands promote to the same wire keys.
+        Map<String, Object> shorthand = Ui.hoverCard()
+                .trigger("Hover trigger").content("Hover content").build().toJson();
+        assertThat(shorthand).containsEntry("trigger", "Hover trigger")
+                .containsEntry("content", "Hover content");
+    }
+
+    /** T91: unknown hover_card enum literals throw at build time (a builder bug). */
+    @Test
+    void hoverCardRejectsUnknownEnumLiterals() {
+        assertThatThrownBy(() -> Ui.hoverCard().placement("diagonal"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown placement literal");
+    }
+
+    /** T91: the level-3 {@code kbd} builder lands its chord. */
+    @Test
+    void kbdWireShapeCarriesTheChord() {
+        Map<String, Object> kbd = Ui.kbd().id("probe-kbd").chord("mod+shift+m").build().toJson();
+        assertThat(kbd).containsEntry("type", "kbd")
+                .containsEntry("id", "probe-kbd")
+                .containsEntry("chord", "mod+shift+m");
+    }
+
+    /** T91: the level-3 {@code toast_stack} builder lands its items and direction. */
+    @Test
+    void toastStackWireShapeCarriesTheItems() {
+        Map<String, Object> stack = Ui.toastStack()
+                .id("probe-toast-stack")
+                .direction("bottom")
+                .item(Ui.toastItem("Saved").style("success").duration(5000).build())
+                .item("Deleted")
+                .item(Ui.toastItem("Undone").action(Map.of("op", "setState", "id", "x", "value", true)))
+                .build().toJson();
+        assertThat(stack).containsEntry("type", "toast_stack")
+                .containsEntry("id", "probe-toast-stack")
+                .containsEntry("direction", "bottom");
+        assertThat(castList(stack.get("items"))).hasSize(3);
+        assertThat(castMap(castList(stack.get("items")).get(0)))
+                .containsEntry("text", "Saved").containsEntry("style", "success")
+                .containsEntry("duration", 5000);
+        assertThat(castMap(castList(stack.get("items")).get(1))).containsEntry("text", "Deleted");
+        assertThat(castMap(castList(stack.get("items")).get(2))).containsKey("action");
+    }
+
+    /** T91: unknown toast_stack enum literals throw at build time (a builder bug). */
+    @Test
+    void toastStackRejectsUnknownEnumLiterals() {
+        assertThatThrownBy(() -> Ui.toastStack().direction("left"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown direction literal");
+        assertThatThrownBy(() -> Ui.toastItem("x").style("info"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown style literal");
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> castMap(Object value) {
         return (Map<String, Object>) value;

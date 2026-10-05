@@ -192,6 +192,42 @@ class UiRegressionTest {
                 .handleStyle("rail")
                 .build());
 
+        // T91: the level-3 hover-opened preview card — the wire shape the
+        // client's delayed hover/tap-hold overlay renders (the 500 ms delay
+        // and the top placement are the documented defaults).
+        nodes.add(Ui.hoverCard()
+                .id("hover-card-thread")
+                .trigger(Ui.text("Hover trigger").build())
+                .content(Ui.text("Hover content").build())
+                .delay(500)
+                .placement("top")
+                .build());
+
+        // T91: the level-3 keyboard-hint pill row — the chord the client
+        // splits on '+' and maps per platform (mod → Cmd on macOS, Ctrl
+        // elsewhere).
+        nodes.add(Ui.kbd()
+                .id("kbd-hint")
+                .chord("mod+shift+m")
+                .build());
+
+        // T91: the level-3 transient-notice stack — the 5 s undo pattern is
+        // the first item (inline action, default 5000 ms window). The action
+        // map is insertion-ordered (op first): Map.of iteration order is
+        // randomized per JVM run and would break the byte-identical compare.
+        Map<String, Object> undoAction = new LinkedHashMap<>();
+        undoAction.put("op", "setState");
+        undoAction.put("id", "undo");
+        undoAction.put("value", true);
+        nodes.add(Ui.toastStack()
+                .id("toast-stack-undo")
+                .direction("bottom")
+                .item(Ui.toastItem("Thread pinned")
+                        .action(undoAction)
+                        .duration(5000))
+                .item(Ui.toastItem("Saved").style("success"))
+                .build());
+
         return nodes;
     }
 
@@ -201,7 +237,7 @@ class UiRegressionTest {
             "stream_view", "table", "divider", "spacer", "progress", "image",
             "figure", "chart_line", "chart_bar", "chart_pie", "drawer",
             "glass-card", "glass-sheet", "glass-dialog", "glass-menu",
-            "glass-banner", "split");
+            "glass-banner", "split", "hover_card", "kbd", "toast_stack");
 
     @Test
     void wireShapesAreByteIdenticalToTheCapturedFixtures() throws IOException {

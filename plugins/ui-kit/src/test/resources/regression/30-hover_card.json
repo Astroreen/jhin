@@ -1,0 +1,1 @@
+{"type":"hover_card","id":"hover-card-thread","trigger":{"type":"text","text":"Hover trigger"},"content":{"type":"text","text":"Hover content"},"delay":500,"placement":"top"}

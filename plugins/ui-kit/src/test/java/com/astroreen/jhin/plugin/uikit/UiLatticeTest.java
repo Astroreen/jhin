@@ -12,10 +12,13 @@ import com.astroreen.jhin.plugin.uikit.has.HasBox;
 import com.astroreen.jhin.plugin.uikit.has.HasChildren;
 import com.astroreen.jhin.plugin.uikit.has.HasFlex;
 import com.astroreen.jhin.plugin.uikit.has.HasGlass;
+import com.astroreen.jhin.plugin.uikit.has.HasHoverCard;
 import com.astroreen.jhin.plugin.uikit.has.HasInteraction;
 import com.astroreen.jhin.plugin.uikit.has.HasItems;
+import com.astroreen.jhin.plugin.uikit.has.HasKbd;
 import com.astroreen.jhin.plugin.uikit.has.HasSplit;
 import com.astroreen.jhin.plugin.uikit.has.HasText;
+import com.astroreen.jhin.plugin.uikit.has.HasToastStack;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,7 +44,10 @@ class UiLatticeTest {
                 new Group(HasChildren.class, Ui::card),
                 new Group(HasItems.class, Ui::list),
                 new Group(HasGlass.class, Ui::card),
-                new Group(HasSplit.class, Ui::split));
+                new Group(HasSplit.class, Ui::split),
+                new Group(HasHoverCard.class, Ui::hoverCard),
+                new Group(HasKbd.class, Ui::kbd),
+                new Group(HasToastStack.class, Ui::toastStack));
 
         return groups.stream().map(group -> {
             List<DynamicTest> tests = new ArrayList<>();

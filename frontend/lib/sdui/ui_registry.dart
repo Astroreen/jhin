@@ -31,10 +31,12 @@ import 'primitives/flex.dart';
 import 'primitives/flexible.dart';
 import 'primitives/form.dart';
 import 'primitives/grid.dart';
+import 'primitives/hover_card.dart';
 import 'primitives/icon.dart';
 import 'primitives/icon_button.dart';
 import 'primitives/image.dart';
 import 'primitives/input.dart';
+import 'primitives/kbd.dart';
 import 'primitives/list.dart';
 import 'primitives/list_row.dart';
 import 'primitives/markdown.dart';
@@ -61,6 +63,7 @@ import 'primitives/table.dart';
 import 'primitives/tabs.dart';
 import 'primitives/text.dart';
 import 'primitives/textarea.dart';
+import 'primitives/toast_stack.dart';
 import 'primitives/tree.dart';
 import 'primitives/wrap.dart';
 import 'render_context.dart';
@@ -142,6 +145,9 @@ class UiRegistry {
       'segmented': buildSegmented,
       'shell': buildShell,
       'split': buildSplit,
+      'hover_card': buildHoverCard,
+      'kbd': buildKbd,
+      'toast_stack': buildToastStack,
     });
     return registry;
   }
