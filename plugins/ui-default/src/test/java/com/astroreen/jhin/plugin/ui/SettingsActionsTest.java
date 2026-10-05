@@ -202,7 +202,12 @@ class SettingsActionsTest {
                 List.of(Map.of("key", "mod+enter", "command", "composer.send")),
                 Map.of(), settings.current()).toJson();
 
-        assertThat(labelsIn(json)).contains("Appearance", "Thread behavior", "Keyboard");
+        assertThat(labelsIn(json)).contains("General", "Appearance", "Thread behavior", "Keyboard");
+        // The T96 Working opt-in switch: the decorative toggle whose state
+        // key the sidebar's Working section gate reads (demo-marked).
+        Map<String, Object> working = nodeWithId(json, "workingSection");
+        assertThat(working).containsEntry("type", "switch").containsEntry("value", true);
+        assertThat(working).containsEntry("demo", true);
         assertThat(nodeWithId(json, "appearance").get("value")).isEqualTo("dark");
         assertThat(nodeWithId(json, "canvas").get("value")).isEqualTo("#101018");
         assertThat(nodeWithId(json, "accent").get("value")).isEqualTo("#ff0000");

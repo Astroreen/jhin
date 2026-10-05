@@ -1,9 +1,9 @@
 /**
  * The shell chrome of the {@code sessions} screen (T95): the t3code app
  * frame every screen lives in — the fixed-height workspace top bar
- * (wordmark, breadcrumb, top-right control cluster), the body row (sidebar |
- * content | optional right panel), the page header row (title + actions)
- * and the stage-art backdrop behind the sidebar.
+ * (wordmark, breadcrumb, top-right control cluster), the body row (the
+ * resizable sidebar | content split, T96), the page header row (title +
+ * actions) and the stage-art backdrop flag behind the sidebar pane.
  *
  * <p>Upstream anchors (t3code {@code apps/web/src}, commit {@code 37de6cb}):
  * the top bar geometry is {@code WorkspacePageHeader} (the
@@ -22,6 +22,13 @@
  * stage backdrop is the {@code stageBackdrop: true} shell prop — the client
  * paints the {@code theme.stageArt} gradient behind the sidebar under the
  * sidebar-stage fade mask.
+ *
+ * <p>Since T96 the body slot carries the sidebar {@code split} (the
+ * resizable sections | content row, {@link SidebarBuilder}): the shell's
+ * fixed-width sidebar pane cannot host a draggable divider, so the split
+ * owns the whole row and the {@code sidebar} slot stays unset. The
+ * {@code stageBackdrop} flag remains part of the contract for the shell
+ * surfaces that do carry a sidebar pane.
  */
 package com.astroreen.jhin.plugin.ui.screens;
 
@@ -75,8 +82,7 @@ public final class ShellScreen {
                         .topbarCompact(topbarCompact())
                         .pageHeader(pageHeader(arrange))
                         .stageBackdrop(true)
-                        .sidebar(sidebar)
-                        .body(body())
+                        .body(sidebar)
                         .build())
                 .build();
     }
@@ -158,16 +164,6 @@ public final class ShellScreen {
                         .style("secondary")
                         .action(ActionDescriptors.of("arrange-toggle",
                                 Map.of("arrange", !arrange), null))
-                        .build())
-                .build();
-    }
-
-    /** The chat-area placeholder. */
-    static UiNode body() {
-        return Ui.card()
-                .title("Select a thread")
-                .child(Ui.text("Choose a thread from the sidebar to open the conversation.")
-                        .style("caption")
                         .build())
                 .build();
     }

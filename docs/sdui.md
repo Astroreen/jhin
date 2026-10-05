@@ -912,6 +912,11 @@ Item and part shapes:
 | `list` section | `collapsible` | bool | no | can collapse |
 | `list` section | `collapsed` | bool | no | initial collapsed state |
 | `list` section | `items` | node array | yes | section entries |
+| `list` section | `when` | expression | no | §8.7 gate over the screen state; `false` removes the whole section (header included), unset or failing keeps it |
+| `list` section | `uppercase` | bool | no | render the label uppercased (the data stays canonical) |
+| `list` section | `count` | num | no | count-badge number (the rounded-full pill) |
+| `list` section | `badgeStyle` | token name | no | the pill surface token (`sidebar-control-surface`); falls back to the secondary surface |
+| `list` section | `storeKey` | string | no | client-store key the collapse state persists under; the stored value wins over `collapsed` once read |
 | `toast_stack` item | `text` | string | yes | notice text |
 | `toast_stack` item | `style` | toast style | no | `error`/`success`, like the `toast` directive |
 | `toast_stack` item | `action` | action | no | inline action (the 5 s undo pattern) |

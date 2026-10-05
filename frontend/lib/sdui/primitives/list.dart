@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../design/theme.dart';
+import '../expr.dart' show evalWhen;
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
@@ -20,6 +21,15 @@ import 'scroll_common.dart';
 /// selection/reorder do not combine, §2.4). `selection` makes plain entries
 /// toggle a selected tint on tap. Top-level empty `items` renders the
 /// `empty` node when present, else the visible placeholder.
+///
+/// The T96 section extensions (all optional, additive — a section without
+/// them renders exactly as before): `when` gates the whole section with the
+/// §8.7 expression grammar against the screen state (a failing or unset
+/// expression keeps the section visible); `uppercase` renders the label
+/// uppercased; `count` renders the rounded-full count badge over the
+/// `badgeStyle` token surface (`sidebar-control-surface`); `storeKey`
+/// persists the collapse state to the client store — the stored value wins
+/// over the `collapsed` default once read, and every toggle writes it back.
 ///
 /// `maxHeight` bounds the viewport; without it the list fills its bounded
 /// slot, and in an unbounded parent it degrades to a content-sized
@@ -205,10 +215,15 @@ class _SectionedList extends StatefulWidget {
 class _SectionedListState extends State<_SectionedList> {
   late List<bool> _collapsed;
 
+  /// The store keys whose persisted collapse state has already been read
+  /// (one read per key, never re-scheduled on rebuild).
+  final Set<String> _restoredKeys = {};
+
   @override
   void initState() {
     super.initState();
     _collapsed = _initialCollapsed();
+    _scheduleRestore();
   }
 
   @override
@@ -216,6 +231,8 @@ class _SectionedListState extends State<_SectionedList> {
     super.didUpdateWidget(oldWidget);
     if (_collapsed.length != (widget.node.listProp('sections') ?? const []).length) {
       _collapsed = _initialCollapsed();
+      _restoredKeys.clear();
+      _scheduleRestore();
     }
   }
 
@@ -223,6 +240,37 @@ class _SectionedListState extends State<_SectionedList> {
         for (final raw in widget.node.listProp('sections') ?? const [])
           asMap(raw)?['collapsed'] == true,
       ];
+
+  /// The T96 collapse persistence: the stored value under a section's
+  /// `storeKey` wins over the `collapsed` default once read (the split's
+  /// restore pattern). Fire-and-forget; without a store seam the default
+  /// stands.
+  void _scheduleRestore() {
+    final read = widget.ctx.readPersisted;
+    if (read == null) return;
+    final sections = widget.node.listProp('sections') ?? const <Object?>[];
+    for (var s = 0; s < sections.length; s++) {
+      final key = asMap(sections[s])?['storeKey'];
+      if (key is! String || key.isEmpty || !_restoredKeys.add(key)) continue;
+      final index = s;
+      Future<void>(() async {
+        final stored = await read(key);
+        if (!mounted || index >= _collapsed.length || stored is! bool) return;
+        if (_collapsed[index] == stored) return;
+        setState(() => _collapsed[index] = stored);
+      });
+    }
+  }
+
+  /// Writes the collapse state of one section back under its `storeKey`.
+  void _persist(int index) {
+    final sections = widget.node.listProp('sections') ?? const <Object?>[];
+    if (index >= sections.length) return;
+    final key = asMap(sections[index])?['storeKey'];
+    final write = widget.ctx.writePersisted;
+    if (key is! String || key.isEmpty || write == null) return;
+    Future<void>(() => write(key, _collapsed[index]));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -235,8 +283,12 @@ class _SectionedListState extends State<_SectionedList> {
     final slots = <Widget Function(BuildContext)>[];
     for (var s = 0; s < sections.length; s++) {
       final section = asMap(sections[s]) ?? const {};
+      // The T96 `when` gate: a false evaluation removes the whole section
+      // (header included); a failing or unset expression keeps it visible.
+      final when = section['when'];
+      if (when is String && evalWhen(when, ctx.state) == false) continue;
       final collapsible = section['collapsible'] != false;
-      slots.add((context) => _header(context, section['label'], collapsible, s));
+      slots.add((context) => _header(context, section, collapsible, s));
       if (_collapsed[s]) continue;
       final rawItems =
           section['items'] is List ? section['items'] as List : const [];
@@ -268,9 +320,19 @@ class _SectionedListState extends State<_SectionedList> {
     );
   }
 
-  Widget _header(BuildContext context, Object? label, bool collapsible, int s) {
+  Widget _header(
+    BuildContext context,
+    Map<Object?, Object?> section,
+    bool collapsible,
+    int s,
+  ) {
     final theme = JhinDesignScope.materialOf(context);
-    final text = label is String ? label : '${label ?? ''}';
+    var text = section['label'] is String
+        ? section['label'] as String
+        : '${section['label'] ?? ''}';
+    // The T96 uppercase transform: the header renders uppercased when the
+    // section asks for it (the label data stays canonical).
+    if (section['uppercase'] == true) text = text.toUpperCase();
     final row = Row(
       children: [
         Expanded(
@@ -280,6 +342,7 @@ class _SectionedListState extends State<_SectionedList> {
                 ?.copyWith(fontWeight: FontWeight.w600),
           ),
         ),
+        if (section['count'] != null) _countBadge(context, section),
         if (collapsible)
           Icon(
             _collapsed[s] ? Icons.expand_more : Icons.expand_less,
@@ -289,11 +352,46 @@ class _SectionedListState extends State<_SectionedList> {
     );
     return InkWell(
       onTap: collapsible
-          ? () => setState(() => _collapsed[s] = !_collapsed[s])
+          ? () {
+              setState(() => _collapsed[s] = !_collapsed[s]);
+              _persist(s);
+            }
           : null,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: row,
+      ),
+    );
+  }
+
+  /// The T96 count badge: the rounded-full pill over the section's
+  /// `badgeStyle` token surface with the sidebar foreground text — the
+  /// upstream `bg-sidebar-control-surface text-sidebar-foreground` pill.
+  Widget _countBadge(BuildContext context, Map<Object?, Object?> section) {
+    final design = JhinDesignScope.of(context);
+    final theme = JhinDesignScope.materialOf(context);
+    final brightness = Theme.brightnessOf(context);
+    final token = section['badgeStyle'] is String
+        ? section['badgeStyle'] as String
+        : 'sidebar-control-surface';
+    // The bootstrap palette carries the token (the server pins the full
+    // PaletteGen map); without it the pill degrades to the secondary
+    // surface — never null (§2.4).
+    final surface = design.colorOf(token, brightness: brightness) ??
+        design.colorOf('secondary', brightness: brightness) ??
+        theme.colorScheme.surfaceContainerHigh;
+    final foreground = design.colorOf('sidebar-foreground', brightness: brightness);
+    final count = section['count'];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        count is num ? '${count.toInt()}' : '$count',
+        style: theme.textTheme.labelSmall
+            ?.copyWith(color: foreground ?? theme.colorScheme.onSurfaceVariant),
       ),
     );
   }

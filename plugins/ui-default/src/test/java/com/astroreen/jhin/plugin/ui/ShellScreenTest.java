@@ -51,7 +51,16 @@ class ShellScreenTest {
         Map<String, Object> shell = shellOf(render(false));
 
         assertThat(shell).containsEntry("breakpoint", 768).containsEntry("stageBackdrop", true);
-        assertThat(shell).containsKeys("topbar", "topbarCompact", "pageHeader", "sidebar", "body");
+        assertThat(shell).containsKeys("topbar", "topbarCompact", "pageHeader", "body");
+        // Since T96 the body slot carries the sidebar split (the resizable
+        // sections | content row); the fixed-width sidebar slot is unset.
+        assertThat(shell).doesNotContainKey("sidebar");
+        Map<String, Object> split = castMap(shell.get("body"));
+        assertThat(split).containsEntry("type", "split")
+                .containsEntry("persistKey", "chat_thread_sidebar_width")
+                .containsEntry("initial", 256)
+                .containsEntry("min", 208)
+                .containsEntry("minSecond", 640);
     }
 
     @Test

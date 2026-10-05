@@ -12,7 +12,7 @@
 #     requires BUILD SUCCESSFUL;
 #   - boots the kernel with jhin.sessions, jhin.ui-kit and jhin.ui
 #     (run-kernel.sh, log in kernel.log) and seeds 8 sessions over curl
-#     (seed.txt) covering all four sidebar states plus the two edge rules:
+#     (seed.txt) covering the sidebar states plus the two edge rules:
 #     a pinned+settled session and a session whose snooze has expired;
 #   - fetches GET /ui/screen/sessions and writes the rendered sidebar node
 #     tree into sidebar.json; asserts the section membership counts
@@ -174,8 +174,8 @@ if [ "$fail_mode" = "1" ]; then
   tx="$evidence/priority-fail.txt"
   : > "$tx"
   pin_settled=$(seed_session "$tx" "pin-settled" "/settle {\"reason\":\"manual\"}" "/pin {}")
-  step "$tx" "fetch-sidebar" GET /ui/screen/sessions '' 200 '.node.body.sidebar.sections | length == 4'
-  jq '.node.body.sidebar' <<< "$step_payload" > "$evidence/sidebar-fail.json"
+  step "$tx" "fetch-sidebar" GET /ui/screen/sessions '' 200 '.node.body.body.children[0].sections | length == 5'
+  jq '.node.body.body.children[0]' <<< "$step_payload" > "$evidence/sidebar-fail.json"
   # deliberate wrong expectation: the pinned+settled session is in Pinned only
   if jq -e --arg id "$pin_settled" \
       '.sections[] | select(.label == "Settled") | .items[]? | select(.id == ("session-row:" + $id))' \
@@ -216,23 +216,25 @@ settled_one=$(seed_session "$tx" "settled-one" "/settle {\"reason\":\"manual\"}"
 settled_two=$(seed_session "$tx" "settled-two" "/settle {\"reason\":\"manual\"}")
 # the 500ms snooze of act-expired must lapse before the render
 sleep 2
-ok "seeded 8 sessions across the four states (seed.txt)"
+ok "seeded 8 sessions across the sidebar states (seed.txt)"
 
 step "$tx" "fetch-sidebar" GET /ui/screen/sessions '' 200 \
-  '.node.body.sidebar.sections | length == 4'
-jq '.node.body.sidebar' <<< "$step_payload" > "$evidence/sidebar.json"
+  '.node.body.body.children[0].sections | length == 5'
+jq '.node.body.body.children[0]' <<< "$step_payload" > "$evidence/sidebar.json"
 ok "rendered sidebar node tree written to sidebar.json"
 
 # --- 3. Membership counts ---
 pinned_count=$(section_count Pinned)
 active_count=$(section_count Active)
+working_count=$(section_count Working)
 snoozed_count=$(section_count Snoozed)
 settled_count=$(section_count Settled)
 [ "$pinned_count" = "2" ] || fail "Pinned count $pinned_count, expected 2"
 [ "$active_count" = "3" ] || fail "Active count $active_count, expected 3"
+[ "$working_count" = "0" ] || fail "Working count $working_count, expected 0"
 [ "$snoozed_count" = "1" ] || fail "Snoozed count $snoozed_count, expected 1"
 [ "$settled_count" = "2" ] || fail "Settled count $settled_count, expected 2"
-ok "section membership counts Pinned=2 Active=3 Snoozed=1 Settled=2"
+ok "section membership counts Pinned=2 Active=3 Working=0 Snoozed=1 Settled=2"
 
 # --- 4. The priority matrix ---
 {

@@ -1,9 +1,10 @@
 /**
- * The T76 thread shell: the sidebar section membership rules (Pinned, Active,
- * Snoozed, Settled with the pinned+settled priority and the expired-snooze
- * fallback), the {@code session-row:<id>} row identity and frame props, the
- * overflow-menu action names, the {@code Snooze\u2026} sheet and the Arrange
- * toggle (Move up / Move down plus the visual drag handles).
+ * The T76 thread shell (T96 tree): the sidebar section membership rules
+ * (Pinned, Active, Working, Snoozed, Settled with the pinned+settled
+ * priority and the expired-snooze fallback), the {@code session-row:<id>}
+ * row identity and frame props, the overflow-menu action names, the
+ * {@code Snooze\u2026} sheet and the Arrange toggle (Move up / Move down plus
+ * the visual drag handles).
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -51,7 +52,7 @@ class SessionsScreenTest {
     }
 
     @Test
-    void eightSeededSessionsPartitionIntoTheFourSections() {
+    void eightSeededSessionsPartitionIntoTheFiveSections() {
         long now = System.currentTimeMillis();
         seed("pin-1", patch().pinned(true).pinnedOrder(1).build());
         seed("pin-2-settled", patch().pinned(true).pinnedOrder(2)
@@ -67,6 +68,7 @@ class SessionsScreenTest {
 
         assertThat(sections.get("Pinned")).hasSize(2);
         assertThat(sections.get("Active")).hasSize(3);
+        assertThat(sections.get("Working")).isEmpty();
         assertThat(sections.get("Snoozed")).hasSize(1);
         assertThat(sections.get("Settled")).hasSize(2);
     }
@@ -108,7 +110,8 @@ class SessionsScreenTest {
 
         Map<String, Object> json = render(false);
 
-        assertThat(labelsOf(json)).containsExactly("Pinned", "Active", "Snoozed", "Settled");
+        assertThat(labelsOf(json)).containsExactly(
+                "Pinned", "Active", "Working", "Snoozed", "Settled");
     }
 
     @Test
@@ -121,12 +124,15 @@ class SessionsScreenTest {
     }
 
     @Test
-    void settledShelfIsCollapsibleAndCollapsed() {
+    void settledAndSnoozedShelvesAreCollapsibleAndCollapsedByDefault() {
         Map<String, Object> json = render(false);
-        Map<String, Object> settled = sectionOf(json, "Settled");
 
-        assertThat(settled).containsEntry("collapsible", true).containsEntry("collapsed", true);
+        assertThat(sectionOf(json, "Settled"))
+                .containsEntry("collapsible", true).containsEntry("collapsed", true);
+        assertThat(sectionOf(json, "Snoozed"))
+                .containsEntry("collapsible", true).containsEntry("collapsed", true);
         assertThat(sectionOf(json, "Active")).containsEntry("collapsed", false);
+        assertThat(sectionOf(json, "Working")).containsEntry("collapsed", false);
     }
 
     @Test
@@ -351,7 +357,8 @@ class SessionsScreenTest {
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> sectionNodesOf(Map<String, Object> screen) {
         Map<String, Object> shell = nodesOfType(screen, "shell").get(0);
-        Map<String, Object> sidebar = castMap(shell.get("sidebar"));
+        Map<String, Object> split = castMap(shell.get("body"));
+        Map<String, Object> sidebar = castMap(split.get("first"));
         return (List<Map<String, Object>>) (List<?>) castList(sidebar.get("sections"));
     }
 

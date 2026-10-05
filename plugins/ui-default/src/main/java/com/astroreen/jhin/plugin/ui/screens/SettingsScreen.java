@@ -1,8 +1,8 @@
 /**
- * The {@code settings} screen: account info, the Appearance and
- * Thread-behavior cards (T78), the Keyboard section (T70), the client-owned
- * server surface, sign-out, the help link and — while the reload plugin is
- * loaded — the reload button.
+ * The {@code settings} screen: account info, the General card (T96), the
+ * Appearance and Thread-behavior cards (T78), the Keyboard section (T70),
+ * the client-owned server surface, sign-out, the help link and — while the
+ * reload plugin is loaded — the reload button.
  *
  * <p>Appearance (T78) edits the persisted {@code jhin.ui} settings of
  * {@link UiSettings}: the six-theme catalogue grid (T85), theme mode,
@@ -78,6 +78,12 @@ public final class SettingsScreen {
     /** Field id of the auto-settle master switch. */
     static final String ID_AUTO_SETTLE = "autoSettleDefault";
 
+    /**
+     * Field id of the decorative Working-section switch (T96): the state key
+     * the sessions sidebar's Working section gate reads.
+     */
+    static final String ID_WORKING_SECTION = "workingSection";
+
     /** Field id of the inactivity-days slider. */
     static final String ID_INACTIVITY_DAYS = "inactivityDays";
 
@@ -122,6 +128,7 @@ public final class SettingsScreen {
                     .child(Ui.text(info).style("body").build())
                     .build());
         }
+        body.child(generalCard());
         body.child(appearanceCard(settings));
         body.child(threadBehaviorCard(settings));
         body.child(Ui.card()
@@ -147,6 +154,27 @@ public final class SettingsScreen {
                     .build());
         }
         return Ui.screen().title("Settings").body(body.build()).build();
+    }
+
+    /**
+     * The General card (T96): the decorative {@code workingSection} switch
+     * (upstream Settings &rarr; General &rarr; Working section, {@code
+     * docs/user/thread-sidebar.md} "Fold working threads (beta)"). The switch
+     * writes the {@code workingSection} state key client-side on toggle —
+     * no round-trip, nothing persisted server-side — and the sessions
+     * sidebar's Working section carries the matching
+     * {@code when: "workingSection != false"} gate ({@link SidebarBuilder}).
+     * The marker is {@code demo: true}: the effect is an ephemeral client
+     * state change, never a stored setting.
+     */
+    private static UiNode generalCard() {
+        return Ui.card()
+                .title("General")
+                .child(Ui.toggle(ID_WORKING_SECTION, "Working section")
+                        .value(true)
+                        .set("demo", true)
+                        .build())
+                .build();
     }
 
     /**

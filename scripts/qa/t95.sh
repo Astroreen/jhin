@@ -29,7 +29,7 @@
 #     (wordmark Jhin, the Workspace / Threads breadcrumb, the nav control
 #     cluster), the compact topbar (the breadcrumb condensed to the current
 #     title), the page header (title + arrange-toggle action) and the
-#     sidebar + body (shell-tree.json);
+#     body = the sidebar split (T96) (shell-tree.json);
 #   - fetches the same screen at api=2;schema=3 and asserts the chrome slots
 #     pass through unchanged (they are level-2 props; shell-tree-l2.json).
 #
@@ -321,7 +321,7 @@ shell=$(jq '.body' "$evidence/shell-tree.json")
 jq -e '.type == "shell" and .breakpoint == 768 and .stageBackdrop == true' \
   <<< "$shell" > /dev/null \
   || fail "the shell does not carry breakpoint 768 + stageBackdrop (shell-tree.json)"
-for slot in topbar topbarCompact pageHeader sidebar body; do
+for slot in topbar topbarCompact pageHeader body; do
   jq -e --arg slot "$slot" 'has($slot)' <<< "$shell" > /dev/null \
     || fail "the shell does not carry the $slot slot (shell-tree.json)"
 done
@@ -341,10 +341,13 @@ jq -e '.pageHeader | ([.. | objects | .text? // empty] | index("Threads")) != nu
     and ([.. | objects | select(.type? == "button")][0].action.name == "arrange-toggle")' \
   <<< "$shell" > /dev/null \
   || fail "the page header does not carry the title and the arrange action (shell-tree.json)"
-jq -e '.sidebar.type == "list" and (.sidebar.sections | length == 4)' \
+# Since T96 the body slot carries the sidebar split (the resizable
+# sections | content row); the fixed-width sidebar slot is unset.
+jq -e '.body.type == "split" and .body.persistKey == "chat_thread_sidebar_width"
+    and (.body.first.sections | length == 5)' \
   <<< "$shell" > /dev/null \
-  || fail "the sidebar slot does not carry the four-section thread list (shell-tree.json)"
-ok "sessions shell tree: breakpoint 768, stageBackdrop, topbar (wordmark + Workspace / Threads breadcrumb + nav cluster), compact topbar (current title only), page header (title + arrange-toggle), sidebar + body (shell-tree.json)"
+  || fail "the body slot does not carry the five-section sidebar split (shell-tree.json)"
+ok "sessions shell tree: breakpoint 768, stageBackdrop, topbar (wordmark + Workspace / Threads breadcrumb + nav cluster), compact topbar (current title only), page header (title + arrange-toggle), body = the five-section sidebar split (shell-tree.json)"
 
 # --- 9. The same screen at level 2: the chrome slots pass through ---
 step_hdr "$hdr_l2" "$tx" "shell-tree-l2" GET /ui/screen/sessions '' 200 \
