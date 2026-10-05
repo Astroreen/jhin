@@ -1,0 +1,98 @@
+# T94 conformance summary (phase B closure)
+
+catalog: 68 names (docs/sdui.md section 2.5 extraction; the canon
+lowercase pattern truncates camelCase: statusPulse -> status,
+safeArea -> safe, glassTint -> glass phantom — full names asserted
+JVM/Dart-side)
+  align
+  aspect_ratio
+  avatar
+  badge
+  banner
+  box
+  button
+  card
+  center
+  chart_bar
+  chart_line
+  chart_pie
+  checkbox
+  chip
+  code_block
+  column
+  container
+  demo
+  dialog
+  diff_view
+  divider
+  drawer
+  dropdown
+  expanded
+  figure
+  flex
+  flexible
+  form
+  glass
+  grid
+  hover_card
+  icon
+  icon_button
+  image
+  input
+  kbd
+  list
+  list_row
+  markdown
+  menu
+  nav
+  positioned
+  progress
+  rich_text
+  row
+  safe
+  screen
+  scroll
+  scroll_fade
+  segmented
+  sheet
+  shell
+  sized_box
+  skeleton
+  slider
+  spacer
+  split
+  stack
+  status
+  stream_view
+  switch
+  table
+  tabs
+  text
+  textarea
+  toast_stack
+  tree
+  wrap
+
+level-3 primitives: split, hover_card, toast_stack, kbd, scroll_fade, diff_view
+level-3 universal names: glass, demo, statusPulse, safeArea (glassTint documented in 2.1/6)
+
+builder lattice: 64 builders (58 level-2 + 6 level-3), every Has* group probed
+  incl. HasScrollFade (T94) and the statusPulse/safeArea wire keys
+
+downgrade map (probe at api=2;schema=3, probe-l2.json):
+  split -> column; hover_card -> trigger (tooltip kept); toast_stack -> column of texts;
+  kbd -> mono text; scroll_fade -> scroll; diff_view -> code_block (file + hunk headers);
+  glass/glassTint/statusPulse stripped; demo/safeArea kept
+
+golden gallery: 36 goldens (00..23 level 2 byte-identical to HEAD + 24..35 level 3)
+
+# goldens diffstat (T94)
+
+## git diff --stat (tracked golden sources)
+ .../goldens/fixture-list_row-propheavy-dark.png       | Bin 9121 -> 9480 bytes
+ .../goldens/fixture-list_row-propheavy-light.png      | Bin 8849 -> 9251 bytes
+ 2 files changed, 0 insertions(+), 0 deletions(-)
+
+## golden files (git status --porcelain)
+ M frontend/test/gallery/goldens/fixture-list_row-propheavy-dark.png
+ M frontend/test/gallery/goldens/fixture-list_row-propheavy-light.png

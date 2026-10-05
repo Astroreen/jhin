@@ -72,7 +72,8 @@ public final class ShellScreen {
     public static UiNode render(SessionStore store, Optional<String> account,
                                 boolean providersLink, boolean arrange) {
         List<Session> sessions = account.map(store::list).orElseGet(store::list);
-        UiNode sidebar = SidebarBuilder.build(sessions, System.currentTimeMillis(), arrange);
+        UiNode sidebar = SidebarBuilder.build(sessions, System.currentTimeMillis(), arrange,
+                account.orElse("local"));
         return Ui.screen()
                 .title("Sessions")
                 .body(Ui.shell()

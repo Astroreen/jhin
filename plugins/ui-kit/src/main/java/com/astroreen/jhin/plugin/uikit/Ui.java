@@ -2321,14 +2321,37 @@ public final class Ui {
             return "list";
         }
 
-        /** The grouped mode sections. */
-        public ListBuilder sections(List<Object> sections) {
-            props.put("sections", sections);
-            return this;
-        }
+    /** The grouped mode sections. */
+    public ListBuilder sections(List<Object> sections) {
+        props.put("sections", sections);
+        return this;
+    }
 
-        /** The node inserted between entries. */
-        public ListBuilder separator(UiNode node) {
+    /** The node rendered above the scrollable (the T97 sidebar header block). */
+    public ListBuilder header(UiNode node) {
+        props.put("header", node);
+        return this;
+    }
+
+    /** The node rendered below the scrollable (the T97 sidebar footer block). */
+    public ListBuilder footer(UiNode node) {
+        props.put("footer", node);
+        return this;
+    }
+
+    /**
+     * The T97 client-side search spec ({@code {key, fields?, empty?}}): the
+     * UiState string under {@code key} filters the section items against
+     * their {@code fields} (default {@code title}/{@code subtitle}) and a
+     * match-count line renders above the sections while it is non-empty.
+     */
+    public ListBuilder search(Map<String, Object> value) {
+        props.put("search", value);
+        return this;
+    }
+
+    /** The node inserted between entries. */
+    public ListBuilder separator(UiNode node) {
             props.put("separator", node);
             return this;
         }
@@ -3603,6 +3626,45 @@ public final class Ui {
         /** Whether the visual drag affordance renders (reorder goes through actions). */
         public ListRowBuilder dragHandle(boolean value) {
             props.put("dragHandle", value);
+            return this;
+        }
+
+        /**
+         * The T97 status indicator kinds (the leading cluster): the client
+         * renders them through the {@code ThreadStatusIndicators} widget —
+         * {@code working}, {@code idle}, {@code monitoring},
+         * {@code needs-approval}, {@code needs-answer}, {@code failed},
+         * {@code limited}, {@code snoozed}, {@code settled}, {@code unread},
+         * {@code pinned}; an unknown kind falls back to {@code idle}.
+         */
+        public ListRowBuilder statusIndicators(List<String> kinds) {
+            props.put("statusIndicators", List.copyOf(kinds));
+            return this;
+        }
+
+        /**
+         * The T97 hover reveal: the trailing cluster fades in on hover or
+         * focus (the upstream group-hover reveal of the row actions).
+         */
+        public ListRowBuilder hoverReveal(boolean value) {
+            props.put("hoverReveal", value);
+            return this;
+        }
+
+        /**
+         * The T97 search-match spec ({@code {key, minChars?}}): the client
+         * renders the match pill in the trailing cluster when the UiState
+         * query under {@code key} is at least {@code minChars} (default 2)
+         * characters and matches the row's title or subtitle.
+         */
+        public ListRowBuilder searchMatch(Map<String, Object> value) {
+            props.put("searchMatch", Map.copyOf(value));
+            return this;
+        }
+
+        /** The T97 dragging state: the row renders as the lifted card. */
+        public ListRowBuilder dragging(boolean value) {
+            props.put("dragging", value);
             return this;
         }
     }

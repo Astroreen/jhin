@@ -1,0 +1,8 @@
+ok: kernel booted for the failure path (fail-boot/kernel.log)
+ok: seeded one session and set the unknown status bogus-status (fail-seed.txt)
+ok: fallback: the unknown status renders the idle indicator (row-anatomy-fail.json)
+ok: fallback: the mapping logged the unknown status (fail-boot/kernel.log)
+FAIL: the unknown status kind passed through as bogus-status (as designed)
+  the mapping falls back to idle and logs; the tree carries statusIndicators [idle]
+  session id: 1ff4147d-05e4-4223-86fb-bfe14dbcf66c (row-anatomy-fail.json)
+FAIL: deliberately wrong expectation: the unknown status kind passes through (it does not; see .sisyphus/evidence/T97/row-anatomy-fail.json)

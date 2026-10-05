@@ -486,15 +486,22 @@ Layout primitives:
 | `list` | `itemExtent` | num | — | fixed entry extent |
 | `list` | `prototypeItem` | node | — | prototype for extent inference |
 | `list` | `empty` | node | — | rendered when there are no items |
+| `list` | `header` | node | — | node pinned above the scrollable, outside it (the sidebar header block) |
+| `list` | `footer` | node | — | node pinned below the scrollable, outside it (the sidebar footer block) |
+| `list` | `search` | object | — | client-side section filter `{key, fields?, empty?}`: the UiState string under `key` filters the section items against their `fields` (default `title`/`subtitle`, ASCII case-folded contains) and a match-count line renders above the sections while it is non-empty (`N matches`, or the `empty` text — default `No threads found` — when nothing matches) |
 | `list_row` | `leading` | node | — | leading widget |
 | `list_row` | `title` | node or string | — | title |
 | `list_row` | `subtitle` | node or string | — | subtitle |
 | `list_row` | `trailing` | node | — | trailing widget |
 | `list_row` | `badge` | node | — | badge widget |
 | `list_row` | `action` | action | — | tap action |
-| `list_row` | `selected` | bool | `false` | selected tint |
+| `list_row` | `selected` | bool | `false` | selected tint (`sidebar-row-active` token + 1 px ring) |
 | `list_row` | `onLongPress` | action | — | long-press action |
 | `list_row` | `dragHandle` | bool | `false` | visual drag affordance (reorder itself goes through actions) |
+| `list_row` | `statusIndicators` | string array | — | the leading status-indicator kinds (`working`, `idle`, `monitoring`, `needs-approval`, `needs-answer`, `failed`, `limited`, `snoozed`, `settled`, `unread`, `pinned`); an unknown kind falls back to `idle` and logs |
+| `list_row` | `hoverReveal` | bool | `false` | the trailing cluster fades in on hover or focus |
+| `list_row` | `searchMatch` | object | — | `{key, minChars?}` — the match pill shows in the trailing cluster when the UiState query under `key` is at least `minChars` (default 2) characters and matches the row's title or subtitle |
+| `list_row` | `dragging` | bool | `false` | the row renders as the lifted card (opaque surface + shadow) |
 | `table` | `columns` | column array | — | see the column table below |
 | `table` | `rows` | cell array | — | arrays of cells (node or string) |
 | `table` | `zebra` | bool | `false` | striped rows |

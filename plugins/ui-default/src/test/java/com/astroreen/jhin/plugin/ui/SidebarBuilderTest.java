@@ -189,11 +189,194 @@ class SidebarBuilderTest {
 
         assertThat(row).containsEntry("id", "session-row:" + session.id())
                 .containsEntry("type", "list_row")
-                .containsEntry("title", "demo")
                 .containsKey("status")
                 .containsKey("pinned")
                 .containsKey("settledAt")
                 .containsKey("snoozedUntil");
+    }
+
+    // --- T97: header + footer blocks ---
+
+    @Test
+    void listCarriesTheHeaderFooterAndSearchSpec() {
+        Map<String, Object> list = castMap(SidebarBuilder.build(List.of(), NOW, false)
+                .toJson().get("first"));
+
+        assertThat(list).containsEntry("type", "list");
+        assertThat(castMap(list.get("header"))).containsEntry("id", "sidebar-header");
+        assertThat(castMap(list.get("footer"))).containsEntry("id", "sidebar-footer");
+        assertThat(castMap(list.get("search"))).containsEntry("key", "sidebarSearch")
+                .containsEntry("fields", List.of("title", "subtitle"));
+    }
+
+    @Test
+    void headerCarriesWordmarkSearchInputNewThreadAndChevron() {
+        Map<String, Object> header = castMap(SidebarBuilder.build(List.of(), NOW, false)
+                .toJson().get("first"));
+        header = castMap(header.get("header"));
+        List<Map<String, Object>> children = castList(header.get("children"))
+                .stream().map(SidebarBuilderTest::castMap).toList();
+
+        // Brand row: the bold wordmark and the demo-marked chevron.
+        Map<String, Object> brand = children.get(0);
+        assertThat(brand).containsEntry("id", "sidebar-brand");
+        Map<String, Object> wordmark = castMap(castList(brand.get("children")).get(0));
+        assertThat(wordmark).containsEntry("type", "text")
+                .containsEntry("text", "Jhin")
+                .containsEntry("bold", true);
+        Map<String, Object> chevron = castMap(castList(brand.get("children")).get(2));
+        assertThat(chevron).containsEntry("type", "icon_button")
+                .containsEntry("icon", "chevron_right")
+                .containsEntry("demo", true);
+
+        // Search row: the "Search threads" input and the New thread button.
+        Map<String, Object> search = children.get(1);
+        assertThat(search).containsEntry("id", "sidebar-search");
+        Map<String, Object> input = castMap(castList(search.get("children")).get(0));
+        assertThat(input).containsEntry("type", "input")
+                .containsEntry("id", "sidebarSearch")
+                .containsEntry("placeholder", "Search threads");
+        Map<String, Object> button = castMap(castList(search.get("children")).get(1));
+        assertThat(button).containsEntry("type", "button")
+                .containsEntry("label", "New thread")
+                .containsEntry("style", "primary");
+        Map<String, Object> action = castMap(button.get("action"));
+        assertThat(action).containsEntry("op", "dialog");
+        assertThat(castMap(action.get("node"))).containsEntry("id", "new-thread-dialog");
+    }
+
+    @Test
+    void newThreadDialogSubmitsTheRealCreateSessionAction() {
+        UiNode json = SidebarBuilder.build(List.of(), NOW, false);
+        Map<String, Object> dialog = newThreadDialogOf(json);
+
+        Map<String, Object> form = castMap(castList(dialog.get("children")).get(1));
+        assertThat(form).containsEntry("type", "form");
+        Map<String, Object> submit = castMap(form.get("submit"));
+        assertThat(submit).containsEntry("label", "Create thread");
+        Map<String, Object> action = castMap(submit.get("action"));
+        assertThat(action).containsEntry("name", "create-session")
+                .containsEntry("include", List.of("newThreadTitle", "newThreadWorkdir"));
+    }
+
+    @Test
+    void footerCarriesConnectionDotAccountChipSettingsAndProfiles() {
+        Map<String, Object> footer = castMap(SidebarBuilder.build(List.of(), NOW, false,
+                "octocat").toJson().get("first"));
+        footer = castMap(footer.get("footer"));
+        assertThat(footer).containsEntry("id", "sidebar-footer");
+        List<Map<String, Object>> children = castList(footer.get("children"))
+                .stream().map(SidebarBuilderTest::castMap).toList();
+
+        // The connection dot with the Online label.
+        Map<String, Object> connection = children.get(0);
+        assertThat(connection).containsEntry("id", "sidebar-status-dot")
+                .containsEntry("tooltip", "Online");
+        Map<String, Object> dot = castMap(castList(connection.get("children")).get(0));
+        assertThat(dot).containsEntry("type", "box")
+                .containsEntry("shape", "circle")
+                .containsEntry("color", "$color.success");
+
+        // The account chip: initials avatar + handle text.
+        Map<String, Object> avatar = children.get(1);
+        assertThat(avatar).containsEntry("type", "avatar")
+                .containsEntry("initials", "OC");
+        Map<String, Object> handle = children.get(2);
+        assertThat(handle).containsEntry("type", "text").containsEntry("text", "octocat");
+
+        // Settings navigates; the profile button opens the client surface.
+        Map<String, Object> settings = children.get(3);
+        assertThat(settings).containsEntry("type", "icon_button")
+                .containsEntry("icon", "settings")
+                .containsEntry("tooltip", "Settings");
+        assertThat(castMap(settings.get("action"))).containsEntry("op", "navigate")
+                .containsEntry("screen", "settings");
+        Map<String, Object> profiles = children.get(4);
+        assertThat(castMap(profiles.get("action"))).containsEntry("op", "openProfiles");
+    }
+
+    @Test
+    void initialsTakeTheFirstTwoCharactersUppercased() {
+        assertThat(SidebarBuilder.initialsOf("octocat")).isEqualTo("OC");
+        assertThat(SidebarBuilder.initialsOf("a")).isEqualTo("A");
+        assertThat(SidebarBuilder.initialsOf("")).isEqualTo("?");
+    }
+
+    // --- T97: row anatomy ---
+
+    @Test
+    void rowTitleIsSemiboldTruncatedText() {
+        Map<String, Object> row = rowOf("demo");
+
+        Map<String, Object> title = castMap(row.get("title"));
+        assertThat(title).containsEntry("type", "text")
+                .containsEntry("text", "demo")
+                .containsEntry("fontSize", 14)
+                .containsEntry("fontWeight", 600)
+                .containsEntry("maxLines", 1)
+                .containsEntry("ellipsis", true);
+    }
+
+    @Test
+    void rowSubtitleCarriesTheMutedWorkdirAndTheProjectChip() {
+        Map<String, Object> row = rowOf("demo");
+
+        Map<String, Object> subtitle = castMap(row.get("subtitle"));
+        assertThat(subtitle).containsEntry("type", "row");
+        Map<String, Object> muted = castMap(castList(subtitle.get("children")).get(0));
+        assertThat(muted).containsEntry("type", "text")
+                .containsEntry("text", "/tmp/demo")
+                .containsEntry("color", "$color.sidebar-muted-foreground");
+        Map<String, Object> chip = castMap(castList(subtitle.get("children")).get(1));
+        assertThat(chip).containsEntry("id", "thread-context-chip")
+                .containsEntry("tooltip", "Project: /tmp/demo");
+        Map<String, Object> chipLabel = castMap(chip.get("child"));
+        assertThat(chipLabel).containsEntry("text", "demo")
+                .containsEntry("fontSize", 12);
+    }
+
+    @Test
+    void rowTrailingCarriesTheMenuAndTheHoverRevealSearchMatch() {
+        Map<String, Object> row = rowOf("demo");
+
+        assertThat(row).containsEntry("hoverReveal", true);
+        assertThat(castMap(row.get("searchMatch")))
+                .containsEntry("key", "sidebarSearch")
+                .containsEntry("minChars", 2);
+        assertThat(castMap(row.get("trailing"))).containsEntry("type", "menu");
+    }
+
+    @Test
+    void statusKindsMapTheSessionStateOntoTheTenKindSet() {
+        assertThat(kindsOf(session("w", NOW - 10, "working"))).containsExactly("working");
+        assertThat(kindsOf(session("m", NOW - 10, "monitoring"))).containsExactly("monitoring");
+        assertThat(kindsOf(session("a", NOW - 10, "needs-approval")))
+                .containsExactly("needs-approval");
+        assertThat(kindsOf(session("q", NOW - 10, "needs-answer"))).containsExactly("needs-answer");
+        assertThat(kindsOf(session("f", NOW - 10, "failed"))).containsExactly("failed");
+        assertThat(kindsOf(session("l", NOW - 10, "limited"))).containsExactly("limited");
+        assertThat(kindsOf(session("i", NOW - 10, "active"))).containsExactly("idle");
+        assertThat(kindsOf(session("b", NOW - 10, ""))).containsExactly("idle");
+        assertThat(kindsOf(session("s", NOW - 10, patch().settledAt(NOW - 5))))
+                .containsExactly("settled");
+        assertThat(kindsOf(session("z", NOW - 10, patch().snoozedUntil(NOW + 60_000))))
+                .containsExactly("snoozed");
+        // An expired snooze falls through to the status kind (the same rule
+        // the section partition applies).
+        assertThat(kindsOf(session("ze", NOW - 10, patch().snoozedUntil(NOW - 1))))
+                .containsExactly("idle");
+        assertThat(kindsOf(session("p", NOW - 10, patch().pinned(true).pinnedOrder(1))))
+                .containsExactly("idle", "pinned");
+        assertThat(kindsOf(session("pw", NOW - 10, "working",
+                patch().pinned(true).pinnedOrder(1)))).containsExactly("working", "pinned");
+    }
+
+    @Test
+    void unknownStatusFallsBackToIdleInTheTree() {
+        Map<String, Object> row = rowOf("bogus-session", "bogus-status");
+
+        assertThat(row.get("status")).isEqualTo("bogus-status");
+        assertThat(row.get("statusIndicators")).isEqualTo(List.of("idle"));
     }
 
     // --- fixtures ---
@@ -214,6 +397,33 @@ class SidebarBuilderTest {
                 Boolean.TRUE.equals(patch.pinned), patch.pinnedOrder, patch.settledAt,
                 patch.snoozedUntil, patch.archivedAt, true, patch.sortOrder,
                 patch.settledReason, false);
+    }
+
+    /** The first row of the Active section of a one-session sidebar. */
+    private static Map<String, Object> rowOf(String id) {
+        return rowOf(id, "active");
+    }
+
+    /** The first row of the Active section, with an explicit status. */
+    private static Map<String, Object> rowOf(String id, String status) {
+        return rowsOf(SidebarBuilder.build(
+                List.of(session(id, NOW - 10, status)), NOW, false)).get(0);
+    }
+
+    /** The statusIndicators list of one fixture session's row. */
+    private static List<String> kindsOf(Session session) {
+        Map<String, Object> row = rowsOf(SidebarBuilder.build(List.of(session), NOW, false))
+                .get(0);
+        return castList(row.get("statusIndicators")).stream()
+                .map(String::valueOf).toList();
+    }
+
+    /** The new-thread dialog node of one sidebar tree (the button's dialog). */
+    private static Map<String, Object> newThreadDialogOf(UiNode split) {
+        Map<String, Object> header = castMap(castMap(split.toJson().get("first")).get("header"));
+        Map<String, Object> search = castMap(castList(header.get("children")).get(1));
+        Map<String, Object> button = castMap(castList(search.get("children")).get(1));
+        return castMap(castMap(button.get("action")).get("node"));
     }
 
     private static Session session(String id, long updatedAt, PatchBuilder patch) {

@@ -1,10 +1,17 @@
 /**
- * The thread sidebar of the {@code sessions} shell (T96): a resizable
+ * The thread sidebar of the {@code sessions} shell (T96 + T97): a resizable
  * {@code split} container — the five collapsible thread sections in the
  * first pane, the chat content placeholder in the second — over the grouped
  * {@code list} primitive. Each row carries the {@code session-row:<id>}
  * identity the {@code session_updated} patch frames target and an overflow
- * {@code menu} of lifecycle actions.
+ * {@code menu} of lifecycle actions. Since T97 the first pane's list carries
+ * the sidebar {@code header} block (wordmark, search input, New thread
+ * button, collapsed-state chevron) and the {@code footer} block (connection
+ * dot, account chip, Settings and profile-switch buttons), and every row
+ * wears the full thread-row anatomy: the status indicator cluster, the
+ * semibold truncated title, the workdir subtitle with the context chip and
+ * the hover-revealed trailing cluster with the search-match marker and the
+ * overflow menu.
  *
  * <p><b>Split metrics</b> are the upstream thread-sidebar numbers (t3code
  * {@code apps/web/src/components/threadSidebarWidth.ts}, commit {@code
@@ -54,6 +61,64 @@
  * header (upstream labels empty sections); when the whole sidebar is empty
  * the list carries an empty-state node.
  *
+ * <p><b>Header block (T97).</b> The wordmark (the bold product text — the
+ * plan's T3Wordmark-style mark; upstream keeps the brand in the titlebar
+ * row, {@code sidebar/SidebarChrome.tsx:125-140}, and the sidebar header row
+ * holds search + scope + new thread, {@code sidebar/SidebarThreadHeader.tsx:
+ * 31-36}), the search input with the plan's {@code "Search threads"}
+ * placeholder (upstream's placeholder is {@code "Search"} with the
+ * {@code aria-label} {@code "Search threads"},
+ * {@code SidebarThreadHeader.tsx:73-74}), the primary {@code New thread}
+ * button (upstream renders it as the {@code SquarePenIcon} header icon
+ * button with the {@code New thread} tooltip,
+ * {@code SidebarThreadHeader.tsx:117-127}) opening the new-thread form
+ * dialog whose submit dispatches the real {@code create-session} action, and
+ * the collapsed-state chevron — decorative in this build (the split has no
+ * collapse mechanism yet), so it carries the {@code demo} marker.
+ *
+ * <p><b>Footer block (T97).</b> The connection dot with its label (the
+ * {@code ConnectionStatusDot} port — upstream maps the connection phases to
+ * dot tones, {@code components/ConnectionStatusDot.tsx:12-24}; the
+ * server-rendered footer can only state the server-reachable
+ * {@code Online} state), the account chip (initials avatar + handle) and the
+ * two icon buttons: Settings ({@code navigate settings}, the upstream
+ * {@code SidebarUtilityMenu} Settings entry,
+ * {@code sidebar/SidebarChrome.tsx:196-201}) and profile switching (the
+ * client-owned {@code openProfiles} directive).
+ *
+ * <p><b>Client-side search (T97).</b> The list carries the {@code search}
+ * spec keyed on the header input's state id: as the user types, rows whose
+ * title or subtitle match stay and non-matching rows collapse out, a
+ * match-count line renders above the sections, and from two characters the
+ * rows show the search-match pill (the {@code ThreadSearchMatch} port) in
+ * the hover-revealed trailing cluster.
+ *
+ * <p><b>Row anatomy (T97).</b> Status indicator cluster (the
+ * {@code statusIndicators} kinds, rendered by the client's
+ * {@code ThreadStatusIndicators}) &rarr; content column (the title
+ * {@code text-sm font-semibold truncate} — upstream renders the row title
+ * {@code text-sm font-medium truncate},
+ * {@code components/Sidebar.tsx:1620-1624}; the plan's semibold wins — and
+ * the subtitle row: the muted workdir text plus the context chip pill
+ * {@code px-1.5 py-0.5 text-xs} with the {@code Project: …} tooltip, the
+ * {@code ThreadContextChip} port) &rarr; the trailing cluster (the
+ * search-match marker and the overflow menu, revealed on hover via the
+ * {@code hoverReveal} behaviour). Row states: default, hover
+ * ({@code sidebar-row-hover}), selected ({@code sidebar-row-active} + ring)
+ * and dragging — all client-rendered from the row props.
+ *
+ * <p><b>Status kinds (T97).</b> The {@code statusIndicators} list maps the
+ * session state onto the plan's ten-kind set: the lifecycle state first
+ * (settled &rarr; {@code settled}, snoozed &rarr; {@code snoozed}), then the
+ * free-form status ({@code working}, {@code monitoring},
+ * {@code needs-approval}, {@code needs-answer}, {@code failed},
+ * {@code limited}; anything else — including unknown statuses — falls back
+ * to {@code idle} and is logged), plus {@code pinned} appended while the
+ * session is pinned (upstream keeps the pin glyph visible while pinned,
+ * {@code components/Sidebar.tsx:1089-1096}). The icon mapping lives
+ * client-side ({@code icon_registry.dart}); the upstream-lucide &rarr;
+ * Material table is recorded in {@code evidence/T97/icon-map.json}.
+ *
  * <p><b>Row identity.</b> Every row node is {@code session-row:<id>}, the id
  * the {@code session_updated} frames patch, and its props carry the frame
  * prop names of {@code EventFrames} ({@code title}, {@code workdir},
@@ -79,8 +144,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class SidebarBuilder {
+
+    private static final Logger LOG = LoggerFactory.getLogger(SidebarBuilder.class);
 
     /** The five sidebar sections, in render order. */
     public static final String PINNED = "Pinned";
@@ -118,6 +187,38 @@ public final class SidebarBuilder {
     /** The session statuses the Working shelf holds (upstream: working or monitoring). */
     private static final Set<String> WORKING_STATUSES = Set.of("working", "monitoring");
 
+    /**
+     * The status words that map onto their own indicator kind; every other
+     * status (including unknown ones) falls back to {@code idle}.
+     */
+    private static final Set<String> STATUS_KINDS = Set.of(
+            "working", "monitoring", "needs-approval", "needs-answer",
+            "failed", "limited");
+
+    /**
+     * The resting statuses that fall back to {@code idle} silently — the
+     * plain session states, not unknown words.
+     */
+    private static final Set<String> RESTING_STATUSES = Set.of("active", "");
+
+    /** The header search input's state id — the list's search key. */
+    public static final String SEARCH_KEY = "sidebarSearch";
+
+    /** The search-match pill threshold: matches highlight from two characters. */
+    public static final int SEARCH_MATCH_MIN_CHARS = 2;
+
+    /** The header wordmark text (the T3Wordmark-style bold product text). */
+    static final String WORDMARK = "Jhin";
+
+    /** The search input placeholder (the plan's T97 step 1). */
+    static final String SEARCH_PLACEHOLDER = "Search threads";
+
+    /** The new-thread button label (the plan's T97 step 1). */
+    static final String NEW_THREAD_LABEL = "New thread";
+
+    /** The connection label the server-rendered footer states. */
+    static final String CONNECTION_LABEL = "Online";
+
     /** The count-badge surface token (the rounded-full pill background). */
     static final String BADGE_STYLE = "sidebar-control-surface";
 
@@ -134,7 +235,8 @@ public final class SidebarBuilder {
 
     /**
      * Builds the sidebar node: the resizable {@code split} of the five
-     * thread sections (first pane) and the chat content placeholder (second).
+     * thread sections (first pane, with the header and footer blocks) and
+     * the chat content placeholder (second).
      *
      * @param sessions the sessions one caller may see (archived ones are
      *                 dropped here)
@@ -144,9 +246,22 @@ public final class SidebarBuilder {
      * @return the sidebar split node
      */
     public static UiNode build(List<Session> sessions, long now, boolean arrange) {
+        return build(sessions, now, arrange, "local");
+    }
+
+    /**
+     * Builds the sidebar node with an explicit account handle for the footer
+     * chip.
+     *
+     * @param account the caller's account handle (the footer chip), never
+     *                null
+     * @return the sidebar split node
+     */
+    public static UiNode build(List<Session> sessions, long now, boolean arrange,
+                               String account) {
         return Ui.split()
                 .id(SPLIT_ID)
-                .first(sectionsList(sessions, now, arrange))
+                .first(sectionsList(sessions, now, arrange, account))
                 .second(contentPane())
                 .initial(INITIAL_WIDTH)
                 .min(MIN_WIDTH)
@@ -155,21 +270,167 @@ public final class SidebarBuilder {
                 .build();
     }
 
-    /** The first pane: the grouped {@code list} of the five thread sections. */
-    private static UiNode sectionsList(List<Session> sessions, long now, boolean arrange) {
+    /**
+     * The first pane: the grouped {@code list} of the five thread sections
+     * with the T97 header and footer blocks and the client-side search spec.
+     */
+    private static UiNode sectionsList(List<Session> sessions, long now, boolean arrange,
+                                       String account) {
         Map<String, List<Session>> sections = partition(sessions, now);
         List<Object> wire = new ArrayList<>();
-        wire.add(section(PINNED, "section-pinned", false, sections.get(PINNED), arrange));
-        wire.add(section(ACTIVE, "section-active", false, sections.get(ACTIVE), arrange));
-        wire.add(section(WORKING, "section-working", false, sections.get(WORKING), arrange));
-        wire.add(section(SNOOZED, "section-snoozed", true, sections.get(SNOOZED), arrange));
-        wire.add(section(SETTLED, "section-settled", true, sections.get(SETTLED), arrange));
-        Ui.ListBuilder list = Ui.list().id(SECTIONS_ID).sections(wire);
+        wire.add(section(PINNED, "section-pinned", false, sections.get(PINNED), arrange, now));
+        wire.add(section(ACTIVE, "section-active", false, sections.get(ACTIVE), arrange, now));
+        wire.add(section(WORKING, "section-working", false, sections.get(WORKING), arrange, now));
+        wire.add(section(SNOOZED, "section-snoozed", true, sections.get(SNOOZED), arrange, now));
+        wire.add(section(SETTLED, "section-settled", true, sections.get(SETTLED), arrange, now));
+        Ui.ListBuilder list = Ui.list().id(SECTIONS_ID).sections(wire)
+                .header(header())
+                .footer(footer(account))
+                .search(Map.of(
+                        "key", SEARCH_KEY,
+                        "fields", List.of("title", "subtitle")));
         boolean empty = sections.values().stream().allMatch(List::isEmpty);
         if (empty) {
             list.empty(Ui.text(EMPTY_STATE).style("caption").build());
         }
         return list.build();
+    }
+
+    /**
+     * The header block: the wordmark row (wordmark + collapsed-state
+     * chevron) over the search row (input + New thread button).
+     */
+    static UiNode header() {
+        return Ui.column()
+                .id("sidebar-header")
+                .gap(8)
+                .child(brandRow())
+                .child(searchRow())
+                .build();
+    }
+
+    /** The brand row: the bold wordmark and the collapsed-state chevron. */
+    private static UiNode brandRow() {
+        return Ui.row()
+                .id("sidebar-brand")
+                .align("center")
+                .child(Ui.text(WORDMARK).style("h3").bold(true).build())
+                .child(Ui.spacer().build())
+                .child(Ui.iconButton()
+                        .icon("chevron_right")
+                        // No collapse mechanism behind the split yet: the
+                        // chevron is decorative and carries the demo marker.
+                        .set("demo", true)
+                        .build())
+                .build();
+    }
+
+    /** The search row: the search input and the New thread button. */
+    private static UiNode searchRow() {
+        return Ui.row()
+                .id("sidebar-search")
+                .align("center")
+                .gap(8)
+                .child(Ui.input(SEARCH_KEY)
+                        .placeholder(SEARCH_PLACEHOLDER)
+                        .flex(1)
+                        .build())
+                .child(Ui.button(NEW_THREAD_LABEL)
+                        .style("primary")
+                        .icon("add")
+                        .action(Directives.dialog(newThreadDialog().toJson()))
+                        .build())
+                .build();
+    }
+
+    /**
+     * The new-thread dialog: the form whose submit dispatches the real
+     * {@code create-session} action with the two dialog inputs included
+     * (their values ride the UiState ids, so the include survives the
+     * dialog overlay).
+     */
+    static UiNode newThreadDialog() {
+        return Ui.column()
+                .id("new-thread-dialog")
+                .gap(12)
+                .child(Ui.text(NEW_THREAD_LABEL).style("h3").build())
+                .child(Ui.form()
+                        .field(Ui.input("newThreadTitle")
+                                .label("Title")
+                                .required(true)
+                                .errorText("A title is required")
+                                .build())
+                        .field(Ui.input("newThreadWorkdir")
+                                .label("Working directory")
+                                .required(true)
+                                .errorText("A working directory is required")
+                                .build())
+                        .submit("Create thread", ActionDescriptors.of(
+                                "create-session", null,
+                                List.of("newThreadTitle", "newThreadWorkdir")))
+                        .build())
+                .build();
+    }
+
+    /**
+     * The footer block: the connection dot with its label, the account chip
+     * and the Settings / profile-switch icon buttons.
+     */
+    static UiNode footer(String account) {
+        String handle = account == null || account.isBlank() ? "local" : account;
+        return Ui.row()
+                .id("sidebar-footer")
+                .align("center")
+                .gap(8)
+                .child(connectionDot())
+                .child(Ui.avatar()
+                        .initials(initialsOf(handle))
+                        .size(20)
+                        .shape("circle")
+                        .build())
+                .child(Ui.text(handle).style("small").flex(1).build())
+                .child(Ui.iconButton()
+                        .icon("settings")
+                        .tooltip("Settings")
+                        .action(Directives.navigate("settings"))
+                        .build())
+                .child(Ui.iconButton()
+                        .icon("person")
+                        .tooltip("Switch profile")
+                        .action(Directives.openProfiles())
+                        .build())
+                .build();
+    }
+
+    /**
+     * The connection dot: the success-toned 8 px dot with the
+     * {@code Online} label — the {@code ConnectionStatusDot} port. The
+     * server-rendered footer states the server-reachable phase; the offline
+     * rendering is a client concern this todo does not wire.
+     */
+    private static UiNode connectionDot() {
+        return Ui.row()
+                .id("sidebar-status-dot")
+                .align("center")
+                .gap(4)
+                .tooltip(CONNECTION_LABEL)
+                .child(Ui.box()
+                        .width(8)
+                        .height(8)
+                        .color("$color.success")
+                        .shape("circle")
+                        .build())
+                .child(Ui.text(CONNECTION_LABEL).style("caption").build())
+                .build();
+    }
+
+    /** The chip initials of one handle: the first two characters, uppercased. */
+    public static String initialsOf(String handle) {
+        String trimmed = handle.trim();
+        if (trimmed.isEmpty()) {
+            return "?";
+        }
+        return trimmed.substring(0, Math.min(2, trimmed.length())).toUpperCase();
     }
 
     /** The second pane: the chat content placeholder until T100 lands. */
@@ -242,7 +503,8 @@ public final class SidebarBuilder {
      * {@code storeKey}, and the rows.
      */
     private static Map<String, Object> section(String label, String id, boolean collapsed,
-                                               List<Session> sessions, boolean arrange) {
+                                               List<Session> sessions, boolean arrange,
+                                               long now) {
         Map<String, Object> section = new LinkedHashMap<>();
         section.put("label", label);
         section.put("id", id);
@@ -259,7 +521,7 @@ public final class SidebarBuilder {
         List<Object> rows = new ArrayList<>();
         List<String> ids = sessions.stream().map(Session::id).toList();
         for (int i = 0; i < sessions.size(); i++) {
-            rows.add(row(sessions.get(i), ids, i, arrange));
+            rows.add(row(sessions.get(i), ids, i, arrange, now));
         }
         section.put("items", rows);
         return section;
@@ -267,16 +529,23 @@ public final class SidebarBuilder {
 
     /**
      * One thread row: the {@code session-row:<id>} {@code list_row} with the
-     * title, the workdir subtitle, the status badge and the overflow menu.
+     * T97 anatomy — the status indicator cluster, the semibold truncated
+     * title, the workdir subtitle with the context chip, the hover-revealed
+     * trailing cluster (search-match marker + overflow menu) and the frame
+     * props.
      */
     private static UiNode row(Session session, List<String> sectionIds,
-                              int index, boolean arrange) {
+                              int index, boolean arrange, long now) {
         Ui.ListRowBuilder row = Ui.listRow()
                 .id("session-row:" + session.id())
-                .title(session.title())
-                .subtitle(session.workdir())
-                .badge(Ui.badge().label(statusLabel(session)).build())
+                .title(title(session.title()))
+                .subtitle(subtitle(session))
                 .trailing(menu(session, sectionIds, index, arrange))
+                .statusIndicators(statusKinds(session, now))
+                .hoverReveal(true)
+                .searchMatch(Map.of(
+                        "key", SEARCH_KEY,
+                        "minChars", SEARCH_MATCH_MIN_CHARS))
                 .dragHandle(arrange)
                 .action(Directives.navigate("chat:" + session.id()));
         // The session_updated frame props (EventFrames.ROW_PROPS): the row
@@ -293,10 +562,119 @@ public final class SidebarBuilder {
         return row.build();
     }
 
-    /** The status badge label: the free-form session status. */
-    private static String statusLabel(Session session) {
-        String status = session.status();
-        return status == null || status.isBlank() ? "idle" : status;
+    /**
+     * The row title node: {@code text-sm font-semibold truncate} — fontSize
+     * 14, weight 600, one line with the ellipsis (the plan's T97 step 2;
+     * upstream renders the row title {@code text-sm font-medium truncate},
+     * {@code components/Sidebar.tsx:1620-1624}).
+     */
+    private static UiNode title(String text) {
+        return Ui.text(text)
+                .fontSize(14)
+                .fontWeight(600)
+                .maxLines(1)
+                .ellipsis(true)
+                .build();
+    }
+
+    /**
+     * The subtitle row: the muted workdir text plus the context chip pill
+     * (the {@code ThreadContextChip} port — {@code px-1.5 py-0.5 text-xs}
+     * with the {@code Project: …} tooltip). Jhin sessions carry no branch
+     * field, so only the Project chip exists.
+     */
+    private static UiNode subtitle(Session session) {
+        String workdir = session.workdir();
+        Ui.RowBuilder row = Ui.row()
+                .align("center")
+                .gap(4)
+                .child(Ui.text(workdir == null || workdir.isBlank() ? "—" : workdir)
+                        .style("caption")
+                        .color("$color.sidebar-muted-foreground")
+                        .maxLines(1)
+                        .ellipsis(true)
+                        .flex(1)
+                        .build());
+        UiNode chip = contextChip(workdir);
+        if (chip != null) {
+            row.child(chip);
+        }
+        return row.build();
+    }
+
+    /**
+     * The context chip pill: the workdir basename over the bordered pill
+     * surface with the {@code Project: <workdir>} tooltip.
+     */
+    private static UiNode contextChip(String workdir) {
+        if (workdir == null || workdir.isBlank()) {
+            return null;
+        }
+        return Ui.box()
+                .id("thread-context-chip")
+                .padding(Map.of("left", 6, "right", 6, "top", 2, "bottom", 2))
+                .border("$color.border")
+                .borderRadius("$radius.sm")
+                .tooltip("Project: " + workdir)
+                .child(Ui.text(basename(workdir))
+                        .fontSize(12)
+                        .maxLines(1)
+                        .ellipsis(true)
+                        .build())
+                .build();
+    }
+
+    /** The last path segment of one workdir (the chip label). */
+    static String basename(String workdir) {
+        String trimmed = workdir.trim();
+        while (trimmed.endsWith("/") && trimmed.length() > 1) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        int slash = trimmed.lastIndexOf('/');
+        return slash >= 0 && slash < trimmed.length() - 1
+                ? trimmed.substring(slash + 1)
+                : trimmed;
+    }
+
+    /**
+     * The status indicator kinds of one session, in render order: the
+     * lifecycle kind (settled / snoozed while the snooze is still in the
+     * future — an expired snooze falls through to the status kind, the same
+     * rule the section partition applies), the status kind (working,
+     * monitoring, needs-approval, needs-answer, failed, limited — anything
+     * else falls back to {@code idle} and is logged) and {@code pinned}
+     * while pinned.
+     */
+    static List<String> statusKinds(Session session, long now) {
+        List<String> kinds = new ArrayList<>();
+        if (session.settledAt() != null) {
+            kinds.add("settled");
+        } else if (session.snoozedUntil() != null && session.snoozedUntil() > now) {
+            kinds.add("snoozed");
+        } else {
+            kinds.add(statusKind(session.status()));
+        }
+        if (session.pinned()) {
+            kinds.add("pinned");
+        }
+        return List.copyOf(kinds);
+    }
+
+    /**
+     * The status word &rarr; indicator kind: the six known words pass
+     * through, the resting statuses ({@code active}, blank) fall back to
+     * {@code idle} silently, and anything else falls back to {@code idle}
+     * with a log line.
+     */
+    private static String statusKind(String status) {
+        if (status != null && STATUS_KINDS.contains(status)) {
+            return status;
+        }
+        if (status == null || !RESTING_STATUSES.contains(status)) {
+            LOG.info("sidebar: unknown session status \"{}\" renders the idle fallback indicator",
+                    status == null ? "" : status);
+        }
+        return "idle";
     }
 
     /**

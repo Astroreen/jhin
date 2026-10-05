@@ -31,6 +31,19 @@ import 'scroll_common.dart';
 /// persists the collapse state to the client store — the stored value wins
 /// over the `collapsed` default once read, and every toggle writes it back.
 ///
+/// The T97 sidebar extensions (all optional): `header`/`footer` render a
+/// node pinned above/below the scrollable (outside it — the sidebar's
+/// header and footer blocks stay visible while the sections scroll);
+/// `search` (`{key, fields?, empty?}`) filters the section items client-side
+/// against the UiState string under `key` — a row stays when its title or
+/// subtitle (the `fields` list, default `title`/`subtitle`) contains the
+/// query ASCII case-folded (the upstream `foldAsciiCase`,
+/// `apps/web/src/components/ThreadSearchMatch.tsx:1-4`, commit 37de6cb) —
+/// and a match-count line renders above the sections while the query is
+/// non-empty (`N matches`, or the `empty` text — the upstream
+/// "No threads found", `apps/web/src/components/Sidebar.tsx:5040-5046` —
+/// when nothing matches).
+///
 /// `maxHeight` bounds the viewport; without it the list fills its bounded
 /// slot, and in an unbounded parent it degrades to a content-sized
 /// shrink-wrap scroller (`scroll_common.dart`) instead of asserting.
@@ -40,6 +53,8 @@ import 'scroll_common.dart';
 Widget buildList(BuildContext context, UiNode node, RenderContext ctx) {
   final rawSections = node.listProp('sections');
   final emptyProp = node.props['empty'];
+  final header = node.props['header'];
+  final footer = node.props['footer'];
 
   final Widget content;
   if (rawSections != null && rawSections.isNotEmpty) {
@@ -57,11 +72,31 @@ Widget buildList(BuildContext context, UiNode node, RenderContext ctx) {
         : _flatList(context, node, ctx, items);
   }
 
+  // The T97 header/footer: pinned outside the scrollable, above and below
+  // it (the sidebar chrome stays visible while the sections scroll).
+  Widget wrap(Widget child) {
+    var wrapped = child;
+    final footerWidget =
+        footer == null ? null : buildChildProp(context, ctx, footer);
+    final headerWidget =
+        header == null ? null : buildChildProp(context, ctx, header);
+    if (headerWidget != null || footerWidget != null) {
+      wrapped = Column(
+        children: [
+          ?headerWidget,
+          Expanded(child: wrapped),
+          ?footerWidget,
+        ],
+      );
+    }
+    return wrapped;
+  }
+
   final maxHeight = node.numProp('maxHeight')?.toDouble();
-  if (maxHeight == null || maxHeight < 0) return content;
+  if (maxHeight == null || maxHeight < 0) return wrap(content);
   return ConstrainedBox(
     constraints: BoxConstraints(maxHeight: maxHeight),
-    child: content,
+    child: wrap(content),
   );
 }
 
@@ -279,7 +314,24 @@ class _SectionedListState extends State<_SectionedList> {
     final sections = node.listProp('sections') ?? const <Object?>[];
     final emptyProp = node.props['empty'];
     final separator = node.props['separator'];
+    final search = asMap(node.props['search']);
 
+    // The T97 client-side search: the UiState query under `search.key`
+    // filters every section's items against the row's `fields` (default
+    // title/subtitle), ASCII case-folded. An empty query shows everything.
+    final queryKey = search == null ? null : search['key'];
+    final query = queryKey is String
+        ? (ctx.state.values[queryKey] ?? '')?.toString() ?? ''
+        : '';
+    final searching = search != null && query.isNotEmpty;
+    final fields = search == null
+        ? const ['title', 'subtitle']
+        : (search['fields'] is List && (search['fields'] as List).isNotEmpty
+            ? [for (final f in search['fields'] as List) f.toString()]
+            : const ['title', 'subtitle']);
+    final foldedQuery = _foldAscii(query);
+
+    var matches = 0;
     final slots = <Widget Function(BuildContext)>[];
     for (var s = 0; s < sections.length; s++) {
       final section = asMap(sections[s]) ?? const {};
@@ -301,12 +353,41 @@ class _SectionedListState extends State<_SectionedList> {
       final items = [for (final item in rawItems) UiNode.fromJson(item)];
       for (var i = 0; i < items.length; i++) {
         final item = items[i];
+        if (searching && !_matches(item, fields, foldedQuery)) continue;
+        matches++;
         slots.add((context) => ctx.build(context, item));
         if (separator != null && i < items.length - 1) {
           final separatorNode = UiNode.fromJson(separator);
           slots.add((context) => ctx.build(context, separatorNode));
         }
       }
+    }
+
+    // The match-count line above the sections while searching (the plan's
+    // T97 step 1c; the zero-matches text is the upstream
+    // "No threads found", Sidebar.tsx:5040-5046).
+    if (searching) {
+      final line = matches == 0 ? 'No threads found' : '$matches matches';
+      slots.insert(
+        0,
+        (context) => Semantics(
+          label: 'Find work',
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Text(
+              line,
+              style: JhinDesignScope.materialOf(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(
+                    color: JhinDesignScope.materialOf(context)
+                        .colorScheme
+                        .onSurfaceVariant,
+                  ),
+            ),
+          ),
+        ),
+      );
     }
 
     return buildAdaptiveScroller(
@@ -318,6 +399,17 @@ class _SectionedListState extends State<_SectionedList> {
         itemBuilder: (context, index) => slots[index](context),
       ),
     );
+  }
+
+  /// Whether one row node matches the folded query on any of the `fields`
+  /// string props (a string prop or a flat text node's `text`).
+  bool _matches(UiNode item, List<String> fields, String foldedQuery) {
+    for (final field in fields) {
+      final value = item.props[field];
+      final text = value is String ? value : asMap(value)?['text']?.toString();
+      if (text != null && _foldAscii(text).contains(foldedQuery)) return true;
+    }
+    return false;
   }
 
   Widget _header(
@@ -395,4 +487,15 @@ class _SectionedListState extends State<_SectionedList> {
       ),
     );
   }
+}
+
+/// The ASCII case fold of the upstream `foldAsciiCase`
+/// (`apps/web/src/components/ThreadSearchMatch.tsx:1-4`): A–Z lower to a–z,
+/// everything else passes through.
+String _foldAscii(String value) {
+  final buffer = StringBuffer();
+  for (final code in value.codeUnits) {
+    buffer.writeCharCode(code >= 0x41 && code <= 0x5A ? code + 0x20 : code);
+  }
+  return buffer.toString();
 }

@@ -129,23 +129,35 @@ void main() {
       expect(harness.dispatched.single['name'], 'menu');
     });
 
-    testWidgets('selected:true shows the selected tint', (tester) async {
+    testWidgets('selected:true shows the selected tint (the sidebar-row-active '
+        'token with the ring)', (tester) async {
       await _pumpNode(tester, {
         'type': 'list_row',
         'title': 'Row',
         'selected': true,
       });
-      final expected = Theme.of(tester.element(find.byType(Scaffold)))
-          .colorScheme
-          .secondaryContainer;
+      // The T97 selected state: the sidebar-row-active token (the fallback
+      // theme resolves it to the secondary container) with the 1 px ring.
+      final design = JhinTheme.fallback();
+      final expected = design.colorOf('sidebar-row-active') ??
+          Theme.of(tester.element(find.byType(Scaffold)))
+              .colorScheme
+              .secondaryContainer;
+      final ring = design.colorOf('ring') ??
+          Theme.of(tester.element(find.byType(Scaffold))).colorScheme.primary;
       expect(
-        find.byWidgetPredicate((w) => w is ColoredBox && w.color == expected),
+        find.byWidgetPredicate((w) =>
+            w is Container &&
+            (w.decoration as BoxDecoration?)?.color == expected &&
+            (w.decoration as BoxDecoration?)?.border?.top.color == ring),
         findsOneWidget,
       );
 
       await _pumpNode(tester, {'type': 'list_row', 'title': 'Row'});
       expect(
-        find.byWidgetPredicate((w) => w is ColoredBox && w.color == expected),
+        find.byWidgetPredicate((w) =>
+            w is Container &&
+            (w.decoration as BoxDecoration?)?.color == expected),
         findsNothing,
       );
     });

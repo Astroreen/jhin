@@ -143,7 +143,6 @@ class SessionsScreenTest {
 
         assertThat(row).containsEntry("id", "session-row:" + session.id())
                 .containsEntry("type", "list_row")
-                .containsEntry("title", "demo")
                 .containsEntry("workdir", "/tmp/demo")
                 .containsEntry("status", "active")
                 .containsEntry("pinned", false)
@@ -153,6 +152,11 @@ class SessionsScreenTest {
                 .containsKey("archivedAt")
                 .containsKey("settledReason")
                 .containsKey("sortOrder");
+        // The T97 row anatomy: the title is the semibold truncated text node.
+        assertThat(castMap(row.get("title"))).containsEntry("type", "text")
+                .containsEntry("text", "demo")
+                .containsEntry("fontSize", 14)
+                .containsEntry("fontWeight", 600);
     }
 
     @Test
