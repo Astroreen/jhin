@@ -1,0 +1,6 @@
+ok: the builder whitelist tripped: the probe failed naming 'unsupported prop leftPanel on shell' (probe-slot.txt)
+ok: the real guard test (ShellScreenTest.unknownSlotNameIsRejectedAtBuild) passes after the probe
+FAIL: the unknown-slot guard tripped as designed (the probe expected a silent accept, the whitelist rejected it)
+  probe: ShellSlotProbeTest.unknownSlotIsSilentlyAccepted failed with 'unsupported prop leftPanel on shell' (probe-slot.txt)
+  the temporary probe file was removed; the permanent guard (ShellScreenTest) stays green
+FAIL: deliberately wrong expectation: the unknown slot was not rejected (it was; see .sisyphus/evidence/T95/probe-slot.txt)

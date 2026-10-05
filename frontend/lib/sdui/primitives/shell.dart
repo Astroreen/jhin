@@ -1,21 +1,41 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../design/theme.dart';
+import '../../design/tokens.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart' show insetAll;
+import 'scroll_fade.dart'
+    show kScrollFadeTopbarAlphas, kScrollFadeTopbarStops, scrollFadeBandMask;
 
 /// `shell` (§2.6): `sidebar?`, `header?`, `body?`, `detail?`, `rail?`,
-/// `breakpoint?` (default 900), `sidebarWidth?` (default `$size.sidebar`,
-/// 280), `sidebarCollapsedWidth?` (default 56), `collapsible?`,
-/// `collapsed?` (patchable via the node `id`).
+/// `topbar?`, `topbarCompact?`, `pageHeader?`, `terminal?`, `stageBackdrop?`,
+/// `breakpoint?` (default 768 — the T95 fixed responsive breakpoint),
+/// `sidebarWidth?` (default `$size.sidebar`, 280), `sidebarCollapsedWidth?`
+/// (default 56), `collapsible?`, `collapsed?` (patchable via the node `id`).
+///
+/// The T95 chrome: the `topbar` slot renders as the fixed-height workspace
+/// top bar (the `layout.topbarHeight` token, 52) padded by the workspace
+/// gutters (`space.workspaceGutter`, the `sm` step 1.25rem wide, 0.5rem
+/// below the breakpoint) plus the safe-area insets (`pl-safe`/`pr-safe`);
+/// the body content under it wears the seven-stop topbar scroll fade (the
+/// `topbar-scroll-fade` recipe, T92's band constants). `pageHeader` is the
+/// title + actions row above the body; `terminal` the optional drawer below
+/// the body row (its grip is visual chrome; below the breakpoint it caps at
+/// 40% of the viewport height); `stageBackdrop` paints the `theme.stageArt`
+/// gradient behind the sidebar under the sidebar-stage fade mask.
 ///
 /// At or above the breakpoint the sidebar sits beside the content at its
-/// expanded (or collapsed) width; below it the sidebar becomes a drawer
-/// opened from a hamburger in the header (a slim bar carries the hamburger
-/// when the shell has no header). A shell without `body` degrades to a card
-/// with "Missing body" (§2.6). `collapsed` is honoured whenever it is
-/// `true`; `collapsible` adds the sidebar collapse toggle.
+/// expanded (or collapsed) width — the open/close rides `motion.panel` over
+/// the `easeDrawer` curve (reduced motion collapses the duration to 0).
+/// Below it the sidebar overlays as a drawer (`openMobile` state, backdrop,
+/// tap or swipe to close), the right panel is hidden and the topbar swaps to
+/// `topbarCompact` (the breadcrumb condensed to the current title). A shell
+/// without `body` degrades to a card with "Missing body" (§2.6). `collapsed`
+/// is honoured whenever it is `true`; `collapsible` adds the sidebar
+/// collapse toggle.
 Widget buildShell(BuildContext context, UiNode node, RenderContext ctx) =>
     _ShellView(node: node, ctx: ctx);
 
@@ -34,6 +54,23 @@ double _widthProp(UiNode node, String key, double fallback) {
   return fallback;
 }
 
+/// The narrow gutter (plan T95 step 7): 0.5rem at the resolved interface
+/// size.
+double _narrowGutter(JhinTheme design) => 0.5 * design.switches.fontSizes.sizeInterface;
+
+/// The wide gutter: the `sm` step of `space.workspaceGutter` (1.25rem), rem
+/// scaled. The `{base, sm}` map's `sm` entry is the layout concern the shell
+/// owns (the token `resolve` collapses to `base`).
+double _wideGutter(JhinTheme design) {
+  final rem = design.switches.fontSizes.sizeInterface.toDouble();
+  final raw = design.tokens.surface.value('space', 'workspaceGutter');
+  if (raw is Map) {
+    final sm = parseCssLength(raw['sm'], remPx: rem);
+    if (sm != null) return sm;
+  }
+  return parseCssLength(raw, remPx: rem) ?? 1.25 * rem;
+}
+
 class _ShellView extends StatefulWidget {
   const _ShellView({required this.node, required this.ctx});
 
@@ -46,6 +83,10 @@ class _ShellView extends StatefulWidget {
 
 class _ShellViewState extends State<_ShellView> {
   late bool _collapsed = widget.node.boolProp('collapsed') == true;
+
+  /// The narrow drawer state (`openMobile`): the sidebar overlays with a
+  /// backdrop until a tap or a swipe closes it.
+  bool _openMobile = false;
 
   @override
   void didUpdateWidget(covariant _ShellView old) {
@@ -74,6 +115,10 @@ class _ShellViewState extends State<_ShellView> {
     }
   }
 
+  void _openDrawer() => setState(() => _openMobile = true);
+
+  void _closeDrawer() => setState(() => _openMobile = false);
+
   @override
   Widget build(BuildContext context) {
     final node = widget.node;
@@ -82,9 +127,10 @@ class _ShellViewState extends State<_ShellView> {
     if (bodyNode == null) {
       return _missingBody(context);
     }
-    final tokens = JhinDesignScope.of(context).tokens;
+    final design = JhinDesignScope.of(context);
+    final tokens = design.tokens;
     final width = MediaQuery.sizeOf(context).width;
-    final breakpoint = node.numProp('breakpoint')?.toDouble() ?? 900;
+    final breakpoint = node.numProp('breakpoint')?.toDouble() ?? 768;
     final sidebarWidth = _widthProp(node, 'sidebarWidth', tokens.sidebarWidth);
     final collapsedWidth =
         _widthProp(node, 'sidebarCollapsedWidth', 56);
@@ -92,9 +138,29 @@ class _ShellViewState extends State<_ShellView> {
     final headerNode = _slot(node, 'header');
     final detailNode = _slot(node, 'detail');
     final railNode = _slot(node, 'rail');
+    final topbarWide = _slot(node, 'topbar');
+    final topbarCompact = _slot(node, 'topbarCompact');
+    final pageHeaderNode = _slot(node, 'pageHeader');
+    final terminalNode = _slot(node, 'terminal');
+    final stageBackdrop = node.boolProp('stageBackdrop') == true;
+
+    final narrow = width < breakpoint;
+    final topbarNode = narrow ? (topbarCompact ?? topbarWide) : topbarWide;
+    // The legacy `header` slot below the breakpoint: consumed by the top
+    // bar row (the T65 behaviour — hamburger + header, no fixed height)
+    // unless a T95 top bar slot already occupies it.
+    final headerInBar = narrow && topbarNode == null && headerNode != null;
+    final gutter = narrow ? _narrowGutter(design) : _wideGutter(design);
+    final topbarHeight =
+        (design.resolve('layout', 'topbarHeight') as num?)?.toDouble() ?? 52;
+    // The panel animation: `motion.panel` over the `easeDrawer` curve;
+    // reduced motion collapses the duration to 0 (the scope does it).
+    final panel = tokens.motion.panel;
+    final curve = jhinEaseDrawerCurve(tokens.surface);
 
     final body = ctx.build(context, bodyNode);
-    final detail = detailNode == null ? null : ctx.build(context, detailNode);
+    // Below the breakpoint the right panel is hidden by default (T95).
+    final detail = narrow ? null : (detailNode == null ? null : ctx.build(context, detailNode));
     final main = Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -103,54 +169,85 @@ class _ShellViewState extends State<_ShellView> {
       ],
     );
 
-    if (width < breakpoint) {
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (headerNode != null && !headerInBar) ctx.build(context, headerNode),
+        if (pageHeaderNode != null)
+          Padding(
+            padding: EdgeInsets.only(
+              left: gutter + _safeInset(context, left: true),
+              right: gutter + _safeInset(context, right: true),
+            ),
+            child: ctx.build(context, pageHeaderNode),
+          ),
+        Expanded(
+          // The topbar scroll fade: the seven-stop band over the content
+          // under the top bar (the upstream timeline wears it unconditionally).
+          child: topbarNode == null
+              ? main
+              : _TopbarFade(height: 24, child: main),
+        ),
+        if (terminalNode != null)
+          _terminalDrawer(context, terminalNode, narrow),
+      ],
+    );
+
+    if (narrow) {
       return Material(
         type: MaterialType.transparency,
         child: _narrow(
           context,
+          design: design,
           sidebarNode: sidebarNode,
           railNode: railNode,
+          topbarNode: topbarNode,
+          headerInBar: headerInBar,
           headerNode: headerNode,
-          main: main,
+          topbarHeight: topbarHeight,
+          gutter: gutter,
+          panel: panel,
+          curve: curve,
+          content: content,
         ),
       );
     }
 
     final sidebar = sidebarNode == null
         ? null
-        : SizedBox(
+        : _sidebarPane(
+            context,
+            design: design,
+            node: node,
+            sidebarNode: sidebarNode,
             width: _collapsed ? collapsedWidth : sidebarWidth,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (node.boolProp('collapsible') == true)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: IconButton(
-                      icon: Icon(_collapsed
-                          ? Icons.chevron_right
-                          : Icons.chevron_left),
-                      tooltip: _collapsed ? 'Expand sidebar' : 'Collapse sidebar',
-                      onPressed: _toggleCollapsed,
-                    ),
-                  ),
-                Expanded(child: ctx.build(context, sidebarNode)),
-              ],
-            ),
+            panel: panel,
+            curve: curve,
+            stageBackdrop: stageBackdrop,
           );
     return Material(
       type: MaterialType.transparency,
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (railNode != null) ctx.build(context, railNode),
-          ?sidebar,
+          if (topbarNode != null)
+            SizedBox(
+              height: topbarHeight,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: gutter + _safeInset(context, left: true),
+                  right: gutter + _safeInset(context, right: true),
+                ),
+                child: ctx.build(context, topbarNode),
+              ),
+            ),
           Expanded(
-            child: Column(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (headerNode != null) ctx.build(context, headerNode),
-                Expanded(child: main),
+                if (railNode != null) ctx.build(context, railNode),
+                ?sidebar,
+                Expanded(child: content),
               ],
             ),
           ),
@@ -159,57 +256,220 @@ class _ShellViewState extends State<_ShellView> {
     );
   }
 
-  /// Below the breakpoint the sidebar becomes a drawer; a hamburger in the
-  /// header (or a slim bar when there is no header) opens it.
-  Widget _narrow(
+  /// The safe-area inset of one horizontal side (`pl-safe`/`pr-safe`,
+  /// index.css:1037-1042): `max(env(safe-area-inset-*), 0px)`.
+  double _safeInset(BuildContext context, {bool left = false, bool right = false}) {
+    final padding = MediaQuery.paddingOf(context);
+    final value = left ? padding.left : padding.right;
+    return value.isFinite && value > 0 ? value : 0;
+  }
+
+  /// The wide sidebar pane: the stage backdrop behind it, the collapse
+  /// toggle above, the width animating over `motion.panel` + `easeDrawer`.
+  Widget _sidebarPane(
     BuildContext context, {
-    required UiNode? sidebarNode,
-    required UiNode? railNode,
-    required UiNode? headerNode,
-    required Widget main,
+    required JhinTheme design,
+    required UiNode node,
+    required UiNode sidebarNode,
+    required double width,
+    required Duration panel,
+    required Curve curve,
+    required bool stageBackdrop,
   }) {
     final ctx = widget.ctx;
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (node.boolProp('collapsible') == true)
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              icon: Icon(_collapsed
+                  ? Icons.chevron_right
+                  : Icons.chevron_left),
+              tooltip: _collapsed ? 'Expand sidebar' : 'Collapse sidebar',
+              onPressed: _toggleCollapsed,
+            ),
+          ),
+        Expanded(child: ctx.build(context, sidebarNode)),
+      ],
+    );
+    // The stage backdrop paints behind the sidebar content (T95); without
+    // it the pane is the plain column (the T65 golden path, byte-identical).
+    final pane = stageBackdrop
+        ? Stack(
+            children: [
+              Positioned.fill(child: _StageBackdrop(design: design)),
+              Positioned.fill(child: content),
+            ],
+          )
+        : content;
+    // The open/close rides `motion.panel` + `easeDrawer`; the default 0 ms
+    // keeps the plain box (no animation machinery, the T65 goldens hold).
+    if (panel <= Duration.zero) {
+      return SizedBox(width: width, child: pane);
+    }
+    return AnimatedContainer(
+      duration: panel,
+      curve: curve,
+      width: width,
+      child: pane,
+    );
+  }
+
+  /// The terminal drawer below the body row: the visual grip above the
+  /// server-authored content; below the breakpoint the drawer caps at 40% of
+  /// the viewport height (plan T95 step 7). The drawer height is the
+  /// terminal node's `height` prop when it carries one, 240 otherwise.
+  Widget _terminalDrawer(BuildContext context, UiNode terminalNode, bool narrow) {
+    final theme = JhinDesignScope.materialOf(context);
+    var drawerHeight = terminalNode.numProp('height')?.toDouble() ?? 240;
+    if (narrow) {
+      drawerHeight =
+          math.min(drawerHeight, MediaQuery.sizeOf(context).height * 0.4);
+    }
+    return SizedBox(
+      height: drawerHeight,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              width: 32,
+              height: 4,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Expanded(child: widget.ctx.build(context, terminalNode)),
+        ],
+      ),
+    );
+  }
+
+  /// Below the breakpoint the sidebar overlays as a drawer: the `openMobile`
+  /// state, a fading backdrop (tap to close), a swipe on the panel edge and
+  /// the slide-in over `motion.panel` + `easeDrawer`. A hamburger in the
+  /// top bar (or a slim bar when the shell has none) opens it. The T95 top
+  /// bar slots render at the fixed height with the gutters; the legacy
+  /// `header` slot keeps the unconstrained T65 row.
+  Widget _narrow(
+    BuildContext context, {
+    required JhinTheme design,
+    required UiNode? sidebarNode,
+    required UiNode? railNode,
+    required UiNode? topbarNode,
+    required bool headerInBar,
+    required UiNode? headerNode,
+    required double topbarHeight,
+    required double gutter,
+    required Duration panel,
+    required Curve curve,
+    required Widget content,
+  }) {
+    final ctx = widget.ctx;
+    final theme = JhinDesignScope.materialOf(context);
     final hamburger = Builder(
       builder: (context) => IconButton(
         icon: const Icon(Icons.menu),
         tooltip: 'Open navigation',
-        onPressed: () => Scaffold.of(context).openDrawer(),
+        onPressed: _openDrawer,
       ),
     );
-    final header = headerNode == null
-        ? SizedBox(
-            height: 48,
-            child: Align(alignment: Alignment.centerLeft, child: hamburger),
-          )
-        : Row(
+    final Widget bar;
+    if (topbarNode != null) {
+      bar = SizedBox(
+        height: topbarHeight,
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: _safeInset(context, left: true),
+            right: gutter + _safeInset(context, right: true),
+          ),
+          child: Row(
             children: [
               hamburger,
-              Expanded(child: ctx.build(context, headerNode)),
+              Expanded(child: ctx.build(context, topbarNode)),
             ],
-          );
+          ),
+        ),
+      );
+    } else if (headerInBar && headerNode != null) {
+      bar = Row(
+        children: [
+          hamburger,
+          Expanded(child: ctx.build(context, headerNode)),
+        ],
+      );
+    } else {
+      bar = SizedBox(
+        height: 48,
+        child: Align(alignment: Alignment.centerLeft, child: hamburger),
+      );
+    }
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        header,
-        Expanded(child: main),
+        bar,
+        Expanded(child: content),
       ],
     );
+    final stack = railNode == null
+        ? body
+        : Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [ctx.build(context, railNode), Expanded(child: body)],
+          );
     if (sidebarNode == null) {
-      return railNode == null
-          ? body
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [ctx.build(context, railNode), Expanded(child: body)],
-            );
+      return stack;
     }
-    return Scaffold(
-      drawer: Drawer(child: ctx.build(context, sidebarNode)),
-      body: railNode == null
-          ? body
-          : Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [ctx.build(context, railNode), Expanded(child: body)],
+    final sidebarWidth = _widthProp(
+        widget.node, 'sidebarWidth', design.tokens.sidebarWidth);
+    return Stack(
+      children: [
+        stack,
+        // The backdrop: fades in over `motion.panel`, tap closes.
+        Positioned.fill(
+          child: IgnorePointer(
+            ignoring: !_openMobile,
+            child: AnimatedOpacity(
+              duration: panel,
+              opacity: _openMobile ? 1 : 0,
+              child: GestureDetector(
+                onTap: _closeDrawer,
+                child: ColoredBox(
+                  color: theme.colorScheme.scrim.withValues(alpha: 0.54),
+                ),
+              ),
             ),
+          ),
+        ),
+        // The overlay panel: slides in from the leading edge; a swipe left
+        // past a third of the width closes it.
+        AnimatedPositioned(
+          duration: panel,
+          curve: curve,
+          left: _openMobile ? 0 : -sidebarWidth,
+          top: 0,
+          bottom: 0,
+          width: sidebarWidth,
+          child: GestureDetector(
+            onHorizontalDragEnd: (details) {
+              if (details.primaryVelocity != null &&
+                  details.primaryVelocity! < 100) {
+                _closeDrawer();
+              }
+            },
+            child: Material(
+              elevation: 16,
+              color: theme.colorScheme.surfaceContainerLow,
+              child: ctx.build(context, sidebarNode),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -223,4 +483,152 @@ class _ShellViewState extends State<_ShellView> {
       ),
     );
   }
+}
+
+/// The topbar scroll fade (T95): the static seven-stop band of the
+/// `topbar-scroll-fade` recipe over the content's top edge — the same mask
+/// constants the `scroll_fade` `topbar` mode paints (T92), applied by the
+/// shell whenever a top bar is present.
+class _TopbarFade extends StatelessWidget {
+  const _TopbarFade({required this.height, required this.child});
+
+  final double height;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (bounds) {
+        final mask = scrollFadeBandMask(
+          bandStops: kScrollFadeTopbarStops,
+          bandAlphas: kScrollFadeTopbarAlphas,
+          fraction: bounds.height <= 0 ? 1.0 : height / bounds.height,
+          trailing: false,
+        );
+        return LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: mask.colors,
+          stops: mask.stops,
+        ).createShader(bounds);
+      },
+      child: child,
+    );
+  }
+}
+
+/// The sidebar stage backdrop (T95): the `SidebarStageBackdrop` equivalent —
+/// the vertical gradient of the `theme.stageArt` tokens (deep at the top
+/// edge so the wordmark keeps contrast, upstream `DevBlueprintArt`'s paper
+/// gradient), the highlight band at the top edge, the line-colored rule at
+/// the art's bottom edge, all dissolving into the sidebar surface through
+/// the `--sidebar-stage-fade` mask (a dstIn ramp over the lower half).
+class _StageBackdrop extends StatelessWidget {
+  const _StageBackdrop({required this.design});
+
+  final JhinTheme design;
+
+  /// The art height: the upstream `h-20` band (80 px).
+  static const double _artHeight = 80;
+
+  Color? _art(String suffix) => design.stageArt['stage-art-$suffix'];
+
+  @override
+  Widget build(BuildContext context) {
+    final top = _art('top');
+    final mid = _art('mid');
+    final bottom = _art('bottom');
+    final highlight = _art('highlight');
+    final line = _art('line');
+    if (top == null || mid == null || bottom == null) {
+      return const SizedBox.shrink();
+    }
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (bounds) => const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color.fromRGBO(255, 255, 255, 1),
+          Color.fromRGBO(255, 255, 255, 1),
+          Color.fromRGBO(255, 255, 255, 0),
+        ],
+        stops: [0.0, 0.5, 1.0],
+      ).createShader(bounds),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: _artHeight,
+            child: CustomPaint(
+              painter: _StageBackdropPainter(
+                top: top,
+                mid: mid,
+                bottom: bottom,
+                highlight: highlight,
+                line: line,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The gradient painter: the paper ramp (bottom → mid → top over the band),
+/// the highlight band at the top edge and the line-colored rule at the
+/// bottom edge.
+class _StageBackdropPainter extends CustomPainter {
+  const _StageBackdropPainter({
+    required this.top,
+    required this.mid,
+    required this.bottom,
+    required this.highlight,
+    required this.line,
+  });
+
+  final Color top;
+  final Color mid;
+  final Color bottom;
+  final Color? highlight;
+  final Color? line;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [bottom, mid, top],
+          stops: const [0.0, 0.5, 1.0],
+        ).createShader(rect),
+    );
+    final highlight = this.highlight;
+    if (highlight != null) {
+      canvas.drawRect(
+        Offset.zero & Size(size.width, 2),
+        Paint()..color = highlight.withValues(alpha: 0.35),
+      );
+    }
+    final line = this.line;
+    if (line != null) {
+      canvas.drawRect(
+        Offset(0, size.height - 1) & Size(size.width, 1),
+        Paint()..color = line.withValues(alpha: 0.5),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StageBackdropPainter old) =>
+      old.top != top ||
+      old.mid != mid ||
+      old.bottom != bottom ||
+      old.highlight != highlight ||
+      old.line != line;
 }

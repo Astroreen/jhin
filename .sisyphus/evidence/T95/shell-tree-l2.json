@@ -1,0 +1,167 @@
+{
+  "body": {
+    "body": {
+      "children": [
+        {
+          "style": "caption",
+          "text": "Choose a thread from the sidebar to open the conversation.",
+          "type": "text"
+        }
+      ],
+      "title": "Select a thread",
+      "type": "card"
+    },
+    "breakpoint": 768,
+    "id": "sessions-shell",
+    "pageHeader": {
+      "align": "center",
+      "children": [
+        {
+          "style": "h3",
+          "text": "Threads",
+          "type": "text"
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "action": {
+            "method": "POST",
+            "name": "arrange-toggle",
+            "path": "/ui/action/arrange-toggle",
+            "payload": {
+              "arrange": true
+            }
+          },
+          "label": "Arrange threads",
+          "style": "secondary",
+          "type": "button"
+        }
+      ],
+      "id": "shell-page-header",
+      "type": "row"
+    },
+    "sidebar": {
+      "empty": {
+        "style": "caption",
+        "text": "No threads yet.",
+        "type": "text"
+      },
+      "sections": [
+        {
+          "collapsed": false,
+          "collapsible": false,
+          "id": "section-pinned",
+          "items": [],
+          "label": "Pinned"
+        },
+        {
+          "collapsed": false,
+          "collapsible": false,
+          "id": "section-active",
+          "items": [],
+          "label": "Active"
+        },
+        {
+          "collapsed": false,
+          "collapsible": false,
+          "id": "section-snoozed",
+          "items": [],
+          "label": "Snoozed"
+        },
+        {
+          "collapsed": true,
+          "collapsible": true,
+          "id": "section-settled",
+          "items": [],
+          "label": "Settled"
+        }
+      ],
+      "type": "list"
+    },
+    "stageBackdrop": true,
+    "topbar": {
+      "align": "center",
+      "children": [
+        {
+          "bold": true,
+          "style": "h3",
+          "text": "Jhin",
+          "type": "text"
+        },
+        {
+          "align": "center",
+          "children": [
+            {
+              "style": "small",
+              "text": "Workspace",
+              "type": "text"
+            },
+            {
+              "style": "small",
+              "text": "/",
+              "type": "text"
+            },
+            {
+              "bold": true,
+              "style": "body",
+              "text": "Threads",
+              "type": "text"
+            }
+          ],
+          "gap": 8,
+          "id": "shell-breadcrumb",
+          "type": "row"
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "activeIndex": 0,
+          "items": [
+            {
+              "label": "Sessions",
+              "screen": "sessions"
+            },
+            {
+              "label": "Settings",
+              "screen": "settings"
+            },
+            {
+              "label": "Plugins",
+              "screen": "plugins"
+            }
+          ],
+          "kind": "tabs",
+          "type": "nav"
+        }
+      ],
+      "id": "shell-topbar",
+      "type": "row"
+    },
+    "topbarCompact": {
+      "align": "center",
+      "children": [
+        {
+          "bold": true,
+          "style": "h3",
+          "text": "Jhin",
+          "type": "text"
+        },
+        {
+          "style": "body",
+          "text": "Threads",
+          "type": "text"
+        },
+        {
+          "type": "spacer"
+        }
+      ],
+      "id": "shell-topbar-compact",
+      "type": "row"
+    },
+    "type": "shell"
+  },
+  "title": "Sessions",
+  "type": "screen"
+}

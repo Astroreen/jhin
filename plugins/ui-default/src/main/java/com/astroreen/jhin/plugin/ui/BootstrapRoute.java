@@ -33,6 +33,7 @@
 package com.astroreen.jhin.plugin.ui;
 
 import com.astroreen.jhin.plugin.uikit.PaletteGen;
+import com.astroreen.jhin.plugin.uikit.ThemeCatalog;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.UiTokens;
@@ -247,9 +248,24 @@ final class BootstrapRoute {
         theme.put("canvas", snapshot.canvas());
         theme.put("accent", snapshot.accent());
         theme.put("colors", colors(snapshot));
+        // The stage-art backdrop tokens of the selected theme (T95): the
+        // verbatim upstream OKLCH literals converted to the 8-bit hex the
+        // client's parseColor reads. Theme-scoped metadata, not palette
+        // generation — the sidebar stage backdrop paints from it.
+        theme.put("stageArt", stageArt(snapshot));
         // Legacy level-1 spelling of the same idea; MUST equal `appearance` (docs/sdui.md section 1).
         theme.put("mode", snapshot.appearance());
         return theme;
+    }
+
+    /**
+     * The {@code theme.stageArt} block: the five {@code stage-art-*} tokens
+     * of the selected catalogue theme under the active appearance (T95).
+     * The snapshot's theme id is always a catalogue id ({@code UiSettings}
+     * validates it on load), so the lookup never misses.
+     */
+    private static Map<String, Object> stageArt(UiSettings.Snapshot snapshot) {
+        return new LinkedHashMap<>(ThemeCatalog.get(snapshot.themeId()).stageArtHex(snapshot.appearance()));
     }
 
     /**

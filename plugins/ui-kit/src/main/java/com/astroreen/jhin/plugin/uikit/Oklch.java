@@ -263,6 +263,32 @@ public final class Oklch {
                 hexByte(v, offset + 4, value));
     }
 
+    /**
+     * Parses an {@code oklch(L C H)} literal — the verbatim stage-art token
+     * strings the theme catalogue carries (T95). Space-separated channels,
+     * no alpha (the CSS form the upstream custom properties use). Anything
+     * else raises the typed {@link PaletteGen.PaletteError}.
+     */
+    public static Lch parseOklch(String value) {
+        if (value == null) {
+            throw new PaletteGen.PaletteError("colour is null");
+        }
+        String v = value.trim();
+        if (!v.startsWith("oklch(") || !v.endsWith(")")) {
+            throw new PaletteGen.PaletteError("colour is not oklch(L C H): " + value);
+        }
+        String[] parts = v.substring("oklch(".length(), v.length() - 1).trim().split("\\s+");
+        if (parts.length != 3) {
+            throw new PaletteGen.PaletteError("colour is not oklch(L C H): " + value);
+        }
+        try {
+            return new Lch(Double.parseDouble(parts[0]), Double.parseDouble(parts[1]),
+                    Double.parseDouble(parts[2]));
+        } catch (NumberFormatException e) {
+            throw new PaletteGen.PaletteError("colour is not oklch(L C H): " + value);
+        }
+    }
+
     private static int hexByte(String v, int at, String original) {
         if (at + 2 > v.length()) {
             throw new PaletteGen.PaletteError("colour is not #RRGGBB or #AARRGGBB: " + original);

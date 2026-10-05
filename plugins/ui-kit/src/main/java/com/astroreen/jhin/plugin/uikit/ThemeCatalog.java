@@ -70,6 +70,20 @@ public final class ThemeCatalog {
         public Map<String, String> stageArt(String appearance) {
             return "dark".equals(appearance) ? stageArtDark : stageArtLight;
         }
+
+        /**
+         * The stage-art metadata of one appearance as the 8-bit hex the
+         * bootstrap {@code theme.stageArt} block carries (T95): the verbatim
+         * OKLCH literals converted through the same engine the seeds use, so
+         * the client's {@code parseColor} reads them without an OKLCH parser.
+         */
+        public Map<String, String> stageArtHex(String appearance) {
+            Map<String, String> out = new LinkedHashMap<>();
+            for (Map.Entry<String, String> entry : stageArt(appearance).entrySet()) {
+                out.put(entry.getKey(), Oklch.toHex(Oklch.toRgb(Oklch.parseOklch(entry.getValue()))));
+            }
+            return Collections.unmodifiableMap(out);
+        }
     }
 
     // --- verbatim upstream seed triples (themePalettes.ts) ---------------

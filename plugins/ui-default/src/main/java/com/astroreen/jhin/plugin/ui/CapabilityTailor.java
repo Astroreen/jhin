@@ -451,16 +451,21 @@ final class CapabilityTailor {
                 addTitleAndParts(props, children, title, subtitle);
             }
             case "shell" -> {
+                Object topbar = props.remove("topbar");
+                Object topbarCompact = props.remove("topbarCompact");
                 Object header = props.remove("header");
+                Object pageHeader = props.remove("pageHeader");
                 Object sidebar = props.remove("sidebar");
                 Object body = props.remove("body");
                 Object detail = props.remove("detail");
+                Object terminal = props.remove("terminal");
                 Object rail = props.remove("rail");
                 Map<String, Object> universal = universalProps(props);
                 props.clear();
                 props.putAll(universal);
                 props.put("direction", "column");
-                for (Object part : new Object[] {header, sidebar, body, detail, rail}) {
+                for (Object part : new Object[] {topbar, topbarCompact, header, pageHeader,
+                        sidebar, body, detail, terminal, rail}) {
                     if (part != null) {
                         children.add(part);
                     }

@@ -55,6 +55,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class Ui {
 
@@ -4219,11 +4220,34 @@ public final class Ui {
 
     /**
      * {@code shell}(sidebar?, header?, body?, detail?, rail?, breakpoint?,
-     * sidebarWidth?, sidebarCollapsedWidth?, collapsible?, collapsed?) — the
+     * sidebarWidth?, sidebarCollapsedWidth?, collapsible?, collapsed?,
+     * topbar?, topbarCompact?, pageHeader?, terminal?, stageBackdrop?) — the
      * app shell; a shell without {@code body} degrades to a card with
-     * "Missing body" on the client.
+     * "Missing body" on the client. The T95 chrome slots: {@code topbar} is
+     * the fixed-height workspace top bar (the client renders it at the
+     * {@code layout.topbarHeight} token, 52), {@code topbarCompact} the
+     * condensed variant below the breakpoint, {@code pageHeader} the title +
+     * actions row above the body, {@code terminal} the optional terminal
+     * drawer below the body row and {@code stageBackdrop} the stage-art
+     * gradient painted behind the sidebar.
      */
     public static final class ShellBuilder extends NodeBuilder<ShellBuilder> {
+
+        /**
+         * The prop keys a {@code shell} accepts: the chrome slots and
+         * metrics plus the universal surface keys. The escape hatch rejects
+         * anything else with the standard unsupported-prop error — an
+         * unknown slot name must fail at build time, never silently render
+         * as nothing (T95).
+         */
+        private static final Set<String> ALLOWED = Set.of(
+                "sidebar", "header", "body", "detail", "rail",
+                "topbar", "topbarCompact", "pageHeader", "terminal", "stageBackdrop",
+                "breakpoint", "sidebarWidth", "sidebarCollapsedWidth", "collapsible", "collapsed",
+                "id", "visible", "when", "padding", "margin", "opacity", "tooltip", "action",
+                "semanticsLabel", "enabled", "focusable", "flex",
+                "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight",
+                "demo", "safeArea");
 
         private ShellBuilder() {
         }
@@ -4231,6 +4255,15 @@ public final class Ui {
         @Override
         String type() {
             return "shell";
+        }
+
+        @Override
+        public ShellBuilder set(String key, Object value) {
+            if (!ALLOWED.contains(key)) {
+                throw new IllegalArgumentException("unsupported prop " + key + " on " + type()
+                        + " — unknown slot or prop name");
+            }
+            return super.set(key, value);
         }
 
         /** The sidebar region (a {@code nav} with {@code kind: sidebar}). */
@@ -4296,6 +4329,48 @@ public final class Ui {
         /** The current collapsed state; patchable via the node {@code id}. */
         public ShellBuilder collapsed(boolean value) {
             props.put("collapsed", value);
+            return this;
+        }
+
+        /**
+         * The workspace top bar (T95): the fixed-height row the client
+         * renders at the {@code layout.topbarHeight} token (52) — wordmark,
+         * breadcrumb and the top-right control cluster.
+         */
+        public ShellBuilder topbar(UiNode node) {
+            props.put("topbar", node);
+            return this;
+        }
+
+        /**
+         * The condensed top bar below the breakpoint (T95): the breadcrumb
+         * reduced to the current title only. Absent, the client reuses
+         * {@code topbar}.
+         */
+        public ShellBuilder topbarCompact(UiNode node) {
+            props.put("topbarCompact", node);
+            return this;
+        }
+
+        /** The page header row above the body: title plus the actions (T95). */
+        public ShellBuilder pageHeader(UiNode node) {
+            props.put("pageHeader", node);
+            return this;
+        }
+
+        /** The optional terminal drawer below the body row (T95; the T106 owner). */
+        public ShellBuilder terminal(UiNode node) {
+            props.put("terminal", node);
+            return this;
+        }
+
+        /**
+         * Whether the client paints the stage-art gradient behind the
+         * sidebar (T95): the {@code theme.stageArt} colors under the
+         * sidebar-stage fade mask.
+         */
+        public ShellBuilder stageBackdrop(boolean value) {
+            props.put("stageBackdrop", value);
             return this;
         }
     }

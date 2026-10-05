@@ -27,6 +27,7 @@ class JhinTheme {
     required this.themeMode,
     required this.tokens,
     this.switches = JhinSwitches.defaults,
+    this.stageArt = const {},
   });
 
   /// Default accent when the payload has none (or an invalid one).
@@ -56,6 +57,7 @@ class JhinTheme {
     Object? density,
     Map<String, dynamic>? motion,
     Map<Object?, Object?>? prefs,
+    Map<String, dynamic>? stageArt,
   }) {
     final accentColor = parseColor(accent) ?? defaultAccent;
     final canvasColor = parseColor(canvas) ?? defaultCanvas;
@@ -103,7 +105,20 @@ class JhinTheme {
       themeMode: _themeMode(appearance ?? mode),
       tokens: lattice.withColors(palette),
       switches: switches,
+      stageArt: _stageArt(stageArt),
     );
+  }
+
+  /// Parses the `theme.stageArt` hex map (T95): every value through
+  /// [parseColor]; unparseable entries drop out — never throws.
+  static Map<String, Color> _stageArt(Map<String, dynamic>? raw) {
+    if (raw == null) return const {};
+    final out = <String, Color>{};
+    raw.forEach((key, value) {
+      final color = parseColor(value);
+      if (color != null) out[key] = color;
+    });
+    return out;
   }
 
   /// Builds the theme pair from a whole bootstrap payload (§1): reads
@@ -124,6 +139,9 @@ class JhinTheme {
     final colors = theme['colors'] is Map
         ? Map<String, dynamic>.from(theme['colors'] as Map)
         : null;
+    final stageArt = theme['stageArt'] is Map
+        ? Map<String, dynamic>.from(theme['stageArt'] as Map)
+        : null;
     return JhinTheme.from(
       appearance: theme['appearance'],
       mode: theme['mode'],
@@ -133,6 +151,7 @@ class JhinTheme {
       tokens: tokens,
       density: map['density'],
       prefs: prefs,
+      stageArt: stageArt,
     );
   }
 
@@ -152,6 +171,13 @@ class JhinTheme {
   /// scheme, density, reduced motion and the font prefs.
   final JhinSwitches switches;
 
+  /// The stage-art backdrop tokens of the selected theme (T95): the
+  /// `theme.stageArt` hex map parsed to colors, keyed by the upstream
+  /// variable names (`stage-art-top`, `stage-art-mid`, `stage-art-bottom`,
+  /// `stage-art-highlight`, `stage-art-line`). Empty when the payload
+  /// carries none — the shell then paints no backdrop.
+  final Map<String, Color> stageArt;
+
   /// The fallback theme: built-in tokens, default accent/canvas, system
   /// appearance. Used when no bootstrap theme has arrived (or no scope is
   /// installed above the node).
@@ -165,6 +191,7 @@ class JhinTheme {
         themeMode: themeMode,
         tokens: tokens.withZeroMotion(),
         switches: switches,
+        stageArt: stageArt,
       );
 
   /// The contrast-resolved `contrast-*` colors for the light brightness

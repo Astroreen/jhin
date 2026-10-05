@@ -10,6 +10,7 @@ package com.astroreen.jhin.plugin.uikit;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class ThemeCatalogTest {
@@ -116,5 +117,34 @@ class ThemeCatalogTest {
                 .containsEntry("stage-art-highlight", jhin.stageArtLight().get("stage-art-highlight"))
                 .containsEntry("stage-art-line", jhin.stageArtLight().get("stage-art-line"))
                 .isNotEqualTo(jhin.stageArtLight());
+    }
+
+    @Test
+    void stageArtHexConvertsEveryTokenThroughThePaletteEngine() {
+        for (String id : ThemeCatalog.ids()) {
+            ThemeCatalog.Theme theme = ThemeCatalog.get(id);
+            for (String appearance : List.of("light", "dark", "system")) {
+                Map<String, String> hex = theme.stageArtHex(appearance);
+                assertThat(hex.keySet()).as(id + " " + appearance)
+                        .containsExactlyInAnyOrderElementsOf(ThemeCatalog.STAGE_ART_KEYS);
+                for (String value : hex.values()) {
+                    assertThat(value).as(id + " " + appearance).matches("#[0-9a-f]{6}");
+                }
+            }
+            assertThat(theme.stageArtHex("system")).isEqualTo(theme.stageArtHex("light"));
+        }
+    }
+
+    @Test
+    void stageArtHexPinsTheT3ChatLightConversion() {
+        // The expected hex values are the Oklch conversion of the verbatim
+        // index.css stage-art literals (commit 37de6cb), pinned so a maths
+        // regression fails loudly (the seed-pair pinning precedent).
+        assertThat(ThemeCatalog.get("t3-chat").stageArtHex("light"))
+                .containsEntry("stage-art-top", "#f28ac1")
+                .containsEntry("stage-art-mid", "#cb3e86")
+                .containsEntry("stage-art-bottom", "#73194f")
+                .containsEntry("stage-art-highlight", "#ffe6f6")
+                .containsEntry("stage-art-line", "#ffe7f8");
     }
 }

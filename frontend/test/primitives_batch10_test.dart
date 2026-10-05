@@ -400,7 +400,7 @@ void main() {
       expect(find.text('shell-body'), findsOneWidget);
       expect(find.text('shell-detail'), findsOneWidget);
       expect(find.byType(NavigationRail), findsOneWidget);
-      debugPrint('T65_SHELL_WIDE width=1200 breakpoint=900 sidebar=280 '
+      debugPrint('T65_SHELL_WIDE width=1200 breakpoint=768(default) sidebar=280 '
           'slots=sidebar,header,body,detail,rail');
     });
 
@@ -440,13 +440,17 @@ void main() {
         find.byWidgetPredicate((w) => w is SizedBox && w.width == 280),
         findsNothing,
       );
-      expect(find.text('Home'), findsNothing);
-      debugPrint('T65_SHELL_NARROW width=700 breakpoint=900 '
-          'sidebar=drawer hamburger=1');
+      // T95: the closed overlay panel stays mounted (the closing animation
+      // needs it) but parked off the leading edge; the right panel is hidden
+      // below the breakpoint.
+      expect(tester.getTopLeft(find.text('Home')).dx, lessThanOrEqualTo(0));
+      expect(find.text('shell-detail'), findsNothing);
+      debugPrint('T65_SHELL_NARROW width=700 breakpoint=768 '
+          'sidebar=drawer hamburger=1 detail=hidden');
 
       await tester.tap(find.byIcon(Icons.menu));
       await tester.pumpAndSettle();
-      expect(find.byType(Drawer), findsOneWidget);
+      expect(tester.getTopLeft(find.text('Home')).dx, greaterThanOrEqualTo(0));
       expect(find.text('Home'), findsOneWidget);
     });
 

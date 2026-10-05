@@ -59,6 +59,7 @@ supersedes the fallback silently; `BootstrapRoute`):
     "canvas": "#16161e",
     "accent": "#7e57c2",
     "colors": { "error": "#f7768e", "success": "#9ece6a", "warning": "#e0af68", "info": "#7aa2f7" },
+    "stageArt": { "stage-art-top": "#f28ac1", "stage-art-mid": "#cb3e86", "stage-art-bottom": "#73194f", "stage-art-highlight": "#ffe6f6", "stage-art-line": "#ffe7f8" },
     "mode": "system"
   },
   "tokens": {
@@ -118,6 +119,7 @@ Top-level fields:
 | `canvas` | `#RRGGBB` or `#AARRGGBB` | background seed color |
 | `accent` | `#RRGGBB` or `#AARRGGBB` | accent seed color |
 | `colors` | object | optional override map keyed by token names (`error`, `success`, `warning`, `info`, `surface`, `outline`, `onCanvas`, `onAccent`, `accentHover`, `accentMuted`, …); overrides win over generation |
+| `stageArt` | object | the five `stage-art-*` backdrop tokens of the selected catalogue theme (`stage-art-top`, `stage-art-mid`, `stage-art-bottom`, `stage-art-highlight`, `stage-art-line`), as `#RRGGBB` hex; theme-scoped metadata the sidebar stage backdrop paints from (T95), not palette generation |
 | `mode` | `system`/`light`/`dark` | legacy level-1 spelling of the same idea; MUST equal `appearance` |
 
 From `{appearance, canvas, accent}` the client **generates** the full material
@@ -395,7 +397,12 @@ Layout primitives:
 | `shell` | `body` | node | — | main region; a shell without `body` degrades to a card with "Missing body" |
 | `shell` | `detail` | node | — | optional right detail region |
 | `shell` | `rail` | node | — | optional navigation rail for narrow widths |
-| `shell` | `breakpoint` | num | 900 | width below which the sidebar becomes a drawer |
+| `shell` | `topbar` | node | — | workspace top bar (T95): rendered at the `layout.topbarHeight` token (52) with the workspace gutters and the safe-area insets; the body content under it wears the seven-stop topbar scroll fade |
+| `shell` | `topbarCompact` | node | — | condensed top bar below the breakpoint (T95): the breadcrumb reduced to the current title; absent, `topbar` is reused |
+| `shell` | `pageHeader` | node | — | page header row above the body: title plus the actions (T95) |
+| `shell` | `terminal` | node | — | optional terminal drawer below the body row (T95); keeps its grip and caps at 40% of the viewport height below the breakpoint |
+| `shell` | `stageBackdrop` | bool | `false` | paint the `theme.stageArt` gradient behind the sidebar under the sidebar-stage fade mask (T95) |
+| `shell` | `breakpoint` | num | 768 | width below which the sidebar becomes a drawer (T95: the fixed responsive breakpoint — below it the sidebar overlays with a backdrop, the right panel is hidden and the gutters compress to 0.5rem) |
 | `shell` | `sidebarWidth` | num or token | 280 | expanded sidebar width |
 | `shell` | `sidebarCollapsedWidth` | num | 56 | collapsed sidebar width |
 | `shell` | `collapsible` | bool | `false` | the sidebar can collapse |
