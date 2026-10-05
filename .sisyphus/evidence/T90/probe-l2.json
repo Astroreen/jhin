@@ -59,6 +59,13 @@
         "type": "code_block"
       },
       {
+        "code": "lib/agent/run.ts\n@@ -1,2 +1,2 @@",
+        "demo": true,
+        "id": "probe-diff-view-split",
+        "language": "typescript",
+        "type": "code_block"
+      },
+      {
         "children": [
           {
             "text": "Glass card",

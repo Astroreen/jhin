@@ -248,6 +248,33 @@ class UiRegressionTest {
                 .statusPulse("pulse")
                 .build());
 
+        // T93: the level-3 decorative diff renderer — the 3-hunk fixture the
+        // client's unified/split views and the blue-orange colour scheme
+        // render (the demo marker is mandatory on the primitive).
+        nodes.add(Ui.diffView()
+                .id("diff-view-fixture")
+                .file("lib/agent/run.ts")
+                .language("typescript")
+                .view("unified")
+                .colorScheme("default")
+                .stats(5, 2)
+                .demo(true)
+                .hunk(Ui.diffHunk("@@ -12,7 +12,9 @@ run loop")
+                        .line(Ui.diffLine("ctx").oldNo(12).newNo(12).text("for (final turn of turns) {"))
+                        .line(Ui.diffLine("del").oldNo(13).text("  await runOne(turn);"))
+                        .line(Ui.diffLine("add").newNo(13).text("  await runOne(turn, options);"))
+                        .line(Ui.diffLine("add").newNo(14).text("  await report(turn);"))
+                        .line(Ui.diffLine("ctx").oldNo(14).newNo(15).text("}")))
+                .hunk(Ui.diffHunk("@@ -31,6 +33,8 @@ teardown")
+                        .line(Ui.diffLine("meta").text("// hunk header context only"))
+                        .line(Ui.diffLine("ctx").oldNo(31).newNo(33).text("  cleanup();"))
+                        .line(Ui.diffLine("add").newNo(34).text("  cleanup.sync();")))
+                .hunk(Ui.diffHunk("@@ -58,4 +62,6 @@ exports")
+                        .line(Ui.diffLine("del").oldNo(58).text("export { run };"))
+                        .line(Ui.diffLine("add").newNo(62).text("export { run, runOne };"))
+                        .line(Ui.diffLine("ctx").oldNo(59).newNo(63).text("// end of file")))
+                .build());
+
         return nodes;
     }
 
@@ -258,7 +285,7 @@ class UiRegressionTest {
             "figure", "chart_line", "chart_bar", "chart_pie", "drawer",
             "glass-card", "glass-sheet", "glass-dialog", "glass-menu",
             "glass-banner", "split", "hover_card", "kbd", "toast_stack",
-            "scroll_fade", "status-pulse");
+            "scroll_fade", "status-pulse", "diff_view");
 
     @Test
     void wireShapesAreByteIdenticalToTheCapturedFixtures() throws IOException {

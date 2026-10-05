@@ -1,6 +1,6 @@
 00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/hover_card_test.dart
 00:00 +0: /home/astroreen/Documents/jhin/frontend/test/sdui/hover_card_test.dart: opens after the 500 ms default delay
-00:00 +1: /home/astroreen/Documents/jhin/frontend/test/sdui/hover_card_test.dart: opens after the 500 ms default delay
+00:00 +1: /home/astroreen/Documents/jhin/frontend/test/sdui/kbd_test.dart: mod+shift+m renders Ctrl, ⇧, M pills off the Apple platforms
 00:00 +2: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: an item shows and dismisses after its 5 s default window
 00:00 +3: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: an item shows and dismisses after its 5 s default window
 00:00 +4: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: an item shows and dismisses after its 5 s default window
@@ -11,8 +11,9 @@
 00:00 +9: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: an item shows and dismisses after its 5 s default window
 00:00 +10: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: an item shows and dismisses after its 5 s default window
 00:00 +11: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: an item shows and dismisses after its 5 s default window
-00:00 +12: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: an item shows and dismisses after its 5 s default window
+00:00 +12: /home/astroreen/Documents/jhin/frontend/test/sdui/hover_card_test.dart: an unknown placement degrades to top
 00:00 +13: /home/astroreen/Documents/jhin/frontend/test/sdui/hover_card_test.dart: an unknown placement degrades to top
+00:00 +14: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: a custom duration wins
 00:00 +14: /home/astroreen/Documents/jhin/frontend/test/sdui/kbd_test.dart: an unknown chord token renders literally and never throws
 Jhin SDUI: kbd chord "mod+banana" carries unknown token(s) banana; rendering them literally
 00:00 +15: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: a custom duration wins
@@ -20,10 +21,10 @@ Jhin SDUI: kbd chord "mod+banana" carries unknown token(s) banana; rendering the
 00:00 +17: /home/astroreen/Documents/jhin/frontend/test/sdui/hover_card_test.dart: tap-and-hold opens on touch
 00:00 +18: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: items queue: a re-render that adds an item shows it alongside the live one
 00:00 +19: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: items queue: a re-render that adds an item shows it alongside the live one
-00:00 +20: /home/astroreen/Documents/jhin/frontend/test/sdui/hover_card_test.dart: a missing content degrades to the bare trigger (the universal tooltip still shows)
+00:00 +20: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: items queue: a re-render that adds an item shows it alongside the live one
 00:00 +21: /home/astroreen/Documents/jhin/frontend/test/sdui/hover_card_test.dart: a missing content degrades to the bare trigger (the universal tooltip still shows)
-00:00 +22: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: the undo action dispatches and dismisses the notice
-00:00 +23: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: the undo action dispatches and dismisses the notice
+00:00 +22: /home/astroreen/Documents/jhin/frontend/test/sdui/kbd_test.dart: golden: the mod+shift+m pills (light)
+00:00 +23: /home/astroreen/Documents/jhin/frontend/test/sdui/kbd_test.dart: golden: the mod+shift+m pills (light)
 00:00 +24: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: the undo action dispatches and dismisses the notice
 00:00 +25: /home/astroreen/Documents/jhin/frontend/test/sdui/hover_card_test.dart: nesting-safe: a hover_card inside the content opens above the outer card
 00:00 +26: /home/astroreen/Documents/jhin/frontend/test/sdui/hover_card_test.dart: nesting-safe: a hover_card inside the content opens above the outer card
@@ -37,6 +38,6 @@ Jhin SDUI: kbd chord "mod+banana" carries unknown token(s) banana; rendering the
 00:00 +34: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: style error and success tint the leading icon
 00:00 +35: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: items without text are skipped; a missing items array degrades visibly
 Jhin SDUI: toast_stack item without text skipped: {style: success}
-00:01 +36: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: golden: the undo notice stack (light)
+00:00 +36: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: golden: the undo notice stack (light)
 00:01 +37: /home/astroreen/Documents/jhin/frontend/test/sdui/toast_stack_test.dart: golden: the undo notice stack (dark)
 00:01 +38: All tests passed!

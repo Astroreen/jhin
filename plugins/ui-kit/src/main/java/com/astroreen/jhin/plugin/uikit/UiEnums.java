@@ -193,6 +193,15 @@ final class UiEnums {
     /** docs/sdui.md 2.1 level-3 universal {@code statusPulse} (the progress duty-cycle modes). */
     static final Set<String> STATUS_PULSE = Set.of("pulse", "ping", "skeleton", "none");
 
+    /** docs/sdui.md 2.6 {@code diff_view} {@code view}. */
+    static final Set<String> DIFF_VIEW_LAYOUT = Set.of("unified", "split");
+
+    /** docs/sdui.md 2.6 {@code diff_view} {@code colorScheme} (the {@code data-diff-color-scheme} mapping). */
+    static final Set<String> DIFF_COLOR_SCHEME = Set.of("default", "blue-orange");
+
+    /** docs/sdui.md 2.6 {@code diff_view} line {@code kind}. */
+    static final Set<String> DIFF_LINE_KIND = Set.of("add", "del", "ctx", "meta");
+
     /** Builder-specific literal overrides: entries are {@code <BuilderSimpleName>.<prop>}. */
     private static final Map<String, Set<String>> SPECIFIC = Map.ofEntries(
             Map.entry("ButtonBuilder.style", BUTTON_STYLE),
@@ -222,6 +231,9 @@ final class UiEnums {
             Map.entry("ToastItemBuilder.style", TOAST_STYLE),
             Map.entry("ScrollFadeBuilder.edge", SCROLL_FADE_EDGE),
             Map.entry("ScrollFadeBuilder.mode", SCROLL_FADE_MODE),
+            Map.entry("DiffViewBuilder.view", DIFF_VIEW_LAYOUT),
+            Map.entry("DiffViewBuilder.colorScheme", DIFF_COLOR_SCHEME),
+            Map.entry("DiffLineBuilder.kind", DIFF_LINE_KIND),
             Map.entry("ProgressBuilder.statusPulse", STATUS_PULSE));
 
     /** Global prop-name to literal-set lookup, used by the conformance probe. */

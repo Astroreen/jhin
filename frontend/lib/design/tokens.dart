@@ -1155,6 +1155,13 @@ JhinDiffColors resolveDiffColors({
   };
 }
 
+/// The diff lane fallbacks for themes whose palette carries no diff tokens
+/// (index.css:2025-2028: addition = success, deletion = destructive; the
+/// hexes are the palette generator's emerald-500/red-600 slots,
+/// palette_gen.dart:424,428).
+final Color kDiffAdditionFallback = const Color(0xFF00B981);
+final Color kDiffDeletionFallback = const Color(0xFFE40016);
+
 /// The §8.3 data-viz palette: the categorical series colors of the chart
 /// primitives, carried here in the token layer so no primitive source
 /// contains a literal colour (the T86 purity rule). The axis gray mirrors

@@ -40,6 +40,7 @@ package com.astroreen.jhin.plugin.uikit;
 
 import com.astroreen.jhin.plugin.uikit.has.HasBox;
 import com.astroreen.jhin.plugin.uikit.has.HasChildren;
+import com.astroreen.jhin.plugin.uikit.has.HasDiffView;
 import com.astroreen.jhin.plugin.uikit.has.HasFlex;
 import com.astroreen.jhin.plugin.uikit.has.HasGlass;
 import com.astroreen.jhin.plugin.uikit.has.HasHoverCard;
@@ -487,6 +488,26 @@ public final class Ui {
      */
     public static ScrollFadeBuilder scrollFade() {
         return new ScrollFadeBuilder();
+    }
+
+    /**
+     * The decorative diff renderer: {@code diff_view}(file?, language?,
+     * hunks, view?, colorScheme?, stats?, demo). The {@code demo} marker is
+     * mandatory — {@link DiffViewBuilder#build()} fails with
+     * {@code demo marker required} without it.
+     */
+    public static DiffViewBuilder diffView() {
+        return new DiffViewBuilder();
+    }
+
+    /** One {@code diff_view} hunk spec ({@code {header, lines}}). */
+    public static DiffHunkBuilder diffHunk(String header) {
+        return new DiffHunkBuilder(header);
+    }
+
+    /** One {@code diff_view} line spec ({@code {kind, oldNo?, newNo?, text}}). */
+    public static DiffLineBuilder diffLine(String kind) {
+        return new DiffLineBuilder(kind);
     }
 
     /** One {@code toast_stack} item spec ({@code {text, style?, action?, duration?}}). */
@@ -4586,6 +4607,189 @@ public final class Ui {
         public ScrollFadeBuilder mode(String value) {
             props.put("mode", UiEnums.require("mode", value, UiEnums.SCROLL_FADE_MODE));
             return this;
+        }
+    }
+
+    /**
+     * {@code diff_view}(file?, language?, hunks, view?, colorScheme?,
+     * stats?, demo) — the level-3 decorative diff renderer (docs/sdui.md
+     * section 2.6). A level-2 client receives the node degraded to a
+     * {@code code_block} carrying the file name and the hunk headers by the
+     * server's downgrade map.
+     *
+     * <p>The primitive renders exactly the hunks the server authors — no
+     * diff engine exists client-side or server-side — so it is decorative
+     * and the universal {@code demo} marker is mandatory:
+     * {@link #build()} throws {@code demo marker required} when
+     * {@link #demo(boolean)} was never called with {@code true}.
+     */
+    public static final class DiffViewBuilder extends NodeBuilder<DiffViewBuilder>
+            implements HasDiffView<DiffViewBuilder> {
+
+        private DiffViewBuilder() {
+        }
+
+        @Override
+        String type() {
+            return "diff_view";
+        }
+
+        /** The file path shown in the stat header. */
+        @Override
+        public DiffViewBuilder file(String value) {
+            props.put("file", value);
+            return this;
+        }
+
+        /** The language label (a plain label, like the {@code code_block} language). */
+        @Override
+        public DiffViewBuilder language(String value) {
+            props.put("language", value);
+            return this;
+        }
+
+        /** The layout: {@code unified} (default) or {@code split}; validated. */
+        @Override
+        public DiffViewBuilder view(String value) {
+            props.put("view", UiEnums.require("view", value, UiEnums.DIFF_VIEW_LAYOUT));
+            return this;
+        }
+
+        /** The colour scheme: {@code default} or {@code blue-orange}; validated. */
+        @Override
+        public DiffViewBuilder colorScheme(String value) {
+            props.put("colorScheme", UiEnums.require("colorScheme", value, UiEnums.DIFF_COLOR_SCHEME));
+            return this;
+        }
+
+        /** The stat header counts, rendered green {@code +n} / red {@code -n}. */
+        @Override
+        public DiffViewBuilder stats(Number additions, Number deletions) {
+            Map<String, Object> stats = new LinkedHashMap<>();
+            stats.put("additions", additions);
+            stats.put("deletions", deletions);
+            props.put("stats", stats);
+            return this;
+        }
+
+        /** The collected hunk specs, in insertion order (the {@code hunks} prop). */
+        @SuppressWarnings("unchecked")
+        private List<Object> hunks() {
+            return (List<Object>) props.computeIfAbsent("hunks", key -> new ArrayList<>());
+        }
+
+        /** Appends one hunk spec ({@code {header, lines}}). */
+        @Override
+        public DiffViewBuilder hunk(Map<String, Object> hunk) {
+            hunks().add(hunk);
+            return this;
+        }
+
+        /** Appends one hunk built through {@link Ui#diffHunk(String)}. */
+        @Override
+        public DiffViewBuilder hunk(Ui.DiffHunkBuilder hunk) {
+            hunks().add(hunk.build());
+            return this;
+        }
+
+        /** The universal {@code demo} marker — mandatory and {@code true} on this primitive. */
+        @Override
+        public DiffViewBuilder demo(boolean value) {
+            props.put("demo", value);
+            return this;
+        }
+
+        /** Wholesale hunk list; the appenders extend the instance in place. */
+        @Override
+        public DiffViewBuilder hunks(List<Object> hunks) {
+            hunks().addAll(hunks);
+            return this;
+        }
+
+        @Override
+        public UiNode build() {
+            if (!Boolean.TRUE.equals(props.get("demo"))) {
+                throw new IllegalArgumentException(
+                        "demo marker required: diff_view is decorative (docs/sdui.md section 2.6)"
+                                + " — call demo(true)");
+            }
+            return super.build();
+        }
+    }
+
+    /**
+     * The spec builder of one {@code diff_view} hunk ({@code {header,
+     * lines}}): see {@link Ui#diffHunk(String)}. Finished with
+     * {@link #build()}, the spec is appended through
+     * {@link DiffViewBuilder#hunk(Map)}.
+     */
+    public static final class DiffHunkBuilder {
+
+        private final Map<String, Object> spec = new LinkedHashMap<>();
+
+        private DiffHunkBuilder(String header) {
+            spec.put("header", header);
+        }
+
+        /** The collected line specs, in insertion order (the {@code lines} prop). */
+        @SuppressWarnings("unchecked")
+        private List<Object> lines() {
+            return (List<Object>) spec.computeIfAbsent("lines", key -> new ArrayList<>());
+        }
+
+        /** Appends one line spec ({@code {kind, oldNo?, newNo?, text}}). */
+        public DiffHunkBuilder line(Map<String, Object> line) {
+            lines().add(line);
+            return this;
+        }
+
+        /** Appends one line built through {@link Ui#diffLine(String, String)}. */
+        public DiffHunkBuilder line(Ui.DiffLineBuilder line) {
+            lines().add(line.build());
+            return this;
+        }
+
+        /** The finished hunk spec, in insertion order. */
+        public Map<String, Object> build() {
+            return new LinkedHashMap<>(spec);
+        }
+    }
+
+    /**
+     * The spec builder of one {@code diff_view} line ({@code {kind, oldNo?,
+     * newNo?, text}}): see {@link Ui#diffLine(String, String)}. Finished
+     * with {@link #build()}, the spec is appended through
+     * {@link DiffHunkBuilder#line(Map)}.
+     */
+    public static final class DiffLineBuilder {
+
+        private final Map<String, Object> spec = new LinkedHashMap<>();
+
+        private DiffLineBuilder(String kind) {
+            spec.put("kind", UiEnums.require("kind", kind, UiEnums.DIFF_LINE_KIND));
+        }
+
+        /** The old-side line number (the unified left gutter, the split old pane). */
+        public DiffLineBuilder oldNo(Number value) {
+            spec.put("oldNo", value);
+            return this;
+        }
+
+        /** The new-side line number (the unified right gutter, the split new pane). */
+        public DiffLineBuilder newNo(Number value) {
+            spec.put("newNo", value);
+            return this;
+        }
+
+        /** The line text (content only — the kind colors the row). */
+        public DiffLineBuilder text(String value) {
+            spec.put("text", value);
+            return this;
+        }
+
+        /** The finished line spec, in insertion order. */
+        public Map<String, Object> build() {
+            return new LinkedHashMap<>(spec);
         }
     }
 

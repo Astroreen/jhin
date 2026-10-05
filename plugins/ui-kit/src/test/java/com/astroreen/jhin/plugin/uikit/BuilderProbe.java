@@ -95,6 +95,7 @@ final class BuilderProbe {
         BUILDERS.put(Ui.KbdBuilder.class, Ui::kbd);
         BUILDERS.put(Ui.ToastStackBuilder.class, Ui::toastStack);
         BUILDERS.put(Ui.ScrollFadeBuilder.class, Ui::scrollFade);
+        BUILDERS.put(Ui.DiffViewBuilder.class, Ui::diffView);
     }
 
     /**
@@ -190,6 +191,12 @@ final class BuilderProbe {
         if (type == Ui.ToastItemBuilder.class) {
             return Ui.toastItem("probe");
         }
+        if (type == Ui.DiffHunkBuilder.class) {
+            return Ui.diffHunk("probe");
+        }
+        if (type == Ui.DiffLineBuilder.class) {
+            return Ui.diffLine("ctx");
+        }
         if (type == List.class) {
             // A mutable list: several wholesale setters store the instance and
             // the appenders extend it in place.
@@ -226,7 +233,7 @@ final class BuilderProbe {
         };
     }
 
-    /** The wire key a fluent setter writes: children/items arrays or the method name. */
+    /** The wire key a fluent setter writes: children/items/hunks arrays or the method name. */
     static String wireKey(Method method) {
         String name = method.getName();
         if (name.equals("child") || name.equals("children")) {
@@ -234,6 +241,9 @@ final class BuilderProbe {
         }
         if (name.startsWith("item")) {
             return "items";
+        }
+        if (name.equals("hunk")) {
+            return "hunks";
         }
         return name;
     }

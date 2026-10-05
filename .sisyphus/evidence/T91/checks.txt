@@ -1,5 +1,5 @@
 ok: goldens produced on the flutter_test VM target (Flutter 3.47.0 • channel stable • https://github.com/flutter/flutter.git)
-ok: ui-default and ui-kit suites green (338 tests; transcript in test.txt)
+ok: ui-default and ui-kit suites green (350 tests; transcript in test.txt)
 ok: Flutter suites green: hover_card delay/placement/touch/nesting/degrade, kbd chord mapping + unknown-token degrade, toast_stack undo/queue/direction/dismiss (flutter-primitives.txt)
 ok: goldens: 6 frames written (the open hover card, the mod+shift+m pills and the undo notice stack, light + dark) (goldens/)
 ok: golden verification pass byte-identical (flutter-goldens-verify.txt)

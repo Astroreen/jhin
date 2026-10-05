@@ -8,11 +8,10 @@
  * {@code jhin.ui} config key {@code qaProbe} (default off) and no screen
  * links here.
  *
- * <p>The typed {@code Ui} builders exist for the primitives their todos
- * landed ({@code split}, {@code hover_card}, {@code toast_stack}, {@code
- * kbd}, {@code scroll_fade}, T92's {@code statusPulse} progress modes); the
- * not-yet-typed ones ({@code diff_view}) are authored directly on the
- * {@link UiNode} wire model.
+ * <p>Every level-3 primitive is authored through its typed {@code Ui}
+ * builder ({@code split}, {@code hover_card}, {@code toast_stack}, {@code
+ * kbd}, {@code scroll_fade}, {@code diff_view}, T92's {@code statusPulse}
+ * progress modes).
  */
 package com.astroreen.jhin.plugin.ui.screens;
 
@@ -36,6 +35,7 @@ public final class QaProbeScreen {
                         .child(kbd())
                         .child(scrollFade())
                         .child(diffView())
+                        .child(diffViewSplitBlueOrange())
                         .child(glassCard())
                         .child(glassSheet())
                         .child(glassDialog())
@@ -105,22 +105,38 @@ public final class QaProbeScreen {
                 .build();
     }
 
-    /** The decorative diff renderer. */
+    /** The decorative diff renderer (the typed T93 builder, unified + default). */
     private static UiNode diffView() {
-        return new UiNode("diff_view", Map.ofEntries(
-                Map.entry("id", "probe-diff-view"),
-                Map.entry("file", "docs/sdui.md"),
-                Map.entry("language", "markdown"),
-                Map.entry("view", "unified"),
-                Map.entry("colorScheme", "default"),
-                Map.entry("stats", Map.of("additions", 2, "deletions", 1)),
-                Map.entry("demo", true),
-                Map.entry("hunks", List.of(
-                        Map.of("header", "@@ -1,3 +1,4 @@", "lines", List.of(
-                                Map.of("kind", "ctx", "oldNo", 1, "newNo", 1, "text", "unchanged"),
-                                Map.of("kind", "del", "oldNo", 2, "text", "old line"),
-                                Map.of("kind", "add", "newNo", 2, "text", "new line")))))),
-                List.of());
+        return Ui.diffView()
+                .id("probe-diff-view")
+                .file("docs/sdui.md")
+                .language("markdown")
+                .view("unified")
+                .colorScheme("default")
+                .stats(2, 1)
+                .demo(true)
+                .hunk(Ui.diffHunk("@@ -1,3 +1,4 @@")
+                        .line(Ui.diffLine("ctx").oldNo(1).newNo(1).text("unchanged"))
+                        .line(Ui.diffLine("del").oldNo(2).text("old line"))
+                        .line(Ui.diffLine("add").newNo(2).text("new line")))
+                .build();
+    }
+
+    /** The decorative diff renderer in the split view and the blue-orange scheme. */
+    private static UiNode diffViewSplitBlueOrange() {
+        return Ui.diffView()
+                .id("probe-diff-view-split")
+                .file("lib/agent/run.ts")
+                .language("typescript")
+                .view("split")
+                .colorScheme("blue-orange")
+                .stats(2, 1)
+                .demo(true)
+                .hunk(Ui.diffHunk("@@ -1,2 +1,2 @@")
+                        .line(Ui.diffLine("ctx").oldNo(1).newNo(1).text("unchanged"))
+                        .line(Ui.diffLine("del").oldNo(2).text("old line"))
+                        .line(Ui.diffLine("add").newNo(2).text("new line")))
+                .build();
     }
 
     /** A glass-capable surface carrying the level-3 universal {@code glass}. */

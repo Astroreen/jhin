@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../design/icon_registry.dart';
 import '../design/theme.dart';
 import '../design/tokens.dart';
+import 'demo_marker.dart';
 import 'expr.dart';
 import 'primitives/align_primitive.dart';
 import 'primitives/aspect_ratio_primitive.dart';
@@ -22,6 +23,7 @@ import 'primitives/code_block.dart';
 import 'primitives/column.dart';
 import 'primitives/container.dart';
 import 'primitives/dialog.dart';
+import 'primitives/diff_view.dart';
 import 'primitives/divider.dart';
 import 'primitives/drawer.dart';
 import 'primitives/dropdown.dart';
@@ -150,6 +152,7 @@ class UiRegistry {
       'kbd': buildKbd,
       'toast_stack': buildToastStack,
       'scroll_fade': buildScrollFade,
+      'diff_view': buildDiffView,
     });
     return registry;
   }
@@ -355,6 +358,12 @@ class UiRegistry {
     // 13b. MouseRegion (cursor) — the outermost wrapper of the interaction
     // cluster (the §2.3 note).
     result = _applyCursor(result, node);
+
+    // 13c. The shared demo affordance (§2.1 level 3): `demo: true` paints
+    // the corner preview badge and attaches the shared tooltip. Inside the
+    // flex/margin wraps — the badge marks the node's own box, the margin
+    // and the flex parent-data stay outermost.
+    result = applyDemoMarker(result, node, context);
 
     // 14 + 15. Flexible/Expanded (flex/fit) and Padding(margin).
     result = _applyFlexAndMargin(

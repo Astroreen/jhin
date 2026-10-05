@@ -304,6 +304,81 @@ class UiBuilderTest {
                 .hasMessageContaining("unknown statusPulse literal");
     }
 
+    /**
+     * T93: the level-3 {@code diff_view} builder lands the file, language,
+     * view, colour scheme, stats, demo marker and the hunk specs.
+     */
+    @Test
+    void diffViewWireShapeCarriesTheDiffProps() {
+        Map<String, Object> view = Ui.diffView()
+                .id("probe-diff-view")
+                .file("lib/agent/run.ts")
+                .language("typescript")
+                .view("split")
+                .colorScheme("blue-orange")
+                .stats(5, 2)
+                .demo(true)
+                .hunk(Ui.diffHunk("@@ -1,2 +1,2 @@")
+                        .line(Ui.diffLine("ctx").oldNo(1).newNo(1).text("kept"))
+                        .line(Ui.diffLine("del").oldNo(2).text("old"))
+                        .line(Ui.diffLine("add").newNo(2).text("new")))
+                .build().toJson();
+        assertThat(view).containsEntry("type", "diff_view")
+                .containsEntry("id", "probe-diff-view")
+                .containsEntry("file", "lib/agent/run.ts")
+                .containsEntry("language", "typescript")
+                .containsEntry("view", "split")
+                .containsEntry("colorScheme", "blue-orange")
+                .containsEntry("demo", true);
+        assertThat(castMap(view.get("stats")))
+                .containsEntry("additions", 5)
+                .containsEntry("deletions", 2);
+        List<Object> hunks = castList(view.get("hunks"));
+        assertThat(hunks).hasSize(1);
+        Map<String, Object> hunk = castMap(hunks.get(0));
+        assertThat(hunk).containsEntry("header", "@@ -1,2 +1,2 @@");
+        List<Object> lines = castList(hunk.get("lines"));
+        assertThat(lines).hasSize(3);
+        assertThat(castMap(lines.get(1)))
+                .containsEntry("kind", "del")
+                .containsEntry("oldNo", 2)
+                .containsEntry("text", "old");
+    }
+
+    /** T93: unknown diff_view enum literals throw at build time (a builder bug). */
+    @Test
+    void diffViewRejectsUnknownEnumLiterals() {
+        assertThatThrownBy(() -> Ui.diffView().view("stacked"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown view literal");
+        assertThatThrownBy(() -> Ui.diffView().colorScheme("red-green"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown colorScheme literal");
+        assertThatThrownBy(() -> Ui.diffLine("banana"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown kind literal");
+    }
+
+    /**
+     * T93: the demo marker is mandatory on the decorative primitive —
+     * {@code build()} fails with {@code demo marker required} without it
+     * (docs/sdui.md section 2.6).
+     */
+    @Test
+    void diffViewWithoutTheDemoMarkerFailsTheBuilder() {
+        assertThatThrownBy(() -> Ui.diffView()
+                .file("probe.ts")
+                .hunk(Ui.diffHunk("@@ -1,1 +1,1 @@")
+                        .line(Ui.diffLine("ctx").text("kept")))
+                .build())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("demo marker required");
+        // demo(false) is equally rejected: the marker must be true.
+        assertThatThrownBy(() -> Ui.diffView().demo(false).build())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("demo marker required");
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> castMap(Object value) {
         return (Map<String, Object>) value;

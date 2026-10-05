@@ -1,5 +1,5 @@
 ok: goldens produced on the flutter_test VM target (Flutter 3.47.0 • channel stable • https://github.com/flutter/flutter.git)
-ok: ui-default and ui-kit suites green (338 tests; transcript in test.txt)
+ok: ui-default and ui-kit suites green (350 tests; transcript in test.txt)
 ok: Flutter sdui suites green incl. the T89 glass wiring tests (flutter-sdui.txt)
 ok: goldens: 11 frames written (light+dark per glass surface, degraded flat fill); glass differs from the flat fill (goldens/)
 ok: golden verification pass byte-identical (flutter-goldens-verify.txt)

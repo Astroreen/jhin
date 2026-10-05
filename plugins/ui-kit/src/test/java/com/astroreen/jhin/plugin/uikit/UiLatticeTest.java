@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.astroreen.jhin.plugin.uikit.has.HasBox;
 import com.astroreen.jhin.plugin.uikit.has.HasChildren;
+import com.astroreen.jhin.plugin.uikit.has.HasDiffView;
 import com.astroreen.jhin.plugin.uikit.has.HasFlex;
 import com.astroreen.jhin.plugin.uikit.has.HasGlass;
 import com.astroreen.jhin.plugin.uikit.has.HasHoverCard;
@@ -47,7 +48,8 @@ class UiLatticeTest {
                 new Group(HasSplit.class, Ui::split),
                 new Group(HasHoverCard.class, Ui::hoverCard),
                 new Group(HasKbd.class, Ui::kbd),
-                new Group(HasToastStack.class, Ui::toastStack));
+                new Group(HasToastStack.class, Ui::toastStack),
+                new Group(HasDiffView.class, Ui::diffView));
 
         return groups.stream().map(group -> {
             List<DynamicTest> tests = new ArrayList<>();
@@ -68,6 +70,11 @@ class UiLatticeTest {
 
     private void assertWireKey(Group group, Method method) {
         Object builder = group.builder().get();
+        // The diff_view demo marker is mandatory at build() — satisfy it up
+        // front so the single-method probes reach the wire-shape assert.
+        if (builder instanceof Ui.DiffViewBuilder diffView) {
+            diffView.demo(true);
+        }
         // children(List) must carry an entry or the array stays absent from the wire
         Object value = method.getName().equals("children")
                 ? List.of("probe") : BuilderProbe.valueFor(builder.getClass(), method, method.getParameterTypes()[0]);

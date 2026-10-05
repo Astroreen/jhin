@@ -103,6 +103,42 @@
         "view": "unified"
       },
       {
+        "colorScheme": "blue-orange",
+        "demo": true,
+        "file": "lib/agent/run.ts",
+        "hunks": [
+          {
+            "header": "@@ -1,2 +1,2 @@",
+            "lines": [
+              {
+                "kind": "ctx",
+                "newNo": 1,
+                "oldNo": 1,
+                "text": "unchanged"
+              },
+              {
+                "kind": "del",
+                "oldNo": 2,
+                "text": "old line"
+              },
+              {
+                "kind": "add",
+                "newNo": 2,
+                "text": "new line"
+              }
+            ]
+          }
+        ],
+        "id": "probe-diff-view-split",
+        "language": "typescript",
+        "stats": {
+          "additions": 2,
+          "deletions": 1
+        },
+        "type": "diff_view",
+        "view": "split"
+      },
+      {
         "children": [
           {
             "text": "Glass card",
