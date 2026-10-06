@@ -378,7 +378,7 @@ The interaction cluster (steps 11–13) carries two fixed extra wrappers: `Mouse
 
 ### 2.5 Primitive catalog
 
-Contract level 2 grew the catalog from 25 to 58 primitives; contract level 3
+The level-2 contract grew the catalog from 25 to 58; the level-3 contract
 grows it to 68. `container` stays as the legacy name; `box` is its superset.
 
 - Layout — `screen`, `shell`, `container`, `box`, `row`, `column`, `flex`,
@@ -1144,6 +1144,19 @@ upstream `resolveContext` (`apps/web/src/keybindings.ts:148-159`). A
 context-free rule (no `when`) is suspended while text is being entered
 (`composerFocus` / `editableFocus`); a rule with a `when` follows its
 expression exactly.
+
+### 4.2 Decorative nodes and the `demo` marker
+
+A decorative control is an interactive node with no real effect: its `action`
+is the inline directive composite of section 3 (`{client: [setState, patch,
+setScreen, dialog, toast]}`), resolved entirely client-side with no server
+round-trip and no database write. Every such node MUST carry the universal
+`demo: true` prop (section 2.1); the client then paints the shared
+disabled-affordance marker — a small corner `preview` badge plus the tooltip
+`Preview only — not available in this build` — so nothing decorative looks
+silently real. Real screens must never carry `demo` on a real action. The
+server-side `DemoMarkerSweepTest` and `scripts/qa/t117.sh` enforce the marking
+across every decorative route (plan section 14.10).
 
 ## 5. Streams and frames
 

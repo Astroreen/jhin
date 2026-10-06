@@ -10,7 +10,7 @@ client renders the UI on Android, Linux desktop and Web.
 ```
 +--------------------------------------------------------------+
 |  Flutter SDUI client (Android / Linux / Web)                 |
-|  renders server-authored JSON over a catalog of 58           |
+|  renders server-authored JSON over a catalog of 68           |
 +-------------------------------+------------------------------+
                                 | JSON + SSE
 +-------------------------------v------------------------------+
@@ -121,7 +121,7 @@ Upgrades apply themselves; there is no manual migration step:
   `PluginContext` reference, one example per extension surface, plugin-to-plugin
   APIs, agent SPI chains, troubleshooting, packaging.
 - [docs/sdui.md](docs/sdui.md) — the server-driven UI contract: bootstrap
-  payload, the primitive catalog (58 primitives), action protocol, client
+  payload, the primitive catalog (68 primitives), action protocol, client
   directives, stream frames, expressions and caching.
 
 Service deployment (restart loop, systemd unit, data directory):

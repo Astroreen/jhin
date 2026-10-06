@@ -21,8 +21,8 @@ For writing plugins see [plugin-dev.md](plugin-dev.md); for the UI contract see
 3. **Flutter SDUI client** (`frontend/`) — a thin server-driven-UI renderer for
    Android, Linux desktop and Web. It hardcodes exactly one screen (the
    server-profile surface) and one endpoint (`GET /_jhin/bootstrap`); everything
-   else is server-authored JSON over the primitive catalog (58 primitives at
-   contract level 2, see [sdui.md](sdui.md) section 2.5).
+   else is server-authored JSON over the primitive catalog (68 primitives at
+   contract level 3, see [sdui.md](sdui.md) section 2.5).
 
 A bare kernel is not a product: it answers only `GET /_jhin/health` and
 `GET /_jhin/bootstrap` and reports an empty UI until plugins are installed.
@@ -343,17 +343,59 @@ and `jhin-sched-2`; the pool size is a host constant):
 
 ### 6.1 Design-token layer
 
-All visual constants of the client live in one place:
-`frontend/lib/design/tokens.dart` (`JhinTokens`: spacing, radius, typography,
-elevation, motion and semantic colors) and `frontend/lib/design/theme.dart`
+Every visual constant of the client is a named token, never a literal. The
+server side owns the vocabulary in `plugins/ui-kit/.../UiTokens.java`: the
+typed families `color` (the 56 semantic `--color-*` aliases), `contrast` (the
+`--contrast-*` foreground indirection), `radius`, `text`, `font`, `space`,
+`layout`, `glass`, `motion`, `shadow`, `scroll` and `z`, each with a
+`$family.key` reference helper that rejects unknown keys at build time.
+`TokenDefaults.java` supplies the fallback values and `BootstrapRoute` emits
+the whole `tokens` block in the bootstrap payload ([sdui.md](sdui.md)
+section 1).
+
+The client mirrors the same key set in `frontend/lib/design/tokens.dart`
+(`JhinTokens`) and resolves it in `frontend/lib/design/theme.dart`
 (`JhinTheme.from` / `JhinTheme.fromBootstrap` build the theme from the
 bootstrap `theme`, `tokens` and `density` blocks; `JhinDesignScope` is the
-inherited widget that hands it down the tree). Node props may reference tokens
-by name as `$token` strings; the client resolves every `$…` reference against
-the theme at render time. Widgets below the token layer do not hardcode colors
-or paddings.
+inherited widget that hands it down the tree). Node props reference tokens by
+name as `$token` strings; the client resolves every `$…` reference against the
+theme at render time and degrades an unknown reference to the literal string.
+Widgets below the token layer do not hardcode colors or paddings.
 
-### 6.2 The `Ui` builder lattice
+### 6.2 Theme catalogue and palette generator
+
+`plugins/ui-kit/.../ThemeCatalog.java` holds the six selectable themes: the
+five t3code built-ins (`t3-chat`, `grove`, `ocean`, `ember`, `iris`) plus the
+`jhin` identity theme. Each entry carries a light and a dark canvas/accent
+seed pair (the upstream `themePalettes.ts` roles) and the per-theme
+`--stage-art-*` backdrop metadata; `jhin` keeps the pre-catalogue
+`#16161e` / `#7E57C2` seeds so selecting it reproduces the original palette.
+The selected id persists as `themeId` (default `t3-chat`) through the
+`jhin.ui` settings and the client store (schema v4, [updates.md](updates.md)).
+
+`plugins/ui-kit/.../PaletteGen.java` (with `Oklch.java`) is the two-seed
+generator: given an appearance and a canvas/accent pair it derives the full
+semantic colour surface — the perceptual lightness ladder, WCAG-solved
+foregrounds (≥ 7:1), the +50° companion action colour and the status blends —
+as 8-bit hex, the wire format of the token layer.
+`frontend/lib/design/palette_gen.dart` is the identical algorithm for
+client-side live preview; the two ports are tested against shared vectors.
+
+### 6.3 Decorative-surface pattern
+
+A decorative control is a node whose `action` is an inline directive list
+(`{client: [setState, patch, setScreen, dialog, toast]}`) resolved entirely
+client-side, with no server round-trip and no database write. Every such
+interactive node MUST carry the universal `demo: true` prop
+([sdui.md](sdui.md) section 2.1): the client renders the shared
+disabled-affordance marker — a small corner `preview` badge plus the tooltip
+`Preview only — not available in this build`
+(`frontend/lib/sdui/demo_marker.dart`) — so nothing decorative looks silently
+real. The server-side `DemoMarkerSweepTest` and `scripts/qa/t117.sh` enforce
+the marking across every decorative route; real screens must never carry
+`demo` on a real action.
+
+### 6.4 The `Ui` builder lattice
 
 `plugins/ui-kit/` is API-only: `UiNode` (the JSON-shaped node model) and the
 fluent `Ui` builder over the primitive catalog. Builders are composed through
@@ -365,7 +407,7 @@ enum-valued props at build time and `UiTokens` holds the token names the
 builder may emit. `UiConformanceTest` keeps the emittable keys and the
 [sdui.md](sdui.md) tables in lock-step (section 2.6).
 
-### 6.3 Versioned client store
+### 6.5 Versioned client store
 
 The client's persisted blob is an envelope — `{schema, app, writtenAt, data}` —
 owned by `frontend/lib/store/versioned_store.dart`. Migrations run
@@ -377,7 +419,7 @@ destroy data. `frontend/lib/boot/version_gate.dart` compares the on-disk
 schema with the bootstrap `contract` block (`schema` / `minSchema`) and shows
 the built-in "update required" surface instead of product screens on mismatch.
 
-### 6.4 Keyboard layer
+### 6.6 Keyboard layer
 
 `frontend/lib/sdui/keyboard/` turns key events into named commands:
 `CommandRegistry` (the fixed set of 25 command ids), `WhenContexts` (the
@@ -386,7 +428,7 @@ the built-in "update required" surface instead of product screens on mismatch.
 the server negotiates overrides through the `X-Jhin-Keybindings` header
 ([sdui.md](sdui.md) section 8).
 
-### 6.5 Gallery and golden harness
+### 6.7 Gallery and golden harness
 
 The ui-kit `GalleryDump` probe writes a gallery of every primitive into
 `frontend/test/gallery/`, where widget tests render it and compare against

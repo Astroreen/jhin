@@ -95,8 +95,8 @@ runtime; consumers depend on the plugin and look the service up.
 The Flutter client hardcodes exactly one screen — the client-owned
 server-profile surface (add-server and profile switching) — and one endpoint:
 the bootstrap fetch (`GET /_jhin/bootstrap`). Everything else is server-driven
-UI over the primitive catalog: since contract level 2 the primitives are a
-catalog of 58 (layout, text, controls, surfaces, data, nav — see
+UI over the primitive catalog: since contract level 3 the primitives are a
+catalog of 68 (layout, text, controls, surfaces, data, nav — see
 `docs/sdui.md` §2.5), no longer a fixed list of 25. An unknown primitive
 renders a placeholder card; the client never crashes on server content. The
 kernel itself owns only two endpoints — `GET /_jhin/health` and
@@ -104,7 +104,7 @@ kernel itself owns only two endpoints — `GET /_jhin/health` and
 override.
 
 Bootstrap negotiation: the payload carries
-`contract {api: 2, minApi: 2, schema: 3, minSchema: 3}` and every client
+`contract {api: 3, minApi: 2, schema: 4, minSchema: 3}` and every client
 request advertises `X-Jhin-Client: api=…; version=…; schema=…; caps=…`
 (`docs/sdui.md` §1, §6). Release builds of the client must pass
 `--no-tree-shake-icons`: `frontend/lib/design/icon_registry.dart` resolves

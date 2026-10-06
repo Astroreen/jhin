@@ -737,3 +737,58 @@ compiles without a manifest, packaging and QA invoke it):
 
 Full field validation with the load-time rules runs in the kernel at startup
 (`PluginManifest.validate`), so a bad manifest never loads silently.
+
+## 8. UI plugins: tokens, themes and decorative screens
+
+A UI plugin builds screens with the `jhin.ui-kit` builder and registers them
+through `jhin.ui`; it never hardcodes a colour, a radius or a spacing value.
+The three building blocks are `UiTokens`, `PaletteGen` and `ThemeCatalog`, all
+in the exported package `com.astroreen.jhin.plugin.uikit`.
+
+**Tokens.** `UiTokens` is the vocabulary of every visual constant. Reference a
+token by family and key — `UiTokens.color("sidebar-row-hover")`,
+`UiTokens.radius("lg")`, `UiTokens.space("control")`, `UiTokens.motion("fast")`
+— and the helper returns the `$family.key` string the client resolves at
+render time; an unknown key throws at build time, so a typo never reaches the
+wire. The families are `color`, `contrast`, `radius`, `text`, `font`, `space`,
+`layout`, `glass`, `motion`, `shadow`, `scroll` and `z` (the full key set is
+`docs/sdui.md` section 2.2 and the bootstrap `tokens` block).
+
+**Palette generator.** `PaletteGen.generate(appearance, canvasHex, accentHex)`
+derives the complete semantic colour surface from two seeds — the perceptual
+lightness ladder, WCAG-solved foregrounds, the +50° companion action colour
+and the status blends — as a map keyed by the `UiTokens.COLOR_KEYS` names. Use
+it to preview a theme or to derive a custom canvas/accent pair; an unparsable
+seed throws `PaletteGen.PaletteError`.
+
+**Theme catalogue.** `ThemeCatalog.ids()` lists the six selectable themes;
+`ThemeCatalog.get(id)` returns one entry with its light and dark seed pairs
+(`theme.seeds(appearance)`) and its `--stage-art-*` backdrop metadata
+(`theme.stageArt(appearance)`). `ThemeCatalog.isReserved(id)` reports the
+appearance modes (`system`, `light`, `dark`) that are never theme ids. The
+selected id is persisted by `jhin.ui` as `themeId` (default `t3-chat`).
+
+**Authoring a decorative screen.** A decorative control is a node whose
+`action` is an inline directive list resolved entirely client-side — no server
+round-trip, no database write:
+
+```java
+Ui.button("Split view")
+    .demo(true)
+    .action(Map.of("client", List.of(
+        Map.of("op", "setState", "id", "diffView", "value", "split"),
+        Map.of("op", "patch", "id", "diffBody", "props", Map.of("columns", 2)),
+        Map.of("op", "toast", "text", "Preview only — no diff engine in this build"))))
+    .build();
+```
+
+Every interactive node without a real effect MUST carry `demo(true)`
+(`docs/sdui.md` section 2.1): the client paints the shared disabled-affordance
+marker (a corner `preview` badge plus the tooltip `Preview only — not
+available in this build`) so nothing decorative looks silently real. The
+builder enforces it where the primitive is inherently decorative (for example
+`diff_view`, whose `build()` throws `demo marker required` without it), and
+the `DemoMarkerSweepTest` plus `scripts/qa/t117.sh` sweep every decorative
+route. Real screens must never carry `demo` on a real action. Decorative
+surfaces may read fixtures and dispatch inline directives only — never a
+database write (plan section 14.1).

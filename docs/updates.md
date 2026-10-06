@@ -196,3 +196,36 @@ envelope and runner model above, and the host migrates its database through
 plugin migrations. When the client and server disagree on the contract level,
 a version gate screen states plainly what is too old or too new and what to
 update — the app never renders a broken half-state.
+
+## 10. Release notes: the t3code UI clone
+
+This release aligns the client's visual language with the t3code design system
+and grows the SDUI contract to **level 3** (`api: 3`, schema `4`).
+
+**What was copied.** The token vocabulary (the 56 semantic `--color-*` aliases
+plus the `contrast`, `radius`, `text`, `font`, `space`, `layout`, `glass`,
+`motion`, `shadow`, `scroll` and `z` families), the six-theme catalogue
+(`t3-chat`, `grove`, `ocean`, `ember`, `iris` and the `jhin` identity theme),
+the two-seed OKLCH palette generator with WCAG-solved foregrounds, and the
+primitive catalog grown from 58 to **68** (the ten level-3 catalog additions:
+`hover_card`, `toast_stack`, `split`, `kbd`, `scroll_fade`, `diff_view` and
+the universal `glass`, `demo`, `statusPulse` and `safeArea`, plus the
+`glassTint` companion of `glass`). The shell, sidebar, chat timeline, settings
+panels, command palette and keyboard-first navigation were ported to the same
+visual contracts.
+
+**What is decorative.** Several surfaces have no backend in this build and are
+presentation only: the terminal drawer, the diff viewer and changed-files
+tree, the browser preview, the usage and pull-request pages, the device
+pairing / connect / welcome / project screens and the decorative settings
+panels (connections, integrations, projects, scheduled tasks, source control,
+snap-shot). Every interactive node on those surfaces carries the universal
+`demo: true` marker and dispatches inline client directives only — it never
+writes to the database. The client paints the shared disabled-affordance
+marker (a corner `preview` badge plus the tooltip `Preview only — not
+available in this build`) so nothing decorative looks silently real.
+
+**What to strip.** The clone is designed to be extended: drop the `demo` nodes
+and replace their inline directives with real actions. The token layer, the
+palette generator and the decorative mechanism are the intended seams — the
+rest of the UI keeps working unchanged.
