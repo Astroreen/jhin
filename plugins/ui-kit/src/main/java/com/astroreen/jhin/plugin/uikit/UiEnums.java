@@ -200,8 +200,13 @@ final class UiEnums {
     /** docs/sdui.md 2.6 {@code scroll_fade} {@code mode}. */
     static final Set<String> SCROLL_FADE_MODE = Set.of("topbar", "virtualized");
 
-    /** docs/sdui.md 2.1 level-3 universal {@code statusPulse} (the progress duty-cycle modes). */
-    static final Set<String> STATUS_PULSE = Set.of("pulse", "ping", "skeleton", "none");
+    /**
+     * docs/sdui.md 2.1 level-3 universal {@code statusPulse} (the progress
+     * duty-cycle modes) plus the T108 {@code preview-loading} bar mode (the
+     * upstream {@code preview-loading-progress} keyframe).
+     */
+    static final Set<String> STATUS_PULSE =
+            Set.of("pulse", "ping", "skeleton", "preview-loading", "none");
 
     /** docs/sdui.md 2.6 {@code diff_view} {@code view}. */
     static final Set<String> DIFF_VIEW_LAYOUT = Set.of("unified", "split");

@@ -124,6 +124,39 @@ public final class RightPanelBuilder {
     /** The Preview tab decorative {@code Open in…} button id (T107). */
     public static final String PREVIEW_OPEN_ID = "right-panel-preview-open";
 
+    /** The T108 browser-preview section id (the URL bar + progress + viewport). */
+    public static final String PREVIEW_BROWSER_ID = "right-panel-preview-browser";
+
+    /** The T108 URL-bar row id. */
+    public static final String PREVIEW_URL_BAR_ID = "right-panel-preview-url-bar";
+
+    /** The T108 URL input id (the UiState field the reload action includes). */
+    public static final String PREVIEW_URL_ID = "preview_url";
+
+    /** The T108 decorative Reload button id. */
+    public static final String PREVIEW_RELOAD_ID = "right-panel-preview-reload";
+
+    /** The T108 preview-loading progress bar id (the reload patch target). */
+    public static final String PREVIEW_PROGRESS_ID = "right-panel-preview-progress";
+
+    /** The T108 viewport placeholder id. */
+    public static final String PREVIEW_VIEWPORT_ID = "right-panel-preview-viewport";
+
+    /** The T108 viewport illustration figure id. */
+    public static final String PREVIEW_FIGURE_ID = "right-panel-preview-figure";
+
+    /** The T108 file-preview section id (the retained T107 code block). */
+    public static final String PREVIEW_FILE_ID = "right-panel-preview-file";
+
+    /** The T108 URL-bar fixture value (the demo address). */
+    public static final String PREVIEW_URL_VALUE = "http://localhost:5173";
+
+    /** The T108 URL-bar validation text (the empty-URL failure path). */
+    public static final String PREVIEW_URL_ERROR = "Enter a URL to preview";
+
+    /** The T108 preview-loading mode (the upstream keyframe). */
+    public static final String PREVIEW_LOADING_MODE = "preview-loading";
+
     /** The empty-state card ids of the three T107 tabs. */
     public static final String DIFF_EMPTY_ID = "right-panel-diff-empty";
     public static final String FILES_EMPTY_ID = "right-panel-files-empty";
@@ -453,21 +486,130 @@ public final class RightPanelBuilder {
     }
 
     /**
-     * The Preview tab: the file path header with the decorative
-     * {@code Open in…} button over the syntax-highlighted {@code code_block}
-     * of the first fixture file. An empty fixture renders the empty-state
-     * card.
+     * The Preview tab (T108): the browser-preview chrome — the URL bar with
+     * the decorative Reload button, the {@code preview-loading} progress bar
+     * and the illustrated viewport placeholder — over the retained T107 file
+     * preview (the syntax-highlighted {@code code_block} with the decorative
+     * {@code Open in…} button). An empty fixture renders the file-preview
+     * empty-state card, never a blank tab.
      */
     private static UiNode previewTab(List<Map<String, Object>> files) {
-        if (files.isEmpty()) {
-            return emptyCard(PREVIEW_EMPTY_ID, "No file to preview.",
-                    "This build has no file preview.");
-        }
-        Map<String, Object> first = files.get(0);
-        return Ui.column()
+        Ui.ColumnBuilder column = Ui.column()
                 .id(PREVIEW_ID)
                 .gap(8)
                 .padding(12)
+                .child(browserPreview());
+        if (files.isEmpty()) {
+            column.child(emptyCard(PREVIEW_EMPTY_ID, "No file to preview.",
+                    "This build has no file preview."));
+        } else {
+            column.child(filePreview(files));
+        }
+        return column.build();
+    }
+
+    /**
+     * The T108 browser-preview chrome: the URL bar, the loading progress bar
+     * and the viewport placeholder. There is no browser automation (plan
+     * section 14.1): the URL is a read-only fixture value, the Reload button
+     * is a {@code demo} server action whose empty-URL validation is the
+     * client's own, and the viewport is an illustrated placeholder.
+     */
+    private static UiNode browserPreview() {
+        return Ui.column()
+                .id(PREVIEW_BROWSER_ID)
+                .gap(8)
+                .child(urlBar())
+                .child(progressBar())
+                .child(viewport())
+                .build();
+    }
+
+    /**
+     * The URL bar: the read-only address input (the fixture URL) and the
+     * decorative Reload icon button. The input is {@code required} with the
+     * T108 error text, so the client's {@code ActionDispatcher} blocks the
+     * reload on an empty address and shows the validation text instead of
+     * animating (the {@code --fail} path).
+     */
+    private static UiNode urlBar() {
+        return Ui.row()
+                .id(PREVIEW_URL_BAR_ID)
+                .align("center")
+                .gap(8)
+                .child(Ui.input(PREVIEW_URL_ID)
+                        .value(PREVIEW_URL_VALUE)
+                        .placeholder("Search or enter URL")
+                        .readOnly(true)
+                        .required(true)
+                        .errorText(PREVIEW_URL_ERROR)
+                        .flex(1)
+                        .build())
+                .child(Ui.iconButton()
+                        .id(PREVIEW_RELOAD_ID)
+                        .icon("refresh")
+                        .iconSize(16)
+                        .tooltip("Reload")
+                        .action(ActionDescriptors.of("preview-reload", null,
+                                List.of(PREVIEW_URL_ID)))
+                        .set("demo", true)
+                        .build())
+                .build();
+    }
+
+    /**
+     * The top progress bar: the T108 {@code preview-loading} mode, hidden
+     * until the reload action patches {@code loading: true} (the upstream
+     * {@code data-loading} attribute).
+     */
+    private static UiNode progressBar() {
+        return Ui.progress()
+                .id(PREVIEW_PROGRESS_ID)
+                .kind("linear")
+                .statusPulse(PREVIEW_LOADING_MODE)
+                .loading(false)
+                .build();
+    }
+
+    /**
+     * The viewport placeholder: the illustrated {@code figure} over the
+     * "Preview is not available in this build" copy (the upstream
+     * {@code PreviewPanel} unavailable state, {@code PreviewPanel.tsx:31-40}).
+     */
+    private static UiNode viewport() {
+        return Ui.column()
+                .id(PREVIEW_VIEWPORT_ID)
+                .align("center")
+                .gap(8)
+                .padding(24)
+                .child(Ui.figure()
+                        .id(PREVIEW_FIGURE_ID)
+                        .shape("rectangle")
+                        .color("$color.muted")
+                        .width(160)
+                        .height(96)
+                        .build())
+                .child(Ui.text("Preview is not available in this build")
+                        .fontSize(13)
+                        .fontWeight(600)
+                        .build())
+                .child(Ui.text("Browser previews are only available in the desktop app.")
+                        .fontSize(12)
+                        .color("$color.sidebar-muted-foreground")
+                        .build())
+                .build();
+    }
+
+    /**
+     * The retained T107 file preview: the file path header with the
+     * decorative {@code Open in…} button over the syntax-highlighted
+     * {@code code_block} of the first fixture file.
+     */
+    private static UiNode filePreview(List<Map<String, Object>> files) {
+        Map<String, Object> first = files.get(0);
+        return Ui.column()
+                .id(PREVIEW_FILE_ID)
+                .gap(8)
                 .child(Ui.row()
                         .id(PREVIEW_HEADER_ID)
                         .align("center")

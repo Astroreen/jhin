@@ -169,6 +169,16 @@ public final class ChatScreen {
     public static final String PICKER_BRANCH = "composer-branch-picker";
     public static final String PICKER_HOST = "composer-host-picker";
 
+    /** The T108 permissions dialog ids (the access-mode picker shell). */
+    public static final String PERMISSIONS_DIALOG_ID = "composer-mode-dialog";
+    public static final String PERMISSIONS_MODES_ID = "permissions-modes";
+    public static final String PERMISSIONS_NOTE_ID = "permissions-note";
+    public static final String PERMISSIONS_SAVE_ID = "permissions-save";
+
+    /** The T108 permission-mode rows (the upstream access modes). */
+    public static final List<String> PERMISSION_MODES =
+            List.of("Read only", "Ask", "Full access");
+
     /** The seam shade: the recipe's {@code rgb(0 0 0 / 18%)} as AARRGGBB. */
     private static final String SEAM_SHADE = "#2E000000";
 
@@ -583,7 +593,7 @@ public final class ChatScreen {
                 .child(picker(PICKER_EFFORT, "Effort: ${" + STATE_EFFORT + "}",
                         "speed", "mod+shift+e", effortDialog()))
                 .child(picker(PICKER_MODE, "Access: ${" + STATE_MODE + "}",
-                        "shield", "mod+shift+a", modeDialog()))
+                        "shield", "mod+shift+a", permissionsDialog()))
                 .child(picker(PICKER_WORKSPACE, "${" + STATE_WORKSPACE + "}",
                         "folder_open", "mod+shift+x", workspaceDialog()))
                 .child(picker(PICKER_BRANCH, "${" + STATE_BRANCH + "}",
@@ -681,14 +691,97 @@ public final class ChatScreen {
                 .build();
     }
 
-    /** The access-mode picker dialog: the upstream permission modes. */
-    private static UiNode modeDialog() {
-        return dialogOptions("composer-mode-dialog", "Access mode", "mod+shift+a")
-                .child(option(STATE_MODE, "Read only"))
-                .child(option(STATE_MODE, "Ask"))
-                .child(option(STATE_MODE, "Full access"))
-                .child(dialogDone())
+    /**
+     * The T108 permissions dialog shell: the access-mode picker opened from
+     * the composer's access control. The three upstream permission modes
+     * (Read only / Ask / Full access) are a radio group — a {@code list} of
+     * {@code list_row}s whose leading radio glyph and selected tint follow
+     * the local {@code chat_mode} state — over a demo note and the Save
+     * button. Save toasts the preview wording and closes; nothing is
+     * persisted (plan section 14.10).
+     */
+    private static UiNode permissionsDialog() {
+        Ui.ListBuilder modes = Ui.list().id(PERMISSIONS_MODES_ID);
+        for (String mode : PERMISSION_MODES) {
+            modes.item(permissionRow(mode));
+        }
+        return Ui.column()
+                .id(PERMISSIONS_DIALOG_ID)
+                .gap(8)
+                .child(Ui.row()
+                        .gap(8)
+                        .align("center")
+                        .child(Ui.text("Permissions").fontWeight(600).build())
+                        .child(Ui.kbd().chord("mod+shift+a").build())
+                        .build())
+                .child(modes.build())
+                .child(Ui.text("Preview only \u2014 permission changes are not saved in this build.")
+                        .id(PERMISSIONS_NOTE_ID)
+                        .fontSize(12)
+                        .color("$color.muted-foreground")
+                        .build())
+                .child(Ui.button("Save")
+                        .id(PERMISSIONS_SAVE_ID)
+                        .action(Directives.client(List.of(
+                                Directives.toast("Permissions saved (preview only)"),
+                                Directives.dismissDialog())))
+                        .set("demo", true)
+                        .build())
                 .build();
+    }
+
+    /** One permission-mode radio row: the leading radio glyph plus the mode. */
+    private static UiNode permissionRow(String mode) {
+        boolean selected = PERMISSION_MODES.get(0).equals(mode);
+        return Ui.listRow()
+                .id("permission-mode-" + permissionSlug(mode))
+                .leading(Ui.icon()
+                        .id("permission-mode-" + permissionSlug(mode) + "-radio")
+                        .icon(selected ? "radio_button_checked" : "radio_button_unchecked")
+                        .size(18)
+                        .color(selected ? "$color.accent" : "$color.muted-foreground")
+                        .build())
+                .title(mode)
+                .subtitle(permissionDescription(mode))
+                .selected(selected)
+                .action(Directives.client(permissionSelectOps(mode)))
+                .set("demo", true)
+                .build();
+    }
+
+    /**
+     * The inline composite of one permission row: set the local mode, flip
+     * every radio glyph to the new selection and toast the preview wording.
+     */
+    private static List<Map<String, Object>> permissionSelectOps(String mode) {
+        List<Map<String, Object>> ops = new ArrayList<>();
+        ops.add(Directives.setState(STATE_MODE, mode));
+        for (String candidate : PERMISSION_MODES) {
+            boolean selected = candidate.equals(mode);
+            ops.add(Directives.patch(
+                    "permission-mode-" + permissionSlug(candidate) + "-radio",
+                    Map.of(
+                            "icon", selected
+                                    ? "radio_button_checked" : "radio_button_unchecked",
+                            "color", selected
+                                    ? "$color.accent" : "$color.muted-foreground")));
+        }
+        ops.add(Directives.toast(mode + " selected (preview only)"));
+        return ops;
+    }
+
+    /** The upstream permission-mode description (permission-modes.md:11-16). */
+    private static String permissionDescription(String mode) {
+        return switch (mode) {
+            case "Read only" -> "Read files and run read-only commands.";
+            case "Ask" -> "Ask before commands and file changes.";
+            default -> "Allow commands and edits without prompts.";
+        };
+    }
+
+    /** The id slug of one permission mode. */
+    private static String permissionSlug(String mode) {
+        return mode.toLowerCase(java.util.Locale.ROOT).replace(' ', '-');
     }
 
     /** The workspace selector dialog: the current worktree plus fixtures. */

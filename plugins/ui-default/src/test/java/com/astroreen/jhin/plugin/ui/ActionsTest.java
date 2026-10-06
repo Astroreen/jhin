@@ -471,7 +471,8 @@ class ActionsTest {
                 "save-appearance", "save-thread-behavior",
                 "pin", "unpin", "settle", "unsettle", "snooze", "wake",
                 "archive", "restore", "regenerate-title", "reorder",
-                "auto-settle", "delete-session", "arrange-toggle", "demo-snooze");
+                "auto-settle", "delete-session", "arrange-toggle", "demo-snooze",
+                "preview-reload");
         for (String name : List.of("enroll", "send", "cancel",
                 "create-provider", "delete-provider", "undo",
                 "pin", "unpin", "settle", "unsettle", "snooze", "wake",

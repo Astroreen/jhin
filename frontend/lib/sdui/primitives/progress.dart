@@ -25,9 +25,27 @@ import '../ui_registry.dart';
 /// motion collapses every mode to the static dot.
 const Set<String> statusPulseModes = {'pulse', 'ping', 'skeleton'};
 
+/// The T108 browser-preview loading mode: the upstream
+/// `preview-loading-progress` keyframe (index.css:2118-2151, commit 37de6cb)
+/// — a 2 px bar that scales from 0.04 to 0.9 over 5.3 s with
+/// `cubic-bezier(0.1, 0.5, 0.2, 1)` and holds (`forwards`). The `loading`
+/// prop is the upstream `data-loading` attribute: `false` keeps the bar
+/// hidden, `true` plays the animation once.
+const String kPreviewLoadingMode = 'preview-loading';
+const Duration kPreviewLoadingCycle = Duration(milliseconds: 5300);
+const Cubic kPreviewLoadingCurve = Cubic(0.1, 0.5, 0.2, 1.0);
+const double kPreviewLoadingFrom = 0.04;
+const double kPreviewLoadingTo = 0.9;
+
 Widget buildProgress(BuildContext context, UiNode node, RenderContext ctx) {
   final value = node.numProp('value')?.toDouble();
   final mode = node.stringProp('statusPulse');
+  if (mode == kPreviewLoadingMode) {
+    return JhinPreviewLoadingBar(
+      loading: node.boolProp('loading') == true,
+      color: parseColor(node.props['color']),
+    );
+  }
   if (mode != null &&
       statusPulseModes.contains(mode) &&
       !(value != null && value >= 1.0)) {
@@ -211,6 +229,122 @@ class _JhinStatusIndicatorState extends State<JhinStatusIndicator>
       builder: (context, child) =>
           Opacity(opacity: curve.valueAt(controller.value), child: child),
       child: dot,
+    );
+  }
+}
+
+/// The T108 browser-preview loading bar (the upstream
+/// `preview-loading-progress`, index.css:2118-2151, commit 37de6cb): a 2 px
+/// full-width bar, origin-left, rounded on the right, tinted `primary` with
+/// the ring glow. `loading: false` keeps it hidden (opacity 0, scaleX 1);
+/// `loading: true` plays the 5.3 s scaleX 0.04 → 0.9 animation once and
+/// holds at 0.9 (`forwards`). Reduced motion collapses to the static 0.9
+/// bar (index.css:2141-2151) — no ticker runs.
+class JhinPreviewLoadingBar extends StatefulWidget {
+  const JhinPreviewLoadingBar({
+    super.key,
+    required this.loading,
+    this.color,
+  });
+
+  /// The upstream `data-loading` attribute: whether the bar plays.
+  final bool loading;
+
+  /// The bar color; the `primary` token when unset.
+  final Color? color;
+
+  @override
+  State<JhinPreviewLoadingBar> createState() => _JhinPreviewLoadingBarState();
+}
+
+class _JhinPreviewLoadingBarState extends State<JhinPreviewLoadingBar>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _controller;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(JhinPreviewLoadingBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.loading != widget.loading) {
+      _sync();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  void _sync() {
+    final design = JhinDesignScope.of(context);
+    final animated = design.switches.statusPulseEnabled &&
+        design.tokens.motion.normal > Duration.zero;
+    if (!widget.loading || !animated) {
+      _controller?.dispose();
+      _controller = null;
+      return;
+    }
+    if (_controller == null) {
+      _controller = AnimationController(
+        vsync: this,
+        duration: kPreviewLoadingCycle,
+      )..forward();
+    } else {
+      _controller!
+        ..reset()
+        ..forward();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final design = JhinDesignScope.of(context);
+    final material = JhinDesignScope.materialOf(context);
+    final color = widget.color ??
+        design.colorOf('primary', brightness: Theme.brightnessOf(context)) ??
+        material.colorScheme.primary;
+    final ring = design.colorOf('ring', brightness: Theme.brightnessOf(context));
+    final controller = _controller;
+    Widget bar(double scale) => Opacity(
+          opacity: widget.loading ? 1.0 : 0.0,
+          child: Transform.scale(
+            scaleX: scale,
+            alignment: Alignment.centerLeft,
+            child: Container(
+              height: 2,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: const BorderRadius.horizontal(
+                  right: Radius.circular(999),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: ring ?? color,
+                    blurRadius: 6,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+    if (controller == null) {
+      // Hidden (not loading) or the reduced-motion static hold.
+      return bar(widget.loading ? kPreviewLoadingTo : 1.0);
+    }
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, child) => bar(
+        kPreviewLoadingFrom +
+            (kPreviewLoadingTo - kPreviewLoadingFrom) *
+                kPreviewLoadingCurve.transform(controller.value),
+      ),
     );
   }
 }

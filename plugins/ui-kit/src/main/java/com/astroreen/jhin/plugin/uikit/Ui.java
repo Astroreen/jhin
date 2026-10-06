@@ -2721,12 +2721,26 @@ public final class Ui {
 
         /**
          * The level-3 duty-cycle mode (docs/sdui.md section 2.1): {@code
-         * pulse}, {@code ping}, {@code skeleton} or {@code none}; validated.
-         * A complete indicator ({@code value >= 1.0}) never animates
-         * client-side.
+         * pulse}, {@code ping}, {@code skeleton}, {@code preview-loading} or
+         * {@code none}; validated. A complete indicator ({@code value >= 1.0})
+         * never animates client-side. {@code preview-loading} renders the
+         * T108 browser-preview bar (the upstream {@code
+         * preview-loading-progress} keyframe) and reads the {@link #loading}
+         * prop for its play state.
          */
         public ProgressBuilder statusPulse(String value) {
             props.put("statusPulse", UiEnums.require("statusPulse", value, UiEnums.STATUS_PULSE));
+            return this;
+        }
+
+        /**
+         * The T108 {@code preview-loading} play state: {@code true} runs the
+         * 5.3&nbsp;s scaleX animation, {@code false} keeps the bar hidden
+         * (the upstream {@code data-loading} attribute). Ignored by every
+         * other mode.
+         */
+        public ProgressBuilder loading(boolean value) {
+            props.put("loading", value);
             return this;
         }
     }

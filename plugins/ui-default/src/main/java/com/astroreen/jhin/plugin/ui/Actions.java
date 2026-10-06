@@ -3,7 +3,7 @@
  * action, registered always and degrading to an explanatory toast when the
  * plugin that would serve it is not loaded.
  *
- * <p>Names, exhaustively (27):
+ * <p>Names, exhaustively (28):
  * <ul>
  *   <li>{@code enroll} — redeem an enrollment code, answer
  *       {@code [setToken, navigate:sessions]} (jhin.security);</li>
@@ -35,6 +35,9 @@
  *   <li>{@code demo-snooze} (T98) — the {@code Custom\u2026} snooze dialog's
  *       confirm: answers {@code [dismissDialog, toast]} and persists
  *       nothing — the decorative picker shell of the plan's T98 step 2.</li>
+ *   <li>{@code preview-reload} (T108) — the browser-preview reload: answers
+ *       {@code [patch progress loading:true, toast]} and persists nothing —
+ *       the decorative shell of the plan's T108 step 1.</li>
  * </ul>
  *
  * <p>The optional integrations are constructed behind their flag, so a
@@ -48,6 +51,7 @@ import com.astroreen.jhin.plugin.security.api.EnrollmentService;
 import com.astroreen.jhin.plugin.sessions.api.SessionLifecycleService;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
 import com.astroreen.jhin.plugin.sessions.api.UndoJournal;
+import com.astroreen.jhin.plugin.ui.screens.RightPanelBuilder;
 import com.astroreen.jhin.sdk.ServiceRegistry;
 import com.astroreen.jhin.sdk.http.HttpRequest;
 import java.util.LinkedHashMap;
@@ -80,6 +84,7 @@ final class Actions {
         handlers.put("create-provider", createProvider(services, features));
         handlers.put("delete-provider", deleteProvider(services, features));
         handlers.put("reload", ReloadAction::handle);
+        handlers.put("preview-reload", Actions::previewReload);
         handlers.put("undo", undo(services));
         handlers.put("keybind-edit", KeybindActions::edit);
         handlers.put("keybind-save", KeybindActions::save);
@@ -141,6 +146,23 @@ final class Actions {
             @SuppressWarnings("unused") Map<String, Object> payload) {
         return List.of(Directives.dismissDialog(), Directives.toast(
                 "Custom snooze is a preview in this build."));
+    }
+
+    /**
+     * The T108 browser-preview reload: the decorative shell that starts the
+     * {@code preview-loading} bar. The client validates the included URL
+     * first (the input is {@code required}), so an empty address never
+     * reaches this handler — it shows the inline error instead. The answer
+     * patches the progress node to {@code loading: true} and toasts the
+     * preview wording; there is no browser automation (plan section 14.1).
+     */
+    private static List<Map<String, Object>> previewReload(
+            @SuppressWarnings("unused") HttpRequest req,
+            @SuppressWarnings("unused") Map<String, Object> payload) {
+        return List.of(
+                Directives.patch(RightPanelBuilder.PREVIEW_PROGRESS_ID,
+                        Map.of("loading", true)),
+                Directives.toast("Reloading preview (preview only)"));
     }
 
     /** The enroll handler, or its absent-plugin stand-in. */
