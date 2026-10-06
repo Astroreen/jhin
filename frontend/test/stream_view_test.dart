@@ -9,6 +9,7 @@ import 'package:jhin/core/sse/sse_stream.dart';
 import 'package:jhin/sdui/primitives/chart_bar.dart';
 import 'package:jhin/sdui/primitives/chart_line.dart';
 import 'package:jhin/sdui/primitives/chart_pie.dart';
+import 'package:jhin/sdui/primitives/scroll.dart';
 import 'package:jhin/sdui/render_context.dart';
 import 'package:jhin/sdui/ui_node.dart';
 import 'package:jhin/sdui/ui_registry.dart';
@@ -16,6 +17,12 @@ import 'package:jhin/sdui/ui_state.dart';
 
 import 'sdui_fakes.dart';
 import 'test_fakes.dart';
+
+/// The QA `--fail` switch (T100): inverts the patch-anchoring assertion so
+/// the run fails on purpose — the deliberately wrong expectation is that a
+/// patch scrolls the timeline to the bottom, while the real behavior
+/// (proven by the happy run) preserves the position.
+const bool _failMode = bool.fromEnvironment('T100_FAIL_MODE');
 
 /// One in-process SSE fixture: a raw [HttpServer] writing
 /// `text/event-stream` frames, one scripted behavior per connection.
@@ -565,6 +572,111 @@ void main() {
           reason: 'the reconnect indicator must show while the stream is down');
       expect(find.text('A'), findsOneWidget);
       expect(find.text('B'), findsOneWidget);
+    });
+
+    testWidgets('the timeline tail reserves the anchor offset as the end inset',
+        (tester) async {
+      final hold = Completer<void>();
+      await _pumpStreamView(
+        tester,
+        streamView(autoScroll: true),
+        (connection, response) async {
+          await sendSse(response, {'node': textNode('a', 'A')});
+          await hold.future;
+        },
+      );
+
+      await _waitUntil(tester, () => find.text('A').evaluate().isNotEmpty);
+      final list = tester.widget<ListView>(find.byType(ListView).first);
+      final padding = list.padding;
+      expect(padding, isA<EdgeInsets>());
+      expect((padding as EdgeInsets).bottom, kChatTimelineAnchorOffset,
+          reason: 'the upstream CHAT_TIMELINE_ANCHOR_OFFSET (24 px) is the '
+              'end-of-timeline inset');
+    });
+
+    testWidgets('a patch frame preserves the scroll position (T100)',
+        (tester) async {
+      final hold = Completer<void>();
+      await _pumpStreamView(
+        tester,
+        streamView(autoScroll: true),
+        (connection, response) async {
+          for (var i = 1; i <= 30; i++) {
+            await sendSse(response, {'node': textNode('n$i', 'item-$i')});
+          }
+          await sendSse(
+              response, {'patch': {'id': 'n5', 'props': {'text': 'patched'}}});
+          await hold.future;
+        },
+      );
+
+      await _waitUntil(tester, () => find.text('item-30').evaluate().isNotEmpty);
+      final state = tester.state<ScrollableState>(find.byType(Scrollable).first);
+      final atEnd = state.position.pixels;
+      expect(atEnd, closeTo(state.position.maxScrollExtent, 1.0));
+
+      // Scroll away from the end, then let the patch land: the position
+      // must not move (the upstream maintainVisibleContentPosition port).
+      state.position.jumpTo(state.position.maxScrollExtent - 120);
+      await tester.pump();
+      final scrolled = state.position.pixels;
+      expect(scrolled, lessThan(atEnd));
+
+      await _waitUntil(tester, () => find.text('patched').evaluate().isNotEmpty);
+      if (_failMode) {
+        // The deliberately wrong expectation of the QA --fail path: the
+        // patch scrolls the timeline to the bottom. It does not — the
+        // position is preserved — so this run must fail.
+        expect(state.position.pixels, greaterThan(scrolled + 1),
+            reason: 'deliberately wrong: a patch must scroll the timeline');
+      }
+      expect(state.position.pixels, scrolled,
+          reason: 'a patch updates props in place and never scrolls');
+    });
+
+    testWidgets('appended items jump to the end only while following; '
+        'scrolling away switches to free-scrolling (T100)', (tester) async {
+      final hold = Completer<void>();
+      var sent = 0;
+      await _pumpStreamView(
+        tester,
+        streamView(autoScroll: true),
+        (connection, response) async {
+          for (var i = 1; i <= 30; i++) {
+            await sendSse(response, {'node': textNode('n$i', 'item-$i')});
+            sent = i;
+          }
+          // Give the test time to scroll away before the next append.
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          await sendSse(response, {'node': textNode('n31', 'item-31')});
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          await sendSse(response, {'node': textNode('n32', 'item-32')});
+          await hold.future;
+        },
+      );
+
+      await _waitUntil(tester, () => find.text('item-30').evaluate().isNotEmpty);
+      final state = tester.state<ScrollableState>(find.byType(Scrollable).first);
+      expect(state.position.pixels, closeTo(state.position.maxScrollExtent, 1.0),
+          reason: 'the view starts following the end');
+
+      // Scroll away beyond the anchor-offset tolerance: the next append
+      // must not yank the viewport (free-scrolling).
+      state.position.jumpTo(state.position.maxScrollExtent - 120);
+      await tester.pump();
+      final freePosition = state.position.pixels;
+      await _waitUntil(tester, () => find.text('item-31').evaluate().isNotEmpty);
+      expect(state.position.pixels, freePosition,
+          reason: 'a free-scrolled viewport keeps its position on append');
+
+      // Return to the end: following resumes and the next append jumps.
+      state.position.jumpTo(state.position.maxScrollExtent);
+      await tester.pump();
+      await _waitUntil(tester, () => find.text('item-32').evaluate().isNotEmpty);
+      expect(state.position.pixels,
+          closeTo(state.position.maxScrollExtent, 1.0),
+          reason: 'a following viewport jumps to the end on append');
     });
   });
 }

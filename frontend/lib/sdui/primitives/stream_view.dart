@@ -8,6 +8,7 @@ import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
+import 'scroll.dart';
 
 /// `stream_view` (§8.6): `id?`, `topic`, `mode: append|replace`,
 /// `itemLimit?`, `autoScroll?`, `empty?`.
@@ -16,6 +17,18 @@ import '../ui_registry.dart';
 /// `{"node":{…}}` event. `mode` appends (default) or replaces the content;
 /// `itemLimit` drops the OLDEST items; `autoScroll` pins the view to the
 /// newest item; `empty` is shown while nothing has arrived.
+///
+/// T100 scroll anchoring (the upstream `MessagesTimeline` contract, t3code
+/// commit 37de6cb): a frame that APPENDS, replaces or removes items jumps
+/// to the bottom — but only while the view follows the end (the upstream
+/// `following-end` mode of `timelineScrollAnchoring.ts`; scrolling away
+/// beyond the [kChatTimelineAnchorOffset] tolerance switches to
+/// `free-scrolling` and new items no longer yank the viewport). A `patch`
+/// frame never scrolls: it updates rendered props in place and the
+/// position is preserved (the upstream `maintainVisibleContentPosition`
+/// with `shouldRestorePosition`). The list reserves
+/// [kChatTimelineAnchorOffset] as the end inset so the newest row clears
+/// the composer seam.
 ///
 /// Connection loss is retried with backoff by the transport (the same URL
 /// is re-requested verbatim); while reconnecting a subtle indicator is
@@ -49,11 +62,18 @@ class _StreamViewState extends State<_StreamView> {
   StreamSubscription<Map<String, dynamic>>? _subscription;
   SseConnectionStatus _status = SseConnectionStatus.connecting;
 
+  /// Whether the view follows the end (the upstream `following-end`
+  /// timeline mode): true until the user scrolls away from the end beyond
+  /// the anchor-offset tolerance, back to true at the end again. Only a
+  /// following view jumps on appended items.
+  bool _followingEnd = true;
+
   String get _topic => widget.node.stringProp('topic') ?? '';
 
   @override
   void initState() {
     super.initState();
+    _scroll.addListener(_trackFollowingEnd);
     _subscribe();
   }
 
@@ -65,6 +85,7 @@ class _StreamViewState extends State<_StreamView> {
       _subscription = null;
       _items.clear();
       _seenIds.clear();
+      _followingEnd = true;
       _subscribe();
     }
   }
@@ -93,9 +114,11 @@ class _StreamViewState extends State<_StreamView> {
   void _onEvent(Map<String, dynamic> event) {
     if (!mounted) return;
     var changed = false;
+    var listChanged = false;
     final node = asMap(event['node']);
     if (node != null) {
       changed = _applyNode(node);
+      listChanged = changed;
     } else {
       final patch = asMap(event['patch']);
       if (patch != null) {
@@ -104,6 +127,8 @@ class _StreamViewState extends State<_StreamView> {
         if (id is String && props != null) {
           changed = _applyPatch(id, props);
         }
+        // A patch never scrolls: the position is preserved (T100).
+        listChanged = false;
       } else {
         final client = event['client'];
         if (client is List) {
@@ -112,12 +137,38 @@ class _StreamViewState extends State<_StreamView> {
           final remove = event['remove'];
           if (remove is String) {
             changed = _applyRemove(remove);
+            listChanged = changed;
           }
         }
       }
     }
     if (changed) setState(() {});
-    _autoScroll();
+    if (listChanged) _followNewItems();
+  }
+
+  /// Jumps to the bottom on appended/replaced/removed items — but only
+  /// while the view follows the end; a free-scrolled viewport keeps its
+  /// position (the upstream `following-end` / `free-scrolling` modes).
+  void _followNewItems() {
+    if (widget.node.boolProp('autoScroll') != true || !_followingEnd) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
+    });
+  }
+
+  /// Tracks the following-end state off the scroll position: within the
+  /// anchor-offset tolerance of the end counts as following (the jump
+  /// itself lands exactly at the end and keeps the flag true).
+  void _trackFollowingEnd() {
+    if (!_scroll.hasClients) return;
+    final position = _scroll.position;
+    final following =
+        position.maxScrollExtent - position.pixels <= kChatTimelineAnchorOffset + 1;
+    if (following != _followingEnd) {
+      _followingEnd = following;
+    }
   }
 
   /// Appends one node, replaces everything (`mode: replace`) or — on a
@@ -176,16 +227,6 @@ class _StreamViewState extends State<_StreamView> {
     return _items.length != before;
   }
 
-  void _autoScroll() {
-    if (widget.node.boolProp('autoScroll') == true) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scroll.hasClients) {
-          _scroll.jumpTo(_scroll.position.maxScrollExtent);
-        }
-      });
-    }
-  }
-
   @override
   void dispose() {
     _subscription?.cancel();
@@ -205,6 +246,9 @@ class _StreamViewState extends State<_StreamView> {
           child: ListView.builder(
             controller: _scroll,
             shrinkWrap: true,
+            // The end-of-timeline inset (T100): the anchor offset keeps the
+            // newest row clear of the composer seam.
+            padding: const EdgeInsets.only(bottom: kChatTimelineAnchorOffset),
             itemCount: _items.length,
             itemBuilder: (context, index) =>
                 widget.ctx.build(context, UiNode.fromJson(_items[index])),

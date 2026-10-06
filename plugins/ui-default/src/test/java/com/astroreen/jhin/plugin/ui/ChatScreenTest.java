@@ -1,10 +1,14 @@
 /**
- * The T77 chat redesign: the transcript renders user bubbles, assistant
- * bubbles, compact tool code blocks and collapsed tool result cards; the
- * composer carries the {@code messageInput} textarea, the {@code send} action
- * and the {@code composer.sendAndNew} command; Cancel appears only while a run
- * is live; malformed {@code tool_result} payloads degrade to a plain card and
- * {@code error} events hoist to banners at the top of the list.
+ * The T77 chat redesign (framed by T100): the transcript renders user
+ * bubbles, assistant bubbles, compact tool code blocks and collapsed tool
+ * result cards; the composer carries the {@code messageInput} textarea, the
+ * {@code send} action and the {@code composer.sendAndNew} command; Cancel
+ * appears only while a run is live; malformed {@code tool_result} payloads
+ * degrade to a plain card and {@code error} events hoist to banners at the
+ * top of the list. The T100 frame wraps the timeline in the content lane
+ * ({@code laneWidth}), the top scroll fade and the composer-seam divider,
+ * and the header row carries the title, the status badge, the demo-marked
+ * panel toggles and the thread action menu.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -158,7 +162,10 @@ class ChatScreenTest {
         assertThat(castList(action.get("include"))).containsExactly("messageInput");
         assertThat(castMap(action.get("payload"))).containsEntry("sessionId", SESSION_ID);
 
-        Map<String, Object> fresh = nodesOfType(json, "icon_button").get(0);
+        Map<String, Object> fresh = nodesOfType(json, "icon_button").stream()
+                .filter(node -> "composer.sendAndNew".equals(node.get("command")))
+                .findFirst()
+                .orElseThrow();
         assertThat(fresh).containsEntry("command", "composer.sendAndNew");
     }
 
@@ -171,6 +178,108 @@ class ChatScreenTest {
                 .containsEntry("itemLimit", 200)
                 .containsEntry("autoScroll", true)
                 .containsEntry("topic", "/ui/stream/session/" + SESSION_ID + "?fromSeq=12");
+    }
+
+    @Test
+    void frameWrapsTheTimelineInTheLaneWithSeamAndComposerDock() {
+        Map<String, Object> json = render(List.of());
+
+        Map<String, Object> body = castMap(json.get("body"));
+        assertThat(body).containsEntry("type", "column").containsEntry("id", "chat-frame");
+
+        // The lane: the centered content column with the server-side default
+        // width; the client resolves the effective lane from its chatWidth
+        // switch (T86).
+        Map<String, Object> lane = nodesOfType(json, "container").stream()
+                .filter(node -> ChatScreen.LANE_ID.equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(lane).containsEntry("laneWidth", ChatScreen.LANE_WIDTH);
+
+        // The timeline scrolls under a top scroll fade inside the lane.
+        Map<String, Object> fade = nodesOfType(json, "scroll_fade").get(0);
+        assertThat(fade).containsEntry("edge", "top");
+        Map<String, Object> timeline = castMap(fade.get("child"));
+        assertThat(timeline).containsEntry("id", ChatScreen.TIMELINE_ID);
+
+        // The seam divider paints the composer-seam gradient between the
+        // timeline and the docked composer.
+        Map<String, Object> seam = nodesOfType(json, "box").stream()
+                .filter(node -> ChatScreen.SEAM_ID.equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        Map<String, Object> gradient = castMap(seam.get("gradient"));
+        // Typeless on the wire: the client defaults a typeless gradient to
+        // linear, and a literal "type" key would read as a node
+        // discriminator to the primitive-catalog walkers.
+        assertThat(gradient).doesNotContainKey("type")
+                .containsEntry("begin", "bottomCenter")
+                .containsEntry("end", "topCenter");
+        assertThat(castList(gradient.get("colors"))).containsExactly("#2E000000", "#00000000");
+
+        // The composer docks below the seam, inside the lane.
+        Map<String, Object> composer = nodesOfType(json, "container").stream()
+                .filter(node -> "composer".equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(castList(lane.get("children"))).contains(seam, composer);
+    }
+
+    @Test
+    void headerCarriesTitleStatusTogglesAndThreadMenu() {
+        Map<String, Object> json = render(fullRun());
+
+        Map<String, Object> header = nodesOfType(json, "row").stream()
+                .filter(node -> ChatScreen.HEADER_ID.equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        List<Map<String, Object>> children = castList(header.get("children")).stream()
+                .map(ChatScreenTest::castMap)
+                .toList();
+
+        // The thread title and the run status indicator lead the row.
+        Map<String, Object> title = children.get(0);
+        assertThat(title).containsEntry("type", "text").containsEntry("text", "demo");
+        assertThat(children.get(1)).containsEntry("type", "badge")
+                .containsEntry("id", "runStatus")
+                .containsEntry("label", "Idle");
+
+        // The panel toggles: inline setState shells, demo-marked.
+        List<Map<String, Object>> toggles = children.stream()
+                .filter(node -> "icon_button".equals(node.get("type"))
+                        && Boolean.TRUE.equals(node.get("demo")))
+                .toList();
+        assertThat(toggles).hasSize(2);
+        assertThat(toggles.stream().map(node -> node.get("icon")))
+                .containsExactly("view_sidebar", "dock");
+        for (Map<String, Object> toggle : toggles) {
+            Map<String, Object> action = castMap(toggle.get("action"));
+            assertThat(action).containsEntry("op", "setState");
+            assertThat(action.get("id")).isIn(ChatScreen.STATE_RIGHT_PANEL,
+                    ChatScreen.STATE_TERMINAL);
+        }
+
+        // The thread action menu carries the real lifecycle actions.
+        Map<String, Object> menu = children.get(children.size() - 1);
+        assertThat(menu).containsEntry("type", "menu");
+        List<Map<String, Object>> items = castList(menu.get("items")).stream()
+                .map(ChatScreenTest::castMap)
+                .toList();
+        assertThat(items.stream().map(node -> node.get("label"))).containsExactly(
+                "Pin thread", "Settle thread", "Snooze", "Regenerate title",
+                "Archive thread", "Delete");
+        assertThat(castMap(items.get(0).get("action"))).containsEntry("name", "pin");
+        assertThat(castMap(castMap(items.get(0).get("action")).get("payload")))
+                .containsEntry("id", SESSION_ID);
+        assertThat(castMap(items.get(5).get("action"))).containsEntry("name", "delete-session");
+        assertThat(items.get(5)).containsEntry("danger", true);
+
+        // The snooze submenu carries the preset entries.
+        List<Map<String, Object>> snooze = castList(items.get(2).get("children")).stream()
+                .map(ChatScreenTest::castMap)
+                .toList();
+        assertThat(snooze).isNotEmpty();
+        assertThat(castMap(snooze.get(0).get("action"))).containsEntry("name", "snooze");
     }
 
     // --- fixture ---

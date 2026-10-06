@@ -412,6 +412,7 @@ Layout primitives:
 | `container` | `gap` | num | 0 | space between children |
 | `container` | `align` | alignment | — | child alignment |
 | `container` | `scroll` | bool | `false` | scrollable container |
+| `container` | `laneWidth` | length | — | chat content lane (T100): caps the container width and centers it — the `.chat-content-lane` recipe. The client `chatWidth` switch resolves the effective lane (`normal` keeps the server default `46rem`, `wide` forces `72rem`, `full` removes the cap), the way upstream sets `--chat-content-max-width` per `data-chat-width` on `:root` |
 | `box` | `child` | node | — | single child |
 | `box` | `children` | node array | — | children (laid out per `direction` when several) |
 | `box` | `direction` | `row`/`column` | — | children direction |
@@ -852,7 +853,7 @@ Data primitives:
 | `stream_view` | `topic` | string | — | SSE endpoint path (required) |
 | `stream_view` | `mode` | `append`/`replace` | `append` | frame application mode |
 | `stream_view` | `itemLimit` | int | — | oldest items are dropped |
-| `stream_view` | `autoScroll` | bool | `false` | follow new items |
+| `stream_view` | `autoScroll` | bool | `false` | follow new items (T100 anchoring: an appended/replaced/removed item jumps to the bottom while the view follows the end — scrolling away beyond the 24 px anchor offset switches to free-scrolling; a `patch` frame never scrolls) |
 | `stream_view` | `empty` | node | — | rendered while there are no items |
 | `chart_line` | `series` | series array | — | `[{label?, color?, points or values}]` |
 | `chart_bar` | `items` | item array | — | `[{label, value, color?}]` (single series) |
@@ -1057,7 +1058,15 @@ to a JSON object is one **frame**. Four frame shapes, exactly one per event:
 | client | `{"client": [ …directives ]}` | run the directive list — e.g. `toast`, `dialog`, `navigate`, `refresh`, `undo` |
 
 `itemLimit` drops the oldest items; dropped or removed ids are never
-resurrected. Nodes without an `id` always append.
+resurrected. With `autoScroll` the view anchors like the upstream messages
+timeline (T100): a `node`/`remove` frame (and a whole `mode: replace`)
+jumps to the bottom while the view follows the end — the user scrolling
+away beyond the 24 px `CHAT_TIMELINE_ANCHOR_OFFSET` tolerance
+(`timelineScrollAnchoring.ts:39`, upstream commit 37de6cb) switches to
+free-scrolling until the end is reached again — while a `patch` frame
+never scrolls: it updates the rendered item in place and the position is
+preserved. The list reserves the anchor offset as its end inset so the
+newest row clears the composer seam. Nodes without an `id` always append.
 
 **Session event payloads** (`jhin.sessions` event log, translated into frames
 by `jhin.ui`'s `EventFrames`): each stored event carries a gap-free

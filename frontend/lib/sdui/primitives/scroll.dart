@@ -5,6 +5,16 @@ import '../ui_node.dart';
 import '../ui_registry.dart';
 import 'scroll_common.dart';
 
+/// The chat timeline anchor offset (T100): the upstream
+/// `CHAT_TIMELINE_ANCHOR_OFFSET` (t3code commit 37de6cb,
+/// `apps/web/src/components/chat/timelineScrollAnchoring.ts:39`) — 24 px,
+/// "match[ing] the titlebar fade inset so draft promotion preserves the
+/// first row's position". The plan's prose said 36 px; the checkout wins
+/// (plan risk 5) and the verified value is 24. The live tail reserves it
+/// as the end-of-timeline inset so the newest row never hugs the composer
+/// seam, and the following-end tolerance reads it.
+const double kChatTimelineAnchorOffset = 24.0;
+
 /// `scroll` (§2.6): `children` (eager) and the `items` lazy slot with
 /// `itemCount` ("with `itemCount`, only visible children build"), plus
 /// `scrollDirection` (`vertical`/`horizontal`, default `vertical`),

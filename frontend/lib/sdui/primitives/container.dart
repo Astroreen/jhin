@@ -22,6 +22,16 @@ import '../ui_registry.dart';
 /// index.css:1034-1036). Inside a `SafeArea` the inset already reads 0, so
 /// the helper never double-counts; the shell (T96) drops the blanket
 /// `SafeArea` and the composer picks the real inset up.
+///
+/// T100: a container with a `laneWidth` prop is the chat content lane —
+/// the upstream `.chat-content-lane` (index.css:901-907): the child column
+/// is capped at the lane width and centered. The client's `chatWidth`
+/// switch (T86) resolves the effective width exactly like upstream sets
+/// `--chat-content-max-width` per `data-chat-width` on `:root`
+/// (`__root.tsx:277-280`): `normal` keeps the server-emitted default
+/// (`46rem`, index.css:128), `wide` forces `72rem` (index.css:2034) and
+/// `full` removes the cap (index.css:2038). The prop is the wire-level
+/// default a degraded client sees.
 Widget buildContainer(BuildContext context, UiNode node, RenderContext ctx) {
   if (node.children.isEmpty) {
     return degradedBox(context, 'Missing children');
@@ -66,7 +76,32 @@ Widget buildContainer(BuildContext context, UiNode node, RenderContext ctx) {
   if (node.id == kComposerSurfaceId) {
     result = _composerSurface(context, result);
   }
+  final laneMax = _laneMaxWidth(context, node);
+  if (laneMax != null) {
+    result = Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: laneMax),
+        child: result,
+      ),
+    );
+  }
   return result;
+}
+
+/// The effective lane width of a `laneWidth` container (T100): the client
+/// `chatWidth` switch wins — `wide` forces the 72rem lane, `full` removes
+/// the cap — and `normal` keeps the server-emitted default parsed from the
+/// prop (`46rem`). Unparsable props degrade to no cap (§2.4).
+double? _laneMaxWidth(BuildContext context, UiNode node) {
+  if (node.props['laneWidth'] == null) return null;
+  final design = JhinDesignScope.of(context);
+  final remPx = design.switches.fontSizes.sizeInterface.toDouble();
+  return switch (design.switches.chatWidth) {
+    JhinChatWidth.full => null,
+    JhinChatWidth.wide => design.switches.chatLaneRem! * remPx,
+    JhinChatWidth.normal =>
+      parseCssLength(node.props['laneWidth'], remPx: remPx),
+  };
 }
 
 /// The composer surface (T87): the `--shadow-composer` elevation over the

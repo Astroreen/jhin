@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../design/theme.dart';
+import '../../design/tokens.dart';
 import '../keyboard/composer_commands.dart';
 import '../keyboard/keymap.dart';
 import '../render_context.dart';
@@ -211,11 +213,22 @@ class _InputFieldState extends State<_InputField> {
         smartQuotesType: _smartQuotes(node.boolProp('smartQuotesType')),
         // ignore: deprecated_member_use
         toolbarOptions: toolbarOptionsOf(asMap(node.props['toolbarOptions'])),
-        style: parseTextStyleMap(node.props['style']),
+        style: _composerPromptStyle(context, node, parseTextStyleMap(node.props['style'])),
         decoration: inputDecoration(context, widget.ctx, node),
         onChanged: (value) => _changed(context, value),
     );
   }
+}
+
+/// The text style of the field (T100): the composer field
+/// ([kComposerFieldId]) renders at the prompt font size — the upstream
+/// `--font-size-prompt-touch` floor (index.css:131, `max(prompt, 16px)`),
+/// which the resolved prompt role already carries (T86). Every other field
+/// keeps its own style.
+TextStyle? _composerPromptStyle(BuildContext context, UiNode node, TextStyle? base) {
+  if (node.id != kComposerFieldId) return base;
+  final prompt = JhinDesignScope.of(context).switches.fontSizes.sizePrompt.toDouble();
+  return (base ?? const TextStyle()).copyWith(fontSize: prompt);
 }
 
 Radius? _radius(num? value) =>
