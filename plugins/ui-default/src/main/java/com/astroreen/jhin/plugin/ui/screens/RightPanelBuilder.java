@@ -33,9 +33,23 @@
  * {@code ThreadRelationshipsControl} (parent / child rows) and the
  * decorative {@code ThreadDetailsPrRows} with the {@code Link to thread}
  * menu entries. Every interactive node is {@code demo}-marked and dispatches
- * inline directives only (never a database write, plan section 14.10). The
- * other five tabs mount an empty state until their phase-E/F owners fill
- * them.
+ * inline directives only (never a database write, plan section 14.10).
+ *
+ * <p><b>Diff / Files / Preview tabs (T107).</b> The three decorative
+ * surfaces are seeded from the deterministic fixture pack (plan section 4.8):
+ * {@code fixtures/diff-fixtures.json} (3 files &times; 3 hunks with
+ * add/del/ctx lines and stats, both colour schemes) and
+ * {@code fixtures/files-fixtures.json} (the changed-files tree with A/M/D
+ * badges and line stats). The Diff tab is the file-list header (the changed
+ * count, the total stat, the copy-path button and the unified/split toggle)
+ * over one {@code diff_view} per changed file; the Files tab is a
+ * {@code tree} whose file rows are inline {@code setState} selectors that
+ * {@code patch} the Diff tab's {@code diff_view} to that file; the Preview
+ * tab is a syntax-highlighted {@code code_block} with a decorative
+ * {@code Open in…} button. There is no diff engine, no git operation and no
+ * file read (plan section 14.1): the fixtures are loaded at build time and
+ * never fetched at runtime. Every interactive node is {@code demo}-marked.
+ * An empty fixture renders the empty-state card, never a blank tab.
  */
 package com.astroreen.jhin.plugin.ui.screens;
 
@@ -43,12 +57,19 @@ import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.ui.Directives;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
+import com.astroreen.jhin.sdk.json.Json;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public final class RightPanelBuilder {
 
@@ -72,6 +93,59 @@ public final class RightPanelBuilder {
 
     /** The pull-requests section id (the decorative PR rows shell). */
     public static final String PRS_ID = "right-panel-prs";
+
+    /** The Diff tab body id (T107). */
+    public static final String DIFF_ID = "right-panel-diff";
+
+    /** The Diff tab file-list header id (T107). */
+    public static final String DIFF_HEADER_ID = "right-panel-diff-header";
+
+    /** The Diff tab copy-path button id (T107). */
+    public static final String DIFF_COPY_ID = "right-panel-diff-copy";
+
+    /** The Diff tab {@code diff_view} id (the Files-tab patch target, T107). */
+    public static final String DIFF_VIEW_ID = "right-panel-diff-view";
+
+    /** The Files tab body id (T107). */
+    public static final String FILES_ID = "right-panel-files";
+
+    /** The Files tab {@code tree} id (T107). */
+    public static final String FILES_TREE_ID = "right-panel-files-tree";
+
+    /** The Preview tab body id (T107). */
+    public static final String PREVIEW_ID = "right-panel-preview";
+
+    /** The Preview tab header row id (T107). */
+    public static final String PREVIEW_HEADER_ID = "right-panel-preview-header";
+
+    /** The Preview tab {@code code_block} id (T107). */
+    public static final String PREVIEW_CODE_ID = "right-panel-preview-code";
+
+    /** The Preview tab decorative {@code Open in…} button id (T107). */
+    public static final String PREVIEW_OPEN_ID = "right-panel-preview-open";
+
+    /** The empty-state card ids of the three T107 tabs. */
+    public static final String DIFF_EMPTY_ID = "right-panel-diff-empty";
+    public static final String FILES_EMPTY_ID = "right-panel-files-empty";
+    public static final String PREVIEW_EMPTY_ID = "right-panel-preview-empty";
+
+    /** The UiState id of the selected changed file (the Files-tab selector). */
+    public static final String STATE_DIFF_FILE = "chat_diff_file";
+
+    /** The UiState id of the selected diff layout (the unified/split toggle). */
+    public static final String STATE_DIFF_VIEW = "chat_diff_view";
+
+    /** The diff fixture resource (plan section 4.8). */
+    public static final String DIFF_FIXTURE = "fixtures/diff-fixtures.json";
+
+    /** The changed-files fixture resource (plan section 4.8). */
+    public static final String FILES_FIXTURE = "fixtures/files-fixtures.json";
+
+    /** The empty diff fixture resource (the T107 empty-state case). */
+    public static final String EMPTY_DIFF_FIXTURE = "fixtures/empty-diff-fixtures.json";
+
+    /** The empty changed-files fixture resource (the T107 empty-state case). */
+    public static final String EMPTY_FILES_FIXTURE = "fixtures/empty-files-fixtures.json";
 
     /**
      * The panel width: the upstream {@code --thread-details-panel-width}
@@ -98,18 +172,37 @@ public final class RightPanelBuilder {
      * @return the positioned overlay slot carrying the panel
      */
     public static UiNode build(Session session, String status) {
-        return Ui.positioned()
+        return build(session, status, diffFiles(), filesTree());
+    }
+
+    /**
+     * Builds the right-panel overlay from explicit fixture data (the T107
+     * seam): the public {@link #build(Session, String)} loads the default
+     * fixture pack, the tests pass an empty list to exercise the empty-state
+     * card.
+     *
+     * @param session    the session the chat screen is opened for
+     * @param status     the run status label
+     * @param diffFiles  the parsed {@code diff-fixtures.json} file list
+     * @param filesTree  the parsed {@code files-fixtures.json} tree
+     * @return the positioned overlay slot carrying the panel
+     */
+    public static UiNode build(Session session, String status,
+                        List<Map<String, Object>> diffFiles,
+                        List<Map<String, Object>> filesTree) {        return Ui.positioned()
                 .id(SLOT_ID)
                 .top(0)
                 .right(0)
                 .bottom(0)
                 .when(ChatScreen.STATE_RIGHT_PANEL + " == true")
-                .child(panel(session, status))
+                .child(panel(session, status, diffFiles, filesTree))
                 .build();
     }
 
     /** The panel surface: the sidebar fill, the left hairline and the tab strip. */
-    private static UiNode panel(Session session, String status) {
+    private static UiNode panel(Session session, String status,
+                                List<Map<String, Object>> diffFiles,
+                                List<Map<String, Object>> filesTree) {
         return Ui.container()
                 .id(PANEL_ID)
                 .direction("column")
@@ -118,7 +211,7 @@ public final class RightPanelBuilder {
                 .color("$color.sidebar")
                 .border("$color.sidebar-border")
                 .borderWidth(1)
-                .child(tabStrip(session, status))
+                .child(tabStrip(session, status, diffFiles, filesTree))
                 .build();
     }
 
@@ -127,7 +220,9 @@ public final class RightPanelBuilder {
      * node's {@code closeAction} runs when the last closable tab closes,
      * flipping the panel's {@code when} condition off (the panel close).
      */
-    private static UiNode tabStrip(Session session, String status) {
+    private static UiNode tabStrip(Session session, String status,
+                                   List<Map<String, Object>> diffFiles,
+                                   List<Map<String, Object>> filesTree) {
         return Ui.tabs()
                 .id(TABS_ID)
                 .activeIndex(0)
@@ -135,10 +230,10 @@ public final class RightPanelBuilder {
                 .closeAction(Directives.setState(ChatScreen.STATE_RIGHT_PANEL, false))
                 .set("demo", true)
                 .item(Ui.tabItem("Details").icon("info").panel(details(session, status)))
-                .item(emptyTab("Diff", "difference", "No changes yet."))
-                .item(emptyTab("Files", "folder", "No changed files."))
-                .item(emptyTab("Preview", "public",
-                        "Preview is not available in this build."))
+                .item(Ui.tabItem("Diff").icon("difference").panel(diffTab(diffFiles)))
+                .item(Ui.tabItem("Files").icon("folder")
+                        .panel(filesTab(filesTree, diffFiles)))
+                .item(Ui.tabItem("Preview").icon("public").panel(previewTab(diffFiles)))
                 .item(emptyTab("Pull Requests", "call_merge", "No linked pull requests."))
                 .item(emptyTab("Usage", "bar_chart", "No usage recorded."))
                 .build();
@@ -158,6 +253,321 @@ public final class RightPanelBuilder {
                         .color("$color.sidebar-muted-foreground")
                         .build())
                 .build();
+    }
+
+    // --- T107: the Diff / Files / Preview tabs ---
+
+    /**
+     * The Diff tab: the file-list header (the changed count, the total stat,
+     * the copy-path button and the unified/split toggle) over the selected
+     * file's {@code diff_view}. An empty fixture renders the empty-state
+     * card, never a blank tab.
+     */
+    private static UiNode diffTab(List<Map<String, Object>> files) {
+        if (files.isEmpty()) {
+            return emptyCard(DIFF_EMPTY_ID, "No changes yet.",
+                    "This build has no diff engine.");
+        }
+        return Ui.column()
+                .id(DIFF_ID)
+                .gap(8)
+                .padding(12)
+                .child(diffHeader(files))
+                .child(diffView(files.get(0)))
+                .build();
+    }
+
+    /** The Diff tab file-list header: the count, the total stat and the controls. */
+    private static UiNode diffHeader(List<Map<String, Object>> files) {
+        int additions = 0;
+        int deletions = 0;
+        for (Map<String, Object> file : files) {
+            additions += intOf(file.get("stats"), "additions");
+            deletions += intOf(file.get("stats"), "deletions");
+        }
+        return Ui.row()
+                .id(DIFF_HEADER_ID)
+                .align("center")
+                .gap(8)
+                .child(Ui.text(files.size()
+                                + (files.size() == 1 ? " changed file" : " changed files"))
+                        .fontSize(12)
+                        .fontWeight(600)
+                        .build())
+                .child(Ui.text("+" + additions)
+                        .fontSize(12)
+                        .color("$color.diff-addition-foreground")
+                        .build())
+                .child(Ui.text("-" + deletions)
+                        .fontSize(12)
+                        .color("$color.diff-deletion-foreground")
+                        .build())
+                .child(Ui.spacer().build())
+                .child(copyPathButton())
+                .child(viewToggle("unified", "table_rows", "Unified view"))
+                .child(viewToggle("split", "view_column", "Split view"))
+                .build();
+    }
+
+    /** The decorative copy-path button (toasts the preview notice). */
+    private static UiNode copyPathButton() {
+        return Ui.iconButton()
+                .id(DIFF_COPY_ID)
+                .icon("content_copy")
+                .iconSize(16)
+                .tooltip("Copy path")
+                .action(Directives.client(List.of(
+                        Directives.toast("Copied path (preview only)"))))
+                .set("demo", true)
+                .build();
+    }
+
+    /**
+     * One unified/split toggle button: the inline {@code setState} plus the
+     * {@code patch} on the {@code diff_view} node — no server round-trip
+     * (plan section 4.4).
+     */
+    private static UiNode viewToggle(String view, String icon, String tooltip) {
+        return Ui.iconButton()
+                .id(DIFF_VIEW_ID + "-toggle-" + view)
+                .icon(icon)
+                .iconSize(16)
+                .tooltip(tooltip)
+                .action(Directives.client(List.of(
+                        Directives.setState(STATE_DIFF_VIEW, view),
+                        Directives.patch(DIFF_VIEW_ID, Map.of("view", view)))))
+                .set("demo", true)
+                .build();
+    }
+
+    /**
+     * One fixture {@code diff_view}: the file path, the language, the stat
+     * header and the fixture hunks. The {@code colorScheme} prop is left
+     * unset so the ambient {@code data-diff-color-scheme} switch (T86)
+     * applies the blue-orange mapping.
+     */
+    private static UiNode diffView(Map<String, Object> file) {
+        Ui.DiffViewBuilder builder = Ui.diffView()
+                .id(DIFF_VIEW_ID)
+                .file(str(file.get("path")))
+                .language(str(file.get("language")))
+                .stats(intOf(file.get("stats"), "additions"),
+                        intOf(file.get("stats"), "deletions"))
+                .demo(true);
+        for (Map<String, Object> hunk : listOfMaps(file.get("hunks"))) {
+            builder.hunk(hunk);
+        }
+        return builder.build();
+    }
+
+    /**
+     * The Files tab: the changed-files {@code tree}. Each file row carries
+     * the A/M/D status badge and the {@code +n −m} line stats, and its tap
+     * is an inline {@code setState} selector that {@code patch}es the Diff
+     * tab's {@code diff_view} to that file. An empty fixture renders the
+     * empty-state card.
+     */
+    private static UiNode filesTab(List<Map<String, Object>> tree,
+                                   List<Map<String, Object>> diffFiles) {
+        if (tree.isEmpty()) {
+            return emptyCard(FILES_EMPTY_ID, "No changed files.",
+                    "This build has no diff engine.");
+        }
+        return Ui.column()
+                .id(FILES_ID)
+                .gap(8)
+                .padding(12)
+                .child(Ui.text("Changed files")
+                        .fontSize(12)
+                        .fontWeight(600)
+                        .build())
+                .child(Ui.tree()
+                        .id(FILES_TREE_ID)
+                        .set("items", treeItems(tree, diffFiles))
+                        .build())
+                .build();
+    }
+
+    /** Maps the fixture tree to {@code tree} item specs, recursively. */
+    private static List<Object> treeItems(List<Map<String, Object>> nodes,
+                                          List<Map<String, Object>> diffFiles) {
+        List<Object> items = new ArrayList<>();
+        for (Map<String, Object> node : nodes) {
+            items.add(treeItem(node, diffFiles));
+        }
+        return items;
+    }
+
+    /** One {@code tree} item: a directory node or a file leaf. */
+    private static Map<String, Object> treeItem(Map<String, Object> node,
+                                                List<Map<String, Object>> diffFiles) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("label", str(node.get("label")));
+        if (node.get("icon") != null) {
+            item.put("icon", str(node.get("icon")));
+        }
+        if (node.get("expanded") != null) {
+            item.put("expanded", node.get("expanded"));
+        }
+        if (node.get("items") instanceof List<?> children) {
+            item.put("items", treeItems(listOfMaps(children), diffFiles));
+            return item;
+        }
+        String path = str(node.get("path"));
+        item.put("path", path);
+        item.put("icon", "description");
+        item.put("badge", statusBadge(str(node.get("status"))));
+        item.put("stat", "+" + intOf(node, "additions")
+                + " \u2212" + intOf(node, "deletions"));
+        item.put("action", Directives.client(List.of(
+                Directives.setState(STATE_DIFF_FILE, path),
+                Directives.patch(DIFF_VIEW_ID, diffViewPatch(path, diffFiles)))));
+        return item;
+    }
+
+    /** The A/M/D status badge of one changed file. */
+    private static UiNode statusBadge(String status) {
+        Ui.BadgeBuilder badge = Ui.badge().label(status);
+        switch (status) {
+            case "A" -> badge.color("$color.diff-addition-foreground");
+            case "D" -> badge.color("$color.diff-deletion-foreground");
+            default -> badge.color("$color.sidebar-muted-foreground");
+        }
+        return badge.build();
+    }
+
+    /** The {@code diff_view} patch props of one changed file (matched by path). */
+    private static Map<String, Object> diffViewPatch(String path,
+                                                     List<Map<String, Object>> diffFiles) {
+        for (Map<String, Object> file : diffFiles) {
+            if (path.equals(str(file.get("path")))) {
+                Map<String, Object> patch = new LinkedHashMap<>();
+                patch.put("file", str(file.get("path")));
+                patch.put("language", str(file.get("language")));
+                patch.put("stats", file.get("stats"));
+                patch.put("hunks", file.get("hunks"));
+                return patch;
+            }
+        }
+        return Map.of();
+    }
+
+    /**
+     * The Preview tab: the file path header with the decorative
+     * {@code Open in…} button over the syntax-highlighted {@code code_block}
+     * of the first fixture file. An empty fixture renders the empty-state
+     * card.
+     */
+    private static UiNode previewTab(List<Map<String, Object>> files) {
+        if (files.isEmpty()) {
+            return emptyCard(PREVIEW_EMPTY_ID, "No file to preview.",
+                    "This build has no file preview.");
+        }
+        Map<String, Object> first = files.get(0);
+        return Ui.column()
+                .id(PREVIEW_ID)
+                .gap(8)
+                .padding(12)
+                .child(Ui.row()
+                        .id(PREVIEW_HEADER_ID)
+                        .align("center")
+                        .gap(8)
+                        .child(Ui.text(str(first.get("path")))
+                                .fontSize(12)
+                                .fontWeight(600)
+                                .maxLines(1)
+                                .ellipsis(true)
+                                .flex(1)
+                                .build())
+                        .child(Ui.button("Open in\u2026")
+                                .id(PREVIEW_OPEN_ID)
+                                .icon("open_in_new")
+                                .style("text")
+                                .action(Directives.client(List.of(
+                                        Directives.toast(
+                                                "Open in editor (preview only)"))))
+                                .set("demo", true)
+                                .build())
+                        .build())
+                .child(Ui.codeBlock(str(first.get("content")))
+                        .id(PREVIEW_CODE_ID)
+                        .language(str(first.get("language")))
+                        .copyable(true)
+                        .lineNumbers(true)
+                        .set("syntax", true)
+                        .build())
+                .build();
+    }
+
+    /** The empty-state card of a T107 tab (never a blank tab). */
+    private static UiNode emptyCard(String id, String title, String detail) {
+        return Ui.card()
+                .id(id)
+                .child(Ui.column()
+                        .gap(4)
+                        .child(Ui.text(title)
+                                .fontSize(13)
+                                .fontWeight(600)
+                                .build())
+                        .child(Ui.text(detail)
+                                .fontSize(12)
+                                .color("$color.sidebar-muted-foreground")
+                                .build())
+                        .build())
+                .build();
+    }
+
+    // --- T107 fixture loading (build time, never fetched) ---
+
+    /** The parsed {@code diff-fixtures.json} file list. */
+    public static List<Map<String, Object>> diffFiles() {
+        return listOfMaps(loadFixture(DIFF_FIXTURE).get("files"));
+    }
+
+    /** The parsed {@code files-fixtures.json} tree. */
+    public static List<Map<String, Object>> filesTree() {
+        return listOfMaps(loadFixture(FILES_FIXTURE).get("tree"));
+    }
+
+    /** Reads one fixture resource from the classpath. */
+    public static Map<String, Object> loadFixture(String resource) {
+        try (InputStream in = RightPanelBuilder.class.getClassLoader()
+                .getResourceAsStream(resource)) {
+            if (in == null) {
+                throw new IllegalStateException("missing classpath resource: " + resource);
+            }
+            return Json.readMap(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new UncheckedIOException("cannot read " + resource, e);
+        }
+    }
+
+    /** A JSON list value as a list of maps (non-map entries dropped). */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> listOfMaps(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                out.add((Map<String, Object>) map);
+            }
+        }
+        return out;
+    }
+
+    /** One numeric field of a map, {@code 0} when absent or malformed. */
+    private static int intOf(Object map, String key) {
+        if (map instanceof Map<?, ?> values && values.get(key) instanceof Number number) {
+            return number.intValue();
+        }
+        return 0;
+    }
+
+    /** One string field, the empty string when absent. */
+    private static String str(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 
     /** The Details tab body: the {@code ThreadDetailsPanel} shell. */

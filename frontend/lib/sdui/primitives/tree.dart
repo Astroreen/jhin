@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../../design/theme.dart';
+import '../../design/tokens.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
 
 /// `tree` (§2.6): `items` (nested `{label, icon?, expanded?, action?,
-/// items?}`) and `onSelect` (fired with the selected item).
+/// badge?, stat?, items?}`) and `onSelect` (fired with the selected item).
 ///
 /// Each row expands/collapses its own children through the leading chevron;
 /// selecting a row dispatches the item's `action` (when present) and the
-/// tree's `onSelect` with the item merged into its payload. Unknown or
+/// tree's `onSelect` with the item merged into its payload. An optional
+/// trailing `badge` node and `stat` string render at the row's end (T107:
+/// the changed-files tree's A/M/D badge and `+n −m` line stats). Unknown or
 /// missing item fields degrade silently — a malformed tree never crashes
 /// the screen (§2.4).
 Widget buildTree(BuildContext context, UiNode node, RenderContext ctx) {
@@ -85,6 +89,11 @@ class _TreeItemState extends State<_TreeItem> {
     ];
     final label = item['label'] is String ? item['label'] as String : '';
     final icon = item['icon'];
+    final badge = asMap(item['badge']);
+    final stat = item['stat'] is String ? item['stat'] as String : null;
+    final design = JhinDesignScope.of(context);
+    final tokens = design.tokens;
+    final material = JhinDesignScope.materialOf(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -108,6 +117,21 @@ class _TreeItemState extends State<_TreeItem> {
                 ],
                 const SizedBox(width: 4),
                 Expanded(child: Text(label)),
+                if (stat != null && stat.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.only(left: tokens.spacing.sm),
+                    child: Text(
+                      stat,
+                      style: tokens.typography.small.copyWith(
+                        color: material.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                if (badge != null)
+                  Padding(
+                    padding: EdgeInsets.only(left: tokens.spacing.xs),
+                    child: widget.ctx.build(context, UiNode.fromJson(badge)),
+                  ),
               ],
             ),
           ),

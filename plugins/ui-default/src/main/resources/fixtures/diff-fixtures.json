@@ -1,0 +1,113 @@
+{
+  "id": "diff-fixtures",
+  "colorSchemes": ["default", "blue-orange"],
+  "files": [
+    {
+      "id": "lib/agent/run.ts",
+      "path": "lib/agent/run.ts",
+      "language": "typescript",
+      "status": "M",
+      "stats": {"additions": 5, "deletions": 2},
+      "content": "import { runOne } from \"./run-one\";\nimport { report } from \"./report\";\n\nexport async function run(turns, options) {\n  for (final turn of turns) {\n    await runOne(turn, options);\n    await report(turn);\n  }\n  cleanup();\n  cleanup.sync();\n  cleanup.flush();\n}\n\nexport { run, runOne };\n// end of file\n",
+      "hunks": [
+        {
+          "header": "@@ -12,7 +12,9 @@ run loop",
+          "lines": [
+            {"kind": "ctx", "oldNo": 12, "newNo": 12, "text": "for (final turn of turns) {"},
+            {"kind": "del", "oldNo": 13, "text": "  await runOne(turn);"},
+            {"kind": "add", "newNo": 13, "text": "  await runOne(turn, options);"},
+            {"kind": "add", "newNo": 14, "text": "  await report(turn);"},
+            {"kind": "ctx", "oldNo": 14, "newNo": 15, "text": "}"}
+          ]
+        },
+        {
+          "header": "@@ -31,6 +33,8 @@ teardown",
+          "lines": [
+            {"kind": "meta", "text": "// hunk header context only"},
+            {"kind": "ctx", "oldNo": 31, "newNo": 33, "text": "  cleanup();"},
+            {"kind": "add", "newNo": 34, "text": "  cleanup.sync();"},
+            {"kind": "add", "newNo": 35, "text": "  cleanup.flush();"}
+          ]
+        },
+        {
+          "header": "@@ -58,4 +62,6 @@ exports",
+          "lines": [
+            {"kind": "del", "oldNo": 58, "text": "export { run };"},
+            {"kind": "add", "newNo": 62, "text": "export { run, runOne };"},
+            {"kind": "ctx", "oldNo": 59, "newNo": 63, "text": "// end of file"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lib/agent/prompt.ts",
+      "path": "lib/agent/prompt.ts",
+      "language": "typescript",
+      "status": "A",
+      "stats": {"additions": 12, "deletions": 0},
+      "content": "import { systemPrompt } from \"./prompt\";\n\nexport const PROMPT = systemPrompt({\n  role: \"agent\",\n  tools: [\"read\", \"write\"],\n  maxTurns: 12,\n});\n\nexport function promptFor(task: string) {\n  return PROMPT + task;\n}\n// end\n",
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,4 @@",
+          "lines": [
+            {"kind": "add", "newNo": 1, "text": "import { systemPrompt } from \"./prompt\";"},
+            {"kind": "add", "newNo": 2, "text": ""},
+            {"kind": "add", "newNo": 3, "text": "export const PROMPT = systemPrompt({"},
+            {"kind": "add", "newNo": 4, "text": "  role: \"agent\","}
+          ]
+        },
+        {
+          "header": "@@ -0,0 +5,4 @@",
+          "lines": [
+            {"kind": "add", "newNo": 5, "text": "  tools: [\"read\", \"write\"],"},
+            {"kind": "add", "newNo": 6, "text": "  maxTurns: 12,"},
+            {"kind": "add", "newNo": 7, "text": "});"},
+            {"kind": "add", "newNo": 8, "text": ""}
+          ]
+        },
+        {
+          "header": "@@ -0,0 +9,4 @@",
+          "lines": [
+            {"kind": "add", "newNo": 9, "text": "export function promptFor(task: string) {"},
+            {"kind": "add", "newNo": 10, "text": "  return PROMPT + task;"},
+            {"kind": "add", "newNo": 11, "text": "}"},
+            {"kind": "add", "newNo": 12, "text": "// end"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lib/agent/legacy.ts",
+      "path": "lib/agent/legacy.ts",
+      "language": "typescript",
+      "status": "D",
+      "stats": {"additions": 0, "deletions": 8},
+      "content": "import { oldRunner } from \"./legacy\";\n\nexport function legacyRun() {\n  return oldRunner();\n}\n\n// deprecated\nexport default legacyRun;\n",
+      "hunks": [
+        {
+          "header": "@@ -1,3 +0,0 @@",
+          "lines": [
+            {"kind": "del", "oldNo": 1, "text": "import { oldRunner } from \"./legacy\";"},
+            {"kind": "del", "oldNo": 2, "text": ""},
+            {"kind": "del", "oldNo": 3, "text": "export function legacyRun() {"}
+          ]
+        },
+        {
+          "header": "@@ -4,3 +0,0 @@",
+          "lines": [
+            {"kind": "del", "oldNo": 4, "text": "  return oldRunner();"},
+            {"kind": "del", "oldNo": 5, "text": "}"},
+            {"kind": "del", "oldNo": 6, "text": ""}
+          ]
+        },
+        {
+          "header": "@@ -7,2 +0,0 @@",
+          "lines": [
+            {"kind": "del", "oldNo": 7, "text": "// deprecated"},
+            {"kind": "del", "oldNo": 8, "text": "export default legacyRun;"}
+          ]
+        }
+      ]
+    }
+  ]
+}

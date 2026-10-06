@@ -951,6 +951,8 @@ Item and part shapes:
 | `tree` item | `icon` | icon name | no | icon |
 | `tree` item | `expanded` | bool | no | initial expansion |
 | `tree` item | `action` | action | no | select action |
+| `tree` item | `badge` | node | no | trailing badge widget (T107: the changed-files A/M/D status) |
+| `tree` item | `stat` | string | no | trailing stat text (T107: the changed-files `+n −m` line stats) |
 | `tree` item | `items` | item array | no | nested children |
 | `rich_text` span | `text` | string | yes | span text |
 | `rich_text` span | `style` | text style | no | span style |
