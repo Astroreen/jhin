@@ -1082,11 +1082,54 @@ payloads:
 | `text_delta` | `{"text": …}` (one fragment; the full message accumulates) |
 | `message_end` | `{"text": …}` (the complete message) |
 | `tool_use` | `{"id": …, "name": …, "arguments": …}` — `arguments` is raw JSON text |
-| `tool_result` | `{"id": …, "name": …, "content": …, "error": bool, "structured": …}` — `structured` present only when the tool produced a structured payload (a UI card renders it instead of the plain content) |
+| `tool_result` | `{"id": …, "name": …, "content": …, "error": bool, "structured": …}` — `structured` present only when the tool produced a structured payload: a JSON object whose `type` names one of the 16 event kinds (the table below) renders that event card instead of the plain content |
 | `run_start` | `{"runId": …}` |
 | `run_end` | `{"runId": …}` |
 | `error` | `{"message": …}` |
 | `session_updated` | the updated session record — translated into a `patch` frame so sidebar rows update live |
+
+**Event cards (T102).** Every timeline event row carries the event item type
+as its `rowKey` subtype (`event:<kind>`) and dispatches through the event
+builder into one of the 16 event kinds — each a recognisable card composed
+from the section 2.5 primitives:
+
+| Kind | Card |
+|------|------|
+| `diff` | the `diff_view` of the T93 primitive (decorative, `demo: true`) |
+| `file-write` | the changed-files card: the count header with the total `+a`/`-d` stats, one row per path with its line stats and the A/M/D badge |
+| `shell` | the standard tool card with the command as the summary line and the output as a `code_block` |
+| `message` | inline text (no card chrome) |
+| `tool-call` / `tool-result` | the standard tool card (below) |
+| `approval-request` | the question card: the warning-tinted title, the mono detail, one option `chip` per option — the chips dispatch inline `setState` and carry `demo: true` |
+| `limit-notice` | the warning `banner` "Usage limit reached" with the reset time and the decorative `Resume` / `Resume at reset` buttons (`demo: true`) |
+| `error` | the danger-tone event card |
+| `system-notice` | the muted-tone notice |
+| `queued-message` | the pending card with the 3 px warning stripe painted over the left edge (a `stack` + `positioned` box) |
+| `subagent` | the right-aligned subagent bar (the row carries `align: centerRight` — self-end) |
+| `citation` | the inline citation pill (the filled badge on the `info` token) |
+| `skill-invocation` | the inline skill pill (the filled badge on the `primary` token) |
+| `work-log-entry` | the work log row: icon + label + trailing timestamp |
+| `question` | the question card with one check-marked row per answer |
+| anything else | the `unknown` placeholder card (never a throw) |
+
+The **standard tool card** anatomy: the header (tool icon + name + status
+chip + chevron), the collapsible argument summary line (mono, one line),
+the output region (`markdown` / `code_block` / `diff_view`) and the footer
+(timestamp + copy button). The status chip carries one of the five states —
+`pending` → "Pending" on `warning`, `running` → "Running" on `info`,
+`success` → "Done" on `success`, `error` → "Error" on `error`,
+`cancelled` → "Cancelled" on `muted-foreground` (the `completed`/`failed`/
+`stopped` synonyms of the upstream lifecycle statuses resolve to the same
+chips). An output-less card renders the muted italic "No output." empty
+state, never a blank card.
+
+**Card expansion.** The expansion state is keyed by the row id: the header
+chevron patches the body region (`ev-<seq>-body`) `visible: true` and the
+footer's collapse affordance patches it back to `false` — both pure
+client-side directives with no server round-trip. (The `when` degradation
+rule — an unset field keeps the node visible, section 7 — cannot express a
+collapsed-by-default region, so the patch/`visible` pair carries the
+reveal.)
 
 The `session_updated` patch targets the sidebar row node `session-row:<id>`
 and carries the row props below (absent fields become `null`, so cleared

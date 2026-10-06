@@ -399,12 +399,7 @@ public final class ChatScreen {
                         textOf(payload, "name") + " " + jsonOf(payload.get("arguments")),
                         List.of(MessageCardBuilder.toolArgumentsNode(
                                 jsonOf(payload.get("arguments")), seq))));
-                case "tool_result" -> rows.add(MessageCardBuilder.workRow(
-                        seq,
-                        textOf(payload, "name") + " result",
-                        List.of(MessageCardBuilder.toolResultNode(
-                                textOf(payload, "content"),
-                                Boolean.TRUE.equals(payload.get("error")), seq))));
+                case "tool_result" -> rows.add(toolResultRow(payload, seq));
                 case "run_start" -> workingSeq = seq;
                 case "run_end" -> workingSeq = null;
                 case "error" -> rows.add(MessageCardBuilder.dispatchEventRow(
@@ -441,6 +436,35 @@ public final class ChatScreen {
                 .itemLimit(200)
                 .autoScroll(true)
                 .build();
+    }
+
+    /**
+     * The {@code tool_result} history row: a {@code structured} payload
+     * whose {@code type} names one of the 16 T102 event kinds renders that
+     * event card (the same mapping the live frames use — the rendered
+     * history and the live tail stay identical); anything else degrades to
+     * the T101 work row with the plain content detail.
+     */
+    private static UiNode toolResultRow(Map<String, Object> payload, long seq) {
+        Object structured = payload.get("structured");
+        Map<String, Object> card = null;
+        if (structured instanceof Map<?, ?> map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> typed = (Map<String, Object>) map;
+            card = typed;
+        } else if (structured instanceof String text && !text.isBlank()) {
+            card = MessageCardBuilder.parseObject(text);
+        }
+        if (card != null && card.get("type") instanceof String type
+                && MessageCardBuilder.isEventKind(type)) {
+            return MessageCardBuilder.dispatchEventRow(type, card, seq);
+        }
+        return MessageCardBuilder.workRow(
+                seq,
+                textOf(payload, "name") + " result",
+                List.of(MessageCardBuilder.toolResultNode(
+                        textOf(payload, "content"),
+                        Boolean.TRUE.equals(payload.get("error")), seq)));
     }
 
     /** The composer: message input, Send, the live-only Cancel and New. */

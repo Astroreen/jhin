@@ -3,25 +3,31 @@
  * row kinds, each carrying a fixed {@code rowKind} the QA scripts assert on,
  * plus the continuation pairs (two adjacent {@code work:log} rows and an
  * assistant message followed by its {@code assistant-meta} row) that prove
- * the no-gap grouping over the wire. It exists so the row-kind contract is
- * provable without an agent run: the same builders the chat screen and the
- * live frames use render the fixture. Not a product surface — it resolves
- * only while the {@code jhin.ui} config key {@code qaProbe} is set (the
- * switch the {@code qa-level3} probe shares) and no screen links here.
+ * the no-gap grouping over the wire. Since T102 it also renders one event
+ * card of each of the 16 event kinds (the {@code event:<kind>} rows built
+ * through {@link MessageCardBuilder#dispatchEventRow}), so the event-card
+ * contract is provable over the wire from the same fixture. It exists so
+ * the row-kind contract is provable without an agent run: the same builders
+ * the chat screen and the live frames use render the fixture. Not a product
+ * surface — it resolves only while the {@code jhin.ui} config key {@code
+ * qaProbe} is set (the switch the {@code qa-level3} probe shares) and no
+ * screen links here.
  */
 package com.astroreen.jhin.plugin.ui.screens;
 
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class QaTimelineScreen {
 
     private QaTimelineScreen() {
     }
 
-    /** The probe tree: {@code screen} → the 14 rows in the plan order. */
+    /** The probe tree: {@code screen} → the 14 rows + the 16 event cards. */
     public static UiNode render() {
         return Ui.screen()
                 .title("QA timeline probe")
@@ -32,9 +38,9 @@ public final class QaTimelineScreen {
                 .build();
     }
 
-    /** One row of each of the 14 kinds, in the plan section 4.5 order. */
+    /** One row of each of the 14 kinds, then one event card of each kind. */
     private static List<UiNode> rows() {
-        return List.of(
+        List<UiNode> all = new ArrayList<>(List.of(
                 MessageCardBuilder.userMessageRow("Fix the login bug", 1),
                 MessageCardBuilder.assistantMessageRow(2, "On it — reading the auth flow."),
                 MessageCardBuilder.assistantMetaRow(3, List.of("sonnet-4", "high effort")),
@@ -55,6 +61,81 @@ public final class QaTimelineScreen {
                 MessageCardBuilder.turnFoldRow(12, "1 earlier turn"),
                 MessageCardBuilder.attemptFoldRow(13, "Superseded attempt"),
                 MessageCardBuilder.contextCompactionRow(14, "Context compacted", false),
-                MessageCardBuilder.unknownRow(15, "holo"));
+                MessageCardBuilder.unknownRow(15, "holo")));
+        all.addAll(eventRows());
+        return all;
+    }
+
+    /**
+     * One event card of each of the 16 kinds (T102), in the plan section 4.5
+     * order, each through {@link MessageCardBuilder#dispatchEventRow} with a
+     * representative payload.
+     */
+    private static List<UiNode> eventRows() {
+        long seq = 20;
+        List<UiNode> rows = new ArrayList<>();
+        rows.add(MessageCardBuilder.dispatchEventRow("diff", diffPayload(), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("file-write", Map.of(
+                "files", List.of(
+                        Map.of("path", "src/auth.java", "additions", 12, "deletions", 3, "status", "M"),
+                        Map.of("path", "src/login.java", "additions", 4, "deletions", 0, "status", "A"))),
+                seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("shell", Map.of(
+                "command", "gradle test --tests auth",
+                "output", "BUILD SUCCESSFUL",
+                "status", "success", "time", "14:03"), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("message",
+                Map.of("text", "Reading the auth flow next."), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("tool-call", Map.of(
+                "name", "read", "status", "running",
+                "summary", "{\"path\":\"src/auth.java\"}", "time", "14:03"), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("tool-result", Map.of(
+                "name", "read", "status", "success",
+                "summary", "{\"path\":\"src/auth.java\"}",
+                "output", "public class Auth {", "language", "java",
+                "time", "14:03"), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("approval-request", Map.of(
+                "title", "Command approval", "detail", "gradle test",
+                "options", List.of("Allow", "Deny")), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("limit-notice",
+                Map.of("resetAt", "2026-10-06 15:00"), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("error",
+                Map.of("message", "boom"), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("system-notice",
+                Map.of("text", "The provider catalog refreshed."), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("queued-message",
+                Map.of("text", "Also run the integration suite."), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("subagent", Map.of(
+                "title", "Scout: find the token expiry", "status", "running"), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("citation",
+                Map.of("label", "src/auth.java:42"), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("skill-invocation",
+                Map.of("name", "jhin-plugin"), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("work-log-entry", Map.of(
+                "label", "read 4 files", "time", "14:02"), seq++));
+        rows.add(MessageCardBuilder.dispatchEventRow("question", Map.of(
+                "question", "Which auth flow?", "answers", List.of("The token one")), seq++));
+        // The unknown fallback: an unrecognized event type renders the
+        // placeholder card.
+        rows.add(MessageCardBuilder.dispatchEventRow("holo", Map.of(), seq++));
+        return rows;
+    }
+
+    /** The representative {@code diff} payload of the probe (3 hunks). */
+    private static Map<String, Object> diffPayload() {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("file", "src/auth.java");
+        payload.put("language", "java");
+        payload.put("additions", 12);
+        payload.put("deletions", 3);
+        Map<String, Object> line = new LinkedHashMap<>();
+        line.put("kind", "add");
+        line.put("newNo", 42);
+        line.put("text", "if (clock.now().isAfter(expiry)) {");
+        Map<String, Object> hunk = new LinkedHashMap<>();
+        hunk.put("header", "@@ -40,7 +40,8 @@");
+        hunk.put("lines", List.of(line));
+        payload.put("hunks", List.of(hunk));
+        return payload;
     }
 }

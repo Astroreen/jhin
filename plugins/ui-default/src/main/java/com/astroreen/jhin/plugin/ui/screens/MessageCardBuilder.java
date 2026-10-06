@@ -42,6 +42,25 @@
  * for work/event rows, 6 for the fold and working strips). The live tail
  * computes the same table client-side ({@code stream_view.dart}).
  *
+ * <p><b>The 16 event kinds</b> (T102, plan section 4.5): the {@code event}
+ * row dispatches on the event item type through {@link #dispatchEventRow} —
+ * {@code diff} (the {@code diff_view} card), {@code file-write} (the
+ * changed-files card), {@code shell} (command + code block), {@code
+ * message} (inline text), {@code tool-call}/{@code tool-result} (the
+ * standard tool card), {@code approval-request} (the question card with
+ * option chips), {@code limit-notice} (the warning banner), {@code error}
+ * (the danger card), {@code system-notice} (the muted notice), {@code
+ * queued-message} (the pending card with the stripe), {@code subagent} (the
+ * right-aligned bar), {@code citation} and {@code skill-invocation} (the
+ * inline pills), {@code work-log-entry} (the work log row), {@code
+ * question} (the question card with answers) — and anything else falls back
+ * to the {@code unknown} placeholder card. The standard tool card (T102.1)
+ * carries the four-part anatomy: header (tool icon + name + status chip +
+ * chevron), collapsible argument summary line, output region (markdown /
+ * {@code code_block} / {@code diff_view}) and footer (timestamp + copy
+ * button); the expansion is keyed by the row id (the {@code ev-<seq>-body}
+ * patch target).
+ *
  * <p>All keys are documented contract props (docs/sdui.md sections 2.1 and
  * 2.6); color references are {@code $color.*}/{@code $radius.*} tokens so
  * the client theme stays authoritative.
@@ -133,6 +152,105 @@ public final class MessageCardBuilder {
     /** The fallback row kind for an unknown kind. */
     public static final String KIND_UNKNOWN = "unknown";
 
+    // ------------------------------------------------------------------
+    // the 16 event kinds (T102, plan section 4.5)
+    // ------------------------------------------------------------------
+
+    /** The event kind of a rendered diff (the {@code diff_view} card). */
+    public static final String EVENT_DIFF = "diff";
+
+    /** The event kind of the changed-files card (paths with line stats). */
+    public static final String EVENT_FILE_WRITE = "file-write";
+
+    /** The event kind of the shell card (command + code block output). */
+    public static final String EVENT_SHELL = "shell";
+
+    /** The event kind of an inline text message. */
+    public static final String EVENT_MESSAGE = "message";
+
+    /** The event kind of the standard tool-call card. */
+    public static final String EVENT_TOOL_CALL = "tool-call";
+
+    /** The event kind of the standard tool-result card. */
+    public static final String EVENT_TOOL_RESULT = "tool-result";
+
+    /** The event kind of the approval question card with option chips. */
+    public static final String EVENT_APPROVAL_REQUEST = "approval-request";
+
+    /** The event kind of the usage-limit warning banner. */
+    public static final String EVENT_LIMIT_NOTICE = "limit-notice";
+
+    /** The event kind of the error card (the danger tone). */
+    public static final String EVENT_ERROR = "error";
+
+    /** The event kind of the muted system notice. */
+    public static final String EVENT_SYSTEM_NOTICE = "system-notice";
+
+    /** The event kind of the pending queued-message card with the stripe. */
+    public static final String EVENT_QUEUED_MESSAGE = "queued-message";
+
+    /** The event kind of the right-aligned subagent bar. */
+    public static final String EVENT_SUBAGENT = "subagent";
+
+    /** The event kind of the citation inline pill. */
+    public static final String EVENT_CITATION = "citation";
+
+    /** The event kind of the skill inline pill. */
+    public static final String EVENT_SKILL_INVOCATION = "skill-invocation";
+
+    /** The event kind of the work log row. */
+    public static final String EVENT_WORK_LOG_ENTRY = "work-log-entry";
+
+    /** The event kind of the question card with answers. */
+    public static final String EVENT_QUESTION = "question";
+
+    /** The fallback event kind token of the placeholder card. */
+    public static final String EVENT_UNKNOWN = "unknown";
+
+    /** The 16 event kinds, in the plan section 4.5 order (the unknown
+     * fallback is not a kind — it is the placeholder every unrecognized
+     * type falls back to). */
+    public static final Set<String> EVENT_KINDS = Set.copyOf(new LinkedHashSet<>(List.of(
+            EVENT_DIFF, EVENT_FILE_WRITE, EVENT_SHELL, EVENT_MESSAGE,
+            EVENT_TOOL_CALL, EVENT_TOOL_RESULT, EVENT_APPROVAL_REQUEST,
+            EVENT_LIMIT_NOTICE, EVENT_ERROR, EVENT_SYSTEM_NOTICE,
+            EVENT_QUEUED_MESSAGE, EVENT_SUBAGENT, EVENT_CITATION,
+            EVENT_SKILL_INVOCATION, EVENT_WORK_LOG_ENTRY, EVENT_QUESTION)));
+
+    // ------------------------------------------------------------------
+    // the status chip vocabulary (T102.1)
+    // ------------------------------------------------------------------
+
+    /** The pending chip label. */
+    public static final String CHIP_PENDING = "Pending";
+
+    /** The running chip label. */
+    public static final String CHIP_RUNNING = "Running";
+
+    /** The done chip label. */
+    public static final String CHIP_DONE = "Done";
+
+    /** The error chip label. */
+    public static final String CHIP_ERROR = "Error";
+
+    /** The cancelled chip label. */
+    public static final String CHIP_CANCELLED = "Cancelled";
+
+    /** The info color token of the running chip. */
+    public static final String INFO = "$color.info";
+
+    /** The warning color token of the pending chip. */
+    public static final String WARNING = "$color.warning";
+
+    /** The success color token of the done chip. */
+    public static final String SUCCESS = "$color.success";
+
+    /** The diff-addition color token of the changed-files stats. */
+    public static final String DIFF_ADDITION = "$color.diff-addition";
+
+    /** The diff-deletion color token of the changed-files stats. */
+    public static final String DIFF_DELETION = "$color.diff-deletion";
+
     /** The 14 row kinds, in the plan section 4.5 order. */
     public static final Set<String> ROW_KINDS = Set.copyOf(new LinkedHashSet<>(List.of(
             KIND_MESSAGE, KIND_ASSISTANT_META, KIND_EVENT, KIND_WORK,
@@ -187,6 +305,51 @@ public final class MessageCardBuilder {
      */
     public static boolean isRowKind(String kind) {
         return kind != null && ROW_KINDS.contains(kind);
+    }
+
+    /**
+     * Whether the type is one of the 16 event kinds.
+     *
+     * @param type the event item type to check
+     * @return {@code true} when the type renders a dedicated event card
+     */
+    public static boolean isEventKind(String type) {
+        return type != null && EVENT_KINDS.contains(type);
+    }
+
+    /**
+     * The status chip of one tool status: the upstream label words
+     * ("Pending", "Running", "Done", "Error", "Cancelled") on the token
+     * colours ({@code warning}, {@code info}, {@code success}, {@code
+     * error}, {@code muted-foreground}). The upstream words anchor at
+     * {@code ComposerTasksBadge.tsx:23-24} ("Pending"/"Running"),
+     * {@code ThreadRelationshipIcon.tsx:13,21} ("Running"/"Done") and
+     * {@code pullRequestPresentation.tsx:226} ("Cancelled"), t3code commit
+     * 37de6cb; the plan's five-state set is the normalized contract. An
+     * unrecognized status renders the muted chip with the raw text — never
+     * a throw.
+     *
+     * @param status the tool status ({@code pending}|{@code running}|
+     *               {@code success}|{@code error}|{@code cancelled}, with
+     *               the {@code completed}/{@code failed}/{@code stopped}
+     *               synonyms of the upstream lifecycle statuses)
+     * @return the badge node
+     */
+    public static UiNode statusChip(String status) {
+        String text = status == null ? "" : status.trim();
+        return switch (text) {
+            case "", "pending" -> chip(CHIP_PENDING, WARNING);
+            case "running" -> chip(CHIP_RUNNING, INFO);
+            case "success", "done", "completed" -> chip(CHIP_DONE, SUCCESS);
+            case "error", "failed" -> chip(CHIP_ERROR, DANGER);
+            case "cancelled", "canceled", "stopped" -> chip(CHIP_CANCELLED, MUTED);
+            default -> chip(text, MUTED);
+        };
+    }
+
+    /** One filled status-chip badge with the label and the token colour. */
+    private static UiNode chip(String label, String color) {
+        return Ui.badge().label(label).color(color).build();
     }
 
     /**
@@ -348,8 +511,8 @@ public final class MessageCardBuilder {
                                   String detail, String tone) {
         String toneColor = switch (tone == null ? "muted" : tone) {
             case "danger" -> DANGER;
-            case "warning" -> "$color.warning";
-            case "success" -> "$color.success";
+            case "warning" -> WARNING;
+            case "success" -> SUCCESS;
             default -> BORDER;
         };
         Ui.CardBuilder card = Ui.card()
@@ -370,23 +533,587 @@ public final class MessageCardBuilder {
     }
 
     /**
-     * The event dispatcher: maps one event payload to its event row. The
-     * T102 kinds refine the anatomy; today the Jhin {@code error} wire event
-     * lands on the danger tone and anything else on the muted tone with the
-     * type as the label (the upstream default presentation,
-     * {@code MessagesTimeline.tsx:2748-2766}).
+     * The event dispatcher: maps one event item type to its event card (the
+     * T102 vocabulary, plan section 4.5). Every one of the 16 kinds renders
+     * a recognisable card — the tool-call card anatomy, the status chips and
+     * the output regions — and an unrecognized type falls back to the
+     * {@code unknown} placeholder card instead of throwing (the same
+     * fallback contract the row kinds carry).
      *
-     * @param type    the event item type
+     * @param type    the event item type (one of the 16 kinds, or anything
+     *                else for the placeholder)
      * @param payload the event payload
      * @param seq     the event sequence number
      * @return the dispatched event row
      */
     public static UiNode dispatchEventRow(String type, Map<String, Object> payload, long seq) {
+        Map<String, Object> p = payload == null ? Map.of() : payload;
+        return switch (type == null ? "" : type) {
+            case EVENT_DIFF -> diffEventRow(seq, p);
+            case EVENT_FILE_WRITE -> fileWriteEventRow(seq, p);
+            case EVENT_SHELL -> shellEventRow(seq, p);
+            case EVENT_MESSAGE -> messageEventRow(seq, p);
+            case EVENT_TOOL_CALL -> toolCallEventRow(seq, p);
+            case EVENT_TOOL_RESULT -> toolResultEventRow(seq, p);
+            case EVENT_APPROVAL_REQUEST -> approvalRequestEventRow(seq, p);
+            case EVENT_LIMIT_NOTICE -> limitNoticeEventRow(seq, p);
+            case EVENT_ERROR -> errorEventRow(seq, p);
+            case EVENT_SYSTEM_NOTICE -> systemNoticeEventRow(seq, p);
+            case EVENT_QUEUED_MESSAGE -> queuedMessageEventRow(seq, p);
+            case EVENT_SUBAGENT -> subagentEventRow(seq, p);
+            case EVENT_CITATION -> citationEventRow(seq, p);
+            case EVENT_SKILL_INVOCATION -> skillInvocationEventRow(seq, p);
+            case EVENT_WORK_LOG_ENTRY -> workLogEntryEventRow(seq, p);
+            case EVENT_QUESTION -> questionEventRow(seq, p);
+            default -> unknownEventRow(seq, type);
+        };
+    }
+
+    // ------------------------------------------------------------------
+    // the 16 event cards (T102.2)
+    // ------------------------------------------------------------------
+
+    /**
+     * The {@code diff} card: the {@code diff_view} of the T93 primitive as
+     * the row content (the plan's mapping; the view is decorative and
+     * carries the mandatory {@code demo} marker). A payload without hunks
+     * renders the empty-state region instead of a hunkless view.
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code file}, {@code language}, {@code additions},
+     *                {@code deletions}, {@code hunks}
+     * @return the {@code event:diff} row
+     */
+    private static UiNode diffEventRow(long seq, Map<String, Object> payload) {
+        UiNode view = diffViewOf(seq, payload);
+        return rowContainer(KIND_EVENT, EVENT_DIFF, seq, null, 4,
+                view != null ? view : emptyState(seq));
+    }
+
+    /**
+     * The {@code file-write} card: the changed-files card — the count header
+     * with the total line stats and one row per changed file (the path with
+     * the {@code +a}/{@code -d} stats and the optional A/M/D badge; the
+     * upstream {@code ChangedFilesCard} header
+     * {@code ChangedFilesTree.tsx:57-66} and the {@code DiffStatLabel} pair
+     * {@code DiffStatLabel.tsx:38-47}, t3code commit 37de6cb).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code files: [{path, additions, deletions, status}]}
+     * @return the {@code event:file-write} row
+     */
+    private static UiNode fileWriteEventRow(long seq, Map<String, Object> payload) {
+        List<Map<String, Object>> files = filesOf(payload);
+        int additions = 0;
+        int deletions = 0;
+        for (Map<String, Object> file : files) {
+            additions += intOf(file, "additions");
+            deletions += intOf(file, "deletions");
+        }
+        Ui.CardBuilder card = Ui.card()
+                .id(eventId(seq) + "-card")
+                .border(BORDER)
+                .borderRadius(EVENT_RADIUS)
+                .padding(12);
+        card.child(Ui.row().id(eventId(seq) + "-head").gap(8).align("center")
+                .child(Ui.icon().icon("edit_note").size(16).color(MUTED).build())
+                .child(Ui.text(files.size() + " changed file"
+                        + (files.size() == 1 ? "" : "s")).style("small").build())
+                .child(Ui.text("+" + additions).style("mono")
+                        .color(DIFF_ADDITION).build())
+                .child(Ui.text("-" + deletions).style("mono")
+                        .color(DIFF_DELETION).build())
+                .build());
+        for (Map<String, Object> file : files) {
+            String path = textOf(file, "path", "");
+            Ui.RowBuilder row = Ui.row().gap(8).align("center")
+                    .child(Ui.text(path).style("mono").maxLines(1).ellipsis(true)
+                            .flex(1).build())
+                    .child(Ui.text("+" + intOf(file, "additions")).style("mono")
+                            .color(DIFF_ADDITION).build())
+                    .child(Ui.text("-" + intOf(file, "deletions")).style("mono")
+                            .color(DIFF_DELETION).build());
+            String status = textOf(file, "status", "");
+            if (!status.isBlank()) {
+                row.child(Ui.badge().label(status).build());
+            }
+            card.child(row.build());
+        }
+        return rowContainer(KIND_EVENT, EVENT_FILE_WRITE, seq, null, 4, card.build());
+    }
+
+    /**
+     * The {@code shell} card: the standard tool card with the command as the
+     * summary line and the output as the code block (the plan's mapping).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code command}, {@code output}, {@code status},
+     *                {@code time}, {@code language}
+     * @return the {@code event:shell} row
+     */
+    private static UiNode shellEventRow(long seq, Map<String, Object> payload) {
+        Map<String, Object> card = new LinkedHashMap<>(payload);
+        card.putIfAbsent("name", "shell");
+        Object command = payload.get("command");
+        if (command != null && card.get("summary") == null) {
+            card.put("summary", String.valueOf(command));
+        }
+        return toolCardRow(EVENT_SHELL, seq, card);
+    }
+
+    /**
+     * The {@code message} card: the inline text (no card chrome; the plan's
+     * mapping).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code text}
+     * @return the {@code event:message} row
+     */
+    private static UiNode messageEventRow(long seq, Map<String, Object> payload) {
+        return rowContainer(KIND_EVENT, EVENT_MESSAGE, seq, null, 4,
+                Ui.text(textOf(payload, "text", "")).style("body").build());
+    }
+
+    /** The {@code tool-call} card: the standard card with the arguments. */
+    private static UiNode toolCallEventRow(long seq, Map<String, Object> payload) {
+        return toolCardRow(EVENT_TOOL_CALL, seq, payload);
+    }
+
+    /** The {@code tool-result} card: the standard card with the output. */
+    private static UiNode toolResultEventRow(long seq, Map<String, Object> payload) {
+        return toolCardRow(EVENT_TOOL_RESULT, seq, payload);
+    }
+
+    /**
+     * The {@code approval-request} card: the question card with the option
+     * chips — the warning-tinted title (the upstream approval label rides
+     * {@code text-warning}, {@code ComposerPendingApprovalPanel.tsx:40-44},
+     * t3code commit 37de6cb), the mono detail and one chip per option; the
+     * chips dispatch inline {@code setState} stubs and carry the {@code
+     * demo} marker (no backend answers them yet — plan section 14.10).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code title}, {@code detail}, {@code options}
+     * @return the {@code event:approval-request} row
+     */
+    private static UiNode approvalRequestEventRow(long seq, Map<String, Object> payload) {
+        Ui.CardBuilder card = Ui.card()
+                .id(eventId(seq) + "-card")
+                .border(WARNING)
+                .borderRadius(EVENT_RADIUS)
+                .padding(12);
+        card.child(Ui.row().id(eventId(seq) + "-head").gap(8).align("center")
+                .child(Ui.icon().icon("gpp_maybe").size(16).color(WARNING).build())
+                .child(Ui.text(textOf(payload, "title", "Approval requested"))
+                        .style("small").color(WARNING).build())
+                .build());
+        String detail = textOf(payload, "detail", "");
+        if (!detail.isBlank()) {
+            card.child(Ui.codeBlock(detail).language("shell").maxLines(4).build());
+        }
+        Ui.RowBuilder options = Ui.row().id(eventId(seq) + "-options").gap(8);
+        int index = 0;
+        for (Object raw : listOf(payload, "options")) {
+            String option = String.valueOf(raw);
+            options.child(Ui.chip().label(option)
+                    .action(Directives.setState(eventId(seq) + "-option-" + index, option))
+                    .set("demo", true)
+                    .build());
+            index++;
+        }
+        card.child(options.build());
+        return rowContainer(KIND_EVENT, EVENT_APPROVAL_REQUEST, seq, null, 4, card.build());
+    }
+
+    /**
+     * The {@code limit-notice} card: the warning banner with the decorative
+     * {@code Resume} / {@code Resume at reset} buttons (the upstream
+     * {@code usageLimitRecoveryBannerItem} — the "Usage limit reached"
+     * title, the reset description and the recovery actions,
+     * {@code UsageLimitRecoveryBanner.tsx:31-41,92-99}, t3code commit
+     * 37de6cb; the buttons are demo-marked inline stubs — plan section
+     * 14.10).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code resetAt}
+     * @return the {@code event:limit-notice} row
+     */
+    private static UiNode limitNoticeEventRow(long seq, Map<String, Object> payload) {
+        String resetAt = textOf(payload, "resetAt", "");
+        UiNode content = Ui.row().gap(8)
+                .child(Ui.icon().icon("speed").size(16).color(WARNING).build())
+                .child(Ui.expanded()
+                        .child(Ui.column().gap(2)
+                                .child(Ui.text("Usage limit reached").style("small")
+                                        .color(WARNING).build())
+                                .child(Ui.text(resetAt.isBlank()
+                                                ? "Reset time unavailable; retry manually"
+                                                : "Resets " + resetAt)
+                                        .style("caption").color(MUTED).build())
+                                .build())
+                        .build())
+                .build();
+        return rowContainer(KIND_EVENT, EVENT_LIMIT_NOTICE, seq, null, 4,
+                Ui.banner()
+                        .id(eventId(seq) + "-banner")
+                        .content(content)
+                        .action(Ui.button("Resume")
+                                .action(Directives.setState(eventId(seq) + "-resume", true))
+                                .set("demo", true)
+                                .build())
+                        .action(Ui.button("Resume at reset")
+                                .action(Directives.setState(eventId(seq) + "-resume-reset", true))
+                                .set("demo", true)
+                                .build())
+                        .build());
+    }
+
+    /**
+     * The {@code error} card: the danger-tone event card (the upstream error
+     * row tone, {@code MessagesTimeline.tsx:2809-2813}).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code message}
+     * @return the {@code event:error} row
+     */
+    private static UiNode errorEventRow(long seq, Map<String, Object> payload) {
         Object reported = payload.get("message");
         String detail = (reported != null) ? String.valueOf(reported) : "";
-        boolean danger = "error".equals(type);
-        return eventRow(seq, type, danger ? "Error" : type, detail,
-                danger ? "danger" : "muted");
+        return eventRow(seq, EVENT_ERROR, "Error", detail, "danger");
+    }
+
+    /**
+     * The {@code system-notice} card: the muted-tone notice (the upstream
+     * default event presentation — the type as the label on the muted tone,
+     * {@code MessagesTimeline.tsx:2779-2785}).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code text}, {@code label}
+     * @return the {@code event:system-notice} row
+     */
+    private static UiNode systemNoticeEventRow(long seq, Map<String, Object> payload) {
+        String label = textOf(payload, "label", "System notice");
+        return eventRow(seq, EVENT_SYSTEM_NOTICE, label, textOf(payload, "text", ""), "muted");
+    }
+
+    /**
+     * The {@code queued-message} card: the pending card with the left stripe
+     * (the pending token colour) — the upstream queued intent marker rides
+     * the user bubble ({@code MessagesTimeline.tsx:2313-2352}); the plan's
+     * stripe card is the timeline-side pending presentation.
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code text}
+     * @return the {@code event:queued-message} row
+     */
+    private static UiNode queuedMessageEventRow(long seq, Map<String, Object> payload) {
+        UiNode card = Ui.card()
+                .id(eventId(seq) + "-card")
+                .border(BORDER)
+                .borderRadius(EVENT_RADIUS)
+                // the left inset clears the 3px stripe painted over the edge
+                .padding(List.of(12, 12, 12, 15))
+                .child(Ui.text(textOf(payload, "text", "")).style("body").build())
+                .build();
+        UiNode stripe = Ui.positioned()
+                .top(0).bottom(0).left(0).width(3)
+                .child(Ui.box().color(WARNING).build())
+                .build();
+        UiNode stack = Ui.stack().id(eventId(seq) + "-stripe")
+                .child(stripe)
+                .child(card)
+                .build();
+        return rowContainer(KIND_EVENT, EVENT_QUEUED_MESSAGE, seq, null, 4, stack);
+    }
+
+    /**
+     * The {@code subagent} card: the right-aligned subagent bar (the plan's
+     * {@code self-end} alignment; the upstream bar is the
+     * {@code ProviderSubagentBar} rounded strip with the provider icon, the
+     * model label and the status, {@code ProviderSubagentBar.tsx:66-70}).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code title}, {@code status}
+     * @return the {@code event:subagent} row
+     */
+    private static UiNode subagentEventRow(long seq, Map<String, Object> payload) {
+        UiNode bar = Ui.card()
+                .id(eventId(seq) + "-bar")
+                .border(BORDER)
+                .borderRadius(BUBBLE_RADIUS)
+                .padding(12)
+                .child(Ui.row().gap(8).align("center")
+                        .child(Ui.icon().icon("smart_toy").size(16).color(MUTED).build())
+                        .child(Ui.text(textOf(payload, "title", "Subagent"))
+                                .style("small")
+                                .maxLines(1)
+                                .ellipsis(true)
+                                .flex(1)
+                                .build())
+                        .child(statusChip(textOf(payload, "status", "running")))
+                        .build())
+                .build();
+        return rowContainer(KIND_EVENT, EVENT_SUBAGENT, seq, "centerRight", 4, bar);
+    }
+
+    /**
+     * The {@code citation} card: the inline citation pill (the upstream
+     * {@code AssistantCitationChip} rides the {@code ContextChip} citation
+     * kind — the blue accent, {@code ContextChip.tsx:60}; the Jhin pill is
+     * the filled badge on the {@code info} token).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code label}
+     * @return the {@code event:citation} row
+     */
+    private static UiNode citationEventRow(long seq, Map<String, Object> payload) {
+        return rowContainer(KIND_EVENT, EVENT_CITATION, seq, null, 4,
+                chip(textOf(payload, "label", "Citation"), INFO));
+    }
+
+    /**
+     * The {@code skill-invocation} card: the inline skill pill (the upstream
+     * {@code SkillChip} rides the {@code ContextChip} skill kind — the
+     * magenta accent, {@code ContextChip.tsx:59}; the Jhin pill is the
+     * filled badge on the {@code primary} token).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code name}
+     * @return the {@code event:skill-invocation} row
+     */
+    private static UiNode skillInvocationEventRow(long seq, Map<String, Object> payload) {
+        return rowContainer(KIND_EVENT, EVENT_SKILL_INVOCATION, seq, null, 4,
+                chip(textOf(payload, "name", "skill"), "$color.primary"));
+    }
+
+    /**
+     * The {@code work-log-entry} card: the work log row — the icon, the
+     * label and the trailing timestamp on one line (the upstream
+     * {@code WorkLogLine}, {@code WorkLog.tsx:31-45}).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code label}, {@code time}
+     * @return the {@code event:work-log-entry} row
+     */
+    private static UiNode workLogEntryEventRow(long seq, Map<String, Object> payload) {
+        String time = textOf(payload, "time", "");
+        Ui.RowBuilder line = Ui.row().id(eventId(seq) + "-log").gap(8).align("center")
+                .child(Ui.icon().icon("construction").size(16).color(MUTED).build())
+                .child(Ui.text(textOf(payload, "label", "Work")).style("small")
+                        .maxLines(1).ellipsis(true).flex(1).build());
+        if (!time.isBlank()) {
+            line.child(Ui.text(time).style("caption").color(MUTED).build());
+        }
+        return rowContainer(KIND_EVENT, EVENT_WORK_LOG_ENTRY, seq, null, 4, line.build());
+    }
+
+    /**
+     * The {@code question} card: the question card with the answers — the
+     * question text and one check-marked row per answer (the upstream
+     * question heading leads the row identity,
+     * {@code MessagesTimeline.tsx:5099-5104}).
+     *
+     * @param seq     the event sequence number (drives the node id)
+     * @param payload {@code question}, {@code answers}
+     * @return the {@code event:question} row
+     */
+    private static UiNode questionEventRow(long seq, Map<String, Object> payload) {
+        Ui.CardBuilder card = Ui.card()
+                .id(eventId(seq) + "-card")
+                .border(BORDER)
+                .borderRadius(EVENT_RADIUS)
+                .padding(12);
+        card.child(Ui.row().id(eventId(seq) + "-head").gap(8).align("center")
+                .child(Ui.icon().icon("help_outline").size(16).color(MUTED).build())
+                .child(Ui.text(textOf(payload, "question", "Question"))
+                        .style("small").build())
+                .build());
+        for (Object raw : listOf(payload, "answers")) {
+            card.child(Ui.row().gap(8).align("center")
+                    .child(Ui.icon().icon("check_circle").size(14).color(SUCCESS).build())
+                    .child(Ui.text(String.valueOf(raw)).style("caption").build())
+                    .build());
+        }
+        return rowContainer(KIND_EVENT, EVENT_QUESTION, seq, null, 4, card.build());
+    }
+
+    /**
+     * The unknown event card: the placeholder an unrecognized event type
+     * falls back to instead of throwing (the same fallback contract the row
+     * kinds carry).
+     *
+     * @param seq  the sequence number anchoring the row
+     * @param type the unrecognized event type
+     * @return the {@code event:unknown} row
+     */
+    private static UiNode unknownEventRow(long seq, String type) {
+        UiNode card = Ui.card()
+                .id(eventId(seq) + "-card")
+                .border(BORDER)
+                .borderRadius(EVENT_RADIUS)
+                .padding(12)
+                .child(Ui.text("Unknown event: " + (type == null ? "" : type))
+                        .style("caption")
+                        .color(MUTED)
+                        .build())
+                .build();
+        return rowContainer(KIND_EVENT, EVENT_UNKNOWN, seq, null, 4, card);
+    }
+
+    // ------------------------------------------------------------------
+    // the standard tool card (T102.1)
+    // ------------------------------------------------------------------
+
+    /**
+     * The standard tool card (T102.1): the four-part anatomy the plan
+     * specifies — the header (tool icon + name + status chip + chevron),
+     * the collapsible argument summary line, the output region (markdown /
+     * {@code code_block} / {@code diff_view}) and the footer (timestamp +
+     * copy button). The upstream anchors (t3code commit 37de6cb): the work
+     * row line with the trailing timestamp and the disclosure chevron
+     * ({@code MessagesTimeline.tsx:5296-5330}), the tool output states with
+     * the muted italic "No output." empty state
+     * ({@code V2ItemInspector.tsx:143-158}) and the status chip words
+     * ({@code ComposerTasksBadge.tsx:23-24}).
+     *
+     * <p><b>Expansion.</b> The expansion state is keyed by the row id: the
+     * header chevron patches the body region ({@code ev-<seq>-body})
+     * {@code visible: true} and the footer's collapse affordance patches it
+     * back to {@code false} — both pure client-side directives, no server
+     * round-trip. (The plan words this as {@code setState} keyed by row id;
+     * the {@code when} degradation rule — an unset field keeps the node
+     * visible, docs/sdui.md section 7 — cannot express a collapsed-by-default
+     * region, so the patch/visible pair carries the same pure client-side
+     * reveal. Recorded in the T102 evidence.)
+     *
+     * @param kind    the event kind ({@code tool-call}, {@code tool-result}
+     *                or {@code shell}) — the {@code rowKey} subtype
+     * @param seq     the event sequence number (drives the node ids)
+     * @param payload {@code name}, {@code status}, {@code summary},
+     *                {@code output}, {@code outputKind}, {@code language},
+     *                {@code time}; the {@code diff} output kind reads
+     *                {@code file}/{@code additions}/{@code deletions}/
+     *                {@code hunks}
+     * @return the {@code event:<kind>} row
+     */
+    public static UiNode toolCardRow(String kind, long seq, Map<String, Object> payload) {
+        Map<String, Object> p = payload == null ? Map.of() : payload;
+        String id = eventId(seq);
+        Ui.CardBuilder card = Ui.card()
+                .id(id + "-card")
+                .border(BORDER)
+                .borderRadius(EVENT_RADIUS)
+                .padding(12);
+        // header: tool icon + name + status chip + chevron
+        card.child(Ui.row().id(id + "-head").align("center").gap(8)
+                .child(Ui.icon().icon(iconOf(kind)).size(16).color(MUTED).build())
+                .child(Ui.text(textOf(p, "name", "tool")).style("small").build())
+                .child(statusChip(textOf(p, "status", "success")))
+                .child(Ui.spacer().build())
+                .child(Ui.iconButton().id(id + "-chevron").icon("expand_more")
+                        .iconSize(16)
+                        .action(Directives.patch(id + "-body", Map.of("visible", true)))
+                        .tooltip("Show details")
+                        .build())
+                .build());
+        // the collapsible argument summary line
+        String summary = textOf(p, "summary", "");
+        if (!summary.isBlank()) {
+            card.child(Ui.text(summary).style("mono").color(MUTED)
+                    .maxLines(1).ellipsis(true).build());
+        }
+        // the expanded body: the output region + the footer
+        List<UiNode> body = new ArrayList<>();
+        body.add(outputRegion(seq, p));
+        Ui.RowBuilder footer = Ui.row().id(id + "-footer").align("center").gap(8);
+        String time = textOf(p, "time", "");
+        if (!time.isBlank()) {
+            footer.child(Ui.text(time).style("caption").color(MUTED).build());
+        }
+        footer.child(Ui.spacer().build());
+        footer.child(Ui.iconButton().id(id + "-copy").icon("copy").iconSize(16)
+                .action(Directives.setState(id + "-copy", true))
+                .set("demo", true)
+                .tooltip("Copy output")
+                .build());
+        footer.child(Ui.iconButton().id(id + "-collapse").icon("unfold_less")
+                .iconSize(16)
+                .action(Directives.patch(id + "-body", Map.of("visible", false)))
+                .tooltip("Hide details")
+                .build());
+        body.add(footer.build());
+        List<Object> bodyNodes = new ArrayList<>(body);
+        card.child(Ui.column().id(id + "-body").visible(false).gap(8)
+                .children(bodyNodes).build());
+        return rowContainer(KIND_EVENT, kind, seq, null, 4, card.build());
+    }
+
+    /**
+     * The output region of the tool card: the {@code markdown} /
+     * {@code code_block} / {@code diff_view} node the payload asks for, or
+     * the muted italic "No output." empty state when the output is blank
+     * (the upstream {@code ToolOutput} empty state,
+     * {@code V2ItemInspector.tsx:148}).
+     */
+    private static UiNode outputRegion(long seq, Map<String, Object> payload) {
+        String kind = textOf(payload, "outputKind", "code");
+        String output = textOf(payload, "output", "");
+        if ("diff".equals(kind)) {
+            UiNode view = diffViewOf(seq, payload);
+            if (view != null) {
+                return view;
+            }
+        } else if ("markdown".equals(kind) && !output.isBlank()) {
+            return Ui.markdown(output).id(eventId(seq) + "-output").build();
+        } else if (!output.isBlank()) {
+            Ui.CodeBlockBuilder block = Ui.codeBlock(output)
+                    .id(eventId(seq) + "-output")
+                    .copyable(true)
+                    .maxLines(12);
+            String language = textOf(payload, "language", "");
+            if (!language.isBlank()) {
+                block.language(language);
+            }
+            return block.build();
+        }
+        return emptyState(seq);
+    }
+
+    /** The muted italic "No output." empty-state region of an output-less card. */
+    private static UiNode emptyState(long seq) {
+        return Ui.text("No output.").style("caption").color(MUTED).italic(true)
+                .id(eventId(seq) + "-empty").build();
+    }
+
+    /**
+     * The {@code diff_view} node of a diff payload ({@code file},
+     * {@code language}, {@code additions}, {@code deletions},
+     * {@code hunks}); {@code null} when the payload carries no hunks — the
+     * caller renders the empty state instead of a hunkless view. The view is
+     * decorative and carries the mandatory {@code demo} marker.
+     */
+    private static UiNode diffViewOf(long seq, Map<String, Object> payload) {
+        if (!(payload.get("hunks") instanceof List<?> hunks) || hunks.isEmpty()) {
+            return null;
+        }
+        Ui.DiffViewBuilder view = Ui.diffView()
+                .id(eventId(seq) + "-diff")
+                .demo(true);
+        String file = textOf(payload, "file", "");
+        if (!file.isBlank()) {
+            view.file(file);
+        }
+        String language = textOf(payload, "language", "");
+        if (!language.isBlank()) {
+            view.language(language);
+        }
+        Object additions = payload.get("additions");
+        Object deletions = payload.get("deletions");
+        if (additions instanceof Number a && deletions instanceof Number d) {
+            view.stats(a, d);
+        }
+        view.hunks(new ArrayList<>((List<Object>) hunks));
+        return view.build();
     }
 
     // ------------------------------------------------------------------
@@ -797,12 +1524,25 @@ public final class MessageCardBuilder {
             case "fork" -> "call_split";
             case "compaction" -> "compress";
             case "todo_list" -> "check";
+            // the T102 event kinds
+            case EVENT_DIFF -> "difference";
+            case EVENT_FILE_WRITE -> "edit_note";
+            case EVENT_SHELL -> "terminal";
+            case EVENT_TOOL_CALL, EVENT_TOOL_RESULT, EVENT_WORK_LOG_ENTRY -> "construction";
+            case EVENT_APPROVAL_REQUEST -> "gpp_maybe";
+            case EVENT_LIMIT_NOTICE -> "speed";
+            case EVENT_SYSTEM_NOTICE -> "info";
+            case EVENT_QUEUED_MESSAGE -> "schedule";
+            case EVENT_SUBAGENT -> "smart_toy";
+            case EVENT_CITATION -> "format_quote";
+            case EVENT_SKILL_INVOCATION -> "auto_awesome";
+            case EVENT_QUESTION, EVENT_UNKNOWN -> "help_outline";
             default -> "construction";
         };
     }
 
     /** Parses a structured payload; {@code null} when absent or malformed. */
-    static Map<String, Object> parseObject(String structured) {
+    public static Map<String, Object> parseObject(String structured) {
         if (structured == null || structured.isBlank()) {
             return null;
         }
@@ -811,5 +1551,38 @@ public final class MessageCardBuilder {
         } catch (RuntimeException e) {
             return null;
         }
+    }
+
+    // ------------------------------------------------------------------
+    // payload helpers (the T102 event payloads)
+    // ------------------------------------------------------------------
+
+    /** The {@code text} field of a payload, or the default when absent. */
+    private static String textOf(Map<String, Object> payload, String key, String def) {
+        Object value = payload.get(key);
+        return (value == null) ? def : String.valueOf(value);
+    }
+
+    /** The {@code int} field of a payload, {@code 0} when absent or malformed. */
+    private static int intOf(Map<String, Object> payload, String key) {
+        return (payload.get(key) instanceof Number number) ? number.intValue() : 0;
+    }
+
+    /** The {@code List} field of a payload, empty when absent or of another shape. */
+    private static List<?> listOf(Map<String, Object> payload, String key) {
+        return (payload.get(key) instanceof List<?> list) ? list : List.of();
+    }
+
+    /** The {@code files} array of a changed-files payload as maps. */
+    private static List<Map<String, Object>> filesOf(Map<String, Object> payload) {
+        List<Map<String, Object>> files = new ArrayList<>();
+        for (Object raw : listOf(payload, "files")) {
+            if (raw instanceof Map<?, ?> map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> file = (Map<String, Object>) map;
+                files.add(file);
+            }
+        }
+        return files;
     }
 }

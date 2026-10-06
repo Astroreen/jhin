@@ -23,7 +23,9 @@
  *       arguments section;</li>
  *   <li>{@code tool_result} — the {@code work:log} row with the collapsible
  *       result section (a malformed or unknown {@code structured} payload
- *       degrades to the plain text detail);</li>
+ *       degrades to the plain text detail); a {@code structured} payload
+ *       whose {@code type} names one of the 16 T102 event kinds renders
+ *       that event card instead (docs/sdui.md section 5);</li>
  *   <li>{@code session_updated} — the sidebar-row {@code patch} frame
  *       {@code {"patch":{"id":"session-row:<sessionId>","props":{…}}}} whose
  *       props carry the title and the lifecycle fields of the row;</li>
@@ -97,12 +99,7 @@ final class EventFrames {
                         toolLabel(payload) + " " + argumentsOf(payload),
                         List.of(MessageCardBuilder.toolArgumentsNode(
                                 argumentsOf(payload), seq))));
-                case "tool_result" -> node(MessageCardBuilder.workRow(
-                        seq,
-                        toolLabel(payload) + " result",
-                        List.of(MessageCardBuilder.toolResultNode(
-                                contentOf(payload),
-                                Boolean.TRUE.equals(payload.get("error")), seq))));
+                case "tool_result" -> node(toolResultFrame(payload, seq));
                 case "session_updated" -> sessionUpdatedFrame(payloadJson);
                 case "error" -> node(MessageCardBuilder.dispatchEventRow(
                         "error", payload, seq));
@@ -164,6 +161,28 @@ final class EventFrames {
             Map<String, Object> frame = remove(workingRowId);
             workingRowId = null;
             return frame;
+        }
+
+        /**
+         * The {@code tool_result} row: a {@code structured} payload whose
+         * {@code type} names one of the 16 T102 event kinds renders that
+         * event card (docs/sdui.md section 5 — the structured payload is the
+         * UI card the tool produced); anything else degrades to the T101
+         * work row with the plain content detail.
+         */
+        private UiNode toolResultFrame(Map<String, Object> payload, long seq) {
+            Map<String, Object> structured = parseObjectOf(payload.get("structured"));
+            if (structured != null
+                    && MessageCardBuilder.isEventKind(stringOf(structured.get("type")))) {
+                return MessageCardBuilder.dispatchEventRow(
+                        stringOf(structured.get("type")), structured, seq);
+            }
+            return MessageCardBuilder.workRow(
+                    seq,
+                    toolLabel(payload) + " result",
+                    List.of(MessageCardBuilder.toolResultNode(
+                            contentOf(payload),
+                            Boolean.TRUE.equals(payload.get("error")), seq)));
         }
     }
 
@@ -284,6 +303,24 @@ final class EventFrames {
     private static String contentOf(Map<String, Object> payload) {
         Object content = payload.get("content");
         return (content != null) ? String.valueOf(content) : textOf(payload);
+    }
+
+    /** The string value of a payload field, or {@code null} when absent. */
+    private static String stringOf(Object value) {
+        return (value == null) ? null : String.valueOf(value);
+    }
+
+    /** The parsed {@code structured} payload map; {@code null} when absent or malformed. */
+    private static Map<String, Object> parseObjectOf(Object structured) {
+        if (structured instanceof Map<?, ?> map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> typed = (Map<String, Object>) map;
+            return typed;
+        }
+        if (structured instanceof String text) {
+            return MessageCardBuilder.parseObject(text);
+        }
+        return null;
     }
 
     /** The raw JSON text of a payload field: strings pass through, objects re-serialize. */
