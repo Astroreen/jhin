@@ -1,0 +1,12 @@
+15:40:37.455 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+15:40:37.611 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
+15:40:37.615 [main] WARN plugin.jhin.qa-mock-llm -- qa-mock-llm is a QA harness (format mock); never ship this jar in a release bundle
+15:40:37.680 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
+15:40:37.688 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+15:40:37.695 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
+15:40:37.697 [main] INFO plugin.jhin.example -- jhin.agent present: registered 1 tool(s)
+15:40:37.700 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/tmp.xobdHNeqnt/mcp.json; no MCP servers to start
+15:40:37.705 [main] ERROR com.astroreen.jhin.kernel.loader.PluginLifecycle -- plugin jhin.tools-builtin failed: duplicate publication of com.astroreen.jhin.plugin.agent.api.ToolProvider already published by plugin jhin.example, attempted by plugin jhin.tools-builtin
+15:40:37.721 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+15:40:37.721 [main] ERROR com.astroreen.jhin.kernel.KernelBoot -- plugin load finished with 1 failed: jhin.tools-builtin: duplicate publication of com.astroreen.jhin.plugin.agent.api.ToolProvider already published by plugin jhin.example, attempted by plugin jhin.tools-builtin
+created account: t120 (id: 9e4010bf-e46e-4788-b7be-f42bb9f53113)

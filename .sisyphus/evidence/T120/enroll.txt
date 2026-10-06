@@ -1,0 +1,24 @@
+=== enroll ===
+POST /enroll {code:<single-use>, deviceName:t120}
+resp: {"token":"f2b7ca33bfc064467040d576ee379c73195109d0ec05c23a0413b4f6a57a7b70","accountId":"12bf0dcb-7256-492f-b764-c4a556ea2e39","accountName":"t120","deviceId":"f6b594e5-ae43-419e-9f06-4a169e526902"}
+=== seed session ===
+POST /sessions {title:t120-e2e, workdir:/tmp/t120}
+resp: {"id":"369667cc-a9f0-4521-b42d-f150cc5b1001","accountId":"12bf0dcb-7256-492f-b764-c4a556ea2e39","title":"t120-e2e","workdir":"/tmp/t120","model":null,"providerId":null,"status":"active","createdAt":1791290211376,"updatedAt":1791290211376,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+=== enroll ===
+POST /enroll {code:<single-use>, deviceName:t120}
+resp: {"token":"3c1bab604f14dc7331ee8e38012cc90df1e78889117cc396068595f4105413b9","accountId":"5bfb51d1-35b7-40e7-aeff-faf9ee2eee62","accountName":"t120","deviceId":"a42eccd2-1299-4db5-9164-3b838d10aaca"}
+=== seed session ===
+POST /sessions {title:t120-e2e, workdir:/tmp/t120}
+resp: {"id":"bfa626f4-b52a-4753-92fa-97758db43187","accountId":"5bfb51d1-35b7-40e7-aeff-faf9ee2eee62","title":"t120-e2e","workdir":"/tmp/t120","model":null,"providerId":null,"status":"active","createdAt":1791290262949,"updatedAt":1791290262949,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
+=== enroll ===
+POST /enroll {code:<single-use>, deviceName:t120}
+resp: {"token":"c06d4522e8221e3807836a5f6f4aa552377bfa7def639e3d4acdaf69ad294d06","accountId":"a22f32d0-3ad8-408a-b474-b3f48bd39cdf","accountName":"t120","deviceId":"5d9ce7b7-3965-45a6-a2bb-03512aae1f7a"}
+=== enroll ===
+POST /enroll {code:<single-use>, deviceName:t120}
+resp: {"token":"0f2e1ccd9c15274c4b52bdd37394bf099a2fc938b1078a8845c31265f73c1b50","accountId":"f623de03-069a-4abd-aaae-55abacf64245","accountName":"t120","deviceId":"bf31b8d8-773f-407c-9def-79aa26e446da"}
+=== enroll ===
+POST /enroll {code:<single-use>, deviceName:t120}
+resp: {"token":"059dbc45053fb6978a02c3eee438d5cefd324051889628efb845e9eaada9c113","accountId":"9e4010bf-e46e-4788-b7be-f42bb9f53113","accountName":"t120","deviceId":"ab6aacf1-03d0-475a-bbfd-e43e8dfc4cc8"}
+=== seed session ===
+POST /sessions {title:t120-e2e, workdir:/tmp/t120}
+resp: {"id":"422f9937-5415-482a-822a-870476df114f","accountId":"9e4010bf-e46e-4788-b7be-f42bb9f53113","title":"t120-e2e","workdir":"/tmp/t120","model":null,"providerId":null,"status":"active","createdAt":1791290438532,"updatedAt":1791290438532,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}

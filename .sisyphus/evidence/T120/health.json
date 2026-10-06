@@ -1,0 +1,68 @@
+{
+  "api": 1,
+  "failed": [
+    {
+      "id": "jhin.tools-builtin",
+      "reason": "duplicate publication of com.astroreen.jhin.plugin.agent.api.ToolProvider already published by plugin jhin.example, attempted by plugin jhin.tools-builtin"
+    }
+  ],
+  "kernel": "0.2.0",
+  "plugins": [
+    {
+      "id": "jhin.llm",
+      "name": "LLM",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.llm-builtin",
+      "name": "LLM Built-in",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.qa-mock-llm",
+      "name": "QA Mock LLM",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.reload",
+      "name": "Reload",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.security",
+      "name": "Security",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.sessions",
+      "name": "Sessions",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.agent",
+      "name": "Agent",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.example",
+      "name": "Example",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.mcp",
+      "name": "MCP",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.ui-kit",
+      "name": "UI Kit",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.ui",
+      "name": "UI",
+      "version": "0.2.0"
+    }
+  ],
+  "status": "ok"
+}

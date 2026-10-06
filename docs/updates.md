@@ -229,3 +229,29 @@ available in this build`) so nothing decorative looks silently real.
 and replace their inline directives with real actions. The token layer, the
 palette generator and the decorative mechanism are the intended seams — the
 rest of the UI keeps working unchanged.
+
+## 11. End-to-end verification of the upgrade path
+
+`scripts/qa/t120.sh` boots the full plugin bundle in a throwaway `JHIN_HOME`
+and proves the three upgrade surfaces together:
+
+- **Route inventory.** Every screen id the plan's section 4.2 inventory maps
+  onto the implementation is fetched at `api=3;schema=4` and must answer HTTP
+  200 with a `screen` root node whose types all live in the section 2.5
+  catalog. The two ids the plan lists but the implementation deliberately does
+  not expose — `chat:new` (the client owns the new-thread draft) and
+  `draft:<id>` (drafts are client state) — are recorded as
+  `404 unknown_screen`.
+- **Contract downgrade.** Every route is fetched again at `api=2;schema=3`;
+  the level-3 → level-2 table must leave zero level-3 primitives and no
+  `glass`/`glassTint`/`statusPulse` prop anywhere in the tree, including nodes
+  embedded in a directive (`dialog`/`setScreen` `node`) or a descriptor map.
+- **Store upgrade.** The Flutter store suite runs the real schema-3 fixture
+  through the 3 → 4 step and asserts `themeId` defaults to `t3-chat` with no
+  data loss; the booted host's bootstrap reports the same default theme id.
+
+The script also re-runs the T78 settings and T98 undo gates, so a regression
+in either surfaces here. Its `--fail` path requests a `schema=2` client below
+`contract.minSchema` and confirms the client-owned `version_gate` entry is
+named without a server-rendered gate node.
+

@@ -1,0 +1,23 @@
+15:40:34.955 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+15:40:35.126 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
+15:40:35.129 [main] WARN plugin.jhin.qa-mock-llm -- qa-mock-llm is a QA harness (format mock); never ship this jar in a release bundle
+15:40:35.362 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
+15:40:35.407 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+15:40:35.413 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
+15:40:35.436 [main] INFO plugin.jhin.example -- jhin.agent present: registered 1 tool(s)
+15:40:35.438 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/tmp.xobdHNeqnt/mcp.json; no MCP servers to start
+15:40:35.443 [main] ERROR com.astroreen.jhin.kernel.loader.PluginLifecycle -- plugin jhin.tools-builtin failed: duplicate publication of com.astroreen.jhin.plugin.agent.api.ToolProvider already published by plugin jhin.example, attempted by plugin jhin.tools-builtin
+15:40:35.459 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+15:40:35.459 [main] ERROR com.astroreen.jhin.kernel.KernelBoot -- plugin load finished with 1 failed: jhin.tools-builtin: duplicate publication of com.astroreen.jhin.plugin.agent.api.ToolProvider already published by plugin jhin.example, attempted by plugin jhin.tools-builtin
+2026-10-06T15:40:35.905+03:00  INFO 3839408 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3839408 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-06T15:40:35.906+03:00  INFO 3839408 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-06T15:40:36.367+03:00  INFO 3839408 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18518 (https)
+2026-10-06T15:40:36.377+03:00  INFO 3839408 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-06T15:40:36.378+03:00  INFO 3839408 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-06T15:40:36.392+03:00  INFO 3839408 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 452 ms
+2026-10-06T15:40:36.647+03:00  INFO 3839408 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18518], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
+2026-10-06T15:40:36.654+03:00  INFO 3839408 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18518 (https) with context path '/'
+2026-10-06T15:40:36.661+03:00  INFO 3839408 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.116 seconds (process running for 2.066)
+2026-10-06T15:41:06.666+03:00  INFO 3839408 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
+2026-10-06T15:41:24.571+03:00  INFO 3839408 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-06T15:41:24.574+03:00  INFO 3839408 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete

@@ -185,6 +185,50 @@ final class CapabilityTailor {
     /** Marker for a prop value that must not be written at all. */
     private static final Object SKIP = new Object();
 
+    /**
+     * Reconstructs a {@link UiNode} from its wire shape ({@link
+     * UiNode#toJson()}), used when a directive carries an already-serialized
+     * node under {@code node}. The reconstruction is recursive so the
+     * reconstructed tree can be tailored and re-serialized as a whole.
+     *
+     * @param json the wire-shape node map ({@code type}, props, {@code children})
+     * @return the equivalent node
+     */
+    private static UiNode toNode(Map<?, ?> json) {
+        String type = String.valueOf(json.get("type"));
+        Map<String, Object> props = new LinkedHashMap<>();
+        List<Object> children = new ArrayList<>();
+        for (Map.Entry<?, ?> entry : json.entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            if ("type".equals(key)) {
+                continue;
+            }
+            if ("children".equals(key) && entry.getValue() instanceof List<?> list) {
+                for (Object child : list) {
+                    children.add(toNodeValue(child));
+                }
+                continue;
+            }
+            props.put(key, toNodeValue(entry.getValue()));
+        }
+        return new UiNode(type, props, children);
+    }
+
+    /** Converts a wire value to its node-carrying form: node maps to nodes, lists recursively. */
+    private static Object toNodeValue(Object value) {
+        if (value instanceof Map<?, ?> map && map.get("type") instanceof String) {
+            return toNode(map);
+        }
+        if (value instanceof List<?> list) {
+            List<Object> out = new ArrayList<>();
+            for (Object entry : list) {
+                out.add(toNodeValue(entry));
+            }
+            return out;
+        }
+        return value;
+    }
+
     private Object tailorValue(Object value, ClientInfo client) {
         if (value instanceof UiNode node) {
             return tailor(node, client);
@@ -202,7 +246,30 @@ final class CapabilityTailor {
         if (value instanceof Map<?, ?> map && map.containsKey("op")) {
             @SuppressWarnings("unchecked")
             Map<String, Object> directive = (Map<String, Object>) map;
-            return Directives.dropped(directive, client) ? SKIP : value;
+            if (Directives.dropped(directive, client)) {
+                return SKIP;
+            }
+            // A kept directive may embed a serialized node under `node` (a
+            // `dialog` opens `node.toJson()`, `setScreen` swaps one in): the
+            // level-wide downgrade must reach inside it too, so reconstruct
+            // the node, tailor it and re-serialize. Scalar directive fields
+            // are returned unchanged.
+            Map<String, Object> tailored = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                Object nested = entry.getValue();
+                if ("node".equals(key) && nested instanceof Map<?, ?> nodeMap
+                        && nodeMap.get("type") instanceof String
+                        && negotiatedApi(client) < 3) {
+                    tailored.put(key, tailor(toNode(nodeMap), client).toJson());
+                    continue;
+                }
+                Object kept = tailorValue(nested, client);
+                if (kept != SKIP) {
+                    tailored.put(key, kept);
+                }
+            }
+            return tailored;
         }
         if (value instanceof Map<?, ?> map && map.get("client") instanceof List<?>) {
             // The inline directive composite of a decorative control (the
@@ -223,6 +290,21 @@ final class CapabilityTailor {
             Map<String, Object> composite = new LinkedHashMap<>((Map<String, Object>) map);
             composite.put("client", kept);
             return composite;
+        }
+        if (value instanceof Map<?, ?> map) {
+            // A plain descriptor map (a sidebar section/item, a menu entry, a
+            // fixture panel): recurse so a node embedded in one of its values
+            // (for example a row's `title` hover_card or a diff panel) is
+            // tailored exactly like a node in a prop or child position. The
+            // docs/sdui.md section 6 rule is level-wide, not top-level only.
+            Map<String, Object> tailored = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                Object nested = tailorValue(entry.getValue(), client);
+                if (nested != SKIP) {
+                    tailored.put(String.valueOf(entry.getKey()), nested);
+                }
+            }
+            return tailored;
         }
         return value;
     }

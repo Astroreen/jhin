@@ -544,6 +544,49 @@ class BootstrapContractTest {
         assertThat(same.type()).isEqualTo("chip");
     }
 
+    @Test
+    void nestedNodesInsideDescriptorMapsAreTailored() {
+        UiNode row = new UiNode("list_row", Map.of(
+                "id", "nested-row",
+                "title", new UiNode("hover_card", Map.of(
+                        "trigger", textNode("Row title"),
+                        "content", textNode("Card content")), List.of())), List.of());
+        UiNode list = new UiNode("list", Map.of(
+                "sections", List.of(Map.of(
+                        "id", "section-1",
+                        "items", List.of(Map.of("id", "item-1", "title", row))))), List.of());
+
+        UiNode degraded = tailor.tailor(list, level2());
+
+        Object section = ((List<?>) degraded.props().get("sections")).get(0);
+        Object item = ((List<?>) castMap(section).get("items")).get(0);
+        UiNode title = (UiNode) castMap(item).get("title");
+        assertThat(title.type()).isEqualTo("list_row");
+        UiNode hover = (UiNode) title.props().get("title");
+        assertThat(hover.type()).isEqualTo("text");
+        assertThat(hover.props()).containsEntry("text", "Row title")
+                .doesNotContainKey("content");
+    }
+
+    @Test
+    void directiveEmbeddedNodesAreTailored() {
+        UiNode dialog = new UiNode("column", Map.of("id", "model-dialog"),
+                List.of(new UiNode("kbd", Map.of("chord", "mod+shift+m"), List.of())));
+        UiNode button = new UiNode("button", Map.of(
+                "id", "picker",
+                "label", "Opus",
+                "action", Map.of("op", "dialog", "node", dialog.toJson())), List.of());
+
+        UiNode degraded = tailor.tailor(button, level2());
+
+        Map<String, Object> action = castMap(degraded.props().get("action"));
+        Map<String, Object> node = castMap(action.get("node"));
+        Map<String, Object> kbd = castMap(((List<?>) node.get("children")).get(0));
+        assertThat(kbd).containsEntry("type", "text")
+                .containsEntry("text", "mod+shift+m")
+                .doesNotContainKey("chord");
+    }
+
     // ---- helpers ----
 
     private static ClientInfo level1() {

@@ -1,0 +1,164 @@
+{
+  "type": "screen",
+  "title": "Connect",
+  "body": {
+    "type": "shell",
+    "id": "connect-shell",
+    "breakpoint": 768,
+    "topbar": {
+      "type": "row",
+      "id": "connect-topbar",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "text",
+          "text": "Connect",
+          "style": "body",
+          "bold": true
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "type": "nav",
+          "kind": "tabs",
+          "items": [
+            {
+              "label": "Sessions",
+              "screen": "sessions"
+            },
+            {
+              "label": "Settings",
+              "screen": "settings"
+            },
+            {
+              "label": "Plugins",
+              "screen": "plugins"
+            }
+          ]
+        }
+      ]
+    },
+    "topbarCompact": {
+      "type": "row",
+      "id": "connect-topbar-compact",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "text",
+          "text": "Connect",
+          "style": "body"
+        },
+        {
+          "type": "spacer"
+        }
+      ]
+    },
+    "pageHeader": {
+      "type": "row",
+      "id": "connect-page-header",
+      "align": "center",
+      "gap": 8,
+      "children": [
+        {
+          "type": "text",
+          "text": "Connect",
+          "style": "h3"
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "type": "text",
+          "text": "Browser authorization",
+          "style": "caption"
+        }
+      ]
+    },
+    "body": {
+      "type": "container",
+      "id": "connect-body",
+      "direction": "column",
+      "gap": 16,
+      "padding": 16,
+      "children": [
+        {
+          "type": "card",
+          "id": "connect-card",
+          "title": "Connect a device",
+          "children": [
+            {
+              "type": "text",
+              "text": "Connect your terminal",
+              "style": "h3"
+            },
+            {
+              "type": "text",
+              "text": "Run the connect command on the machine you want to link, then paste the connection code below.",
+              "style": "body"
+            },
+            {
+              "type": "code_block",
+              "code": "npx jhin connect",
+              "language": "shell",
+              "copyable": true
+            },
+            {
+              "type": "input",
+              "id": "connectionCode",
+              "label": "Connection code",
+              "placeholder": "XXXX-XXXX",
+              "demo": true
+            },
+            {
+              "type": "row",
+              "align": "center",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "button",
+                  "label": "Open docs",
+                  "id": "connect-docs",
+                  "style": "text",
+                  "icon": "open_in_new",
+                  "demo": true
+                },
+                {
+                  "type": "spacer"
+                },
+                {
+                  "type": "button",
+                  "label": "Connect",
+                  "id": "connect-submit",
+                  "style": "primary",
+                  "icon": "link",
+                  "demo": true,
+                  "action": {
+                    "client": [
+                      {
+                        "op": "toast",
+                        "text": "Preview only — no device is connected in this build"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
