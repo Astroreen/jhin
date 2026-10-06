@@ -2,10 +2,11 @@
  * The default screen registry of the T37 surface: {@code connect} (the enroll
  * form, only while the security plugin is loaded), {@code sessions} (the
  * session list with the activity feed and the "New session" form),
- * {@code settings}, {@code plugins} and {@code providers} (only while the LLM
- * plugin is loaded), plus the dynamic {@code chat:<session-id>} screens and
- * the QA-only probes {@code qa-level3} (T88) and {@code qa-timeline} (T101,
- * both only while the {@code qaProbe} config switch is on). All screen
+ * {@code settings} (the T109 settings shell overview) with its fourteen
+ * {@code settings:*} sub-routes, {@code plugins} and {@code providers} (only
+ * while the LLM plugin is loaded), plus the dynamic {@code chat:<session-id>}
+ * screens and the QA-only probes {@code qa-level3} (T88) and {@code qa-timeline}
+ * (T101, both only while the {@code qaProbe} config switch is on). All screen
  * classes are built with the
  * {@code jhin.ui-kit} builder; this registry only decides which of them one
  * caller may see.
@@ -67,6 +68,11 @@ final class Screens implements ScreenRegistry {
         screens.put("settings", () -> SettingsScreen.render(
                 account, features.security(), features.reload(),
                 DefaultKeymap.entries(), overrides, snapshot));
+        for (SettingsScreen.Route route : SettingsScreen.ROUTES) {
+            screens.put(route.id(), () -> SettingsScreen.renderRoute(
+                    route.id(), account, features.security(), features.reload(),
+                    DefaultKeymap.entries(), overrides, snapshot));
+        }
         screens.put("plugins", () -> PluginsScreen.render(kernel.plugins()));
         if (providersPresent()) {
             ProviderRegistry providers = providerRegistry().orElseThrow();

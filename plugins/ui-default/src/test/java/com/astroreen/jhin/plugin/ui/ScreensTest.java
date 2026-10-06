@@ -242,8 +242,11 @@ class ScreensTest {
     void registryOmitsTheOptionalScreensWithoutTheirIntegrations() {
         Screens screens = registry(NO_PLUGINS);
 
-        assertThat(screens.screens(Optional.empty(), Map.of()).keySet())
-                .containsExactly("sessions", "settings", "plugins");
+        Set<String> ids = screens.screens(Optional.empty(), Map.of()).keySet();
+        assertThat(ids).contains("sessions", "settings", "plugins");
+        assertThat(ids).doesNotContain("connect", "providers");
+        assertThat(ids).containsAll(
+                SettingsScreen.ROUTES.stream().map(SettingsScreen.Route::id).toList());
     }
 
     @Test
@@ -255,6 +258,21 @@ class ScreensTest {
 
         Set<String> ids = screens.screens(Optional.empty(), Map.of()).keySet();
         assertThat(ids).contains("connect", "sessions", "settings", "plugins", "providers");
+        assertThat(ids).containsAll(
+                SettingsScreen.ROUTES.stream().map(SettingsScreen.Route::id).toList());
+    }
+
+    @Test
+    void registryResolvesEverySettingsSubRoute() {
+        Screens screens = registry(NO_PLUGINS);
+
+        for (SettingsScreen.Route route : SettingsScreen.ROUTES) {
+            Optional<Supplier<UiNode>> screen =
+                    screens.screen(route.id(), Optional.empty(), Map.of());
+            assertThat(screen).as(route.id()).isPresent();
+            assertThat(typesIn(screen.get().get().toJson())).contains("screen", "shell", "nav");
+        }
+        assertThat(screens.screen("settings:nope", Optional.empty(), Map.of())).isEmpty();
     }
 
     @Test

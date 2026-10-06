@@ -69,8 +69,7 @@ class UiPluginTest {
         Map<String, Object> payload = Json.readMap(new String(bootstrap().body()));
 
         assertThat(payload).containsEntry("entry", "sessions");
-        assertThat(payload.get("screens").toString()).doesNotContain("connect");
-        assertThat(payload.get("screens").toString()).doesNotContain("providers");
+        assertThat(screenIds(payload)).doesNotContain("connect", "providers");
     }
 
     @Test
@@ -80,7 +79,7 @@ class UiPluginTest {
         Map<String, Object> payload = Json.readMap(new String(bootstrap().body()));
 
         assertThat(payload).containsEntry("entry", "connect");
-        assertThat(payload.get("screens").toString()).contains("connect");
+        assertThat(screenIds(payload)).contains("connect");
     }
 
     @Test
@@ -123,5 +122,13 @@ class UiPluginTest {
         HttpResponse response = bootstrap.handler().handle(req);
         assertThat(response.status()).isEqualTo(200);
         return response;
+    }
+
+    /** The screen ids of one bootstrap payload, in registration order. */
+    @SuppressWarnings("unchecked")
+    private static List<String> screenIds(Map<String, Object> payload) {
+        return ((List<Map<String, Object>>) payload.get("screens")).stream()
+                .map(screen -> String.valueOf(screen.get("id")))
+                .toList();
     }
 }

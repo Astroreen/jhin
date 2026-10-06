@@ -1,8 +1,40 @@
 /**
- * The {@code settings} screen: account info, the General card (T96), the
- * Appearance and Thread-behavior cards (T78), the Keyboard section (T70),
- * the client-owned server surface, sign-out, the help link and — while the
- * reload plugin is loaded — the reload button.
+ * The {@code settings} shell and its sub-routes (T109): the t3code settings
+ * layout — a left settings {@code nav} (kind {@code sidebar}) over the
+ * fourteen sub-routes of the plan section 4.2, each its own Jhin screen id
+ * ({@code settings:general}, {@code settings:appearance}, …) reachable by
+ * {@code navigate} and listed in the bootstrap {@code screens[]}.
+ *
+ * <p>Upstream anchors (t3code {@code apps/web/src}, commit {@code 37de6cb}):
+ * the settings route layout is {@code routes/settings.tsx} (the
+ * {@code SidebarInset} with the {@code WorkspacePageHeader} carrying the
+ * {@code SettingsBreadcrumb}, {@code settings.tsx:110-140}), the nav is
+ * {@code components/settings/SettingsSidebarNav.tsx} (the
+ * {@code SidebarMenu} of section buttons, {@code :245-266}) and the
+ * breadcrumb labels are {@code components/settings/SettingsBreadcrumb.tsx}
+ * ({@code Settings / Section}, {@code :20-40}) over the section labels of
+ * {@code components/settings/settingsSearch.ts} ({@code
+ * SETTINGS_SECTION_LABELS}, {@code :83-96}). The port is behavioural, not
+ * TSX (plan section 14.9): the same slots and metrics authored as SDUI
+ * nodes.
+ *
+ * <p><b>The shell.</b> Every settings screen is a {@code shell} (T95) whose
+ * {@code sidebar} slot carries the settings {@code nav} (kind {@code
+ * sidebar}, the fourteen entries in plan section 4.2 order), whose
+ * {@code pageHeader} slot carries the {@code Settings / <name>} breadcrumb
+ * and whose {@code body} carries the panel. The nav highlights the active
+ * route through {@code activeId} (the client paints the active row with the
+ * {@code sidebar-row-active} token, the T97 row state). The top bar carries
+ * the wordmark and the {@code Back to threads} button (a real
+ * {@code navigate sessions}).
+ *
+ * <p><b>The root.</b> The {@code settings} screen itself is the overview:
+ * the shell with the account card, the General card (T96), the Appearance
+ * and Thread-behavior cards (T78) and the Keyboard section (T70) — the
+ * pre-T109 content, kept so the T78 contract assertions on {@code
+ * /ui/screen/settings} stay green. The three sections also live on their
+ * new homes: Appearance on {@code settings:appearance}, Thread behavior on
+ * {@code settings:general}, Keyboard on {@code settings:keybindings}.
  *
  * <p>Appearance (T78) edits the persisted {@code jhin.ui} settings of
  * {@link UiSettings}: the six-theme catalogue grid (T85), theme mode,
@@ -39,6 +71,7 @@ import com.astroreen.jhin.plugin.uikit.ThemeCatalog;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.UiTokens;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -53,6 +86,27 @@ public final class SettingsScreen {
 
     /** The hex-color validation pattern of the canvas/accent fields. */
     private static final String HEX_PATTERN = "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$";
+
+    /** The wordmark text of the settings top bar. */
+    static final String WORDMARK = "Jhin";
+
+    /** The breadcrumb root crumb. */
+    static final String BREADCRUMB_ROOT = "Settings";
+
+    /** The breadcrumb separator (the upstream "/" crumb). */
+    static final String BREADCRUMB_SEPARATOR = "/";
+
+    /** The settings shell id. */
+    public static final String SHELL_ID = "settings-shell";
+
+    /** The settings nav id. */
+    public static final String NAV_ID = "settings-nav";
+
+    /** The settings breadcrumb id. */
+    public static final String BREADCRUMB_ID = "settings-breadcrumb";
+
+    /** The fixed shell breakpoint (plan T95 step 7): the sidebar overlays below it. */
+    public static final int BREAKPOINT = 768;
 
     /** Field id of the theme-mode segmented control. */
     static final String ID_APPEARANCE = "appearance";
@@ -93,11 +147,58 @@ public final class SettingsScreen {
     /** Tooltip of the disabled "settle on PR merged" switch. */
     static final String PR_TOOLTIP = "PR linking is not enabled";
 
+    /**
+     * One settings sub-route: the Jhin screen id, the nav/breadcrumb label
+     * and the nav icon name.
+     */
+    public record Route(String id, String label, String icon) {
+    }
+
+    /**
+     * The fourteen settings sub-routes of the plan section 4.2, in nav
+     * order. The upstream route files are {@code
+     * apps/web/src/routes/settings.*.tsx} (commit {@code 37de6cb}); the
+     * labels are the {@code SETTINGS_SECTION_LABELS} values of {@code
+     * components/settings/settingsSearch.ts:83-96} plus the two detail-page
+     * labels of {@code SettingsBreadcrumb.tsx:7-10} ({@code Diagnostics},
+     * {@code Open source licenses}).
+     */
+    public static final List<Route> ROUTES = List.of(
+            new Route("settings:general", "General", "settings"),
+            new Route("settings:appearance", "Appearance", "palette"),
+            new Route("settings:keybindings", "Keybindings", "keyboard"),
+            new Route("settings:providers", "Providers", "smart_toy"),
+            new Route("settings:connections", "Connections", "link"),
+            new Route("settings:integrations", "Integrations", "extension"),
+            new Route("settings:diagnostics", "Diagnostics", "monitor_heart"),
+            new Route("settings:storage", "Storage", "storage"),
+            new Route("settings:archived", "Archive", "archive"),
+            new Route("settings:projects", "Project", "folder"),
+            new Route("settings:scheduled-tasks", "Scheduled Tasks", "schedule"),
+            new Route("settings:source-control", "Source Control", "account_tree"),
+            new Route("settings:snap-shot", "SnapShots", "photo_camera"),
+            new Route("settings:licenses", "Open source licenses", "description"));
+
     private SettingsScreen() {
     }
 
     /**
-     * Builds the settings screen of one caller.
+     * The settings sub-route with the given screen id, when it exists.
+     *
+     * @param id the screen id ({@code settings:general}, …)
+     * @return the route, empty for an unknown id
+     */
+    public static Optional<Route> route(String id) {
+        return ROUTES.stream().filter(route -> route.id().equals(id)).findFirst();
+    }
+
+    /**
+     * Builds the {@code settings} overview screen of one caller: the shell
+     * with the settings nav and the pre-T109 content (account, General,
+     * Appearance, Thread behavior, Keyboard, the client-owned controls and
+     * the reload button). The three section cards stay here so the T78
+     * contract assertions on {@code /ui/screen/settings} remain green; they
+     * also live on their new sub-routes.
      *
      * @param account           the caller's account id, empty when unauthenticated
      * @param securityPresent   whether the security plugin is loaded (account info)
@@ -117,8 +218,7 @@ public final class SettingsScreen {
         Ui.ContainerBuilder body = Ui.container()
                 .direction("column")
                 .gap(12)
-                .padding(16)
-                .child(Ui.text("Settings").style("h2").build());
+                .padding(16);
         if (securityPresent) {
             String info = account
                     .map(id -> "Signed in as " + id)
@@ -153,7 +253,179 @@ public final class SettingsScreen {
                     .action(ActionDescriptors.of("reload"))
                     .build());
         }
-        return Ui.screen().title("Settings").body(body.build()).build();
+        return Ui.screen()
+                .title("Settings")
+                .body(shell("settings:general", BREADCRUMB_ROOT, body.build()))
+                .build();
+    }
+
+    /**
+     * Builds one settings sub-route screen of one caller: the shell with the
+     * settings nav (the route highlighted), the {@code Settings / <name>}
+     * breadcrumb and the route's panel. The three pre-T109 sections render
+     * on their new homes; the remaining routes render a decorative
+     * placeholder panel until their owning todos (T110–T112) fill them.
+     *
+     * @param routeId           the sub-route screen id
+     * @param account           the caller's account id, empty when unauthenticated
+     * @param securityPresent   whether the security plugin is loaded
+     * @param reloadPresent     whether the reload plugin is loaded
+     * @param keymap            the default keymap entries
+     * @param clientKeybindings the caller's overrides (command to chord)
+     * @param settings          the effective jhin.ui settings
+     * @return the screen node
+     * @throws IllegalArgumentException when the id is not a settings sub-route
+     */
+    public static UiNode renderRoute(String routeId, Optional<String> account,
+                                     boolean securityPresent, boolean reloadPresent,
+                                     List<Map<String, Object>> keymap,
+                                     Map<String, String> clientKeybindings,
+                                     UiSettings.Snapshot settings) {
+        Route route = route(routeId).orElseThrow(
+                () -> new IllegalArgumentException("unknown settings route: " + routeId));
+        UiNode content = panel(route, keymap, clientKeybindings, settings);
+        return Ui.screen()
+                .title("Settings")
+                .body(shell(routeId, route.label(), content))
+                .build();
+    }
+
+    /**
+     * The settings shell: the sidebar nav, the top bar, the breadcrumb page
+     * header and the content body (plan T109 step 1 and 5).
+     *
+     * @param activeId        the highlighted nav item (the active route id)
+     * @param breadcrumbLabel the breadcrumb section label
+     * @param content         the panel node
+     * @return the shell node
+     */
+    private static UiNode shell(String activeId, String breadcrumbLabel, UiNode content) {
+        return Ui.shell()
+                .id(SHELL_ID)
+                .breakpoint(BREAKPOINT)
+                .topbar(topbar())
+                .topbarCompact(topbarCompact())
+                .pageHeader(breadcrumb(breadcrumbLabel))
+                .sidebar(settingsNav(activeId))
+                .stageBackdrop(true)
+                .body(content)
+                .build();
+    }
+
+    /**
+     * The settings nav: the fourteen sub-route entries (kind {@code
+     * sidebar}), the active route highlighted through {@code activeId}.
+     */
+    private static UiNode settingsNav(String activeId) {
+        Ui.NavBuilder nav = Ui.nav().id(NAV_ID).kind("sidebar");
+        for (Route route : ROUTES) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", route.id());
+            item.put("label", route.label());
+            item.put("icon", route.icon());
+            item.put("screen", route.id());
+            nav.item(item);
+        }
+        if (activeId != null) {
+            nav.activeId(activeId);
+        }
+        return nav.build();
+    }
+
+    /** The wide top bar: the wordmark and the real back-to-threads button. */
+    private static UiNode topbar() {
+        return Ui.row()
+                .id("settings-topbar")
+                .align("center")
+                .child(Ui.text(WORDMARK).style("h3").bold(true).build())
+                .child(Ui.spacer().build())
+                .child(Ui.button("Back to threads")
+                        .style("secondary")
+                        .action(Directives.navigate("sessions"))
+                        .build())
+                .build();
+    }
+
+    /** The compact top bar below the breakpoint: the wordmark only. */
+    private static UiNode topbarCompact() {
+        return Ui.row()
+                .id("settings-topbar-compact")
+                .align("center")
+                .child(Ui.text(WORDMARK).style("h3").bold(true).build())
+                .child(Ui.spacer().build())
+                .build();
+    }
+
+    /**
+     * The page-header breadcrumb: {@code Settings / <name>} for a sub-route,
+     * the bare {@code Settings} crumb for the overview (the upstream
+     * {@code SettingsBreadcrumb} shape).
+     */
+    private static UiNode breadcrumb(String label) {
+        Ui.RowBuilder row = Ui.row()
+                .id(BREADCRUMB_ID)
+                .align("center")
+                .gap(8)
+                .child(Ui.text(BREADCRUMB_ROOT).style("small").build());
+        if (!BREADCRUMB_ROOT.equals(label)) {
+            row.child(Ui.text(BREADCRUMB_SEPARATOR).style("small").build());
+            row.child(Ui.text(label).style("body").bold(true).build());
+        }
+        return row.build();
+    }
+
+    /**
+     * The panel of one sub-route. The three pre-T109 sections render on
+     * their new homes; every other route renders a decorative placeholder
+     * card until its owning todo fills it.
+     */
+    private static UiNode panel(Route route, List<Map<String, Object>> keymap,
+                                Map<String, String> clientKeybindings,
+                                UiSettings.Snapshot settings) {
+        return switch (route.id()) {
+            case "settings:general" -> Ui.container()
+                    .direction("column")
+                    .gap(12)
+                    .padding(16)
+                    .child(generalCard())
+                    .child(threadBehaviorCard(settings))
+                    .build();
+            case "settings:appearance" -> Ui.container()
+                    .direction("column")
+                    .gap(12)
+                    .padding(16)
+                    .child(appearanceCard(settings))
+                    .build();
+            case "settings:keybindings" -> Ui.container()
+                    .direction("column")
+                    .gap(12)
+                    .padding(16)
+                    .child(Ui.card()
+                            .title("Keyboard")
+                            .child(keyboardRows(keymap, clientKeybindings))
+                            .build())
+                    .build();
+            default -> placeholder(route);
+        };
+    }
+
+    /**
+     * The decorative placeholder panel of a not-yet-built sub-route: a card
+     * titled with the section label and the unavailable copy. No interactive
+     * node, so no {@code demo} marker is needed.
+     */
+    private static UiNode placeholder(Route route) {
+        return Ui.container()
+                .direction("column")
+                .gap(12)
+                .padding(16)
+                .child(Ui.card()
+                        .title(route.label())
+                        .child(Ui.text("This panel is not available in this build.")
+                                .style("caption")
+                                .build())
+                        .build())
+                .build();
     }
 
     /**
