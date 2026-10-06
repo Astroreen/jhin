@@ -1,0 +1,12 @@
+{
+  "appearance": {
+    "themeId": "ocean",
+    "appearance": "dark",
+    "density": "compact",
+    "panelMotionMs": 200
+  },
+  "threadBehavior": {
+    "autoSettleDefault": false,
+    "inactivityDays": 14.0
+  }
+}

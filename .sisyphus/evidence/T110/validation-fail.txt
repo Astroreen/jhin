@@ -1,0 +1,8 @@
+=== save-out-of-range-panel-motion ===
+POST /ui/action/save-appearance
+client: api=3; version=0.3.0; schema=4; caps=sse
+req:  {"action":"save-appearance","payload":{"appearance":"dark","canvas":"#101018","accent":"#ff0000","density":"compact","panelMotionMs":500}}
+status: 200
+resp: {"client":[{"op":"patch","id":"panelMotionMs","props":{"errorText":"Panel animations must be 0–400 ms","decoration":{"errorText":"Panel animations must be 0–400 ms"}}},{"op":"toast","text":"Panel animations must be 0–400 ms","style":"error"}]}
+assert: status=200, jq '[.client[].op] == ["patch", "toast"]'
+assert: ok

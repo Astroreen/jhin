@@ -35,6 +35,9 @@ final class SettingsActions {
     /** The theme-id validation message of the theme grid (T85). */
     static final String THEME_ERROR = "Choose a theme from the catalogue";
 
+    /** The panel-animation validation message (T78/T110, 0–400 ms). */
+    static final String PANEL_MOTION_ERROR = "Panel animations must be 0\u2013400 ms";
+
     private SettingsActions() {
     }
 
@@ -94,12 +97,12 @@ final class SettingsActions {
                 return invalid(UiSettings.KEY_DENSITY, "Choose Compact, Comfortable or Spacious");
             }
             if (panelRaw == null) {
-                return invalid(UiSettings.KEY_PANEL_MOTION_MS, "Panel animations must be 0–400 ms");
+                return invalid(UiSettings.KEY_PANEL_MOTION_MS, PANEL_MOTION_ERROR);
             }
             int panelMotionMs = (int) Math.round(panelRaw.doubleValue());
             if (panelMotionMs < UiSettings.MIN_PANEL_MOTION_MS
                     || panelMotionMs > UiSettings.MAX_PANEL_MOTION_MS) {
-                return invalid(UiSettings.KEY_PANEL_MOTION_MS, "Panel animations must be 0–400 ms");
+                return invalid(UiSettings.KEY_PANEL_MOTION_MS, PANEL_MOTION_ERROR);
             }
 
             settings.saveAppearance(appearanceValue, themeIdValue, canvasValue, accentValue,

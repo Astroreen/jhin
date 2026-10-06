@@ -102,6 +102,89 @@ class SettingsScreenTest {
     }
 
     @Test
+    void theGeneralPanelCarriesTheUpstreamFields() {
+        Map<String, Object> general = route("settings:general");
+
+        assertThat(cardTitles(general)).contains("General", "Thread behavior", "Confirmations");
+        for (String id : List.of("sendShortcut", "followUpBehavior", "autoResumeLimitedThreads",
+                "snoozeLimitedThreads", "workingSection", "autoSettleRules", "autoSettleDefault",
+                "inactivityDays", "settleOnPrMerged", "confirmQuit")) {
+            assertThat(nodesWithId(general, id)).as(id).hasSize(1);
+        }
+        assertThat(opsIn(general)).contains("save-thread-behavior");
+    }
+
+    @Test
+    void theGeneralPanelMarksOnlyTheDecorativeControlsDemo() {
+        Map<String, Object> general = route("settings:general");
+
+        for (String id : List.of("sendShortcut", "followUpBehavior", "autoResumeLimitedThreads",
+                "snoozeLimitedThreads", "workingSection", "autoSettleRules", "confirmQuit")) {
+            assertThat(nodesWithId(general, id).get(0)).as(id).containsEntry("demo", true);
+        }
+        for (String id : List.of("autoSettleDefault", "inactivityDays", "settleOnPrMerged")) {
+            assertThat(nodesWithId(general, id).get(0)).as(id).doesNotContainKey("demo");
+        }
+    }
+
+    @Test
+    void theAppearancePanelCarriesTheUpstreamFields() {
+        Map<String, Object> appearance = route("settings:appearance");
+
+        assertThat(cardTitles(appearance))
+                .contains("Appearance", "Interface", "Typography", "Motion");
+        for (String id : List.of("appearance", "canvas", "accent", "density", "panelMotionMs",
+                "contrastBoost", "chatWidth", "diffColorScheme", "fontSizeInterface",
+                "fontSizePrompt", "fontSizeCode", "fontFamilySans", "fontFamilyCode",
+                "fontFamilyComposer", "reducedMotionNote")) {
+            assertThat(nodesWithId(appearance, id)).as(id).hasSize(1);
+        }
+        assertThat(nodesWithId(appearance, "theme-t3-chat")).hasSize(1);
+        assertThat(opsIn(appearance)).contains("save-appearance");
+    }
+
+    @Test
+    void theAppearancePanelMarksOnlyTheDecorativeControlsDemo() {
+        Map<String, Object> appearance = route("settings:appearance");
+
+        for (String id : List.of("contrastBoost", "chatWidth", "diffColorScheme",
+                "fontSizeInterface", "fontSizePrompt", "fontSizeCode", "fontFamilySans",
+                "fontFamilyCode", "fontFamilyComposer")) {
+            assertThat(nodesWithId(appearance, id).get(0)).as(id).containsEntry("demo", true);
+        }
+        for (String id : List.of("appearance", "canvas", "accent", "density", "panelMotionMs")) {
+            assertThat(nodesWithId(appearance, id).get(0)).as(id).doesNotContainKey("demo");
+        }
+    }
+
+    @Test
+    void theFoldedSectionsToggleThroughSetState() {
+        Map<String, Object> general = route("settings:general");
+
+        Map<String, Object> closed = nodesWithId(general, "section-general-toggle").get(0);
+        assertThat(closed).containsEntry("when", "fold_general != true");
+        assertThat(castMap(closed.get("onTap"))).containsEntry("op", "setState")
+                .containsEntry("id", "fold_general").containsEntry("value", true);
+        Map<String, Object> open = nodesWithId(general, "section-general-toggle-open").get(0);
+        assertThat(open).containsEntry("when", "fold_general == true");
+        assertThat(castMap(open.get("onTap"))).containsEntry("value", false);
+        Map<String, Object> body = nodesWithId(general, "section-general-body").get(0);
+        assertThat(body).containsEntry("when", "fold_general == true");
+    }
+
+    @Test
+    void theSaveIncludeListsAreUnchanged() {
+        Map<String, Object> general = route("settings:general");
+        assertThat(actionNamed(general, "save-thread-behavior").get("include"))
+                .isEqualTo(List.of("autoSettleDefault", "inactivityDays"));
+
+        Map<String, Object> appearance = route("settings:appearance");
+        assertThat(actionNamed(appearance, "save-appearance").get("include"))
+                .isEqualTo(List.of("appearance", "themeId", "canvas", "accent", "density",
+                        "panelMotionMs"));
+    }
+
+    @Test
     void anUnknownSubRouteIsRejected() {
         assertThatThrownBy(() -> SettingsScreen.renderRoute(
                 "settings:nope", Optional.empty(), true, false, KEYMAP, Map.of(),
@@ -151,6 +234,18 @@ class SettingsScreenTest {
             }
         });
         return found;
+    }
+
+    /** The first action descriptor with the given {@code name}. */
+    private static Map<String, Object> actionNamed(Object fragment, String name) {
+        List<Map<String, Object>> found = new ArrayList<>();
+        walk(fragment, map -> {
+            if (name.equals(map.get("name"))) {
+                found.add(map);
+            }
+        });
+        assertThat(found).as("action " + name).isNotEmpty();
+        return found.get(0);
     }
 
     private static List<String> labels(Object fragment) {

@@ -1,0 +1,5 @@
+FAIL: an out-of-range panel motion was rejected with [patch, toast] (as designed)
+  the failure path is the documented behavior: panelMotionMs 500 is
+  outside the 0-400 range, so save-appearance patches the field's
+  errorText and toasts the message without persisting (validation-fail.txt)
+FAIL: deliberately wrong expectation: an out-of-range panel motion persisted (it does not; see .sisyphus/evidence/T110/validation-fail.txt)
