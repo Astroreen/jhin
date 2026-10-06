@@ -353,6 +353,7 @@ public final class UsageScreen {
                         .build())
                 .action(Ui.button("Cancel")
                         .style("text")
+                        .set("demo", true)
                         .action(Directives.dismissDialog())
                         .build())
                 .action(Ui.button("Add source")

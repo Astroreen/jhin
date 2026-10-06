@@ -1,0 +1,20 @@
+14:57:18.713 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+14:57:18.873 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
+14:57:18.875 [main] WARN plugin.jhin.qa-mock-llm -- qa-mock-llm is a QA harness (format mock); never ship this jar in a release bundle
+14:57:18.919 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+14:57:18.934 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+14:57:18.935 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+14:57:18.936 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18512. Install a security plugin.
+2026-10-06T14:57:19.363+03:00  INFO 3730732 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3730732 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-06T14:57:19.365+03:00  INFO 3730732 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-06T14:57:19.816+03:00  INFO 3730732 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18512 (http)
+2026-10-06T14:57:19.824+03:00  INFO 3730732 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-06T14:57:19.825+03:00  INFO 3730732 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-06T14:57:19.840+03:00  INFO 3730732 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 443 ms
+2026-10-06T14:57:20.034+03:00  INFO 3730732 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18512 (http) with context path '/'
+2026-10-06T14:57:20.041+03:00  INFO 3730732 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.028 seconds (process running for 1.692)
+2026-10-06T14:57:50.048+03:00  INFO 3730732 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
+2026-10-06T14:58:50.044+03:00  INFO 3730732 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
+2026-10-06T14:59:50.044+03:00  INFO 3730732 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
+2026-10-06T15:00:40.450+03:00  INFO 3730732 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-06T15:00:40.453+03:00  INFO 3730732 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete

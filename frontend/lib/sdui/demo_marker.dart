@@ -18,8 +18,14 @@ Widget applyDemoMarker(Widget child, UiNode node, BuildContext context) {
   if (node.boolProp('demo') != true) return child;
   final theme = JhinDesignScope.materialOf(context);
   final tokens = JhinDesignScope.of(context).tokens;
+  // A `tabs` node with per-tab close buttons owns the top-right corner (the
+  // last tab's close X), so the badge moves to the bottom-right there to keep
+  // the close target clear (T117, the T105 overlap).
+  final bool bottomCorner =
+      node.type == 'tabs' && node.boolProp('hasClose') == true;
   final badge = Positioned(
-    top: 0,
+    top: bottomCorner ? null : 0,
+    bottom: bottomCorner ? 0 : null,
     right: 0,
     child: Container(
       padding: EdgeInsets.fromLTRB(

@@ -144,6 +144,28 @@ void main() {
     await _golden(tester, 'right-panel-tabs-light.png');
   });
 
+  testWidgets('the demo badge does not overlap the tab close X (T117)',
+      (tester) async {
+    // Two tabs keep the last close X on screen, where the top-right badge
+    // used to cover it.
+    await _pump(
+      tester,
+      {
+        ..._tabs(items: [
+          {'label': 'Details', 'icon': 'info', 'panel': _panel('Details panel')},
+          {'label': 'Diff', 'icon': 'difference', 'panel': _panel('Diff panel')},
+        ]),
+        'demo': true,
+      },
+    );
+    expect(find.text('preview'), findsOneWidget,
+        reason: 'the shared corner badge marks the decorative tabs node');
+    final badge = tester.getRect(find.text('preview'));
+    final close = tester.getRect(find.byIcon(Icons.close).last);
+    expect(badge.overlaps(close), isFalse,
+        reason: 'the preview badge must not cover the last tab close X');
+  });
+
   testWidgets('closing a tab removes it with a client-side patch — no server '
       'round-trip', (tester) async {
     final patches = <String, Map<String, dynamic>>{};

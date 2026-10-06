@@ -1,0 +1,166 @@
+[
+  {
+    "key": "mod+enter",
+    "command": "composer.send",
+    "when": "composerFocus"
+  },
+  {
+    "key": "mod+enter",
+    "command": "composer.sendAlternate",
+    "when": "composerFocus && turnRunning"
+  },
+  {
+    "key": "ctrl+alt+enter",
+    "command": "composer.sendAndNew",
+    "when": "composerFocus"
+  },
+  {
+    "key": "shift+enter",
+    "command": "composer.newline",
+    "when": "composerFocus"
+  },
+  {
+    "key": "mod+up",
+    "command": "composer.recallPrev",
+    "when": "composerFocus"
+  },
+  {
+    "key": "mod+down",
+    "command": "composer.recallNext",
+    "when": "composerFocus"
+  },
+  {
+    "key": "mod+shift+m",
+    "command": "modelPicker.toggle",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "mod+shift+h",
+    "command": "composer.host",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "mod+shift+e",
+    "command": "composer.effort",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "mod+shift+a",
+    "command": "composer.mode",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "mod+shift+x",
+    "command": "composer.workspace",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "mod+shift+g",
+    "command": "composer.branch",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "mod+shift+l",
+    "command": "composer.previousWorktree",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "ctrl+k",
+    "command": "palette.open"
+  },
+  {
+    "key": "ctrl+z",
+    "command": "thread.undo"
+  },
+  {
+    "key": "alt+left",
+    "command": "nav.back"
+  },
+  {
+    "key": "alt+right",
+    "command": "nav.forward"
+  },
+  {
+    "key": "mod+n",
+    "command": "thread.new"
+  },
+  {
+    "key": "mod+[",
+    "command": "navigation.back",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "mod+]",
+    "command": "navigation.forward",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "mod+j",
+    "command": "terminal.toggle"
+  },
+  {
+    "key": "mod+w",
+    "command": "terminal.close",
+    "when": "terminalFocus"
+  },
+  {
+    "key": "mod+w",
+    "command": "rightPanel.close",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "mod+alt+n",
+    "command": "chat.newWithoutProject",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "mod+shift+enter",
+    "command": "thread.steerQueuedMessage",
+    "when": "!terminalFocus"
+  },
+  {
+    "key": "mod+1",
+    "command": "thread.jump1",
+    "when": "isDesktop"
+  },
+  {
+    "key": "mod+2",
+    "command": "thread.jump2",
+    "when": "isDesktop"
+  },
+  {
+    "key": "mod+3",
+    "command": "thread.jump3",
+    "when": "isDesktop"
+  },
+  {
+    "key": "mod+4",
+    "command": "thread.jump4",
+    "when": "isDesktop"
+  },
+  {
+    "key": "mod+5",
+    "command": "thread.jump5",
+    "when": "isDesktop"
+  },
+  {
+    "key": "mod+6",
+    "command": "thread.jump6",
+    "when": "isDesktop"
+  },
+  {
+    "key": "mod+7",
+    "command": "thread.jump7",
+    "when": "isDesktop"
+  },
+  {
+    "key": "mod+8",
+    "command": "thread.jump8",
+    "when": "isDesktop"
+  },
+  {
+    "key": "mod+9",
+    "command": "thread.jump9",
+    "when": "isDesktop"
+  }
+]

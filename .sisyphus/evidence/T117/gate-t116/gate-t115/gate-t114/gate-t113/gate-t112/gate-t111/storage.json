@@ -1,0 +1,253 @@
+{
+  "type": "screen",
+  "title": "Settings",
+  "body": {
+    "type": "shell",
+    "id": "settings-shell",
+    "breakpoint": 768,
+    "topbar": {
+      "type": "row",
+      "id": "settings-topbar",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "type": "button",
+          "label": "Back to threads",
+          "style": "secondary",
+          "action": {
+            "op": "navigate",
+            "screen": "sessions"
+          }
+        }
+      ]
+    },
+    "topbarCompact": {
+      "type": "row",
+      "id": "settings-topbar-compact",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "spacer"
+        }
+      ]
+    },
+    "pageHeader": {
+      "type": "row",
+      "id": "settings-breadcrumb",
+      "align": "center",
+      "gap": 8,
+      "children": [
+        {
+          "type": "text",
+          "text": "Settings",
+          "style": "small"
+        },
+        {
+          "type": "text",
+          "text": "/",
+          "style": "small"
+        },
+        {
+          "type": "text",
+          "text": "Storage",
+          "style": "body",
+          "bold": true
+        }
+      ]
+    },
+    "sidebar": {
+      "type": "nav",
+      "id": "settings-nav",
+      "kind": "sidebar",
+      "items": [
+        {
+          "id": "settings:general",
+          "label": "General",
+          "icon": "settings",
+          "screen": "settings:general"
+        },
+        {
+          "id": "settings:appearance",
+          "label": "Appearance",
+          "icon": "palette",
+          "screen": "settings:appearance"
+        },
+        {
+          "id": "settings:keybindings",
+          "label": "Keybindings",
+          "icon": "keyboard",
+          "screen": "settings:keybindings"
+        },
+        {
+          "id": "settings:providers",
+          "label": "Providers",
+          "icon": "smart_toy",
+          "screen": "settings:providers"
+        },
+        {
+          "id": "settings:connections",
+          "label": "Connections",
+          "icon": "link",
+          "screen": "settings:connections"
+        },
+        {
+          "id": "settings:integrations",
+          "label": "Integrations",
+          "icon": "extension",
+          "screen": "settings:integrations"
+        },
+        {
+          "id": "settings:diagnostics",
+          "label": "Diagnostics",
+          "icon": "monitor_heart",
+          "screen": "settings:diagnostics"
+        },
+        {
+          "id": "settings:storage",
+          "label": "Storage",
+          "icon": "storage",
+          "screen": "settings:storage"
+        },
+        {
+          "id": "settings:archived",
+          "label": "Archive",
+          "icon": "archive",
+          "screen": "settings:archived"
+        },
+        {
+          "id": "settings:projects",
+          "label": "Project",
+          "icon": "folder",
+          "screen": "settings:projects"
+        },
+        {
+          "id": "settings:scheduled-tasks",
+          "label": "Scheduled Tasks",
+          "icon": "schedule",
+          "screen": "settings:scheduled-tasks"
+        },
+        {
+          "id": "settings:source-control",
+          "label": "Source Control",
+          "icon": "account_tree",
+          "screen": "settings:source-control"
+        },
+        {
+          "id": "settings:snap-shot",
+          "label": "SnapShots",
+          "icon": "photo_camera",
+          "screen": "settings:snap-shot"
+        },
+        {
+          "id": "settings:licenses",
+          "label": "Open source licenses",
+          "icon": "description",
+          "screen": "settings:licenses"
+        }
+      ],
+      "activeId": "settings:storage"
+    },
+    "stageBackdrop": true,
+    "body": {
+      "type": "container",
+      "direction": "column",
+      "gap": 12,
+      "padding": 16,
+      "children": [
+        {
+          "type": "card",
+          "title": "Sessions",
+          "children": [
+            {
+              "type": "list_row",
+              "title": "Active",
+              "trailing": {
+                "type": "badge",
+                "label": "0"
+              }
+            },
+            {
+              "type": "list_row",
+              "title": "Settled",
+              "trailing": {
+                "type": "badge",
+                "label": "0"
+              }
+            },
+            {
+              "type": "list_row",
+              "title": "Snoozed",
+              "trailing": {
+                "type": "badge",
+                "label": "0"
+              }
+            },
+            {
+              "type": "list_row",
+              "title": "Archived",
+              "trailing": {
+                "type": "badge",
+                "label": "0"
+              }
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Database",
+          "children": [
+            {
+              "type": "list_row",
+              "title": "Size",
+              "subtitle": "60.0 KB"
+            },
+            {
+              "type": "list_row",
+              "title": "Path",
+              "subtitle": "/tmp/tmp.XVa9GLrumX/data/jhin.db"
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "Open archive",
+          "id": "openArchive",
+          "style": "secondary",
+          "action": {
+            "op": "navigate",
+            "screen": "settings:archived"
+          }
+        },
+        {
+          "type": "button",
+          "label": "Clear cache",
+          "style": "danger",
+          "demo": true,
+          "action": {
+            "client": [
+              {
+                "op": "toast",
+                "text": "Preview only — cache is not cleared in this build"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

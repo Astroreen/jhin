@@ -587,6 +587,19 @@ public final class Ui {
             return self();
         }
 
+        /**
+         * Sets the universal {@code demo} prop (docs/sdui.md section 2.1
+         * level 3): the node is decorative — interactive but non-functional,
+         * dispatching inline directives only. The client paints the shared
+         * disabled-affordance marker (the corner {@code preview} badge and the
+         * shared tooltip) for it. Every interactive node without a real effect
+         * MUST carry it (plan section 14.10, enforced by the T117 sweep).
+         */
+        public B demo(boolean value) {
+            props.put("demo", value);
+            return self();
+        }
+
         // --- Box group ---
 
         @Override

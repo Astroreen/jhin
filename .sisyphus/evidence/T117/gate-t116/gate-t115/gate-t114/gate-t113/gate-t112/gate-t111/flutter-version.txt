@@ -1,0 +1,4 @@
+Flutter 3.47.0 • channel stable • https://github.com/flutter/flutter.git
+Framework • revision nixpkgs000 () • 1970-01-01 00:00:00
+Engine • revision 5f77625673 ()
+Tools • Dart 3.13.0 • DevTools 2.60.0

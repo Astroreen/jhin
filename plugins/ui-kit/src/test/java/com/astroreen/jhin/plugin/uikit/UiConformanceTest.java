@@ -185,9 +185,9 @@ class UiConformanceTest {
      * The level-3 universal props land exactly on their documented surfaces:
      * {@code statusPulse} is a typed setter of {@code progress} alone (the
      * three duty-cycle modes reach the wire, unknown literals throw),
-     * {@code demo} is a typed setter of the decorative {@code diff_view}
-     * alone, and the {@code safeArea} group is a universal escape-hatch prop
-     * every builder accepts.
+     * {@code demo} is a universal typed setter every builder carries (T117;
+     * {@code diff_view} additionally requires it), and the {@code safeArea}
+     * group is a universal escape-hatch prop every builder accepts.
      */
     @Test
     void level3UniversalPropsLandOnTheirDocumentedSurfaces() {
@@ -200,6 +200,8 @@ class UiConformanceTest {
                 .hasMessageContaining("unknown statusPulse literal");
 
         assertThat(Ui.diffView().demo(true).build().toJson()).containsEntry("demo", true);
+        assertThat(Ui.button("probe").demo(true).build().toJson()).containsEntry("demo", true);
+        assertThat(Ui.toggle("probe", "Probe").demo(true).build().toJson()).containsEntry("demo", true);
 
         Map<String, Object> safeArea = Map.of("top", true, "bottom", true);
         assertThat(Ui.box().set("safeArea", safeArea).build().toJson()).containsEntry("safeArea", safeArea);
@@ -216,8 +218,8 @@ class UiConformanceTest {
                 .filter(entry -> entry.getValue().contains("demo"))
                 .map(Map.Entry::getKey)
                 .toList())
-                .as("demo is a typed setter of the decorative diff_view alone")
-                .containsExactly(Ui.DiffViewBuilder.class);
+                .as("demo is a universal typed setter on every builder (T117)")
+                .containsExactlyInAnyOrderElementsOf(BuilderProbe.BUILDERS.keySet());
     }
 
     /**

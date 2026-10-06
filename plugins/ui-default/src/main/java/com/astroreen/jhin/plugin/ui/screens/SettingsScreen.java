@@ -1264,10 +1264,14 @@ public final class SettingsScreen {
         // on first render (a `switch` is one of the seedable types), so the
         // `when` gates below resolve to a real boolean instead of degrading
         // to "visible" on an unknown field. The section therefore starts
-        // closed, exactly like the upstream FoldedSettingsSection.
+        // closed, exactly like the upstream FoldedSettingsSection. The seed
+        // is invisible and has no user-facing effect, so it carries the
+        // universal `demo` marker (T117): the sweep must not read it as a
+        // silently real control.
         UiNode seed = Ui.toggle(key, title)
                 .value(false)
                 .visible(false)
+                .demo(true)
                 .build();
         UiNode closed = Ui.row()
                 .id(prefix + "-toggle")

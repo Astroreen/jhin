@@ -1,0 +1,390 @@
+{
+  "groups": [
+    {
+      "value": "actions",
+      "label": "Actions",
+      "count": 47,
+      "items": [
+        {
+          "id": "composer.send",
+          "label": "Composer: Send",
+          "subtitle": "composer.send",
+          "chord": "mod+enter",
+          "demo": false
+        },
+        {
+          "id": "composer.sendAndNew",
+          "label": "Composer: Send And New",
+          "subtitle": "composer.sendAndNew",
+          "chord": "ctrl+alt+enter",
+          "demo": false
+        },
+        {
+          "id": "composer.sendAlternate",
+          "label": "Composer: Opposite Queue or Steer Action",
+          "subtitle": "composer.sendAlternate",
+          "chord": "mod+enter",
+          "demo": false
+        },
+        {
+          "id": "composer.newline",
+          "label": "Composer: Newline",
+          "subtitle": "composer.newline",
+          "chord": "shift+enter",
+          "demo": false
+        },
+        {
+          "id": "composer.recallPrev",
+          "label": "Composer: Recall Prev",
+          "subtitle": "composer.recallPrev",
+          "chord": "mod+up",
+          "demo": false
+        },
+        {
+          "id": "composer.recallNext",
+          "label": "Composer: Recall Next",
+          "subtitle": "composer.recallNext",
+          "chord": "mod+down",
+          "demo": false
+        },
+        {
+          "id": "composer.host",
+          "label": "Composer: Host",
+          "subtitle": "composer.host",
+          "chord": "mod+shift+h",
+          "demo": false
+        },
+        {
+          "id": "composer.effort",
+          "label": "Composer: Effort",
+          "subtitle": "composer.effort",
+          "chord": "mod+shift+e",
+          "demo": false
+        },
+        {
+          "id": "composer.mode",
+          "label": "Composer: Mode",
+          "subtitle": "composer.mode",
+          "chord": "mod+shift+a",
+          "demo": false
+        },
+        {
+          "id": "composer.workspace",
+          "label": "Composer: Workspace",
+          "subtitle": "composer.workspace",
+          "chord": "mod+shift+x",
+          "demo": false
+        },
+        {
+          "id": "composer.branch",
+          "label": "Composer: Branch",
+          "subtitle": "composer.branch",
+          "chord": "mod+shift+g",
+          "demo": false
+        },
+        {
+          "id": "composer.previousWorktree",
+          "label": "Composer: Previous Worktree",
+          "subtitle": "composer.previousWorktree",
+          "chord": "mod+shift+l",
+          "demo": false
+        },
+        {
+          "id": "composer.sendBackground",
+          "label": "Composer: Start in Background",
+          "subtitle": "composer.sendBackground",
+          "chord": "mod+enter",
+          "demo": true
+        },
+        {
+          "id": "composer.sendAndNewThread",
+          "label": "Composer: Send and Start New Thread",
+          "subtitle": "composer.sendAndNewThread",
+          "chord": "mod+alt+enter",
+          "demo": true
+        },
+        {
+          "id": "composer.cycleHost",
+          "label": "Composer: Cycle Host",
+          "subtitle": "composer.cycleHost",
+          "chord": "",
+          "demo": true
+        },
+        {
+          "id": "composer.stash",
+          "label": "Composer: Stash",
+          "subtitle": "composer.stash",
+          "chord": "mod+s",
+          "demo": true
+        },
+        {
+          "id": "thread.next",
+          "label": "Thread: Next",
+          "subtitle": "thread.next",
+          "chord": "",
+          "demo": false
+        },
+        {
+          "id": "thread.prev",
+          "label": "Thread: Prev",
+          "subtitle": "thread.prev",
+          "chord": "",
+          "demo": false
+        },
+        {
+          "id": "thread.jump1",
+          "label": "Thread: Jump1",
+          "subtitle": "thread.jump1",
+          "chord": "mod+1",
+          "demo": false
+        },
+        {
+          "id": "thread.jump2",
+          "label": "Thread: Jump2",
+          "subtitle": "thread.jump2",
+          "chord": "mod+2",
+          "demo": false
+        },
+        {
+          "id": "thread.jump3",
+          "label": "Thread: Jump3",
+          "subtitle": "thread.jump3",
+          "chord": "mod+3",
+          "demo": false
+        },
+        {
+          "id": "thread.jump4",
+          "label": "Thread: Jump4",
+          "subtitle": "thread.jump4",
+          "chord": "mod+4",
+          "demo": false
+        },
+        {
+          "id": "thread.jump5",
+          "label": "Thread: Jump5",
+          "subtitle": "thread.jump5",
+          "chord": "mod+5",
+          "demo": false
+        },
+        {
+          "id": "thread.jump6",
+          "label": "Thread: Jump6",
+          "subtitle": "thread.jump6",
+          "chord": "mod+6",
+          "demo": false
+        },
+        {
+          "id": "thread.jump7",
+          "label": "Thread: Jump7",
+          "subtitle": "thread.jump7",
+          "chord": "mod+7",
+          "demo": false
+        },
+        {
+          "id": "thread.jump8",
+          "label": "Thread: Jump8",
+          "subtitle": "thread.jump8",
+          "chord": "mod+8",
+          "demo": false
+        },
+        {
+          "id": "thread.jump9",
+          "label": "Thread: Jump9",
+          "subtitle": "thread.jump9",
+          "chord": "mod+9",
+          "demo": false
+        },
+        {
+          "id": "thread.undo",
+          "label": "Thread: Undo",
+          "subtitle": "thread.undo",
+          "chord": "ctrl+z",
+          "demo": false
+        },
+        {
+          "id": "thread.settle",
+          "label": "Thread: Settle",
+          "subtitle": "thread.settle",
+          "chord": "",
+          "demo": false
+        },
+        {
+          "id": "thread.pin",
+          "label": "Thread: Pin",
+          "subtitle": "thread.pin",
+          "chord": "",
+          "demo": false
+        },
+        {
+          "id": "thread.new",
+          "label": "Thread: New",
+          "subtitle": "thread.new",
+          "chord": "mod+n",
+          "demo": false
+        },
+        {
+          "id": "thread.steerQueuedMessage",
+          "label": "Queue: Send First Queued Message as Steer",
+          "subtitle": "thread.steerQueuedMessage",
+          "chord": "mod+shift+enter",
+          "demo": true
+        },
+        {
+          "id": "thread.editQueuedMessage",
+          "label": "Queue: Edit Last Queued Message",
+          "subtitle": "thread.editQueuedMessage",
+          "chord": "alt+arrowup",
+          "demo": true
+        },
+        {
+          "id": "thread.copyReference",
+          "label": "Pull Request: Copy Link or Thread ID",
+          "subtitle": "thread.copyReference",
+          "chord": "mod+shift+c",
+          "demo": true
+        },
+        {
+          "id": "palette.open",
+          "label": "Palette: Open",
+          "subtitle": "palette.open",
+          "chord": "ctrl+k",
+          "demo": false
+        },
+        {
+          "id": "nav.back",
+          "label": "Nav: Back",
+          "subtitle": "nav.back",
+          "chord": "alt+left",
+          "demo": false
+        },
+        {
+          "id": "nav.forward",
+          "label": "Nav: Forward",
+          "subtitle": "nav.forward",
+          "chord": "alt+right",
+          "demo": false
+        },
+        {
+          "id": "modelPicker.toggle",
+          "label": "Model Picker: Toggle",
+          "subtitle": "modelPicker.toggle",
+          "chord": "mod+shift+m",
+          "demo": false
+        },
+        {
+          "id": "rightPanel.toggle",
+          "label": "Right Panel: Toggle",
+          "subtitle": "rightPanel.toggle",
+          "chord": "mod+alt+b",
+          "demo": true
+        },
+        {
+          "id": "terminal.toggle",
+          "label": "Terminal: Toggle",
+          "subtitle": "terminal.toggle",
+          "chord": "mod+j",
+          "demo": true
+        },
+        {
+          "id": "preview.toggle",
+          "label": "Preview: Toggle",
+          "subtitle": "preview.toggle",
+          "chord": "mod+shift+j",
+          "demo": true
+        },
+        {
+          "id": "diff.toggle",
+          "label": "Diff: Toggle",
+          "subtitle": "diff.toggle",
+          "chord": "mod+d",
+          "demo": true
+        },
+        {
+          "id": "sidebar.toggle",
+          "label": "Sidebar: Toggle",
+          "subtitle": "sidebar.toggle",
+          "chord": "mod+b",
+          "demo": true
+        },
+        {
+          "id": "appearance.cycle",
+          "label": "Appearance: Cycle",
+          "subtitle": "appearance.cycle",
+          "chord": "",
+          "demo": false
+        },
+        {
+          "id": "theme.pick",
+          "label": "Theme: Pick",
+          "subtitle": "theme.pick",
+          "chord": "",
+          "demo": false
+        },
+        {
+          "id": "usage.open",
+          "label": "Usage: Open",
+          "subtitle": "usage.open",
+          "chord": "mod+u",
+          "demo": true
+        },
+        {
+          "id": "theme.select",
+          "label": "Theme: Select",
+          "subtitle": "theme.select",
+          "chord": "mod+alt+a",
+          "demo": true
+        }
+      ]
+    },
+    {
+      "value": "threads",
+      "label": "Threads",
+      "count": 1,
+      "items": [
+        {
+          "id": "e418bd9c-90ee-47b1-99d9-a828a3980331",
+          "title": "Palette probe thread",
+          "kind": "session",
+          "action": {
+            "op": "navigate",
+            "screen": "chat:e418bd9c-90ee-47b1-99d9-a828a3980331"
+          }
+        }
+      ]
+    },
+    {
+      "value": "projects",
+      "label": "Projects",
+      "count": 0,
+      "items": []
+    },
+    {
+      "value": "models",
+      "label": "Models",
+      "count": 3,
+      "items": [
+        {
+          "id": "model:sonnet",
+          "label": "Claude Sonnet",
+          "subtitle": "model",
+          "chord": "",
+          "demo": true
+        },
+        {
+          "id": "model:gpt",
+          "label": "GPT-5",
+          "subtitle": "model",
+          "chord": "",
+          "demo": true
+        },
+        {
+          "id": "model:gemini",
+          "label": "Gemini Pro",
+          "subtitle": "model",
+          "chord": "",
+          "demo": true
+        }
+      ]
+    }
+  ]
+}
