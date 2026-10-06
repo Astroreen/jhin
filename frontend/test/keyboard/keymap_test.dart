@@ -116,6 +116,31 @@ void main() {
       expect(keymap.commandFor(chord, WhenContext()), 'theme.pick');
     });
 
+    test('T116 last-match-wins: the resolution walks the rules from the end',
+        () {
+      // Three rules on the same chord; the last active one wins regardless
+      // of how many earlier rules also match.
+      final keymap = parseOne([
+        {'key': 'ctrl+k', 'command': 'first'},
+        {'key': 'ctrl+k', 'command': 'second'},
+        {'key': 'ctrl+k', 'command': 'third'},
+      ]);
+      final chord = KeyChord.parse('ctrl+k', platform: platform)!;
+
+      expect(keymap.commandFor(chord, WhenContext()), 'third');
+
+      // A later rule whose `when` is inactive is skipped; the previous
+      // active rule wins.
+      final gated = parseOne([
+        {'key': 'ctrl+k', 'command': 'first'},
+        {'key': 'ctrl+k', 'command': 'second'},
+        {'key': 'ctrl+k', 'command': 'third', 'when': 'paletteOpen'},
+      ]);
+      expect(gated.commandFor(chord, WhenContext()), 'second');
+      expect(gated.commandFor(chord, WhenContext()..paletteOpen = true),
+          'third');
+    });
+
     test('later rules win only when their when is active', () {
       final keymap = parseOne([
         {'key': 'ctrl+k', 'command': 'palette.open'},

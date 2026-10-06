@@ -1,0 +1,29 @@
+=== create-provider ===
+POST /providers
+client: api=3; version=0.3.0; schema=4; caps=sse
+req:  {"format":"mock","model":"t112","apiKey":"qa"}
+status: 201
+resp: {"id":"e9f4b952-16cc-47c2-9670-5a60d1776ac3","accountId":"local","format":"mock","model":"t112","baseUrl":null,"createdAt":1791285848620}
+assert: status=201, jq '.id | length > 0'
+assert: ok
+=== list-providers ===
+GET /providers
+client: api=3; version=0.3.0; schema=4; caps=sse
+req:  
+status: 200
+resp: [{"id":"e9f4b952-16cc-47c2-9670-5a60d1776ac3","accountId":"local","format":"mock","model":"t112","baseUrl":null,"createdAt":1791285848620}]
+assert: status=200, jq 'type == "array"'
+assert: ok
+=== delete-provider ===
+DELETE /providers/e9f4b952-16cc-47c2-9670-5a60d1776ac3
+status: 204
+assert: status=204
+assert: ok
+=== list-providers-after-delete ===
+GET /providers
+client: api=3; version=0.3.0; schema=4; caps=sse
+req:  
+status: 200
+resp: []
+assert: status=200, jq 'type == "array"'
+assert: ok

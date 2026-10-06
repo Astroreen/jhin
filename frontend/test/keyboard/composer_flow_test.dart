@@ -45,6 +45,16 @@ Map<String, dynamic> chatNode() => {
               'include': [kComposerFieldId],
             },
           },
+          {
+            'type': 'button',
+            'label': 'Stop',
+            'action': {
+              'path': '/ui/action/cancel',
+              'method': 'POST',
+              'name': 'cancel',
+              'payload': {'sessionId': 's1'},
+            },
+          },
           {'type': 'input', 'id': 'workdir', 'value': '/tmp/work'},
           {'type': 'input', 'id': 'model', 'value': 'echo'},
         ],
@@ -399,6 +409,56 @@ void main() {
       expect(find.text(ComposerCommands.createFailed), findsOneWidget);
       // Burn the toast timer so the test ends with no pending timers.
       await tester.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets(
+        'T116 thread.stop dispatches the live run stop action when one is '
+        'present', (tester) async {
+      final transport = transportWith();
+      final payload =
+          transport.routes['/_jhin/bootstrap']! as Map<String, dynamic>;
+      payload['keymap'] = [
+        {'key': 'ctrl+shift+s', 'command': 'thread.stop'},
+      ];
+      await pumpHost(tester, transport);
+      // No composer focus: `thread.stop` is a context-free rule, so it is
+      // suspended while text entry is active (the typing policy). The stop
+      // button is dispatched programmatically, not by a chord while typing.
+      await tester.pump();
+
+      await press(tester, LogicalKeyboardKey.keyS, modifiers: [
+        LogicalKeyboardKey.controlLeft,
+        LogicalKeyboardKey.shiftLeft,
+      ]);
+
+      print('evidence/stop: thread.stop posts='
+          '${posts(transport, 'cancel').length}');
+      expect(posts(transport, 'cancel'), hasLength(1));
+    });
+
+    testWidgets('T116 thread.stop is a no-op when no run is live',
+        (tester) async {
+      final transport = transportWith();
+      final payload =
+          transport.routes['/_jhin/bootstrap']! as Map<String, dynamic>;
+      payload['keymap'] = [
+        {'key': 'ctrl+shift+s', 'command': 'thread.stop'},
+      ];
+      // A screen without the stop button: no `cancel` action to dispatch.
+      payload['screens'] = [
+        {'id': 'chat:s1', 'node': newChatNode()},
+      ];
+      await pumpHost(tester, transport);
+      await tester.tap(composer());
+      await tester.pump();
+
+      await press(tester, LogicalKeyboardKey.keyS, modifiers: [
+        LogicalKeyboardKey.controlLeft,
+        LogicalKeyboardKey.shiftLeft,
+      ]);
+
+      expect(posts(transport, 'cancel'), isEmpty);
+      expect(tester.takeException(), isNull);
     });
   });
 }

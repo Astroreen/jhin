@@ -1,0 +1,476 @@
+T110 QA: general and appearance settings panels
+evidence dir: .sisyphus/evidence/T116/gate-t115/gate-t114/gate-t113/gate-t112/gate-t111/gate-t110
+ok: toolchain recorded (Flutter 3.47.0 • channel stable • https://github.com/flutter/flutter.git)
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processTestResources NO-SOURCE
+> Task :jhin-plugin-ui-kit:processTestResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-kit:test
+> Task :jhin-plugin-ui-default:test
+
+BUILD SUCCESSFUL in 22s
+24 actionable tasks: 2 executed, 22 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+ok: ui-default and ui-kit suites green (557 tests; transcript in test.txt)
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/settings_appearance_test.dart
+00:00 +0: a folded section starts closed and opens on the fold state
+00:00 +1: the contrast slider carries the 0-100 bounds
+00:00 +2: the font-size sliders carry the upstream clamps
+00:00 +3: the chat-width segmented offers Default, Wide and Full
+00:00 +4: the decorative controls carry the demo marker and the real ones do not
+00:00 +5: the appearance panel golden (all sections open, light)
+00:00 +6: All tests passed!
+ok: Flutter settings-appearance suite green: folded section, font clamps, chat-width segments, demo markers (flutter-appearance.txt)
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/settings_appearance_test.dart
+00:00 +0: a folded section starts closed and opens on the fold state
+00:00 +1: the contrast slider carries the 0-100 bounds
+00:00 +2: the font-size sliders carry the upstream clamps
+00:00 +3: the chat-width segmented offers Default, Wide and Full
+00:00 +4: the decorative controls carry the demo marker and the real ones do not
+00:00 +5: the appearance panel golden (all sections open, light)
+00:01 +6: All tests passed!
+ok: golden written: the appearance panel with every section open, light (goldens/)
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/settings_appearance_test.dart
+00:00 +0: a folded section starts closed and opens on the fold state
+00:00 +1: the contrast slider carries the 0-100 bounds
+00:00 +2: the font-size sliders carry the upstream clamps
+00:00 +3: the chat-width segmented offers Default, Wide and Full
+00:00 +4: the decorative controls carry the demo marker and the real ones do not
+00:00 +5: the appearance panel golden (all sections open, light)
+00:00 +6: All tests passed!
+ok: golden verification pass byte-identical (flutter-goldens-verify.txt)
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:jar UP-TO-DATE
+
+BUILD SUCCESSFUL in 452ms
+19 actionable tasks: 19 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+> Task :kernel:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 536ms
+6 actionable tasks: 6 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+14:26:30.334 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+14:26:30.523 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+14:26:30.538 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+14:26:30.538 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+14:26:30.540 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18510. Install a security plugin.
+2026-10-06T14:26:30.956+03:00  INFO 3665176 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3665176 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-06T14:26:30.958+03:00  INFO 3665176 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-06T14:26:31.417+03:00  INFO 3665176 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18510 (http)
+2026-10-06T14:26:31.426+03:00  INFO 3665176 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-06T14:26:31.426+03:00  INFO 3665176 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-06T14:26:31.444+03:00  INFO 3665176 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 452 ms
+2026-10-06T14:26:31.637+03:00  INFO 3665176 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18510 (http) with context path '/'
+2026-10-06T14:26:31.644+03:00  INFO 3665176 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.028 seconds (process running for 1.683)
+ok: kernel booted with sessions, ui-kit and ui (kernel.log)
+ok: appearance round-trip: themeId ocean, dark, compact, 200 ms in the next bootstrap (bootstrap-after-appearance.json)
+ok: thread-behavior round-trip: auto-settle off and 14 days on settings:general (general-after.json)
+ok: round-trip record written (roundtrip.json)
+ok: settings:general: the upstream fields, the demo markers and the fold toggle (general.json)
+ok: settings:appearance: the upstream fields, the clamps, the demo markers (appearance.json)
+ok: every node type stays inside the docs/sdui.md section 2.5 catalog
+T78 QA: appearance, thread-behavior and keyboard settings screens
+evidence dir: .sisyphus/evidence/T116/gate-t115/gate-t114/gate-t113/gate-t112/gate-t111/gate-t110/gate-t78
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processTestResources NO-SOURCE
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processTestResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-default:test UP-TO-DATE
+> Task :jhin-plugin-ui-kit:test
+
+BUILD SUCCESSFUL in 1s
+24 actionable tasks: 1 executed, 23 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+ok: ui-default and ui-kit suites green (557 tests; transcript in test.txt)
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:jar UP-TO-DATE
+
+BUILD SUCCESSFUL in 444ms
+19 actionable tasks: 19 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+> Task :kernel:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 542ms
+6 actionable tasks: 6 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+14:26:35.708 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+14:26:35.899 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+14:26:35.914 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+14:26:35.915 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+14:26:35.917 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18478. Install a security plugin.
+2026-10-06T14:26:36.329+03:00  INFO 3666283 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3666283 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-06T14:26:36.331+03:00  INFO 3666283 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-06T14:26:36.803+03:00  INFO 3666283 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18478 (http)
+2026-10-06T14:26:36.811+03:00  INFO 3666283 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-06T14:26:36.811+03:00  INFO 3666283 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-06T14:26:36.827+03:00  INFO 3666283 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 457 ms
+2026-10-06T14:26:37.019+03:00  INFO 3666283 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18478 (http) with context path '/'
+2026-10-06T14:26:37.027+03:00  INFO 3666283 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.033 seconds (process running for 1.692)
+ok: kernel booted with sessions, ui-kit and ui, without jhin.llm (kernel.log)
+ok: bootstrap defaults: theme.id t3-chat, appearance system, canvas #fdf7fd, accent #db2777, density comfortable, motion.panel 0
+ok: invalid hex blocked: errorText on the accent field, no persistence (validation.txt)
+ok: appearance round-trip: dark/#101018/#ff0000/compact/200ms in the next bootstrap (appearance-roundtrip.json)
+ok: settings tree: three section cards, PR-merged disabled with tooltip, T70 keyboard intact, only documented primitives
+ok: thread-behavior round-trip: auto-settle off and 14 days on the re-fetched settings screen
+ok: providers screen absent without jhin.llm, settings screen present (bootstrap-after.json)
+T78 widget golden settings.png: skipped
+No screenshot harness exists for the server-rendered node tree;
+the Flutter goldens cover client-side fixtures only.
+ok: settings.png skipped (no screenshot harness for server-rendered trees; settings-png-skipped.txt)
+T78 QA green: appearance, thread-behavior and keyboard settings verified
+2026-10-06T14:26:38.225+03:00  INFO 3666283 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-06T14:26:38.228+03:00  INFO 3666283 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+ok: T78 regression gate green: the settings contracts still hold (gate-t78/)
+T109 QA: settings shell with fourteen sub-routes
+evidence dir: .sisyphus/evidence/T116/gate-t115/gate-t114/gate-t113/gate-t112/gate-t111/gate-t110/gate-t109
+ok: toolchain recorded (Flutter 3.47.0 • channel stable • https://github.com/flutter/flutter.git)
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processTestResources NO-SOURCE
+> Task :jhin-plugin-ui-kit:processTestResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-kit:test
+> Task :jhin-plugin-ui-default:test
+
+BUILD SUCCESSFUL in 22s
+24 actionable tasks: 2 executed, 22 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+ok: ui-default and ui-kit suites green (557 tests; transcript in test.txt)
+2026-10-06T14:27:01.647+03:00  INFO 3665176 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/settings_shell_test.dart
+00:00 +0: the settings nav lists every sub-route entry
+00:00 +1: activeId highlights the active route
+00:00 +2: tapping a nav entry navigates to its screen id
+00:00 +3: the breadcrumb carries Settings / <name>
+00:00 +4: All tests passed!
+ok: Flutter settings-shell suite green: nav entries, active highlight, navigate dispatch, breadcrumb (flutter-shell.txt)
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:jar UP-TO-DATE
+
+BUILD SUCCESSFUL in 450ms
+19 actionable tasks: 19 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+> Task :kernel:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 524ms
+6 actionable tasks: 6 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+14:27:05.074 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+14:27:05.263 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+14:27:05.278 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+14:27:05.279 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+14:27:05.281 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18509. Install a security plugin.
+2026-10-06T14:27:05.706+03:00  INFO 3668047 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3668047 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-06T14:27:05.707+03:00  INFO 3668047 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-06T14:27:06.164+03:00  INFO 3668047 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18509 (http)
+2026-10-06T14:27:06.173+03:00  INFO 3668047 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-06T14:27:06.174+03:00  INFO 3668047 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-06T14:27:06.190+03:00  INFO 3668047 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 451 ms
+2026-10-06T14:27:06.384+03:00  INFO 3668047 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18509 (http) with context path '/'
+2026-10-06T14:27:06.390+03:00  INFO 3668047 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.034 seconds (process running for 1.678)
+ok: kernel booted with sessions, ui-kit and ui (kernel.log)
+ok: fourteen settings:* routes: screen root, shell, sidebar nav with fourteen items and the route active (routes.json)
+ok: every sub-route carries the Settings / <name> breadcrumb (routes.json)
+ok: the three sections live on their new homes: Appearance, Thread behavior, Keyboard
+ok: the settings overview keeps the three cards and the save-appearance include (settings-overview.json)
+ok: the bootstrap screens[] lists every settings:* sub-route (bootstrap.json)
+ok: every node type stays inside the docs/sdui.md section 2.5 catalog
+T78 QA: appearance, thread-behavior and keyboard settings screens
+evidence dir: .sisyphus/evidence/T116/gate-t115/gate-t114/gate-t113/gate-t112/gate-t111/gate-t110/gate-t109/gate-t78
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processTestResources NO-SOURCE
+> Task :jhin-plugin-ui-kit:processTestResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-default:test UP-TO-DATE
+> Task :jhin-plugin-ui-kit:test
+
+BUILD SUCCESSFUL in 1s
+24 actionable tasks: 1 executed, 23 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+ok: ui-default and ui-kit suites green (557 tests; transcript in test.txt)
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:jar UP-TO-DATE
+
+BUILD SUCCESSFUL in 451ms
+19 actionable tasks: 19 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+> Task :kernel:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 528ms
+6 actionable tasks: 6 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+14:27:10.624 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+14:27:10.824 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+14:27:10.838 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+14:27:10.839 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+14:27:10.841 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18478. Install a security plugin.
+2026-10-06T14:27:11.254+03:00  INFO 3669085 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3669085 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-06T14:27:11.256+03:00  INFO 3669085 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-06T14:27:11.712+03:00  INFO 3669085 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18478 (http)
+2026-10-06T14:27:11.720+03:00  INFO 3669085 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-06T14:27:11.720+03:00  INFO 3669085 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-06T14:27:11.737+03:00  INFO 3669085 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 448 ms
+2026-10-06T14:27:11.932+03:00  INFO 3669085 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18478 (http) with context path '/'
+2026-10-06T14:27:11.939+03:00  INFO 3669085 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.021 seconds (process running for 1.692)
+ok: kernel booted with sessions, ui-kit and ui, without jhin.llm (kernel.log)
+ok: bootstrap defaults: theme.id t3-chat, appearance system, canvas #fdf7fd, accent #db2777, density comfortable, motion.panel 0
+ok: invalid hex blocked: errorText on the accent field, no persistence (validation.txt)
+ok: appearance round-trip: dark/#101018/#ff0000/compact/200ms in the next bootstrap (appearance-roundtrip.json)
+ok: settings tree: three section cards, PR-merged disabled with tooltip, T70 keyboard intact, only documented primitives
+ok: thread-behavior round-trip: auto-settle off and 14 days on the re-fetched settings screen
+ok: providers screen absent without jhin.llm, settings screen present (bootstrap-after.json)
+T78 widget golden settings.png: skipped
+No screenshot harness exists for the server-rendered node tree;
+the Flutter goldens cover client-side fixtures only.
+ok: settings.png skipped (no screenshot harness for server-rendered trees; settings-png-skipped.txt)
+T78 QA green: appearance, thread-behavior and keyboard settings verified
+2026-10-06T14:27:13.129+03:00  INFO 3669085 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-06T14:27:13.132+03:00  INFO 3669085 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+ok: T78 regression gate green: the settings contracts still hold (gate-t78/)
+T109 QA happy path complete
+2026-10-06T14:27:13.169+03:00  INFO 3668047 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-06T14:27:13.172+03:00  INFO 3668047 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+ok: T109 regression gate green: the settings shell still holds (gate-t109/)
+T110 QA happy path complete
+2026-10-06T14:27:14.182+03:00  INFO 3665176 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-06T14:27:14.185+03:00  INFO 3665176 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete

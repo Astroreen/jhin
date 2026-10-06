@@ -1,30 +1,48 @@
 import 'package:flutter/foundation.dart';
 
 /// Observable map of boolean command contexts — the client side of the
-/// keymap `when` expressions (docs/sdui.md §1).
+/// keymap `when` expressions (docs/sdui.md §1, §4).
 ///
-/// The nine contexts are fixed: `composerFocus`, `composerDraft`,
-/// `turnRunning`, `editableFocus`, `isWeb`, `isDesktop`, `sidebarFocus`,
-/// `paletteOpen`, `modalOpen`. Unknown names read as `false` and are ignored
-/// on write — a typo must never break a keymap rule or throw.
+/// The upstream t3code `ShortcutMatchContext`
+/// (`apps/web/src/keybindings.ts:24-34`, commit 37de6cb) carries
+/// `terminalFocus`, `terminalOpen`, `previewFocus`, `previewOpen`, `isWeb`,
+/// `isDesktop` and `editableFocus`; Jhin adds the composer/thread contexts
+/// (`composerFocus`, `composerDraft`, `turnRunning`) and the palette/sidebar
+/// contexts (`sidebarFocus`, `paletteOpen`, `modalOpen`). `isDesktop` is the
+/// exact complement of `isWeb` (upstream `resolveContext` sets
+/// `isWeb: !isElectron, isDesktop: isElectron`), so writing one updates the
+/// other.
+///
+/// Unknown names read as `false` and are ignored on write — a typo must
+/// never break a keymap rule or throw.
 ///
 /// [evaluate] understands the `when` expression grammar that docs/sdui.md §7
 /// defines for `when` — bare context names, `!`, `&&`, `||` and parentheses
 /// (§7 also lists comparisons and literals for the node `when` prop; those
 /// have no meaning over boolean command contexts and degrade to `false`
-/// here). Unknown names evaluate to `false`; any parse failure degrades to
-/// `false`. Nothing in this class ever throws.
+/// here). The literals `true` and `false` evaluate to their boolean value
+/// (upstream `evaluateWhenNode`). Unknown names evaluate to `false`; any
+/// parse failure degrades to `false`. Nothing in this class ever throws.
 class WhenContext extends ChangeNotifier {
   /// Creates a context map with every context `false`, except the platform
   /// facts `isWeb` / `isDesktop` which default to the current platform when
-  /// not given explicitly (injectable for tests).
+  /// not given explicitly (injectable for tests). `isDesktop` is always the
+  /// complement of `isWeb`.
   WhenContext({bool? isWeb, bool? isDesktop}) {
-    _values['isWeb'] = isWeb ?? kIsWeb;
-    _values['isDesktop'] = isDesktop ?? (!kIsWeb && _isDesktopPlatform);
+    final web = isWeb ?? (isDesktop != null ? !isDesktop : kIsWeb);
+    _values['isWeb'] = web;
+    _values['isDesktop'] = !web;
   }
 
-  /// The fixed context vocabulary.
+  /// The fixed context vocabulary: the twelve upstream-aligned keys plus the
+  /// three Jhin palette/sidebar keys.
   static const List<String> contextNames = <String>[
+    'terminalFocus',
+    'terminalOpen',
+    'previewFocus',
+    'previewOpen',
+    'modelPickerOpen',
+    'usagePageOpen',
     'composerFocus',
     'composerDraft',
     'turnRunning',
@@ -36,14 +54,6 @@ class WhenContext extends ChangeNotifier {
     'modalOpen',
   ];
 
-  static bool get _isDesktopPlatform => switch (defaultTargetPlatform) {
-        TargetPlatform.macOS ||
-        TargetPlatform.windows ||
-        TargetPlatform.linux =>
-          true,
-        _ => false,
-      };
-
   final Map<String, bool> _values = <String, bool>{
     for (final name in contextNames) name: false,
   };
@@ -51,14 +61,38 @@ class WhenContext extends ChangeNotifier {
   /// The current value of one context; unknown names read as `false`.
   bool value(String name) => _values[name] ?? false;
 
-  /// Sets one context; unknown names are ignored. Notifies listeners only
+  /// Sets one context; unknown names are ignored. Writing `isWeb` updates
+  /// `isDesktop` to its complement and vice versa. Notifies listeners only
   /// when the value actually changes.
   void set(String name, bool newValue) {
+    if (name == 'isDesktop') {
+      set('isWeb', !newValue);
+      return;
+    }
     if (!_values.containsKey(name)) return;
     if (_values[name] == newValue) return;
     _values[name] = newValue;
+    if (name == 'isWeb') _values['isDesktop'] = !newValue;
     notifyListeners();
   }
+
+  bool get terminalFocus => value('terminalFocus');
+  set terminalFocus(bool v) => set('terminalFocus', v);
+
+  bool get terminalOpen => value('terminalOpen');
+  set terminalOpen(bool v) => set('terminalOpen', v);
+
+  bool get previewFocus => value('previewFocus');
+  set previewFocus(bool v) => set('previewFocus', v);
+
+  bool get previewOpen => value('previewOpen');
+  set previewOpen(bool v) => set('previewOpen', v);
+
+  bool get modelPickerOpen => value('modelPickerOpen');
+  set modelPickerOpen(bool v) => set('modelPickerOpen', v);
+
+  bool get usagePageOpen => value('usagePageOpen');
+  set usagePageOpen(bool v) => set('usagePageOpen', v);
 
   bool get composerFocus => value('composerFocus');
   set composerFocus(bool v) => set('composerFocus', v);
@@ -101,8 +135,8 @@ class WhenContext extends ChangeNotifier {
 }
 
 /// Recursive-descent evaluator for the §7 `when` subset over boolean
-/// contexts: `name`, `!`, `&&`, `||`, parentheses. Unknown names are `false`;
-/// any syntax error fails the whole expression to `false`.
+/// contexts: `name`, `true`/`false`, `!`, `&&`, `||`, parentheses. Unknown
+/// names are `false`; any syntax error fails the whole expression to `false`.
 class _WhenExpression {
   _WhenExpression(this.source, this.context);
 
@@ -152,6 +186,8 @@ class _WhenExpression {
       _failed = true;
       return false;
     }
+    if (name == 'true') return true;
+    if (name == 'false') return false;
     return context.value(name);
   }
 

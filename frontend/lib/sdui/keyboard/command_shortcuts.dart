@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/widgets.dart';
 
 import 'command_registry.dart';
@@ -24,6 +26,12 @@ import 'when_context.dart';
 /// [Navigator] when it can (`nav.forward` has no Flutter seam yet). The five
 /// composer commands arrive wired by `ComposerCommands` (T68); every other
 /// vocabulary id keeps its documented placeholder until T69–T70.
+///
+/// T116 adds the upstream `navigation.back` / `navigation.forward` commands:
+/// when the host supplies [onNavigateBack] / [onNavigateForward] they drive
+/// the SDUI runtime's product nav stack (the `back` directive's stack);
+/// otherwise `navigation.back` falls back to the enclosing [Navigator] and
+/// `navigation.forward` is a documented no-op.
 class CommandShortcuts extends StatefulWidget {
   const CommandShortcuts({
     super.key,
@@ -31,6 +39,8 @@ class CommandShortcuts extends StatefulWidget {
     required this.whenContext,
     required this.keymap,
     required this.child,
+    this.onNavigateBack,
+    this.onNavigateForward,
   });
 
   /// The command registry chords dispatch through.
@@ -45,6 +55,13 @@ class CommandShortcuts extends StatefulWidget {
   /// The subtree chords are enabled for.
   final Widget child;
 
+  /// The product nav-stack back seam (T116); absent → the enclosing
+  /// [Navigator] is popped instead.
+  final Future<void> Function()? onNavigateBack;
+
+  /// The product nav-stack forward seam (T116); absent → a no-op.
+  final Future<void> Function()? onNavigateForward;
+
   @override
   State<CommandShortcuts> createState() => _CommandShortcutsState();
 }
@@ -54,6 +71,8 @@ class _CommandShortcutsState extends State<CommandShortcuts> {
   void initState() {
     super.initState();
     widget.registry.register('nav.back', handler: _navBack);
+    widget.registry.register('navigation.back', handler: _navigationBack);
+    widget.registry.register('navigation.forward', handler: _navigationForward);
   }
 
   /// Live machinery: Flutter's navigator can pop. Dispatched as a no-op
@@ -62,6 +81,28 @@ class _CommandShortcutsState extends State<CommandShortcuts> {
     if (!mounted) return true;
     final navigator = Navigator.maybeOf(context);
     if (navigator != null && navigator.canPop()) navigator.pop();
+    return true;
+  }
+
+  /// `navigation.back` (T116): the product nav stack when the host wired it,
+  /// the enclosing [Navigator] otherwise.
+  bool _navigationBack() {
+    final back = widget.onNavigateBack;
+    if (back != null) {
+      unawaited(back());
+      return true;
+    }
+    return _navBack();
+  }
+
+  /// `navigation.forward` (T116): the product nav stack when the host wired
+  /// it, a documented no-op otherwise (Flutter's [Navigator] has no forward
+  /// seam).
+  bool _navigationForward() {
+    final forward = widget.onNavigateForward;
+    if (forward != null) {
+      unawaited(forward());
+    }
     return true;
   }
 

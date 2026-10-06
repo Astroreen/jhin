@@ -107,6 +107,10 @@ class SduiRuntime extends ChangeNotifier
   final Set<String> _inlineIds = {};
 
   final List<_ScreenEntry> _stack = [];
+  /// The forward history (T116): entries popped by [back], re-pushed by
+  /// [forward]. A fresh [navigate] clears it (a new branch invalidates the
+  /// old forward path).
+  final List<_ScreenEntry> _forwardStack = [];
   final Set<String> _inflight = {};
   final _ScreenEntry _standalone = _ScreenEntry('');
 
@@ -584,6 +588,7 @@ class SduiRuntime extends ChangeNotifier
   @override
   Future<void> navigate(String screen) async {
     final entry = _ScreenEntry(screen);
+    _forwardStack.clear();
     _stack.add(entry);
     await _ensureScreen(entry);
   }
@@ -591,7 +596,18 @@ class SduiRuntime extends ChangeNotifier
   @override
   Future<void> back() async {
     if (_stack.length <= 1) return;
-    _stack.removeLast();
+    _forwardStack.add(_stack.removeLast());
+    notifyListeners();
+  }
+
+  /// `navigation.forward` (T116): re-pushes the most recently popped screen.
+  /// A no-op when the forward history is empty. Not a directive — the
+  /// product nav stack's forward seam the keymap command drives.
+  Future<void> forward() async {
+    if (_forwardStack.isEmpty) return;
+    final entry = _forwardStack.removeLast();
+    _stack.add(entry);
+    await _ensureScreen(entry);
     notifyListeners();
   }
 

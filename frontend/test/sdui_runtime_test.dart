@@ -66,6 +66,45 @@ void main() {
       expect(transport.calls, isEmpty);
     });
 
+    testWidgets('T116 forward re-pushes the most recently popped screen',
+        (tester) async {
+      final transport = ScriptedTransport();
+      final runtime = SduiRuntime(transport: transport);
+      addTearDown(runtime.dispose);
+      await tester.pumpWidget(host(
+        runtime,
+        sduiPayload(entry: 'home', screens: {
+          'home': {'type': 'text', 'text': 'home-screen'},
+          'details': {'type': 'text', 'text': 'details-screen'},
+          'settings': {'type': 'text', 'text': 'settings-screen'},
+        }),
+      ));
+      await tester.pump();
+
+      await runtime.navigate('details');
+      await tester.pump();
+      expect(find.text('details-screen'), findsOneWidget);
+
+      await runtime.back();
+      await tester.pump();
+      expect(find.text('home-screen'), findsOneWidget);
+
+      await runtime.forward();
+      await tester.pump();
+      expect(find.text('details-screen'), findsOneWidget);
+
+      // A fresh navigate clears the forward history: after it, forward is a
+      // no-op and the new screen stays.
+      await runtime.back();
+      await tester.pump();
+      await runtime.navigate('settings');
+      await tester.pump();
+      await runtime.forward();
+      await tester.pump();
+      expect(find.text('settings-screen'), findsOneWidget);
+      expect(find.text('details-screen'), findsNothing);
+    });
+
     testWidgets('a screen node shows a back button when the stack can pop',
         (tester) async {
       final transport = ScriptedTransport();

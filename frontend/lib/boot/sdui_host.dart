@@ -8,6 +8,7 @@ import '../sdui/keyboard/composer_commands.dart';
 import '../sdui/keyboard/keymap.dart';
 import '../sdui/keyboard/palette.dart';
 import '../sdui/keyboard/when_context.dart';
+import '../sdui/sdui_runtime.dart';
 import 'boot_error.dart';
 import 'empty_state.dart';
 import 'loading_frame.dart';
@@ -175,6 +176,20 @@ class _SduiHostState extends State<SduiHost> {
     await run([PaletteCommands.toast(PaletteCommands.demoUnavailable, 'info')]);
   }
 
+  /// `navigation.back` (T116): the SDUI runtime's product nav stack when the
+  /// renderer is the real runtime; a no-op otherwise.
+  Future<void> _navBack() async {
+    final renderer = widget.renderer;
+    if (renderer is SduiRuntime) await renderer.back();
+  }
+
+  /// `navigation.forward` (T116): the SDUI runtime's forward history when the
+  /// renderer is the real runtime; a no-op otherwise.
+  Future<void> _navForward() async {
+    final renderer = widget.renderer;
+    if (renderer is SduiRuntime) await renderer.forward();
+  }
+
   @override
   void dispose() {
     widget.keymapStore?.removeListener(_onKeymapStoreChanged);
@@ -244,6 +259,8 @@ class _SduiHostState extends State<SduiHost> {
         registry: _registry,
         whenContext: _when,
         keymap: _keymap,
+        onNavigateBack: _navBack,
+        onNavigateForward: _navForward,
         child: Scaffold(
           body: Stack(
             children: [

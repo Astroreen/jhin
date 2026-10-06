@@ -204,5 +204,29 @@ void main() {
 
       expect(find.text('pushed'), findsNothing);
     });
+
+    testWidgets('T116 navigation.back/forward drive the host nav-stack seams',
+        (tester) async {
+      final registry = CommandRegistry();
+      var backs = 0;
+      var forwards = 0;
+
+      await tester.pumpWidget(wrap(CommandShortcuts(
+        registry: registry,
+        whenContext: WhenContext(),
+        keymap: Keymap.empty,
+        onNavigateBack: () async => backs++,
+        onNavigateForward: () async => forwards++,
+        child: const Scaffold(body: Text('nav')),
+      )));
+      await tester.pumpAndSettle();
+
+      registry.dispatch('navigation.back');
+      registry.dispatch('navigation.forward');
+      await tester.pumpAndSettle();
+
+      expect(backs, 1);
+      expect(forwards, 1);
+    });
   });
 }

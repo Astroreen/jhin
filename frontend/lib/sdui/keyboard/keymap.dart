@@ -150,6 +150,7 @@ class KeyChord {
     'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
     'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
     '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+    '[', ']',
   };
 
   static final Set<LogicalKeyboardKey> _modifierKeys = <LogicalKeyboardKey>{
@@ -179,6 +180,8 @@ class KeyChord {
     LogicalKeyboardKey.end: 'end',
     LogicalKeyboardKey.pageUp: 'pageup',
     LogicalKeyboardKey.pageDown: 'pagedown',
+    LogicalKeyboardKey.bracketLeft: '[',
+    LogicalKeyboardKey.bracketRight: ']',
   };
 
   static final Map<LogicalKeyboardKey, String> _characterTokens =
@@ -348,7 +351,10 @@ class Keymap {
   }
 
   /// The command a chord resolves to in the current [context], or null when
-  /// no rule matches. **The last matching rule wins.**
+  /// no rule matches. **The last matching rule wins** — the rules are walked
+  /// from the end and the first active match is returned, exactly like
+  /// upstream `resolveShortcutCommand`
+  /// (`apps/web/src/keybindings.ts:237-252`, commit 37de6cb).
   ///
   /// Typing policy: a context-free rule (no `when`) is suspended while text
   /// is being entered ([textEntryActive] — derived from the context's
@@ -364,18 +370,17 @@ class Keymap {
     try {
       final typing =
           textEntryActive ?? (context.composerFocus || context.editableFocus);
-      String? matched;
-      for (final rule in rules) {
+      for (var index = rules.length - 1; index >= 0; index--) {
+        final rule = rules[index];
         if (rule.chord != chord) continue;
         final when = rule.when;
         if (when == null) {
           if (typing) continue;
-          matched = rule.command;
-        } else if (context.evaluate(when)) {
-          matched = rule.command;
+          return rule.command;
         }
+        if (context.evaluate(when)) return rule.command;
       }
-      return matched;
+      return null;
     } catch (_) {
       return null;
     }

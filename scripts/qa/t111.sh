@@ -351,7 +351,7 @@ jq -e '[.. | objects | select(.label? == "Restore defaults")] | length == 1' \
 jq -e '[.. | objects | select(.name? == "keybind-restore")] | length == 1' \
   "$evidence/keybinds.json" > /dev/null \
   || fail "settings:keybindings does not dispatch keybind-restore (keybinds.json)"
-jq -e '[.. | objects | select(.type? == "kbd")] | length == 31' \
+jq -e '[.. | objects | select(.type? == "kbd")] | length == 40' \
   "$evidence/keybinds.json" > /dev/null \
   || fail "settings:keybindings does not render the assigned chords as kbd pills (keybinds.json)"
 jq -e '[.. | objects | select(.id? == "keybindSearch")][0].demo == true' \

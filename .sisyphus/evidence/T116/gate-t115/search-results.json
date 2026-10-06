@@ -1,0 +1,11 @@
+[
+  {
+    "id": "4b18cbc6-58a4-4292-b8cf-5f4bfaf5f5e1",
+    "title": "Palette probe thread",
+    "kind": "session",
+    "action": {
+      "op": "navigate",
+      "screen": "chat:4b18cbc6-58a4-4292-b8cf-5f4bfaf5f5e1"
+    }
+  }
+]

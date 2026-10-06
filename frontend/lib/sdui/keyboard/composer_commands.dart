@@ -315,6 +315,9 @@ class ComposerCommands {
         'composer.branch', handler: _pickerOpener('composer-branch-picker'));
     registry.registerIfPlaceholder('composer.previousWorktree',
         handler: _pickerOpener('composer-worktree-picker'));
+    // T116: the upstream `thread.stop` command (no default chord) dispatches
+    // the live run's stop action when one is present.
+    registry.registerIfPlaceholder('thread.stop', handler: stop);
     unawaited(history.load());
   }
 
@@ -493,6 +496,40 @@ class ComposerCommands {
           field.ctx.runDirectives(<dynamic>[Map<String, dynamic>.from(action)]));
       return true;
     };
+  }
+
+  /// `thread.stop` (T116) — dispatches the live run's stop action (the
+  /// composer footer's `cancel` button) when a run is live, a no-op
+  /// otherwise. The stop button only renders while a run is live, so its
+  /// presence in the screen is the run-live signal. Reports handled either
+  /// way: the command is a real vocabulary entry, not a fall-through.
+  bool stop() {
+    final field = binding.active;
+    if (field == null) return true;
+    final action = field.findAction('cancel');
+    if (action == null) return true;
+    unawaited(_postAction(field, action));
+    return true;
+  }
+
+  /// Posts one screen action descriptor (the stop button's `cancel`) and runs
+  /// its response directives. Failures are silent — the run state is
+  /// server-owned and a failed stop must never crash the key handler.
+  Future<void> _postAction(
+      ComposerField field, Map<String, dynamic> action) async {
+    final path = action['path'];
+    if (path is! String || path.isEmpty) return;
+    final name = action['name'] is String ? action['name'] as String : 'cancel';
+    try {
+      final response = await post(path, {
+        'action': name,
+        'payload': _payload(field, action),
+      });
+      final client = response['client'];
+      if (client is List) await field.ctx.runDirectives(client);
+    } catch (_) {
+      // Silent no-op: the run lifecycle is server-side.
+    }
   }
 
   Future<void> _sendThenClear(ComposerField field) async {

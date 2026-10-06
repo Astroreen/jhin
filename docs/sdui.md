@@ -171,12 +171,30 @@ The shipped default `keymap` (the `jhin.ui` payload, in registration order):
 | `alt+left` | `nav.back` | — |
 | `alt+right` | `nav.forward` | — |
 | `mod+n` | `thread.new` | — |
+| `mod+[` | `navigation.back` | `!terminalFocus` |
+| `mod+]` | `navigation.forward` | `!terminalFocus` |
+| `mod+j` | `terminal.toggle` | — |
+| `mod+w` | `terminal.close` | `terminalFocus` |
+| `mod+w` | `rightPanel.close` | `!terminalFocus` |
+| `mod+alt+n` | `chat.newWithoutProject` | `!terminalFocus` |
+| `mod+shift+enter` | `thread.steerQueuedMessage` | `!terminalFocus` |
+| `mod+1` … `mod+9` | `thread.jump1` … `thread.jump9` | `isDesktop` |
 
 The `composer.sendAlternate` rule is registered *after* the `composer.send`
 rule and both match `mod+enter` — the last matching rule wins, so the
 running-turn gate takes the chord only while `turnRunning` holds and the
 idle composer keeps the T68 send. The picker chords open the matching
-composer picker dialogs (T103).
+composer picker dialogs (T103). The T116 additions align the list with the
+upstream t3code defaults (`packages/shared/src/keybindings.ts:21-104`,
+commit `37de6cb`): the `!terminalFocus` guards, the `mod+[` / `mod+]`
+navigation pair, `mod+alt+n` new-thread-without-project, `mod+shift+enter`
+queue-as-steer, `mod+j` terminal toggle, the `mod+w` precedence (the focused
+terminal closes first, the right panel otherwise) and the `mod+1..9` thread
+jumps gated on `isDesktop`. `thread.stop` has no default chord — it is
+dispatched programmatically (the stop button's `cancel` action when a run is
+live). The upstream `mod+alt+enter` send-and-background is the existing T68
+`ctrl+alt+enter` → `composer.sendAndNew` binding (T103 dropped the
+draft-route branch; Jhin has no draft route).
 
 The `theme`/`density`/`tokens.motion.panel` seed values are not fixed
 constants: the `jhin.ui` plugin persists them server-side (its `settings.json`
@@ -1090,6 +1108,42 @@ clears every override. The server handlers only answer feedback directives
 request in the `X-Jhin-Keybindings` header (section 8). The `keybind-edit`
 action opens the rebind `sheet` (a `dialog` directive with `kind: "sheet"`
 around the `keyCapture` field, section 4).
+
+### 4.1 Keymap `when` contexts
+
+A keymap rule's `when` is a boolean expression over the client's command
+contexts (section 1). The grammar is the section 7 subset restricted to
+booleans: bare context names, the literals `true` / `false`, `!`, `&&`,
+`||` and parentheses. Unknown names evaluate to `false`; any parse failure
+degrades the whole expression to `false` and never throws. **The last
+matching rule wins** — the client walks the effective keymap from the end
+and returns the first rule whose chord matches and whose `when` holds
+(upstream `resolveShortcutCommand`, `apps/web/src/keybindings.ts:237-252`,
+commit `37de6cb`).
+
+| Context | Meaning |
+|---------|---------|
+| `terminalFocus` | the embedded terminal owns the keyboard |
+| `terminalOpen` | the terminal drawer is open |
+| `previewFocus` | the preview surface owns the keyboard |
+| `previewOpen` | the preview surface is open |
+| `modelPickerOpen` | the model picker is open |
+| `usagePageOpen` | the usage page is open |
+| `composerFocus` | the composer field owns the keyboard |
+| `composerDraft` | the composer holds a non-empty draft |
+| `turnRunning` | a run is live for the current thread |
+| `editableFocus` | a text field, textarea or rich-text editor owns the keyboard |
+| `isWeb` | the client runs on the web target |
+| `isDesktop` | the client runs on a desktop target — the exact complement of `isWeb` |
+| `sidebarFocus` | the sidebar owns the keyboard |
+| `paletteOpen` | the command palette is open |
+| `modalOpen` | a modal dialog is open |
+
+`isDesktop` is derived from `isWeb` (`isDesktop == !isWeb`), matching the
+upstream `resolveContext` (`apps/web/src/keybindings.ts:148-159`). A
+context-free rule (no `when`) is suspended while text is being entered
+(`composerFocus` / `editableFocus`); a rule with a `when` follows its
+expression exactly.
 
 ## 5. Streams and frames
 

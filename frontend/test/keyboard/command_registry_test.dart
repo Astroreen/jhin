@@ -51,8 +51,11 @@ void main() {
       final registry = CommandRegistry();
 
       // T103 grew the vocabulary: the 25 T67–T70 ids plus the alternate send
-      // and the seven picker commands.
-      expect(CommandRegistry.vocabularyIds, hasLength(33));
+      // and the seven picker commands. T116 added the nine upstream parity
+      // ids (navigation back/forward, thread.stop, terminal toggle/close,
+      // rightPanel.close, chat.newWithoutProject, thread.steerQueuedMessage,
+      // composer.sendBackground).
+      expect(CommandRegistry.vocabularyIds, hasLength(42));
       for (final id in CommandRegistry.vocabularyIds) {
         expect(registry.isRegistered(id), isTrue, reason: 'missing $id');
         expect(registry.ids, contains(id));
