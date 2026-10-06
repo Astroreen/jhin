@@ -227,7 +227,15 @@ class ChatScreenTest {
         Map<String, Object> json = render(List.of());
 
         Map<String, Object> body = castMap(json.get("body"));
-        assertThat(body).containsEntry("type", "column").containsEntry("id", "chat-frame");
+        // T105 wraps the frame column in a stack so the right panel can
+        // overlay it; the lane expanded is still the frame column's child.
+        assertThat(body).containsEntry("type", "stack")
+                .containsEntry("id", "chat-frame-stack");
+        Map<String, Object> frame = nodesOfType(body, "column").stream()
+                .filter(node -> "chat-frame".equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(frame).containsEntry("type", "column");
 
         // The lane: the centered content column with the server-side default
         // width; the client resolves the effective lane from its chatWidth

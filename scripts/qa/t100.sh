@@ -319,8 +319,11 @@ step_hdr "$client_header" "$tx" "fetch-chat" GET "/ui/screen/chat:$session_id" '
 jq -S '.node.body' <<< "$step_payload" > "$evidence/chat-frame.json"
 
 # The lane: the centered content column with the server-side default width.
+# T105 wraps the frame column in a stack (the right-panel overlay slot), so
+# the lane's expanded is found recursively rather than among the body's
+# direct children; the lane contract itself is unchanged.
 jq -e '
-  [.children[] | select(.type? == "expanded")][0].child.id == "chat-lane"
+  [.. | objects | select(.type? == "expanded")][0].child.id == "chat-lane"
   and [.. | objects | select(.id? == "chat-lane")][0].laneWidth == "46rem"
   and [.. | objects | select(.id? == "chat-lane")][0].direction == "column"
 ' "$evidence/chat-frame.json" > /dev/null \

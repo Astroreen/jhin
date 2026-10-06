@@ -427,6 +427,7 @@ Layout primitives:
 | `container` | `align` | alignment | — | child alignment |
 | `container` | `scroll` | bool | `false` | scrollable container |
 | `container` | `laneWidth` | length | — | chat content lane (T100): caps the container width and centers it — the `.chat-content-lane` recipe. The client `chatWidth` switch resolves the effective lane (`normal` keeps the server default `46rem`, `wide` forces `72rem`, `full` removes the cap), the way upstream sets `--chat-content-max-width` per `data-chat-width` on `:root` |
+| `container` | `panelWidth` | length | — | right-panel dock (T105): a fixed width parsed against the interface rem base — the `--thread-details-panel-width` `17.5rem` default (index.css:129) |
 | `container` | `rowKind` | string | — | timeline row kind (T101): one of the 14 chat row kinds (`message`, `assistant-meta`, `event`, `work`, `work-live`, `work-toggle`, `thinking`, `proposed-plan`, `working`, `worktree-setup`, `turn-fold`, `attempt-fold`, `context-compaction`, `unknown`); the client resolves the row's trailing gap from it (the upstream `pb-*` scale) |
 | `container` | `rowKey` | string | — | continuation key (T101): `` `${type}:${subtype}` `` — consecutive stream items sharing the key render as one visual group with no gap inside (the upstream `continuesWorkLog` rule) |
 | `box` | `child` | node | — | single child |
@@ -796,6 +797,8 @@ Control primitives:
 | `tabs` | `items` | item array | — | see the tabs item table below |
 | `tabs` | `activeIndex` | int | 0 | selected tab; patchable via the node `id` |
 | `tabs` | `variant` | `underline`/`pill`/`segmented` | `underline` | visual variant |
+| `tabs` | `hasClose` | bool | `false` | render a per-tab close `X` (T105): closing removes the tab with a client-side `patch` on the node `id`; an item marked `closable: false` is a no-op |
+| `tabs` | `closeAction` | action | — | run when the last closable tab closes (T105) — the panel-close `setState` |
 | `kbd` | `chord` | string | — | the chord to render as key pills (required); modifiers join with `+` and `mod` resolves per platform (Cmd on macOS, Ctrl elsewhere); unknown chord tokens render literally and log, never throw |
 | `scroll_fade` | `child` | node | — | the scrollable the fade wraps (required) |
 | `scroll_fade` | `edge` | `top`/`bottom`/`start`/`end` | `top` | scrolled edge the gradient paints at |
@@ -938,6 +941,8 @@ Item and part shapes:
 | `tabs` item | `icon` | icon name | no | icon |
 | `tabs` item | `badge` | node | no | badge widget |
 | `tabs` item | `panel` | node | no | tab panel node |
+| `tabs` item | `closable` | bool | no | T105: whether the tab can be closed (default `true`); `false` is a pinned no-op |
+| `tabs` item | `closeAction` | action | no | T105: extra action run when this tab closes |
 | `table` column | `label` | string | yes | header label |
 | `table` column | `width` | num | no | column width |
 | `table` column | `sortable` | bool | no | sortable header |

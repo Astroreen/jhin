@@ -1,0 +1,61 @@
+# T103 composer control rows, chips, stash and key chords summary
+
+upstream anchors (commit 37de6cb): the composer control look
+(components/chat/ComposerControl.tsx:17-26), the model picker and
+control row (ChatComposer.tsx:5375-5555, the data-composer-shortcut
+chords TraitsPicker.tsx:648, BranchToolbar.tsx:209-211,
+BranchToolbarEnvironmentSelector.tsx:109), the effort traits picker
+(TraitsPicker.tsx:648), the runtime/plan mode controls
+(ChatComposer.tsx:1232-1360), the footer attach control
+(ChatComposer.tsx:7496-7504), the stop button (the destructive round
+square, ComposerPrimaryActions.tsx:123-145), the send split semantics
+(ComposerPrimaryActions.tsx:250-334), the stash drawer
+(ComposerStashMenu.tsx:38-145, the empty-state wording at 135-143),
+the ContextChip pill kinds (components/ContextChip.tsx:25-83), the
+inline chip truncation (components/composerInlineChip.ts:4-14) and
+the chords (packages/shared/src/keybindings.ts:47-76).
+
+plan-vs-upstream discrepancies:
+- the plan's ContextWindowMeter is a decorative gradient bar
+  green/yellow/red at 50/80%; the upstream meter is a circular ring
+  with an error tint above 90% and a linear bar only inside its
+  popover (ContextWindowMeter.tsx:36-39,118-129) — the plan wins
+- the plan's COMPOSER_MIN_HEIGHT (160) has no upstream constant; the
+  upstream composer sizes itself from its content and paddings — the
+  plan wins (the wire constraint on the textarea)
+- the plan's footer voice (Microphone) button has no upstream
+  counterpart in the composer (the only upstream Microphone lives in
+  components/device/DeviceToolsPanel.tsx) — the plan wins (a demo-
+  marked decorative affordance)
+- the plan's send split-button (Direct/Queue/Steer menu) upstream is
+  a single send button whose label/behavior flips between Submit /
+  Queue message / Steer message with mod+click alternating
+  (ComposerPrimaryActions.tsx:255-334) — the plan wins (the menu
+  carries the three modes as demo-marked state flips)
+- the plan's mod+Alt+Enter "send-and-background": upstream binds
+  sendBackground only on draft threads (draftThreadRoute,
+  packages/shared/src/keybindings.ts:56-66) and sendAndNewThread on
+  regular threads (composer-logic.ts:62 maps it to the background
+  intent); Jhin has no draft route and T68's composer.sendAndNew is
+  exactly that background-intent send, so the T68 mod+alt+enter
+  binding stands and the draft branch is dropped
+- the mod+Enter alternate rule (composer.sendAlternate, the opposite
+  queue/steer action) is bound with the upstream turnRunning gate;
+  the WhenContext carries turnRunning but no live source feeds it
+  yet (the run lifecycle is server-side), so the rule is reserved:
+  the idle mod+enter keeps the T68 send and the alternate fires only
+  once a live turnRunning source exists — the split menu carries the
+  same Direct/Queue/Steer state
+- upstream shows no kbd pill on the header controls (the chords ride
+  data-composer-shortcut attributes); the Jhin dialogs carry the
+  chord as a kbd pill in the title row — the plan's "kbd hint" wins
+
+wire contract: the pickers are demo buttons whose action opens a
+dialog list; the options dispatch the inline directive composite
+({client: [setState, toast]}, docs/sdui.md section 3) so a selection
+changes the interpolated label and toasts with no round-trip; the
+decorative defaults ride invisible seeded inputs; the send and stop
+buttons stay real actions; the decorative controls carry demo:true
+
+goldens: composer-rows-light.png; the --fail path: the empty-send
+inversion fails as required (no network call on an empty draft)

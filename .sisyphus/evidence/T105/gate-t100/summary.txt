@@ -1,0 +1,34 @@
+# T100 chat frame summary
+
+upstream anchors (commit 37de6cb): the content lane
+.chat-content-lane (apps/web/src/index.css:901-907) at
+--chat-content-max-width 46rem (index.css:128), the wide/full
+overrides (index.css:2031-2038) set per data-chat-width on :root
+(routes/__root.tsx:277-280), the composer elevation --shadow-composer
+(index.css:193-194, ComposerSurface.tsx:51), the seam recipes
+--background-image-composer-seam-below/above (index.css:199-215),
+the prompt touch floor --font-size-prompt-touch (index.css:131),
+the anchor offset CHAT_TIMELINE_ANCHOR_OFFSET = 24
+(components/chat/timelineScrollAnchoring.ts:39) and the timeline
+fade (components/chat/MessagesTimeline.tsx:1377)
+
+plan-vs-upstream: the plan's prose said a 36 px anchor offset; the
+checkout says 24 (timelineScrollAnchoring.ts:39) — upstream wins
+(plan risk 5); the plan's 'layout.chatContentMaxWidth' server key
+became the lane container's laneWidth prop (46rem default) because
+the chatWidth switch is client-side (T86), exactly like upstream's
+data-chat-width attribute
+
+wire contract: container gains laneWidth (the chat content lane);
+stream_view autoScroll anchors (jump on append while following,
+preserve on patch, 24 px end inset); the chat frame = header row +
+lane(scroll_fade(timeline) + seam + composer dock)
+
+header row: thread title, runStatus badge, the right-panel and
+terminal toggles (inline setState shells, demo-marked — the
+E-phase panels do not exist yet) and the thread action menu with
+the real lifecycle actions
+
+goldens: chat-frame-46-light.png, chat-frame-72-light.png
+(goldens/); the --fail path: the patch-anchoring inversion fails
+as required (a patch never scrolls the timeline)

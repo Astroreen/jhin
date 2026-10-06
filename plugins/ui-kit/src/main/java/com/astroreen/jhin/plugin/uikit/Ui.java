@@ -4269,6 +4269,27 @@ public final class Ui {
             props.put("variant", UiEnums.require("variant", value, UiEnums.TAB_VARIANT));
             return this;
         }
+
+        /**
+         * Whether the strip renders a per-tab close {@code X} (T105,
+         * {@code hasClose}). The close removes the tab client-side with a
+         * {@code patch} on this node's {@code id}; an item marked {@code
+         * closable: false} is a no-op.
+         */
+        public TabsBuilder hasClose(boolean value) {
+            props.put("hasClose", value);
+            return this;
+        }
+
+        /**
+         * The action run when the last closable tab is closed (T105,
+         * {@code closeAction}) — the panel close: {@code setState} flips the
+         * panel's {@code when} condition off. A client directive composite.
+         */
+        public TabsBuilder closeAction(Map<String, Object> value) {
+            props.put("closeAction", value);
+            return this;
+        }
     }
 
     /**
@@ -4299,6 +4320,22 @@ public final class Ui {
         /** The panel node shown while the tab is selected. */
         public TabItemBuilder panel(UiNode value) {
             spec.put("panel", value);
+            return this;
+        }
+
+        /**
+         * Whether the tab can be closed (T105, {@code closable}, default
+         * {@code true}). A pinned tab sets it {@code false}: the close
+         * affordance is inert.
+         */
+        public TabItemBuilder closable(boolean value) {
+            spec.put("closable", value);
+            return this;
+        }
+
+        /** The extra action run when this tab closes (T105, {@code closeAction}). */
+        public TabItemBuilder closeAction(Map<String, Object> value) {
+            spec.put("closeAction", value);
             return this;
         }
 

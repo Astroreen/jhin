@@ -3,8 +3,9 @@
  * row, the content lane, the scroll-anchored timeline and the docked
  * composer — around the T77 conversation surface.
  *
- * <p><b>Frame.</b> The body is a column: the chat header row, then the
- * content lane filling the rest. The lane (id {@code chat-lane}) carries
+ * <p><b>Frame.</b> The body is a stack: the chat frame column (the chat
+ * header row, then the content lane filling the rest) with the T105 right
+ * panel overlaid at the right edge. The lane (id {@code chat-lane}) carries
  * the {@code laneWidth} prop — the server-side default {@value #LANE_WIDTH},
  * the upstream {@code --chat-content-max-width} root default (t3code
  * {@code apps/web/src/index.css:128}, commit {@code 37de6cb}); the client
@@ -190,13 +191,18 @@ public final class ChatScreen {
         boolean runLive = MessageCardBuilder.STATUS_RUNNING.equals(status);
         return Ui.screen()
                 .title(session.title())
-                .body(Ui.column()
-                        .id("chat-frame")
-                        .gap(0)
-                        .child(header(session, status))
-                        .child(Ui.expanded()
-                                .child(lane(sessionId, history, runLive))
+                .body(Ui.stack()
+                        .id("chat-frame-stack")
+                        .fit("expand")
+                        .child(Ui.column()
+                                .id("chat-frame")
+                                .gap(0)
+                                .child(header(session, status))
+                                .child(Ui.expanded()
+                                        .child(lane(sessionId, history, runLive))
+                                        .build())
                                 .build())
+                        .child(RightPanelBuilder.build(session, status))
                         .build())
                 .build();
     }

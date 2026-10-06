@@ -32,6 +32,10 @@ import '../ui_registry.dart';
 /// (`46rem`, index.css:128), `wide` forces `72rem` (index.css:2034) and
 /// `full` removes the cap (index.css:2038). The prop is the wire-level
 /// default a degraded client sees.
+///
+/// T105: a container with a `panelWidth` prop is the right-panel dock — a
+/// fixed width parsed from the length against the interface rem base (the
+/// `--thread-details-panel-width` 17.5rem default, index.css:129).
 Widget buildContainer(BuildContext context, UiNode node, RenderContext ctx) {
   if (node.children.isEmpty) {
     return degradedBox(context, 'Missing children');
@@ -85,6 +89,10 @@ Widget buildContainer(BuildContext context, UiNode node, RenderContext ctx) {
       ),
     );
   }
+  final panelWidth = _panelWidth(context, node);
+  if (panelWidth != null) {
+    result = SizedBox(width: panelWidth, child: result);
+  }
   return result;
 }
 
@@ -102,6 +110,17 @@ double? _laneMaxWidth(BuildContext context, UiNode node) {
     JhinChatWidth.normal =>
       parseCssLength(node.props['laneWidth'], remPx: remPx),
   };
+}
+
+/// The fixed width of a `panelWidth` container (T105): the right panel dock
+/// parses the length against the interface font-size rem base — the
+/// `--thread-details-panel-width` 17.5rem token (`parseCssLength`). An
+/// unparsable prop degrades to no fixed width (§2.4).
+double? _panelWidth(BuildContext context, UiNode node) {
+  final raw = node.props['panelWidth'];
+  if (raw == null) return null;
+  final remPx = JhinDesignScope.of(context).switches.fontSizes.sizeInterface.toDouble();
+  return parseCssLength(raw, remPx: remPx);
 }
 
 /// The composer surface (T87): the `--shadow-composer` elevation over the
