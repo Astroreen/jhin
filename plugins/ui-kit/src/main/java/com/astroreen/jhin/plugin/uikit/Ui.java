@@ -3678,6 +3678,40 @@ public final class Ui {
             props.put("commandSubtitle", value);
             return this;
         }
+
+        /**
+         * The T99 drag affordance: the row can be picked up (long-press) and
+         * dragged. The choreography itself — the reveal label, the accent
+         * drop targets, the Escape cancel and the drop dispatch — is driven
+         * by the sectioned {@code list} (docs/sdui.md section 2.6).
+         */
+        public ListRowBuilder draggable(boolean value) {
+            props.put("draggable", value);
+            return this;
+        }
+
+        /**
+         * The T99 reveal-label chip template: the node rendered on the
+         * dragged row while a drop target is hovered. The client swaps the
+         * template's icon and text with the hovered target's badge word
+         * (the {@code dropVerbBadge} port).
+         */
+        public ListRowBuilder dragLabel(UiNode node) {
+            props.put("dragLabel", node);
+            return this;
+        }
+
+        /**
+         * The T99 drop targets: {@code [{id, label, accentWhenHovered,
+         * action?}]} — the section ids this row may be dropped on, the badge
+         * word each shows while hovered, whether the hovered header takes
+         * the accent colour, and the lifecycle action the drop dispatches
+         * (exactly once; absent for a purely decorative drag).
+         */
+        public ListRowBuilder dropTargets(List<Map<String, Object>> value) {
+            props.put("dropTargets", List.copyOf(value));
+            return this;
+        }
     }
 
     /** The {@code badge} primitive: label/count/dot with the {@code max} cap. */

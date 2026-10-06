@@ -431,7 +431,8 @@ class SidebarBuilderTest {
     void menuCarriesTheUpstreamItemSetInOrder() {
         assertThat(labelsOfItems(menuItemsOf("demo"))).containsExactly(
                 "Pin thread", "Settle thread", "Snooze", "Regenerate title",
-                "Auto-settle behavior", "Archive thread", "Delete");
+                "Auto-settle behavior", "Arrange threads", "Archive thread",
+                "Delete");
     }
 
     @Test
@@ -573,14 +574,14 @@ class SidebarBuilderTest {
     @Test
     void archiveSitsAboveTheSeparatorAndDeleteIsDestructive() {
         List<Map<String, Object>> items = menuItemsOf("demo");
-        Map<String, Object> archive = items.get(5);
+        Map<String, Object> archive = items.get(6);
         assertThat(archive).containsEntry("label", "Archive thread")
                 .containsEntry("icon", "archive")
                 .containsEntry("separatorBefore", true)
                 .containsEntry("confirm", "Archive this thread?");
         assertThat(castMap(archive.get("action"))).containsEntry("name", "archive");
 
-        Map<String, Object> delete = items.get(6);
+        Map<String, Object> delete = items.get(7);
         assertThat(delete).containsEntry("label", "Delete")
                 .containsEntry("icon", "delete")
                 .containsEntry("danger", true)
@@ -601,16 +602,194 @@ class SidebarBuilderTest {
                 .toList();
         assertThat(labelsOfItems(items)).containsExactly(
                 "Pin thread", "Settle thread", "Snooze", "Regenerate title",
-                "Auto-settle behavior", "Move up", "Move down",
+                "Auto-settle behavior", "Arrange threads", "Move up", "Move down",
                 "Archive thread", "Delete");
-        Map<String, Object> up = items.get(5);
+        Map<String, Object> up = items.get(6);
         assertThat(castMap(up.get("action"))).containsEntry("name", "reorder");
         // The demo row sorts first in the section (updatedAt DESC), so the
         // move-up entry is disabled and the move-down one is not.
         assertThat(up).containsEntry("disabled", true);
-        Map<String, Object> down = items.get(6);
+        Map<String, Object> down = items.get(7);
         assertThat(castMap(down.get("action"))).containsEntry("name", "reorder");
         assertThat(down).containsEntry("disabled", false);
+    }
+
+    // --- T99: the drag choreography ---
+
+    @Test
+    void rowsOutsideTheWorkingShelfAreDraggable() {
+        List<Session> sessions = List.of(
+                session("active", NOW - 40),
+                session("working", NOW - 30, "working"),
+                session("pinned", NOW - 20, patch().pinned(true).pinnedOrder(1)),
+                session("snoozed", NOW - 10, patch().snoozedUntil(NOW + 60_000)),
+                session("settled", NOW - 5, patch().settledAt(NOW - 5)));
+        Map<String, Map<String, Object>> rows = new LinkedHashMap<>();
+        for (Map<String, Object> row : rowsOf(SidebarBuilder.build(sessions, NOW, false))) {
+            rows.put(String.valueOf(row.get("id")).substring("session-row:".length()), row);
+        }
+
+        assertThat(rows.get("active")).containsEntry("draggable", true);
+        assertThat(rows.get("pinned")).containsEntry("draggable", true);
+        assertThat(rows.get("snoozed")).containsEntry("draggable", true);
+        assertThat(rows.get("settled")).containsEntry("draggable", true);
+        assertThat(rows.get("working")).doesNotContainKey("draggable");
+    }
+
+    @Test
+    void dropVerbPortsTheUpstreamResolveSidebarDropVerb() {
+        // The Working and Snoozed shelves are never destinations; a drop
+        // inside the source section maps to no verb.
+        assertThat(SidebarBuilder.dropVerb(SidebarBuilder.ACTIVE, SidebarBuilder.ACTIVE))
+                .isNull();
+        assertThat(SidebarBuilder.dropVerb(SidebarBuilder.ACTIVE, SidebarBuilder.WORKING))
+                .isNull();
+        assertThat(SidebarBuilder.dropVerb(SidebarBuilder.ACTIVE, SidebarBuilder.SNOOZED))
+                .isNull();
+        assertThat(SidebarBuilder.dropVerb(SidebarBuilder.ACTIVE, null)).isNull();
+        // Onto Pinned pins, onto Settled settles.
+        assertThat(SidebarBuilder.dropVerb(SidebarBuilder.ACTIVE, SidebarBuilder.PINNED))
+                .isEqualTo("pin");
+        assertThat(SidebarBuilder.dropVerb(SidebarBuilder.PINNED, SidebarBuilder.SETTLED))
+                .isEqualTo("settle");
+        // Out of Pinned unpins, out of Settled un-settles, otherwise wakes.
+        assertThat(SidebarBuilder.dropVerb(SidebarBuilder.PINNED, SidebarBuilder.ACTIVE))
+                .isEqualTo("unpin");
+        assertThat(SidebarBuilder.dropVerb(SidebarBuilder.SETTLED, SidebarBuilder.ACTIVE))
+                .isEqualTo("unsettle");
+        assertThat(SidebarBuilder.dropVerb(SidebarBuilder.SNOOZED, SidebarBuilder.ACTIVE))
+                .isEqualTo("wake");
+    }
+
+    @Test
+    void dropTargetsCarryTheBadgeWordAndTheLifecycleActionPerDestination() {
+        Map<String, Object> active = rowOf("active");
+        List<Map<String, Object>> activeTargets = castList(active.get("dropTargets"))
+                .stream().map(SidebarBuilderTest::castMap).toList();
+        assertThat(activeTargets).hasSize(2);
+        assertThat(activeTargets.get(0)).containsEntry("id", "section-pinned")
+                .containsEntry("label", "Pin")
+                .containsEntry("accentWhenHovered", true);
+        assertThat(castMap(activeTargets.get(0).get("action")))
+                .containsEntry("name", "pin")
+                .containsEntry("path", "/ui/action/pin");
+        assertThat(castMap(castMap(activeTargets.get(0).get("action")).get("payload")))
+                .containsEntry("id", "active");
+        assertThat(activeTargets.get(1)).containsEntry("id", "section-settled")
+                .containsEntry("label", "Settle");
+        assertThat(castMap(activeTargets.get(1).get("action"))).containsEntry("name", "settle");
+
+        Map<String, Object> pinned = rowsOf(SidebarBuilder.build(
+                List.of(session("pinned", NOW - 10, patch().pinned(true).pinnedOrder(1))),
+                NOW, false)).get(0);
+        List<Map<String, Object>> pinnedTargets = castList(pinned.get("dropTargets"))
+                .stream().map(SidebarBuilderTest::castMap).toList();
+        assertThat(pinnedTargets.get(0)).containsEntry("id", "section-active")
+                .containsEntry("label", "Unpin");
+        assertThat(castMap(pinnedTargets.get(0).get("action"))).containsEntry("name", "unpin");
+        assertThat(pinnedTargets.get(1)).containsEntry("id", "section-settled")
+                .containsEntry("label", "Settle");
+
+        Map<String, Object> settled = rowsOf(SidebarBuilder.build(
+                List.of(session("settled", NOW - 10, patch().settledAt(NOW - 5))),
+                NOW, false)).stream()
+                .filter(r -> "session-row:settled".equals(r.get("id")))
+                .findFirst().orElseThrow();
+        List<Map<String, Object>> settledTargets = castList(settled.get("dropTargets"))
+                .stream().map(SidebarBuilderTest::castMap).toList();
+        assertThat(settledTargets.get(0)).containsEntry("id", "section-pinned")
+                .containsEntry("label", "Pin");
+        assertThat(castMap(settledTargets.get(0).get("action"))).containsEntry("name", "pin");
+        assertThat(settledTargets.get(1)).containsEntry("id", "section-active")
+                .containsEntry("label", "Un-settle");
+        assertThat(castMap(settledTargets.get(1).get("action"))).containsEntry("name", "unsettle");
+
+        Map<String, Object> snoozed = rowsOf(SidebarBuilder.build(
+                List.of(session("snoozed", NOW - 10, patch().snoozedUntil(NOW + 60_000))),
+                NOW, false)).get(0);
+        List<Map<String, Object>> snoozedTargets = castList(snoozed.get("dropTargets"))
+                .stream().map(SidebarBuilderTest::castMap).toList();
+        assertThat(snoozedTargets.get(0)).containsEntry("id", "section-pinned")
+                .containsEntry("label", "Pin");
+        assertThat(castMap(snoozedTargets.get(0).get("action"))).containsEntry("name", "pin");
+        assertThat(snoozedTargets.get(1)).containsEntry("id", "section-active")
+                .containsEntry("label", "Wake");
+        assertThat(castMap(snoozedTargets.get(1).get("action"))).containsEntry("name", "wake");
+        assertThat(snoozedTargets.get(2)).containsEntry("id", "section-settled")
+                .containsEntry("label", "Settle");
+    }
+
+    @Test
+    void badgeWordsAndIconsFollowTheUpstreamDropVerbBadge() {
+        assertThat(SidebarBuilder.badgeWord("pin")).isEqualTo("Pin");
+        assertThat(SidebarBuilder.badgeWord("unpin")).isEqualTo("Unpin");
+        assertThat(SidebarBuilder.badgeWord("settle")).isEqualTo("Settle");
+        assertThat(SidebarBuilder.badgeWord("unsettle")).isEqualTo("Un-settle");
+        assertThat(SidebarBuilder.badgeWord("wake")).isEqualTo("Wake");
+        assertThat(SidebarBuilder.badgeIcon("pin")).isEqualTo("push_pin");
+        assertThat(SidebarBuilder.badgeIcon("unpin")).isEqualTo("highlight_off");
+        assertThat(SidebarBuilder.badgeIcon("settle")).isEqualTo("check_circle");
+        assertThat(SidebarBuilder.badgeIcon("unsettle")).isEqualTo("undo");
+        assertThat(SidebarBuilder.badgeIcon("wake")).isEqualTo("alarm_off");
+    }
+
+    @Test
+    void dragLabelIsTheChipTemplateOfTheFirstTarget() {
+        Map<String, Object> label = castMap(rowOf("active").get("dragLabel"));
+        assertThat(label).containsEntry("id", "drag-label");
+        List<Map<String, Object>> children = castList(label.get("children"))
+                .stream().map(SidebarBuilderTest::castMap).toList();
+        assertThat(children).hasSize(2);
+        assertThat(children.get(0)).containsEntry("type", "icon")
+                .containsEntry("icon", "push_pin");
+        assertThat(children.get(1)).containsEntry("type", "text")
+                .containsEntry("text", "Pin");
+    }
+
+    @Test
+    void pinnedAndActiveSectionsCarryTheBoundaryLabels() {
+        List<Map<String, Object>> sections = sectionsOf(SidebarBuilder.build(
+                List.of(session("demo", NOW - 10)), NOW, false));
+        assertThat(sectionOf(sections, "Pinned")).containsEntry("boundaryLabel", "Pinned");
+        assertThat(sectionOf(sections, "Active")).containsEntry("boundaryLabel", "Active");
+        for (String label : List.of("Working", "Snoozed", "Settled")) {
+            assertThat(sectionOf(sections, label)).doesNotContainKey("boundaryLabel");
+        }
+    }
+
+    @Test
+    void arrangeThreadsOpensTheDecorativeSheet() {
+        Map<String, Object> item = menuItemsOf("demo").stream()
+                .filter(entry -> "Arrange threads".equals(entry.get("label")))
+                .findFirst().orElseThrow();
+        assertThat(item).containsEntry("icon", "drag_handle");
+        Map<String, Object> action = castMap(item.get("action"));
+        assertThat(action).containsEntry("op", "dialog").containsEntry("kind", "sheet");
+
+        Map<String, Object> sheet = castMap(action.get("node"));
+        assertThat(sheet).containsEntry("type", "sheet")
+                .containsEntry("title", "Arrange threads")
+                .containsEntry("demo", true);
+        Map<String, Object> body = castMap(sheet.get("body"));
+        assertThat(body).containsEntry("id", "arrange-sheet-body");
+        List<Map<String, Object>> rows = castList(body.get("children"))
+                .stream().map(SidebarBuilderTest::castMap).toList();
+        assertThat(rows).isNotEmpty();
+        for (Map<String, Object> row : rows) {
+            assertThat(row).containsEntry("type", "list_row")
+                    .containsEntry("dragHandle", true);
+        }
+        Map<String, Object> footer = castMap(sheet.get("footer"));
+        assertThat(stringsIn(footer)).contains("Done");
+        assertThat(stringsIn(footer)).contains("dismissDialog");
+    }
+
+    @Test
+    void arrangeSheetListsTheArrangeableThreadsWithHandles() {
+        UiNode sheet = SidebarBuilder.arrangeSheet(List.of("First", "Second"));
+        Map<String, Object> json = sheet.toJson();
+        assertThat(json).containsEntry("demo", true);
+        assertThat(stringsIn(json)).contains("First", "Second", "Done");
     }
 
     @Test

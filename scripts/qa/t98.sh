@@ -339,12 +339,12 @@ row=$(row_of "$evidence/menu.json" "$id")
 
 # The menu item set, verbatim from the upstream threadActionMenu.logic.ts
 # (commit 37de6cb): the conditional pin/settle entries, the snooze submenu,
-# the regenerate entry, the checked auto-settle submenu, the separator +
-# archive and the destructive delete.
+# the regenerate entry, the checked auto-settle submenu, the T99 Arrange
+# threads sheet entry, the separator + archive and the destructive delete.
 jq -e '
   [.trailing.items[].label] ==
     ["Pin thread", "Settle thread", "Snooze", "Regenerate title",
-     "Auto-settle behavior", "Archive thread", "Delete"]
+     "Auto-settle behavior", "Arrange threads", "Archive thread", "Delete"]
   and .trailing.items[0].icon == "keep"
   and .trailing.items[0].action.name == "pin"
   and .trailing.items[0].action.payload.id == "'"$id"'"
@@ -353,7 +353,7 @@ jq -e '
   and .trailing.items[1].action.name == "settle"
 ' <<< "$row" > /dev/null \
   || fail "the menu item set is wrong (menu.json)"
-ok "menu items: Pin thread / Settle thread / Snooze / Regenerate title / Auto-settle behavior / Archive thread / Delete, the real lifecycle actions (menu.json)"
+ok "menu items: Pin thread / Settle thread / Snooze / Regenerate title / Auto-settle behavior / Arrange threads / Archive thread / Delete, the real lifecycle actions (menu.json)"
 
 # The snooze submenu: the upstream presets with the whenLabel time column
 # (the exact clock is host-zone dependent — the shape is asserted) plus the
@@ -412,14 +412,14 @@ ok "auto-settle submenu: the checked Enabled/Disabled radio entries dispatching 
 
 # The separator before Archive thread and the destructive Delete.
 jq -e '
-  .trailing.items[5].label == "Archive thread"
-  and .trailing.items[5].separatorBefore == true
-  and .trailing.items[5].confirm == "Archive this thread?"
-  and .trailing.items[5].action.name == "archive"
-  and .trailing.items[6].label == "Delete"
-  and .trailing.items[6].danger == true
-  and .trailing.items[6].confirm == "Delete this thread? This cannot be undone."
-  and .trailing.items[6].action.name == "delete-session"
+  .trailing.items[6].label == "Archive thread"
+  and .trailing.items[6].separatorBefore == true
+  and .trailing.items[6].confirm == "Archive this thread?"
+  and .trailing.items[6].action.name == "archive"
+  and .trailing.items[7].label == "Delete"
+  and .trailing.items[7].danger == true
+  and .trailing.items[7].confirm == "Delete this thread? This cannot be undone."
+  and .trailing.items[7].action.name == "delete-session"
 ' <<< "$row" > /dev/null \
   || fail "the archive/delete entries are wrong (menu.json)"
 ok "archive above the separator, the destructive Delete with its confirm (menu.json)"

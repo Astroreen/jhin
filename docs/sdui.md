@@ -503,6 +503,9 @@ Layout primitives:
 | `list_row` | `searchMatch` | object | — | `{key, minChars?}` — the match pill shows in the trailing cluster when the UiState query under `key` is at least `minChars` (default 2) characters and matches the row's title or subtitle |
 | `list_row` | `commandSubtitle` | string | no | the command id text of a palette-sourced row (T98, the `ThreadCommandSubtitle` port) — the trailing muted marker; absent on rows the palette did not produce |
 | `list_row` | `dragging` | bool | `false` | the row renders as the lifted card (opaque surface + shadow) |
+| `list_row` | `draggable` | bool | `false` | the row can be picked up by a long-press; the sectioned `list` drives the drag choreography (the flat list ignores it) |
+| `list_row` | `dragLabel` | node | — | the reveal-label chip template shown on the dragged row while a drop target is hovered; the client swaps the template's icon and text with the hovered target's badge word (the upstream `dropVerbBadge` port) and paints the primary-tinted pill surface around it |
+| `list_row` | `dropTargets` | target array | — | `[{id, label, accentWhenHovered, action?}]` — the section ids the row may be dropped on, the badge word per target, whether the hovered header takes the accent colour, and the lifecycle action the drop dispatches exactly once (absent for a purely decorative drag) |
 | `table` | `columns` | column array | — | see the column table below |
 | `table` | `rows` | cell array | — | arrays of cells (node or string) |
 | `table` | `zebra` | bool | `false` | striped rows |
@@ -928,6 +931,7 @@ Item and part shapes:
 | `list` section | `count` | num | no | count-badge number (the rounded-full pill) |
 | `list` section | `badgeStyle` | token name | no | the pill surface token (`sidebar-control-surface`); falls back to the secondary surface |
 | `list` section | `storeKey` | string | no | client-store key the collapse state persists under; the stored value wins over `collapsed` once read |
+| `list` section | `boundaryLabel` | string | no | the boundary label revealed only while a drag is live (the upstream zero-height pinned/active markers): during a revealed drag the section header renders as the boundary anatomy — label + divider line, accent while this section is the hovered drop target |
 | `toast_stack` item | `text` | string | yes | notice text |
 | `toast_stack` item | `style` | toast style | no | `error`/`success`, like the `toast` directive |
 | `toast_stack` item | `action` | action | no | inline action (the 5 s undo pattern) |

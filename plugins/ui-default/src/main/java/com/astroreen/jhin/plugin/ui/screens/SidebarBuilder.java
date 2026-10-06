@@ -156,6 +156,40 @@
  * visual only) and the overflow menu adds {@code Move up} / {@code Move down},
  * which dispatch the {@code reorder} action with the full ordered id list of
  * the affected section (the post-move order, computed at render time).
+ *
+ * <p><b>Drag choreography (T99).</b> Every row outside the Working shelf is
+ * {@code draggable}: the client lifts it on a long-press and drives the
+ * upstream drag choreography (t3code commit {@code 37de6cb}) — the revealed
+ * label chip, the accent-coloured drop target, the pinned/active boundary
+ * labels and the {@code Escape} cancel. The server resolves the drop verb
+ * per (source, destination) pair — the port of {@code
+ * resolveSidebarDropVerb} ({@code components/Sidebar.logic.ts:346-357}):
+ * onto Pinned {@code pin}, onto Settled {@code settle}, out of Pinned
+ * {@code unpin}, out of Settled {@code unsettle}, otherwise {@code wake};
+ * the Working and Snoozed shelves are never destinations and a drop inside
+ * the source section maps to no verb (the reorder goes through the menu's
+ * Move entries). Each row carries:
+ * <ul>
+ *   <li>{@code dropTargets} — the destination sections with the badge word
+ *       per target (the upstream {@code dropVerbBadge} words, {@code
+ *       components/Sidebar.tsx:1041-1070}: {@code Pin}, {@code Unpin},
+ *       {@code Settle}, {@code Un-settle}, {@code Wake}), the {@code
+ *       accentWhenHovered} flag and the lifecycle action the drop
+ *       dispatches exactly once;</li>
+ *   <li>{@code dragLabel} — the reveal-label chip template (icon + word of
+ *       the row's first target) the client swaps per hovered target;</li>
+ *   <li>the Pinned and Active sections carry {@code boundaryLabel} (the
+ *       upstream zero-height boundary markers, {@code
+ *       components/Sidebar.tsx:5261-5280}, labels {@code Pinned} / {@code
+ *       Active}) — the client reveals them only while a drag is live.</li>
+ * </ul>
+ *
+ * <p><b>Arrange threads sheet (T99).</b> The overflow menu gains the
+ * upstream mobile {@code Arrange threads} entry ({@code
+ * docs/user/thread-sidebar.md:85-88}) opening the decorative bottom sheet:
+ * the drag-handle rows of the arrangeable sections and the {@code Done}
+ * button that closes it. The shell carries the {@code demo} marker — the
+ * handles are visual only, nothing reorders from the sheet.
  */
 package com.astroreen.jhin.plugin.ui.screens;
 
@@ -260,7 +294,109 @@ public final class SidebarBuilder {
     static final String SELECT_THREAD_BODY =
             "Choose a thread from the sidebar to open the conversation.";
 
+    /**
+     * The drop verbs (the upstream {@code SidebarDropVerb} set, {@code
+     * components/Sidebar.logic.ts:344}).
+     */
+    public static final String VERB_PIN = "pin";
+    public static final String VERB_UNPIN = "unpin";
+    public static final String VERB_SETTLE = "settle";
+    public static final String VERB_UNSETTLE = "unsettle";
+    public static final String VERB_WAKE = "wake";
+
+    /** The {@code Arrange threads} sheet title (the upstream mobile entry). */
+    static final String ARRANGE_SHEET_TITLE = "Arrange threads";
+
+    /** The arrange sheet's close button (the upstream {@code Done}). */
+    static final String ARRANGE_DONE_LABEL = "Done";
+
     private SidebarBuilder() {
+    }
+
+    /**
+     * The drop verb of one (source, destination) pair — the port of the
+     * upstream {@code resolveSidebarDropVerb} ({@code
+     * components/Sidebar.logic.ts:346-357}): the Working and Snoozed
+     * shelves are never destinations, a drop inside the source section
+     * maps to no verb, onto Pinned pins, onto Settled settles, out of
+     * Pinned unpins, out of Settled un-settles, otherwise wakes.
+     *
+     * @param from the source section label
+     * @param to   the destination section label, {@code null} for none
+     * @return the verb, or {@code null} when the drop maps to no action
+     */
+    public static String dropVerb(String from, String to) {
+        if (to == null || to.equals(from) || WORKING.equals(to) || SNOOZED.equals(to)) {
+            return null;
+        }
+        if (PINNED.equals(to)) {
+            return VERB_PIN;
+        }
+        if (SETTLED.equals(to)) {
+            return VERB_SETTLE;
+        }
+        if (PINNED.equals(from)) {
+            return VERB_UNPIN;
+        }
+        if (SETTLED.equals(from)) {
+            return VERB_UNSETTLE;
+        }
+        return VERB_WAKE;
+    }
+
+    /**
+     * The badge word of one verb — the upstream {@code dropVerbBadge}
+     * labels ({@code components/Sidebar.tsx:1041-1070}).
+     */
+    public static String badgeWord(String verb) {
+        return switch (verb) {
+            case VERB_PIN -> "Pin";
+            case VERB_UNPIN -> "Unpin";
+            case VERB_SETTLE -> "Settle";
+            case VERB_UNSETTLE -> "Un-settle";
+            case VERB_WAKE -> "Wake";
+            default -> throw new IllegalArgumentException("unknown drop verb: " + verb);
+        };
+    }
+
+    /**
+     * The badge icon of one verb — the upstream {@code dropVerbBadge}
+     * glyphs ({@code PinIcon}, {@code PinOffIcon}, {@code CircleCheckIcon},
+     * {@code Undo2Icon}, {@code AlarmClockOffIcon}) mapped onto the client
+     * icon registry; the lucide {@code PinOff} has no Material
+     * counterpart, so {@code highlight_off} stands in (the mapping is
+     * recorded in {@code evidence/T99/icon-map.json}).
+     */
+    public static String badgeIcon(String verb) {
+        return switch (verb) {
+            case VERB_PIN -> "push_pin";
+            case VERB_UNPIN -> "highlight_off";
+            case VERB_SETTLE -> "check_circle";
+            case VERB_UNSETTLE -> "undo";
+            case VERB_WAKE -> "alarm_off";
+            default -> throw new IllegalArgumentException("unknown drop verb: " + verb);
+        };
+    }
+
+    /** One resolved drop destination: the section id and the verb. */
+    public record DropTarget(String sectionId, String verb) {
+    }
+
+    /**
+     * The drop destinations of one source section, in render order
+     * (Pinned, Active, Settled — the Working and Snoozed shelves are never
+     * destinations), each with its resolved verb.
+     */
+    public static List<DropTarget> dropTargetsOf(String from) {
+        List<DropTarget> targets = new ArrayList<>();
+        for (String to : List.of(PINNED, ACTIVE, SETTLED)) {
+            String verb = dropVerb(from, to);
+            if (verb != null) {
+                targets.add(new DropTarget(
+                        "section-" + to.toLowerCase(Locale.ROOT), verb));
+            }
+        }
+        return List.copyOf(targets);
     }
 
     /**
@@ -307,12 +443,27 @@ public final class SidebarBuilder {
     private static UiNode sectionsList(List<Session> sessions, long now, boolean arrange,
                                        String account) {
         Map<String, List<Session>> sections = partition(sessions, now);
+        // The arrange sheet lists the arrangeable threads (the upstream
+        // mobile sheet scopes Pinned and Active,
+        // docs/user/thread-sidebar.md:85-88).
+        List<String> arrangeTitles = new ArrayList<>();
+        for (Session session : sections.get(PINNED)) {
+            arrangeTitles.add(session.title());
+        }
+        for (Session session : sections.get(ACTIVE)) {
+            arrangeTitles.add(session.title());
+        }
         List<Object> wire = new ArrayList<>();
-        wire.add(section(PINNED, "section-pinned", false, sections.get(PINNED), arrange, now));
-        wire.add(section(ACTIVE, "section-active", false, sections.get(ACTIVE), arrange, now));
-        wire.add(section(WORKING, "section-working", false, sections.get(WORKING), arrange, now));
-        wire.add(section(SNOOZED, "section-snoozed", true, sections.get(SNOOZED), arrange, now));
-        wire.add(section(SETTLED, "section-settled", true, sections.get(SETTLED), arrange, now));
+        wire.add(section(PINNED, "section-pinned", false, sections.get(PINNED), arrange, now,
+                arrangeTitles));
+        wire.add(section(ACTIVE, "section-active", false, sections.get(ACTIVE), arrange, now,
+                arrangeTitles));
+        wire.add(section(WORKING, "section-working", false, sections.get(WORKING), arrange, now,
+                arrangeTitles));
+        wire.add(section(SNOOZED, "section-snoozed", true, sections.get(SNOOZED), arrange, now,
+                arrangeTitles));
+        wire.add(section(SETTLED, "section-settled", true, sections.get(SETTLED), arrange, now,
+                arrangeTitles));
         Ui.ListBuilder list = Ui.list().id(SECTIONS_ID).sections(wire)
                 .header(header())
                 .footer(footer(account))
@@ -530,11 +681,13 @@ public final class SidebarBuilder {
     /**
      * One section spec: the uppercase header contract (label, count badge,
      * chevron via {@code collapsible}), the collapse default and its
-     * {@code storeKey}, and the rows.
+     * {@code storeKey}, the T99 {@code boundaryLabel} on the Pinned and
+     * Active sections (the upstream zero-height boundary markers) and the
+     * rows.
      */
     private static Map<String, Object> section(String label, String id, boolean collapsed,
                                                List<Session> sessions, boolean arrange,
-                                               long now) {
+                                               long now, List<String> arrangeTitles) {
         Map<String, Object> section = new LinkedHashMap<>();
         section.put("label", label);
         section.put("id", id);
@@ -545,13 +698,19 @@ public final class SidebarBuilder {
         section.put("uppercase", true);
         section.put("storeKey", "sidebar.section." + id.substring("section-".length())
                 + ".collapsed");
+        if (PINNED.equals(label) || ACTIVE.equals(label)) {
+            // The T99 boundary labels (the upstream zero-height markers,
+            // components/Sidebar.tsx:5261-5280): revealed only while a
+            // drag is live.
+            section.put("boundaryLabel", label);
+        }
         if (WORKING.equals(label)) {
             section.put("when", WORKING_WHEN);
         }
         List<Object> rows = new ArrayList<>();
         List<String> ids = sessions.stream().map(Session::id).toList();
         for (int i = 0; i < sessions.size(); i++) {
-            rows.add(row(sessions.get(i), ids, i, arrange, now));
+            rows.add(row(sessions.get(i), ids, i, arrange, now, arrangeTitles, label));
         }
         section.put("items", rows);
         return section;
@@ -562,15 +721,19 @@ public final class SidebarBuilder {
      * T97 anatomy — the status indicator cluster, the semibold truncated
      * title (T98: wrapped in the hover preview card), the workdir subtitle
      * with the context chip, the hover-revealed trailing cluster
-     * (search-match marker + overflow menu) and the frame props.
+     * (search-match marker + overflow menu) and the frame props. Since T99
+     * every row outside the Working shelf is {@code draggable} and carries
+     * the {@code dropTargets} (the resolved verb per destination with the
+     * lifecycle action) and the {@code dragLabel} chip template.
      */
     private static UiNode row(Session session, List<String> sectionIds,
-                              int index, boolean arrange, long now) {
+                              int index, boolean arrange, long now,
+                              List<String> arrangeTitles, String sectionLabel) {
         Ui.ListRowBuilder row = Ui.listRow()
                 .id("session-row:" + session.id())
                 .title(hoverCard(session))
                 .subtitle(subtitle(session))
-                .trailing(menu(session, sectionIds, index, arrange, now))
+                .trailing(menu(session, sectionIds, index, arrange, now, arrangeTitles))
                 .statusIndicators(statusKinds(session, now))
                 .hoverReveal(true)
                 .searchMatch(Map.of(
@@ -578,6 +741,15 @@ public final class SidebarBuilder {
                         "minChars", SEARCH_MATCH_MIN_CHARS))
                 .dragHandle(arrange)
                 .action(Directives.navigate("chat:" + session.id()));
+        // The T99 drag affordance: every row outside the Working shelf
+        // lifts (the Working shelf is never a destination and its rows
+        // stay put — the upstream shelf semantics).
+        if (!WORKING.equals(sectionLabel)) {
+            List<DropTarget> targets = dropTargetsOf(sectionLabel);
+            row.draggable(true)
+                    .dragLabel(dragLabelChip(targets.get(0).verb()))
+                    .dropTargets(wireTargets(session.id(), targets));
+        }
         // The session_updated frame props (EventFrames.ROW_PROPS): the row
         // carries them under the same names so a patch lands on matching keys.
         row.set("workdir", session.workdir());
@@ -768,6 +940,9 @@ public final class SidebarBuilder {
      *   <li>{@code Regenerate title} (upstream {@code :158-167});</li>
      *   <li>{@code Auto-settle behavior} with the checked {@code Enabled} /
      *       {@code Disabled} submenu (upstream {@code :184-204});</li>
+     *   <li>the T99 {@code Arrange threads} entry (the upstream mobile
+     *       affordance, {@code docs/user/thread-sidebar.md:85-88}) opening
+     *       the decorative arrange sheet;</li>
      *   <li>{@code Archive thread} above the separator (upstream
      *       {@code :224-230}) and the destructive {@code Delete} (upstream
      *       {@code :231-236});</li>
@@ -786,7 +961,8 @@ public final class SidebarBuilder {
      * ({@code :228}) is dropped — Jhin sessions carry no running flag.
      */
     private static UiNode menu(Session session, List<String> sectionIds,
-                               int index, boolean arrange, long now) {
+                               int index, boolean arrange, long now,
+                               List<String> arrangeTitles) {
         String id = session.id();
         boolean snoozed = session.snoozedUntil() != null && session.snoozedUntil() > now;
         Ui.MenuBuilder menu = Ui.menu()
@@ -834,6 +1010,13 @@ public final class SidebarBuilder {
         menu.item(Ui.menuItem("Auto-settle behavior")
                 .icon("timer")
                 .children(autoSettleChildren(id, session.autoSettle()))
+                .build());
+        // The T99 mobile arrange entry (the upstream
+        // docs/user/thread-sidebar.md:85-88 affordance): opens the
+        // decorative arrange sheet.
+        menu.item(Ui.menuItem("Arrange threads")
+                .icon("drag_handle")
+                .action(Directives.dialog(arrangeSheet(arrangeTitles).toJson(), "sheet"))
                 .build());
         if (arrange) {
             menu.item(Ui.menuItem("Move up")
@@ -904,6 +1087,77 @@ public final class SidebarBuilder {
                         .action(ActionDescriptors.of("auto-settle",
                                 Map.of("id", id, "enabled", false), null))
                         .build());
+    }
+
+    /**
+     * The T99 reveal-label chip template of one row: the icon + word of the
+     * row's first drop target (the client swaps both per hovered target and
+     * paints the primary-tinted pill surface around it — the upstream
+     * {@code dropVerbBadge} chip, {@code components/Sidebar.tsx:1586-1592}).
+     */
+    static UiNode dragLabelChip(String verb) {
+        return Ui.row()
+                .id("drag-label")
+                .gap(4)
+                .child(Ui.icon().icon(badgeIcon(verb)).size(12).build())
+                .child(Ui.text(badgeWord(verb)).fontSize(12).fontWeight(500).build())
+                .build();
+    }
+
+    /**
+     * The wire shape of one row's drop targets: the destination section id,
+     * the badge word, the {@code accentWhenHovered} flag and the lifecycle
+     * action the drop dispatches exactly once.
+     */
+    private static List<Map<String, Object>> wireTargets(String sessionId,
+                                                         List<DropTarget> targets) {
+        List<Map<String, Object>> wire = new ArrayList<>();
+        for (DropTarget target : targets) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("id", target.sectionId());
+            entry.put("label", badgeWord(target.verb()));
+            entry.put("accentWhenHovered", true);
+            entry.put("action", ActionDescriptors.of(target.verb(),
+                    Map.of("id", sessionId), null));
+            wire.add(entry);
+        }
+        return List.copyOf(wire);
+    }
+
+    /**
+     * The decorative arrange sheet (the plan's T99 step 5 — the upstream
+     * mobile {@code Arrange threads} affordance, {@code
+     * docs/user/thread-sidebar.md:85-88}): the drag-handle rows of the
+     * arrangeable sections and the {@code Done} button that closes the
+     * sheet. The shell carries the {@code demo} marker — the handles are
+     * visual only, nothing reorders from the sheet.
+     */
+    public static UiNode arrangeSheet(List<String> titles) {
+        List<Object> rows = new ArrayList<>();
+        for (String title : titles) {
+            rows.add(Ui.listRow()
+                    .title(title)
+                    .dragHandle(true)
+                    .build()
+                    .toJson());
+        }
+        return Ui.sheet()
+                .title(ARRANGE_SHEET_TITLE)
+                .body(Ui.column()
+                        .id("arrange-sheet-body")
+                        .gap(4)
+                        .children(rows)
+                        .build())
+                .footer(Ui.row()
+                        .align("center")
+                        .child(Ui.spacer().build())
+                        .child(Ui.button(ARRANGE_DONE_LABEL)
+                                .style("primary")
+                                .action(Directives.dismissDialog())
+                                .build())
+                        .build())
+                .set("demo", true)
+                .build();
     }
 
     /**

@@ -1,0 +1,13 @@
+{
+  "note": "The T99 drag-badge icon mapping: the upstream dropVerbBadge glyphs (components/Sidebar.tsx:1041-1070) onto the client icon registry (frontend/lib/design/icon_registry.dart, 8825 Material entries). Upstream lucide names verified against the t3code checkout (commit 37de6cb); gaps fall back to the nearest Material glyph (plan section 15.5).",
+  "upstreamCommit": "37de6cb",
+  "mappings": [
+    {"verb": "pin", "word": "Pin", "upstream": "PinIcon", "upstreamAnchor": "components/Sidebar.tsx:1043-1049", "registry": "push_pin", "rendering": "12 px primary glyph in the reveal-label chip"},
+    {"verb": "unpin", "word": "Unpin", "upstream": "PinOffIcon", "upstreamAnchor": "components/Sidebar.tsx:1050-1056", "registry": "highlight_off", "rendering": "12 px primary glyph; the lucide PinOff has no Material counterpart, the nearest negation glyph stands in"},
+    {"verb": "settle", "word": "Settle", "upstream": "CircleCheckIcon", "upstreamAnchor": "components/Sidebar.tsx:1057-1063", "registry": "check_circle", "rendering": "12 px primary glyph in the reveal-label chip"},
+    {"verb": "unsettle", "word": "Un-settle", "upstream": "Undo2Icon", "upstreamAnchor": "components/Sidebar.tsx:1064-1070", "registry": "undo", "rendering": "12 px primary glyph in the reveal-label chip"},
+    {"verb": "wake", "word": "Wake", "upstream": "AlarmClockOffIcon", "upstreamAnchor": "components/Sidebar.tsx (wake entry of dropVerbBadge)", "registry": "alarm_off", "rendering": "12 px primary glyph in the reveal-label chip"},
+    {"kind": "arrange-menu", "upstream": "(mobile-only affordance; no desktop anchor)", "upstreamAnchor": "docs/user/thread-sidebar.md:85-88", "registry": "drag_handle", "rendering": "the Arrange threads menu entry icon and the sheet's handle rows"}
+  ],
+  "menuIconNote": "The T98 overflow-menu entries keep their committed icon names (keep / keep_off) — the t98.sh gate asserts them verbatim and the T99 scope does not rewrite committed history; the drag badge uses registry-resolvable names so the chip glyph always renders."
+}

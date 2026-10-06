@@ -17,6 +17,18 @@ import '../ui_state.dart';
 /// row's title/subtitle) and `dragging` (the lifted-card look).
 /// `title`/`subtitle` accept a node or the string shorthand.
 ///
+/// The T99 drag-choreography props (consumed by the sectioned `list`,
+/// which drives the whole interaction — this primitive only renders what
+/// the list hands it): `draggable` (the row can be picked up by a
+/// long-press), `dragLabel` (the reveal-label chip template shown on the
+/// dragged row while a drop target is hovered — the client swaps the
+/// template's icon and text with the hovered target's badge word, the
+/// upstream `dropVerbBadge` port) and `dropTargets`
+/// (`[{id, label, accentWhenHovered, action?}]` — the section ids the row
+/// may be dropped on, the badge word per target, whether the hovered
+/// header takes the accent colour and the lifecycle action the drop
+/// dispatches exactly once).
+///
 /// `action`/`onLongPress` come from the universal Interaction cluster (§2.1)
 /// but dispatch through the row's own `InkWell` — the §2.3 gesture wrapper
 /// for this primitive — so the registry wrapper is skipped for `list_row`

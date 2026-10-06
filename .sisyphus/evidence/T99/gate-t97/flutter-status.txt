@@ -1,0 +1,15 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/status_indicators_test.dart
+00:00 +0: statusPulse pulse renders the stepped status dot
+00:00 +1: the pulse steps at most 16 frames per 2 s cycle at 120 Hz
+00:00 +2: statusPulse ping bursts the ring over the first 40%
+00:00 +3: the ping steps at most 16 frames per 2 s cycle at 120 Hz
+00:00 +4: statusPulse skeleton runs the 2.4 s shimmer
+00:00 +5: a complete indicator (value 1.0) never animates
+00:00 +6: reduced motion collapses every mode to the static dot
+00:00 +7: an unknown mode keeps the plain bar
+00:00 +8: statusPulse none keeps the plain bar
+00:00 +9: ThreadStatusIndicators composes spinner = pulse, unread = ping
+00:00 +10: ThreadStatusIndicators renders nothing without states
+00:00 +11: golden: the pulse dot mid-cycle (light)
+00:00 +12: golden: the pulse dot mid-cycle (dark)
+00:00 +13: All tests passed!

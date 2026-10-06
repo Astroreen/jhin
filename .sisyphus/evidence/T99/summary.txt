@@ -1,0 +1,27 @@
+# T99 drag choreography + arrange sheet summary
+
+upstream anchors (commit 37de6cb): the drop verbs resolveSidebarDropVerb
+(components/Sidebar.logic.ts:346-357), the badge words and icons
+dropVerbBadge (components/Sidebar.tsx:1041-1070), the badge chip
+surface (Sidebar.tsx:1586-1592), the boundary labels Pinned/Active
+(Sidebar.tsx:5261-5280) with the sidebar-drag-boundary-label reveal
+keyframe (index.css:2154-2165, 200ms step-end), the Escape cancel
+(Sidebar.pointer.ts:115), the mobile Arrange threads sheet
+(docs/user/thread-sidebar.md:85-88)
+
+wire contract: list_row gains draggable / dragLabel / dropTargets
+[{id, label, accentWhenHovered, action}]; the list section gains
+boundaryLabel; the Working shelf rows stay undraggable and the
+Working/Snoozed shelves are never destinations
+
+drop dispatch: the hovered target's action dispatches exactly once
+(client guard); a drop on a non-target area cancels and dispatches
+nothing; Escape cancels and restores the resting tree; the
+decorative drag itself never mutates state
+
+arrange sheet: the demo-marked decorative shell (drag handles +
+Done) opened by the Arrange threads menu entry
+
+goldens: drag-label-pin-light.png, drag-label-settle-light.png
+(goldens/); the --fail path: the dropTargets never include the own
+section or the shelves (the non-target areas)

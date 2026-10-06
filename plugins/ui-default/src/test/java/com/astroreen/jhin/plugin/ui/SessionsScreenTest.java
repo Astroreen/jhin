@@ -341,7 +341,13 @@ class SessionsScreenTest {
         for (Map<String, Object> section : sectionNodesOf(screen)) {
             List<String> ids = new ArrayList<>();
             for (Map<String, Object> row : nodesOfType(section.get("items"), "list_row")) {
-                ids.add(String.valueOf(row.get("id")).substring("session-row:".length()));
+                // Since T99 a row's menu may embed the arrange sheet, whose
+                // decorative handle rows are list_rows without the
+                // session-row identity — only session rows count.
+                String id = String.valueOf(row.get("id"));
+                if (id.startsWith("session-row:")) {
+                    ids.add(id.substring("session-row:".length()));
+                }
             }
             sections.put(String.valueOf(section.get("label")), ids);
         }
@@ -391,7 +397,10 @@ class SessionsScreenTest {
         List<String> names = new ArrayList<>();
         for (Map<String, Object> item : menuItemsOf(row)) {
             Map<String, Object> action = castMap(item.get("action"));
-            if (action != null) {
+            // Since T99 the menu also carries directive entries (the
+            // Arrange threads sheet) with no action name — they dispatch
+            // no lifecycle action.
+            if (action != null && action.containsKey("name")) {
                 names.add(String.valueOf(action.get("name")));
             }
         }

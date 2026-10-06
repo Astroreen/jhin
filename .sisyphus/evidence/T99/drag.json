@@ -1,0 +1,1533 @@
+{
+  "first": {
+    "footer": {
+      "align": "center",
+      "children": [
+        {
+          "align": "center",
+          "children": [
+            {
+              "color": "$color.success",
+              "height": 8,
+              "shape": "circle",
+              "type": "box",
+              "width": 8
+            },
+            {
+              "style": "caption",
+              "text": "Online",
+              "type": "text"
+            }
+          ],
+          "gap": 4,
+          "id": "sidebar-status-dot",
+          "tooltip": "Online",
+          "type": "row"
+        },
+        {
+          "initials": "LO",
+          "shape": "circle",
+          "size": 20,
+          "type": "avatar"
+        },
+        {
+          "flex": 1,
+          "style": "small",
+          "text": "local",
+          "type": "text"
+        },
+        {
+          "action": {
+            "op": "navigate",
+            "screen": "settings"
+          },
+          "icon": "settings",
+          "tooltip": "Settings",
+          "type": "icon_button"
+        },
+        {
+          "action": {
+            "op": "openProfiles"
+          },
+          "icon": "person",
+          "tooltip": "Switch profile",
+          "type": "icon_button"
+        }
+      ],
+      "gap": 8,
+      "id": "sidebar-footer",
+      "type": "row"
+    },
+    "header": {
+      "children": [
+        {
+          "align": "center",
+          "children": [
+            {
+              "bold": true,
+              "style": "h3",
+              "text": "Jhin",
+              "type": "text"
+            },
+            {
+              "type": "spacer"
+            },
+            {
+              "demo": true,
+              "icon": "chevron_right",
+              "type": "icon_button"
+            }
+          ],
+          "id": "sidebar-brand",
+          "type": "row"
+        },
+        {
+          "align": "center",
+          "children": [
+            {
+              "flex": 1,
+              "id": "sidebarSearch",
+              "placeholder": "Search threads",
+              "type": "input"
+            },
+            {
+              "action": {
+                "node": {
+                  "children": [
+                    {
+                      "style": "h3",
+                      "text": "New thread",
+                      "type": "text"
+                    },
+                    {
+                      "fields": [
+                        {
+                          "errorText": "A title is required",
+                          "id": "newThreadTitle",
+                          "label": "Title",
+                          "required": true,
+                          "type": "input"
+                        },
+                        {
+                          "errorText": "A working directory is required",
+                          "id": "newThreadWorkdir",
+                          "label": "Working directory",
+                          "required": true,
+                          "type": "input"
+                        }
+                      ],
+                      "submit": {
+                        "action": {
+                          "include": [
+                            "newThreadTitle",
+                            "newThreadWorkdir"
+                          ],
+                          "method": "POST",
+                          "name": "create-session",
+                          "path": "/ui/action/create-session"
+                        },
+                        "label": "Create thread"
+                      },
+                      "type": "form"
+                    }
+                  ],
+                  "gap": 12,
+                  "id": "new-thread-dialog",
+                  "type": "column"
+                },
+                "op": "dialog"
+              },
+              "icon": "add",
+              "label": "New thread",
+              "style": "primary",
+              "type": "button"
+            }
+          ],
+          "gap": 8,
+          "id": "sidebar-search",
+          "type": "row"
+        }
+      ],
+      "gap": 8,
+      "id": "sidebar-header",
+      "type": "column"
+    },
+    "id": "sidebar-sections",
+    "search": {
+      "fields": [
+        "title",
+        "subtitle"
+      ],
+      "key": "sidebarSearch"
+    },
+    "sections": [
+      {
+        "badgeStyle": "sidebar-control-surface",
+        "boundaryLabel": "Pinned",
+        "collapsed": false,
+        "collapsible": true,
+        "count": 1,
+        "id": "section-pinned",
+        "items": [
+          {
+            "action": {
+              "op": "navigate",
+              "screen": "chat:e67c7fa2-68a2-497a-9c3b-0dd02284f16e"
+            },
+            "archivedAt": null,
+            "dragHandle": false,
+            "dragLabel": {
+              "children": [
+                {
+                  "icon": "highlight_off",
+                  "size": 12,
+                  "type": "icon"
+                },
+                {
+                  "fontSize": 12,
+                  "fontWeight": 500,
+                  "text": "Unpin",
+                  "type": "text"
+                }
+              ],
+              "gap": 4,
+              "id": "drag-label",
+              "type": "row"
+            },
+            "draggable": true,
+            "dropTargets": [
+              {
+                "accentWhenHovered": true,
+                "action": {
+                  "method": "POST",
+                  "name": "unpin",
+                  "path": "/ui/action/unpin",
+                  "payload": {
+                    "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e"
+                  }
+                },
+                "id": "section-active",
+                "label": "Unpin"
+              },
+              {
+                "accentWhenHovered": true,
+                "action": {
+                  "method": "POST",
+                  "name": "settle",
+                  "path": "/ui/action/settle",
+                  "payload": {
+                    "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e"
+                  }
+                },
+                "id": "section-settled",
+                "label": "Settle"
+              }
+            ],
+            "hoverReveal": true,
+            "id": "session-row:e67c7fa2-68a2-497a-9c3b-0dd02284f16e",
+            "pinned": true,
+            "pinnedOrder": null,
+            "searchMatch": {
+              "key": "sidebarSearch",
+              "minChars": 2
+            },
+            "settledAt": null,
+            "settledReason": null,
+            "snoozedUntil": null,
+            "sortOrder": null,
+            "status": "active",
+            "statusIndicators": [
+              "idle",
+              "pinned"
+            ],
+            "subtitle": {
+              "align": "center",
+              "children": [
+                {
+                  "color": "$color.sidebar-muted-foreground",
+                  "ellipsis": true,
+                  "flex": 1,
+                  "maxLines": 1,
+                  "style": "caption",
+                  "text": "/tmp/drag-pinned",
+                  "type": "text"
+                },
+                {
+                  "border": "$color.border",
+                  "borderRadius": "$radius.sm",
+                  "child": {
+                    "ellipsis": true,
+                    "fontSize": 12,
+                    "maxLines": 1,
+                    "text": "drag-pinned",
+                    "type": "text"
+                  },
+                  "id": "thread-context-chip",
+                  "padding": {
+                    "bottom": 2,
+                    "left": 6,
+                    "right": 6,
+                    "top": 2
+                  },
+                  "tooltip": "Project: /tmp/drag-pinned",
+                  "type": "box"
+                }
+              ],
+              "gap": 4,
+              "type": "row"
+            },
+            "title": {
+              "content": {
+                "children": [
+                  {
+                    "ellipsis": true,
+                    "fontSize": 12,
+                    "fontWeight": 500,
+                    "maxLines": 1,
+                    "text": "drag-pinned",
+                    "type": "text"
+                  },
+                  {
+                    "align": "center",
+                    "children": [
+                      {
+                        "icon": "folder",
+                        "size": 12,
+                        "type": "icon"
+                      },
+                      {
+                        "color": "$color.sidebar-muted-foreground",
+                        "ellipsis": true,
+                        "fontSize": 12,
+                        "maxLines": 1,
+                        "text": "/tmp/drag-pinned",
+                        "type": "text"
+                      }
+                    ],
+                    "gap": 8,
+                    "type": "row"
+                  }
+                ],
+                "gap": 6,
+                "id": "thread-hover-card",
+                "type": "column"
+              },
+              "delay": 500,
+              "placement": "right",
+              "trigger": {
+                "ellipsis": true,
+                "fontSize": 14,
+                "fontWeight": 600,
+                "maxLines": 1,
+                "text": "drag-pinned",
+                "type": "text"
+              },
+              "type": "hover_card"
+            },
+            "trailing": {
+              "items": [
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "unpin",
+                    "path": "/ui/action/unpin",
+                    "payload": {
+                      "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e"
+                    }
+                  },
+                  "icon": "keep_off",
+                  "label": "Unpin thread"
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "settle",
+                    "path": "/ui/action/settle",
+                    "payload": {
+                      "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e"
+                    }
+                  },
+                  "icon": "check_circle",
+                  "label": "Settle thread"
+                },
+                {
+                  "children": [
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e",
+                          "until": 1791248824867
+                        }
+                      },
+                      "label": "In 1 hour (4:07 AM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e",
+                          "until": 1791256024867
+                        }
+                      },
+                      "label": "In 3 hours (6:07 AM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e",
+                          "until": 1791298800000
+                        }
+                      },
+                      "label": "This evening (6:00 PM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e",
+                          "until": 1791352800000
+                        }
+                      },
+                      "label": "Tomorrow (9:00 AM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e",
+                          "until": 1791784800000
+                        }
+                      },
+                      "label": "Next week (Mon 9:00 AM)"
+                    },
+                    {
+                      "action": {
+                        "node": {
+                          "children": [
+                            {
+                              "style": "h3",
+                              "text": "Custom snooze",
+                              "type": "text"
+                            },
+                            {
+                              "fields": [
+                                {
+                                  "errorText": "A number of hours is required",
+                                  "id": "customSnoozeHours",
+                                  "label": "Hours from now",
+                                  "required": true,
+                                  "type": "input"
+                                }
+                              ],
+                              "submit": {
+                                "action": {
+                                  "method": "POST",
+                                  "name": "demo-snooze",
+                                  "path": "/ui/action/demo-snooze"
+                                },
+                                "label": "Confirm"
+                              },
+                              "type": "form"
+                            },
+                            {
+                              "action": {
+                                "op": "dismissDialog"
+                              },
+                              "label": "Cancel",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "demo": true,
+                          "gap": 12,
+                          "id": "custom-snooze-dialog",
+                          "type": "column"
+                        },
+                        "op": "dialog"
+                      },
+                      "label": "Custom…",
+                      "separatorBefore": true
+                    }
+                  ],
+                  "icon": "schedule",
+                  "label": "Snooze"
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "regenerate-title",
+                    "path": "/ui/action/regenerate-title",
+                    "payload": {
+                      "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e"
+                    }
+                  },
+                  "icon": "refresh",
+                  "label": "Regenerate title",
+                  "separatorBefore": true
+                },
+                {
+                  "children": [
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "auto-settle",
+                        "path": "/ui/action/auto-settle",
+                        "payload": {
+                          "enabled": true,
+                          "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e"
+                        }
+                      },
+                      "checked": true,
+                      "label": "Enabled"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "auto-settle",
+                        "path": "/ui/action/auto-settle",
+                        "payload": {
+                          "enabled": false,
+                          "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e"
+                        }
+                      },
+                      "checked": false,
+                      "label": "Disabled"
+                    }
+                  ],
+                  "icon": "timer",
+                  "label": "Auto-settle behavior"
+                },
+                {
+                  "action": {
+                    "kind": "sheet",
+                    "node": {
+                      "body": {
+                        "children": [
+                          {
+                            "dragHandle": true,
+                            "title": "drag-pinned",
+                            "type": "list_row"
+                          },
+                          {
+                            "dragHandle": true,
+                            "title": "drag-active",
+                            "type": "list_row"
+                          }
+                        ],
+                        "gap": 4,
+                        "id": "arrange-sheet-body",
+                        "type": "column"
+                      },
+                      "demo": true,
+                      "footer": {
+                        "align": "center",
+                        "children": [
+                          {
+                            "type": "spacer"
+                          },
+                          {
+                            "action": {
+                              "op": "dismissDialog"
+                            },
+                            "label": "Done",
+                            "style": "primary",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "title": "Arrange threads",
+                      "type": "sheet"
+                    },
+                    "op": "dialog"
+                  },
+                  "icon": "drag_handle",
+                  "label": "Arrange threads"
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "archive",
+                    "path": "/ui/action/archive",
+                    "payload": {
+                      "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e"
+                    }
+                  },
+                  "confirm": "Archive this thread?",
+                  "icon": "archive",
+                  "label": "Archive thread",
+                  "separatorBefore": true
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "delete-session",
+                    "path": "/ui/action/delete-session",
+                    "payload": {
+                      "id": "e67c7fa2-68a2-497a-9c3b-0dd02284f16e"
+                    }
+                  },
+                  "confirm": "Delete this thread? This cannot be undone.",
+                  "danger": true,
+                  "icon": "delete",
+                  "label": "Delete"
+                }
+              ],
+              "trigger": {
+                "action": {
+                  "method": "POST",
+                  "name": "noop",
+                  "path": "/ui/action/noop"
+                },
+                "icon": "more_vert",
+                "type": "icon_button"
+              },
+              "type": "menu"
+            },
+            "type": "list_row",
+            "workdir": "/tmp/drag-pinned"
+          }
+        ],
+        "label": "Pinned",
+        "storeKey": "sidebar.section.pinned.collapsed",
+        "uppercase": true
+      },
+      {
+        "badgeStyle": "sidebar-control-surface",
+        "boundaryLabel": "Active",
+        "collapsed": false,
+        "collapsible": true,
+        "count": 1,
+        "id": "section-active",
+        "items": [
+          {
+            "action": {
+              "op": "navigate",
+              "screen": "chat:d2c0825f-809b-4fde-ab7d-53858ef98a09"
+            },
+            "archivedAt": null,
+            "dragHandle": false,
+            "dragLabel": {
+              "children": [
+                {
+                  "icon": "push_pin",
+                  "size": 12,
+                  "type": "icon"
+                },
+                {
+                  "fontSize": 12,
+                  "fontWeight": 500,
+                  "text": "Pin",
+                  "type": "text"
+                }
+              ],
+              "gap": 4,
+              "id": "drag-label",
+              "type": "row"
+            },
+            "draggable": true,
+            "dropTargets": [
+              {
+                "accentWhenHovered": true,
+                "action": {
+                  "method": "POST",
+                  "name": "pin",
+                  "path": "/ui/action/pin",
+                  "payload": {
+                    "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09"
+                  }
+                },
+                "id": "section-pinned",
+                "label": "Pin"
+              },
+              {
+                "accentWhenHovered": true,
+                "action": {
+                  "method": "POST",
+                  "name": "settle",
+                  "path": "/ui/action/settle",
+                  "payload": {
+                    "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09"
+                  }
+                },
+                "id": "section-settled",
+                "label": "Settle"
+              }
+            ],
+            "hoverReveal": true,
+            "id": "session-row:d2c0825f-809b-4fde-ab7d-53858ef98a09",
+            "pinned": false,
+            "pinnedOrder": null,
+            "searchMatch": {
+              "key": "sidebarSearch",
+              "minChars": 2
+            },
+            "settledAt": null,
+            "settledReason": null,
+            "snoozedUntil": null,
+            "sortOrder": null,
+            "status": "active",
+            "statusIndicators": [
+              "idle"
+            ],
+            "subtitle": {
+              "align": "center",
+              "children": [
+                {
+                  "color": "$color.sidebar-muted-foreground",
+                  "ellipsis": true,
+                  "flex": 1,
+                  "maxLines": 1,
+                  "style": "caption",
+                  "text": "/tmp/drag-active",
+                  "type": "text"
+                },
+                {
+                  "border": "$color.border",
+                  "borderRadius": "$radius.sm",
+                  "child": {
+                    "ellipsis": true,
+                    "fontSize": 12,
+                    "maxLines": 1,
+                    "text": "drag-active",
+                    "type": "text"
+                  },
+                  "id": "thread-context-chip",
+                  "padding": {
+                    "bottom": 2,
+                    "left": 6,
+                    "right": 6,
+                    "top": 2
+                  },
+                  "tooltip": "Project: /tmp/drag-active",
+                  "type": "box"
+                }
+              ],
+              "gap": 4,
+              "type": "row"
+            },
+            "title": {
+              "content": {
+                "children": [
+                  {
+                    "ellipsis": true,
+                    "fontSize": 12,
+                    "fontWeight": 500,
+                    "maxLines": 1,
+                    "text": "drag-active",
+                    "type": "text"
+                  },
+                  {
+                    "align": "center",
+                    "children": [
+                      {
+                        "icon": "folder",
+                        "size": 12,
+                        "type": "icon"
+                      },
+                      {
+                        "color": "$color.sidebar-muted-foreground",
+                        "ellipsis": true,
+                        "fontSize": 12,
+                        "maxLines": 1,
+                        "text": "/tmp/drag-active",
+                        "type": "text"
+                      }
+                    ],
+                    "gap": 8,
+                    "type": "row"
+                  }
+                ],
+                "gap": 6,
+                "id": "thread-hover-card",
+                "type": "column"
+              },
+              "delay": 500,
+              "placement": "right",
+              "trigger": {
+                "ellipsis": true,
+                "fontSize": 14,
+                "fontWeight": 600,
+                "maxLines": 1,
+                "text": "drag-active",
+                "type": "text"
+              },
+              "type": "hover_card"
+            },
+            "trailing": {
+              "items": [
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "pin",
+                    "path": "/ui/action/pin",
+                    "payload": {
+                      "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09"
+                    }
+                  },
+                  "icon": "keep",
+                  "label": "Pin thread"
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "settle",
+                    "path": "/ui/action/settle",
+                    "payload": {
+                      "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09"
+                    }
+                  },
+                  "icon": "check_circle",
+                  "label": "Settle thread"
+                },
+                {
+                  "children": [
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09",
+                          "until": 1791248824867
+                        }
+                      },
+                      "label": "In 1 hour (4:07 AM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09",
+                          "until": 1791256024867
+                        }
+                      },
+                      "label": "In 3 hours (6:07 AM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09",
+                          "until": 1791298800000
+                        }
+                      },
+                      "label": "This evening (6:00 PM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09",
+                          "until": 1791352800000
+                        }
+                      },
+                      "label": "Tomorrow (9:00 AM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09",
+                          "until": 1791784800000
+                        }
+                      },
+                      "label": "Next week (Mon 9:00 AM)"
+                    },
+                    {
+                      "action": {
+                        "node": {
+                          "children": [
+                            {
+                              "style": "h3",
+                              "text": "Custom snooze",
+                              "type": "text"
+                            },
+                            {
+                              "fields": [
+                                {
+                                  "errorText": "A number of hours is required",
+                                  "id": "customSnoozeHours",
+                                  "label": "Hours from now",
+                                  "required": true,
+                                  "type": "input"
+                                }
+                              ],
+                              "submit": {
+                                "action": {
+                                  "method": "POST",
+                                  "name": "demo-snooze",
+                                  "path": "/ui/action/demo-snooze"
+                                },
+                                "label": "Confirm"
+                              },
+                              "type": "form"
+                            },
+                            {
+                              "action": {
+                                "op": "dismissDialog"
+                              },
+                              "label": "Cancel",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "demo": true,
+                          "gap": 12,
+                          "id": "custom-snooze-dialog",
+                          "type": "column"
+                        },
+                        "op": "dialog"
+                      },
+                      "label": "Custom…",
+                      "separatorBefore": true
+                    }
+                  ],
+                  "icon": "schedule",
+                  "label": "Snooze"
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "regenerate-title",
+                    "path": "/ui/action/regenerate-title",
+                    "payload": {
+                      "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09"
+                    }
+                  },
+                  "icon": "refresh",
+                  "label": "Regenerate title",
+                  "separatorBefore": true
+                },
+                {
+                  "children": [
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "auto-settle",
+                        "path": "/ui/action/auto-settle",
+                        "payload": {
+                          "enabled": true,
+                          "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09"
+                        }
+                      },
+                      "checked": true,
+                      "label": "Enabled"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "auto-settle",
+                        "path": "/ui/action/auto-settle",
+                        "payload": {
+                          "enabled": false,
+                          "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09"
+                        }
+                      },
+                      "checked": false,
+                      "label": "Disabled"
+                    }
+                  ],
+                  "icon": "timer",
+                  "label": "Auto-settle behavior"
+                },
+                {
+                  "action": {
+                    "kind": "sheet",
+                    "node": {
+                      "body": {
+                        "children": [
+                          {
+                            "dragHandle": true,
+                            "title": "drag-pinned",
+                            "type": "list_row"
+                          },
+                          {
+                            "dragHandle": true,
+                            "title": "drag-active",
+                            "type": "list_row"
+                          }
+                        ],
+                        "gap": 4,
+                        "id": "arrange-sheet-body",
+                        "type": "column"
+                      },
+                      "demo": true,
+                      "footer": {
+                        "align": "center",
+                        "children": [
+                          {
+                            "type": "spacer"
+                          },
+                          {
+                            "action": {
+                              "op": "dismissDialog"
+                            },
+                            "label": "Done",
+                            "style": "primary",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "title": "Arrange threads",
+                      "type": "sheet"
+                    },
+                    "op": "dialog"
+                  },
+                  "icon": "drag_handle",
+                  "label": "Arrange threads"
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "archive",
+                    "path": "/ui/action/archive",
+                    "payload": {
+                      "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09"
+                    }
+                  },
+                  "confirm": "Archive this thread?",
+                  "icon": "archive",
+                  "label": "Archive thread",
+                  "separatorBefore": true
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "delete-session",
+                    "path": "/ui/action/delete-session",
+                    "payload": {
+                      "id": "d2c0825f-809b-4fde-ab7d-53858ef98a09"
+                    }
+                  },
+                  "confirm": "Delete this thread? This cannot be undone.",
+                  "danger": true,
+                  "icon": "delete",
+                  "label": "Delete"
+                }
+              ],
+              "trigger": {
+                "action": {
+                  "method": "POST",
+                  "name": "noop",
+                  "path": "/ui/action/noop"
+                },
+                "icon": "more_vert",
+                "type": "icon_button"
+              },
+              "type": "menu"
+            },
+            "type": "list_row",
+            "workdir": "/tmp/drag-active"
+          }
+        ],
+        "label": "Active",
+        "storeKey": "sidebar.section.active.collapsed",
+        "uppercase": true
+      },
+      {
+        "badgeStyle": "sidebar-control-surface",
+        "collapsed": false,
+        "collapsible": true,
+        "count": 0,
+        "id": "section-working",
+        "items": [],
+        "label": "Working",
+        "storeKey": "sidebar.section.working.collapsed",
+        "uppercase": true,
+        "when": "workingSection != false"
+      },
+      {
+        "badgeStyle": "sidebar-control-surface",
+        "collapsed": true,
+        "collapsible": true,
+        "count": 0,
+        "id": "section-snoozed",
+        "items": [],
+        "label": "Snoozed",
+        "storeKey": "sidebar.section.snoozed.collapsed",
+        "uppercase": true
+      },
+      {
+        "badgeStyle": "sidebar-control-surface",
+        "collapsed": true,
+        "collapsible": true,
+        "count": 1,
+        "id": "section-settled",
+        "items": [
+          {
+            "action": {
+              "op": "navigate",
+              "screen": "chat:7d2028b1-4a78-4aa8-83c1-3de04d385874"
+            },
+            "archivedAt": null,
+            "dragHandle": false,
+            "dragLabel": {
+              "children": [
+                {
+                  "icon": "push_pin",
+                  "size": 12,
+                  "type": "icon"
+                },
+                {
+                  "fontSize": 12,
+                  "fontWeight": 500,
+                  "text": "Pin",
+                  "type": "text"
+                }
+              ],
+              "gap": 4,
+              "id": "drag-label",
+              "type": "row"
+            },
+            "draggable": true,
+            "dropTargets": [
+              {
+                "accentWhenHovered": true,
+                "action": {
+                  "method": "POST",
+                  "name": "pin",
+                  "path": "/ui/action/pin",
+                  "payload": {
+                    "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874"
+                  }
+                },
+                "id": "section-pinned",
+                "label": "Pin"
+              },
+              {
+                "accentWhenHovered": true,
+                "action": {
+                  "method": "POST",
+                  "name": "unsettle",
+                  "path": "/ui/action/unsettle",
+                  "payload": {
+                    "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874"
+                  }
+                },
+                "id": "section-active",
+                "label": "Un-settle"
+              }
+            ],
+            "hoverReveal": true,
+            "id": "session-row:7d2028b1-4a78-4aa8-83c1-3de04d385874",
+            "pinned": false,
+            "pinnedOrder": null,
+            "searchMatch": {
+              "key": "sidebarSearch",
+              "minChars": 2
+            },
+            "settledAt": 1791245224788,
+            "settledReason": "manual",
+            "snoozedUntil": null,
+            "sortOrder": null,
+            "status": "active",
+            "statusIndicators": [
+              "settled"
+            ],
+            "subtitle": {
+              "align": "center",
+              "children": [
+                {
+                  "color": "$color.sidebar-muted-foreground",
+                  "ellipsis": true,
+                  "flex": 1,
+                  "maxLines": 1,
+                  "style": "caption",
+                  "text": "/tmp/drag-settled",
+                  "type": "text"
+                },
+                {
+                  "border": "$color.border",
+                  "borderRadius": "$radius.sm",
+                  "child": {
+                    "ellipsis": true,
+                    "fontSize": 12,
+                    "maxLines": 1,
+                    "text": "drag-settled",
+                    "type": "text"
+                  },
+                  "id": "thread-context-chip",
+                  "padding": {
+                    "bottom": 2,
+                    "left": 6,
+                    "right": 6,
+                    "top": 2
+                  },
+                  "tooltip": "Project: /tmp/drag-settled",
+                  "type": "box"
+                }
+              ],
+              "gap": 4,
+              "type": "row"
+            },
+            "title": {
+              "content": {
+                "children": [
+                  {
+                    "ellipsis": true,
+                    "fontSize": 12,
+                    "fontWeight": 500,
+                    "maxLines": 1,
+                    "text": "drag-settled",
+                    "type": "text"
+                  },
+                  {
+                    "align": "center",
+                    "children": [
+                      {
+                        "icon": "folder",
+                        "size": 12,
+                        "type": "icon"
+                      },
+                      {
+                        "color": "$color.sidebar-muted-foreground",
+                        "ellipsis": true,
+                        "fontSize": 12,
+                        "maxLines": 1,
+                        "text": "/tmp/drag-settled",
+                        "type": "text"
+                      }
+                    ],
+                    "gap": 8,
+                    "type": "row"
+                  }
+                ],
+                "gap": 6,
+                "id": "thread-hover-card",
+                "type": "column"
+              },
+              "delay": 500,
+              "placement": "right",
+              "trigger": {
+                "ellipsis": true,
+                "fontSize": 14,
+                "fontWeight": 600,
+                "maxLines": 1,
+                "text": "drag-settled",
+                "type": "text"
+              },
+              "type": "hover_card"
+            },
+            "trailing": {
+              "items": [
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "pin",
+                    "path": "/ui/action/pin",
+                    "payload": {
+                      "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874"
+                    }
+                  },
+                  "icon": "keep",
+                  "label": "Pin thread"
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "unsettle",
+                    "path": "/ui/action/unsettle",
+                    "payload": {
+                      "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874"
+                    }
+                  },
+                  "icon": "check_circle",
+                  "label": "Un-settle thread"
+                },
+                {
+                  "children": [
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874",
+                          "until": 1791248824867
+                        }
+                      },
+                      "label": "In 1 hour (4:07 AM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874",
+                          "until": 1791256024867
+                        }
+                      },
+                      "label": "In 3 hours (6:07 AM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874",
+                          "until": 1791298800000
+                        }
+                      },
+                      "label": "This evening (6:00 PM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874",
+                          "until": 1791352800000
+                        }
+                      },
+                      "label": "Tomorrow (9:00 AM)"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "snooze",
+                        "path": "/ui/action/snooze",
+                        "payload": {
+                          "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874",
+                          "until": 1791784800000
+                        }
+                      },
+                      "label": "Next week (Mon 9:00 AM)"
+                    },
+                    {
+                      "action": {
+                        "node": {
+                          "children": [
+                            {
+                              "style": "h3",
+                              "text": "Custom snooze",
+                              "type": "text"
+                            },
+                            {
+                              "fields": [
+                                {
+                                  "errorText": "A number of hours is required",
+                                  "id": "customSnoozeHours",
+                                  "label": "Hours from now",
+                                  "required": true,
+                                  "type": "input"
+                                }
+                              ],
+                              "submit": {
+                                "action": {
+                                  "method": "POST",
+                                  "name": "demo-snooze",
+                                  "path": "/ui/action/demo-snooze"
+                                },
+                                "label": "Confirm"
+                              },
+                              "type": "form"
+                            },
+                            {
+                              "action": {
+                                "op": "dismissDialog"
+                              },
+                              "label": "Cancel",
+                              "style": "text",
+                              "type": "button"
+                            }
+                          ],
+                          "demo": true,
+                          "gap": 12,
+                          "id": "custom-snooze-dialog",
+                          "type": "column"
+                        },
+                        "op": "dialog"
+                      },
+                      "label": "Custom…",
+                      "separatorBefore": true
+                    }
+                  ],
+                  "icon": "schedule",
+                  "label": "Snooze"
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "regenerate-title",
+                    "path": "/ui/action/regenerate-title",
+                    "payload": {
+                      "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874"
+                    }
+                  },
+                  "icon": "refresh",
+                  "label": "Regenerate title",
+                  "separatorBefore": true
+                },
+                {
+                  "children": [
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "auto-settle",
+                        "path": "/ui/action/auto-settle",
+                        "payload": {
+                          "enabled": true,
+                          "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874"
+                        }
+                      },
+                      "checked": true,
+                      "label": "Enabled"
+                    },
+                    {
+                      "action": {
+                        "method": "POST",
+                        "name": "auto-settle",
+                        "path": "/ui/action/auto-settle",
+                        "payload": {
+                          "enabled": false,
+                          "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874"
+                        }
+                      },
+                      "checked": false,
+                      "label": "Disabled"
+                    }
+                  ],
+                  "icon": "timer",
+                  "label": "Auto-settle behavior"
+                },
+                {
+                  "action": {
+                    "kind": "sheet",
+                    "node": {
+                      "body": {
+                        "children": [
+                          {
+                            "dragHandle": true,
+                            "title": "drag-pinned",
+                            "type": "list_row"
+                          },
+                          {
+                            "dragHandle": true,
+                            "title": "drag-active",
+                            "type": "list_row"
+                          }
+                        ],
+                        "gap": 4,
+                        "id": "arrange-sheet-body",
+                        "type": "column"
+                      },
+                      "demo": true,
+                      "footer": {
+                        "align": "center",
+                        "children": [
+                          {
+                            "type": "spacer"
+                          },
+                          {
+                            "action": {
+                              "op": "dismissDialog"
+                            },
+                            "label": "Done",
+                            "style": "primary",
+                            "type": "button"
+                          }
+                        ],
+                        "type": "row"
+                      },
+                      "title": "Arrange threads",
+                      "type": "sheet"
+                    },
+                    "op": "dialog"
+                  },
+                  "icon": "drag_handle",
+                  "label": "Arrange threads"
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "archive",
+                    "path": "/ui/action/archive",
+                    "payload": {
+                      "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874"
+                    }
+                  },
+                  "confirm": "Archive this thread?",
+                  "icon": "archive",
+                  "label": "Archive thread",
+                  "separatorBefore": true
+                },
+                {
+                  "action": {
+                    "method": "POST",
+                    "name": "delete-session",
+                    "path": "/ui/action/delete-session",
+                    "payload": {
+                      "id": "7d2028b1-4a78-4aa8-83c1-3de04d385874"
+                    }
+                  },
+                  "confirm": "Delete this thread? This cannot be undone.",
+                  "danger": true,
+                  "icon": "delete",
+                  "label": "Delete"
+                }
+              ],
+              "trigger": {
+                "action": {
+                  "method": "POST",
+                  "name": "noop",
+                  "path": "/ui/action/noop"
+                },
+                "icon": "more_vert",
+                "type": "icon_button"
+              },
+              "type": "menu"
+            },
+            "type": "list_row",
+            "workdir": "/tmp/drag-settled"
+          }
+        ],
+        "label": "Settled",
+        "storeKey": "sidebar.section.settled.collapsed",
+        "uppercase": true
+      }
+    ],
+    "type": "list"
+  },
+  "id": "sidebar-split",
+  "initial": 256,
+  "min": 208,
+  "minSecond": 640,
+  "persistKey": "chat_thread_sidebar_width",
+  "second": {
+    "children": [
+      {
+        "style": "caption",
+        "text": "Choose a thread from the sidebar to open the conversation.",
+        "type": "text"
+      }
+    ],
+    "title": "Select a thread",
+    "type": "card"
+  },
+  "type": "split"
+}

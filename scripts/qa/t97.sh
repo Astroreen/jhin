@@ -338,12 +338,24 @@ test_count=$(grep -h -o 'tests="[0-9]*"' \
 ok "ui-default and ui-kit suites green ($test_count tests; transcript in test.txt)"
 
 # --- 3. The Flutter suites: the row anatomy + the T92 indicators ---
+# The row-anatomy golden is regenerated into goldens/ (flutter test
+# --update-goldens with T97_GOLDEN_DIR) and then verified byte-identical
+# by a second pass without the flag (the t93 canon).
+bash scripts/qa/flutter-test.sh test/sdui/sidebar_row_test.dart \
+  --update-goldens \
+  --dart-define=T97_GOLDEN_DIR="$(pwd)/$evidence/goldens" \
+  2>&1 | tee "$evidence/flutter-row-goldens.txt"
+grep -q 'All tests passed' "$evidence/flutter-row-goldens.txt" \
+  || fail "the Flutter row-anatomy golden run failed (see $evidence/flutter-row-goldens.txt)"
+[ -s "$evidence/goldens/sidebar-row-anatomy-light.png" ] \
+  || fail "the row-anatomy golden is missing or empty (goldens/)"
+
 bash scripts/qa/flutter-test.sh test/sdui/sidebar_row_test.dart \
   --dart-define=T97_GOLDEN_DIR="$(pwd)/$evidence/goldens" \
   2>&1 | tee "$evidence/flutter-row.txt"
 grep -q 'All tests passed' "$evidence/flutter-row.txt" \
   || fail "the Flutter row-anatomy suite failed (see $evidence/flutter-row.txt)"
-ok "Flutter row suite green: the ten-kind cluster, the hover reveal, the row states, the search-match pill and the section filter (flutter-row.txt)"
+ok "Flutter row suite green: the ten-kind cluster, the hover reveal, the row states, the search-match pill and the section filter; the row-anatomy golden regenerated and verified byte-identical (flutter-row.txt, flutter-row-goldens.txt)"
 
 bash scripts/qa/flutter-test.sh test/sdui/status_indicators_test.dart \
   2>&1 | tee "$evidence/flutter-status.txt"

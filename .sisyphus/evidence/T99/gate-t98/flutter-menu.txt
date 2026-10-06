@@ -1,0 +1,90 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/thread_menu_test.dart
+00:00 +0: a children item opens the nested submenu popup and a child dispatches
+
+Warning: A call to tap() with finder "Found 1 widget with text "open": [
+  Text("open", inherit: true, size: 14.0, weight: 400, height: 1.5x, dependencies: [DefaultSelectionStyle, DefaultTextStyle, MediaQuery]),
+]" derived an Offset (Offset(28.5, 10.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderParagraph#aa1fb relayoutBoundary=up13
+The hit test result at that offset is: HitTestResult(RenderPointerListener#a702b@Offset(28.5, 10.5), RenderSemanticsAnnotations#eb55c@Offset(28.5, 10.5), RenderMouseRegion#fe732@Offset(28.5, 10.5), RenderSemanticsAnnotations#f19fe@Offset(28.5, 10.5), RenderMouseRegion#9102e@Offset(28.5, 10.5), RenderSemanticsAnnotations#40463@Offset(28.5, 10.5), RenderPointerListener#0e25e@Offset(28.5, 10.5), _RenderExclusiveMouseRegion#833e1@Offset(28.5, 10.5), RenderSemanticsAnnotations#8a9d1@Offset(28.5, 10.5), _RenderLayoutSurrogateProxyBox#4ecc7@Offset(28.5, 10.5), RenderSemanticsAnnotations#07d47@Offset(28.5, 10.5), RenderCustomMultiChildLayoutBox#c7e6a@Offset(28.5, 10.5), _RenderInkFeatures#8b352@Offset(28.5, 10.5), RenderPhysicalModel#24530@Offset(28.5, 10.5), RenderSemanticsAnnotations#4b262@Offset(28.5, 10.5), RenderRepaintBoundary#e4297@Offset(28.5, 10.5), RenderIgnorePointer#dfc8e@Offset(28.5, 10.5), RenderAnimatedOpacity#b2c8e@Offset(28.5, 10.5), RenderAnimatedOpacity#4a088@Offset(28.5, 10.5), _RenderColoredBox#e94d3@Offset(28.5, 10.5), RenderAnimatedOpacity#cac6a@Offset(28.5, 10.5), RenderIgnorePointer#fab37@Offset(28.5, 10.5), RenderAnimatedOpacity#bbfac@Offset(28.5, 10.5), RenderRepaintBoundary#3d058@Offset(28.5, 10.5), RenderSemanticsAnnotations#90409@Offset(28.5, 10.5), RenderOffstage#f6eae@Offset(28.5, 10.5), RenderSemanticsAnnotations#b6eae@Offset(28.5, 10.5), _RenderTheater#ab09d@Offset(28.5, 10.5), RenderAbsorbPointer#243bf@Offset(28.5, 10.5), RenderPointerListener#21af1@Offset(28.5, 10.5), RenderSemanticsAnnotations#43e88@Offset(28.5, 10.5), RenderCustomPaint#801cf@Offset(28.5, 10.5), RenderSemanticsAnnotations#5358c@Offset(28.5, 10.5), RenderSemanticsAnnotations#dc815@Offset(28.5, 10.5), RenderSemanticsAnnotations#a140b@Offset(28.5, 10.5), RenderTapRegionSurface#9408a@Offset(28.5, 10.5), RenderSemanticsAnnotations#649ee@Offset(28.5, 10.5), RenderSemanticsAnnotations#1ef6b@Offset(28.5, 10.5), HitTestEntry<HitTestTarget>#6407a(_ReusableRenderView#84854), HitTestEntry<HitTestTarget>#30564(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///home/astroreen/Documents/jhin/frontend/test/sdui/thread_menu_test.dart:110:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+00:00 +1: checked entries render the check mark and dispatch
+
+Warning: A call to tap() with finder "Found 1 widget with text "open": [
+  Text("open", inherit: true, size: 14.0, weight: 400, height: 1.5x, dependencies: [DefaultSelectionStyle, DefaultTextStyle, MediaQuery]),
+]" derived an Offset (Offset(28.5, 10.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderParagraph#693d1 relayoutBoundary=up13
+The hit test result at that offset is: HitTestResult(RenderPointerListener#612cc@Offset(28.5, 10.5), RenderSemanticsAnnotations#d4488@Offset(28.5, 10.5), RenderMouseRegion#1e786@Offset(28.5, 10.5), RenderSemanticsAnnotations#1a8ba@Offset(28.5, 10.5), RenderMouseRegion#b1143@Offset(28.5, 10.5), RenderSemanticsAnnotations#05a71@Offset(28.5, 10.5), RenderPointerListener#4d4c1@Offset(28.5, 10.5), _RenderExclusiveMouseRegion#06e78@Offset(28.5, 10.5), RenderSemanticsAnnotations#0ed45@Offset(28.5, 10.5), _RenderLayoutSurrogateProxyBox#ee71e@Offset(28.5, 10.5), RenderSemanticsAnnotations#9da06@Offset(28.5, 10.5), RenderCustomMultiChildLayoutBox#715c6@Offset(28.5, 10.5), _RenderInkFeatures#c6bad@Offset(28.5, 10.5), RenderPhysicalModel#5970b@Offset(28.5, 10.5), RenderSemanticsAnnotations#86942@Offset(28.5, 10.5), RenderRepaintBoundary#5524e@Offset(28.5, 10.5), RenderIgnorePointer#a92a9@Offset(28.5, 10.5), RenderAnimatedOpacity#9c15c@Offset(28.5, 10.5), RenderAnimatedOpacity#d505c@Offset(28.5, 10.5), _RenderColoredBox#59bc9@Offset(28.5, 10.5), RenderAnimatedOpacity#60377@Offset(28.5, 10.5), RenderIgnorePointer#db5d0@Offset(28.5, 10.5), RenderAnimatedOpacity#a39d9@Offset(28.5, 10.5), RenderRepaintBoundary#b01b7@Offset(28.5, 10.5), RenderSemanticsAnnotations#33b08@Offset(28.5, 10.5), RenderOffstage#7dd5f@Offset(28.5, 10.5), RenderSemanticsAnnotations#13c15@Offset(28.5, 10.5), _RenderTheater#f3092@Offset(28.5, 10.5), RenderAbsorbPointer#a9e20@Offset(28.5, 10.5), RenderPointerListener#ce725@Offset(28.5, 10.5), RenderSemanticsAnnotations#8bf75@Offset(28.5, 10.5), RenderCustomPaint#236c3@Offset(28.5, 10.5), RenderSemanticsAnnotations#3fdbd@Offset(28.5, 10.5), RenderSemanticsAnnotations#a46c1@Offset(28.5, 10.5), RenderSemanticsAnnotations#0f643@Offset(28.5, 10.5), RenderTapRegionSurface#b1308@Offset(28.5, 10.5), RenderSemanticsAnnotations#b6212@Offset(28.5, 10.5), RenderSemanticsAnnotations#7b838@Offset(28.5, 10.5), HitTestEntry<HitTestTarget>#bec62(_ReusableRenderView#84854), HitTestEntry<HitTestTarget>#fa26a(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///home/astroreen/Documents/jhin/frontend/test/sdui/thread_menu_test.dart:131:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+00:00 +2: separatorBefore renders a divider above the entry
+
+Warning: A call to tap() with finder "Found 1 widget with text "open": [
+  Text("open", inherit: true, size: 14.0, weight: 400, height: 1.5x, dependencies: [DefaultSelectionStyle, DefaultTextStyle, MediaQuery]),
+]" derived an Offset (Offset(28.5, 10.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderParagraph#9b59e relayoutBoundary=up13
+The hit test result at that offset is: HitTestResult(RenderPointerListener#e9dbf@Offset(28.5, 10.5), RenderSemanticsAnnotations#49c21@Offset(28.5, 10.5), RenderMouseRegion#0479f@Offset(28.5, 10.5), RenderSemanticsAnnotations#30347@Offset(28.5, 10.5), RenderMouseRegion#57a2a@Offset(28.5, 10.5), RenderSemanticsAnnotations#13149@Offset(28.5, 10.5), RenderPointerListener#a38a6@Offset(28.5, 10.5), _RenderExclusiveMouseRegion#a80e4@Offset(28.5, 10.5), RenderSemanticsAnnotations#15baa@Offset(28.5, 10.5), _RenderLayoutSurrogateProxyBox#221e5@Offset(28.5, 10.5), RenderSemanticsAnnotations#a820a@Offset(28.5, 10.5), RenderCustomMultiChildLayoutBox#67bda@Offset(28.5, 10.5), _RenderInkFeatures#1b4c1@Offset(28.5, 10.5), RenderPhysicalModel#954d6@Offset(28.5, 10.5), RenderSemanticsAnnotations#fb23d@Offset(28.5, 10.5), RenderRepaintBoundary#310e1@Offset(28.5, 10.5), RenderIgnorePointer#70481@Offset(28.5, 10.5), RenderAnimatedOpacity#69b4f@Offset(28.5, 10.5), RenderAnimatedOpacity#dab43@Offset(28.5, 10.5), _RenderColoredBox#ebd23@Offset(28.5, 10.5), RenderAnimatedOpacity#c096b@Offset(28.5, 10.5), RenderIgnorePointer#71854@Offset(28.5, 10.5), RenderAnimatedOpacity#d0841@Offset(28.5, 10.5), RenderRepaintBoundary#d1da9@Offset(28.5, 10.5), RenderSemanticsAnnotations#3c5a6@Offset(28.5, 10.5), RenderOffstage#fe35a@Offset(28.5, 10.5), RenderSemanticsAnnotations#3a394@Offset(28.5, 10.5), _RenderTheater#167a0@Offset(28.5, 10.5), RenderAbsorbPointer#b1fbe@Offset(28.5, 10.5), RenderPointerListener#6ec77@Offset(28.5, 10.5), RenderSemanticsAnnotations#acc73@Offset(28.5, 10.5), RenderCustomPaint#c2a49@Offset(28.5, 10.5), RenderSemanticsAnnotations#00574@Offset(28.5, 10.5), RenderSemanticsAnnotations#0a5ab@Offset(28.5, 10.5), RenderSemanticsAnnotations#35d5f@Offset(28.5, 10.5), RenderTapRegionSurface#eedb9@Offset(28.5, 10.5), RenderSemanticsAnnotations#ad2cf@Offset(28.5, 10.5), RenderSemanticsAnnotations#47848@Offset(28.5, 10.5), HitTestEntry<HitTestTarget>#e8295(_ReusableRenderView#84854), HitTestEntry<HitTestTarget>#337cb(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///home/astroreen/Documents/jhin/frontend/test/sdui/thread_menu_test.dart:149:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+00:00 +3: the sheet presentation renders children as an indented group with the checked marks
+
+Warning: A call to tap() with finder "Found 1 widget with text "open": [
+  Text("open", inherit: true, size: 14.0, weight: 400, height: 1.5x, dependencies: [DefaultSelectionStyle, DefaultTextStyle, MediaQuery]),
+]" derived an Offset (Offset(28.5, 10.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderParagraph#2cd0a relayoutBoundary=up4
+The hit test result at that offset is: HitTestResult(RenderPointerListener#6c6f6@Offset(28.5, 10.5), RenderSemanticsGestureHandler#8fd48@Offset(28.5, 10.5), RenderCustomMultiChildLayoutBox#8c392@Offset(28.5, 10.5), _RenderInkFeatures#dfb63@Offset(28.5, 10.5), RenderPhysicalModel#f302a@Offset(28.5, 10.5), RenderSemanticsAnnotations#7d8cc@Offset(28.5, 10.5), RenderRepaintBoundary#29b88@Offset(28.5, 10.5), RenderIgnorePointer#f2d84@Offset(28.5, 10.5), RenderAnimatedOpacity#f0884@Offset(28.5, 10.5), RenderAnimatedOpacity#26220@Offset(28.5, 10.5), _RenderColoredBox#35f7d@Offset(28.5, 10.5), RenderAnimatedOpacity#775c6@Offset(28.5, 10.5), RenderIgnorePointer#2c337@Offset(28.5, 10.5), RenderAnimatedOpacity#621d7@Offset(28.5, 10.5), RenderRepaintBoundary#04c25@Offset(28.5, 10.5), RenderSemanticsAnnotations#3b9cd@Offset(28.5, 10.5), RenderOffstage#a8c29@Offset(28.5, 10.5), RenderSemanticsAnnotations#95722@Offset(28.5, 10.5), _RenderTheater#e5bbb@Offset(28.5, 10.5), RenderAbsorbPointer#bf28e@Offset(28.5, 10.5), RenderPointerListener#98ec6@Offset(28.5, 10.5), RenderSemanticsAnnotations#234e5@Offset(28.5, 10.5), RenderCustomPaint#c8ba7@Offset(28.5, 10.5), RenderSemanticsAnnotations#4eec3@Offset(28.5, 10.5), RenderSemanticsAnnotations#384aa@Offset(28.5, 10.5), RenderSemanticsAnnotations#3c936@Offset(28.5, 10.5), RenderTapRegionSurface#3929c@Offset(28.5, 10.5), RenderSemanticsAnnotations#98c00@Offset(28.5, 10.5), RenderSemanticsAnnotations#b8385@Offset(28.5, 10.5), HitTestEntry<HitTestTarget>#14ebd(_ReusableRenderView#84854), HitTestEntry<HitTestTarget>#81b8d(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///home/astroreen/Documents/jhin/frontend/test/sdui/thread_menu_test.dart:160:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+00:00 +4: All tests passed!

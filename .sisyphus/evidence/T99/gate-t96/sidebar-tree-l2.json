@@ -1,0 +1,1001 @@
+{
+  "children": [
+    {
+      "footer": {
+        "align": "center",
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.success",
+                "height": 8,
+                "shape": "circle",
+                "type": "box",
+                "width": 8
+              },
+              {
+                "style": "caption",
+                "text": "Online",
+                "type": "text"
+              }
+            ],
+            "gap": 4,
+            "id": "sidebar-status-dot",
+            "tooltip": "Online",
+            "type": "row"
+          },
+          {
+            "initials": "LO",
+            "shape": "circle",
+            "size": 20,
+            "type": "avatar"
+          },
+          {
+            "flex": 1,
+            "style": "small",
+            "text": "local",
+            "type": "text"
+          },
+          {
+            "action": {
+              "op": "navigate",
+              "screen": "settings"
+            },
+            "icon": "settings",
+            "tooltip": "Settings",
+            "type": "icon_button"
+          },
+          {
+            "action": {
+              "op": "openProfiles"
+            },
+            "icon": "person",
+            "tooltip": "Switch profile",
+            "type": "icon_button"
+          }
+        ],
+        "gap": 8,
+        "id": "sidebar-footer",
+        "type": "row"
+      },
+      "header": {
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "bold": true,
+                "style": "h3",
+                "text": "Jhin",
+                "type": "text"
+              },
+              {
+                "type": "spacer"
+              },
+              {
+                "demo": true,
+                "icon": "chevron_right",
+                "type": "icon_button"
+              }
+            ],
+            "id": "sidebar-brand",
+            "type": "row"
+          },
+          {
+            "align": "center",
+            "children": [
+              {
+                "flex": 1,
+                "id": "sidebarSearch",
+                "placeholder": "Search threads",
+                "type": "input"
+              },
+              {
+                "action": {
+                  "node": {
+                    "children": [
+                      {
+                        "style": "h3",
+                        "text": "New thread",
+                        "type": "text"
+                      },
+                      {
+                        "fields": [
+                          {
+                            "errorText": "A title is required",
+                            "id": "newThreadTitle",
+                            "label": "Title",
+                            "required": true,
+                            "type": "input"
+                          },
+                          {
+                            "errorText": "A working directory is required",
+                            "id": "newThreadWorkdir",
+                            "label": "Working directory",
+                            "required": true,
+                            "type": "input"
+                          }
+                        ],
+                        "submit": {
+                          "action": {
+                            "include": [
+                              "newThreadTitle",
+                              "newThreadWorkdir"
+                            ],
+                            "method": "POST",
+                            "name": "create-session",
+                            "path": "/ui/action/create-session"
+                          },
+                          "label": "Create thread"
+                        },
+                        "type": "form"
+                      }
+                    ],
+                    "gap": 12,
+                    "id": "new-thread-dialog",
+                    "type": "column"
+                  },
+                  "op": "dialog"
+                },
+                "icon": "add",
+                "label": "New thread",
+                "style": "primary",
+                "type": "button"
+              }
+            ],
+            "gap": 8,
+            "id": "sidebar-search",
+            "type": "row"
+          }
+        ],
+        "gap": 8,
+        "id": "sidebar-header",
+        "type": "column"
+      },
+      "id": "sidebar-sections",
+      "search": {
+        "fields": [
+          "title",
+          "subtitle"
+        ],
+        "key": "sidebarSearch"
+      },
+      "sections": [
+        {
+          "badgeStyle": "sidebar-control-surface",
+          "boundaryLabel": "Pinned",
+          "collapsed": false,
+          "collapsible": true,
+          "count": 0,
+          "id": "section-pinned",
+          "items": [],
+          "label": "Pinned",
+          "storeKey": "sidebar.section.pinned.collapsed",
+          "uppercase": true
+        },
+        {
+          "badgeStyle": "sidebar-control-surface",
+          "boundaryLabel": "Active",
+          "collapsed": false,
+          "collapsible": true,
+          "count": 1,
+          "id": "section-active",
+          "items": [
+            {
+              "action": {
+                "op": "navigate",
+                "screen": "chat:4f5b905c-161e-4d12-9a1b-aded0e73e149"
+              },
+              "archivedAt": null,
+              "dragHandle": false,
+              "dragLabel": {
+                "children": [
+                  {
+                    "icon": "push_pin",
+                    "size": 12,
+                    "type": "icon"
+                  },
+                  {
+                    "fontSize": 12,
+                    "fontWeight": 500,
+                    "text": "Pin",
+                    "type": "text"
+                  }
+                ],
+                "gap": 4,
+                "id": "drag-label",
+                "type": "row"
+              },
+              "draggable": true,
+              "dropTargets": [
+                {
+                  "accentWhenHovered": true,
+                  "action": {
+                    "method": "POST",
+                    "name": "pin",
+                    "path": "/ui/action/pin",
+                    "payload": {
+                      "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149"
+                    }
+                  },
+                  "id": "section-pinned",
+                  "label": "Pin"
+                },
+                {
+                  "accentWhenHovered": true,
+                  "action": {
+                    "method": "POST",
+                    "name": "settle",
+                    "path": "/ui/action/settle",
+                    "payload": {
+                      "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149"
+                    }
+                  },
+                  "id": "section-settled",
+                  "label": "Settle"
+                }
+              ],
+              "hoverReveal": true,
+              "id": "session-row:4f5b905c-161e-4d12-9a1b-aded0e73e149",
+              "pinned": false,
+              "pinnedOrder": null,
+              "searchMatch": {
+                "key": "sidebarSearch",
+                "minChars": 2
+              },
+              "settledAt": null,
+              "settledReason": null,
+              "snoozedUntil": null,
+              "sortOrder": null,
+              "status": "active",
+              "statusIndicators": [
+                "idle"
+              ],
+              "subtitle": {
+                "align": "center",
+                "children": [
+                  {
+                    "color": "$color.sidebar-muted-foreground",
+                    "ellipsis": true,
+                    "flex": 1,
+                    "maxLines": 1,
+                    "style": "caption",
+                    "text": "/tmp/active-thread",
+                    "type": "text"
+                  },
+                  {
+                    "border": "$color.border",
+                    "borderRadius": "$radius.sm",
+                    "child": {
+                      "ellipsis": true,
+                      "fontSize": 12,
+                      "maxLines": 1,
+                      "text": "active-thread",
+                      "type": "text"
+                    },
+                    "id": "thread-context-chip",
+                    "padding": {
+                      "bottom": 2,
+                      "left": 6,
+                      "right": 6,
+                      "top": 2
+                    },
+                    "tooltip": "Project: /tmp/active-thread",
+                    "type": "box"
+                  }
+                ],
+                "gap": 4,
+                "type": "row"
+              },
+              "title": {
+                "content": {
+                  "children": [
+                    {
+                      "ellipsis": true,
+                      "fontSize": 12,
+                      "fontWeight": 500,
+                      "maxLines": 1,
+                      "text": "active-thread",
+                      "type": "text"
+                    },
+                    {
+                      "align": "center",
+                      "children": [
+                        {
+                          "icon": "folder",
+                          "size": 12,
+                          "type": "icon"
+                        },
+                        {
+                          "color": "$color.sidebar-muted-foreground",
+                          "ellipsis": true,
+                          "fontSize": 12,
+                          "maxLines": 1,
+                          "text": "/tmp/active-thread",
+                          "type": "text"
+                        }
+                      ],
+                      "gap": 8,
+                      "type": "row"
+                    }
+                  ],
+                  "gap": 6,
+                  "id": "thread-hover-card",
+                  "type": "column"
+                },
+                "delay": 500,
+                "placement": "right",
+                "trigger": {
+                  "ellipsis": true,
+                  "fontSize": 14,
+                  "fontWeight": 600,
+                  "maxLines": 1,
+                  "text": "active-thread",
+                  "type": "text"
+                },
+                "type": "hover_card"
+              },
+              "trailing": {
+                "items": [
+                  {
+                    "action": {
+                      "method": "POST",
+                      "name": "pin",
+                      "path": "/ui/action/pin",
+                      "payload": {
+                        "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149"
+                      }
+                    },
+                    "icon": "keep",
+                    "label": "Pin thread"
+                  },
+                  {
+                    "action": {
+                      "method": "POST",
+                      "name": "settle",
+                      "path": "/ui/action/settle",
+                      "payload": {
+                        "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149"
+                      }
+                    },
+                    "icon": "check_circle",
+                    "label": "Settle thread"
+                  },
+                  {
+                    "children": [
+                      {
+                        "action": {
+                          "method": "POST",
+                          "name": "snooze",
+                          "path": "/ui/action/snooze",
+                          "payload": {
+                            "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149",
+                            "until": 1791248966757
+                          }
+                        },
+                        "label": "In 1 hour (4:09 AM)"
+                      },
+                      {
+                        "action": {
+                          "method": "POST",
+                          "name": "snooze",
+                          "path": "/ui/action/snooze",
+                          "payload": {
+                            "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149",
+                            "until": 1791256166757
+                          }
+                        },
+                        "label": "In 3 hours (6:09 AM)"
+                      },
+                      {
+                        "action": {
+                          "method": "POST",
+                          "name": "snooze",
+                          "path": "/ui/action/snooze",
+                          "payload": {
+                            "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149",
+                            "until": 1791298800000
+                          }
+                        },
+                        "label": "This evening (6:00 PM)"
+                      },
+                      {
+                        "action": {
+                          "method": "POST",
+                          "name": "snooze",
+                          "path": "/ui/action/snooze",
+                          "payload": {
+                            "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149",
+                            "until": 1791352800000
+                          }
+                        },
+                        "label": "Tomorrow (9:00 AM)"
+                      },
+                      {
+                        "action": {
+                          "method": "POST",
+                          "name": "snooze",
+                          "path": "/ui/action/snooze",
+                          "payload": {
+                            "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149",
+                            "until": 1791784800000
+                          }
+                        },
+                        "label": "Next week (Mon 9:00 AM)"
+                      },
+                      {
+                        "action": {
+                          "node": {
+                            "children": [
+                              {
+                                "style": "h3",
+                                "text": "Custom snooze",
+                                "type": "text"
+                              },
+                              {
+                                "fields": [
+                                  {
+                                    "errorText": "A number of hours is required",
+                                    "id": "customSnoozeHours",
+                                    "label": "Hours from now",
+                                    "required": true,
+                                    "type": "input"
+                                  }
+                                ],
+                                "submit": {
+                                  "action": {
+                                    "method": "POST",
+                                    "name": "demo-snooze",
+                                    "path": "/ui/action/demo-snooze"
+                                  },
+                                  "label": "Confirm"
+                                },
+                                "type": "form"
+                              },
+                              {
+                                "action": {
+                                  "op": "dismissDialog"
+                                },
+                                "label": "Cancel",
+                                "style": "text",
+                                "type": "button"
+                              }
+                            ],
+                            "demo": true,
+                            "gap": 12,
+                            "id": "custom-snooze-dialog",
+                            "type": "column"
+                          },
+                          "op": "dialog"
+                        },
+                        "label": "Custom…",
+                        "separatorBefore": true
+                      }
+                    ],
+                    "icon": "schedule",
+                    "label": "Snooze"
+                  },
+                  {
+                    "action": {
+                      "method": "POST",
+                      "name": "regenerate-title",
+                      "path": "/ui/action/regenerate-title",
+                      "payload": {
+                        "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149"
+                      }
+                    },
+                    "icon": "refresh",
+                    "label": "Regenerate title",
+                    "separatorBefore": true
+                  },
+                  {
+                    "children": [
+                      {
+                        "action": {
+                          "method": "POST",
+                          "name": "auto-settle",
+                          "path": "/ui/action/auto-settle",
+                          "payload": {
+                            "enabled": true,
+                            "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149"
+                          }
+                        },
+                        "checked": true,
+                        "label": "Enabled"
+                      },
+                      {
+                        "action": {
+                          "method": "POST",
+                          "name": "auto-settle",
+                          "path": "/ui/action/auto-settle",
+                          "payload": {
+                            "enabled": false,
+                            "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149"
+                          }
+                        },
+                        "checked": false,
+                        "label": "Disabled"
+                      }
+                    ],
+                    "icon": "timer",
+                    "label": "Auto-settle behavior"
+                  },
+                  {
+                    "action": {
+                      "kind": "sheet",
+                      "node": {
+                        "body": {
+                          "children": [
+                            {
+                              "dragHandle": true,
+                              "title": "active-thread",
+                              "type": "list_row"
+                            }
+                          ],
+                          "gap": 4,
+                          "id": "arrange-sheet-body",
+                          "type": "column"
+                        },
+                        "demo": true,
+                        "footer": {
+                          "align": "center",
+                          "children": [
+                            {
+                              "type": "spacer"
+                            },
+                            {
+                              "action": {
+                                "op": "dismissDialog"
+                              },
+                              "label": "Done",
+                              "style": "primary",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "title": "Arrange threads",
+                        "type": "sheet"
+                      },
+                      "op": "dialog"
+                    },
+                    "icon": "drag_handle",
+                    "label": "Arrange threads"
+                  },
+                  {
+                    "action": {
+                      "method": "POST",
+                      "name": "archive",
+                      "path": "/ui/action/archive",
+                      "payload": {
+                        "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149"
+                      }
+                    },
+                    "confirm": "Archive this thread?",
+                    "icon": "archive",
+                    "label": "Archive thread",
+                    "separatorBefore": true
+                  },
+                  {
+                    "action": {
+                      "method": "POST",
+                      "name": "delete-session",
+                      "path": "/ui/action/delete-session",
+                      "payload": {
+                        "id": "4f5b905c-161e-4d12-9a1b-aded0e73e149"
+                      }
+                    },
+                    "confirm": "Delete this thread? This cannot be undone.",
+                    "danger": true,
+                    "icon": "delete",
+                    "label": "Delete"
+                  }
+                ],
+                "trigger": {
+                  "action": {
+                    "method": "POST",
+                    "name": "noop",
+                    "path": "/ui/action/noop"
+                  },
+                  "icon": "more_vert",
+                  "type": "icon_button"
+                },
+                "type": "menu"
+              },
+              "type": "list_row",
+              "workdir": "/tmp/active-thread"
+            }
+          ],
+          "label": "Active",
+          "storeKey": "sidebar.section.active.collapsed",
+          "uppercase": true
+        },
+        {
+          "badgeStyle": "sidebar-control-surface",
+          "collapsed": false,
+          "collapsible": true,
+          "count": 0,
+          "id": "section-working",
+          "items": [],
+          "label": "Working",
+          "storeKey": "sidebar.section.working.collapsed",
+          "uppercase": true,
+          "when": "workingSection != false"
+        },
+        {
+          "badgeStyle": "sidebar-control-surface",
+          "collapsed": true,
+          "collapsible": true,
+          "count": 1,
+          "id": "section-snoozed",
+          "items": [
+            {
+              "action": {
+                "op": "navigate",
+                "screen": "chat:3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+              },
+              "archivedAt": null,
+              "dragHandle": false,
+              "dragLabel": {
+                "children": [
+                  {
+                    "icon": "push_pin",
+                    "size": 12,
+                    "type": "icon"
+                  },
+                  {
+                    "fontSize": 12,
+                    "fontWeight": 500,
+                    "text": "Pin",
+                    "type": "text"
+                  }
+                ],
+                "gap": 4,
+                "id": "drag-label",
+                "type": "row"
+              },
+              "draggable": true,
+              "dropTargets": [
+                {
+                  "accentWhenHovered": true,
+                  "action": {
+                    "method": "POST",
+                    "name": "pin",
+                    "path": "/ui/action/pin",
+                    "payload": {
+                      "id": "3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+                    }
+                  },
+                  "id": "section-pinned",
+                  "label": "Pin"
+                },
+                {
+                  "accentWhenHovered": true,
+                  "action": {
+                    "method": "POST",
+                    "name": "wake",
+                    "path": "/ui/action/wake",
+                    "payload": {
+                      "id": "3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+                    }
+                  },
+                  "id": "section-active",
+                  "label": "Wake"
+                },
+                {
+                  "accentWhenHovered": true,
+                  "action": {
+                    "method": "POST",
+                    "name": "settle",
+                    "path": "/ui/action/settle",
+                    "payload": {
+                      "id": "3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+                    }
+                  },
+                  "id": "section-settled",
+                  "label": "Settle"
+                }
+              ],
+              "hoverReveal": true,
+              "id": "session-row:3ddf9cf7-70e3-46e4-b537-561a75a5df28",
+              "pinned": false,
+              "pinnedOrder": null,
+              "searchMatch": {
+                "key": "sidebarSearch",
+                "minChars": 2
+              },
+              "settledAt": null,
+              "settledReason": null,
+              "snoozedUntil": 1791248966542,
+              "sortOrder": null,
+              "status": "active",
+              "statusIndicators": [
+                "snoozed"
+              ],
+              "subtitle": {
+                "align": "center",
+                "children": [
+                  {
+                    "color": "$color.sidebar-muted-foreground",
+                    "ellipsis": true,
+                    "flex": 1,
+                    "maxLines": 1,
+                    "style": "caption",
+                    "text": "/tmp/snoozed-thread",
+                    "type": "text"
+                  },
+                  {
+                    "border": "$color.border",
+                    "borderRadius": "$radius.sm",
+                    "child": {
+                      "ellipsis": true,
+                      "fontSize": 12,
+                      "maxLines": 1,
+                      "text": "snoozed-thread",
+                      "type": "text"
+                    },
+                    "id": "thread-context-chip",
+                    "padding": {
+                      "bottom": 2,
+                      "left": 6,
+                      "right": 6,
+                      "top": 2
+                    },
+                    "tooltip": "Project: /tmp/snoozed-thread",
+                    "type": "box"
+                  }
+                ],
+                "gap": 4,
+                "type": "row"
+              },
+              "title": {
+                "content": {
+                  "children": [
+                    {
+                      "ellipsis": true,
+                      "fontSize": 12,
+                      "fontWeight": 500,
+                      "maxLines": 1,
+                      "text": "snoozed-thread",
+                      "type": "text"
+                    },
+                    {
+                      "align": "center",
+                      "children": [
+                        {
+                          "icon": "folder",
+                          "size": 12,
+                          "type": "icon"
+                        },
+                        {
+                          "color": "$color.sidebar-muted-foreground",
+                          "ellipsis": true,
+                          "fontSize": 12,
+                          "maxLines": 1,
+                          "text": "/tmp/snoozed-thread",
+                          "type": "text"
+                        }
+                      ],
+                      "gap": 8,
+                      "type": "row"
+                    }
+                  ],
+                  "gap": 6,
+                  "id": "thread-hover-card",
+                  "type": "column"
+                },
+                "delay": 500,
+                "placement": "right",
+                "trigger": {
+                  "ellipsis": true,
+                  "fontSize": 14,
+                  "fontWeight": 600,
+                  "maxLines": 1,
+                  "text": "snoozed-thread",
+                  "type": "text"
+                },
+                "type": "hover_card"
+              },
+              "trailing": {
+                "items": [
+                  {
+                    "action": {
+                      "method": "POST",
+                      "name": "pin",
+                      "path": "/ui/action/pin",
+                      "payload": {
+                        "id": "3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+                      }
+                    },
+                    "icon": "keep",
+                    "label": "Pin thread"
+                  },
+                  {
+                    "action": {
+                      "method": "POST",
+                      "name": "settle",
+                      "path": "/ui/action/settle",
+                      "payload": {
+                        "id": "3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+                      }
+                    },
+                    "icon": "check_circle",
+                    "label": "Settle thread"
+                  },
+                  {
+                    "action": {
+                      "method": "POST",
+                      "name": "wake",
+                      "path": "/ui/action/wake",
+                      "payload": {
+                        "id": "3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+                      }
+                    },
+                    "icon": "schedule",
+                    "label": "Wake thread"
+                  },
+                  {
+                    "action": {
+                      "method": "POST",
+                      "name": "regenerate-title",
+                      "path": "/ui/action/regenerate-title",
+                      "payload": {
+                        "id": "3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+                      }
+                    },
+                    "icon": "refresh",
+                    "label": "Regenerate title",
+                    "separatorBefore": true
+                  },
+                  {
+                    "children": [
+                      {
+                        "action": {
+                          "method": "POST",
+                          "name": "auto-settle",
+                          "path": "/ui/action/auto-settle",
+                          "payload": {
+                            "enabled": true,
+                            "id": "3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+                          }
+                        },
+                        "checked": true,
+                        "label": "Enabled"
+                      },
+                      {
+                        "action": {
+                          "method": "POST",
+                          "name": "auto-settle",
+                          "path": "/ui/action/auto-settle",
+                          "payload": {
+                            "enabled": false,
+                            "id": "3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+                          }
+                        },
+                        "checked": false,
+                        "label": "Disabled"
+                      }
+                    ],
+                    "icon": "timer",
+                    "label": "Auto-settle behavior"
+                  },
+                  {
+                    "action": {
+                      "kind": "sheet",
+                      "node": {
+                        "body": {
+                          "children": [
+                            {
+                              "dragHandle": true,
+                              "title": "active-thread",
+                              "type": "list_row"
+                            }
+                          ],
+                          "gap": 4,
+                          "id": "arrange-sheet-body",
+                          "type": "column"
+                        },
+                        "demo": true,
+                        "footer": {
+                          "align": "center",
+                          "children": [
+                            {
+                              "type": "spacer"
+                            },
+                            {
+                              "action": {
+                                "op": "dismissDialog"
+                              },
+                              "label": "Done",
+                              "style": "primary",
+                              "type": "button"
+                            }
+                          ],
+                          "type": "row"
+                        },
+                        "title": "Arrange threads",
+                        "type": "sheet"
+                      },
+                      "op": "dialog"
+                    },
+                    "icon": "drag_handle",
+                    "label": "Arrange threads"
+                  },
+                  {
+                    "action": {
+                      "method": "POST",
+                      "name": "archive",
+                      "path": "/ui/action/archive",
+                      "payload": {
+                        "id": "3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+                      }
+                    },
+                    "confirm": "Archive this thread?",
+                    "icon": "archive",
+                    "label": "Archive thread",
+                    "separatorBefore": true
+                  },
+                  {
+                    "action": {
+                      "method": "POST",
+                      "name": "delete-session",
+                      "path": "/ui/action/delete-session",
+                      "payload": {
+                        "id": "3ddf9cf7-70e3-46e4-b537-561a75a5df28"
+                      }
+                    },
+                    "confirm": "Delete this thread? This cannot be undone.",
+                    "danger": true,
+                    "icon": "delete",
+                    "label": "Delete"
+                  }
+                ],
+                "trigger": {
+                  "action": {
+                    "method": "POST",
+                    "name": "noop",
+                    "path": "/ui/action/noop"
+                  },
+                  "icon": "more_vert",
+                  "type": "icon_button"
+                },
+                "type": "menu"
+              },
+              "type": "list_row",
+              "workdir": "/tmp/snoozed-thread"
+            }
+          ],
+          "label": "Snoozed",
+          "storeKey": "sidebar.section.snoozed.collapsed",
+          "uppercase": true
+        },
+        {
+          "badgeStyle": "sidebar-control-surface",
+          "collapsed": true,
+          "collapsible": true,
+          "count": 0,
+          "id": "section-settled",
+          "items": [],
+          "label": "Settled",
+          "storeKey": "sidebar.section.settled.collapsed",
+          "uppercase": true
+        }
+      ],
+      "type": "list"
+    },
+    {
+      "children": [
+        {
+          "style": "caption",
+          "text": "Choose a thread from the sidebar to open the conversation.",
+          "type": "text"
+        }
+      ],
+      "title": "Select a thread",
+      "type": "card"
+    }
+  ],
+  "id": "sidebar-split",
+  "type": "column"
+}
