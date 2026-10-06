@@ -32,6 +32,20 @@ final class ClientKeybindings {
     }
 
     /**
+     * The grouped command-palette metadata of one request (T115): the
+     * {@link KeybindCatalog} vocabulary with this caller's effective chords
+     * (the {@code X-Jhin-Keybindings} override when present, otherwise the
+     * server default) as the bootstrap {@code palette} block. Reuses the
+     * catalogue as the single command-metadata source.
+     *
+     * @param req the request carrying the override header
+     * @return the four palette groups in render order (never throws)
+     */
+    static List<Map<String, Object>> paletteMetadata(HttpRequest req) {
+        return KeybindCatalog.paletteGroups(of(req));
+    }
+
+    /**
      * Parses one header value.
      *
      * @param header the store-shape JSON ({@code {"rules": […]}}, never null)

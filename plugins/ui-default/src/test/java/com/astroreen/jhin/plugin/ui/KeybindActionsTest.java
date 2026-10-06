@@ -84,6 +84,63 @@ final class KeybindActionsTest {
         assertThat(ClientKeybindings.of(requestWithOverrides("garbage"))).isEmpty();
     }
 
+    @Test
+    void paletteMetadataCarriesTheFourGroupsWithCounts() {
+        List<Map<String, Object>> groups =
+                ClientKeybindings.paletteMetadata(requestWithOverrides(""));
+
+        assertThat(groups).hasSize(4);
+        assertThat(groups).extracting(group -> group.get("value"))
+                .containsExactly("actions", "threads", "projects", "models");
+
+        Map<String, Object> actions = group(groups, "actions");
+        assertThat(actions).containsEntry("label", "Actions");
+        assertThat(actions.get("count")).isEqualTo(KeybindCatalog.commands().size());
+
+        Map<String, Object> models = group(groups, "models");
+        assertThat(models).containsEntry("label", "Models");
+        assertThat(models.get("count")).isEqualTo(3);
+        for (Object item : castList(models.get("items"))) {
+            assertThat(castMap(item)).containsEntry("demo", true);
+        }
+
+        assertThat(group(groups, "threads").get("count")).isEqualTo(0);
+        assertThat(group(groups, "projects").get("count")).isEqualTo(0);
+    }
+
+    @Test
+    void paletteMetadataAppliesTheClientOverrides() {
+        List<Map<String, Object>> groups = ClientKeybindings.paletteMetadata(
+                requestWithOverrides(
+                        "{\"rules\":[{\"command\":\"composer.send\","
+                                + "\"keys\":\"mod+shift+enter\"}]}"));
+
+        Map<String, Object> send = item(group(groups, "actions"), "composer.send");
+        assertThat(send)
+                .containsEntry("chord", "mod+shift+enter")
+                .containsEntry("subtitle", "composer.send")
+                .containsEntry("demo", false);
+    }
+
+    private static Map<String, Object> group(List<Map<String, Object>> groups, String value) {
+        for (Map<String, Object> group : groups) {
+            if (value.equals(group.get("value"))) {
+                return group;
+            }
+        }
+        throw new AssertionError("no palette group " + value);
+    }
+
+    private static Map<String, Object> item(Map<String, Object> group, String id) {
+        for (Object entry : castList(group.get("items"))) {
+            Map<String, Object> item = castMap(entry);
+            if (id.equals(item.get("id"))) {
+                return item;
+            }
+        }
+        throw new AssertionError("no palette item " + id);
+    }
+
     private static FakeHttpRequest requestWithOverrides(String header) {
         return new FakeHttpRequest("POST", "/ui/action/keybind-edit",
                 Map.of(), Map.of(), "{}", ClientInfo.UNKNOWN,

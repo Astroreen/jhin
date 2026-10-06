@@ -1,0 +1,1469 @@
+{
+  "type": "screen",
+  "title": "Settings",
+  "body": {
+    "type": "shell",
+    "id": "settings-shell",
+    "breakpoint": 768,
+    "topbar": {
+      "type": "row",
+      "id": "settings-topbar",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "type": "button",
+          "label": "Back to threads",
+          "style": "secondary",
+          "action": {
+            "op": "navigate",
+            "screen": "sessions"
+          }
+        }
+      ]
+    },
+    "topbarCompact": {
+      "type": "row",
+      "id": "settings-topbar-compact",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "spacer"
+        }
+      ]
+    },
+    "pageHeader": {
+      "type": "row",
+      "id": "settings-breadcrumb",
+      "align": "center",
+      "gap": 8,
+      "children": [
+        {
+          "type": "text",
+          "text": "Settings",
+          "style": "small"
+        }
+      ]
+    },
+    "sidebar": {
+      "type": "nav",
+      "id": "settings-nav",
+      "kind": "sidebar",
+      "items": [
+        {
+          "id": "settings:general",
+          "label": "General",
+          "icon": "settings",
+          "screen": "settings:general"
+        },
+        {
+          "id": "settings:appearance",
+          "label": "Appearance",
+          "icon": "palette",
+          "screen": "settings:appearance"
+        },
+        {
+          "id": "settings:keybindings",
+          "label": "Keybindings",
+          "icon": "keyboard",
+          "screen": "settings:keybindings"
+        },
+        {
+          "id": "settings:providers",
+          "label": "Providers",
+          "icon": "smart_toy",
+          "screen": "settings:providers"
+        },
+        {
+          "id": "settings:connections",
+          "label": "Connections",
+          "icon": "link",
+          "screen": "settings:connections"
+        },
+        {
+          "id": "settings:integrations",
+          "label": "Integrations",
+          "icon": "extension",
+          "screen": "settings:integrations"
+        },
+        {
+          "id": "settings:diagnostics",
+          "label": "Diagnostics",
+          "icon": "monitor_heart",
+          "screen": "settings:diagnostics"
+        },
+        {
+          "id": "settings:storage",
+          "label": "Storage",
+          "icon": "storage",
+          "screen": "settings:storage"
+        },
+        {
+          "id": "settings:archived",
+          "label": "Archive",
+          "icon": "archive",
+          "screen": "settings:archived"
+        },
+        {
+          "id": "settings:projects",
+          "label": "Project",
+          "icon": "folder",
+          "screen": "settings:projects"
+        },
+        {
+          "id": "settings:scheduled-tasks",
+          "label": "Scheduled Tasks",
+          "icon": "schedule",
+          "screen": "settings:scheduled-tasks"
+        },
+        {
+          "id": "settings:source-control",
+          "label": "Source Control",
+          "icon": "account_tree",
+          "screen": "settings:source-control"
+        },
+        {
+          "id": "settings:snap-shot",
+          "label": "SnapShots",
+          "icon": "photo_camera",
+          "screen": "settings:snap-shot"
+        },
+        {
+          "id": "settings:licenses",
+          "label": "Open source licenses",
+          "icon": "description",
+          "screen": "settings:licenses"
+        }
+      ],
+      "activeId": "settings:general"
+    },
+    "stageBackdrop": true,
+    "body": {
+      "type": "container",
+      "direction": "column",
+      "gap": 12,
+      "padding": 16,
+      "children": [
+        {
+          "type": "card",
+          "title": "General",
+          "children": [
+            {
+              "type": "switch",
+              "id": "workingSection",
+              "label": "Working section",
+              "value": true,
+              "demo": true
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Appearance",
+          "children": [
+            {
+              "type": "container",
+              "direction": "column",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "row",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "expanded",
+                      "child": {
+                        "type": "box",
+                        "id": "theme-t3-chat",
+                        "padding": "$spacing.md",
+                        "borderRadius": "$radius.md",
+                        "borderWidth": 1,
+                        "border": "$color.primary",
+                        "onTap": {
+                          "op": "setState",
+                          "id": "themeId",
+                          "value": "t3-chat"
+                        },
+                        "child": {
+                          "type": "container",
+                          "direction": "column",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-t3-chat-canvas",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#1f1a24"
+                                },
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-t3-chat-accent",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#a3004c"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "text": "T3 Chat",
+                              "style": "body"
+                            },
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "chip",
+                                  "label": "Light",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-t3-chat-light",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#db2777"
+                                  }
+                                },
+                                {
+                                  "type": "chip",
+                                  "label": "Dark",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-t3-chat-dark",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#a3004c"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "expanded",
+                      "child": {
+                        "type": "box",
+                        "id": "theme-grove",
+                        "padding": "$spacing.md",
+                        "borderRadius": "$radius.md",
+                        "borderWidth": 1,
+                        "border": "$color.border",
+                        "onTap": {
+                          "op": "setState",
+                          "id": "themeId",
+                          "value": "grove"
+                        },
+                        "child": {
+                          "type": "container",
+                          "direction": "column",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-grove-canvas",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#1b2821"
+                                },
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-grove-accent",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#69d69a"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "text": "Grove",
+                              "style": "body"
+                            },
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "chip",
+                                  "label": "Light",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-grove-light",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#1b7d50"
+                                  }
+                                },
+                                {
+                                  "type": "chip",
+                                  "label": "Dark",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-grove-dark",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#69d69a"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "expanded",
+                      "child": {
+                        "type": "box",
+                        "id": "theme-ocean",
+                        "padding": "$spacing.md",
+                        "borderRadius": "$radius.md",
+                        "borderWidth": 1,
+                        "border": "$color.border",
+                        "onTap": {
+                          "op": "setState",
+                          "id": "themeId",
+                          "value": "ocean"
+                        },
+                        "child": {
+                          "type": "container",
+                          "direction": "column",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-ocean-canvas",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#17212b"
+                                },
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-ocean-accent",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#70b9ee"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "text": "Ocean",
+                              "style": "body"
+                            },
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "chip",
+                                  "label": "Light",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-ocean-light",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#2672af"
+                                  }
+                                },
+                                {
+                                  "type": "chip",
+                                  "label": "Dark",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-ocean-dark",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#70b9ee"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "row",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "expanded",
+                      "child": {
+                        "type": "box",
+                        "id": "theme-ember",
+                        "padding": "$spacing.md",
+                        "borderRadius": "$radius.md",
+                        "borderWidth": 1,
+                        "border": "$color.border",
+                        "onTap": {
+                          "op": "setState",
+                          "id": "themeId",
+                          "value": "ember"
+                        },
+                        "child": {
+                          "type": "container",
+                          "direction": "column",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-ember-canvas",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#291e1a"
+                                },
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-ember-accent",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#f09a64"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "text": "Ember",
+                              "style": "body"
+                            },
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "chip",
+                                  "label": "Light",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-ember-light",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#ae552a"
+                                  }
+                                },
+                                {
+                                  "type": "chip",
+                                  "label": "Dark",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-ember-dark",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#f09a64"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "expanded",
+                      "child": {
+                        "type": "box",
+                        "id": "theme-iris",
+                        "padding": "$spacing.md",
+                        "borderRadius": "$radius.md",
+                        "borderWidth": 1,
+                        "border": "$color.border",
+                        "onTap": {
+                          "op": "setState",
+                          "id": "themeId",
+                          "value": "iris"
+                        },
+                        "child": {
+                          "type": "container",
+                          "direction": "column",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-iris-canvas",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#1d1929"
+                                },
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-iris-accent",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#9d7df2"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "text": "Iris",
+                              "style": "body"
+                            },
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "chip",
+                                  "label": "Light",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-iris-light",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#7253b9"
+                                  }
+                                },
+                                {
+                                  "type": "chip",
+                                  "label": "Dark",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-iris-dark",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#9d7df2"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "expanded",
+                      "child": {
+                        "type": "box",
+                        "id": "theme-jhin",
+                        "padding": "$spacing.md",
+                        "borderRadius": "$radius.md",
+                        "borderWidth": 1,
+                        "border": "$color.border",
+                        "onTap": {
+                          "op": "setState",
+                          "id": "themeId",
+                          "value": "jhin"
+                        },
+                        "child": {
+                          "type": "container",
+                          "direction": "column",
+                          "gap": 8,
+                          "children": [
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-jhin-canvas",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#16161e"
+                                },
+                                {
+                                  "type": "sized_box",
+                                  "id": "swatch-jhin-accent",
+                                  "width": 40,
+                                  "height": 24,
+                                  "color": "#7E57C2"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "text": "Jhin",
+                              "style": "body"
+                            },
+                            {
+                              "type": "row",
+                              "gap": 8,
+                              "children": [
+                                {
+                                  "type": "chip",
+                                  "label": "Light",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-jhin-light",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#7E57C2"
+                                  }
+                                },
+                                {
+                                  "type": "chip",
+                                  "label": "Dark",
+                                  "avatar": {
+                                    "type": "sized_box",
+                                    "id": "chip-jhin-dark",
+                                    "width": 40,
+                                    "height": 24,
+                                    "color": "#7E57C2"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "segmented",
+              "id": "appearance",
+              "segments": [
+                {
+                  "label": "System",
+                  "value": "system"
+                },
+                {
+                  "label": "Light",
+                  "value": "light"
+                },
+                {
+                  "label": "Dark",
+                  "value": "dark"
+                }
+              ],
+              "value": "dark"
+            },
+            {
+              "type": "input",
+              "id": "canvas",
+              "label": "Canvas",
+              "value": "#101018",
+              "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+              "errorText": "Use #RRGGBB or #AARRGGBB"
+            },
+            {
+              "type": "input",
+              "id": "accent",
+              "label": "Accent",
+              "value": "#ff0000",
+              "pattern": "^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+              "errorText": "Use #RRGGBB or #AARRGGBB"
+            },
+            {
+              "type": "segmented",
+              "id": "density",
+              "segments": [
+                {
+                  "label": "Compact",
+                  "value": "compact"
+                },
+                {
+                  "label": "Comfortable",
+                  "value": "comfortable"
+                },
+                {
+                  "label": "Spacious",
+                  "value": "spacious"
+                }
+              ],
+              "value": "compact"
+            },
+            {
+              "type": "slider",
+              "id": "panelMotionMs",
+              "min": 0.0,
+              "max": 400.0,
+              "label": "Panel animations",
+              "step": 20.0,
+              "value": 200.0
+            },
+            {
+              "type": "button",
+              "label": "Save",
+              "action": {
+                "path": "/ui/action/save-appearance",
+                "method": "POST",
+                "name": "save-appearance",
+                "include": [
+                  "appearance",
+                  "themeId",
+                  "canvas",
+                  "accent",
+                  "density",
+                  "panelMotionMs"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Thread behavior",
+          "children": [
+            {
+              "type": "switch",
+              "id": "autoSettleDefault",
+              "label": "Auto-settle idle threads",
+              "value": false
+            },
+            {
+              "type": "slider",
+              "id": "inactivityDays",
+              "min": 1.0,
+              "max": 30.0,
+              "label": "Settle after inactivity (days)",
+              "step": 1.0,
+              "value": 14.0
+            },
+            {
+              "type": "switch",
+              "id": "settleOnPrMerged",
+              "label": "Settle on PR merged",
+              "value": false,
+              "enabled": false,
+              "tooltip": "PR linking is not enabled"
+            },
+            {
+              "type": "button",
+              "label": "Save",
+              "action": {
+                "path": "/ui/action/save-thread-behavior",
+                "method": "POST",
+                "name": "save-thread-behavior",
+                "include": [
+                  "autoSettleDefault",
+                  "inactivityDays"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Keyboard",
+          "children": [
+            {
+              "type": "container",
+              "direction": "column",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "list_row",
+                  "title": "composer.send",
+                  "subtitle": "mod+enter",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.send"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.send"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "composer.sendAlternate",
+                  "subtitle": "mod+enter",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.sendAlternate"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.sendAlternate"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "composer.sendAndNew",
+                  "subtitle": "ctrl+alt+enter",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.sendAndNew"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.sendAndNew"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "composer.newline",
+                  "subtitle": "shift+enter",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.newline"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.newline"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "composer.recallPrev",
+                  "subtitle": "mod+up",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.recallPrev"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.recallPrev"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "composer.recallNext",
+                  "subtitle": "mod+down",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.recallNext"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.recallNext"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "modelPicker.toggle",
+                  "subtitle": "mod+shift+m",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "modelPicker.toggle"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "modelPicker.toggle"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "composer.host",
+                  "subtitle": "mod+shift+h",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.host"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.host"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "composer.effort",
+                  "subtitle": "mod+shift+e",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.effort"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.effort"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "composer.mode",
+                  "subtitle": "mod+shift+a",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.mode"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.mode"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "composer.workspace",
+                  "subtitle": "mod+shift+x",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.workspace"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.workspace"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "composer.branch",
+                  "subtitle": "mod+shift+g",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.branch"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.branch"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "composer.previousWorktree",
+                  "subtitle": "mod+shift+l",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.previousWorktree"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "composer.previousWorktree"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "palette.open",
+                  "subtitle": "ctrl+k",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "palette.open"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "palette.open"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "thread.undo",
+                  "subtitle": "ctrl+z",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.undo"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "thread.undo"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "nav.back",
+                  "subtitle": "alt+left",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "nav.back"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "nav.back"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "nav.forward",
+                  "subtitle": "alt+right",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "nav.forward"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "nav.forward"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "thread.new",
+                  "subtitle": "mod+n",
+                  "trailing": {
+                    "type": "row",
+                    "children": [
+                      {
+                        "type": "button",
+                        "label": "Edit",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.new"
+                          }
+                        }
+                      },
+                      {
+                        "type": "button",
+                        "label": "Reset",
+                        "style": "text",
+                        "action": {
+                          "path": "/ui/action/keybind-reset",
+                          "method": "POST",
+                          "name": "keybind-reset",
+                          "payload": {
+                            "command": "thread.new"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "button",
+                  "label": "Restore defaults",
+                  "style": "secondary",
+                  "action": {
+                    "path": "/ui/action/keybind-restore",
+                    "method": "POST",
+                    "name": "keybind-restore"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "Change server",
+          "style": "secondary",
+          "action": {
+            "op": "openProfiles"
+          }
+        },
+        {
+          "type": "button",
+          "label": "Sign out",
+          "style": "danger"
+        },
+        {
+          "type": "button",
+          "label": "Help",
+          "style": "text"
+        }
+      ]
+    }
+  }
+}

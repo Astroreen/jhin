@@ -1,0 +1,289 @@
+{
+  "type": "screen",
+  "title": "Settings",
+  "body": {
+    "type": "shell",
+    "id": "settings-shell",
+    "breakpoint": 768,
+    "topbar": {
+      "type": "row",
+      "id": "settings-topbar",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "type": "button",
+          "label": "Back to threads",
+          "style": "secondary",
+          "action": {
+            "op": "navigate",
+            "screen": "sessions"
+          }
+        }
+      ]
+    },
+    "topbarCompact": {
+      "type": "row",
+      "id": "settings-topbar-compact",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "spacer"
+        }
+      ]
+    },
+    "pageHeader": {
+      "type": "row",
+      "id": "settings-breadcrumb",
+      "align": "center",
+      "gap": 8,
+      "children": [
+        {
+          "type": "text",
+          "text": "Settings",
+          "style": "small"
+        },
+        {
+          "type": "text",
+          "text": "/",
+          "style": "small"
+        },
+        {
+          "type": "text",
+          "text": "Diagnostics",
+          "style": "body",
+          "bold": true
+        }
+      ]
+    },
+    "sidebar": {
+      "type": "nav",
+      "id": "settings-nav",
+      "kind": "sidebar",
+      "items": [
+        {
+          "id": "settings:general",
+          "label": "General",
+          "icon": "settings",
+          "screen": "settings:general"
+        },
+        {
+          "id": "settings:appearance",
+          "label": "Appearance",
+          "icon": "palette",
+          "screen": "settings:appearance"
+        },
+        {
+          "id": "settings:keybindings",
+          "label": "Keybindings",
+          "icon": "keyboard",
+          "screen": "settings:keybindings"
+        },
+        {
+          "id": "settings:providers",
+          "label": "Providers",
+          "icon": "smart_toy",
+          "screen": "settings:providers"
+        },
+        {
+          "id": "settings:connections",
+          "label": "Connections",
+          "icon": "link",
+          "screen": "settings:connections"
+        },
+        {
+          "id": "settings:integrations",
+          "label": "Integrations",
+          "icon": "extension",
+          "screen": "settings:integrations"
+        },
+        {
+          "id": "settings:diagnostics",
+          "label": "Diagnostics",
+          "icon": "monitor_heart",
+          "screen": "settings:diagnostics"
+        },
+        {
+          "id": "settings:storage",
+          "label": "Storage",
+          "icon": "storage",
+          "screen": "settings:storage"
+        },
+        {
+          "id": "settings:archived",
+          "label": "Archive",
+          "icon": "archive",
+          "screen": "settings:archived"
+        },
+        {
+          "id": "settings:projects",
+          "label": "Project",
+          "icon": "folder",
+          "screen": "settings:projects"
+        },
+        {
+          "id": "settings:scheduled-tasks",
+          "label": "Scheduled Tasks",
+          "icon": "schedule",
+          "screen": "settings:scheduled-tasks"
+        },
+        {
+          "id": "settings:source-control",
+          "label": "Source Control",
+          "icon": "account_tree",
+          "screen": "settings:source-control"
+        },
+        {
+          "id": "settings:snap-shot",
+          "label": "SnapShots",
+          "icon": "photo_camera",
+          "screen": "settings:snap-shot"
+        },
+        {
+          "id": "settings:licenses",
+          "label": "Open source licenses",
+          "icon": "description",
+          "screen": "settings:licenses"
+        }
+      ],
+      "activeId": "settings:diagnostics"
+    },
+    "stageBackdrop": true,
+    "body": {
+      "type": "container",
+      "direction": "column",
+      "gap": 12,
+      "padding": 16,
+      "children": [
+        {
+          "type": "card",
+          "title": "System",
+          "children": [
+            {
+              "type": "list_row",
+              "title": "Kernel version",
+              "subtitle": "0.2.0"
+            },
+            {
+              "type": "list_row",
+              "title": "Contract level",
+              "subtitle": "api 3"
+            },
+            {
+              "type": "list_row",
+              "title": "Client version",
+              "subtitle": "0.3.0"
+            },
+            {
+              "type": "list_row",
+              "title": "Client schema",
+              "subtitle": "schema 4"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Storage paths",
+          "children": [
+            {
+              "type": "list_row",
+              "title": "Home",
+              "subtitle": "/tmp/tmp.iP17rC8sD7"
+            },
+            {
+              "type": "list_row",
+              "title": "Data",
+              "subtitle": "/tmp/tmp.iP17rC8sD7/data"
+            },
+            {
+              "type": "list_row",
+              "title": "Plugins",
+              "subtitle": "/tmp/tmp.iP17rC8sD7/plugins"
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Plugins",
+          "children": [
+            {
+              "type": "container",
+              "direction": "column",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "list_row",
+                  "title": "jhin.sessions",
+                  "subtitle": "Sessions",
+                  "trailing": {
+                    "type": "badge",
+                    "label": "0.2.0"
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "jhin.ui-kit",
+                  "subtitle": "UI Kit",
+                  "trailing": {
+                    "type": "badge",
+                    "label": "0.2.0"
+                  }
+                },
+                {
+                  "type": "list_row",
+                  "title": "jhin.ui",
+                  "subtitle": "UI",
+                  "trailing": {
+                    "type": "badge",
+                    "label": "0.2.0"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Diagnostics report",
+          "children": [
+            {
+              "type": "code_block",
+              "code": "Jhin diagnostics\nkernel: 0.2.0\ncontract: api=3\nclient: version=0.3.0 schema=4\nhome: /tmp/tmp.iP17rC8sD7\ndata: /tmp/tmp.iP17rC8sD7/data\nplugins: 3\n- jhin.sessions 0.2.0 (Sessions)\n- jhin.ui-kit 0.2.0 (UI Kit)\n- jhin.ui 0.2.0 (UI)\nsessions: active=0 settled=0 snoozed=0 archived=0\ndb: 60.0 KB\n",
+              "id": "diagnosticsReport",
+              "language": "text",
+              "copyable": true
+            },
+            {
+              "type": "button",
+              "label": "Export",
+              "style": "secondary",
+              "demo": true,
+              "action": {
+                "client": [
+                  {
+                    "op": "toast",
+                    "text": "Preview only — export is not available in this build"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

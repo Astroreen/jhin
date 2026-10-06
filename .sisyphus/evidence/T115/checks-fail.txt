@@ -1,0 +1,7 @@
+ok: the real behavior holds: the unregistered keymap command renders a disabled row and logs (test-real.txt)
+FAIL: the unregistered keymap command was dispatchable (as designed)
+  the real behavior is the opposite: an id the registry does not know
+  renders a disabled palette row and is logged once; the inverted
+  suite failed as required (test-fail.txt); the real behavior is
+  recorded in test-real.txt
+FAIL: deliberately wrong expectation: the unregistered command was dispatchable (it is disabled; see .sisyphus/evidence/T115/test-fail.txt)

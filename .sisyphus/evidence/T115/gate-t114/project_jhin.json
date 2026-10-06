@@ -1,0 +1,357 @@
+{
+  "type": "screen",
+  "title": "Jhin",
+  "body": {
+    "type": "shell",
+    "id": "project-shell",
+    "breakpoint": 768,
+    "topbar": {
+      "type": "row",
+      "id": "project-topbar",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "text",
+          "text": "Projects",
+          "style": "small"
+        },
+        {
+          "type": "text",
+          "text": "/",
+          "style": "small"
+        },
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "body",
+          "bold": true
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "type": "nav",
+          "kind": "tabs",
+          "items": [
+            {
+              "label": "Sessions",
+              "screen": "sessions"
+            },
+            {
+              "label": "Settings",
+              "screen": "settings"
+            },
+            {
+              "label": "Plugins",
+              "screen": "plugins"
+            }
+          ]
+        }
+      ]
+    },
+    "topbarCompact": {
+      "type": "row",
+      "id": "project-topbar-compact",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "body"
+        },
+        {
+          "type": "spacer"
+        }
+      ]
+    },
+    "pageHeader": {
+      "type": "row",
+      "id": "project-page-header",
+      "align": "center",
+      "gap": 8,
+      "children": [
+        {
+          "type": "avatar",
+          "initials": "JH",
+          "size": 28,
+          "shape": "square"
+        },
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3"
+        },
+        {
+          "type": "badge",
+          "label": "Active"
+        },
+        {
+          "type": "badge",
+          "label": "Git"
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "type": "row",
+          "id": "project-branch-toolbar",
+          "align": "center",
+          "gap": 8,
+          "children": [
+            {
+              "type": "dropdown",
+              "id": "projectBranch",
+              "hint": "Branch",
+              "items": [
+                {
+                  "label": "main",
+                  "value": "main"
+                },
+                {
+                  "label": "main",
+                  "value": "main"
+                }
+              ],
+              "value": "main",
+              "demo": true,
+              "action": {
+                "client": [
+                  {
+                    "op": "toast",
+                    "text": "Preview only — branches are not switched in this build"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "dropdown",
+              "id": "projectWorktree",
+              "hint": "Worktree",
+              "items": [
+                {
+                  "label": "default",
+                  "value": "default"
+                },
+                {
+                  "label": "default",
+                  "value": "default"
+                }
+              ],
+              "value": "default",
+              "demo": true,
+              "action": {
+                "client": [
+                  {
+                    "op": "toast",
+                    "text": "Preview only — worktrees are not created in this build"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "body": {
+      "type": "container",
+      "id": "project-body",
+      "direction": "column",
+      "gap": 16,
+      "padding": 16,
+      "children": [
+        {
+          "type": "card",
+          "id": "project-header",
+          "title": "Project",
+          "children": [
+            {
+              "type": "row",
+              "align": "center",
+              "gap": 12,
+              "children": [
+                {
+                  "type": "avatar",
+                  "initials": "JH",
+                  "size": 40,
+                  "shape": "square"
+                },
+                {
+                  "type": "column",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "Jhin",
+                      "style": "h2"
+                    },
+                    {
+                      "type": "text",
+                      "text": "/home/astroreen/Documents/jhin",
+                      "style": "mono"
+                    }
+                  ]
+                },
+                {
+                  "type": "spacer"
+                },
+                {
+                  "type": "row",
+                  "align": "center",
+                  "gap": 6,
+                  "children": [
+                    {
+                      "type": "badge",
+                      "label": "Active"
+                    },
+                    {
+                      "type": "badge",
+                      "label": "Git"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "id": "project-threads",
+          "title": "Threads",
+          "children": [
+            {
+              "type": "list",
+              "id": "project-thread-list",
+              "items": [
+                {
+                  "type": "list_row",
+                  "id": "project-thread-c40b8faf-d860-40b0-ab0b-031bbbd4af4c",
+                  "leading": {
+                    "type": "icon",
+                    "icon": "chat_bubble",
+                    "size": 20
+                  },
+                  "title": "T114 project thread",
+                  "subtitle": "/home/astroreen/Documents/jhin",
+                  "trailing": {
+                    "type": "chip",
+                    "label": "active"
+                  },
+                  "action": {
+                    "op": "navigate",
+                    "screen": "chat:c40b8faf-d860-40b0-ab0b-031bbbd4af4c"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "id": "project-scripts",
+          "title": "Scripts",
+          "children": [
+            {
+              "type": "list",
+              "id": "project-script-list",
+              "items": [
+                {
+                  "type": "list_row",
+                  "id": "project-script-build",
+                  "leading": {
+                    "type": "icon",
+                    "icon": "terminal",
+                    "size": 20
+                  },
+                  "title": "Build",
+                  "subtitle": "./gradlew build",
+                  "trailing": {
+                    "type": "button",
+                    "label": "Run",
+                    "style": "secondary",
+                    "icon": "play_arrow",
+                    "demo": true,
+                    "action": {
+                      "client": [
+                        {
+                          "op": "toast",
+                          "text": "Preview only — scripts are not run in this build"
+                        }
+                      ]
+                    }
+                  },
+                  "demo": true
+                },
+                {
+                  "type": "list_row",
+                  "id": "project-script-test",
+                  "leading": {
+                    "type": "icon",
+                    "icon": "terminal",
+                    "size": 20
+                  },
+                  "title": "Test",
+                  "subtitle": "./gradlew test",
+                  "trailing": {
+                    "type": "button",
+                    "label": "Run",
+                    "style": "secondary",
+                    "icon": "play_arrow",
+                    "demo": true,
+                    "action": {
+                      "client": [
+                        {
+                          "op": "toast",
+                          "text": "Preview only — scripts are not run in this build"
+                        }
+                      ]
+                    }
+                  },
+                  "demo": true
+                },
+                {
+                  "type": "list_row",
+                  "id": "project-script-lint",
+                  "leading": {
+                    "type": "icon",
+                    "icon": "terminal",
+                    "size": 20
+                  },
+                  "title": "Lint",
+                  "subtitle": "./gradlew check",
+                  "trailing": {
+                    "type": "button",
+                    "label": "Run",
+                    "style": "secondary",
+                    "icon": "play_arrow",
+                    "demo": true,
+                    "action": {
+                      "client": [
+                        {
+                          "op": "toast",
+                          "text": "Preview only — scripts are not run in this build"
+                        }
+                      ]
+                    }
+                  },
+                  "demo": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

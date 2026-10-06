@@ -51,6 +51,64 @@ public final class KeybindCatalog {
     }
 
     /**
+     * The four command-palette result groups (T115), in render order. Mirrors
+     * the client's {@code PaletteGroup} enum
+     * ({@code frontend/lib/sdui/keyboard/palette.dart}); the wire name is the
+     * lower-case group value the bootstrap {@code palette} block carries and
+     * the client renders as the upper-case header.
+     */
+    public enum PaletteGroup {
+        ACTIONS("actions", "Actions"),
+        THREADS("threads", "Threads"),
+        PROJECTS("projects", "Projects"),
+        MODELS("models", "Models");
+
+        private final String wire;
+        private final String label;
+
+        PaletteGroup(String wire, String label) {
+            this.wire = wire;
+            this.label = label;
+        }
+
+        /** The wire value of the group. */
+        public String wire() {
+            return wire;
+        }
+
+        /** The header text of the group. */
+        public String label() {
+            return label;
+        }
+    }
+
+    /**
+     * One command-palette metadata item (T115): the command id, its upstream
+     * label, the muted subtitle (the command id, the {@code ThreadCommandSubtitle}
+     * analogue) and the effective chord the right-aligned {@code kbd} hint
+     * shows.
+     *
+     * @param id       the command id (or the decorative model id)
+     * @param label    the human-readable label
+     * @param subtitle the muted subtitle
+     * @param group    the palette group
+     * @param chord    the effective chord, empty when unassigned
+     * @param demo     whether the item is an inert decorative row
+     */
+    public record PaletteCommand(String id, String label, String subtitle, PaletteGroup group,
+                                 String chord, boolean demo) {
+    }
+
+    /** The three decorative model rows of the palette (T115, never dispatch). */
+    private static final List<PaletteCommand> PALETTE_MODELS = List.of(
+            new PaletteCommand("model:sonnet", "Claude Sonnet", "model",
+                    PaletteGroup.MODELS, "", true),
+            new PaletteCommand("model:gpt", "GPT-5", "model",
+                    PaletteGroup.MODELS, "", true),
+            new PaletteCommand("model:gemini", "Gemini Pro", "model",
+                    PaletteGroup.MODELS, "", true));
+
+    /**
      * One keybinding row.
      *
      * @param id       the command id
@@ -167,6 +225,71 @@ public final class KeybindCatalog {
             }
         }
         return List.copyOf(rows);
+    }
+
+    /**
+     * The flat command-palette metadata (T115): every catalogue command in the
+     * {@link PaletteGroup#ACTIONS} group with the caller's effective chord
+     * (the override when present, otherwise the server default) followed by
+     * the decorative {@link PaletteGroup#MODELS} rows. The dynamic
+     * {@code threads} and {@code projects} groups are populated by the client
+     * from the search route and the screen registry — this catalogue carries
+     * only the static vocabulary.
+     *
+     * @param overrides the caller's keymap overrides (command to chord)
+     * @return the palette metadata items in render order
+     */
+    public static List<PaletteCommand> paletteCommands(Map<String, String> overrides) {
+        List<PaletteCommand> rows = new ArrayList<>();
+        for (Command command : commands()) {
+            String chord = overrides.getOrDefault(command.id(), command.chord());
+            rows.add(new PaletteCommand(command.id(), command.label(), command.id(),
+                    PaletteGroup.ACTIONS, chord == null ? "" : chord, command.demo()));
+        }
+        rows.addAll(PALETTE_MODELS);
+        return List.copyOf(rows);
+    }
+
+    /**
+     * The grouped palette metadata (T115): all four {@link PaletteGroup}s in
+     * render order, each as {@code {value, label, count, items}} where an item
+     * is a {@link PaletteCommand} rendered as
+     * {@code {id, label, subtitle, chord, demo}}. The {@code threads} and
+     * {@code projects} groups are always present with zero items — the client
+     * fills them from the search route and its registry.
+     *
+     * @param overrides the caller's keymap overrides (command to chord)
+     * @return the four groups in render order
+     */
+    public static List<Map<String, Object>> paletteGroups(Map<String, String> overrides) {
+        List<PaletteCommand> commands = paletteCommands(overrides);
+        List<Map<String, Object>> groups = new ArrayList<>();
+        for (PaletteGroup group : PaletteGroup.values()) {
+            List<Map<String, Object>> items = new ArrayList<>();
+            for (PaletteCommand command : commands) {
+                if (command.group() == group) {
+                    items.add(paletteItem(command));
+                }
+            }
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("value", group.wire());
+            entry.put("label", group.label());
+            entry.put("count", items.size());
+            entry.put("items", items);
+            groups.add(entry);
+        }
+        return List.copyOf(groups);
+    }
+
+    /** One palette item as the wire map of the bootstrap {@code palette} block. */
+    private static Map<String, Object> paletteItem(PaletteCommand command) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", command.id());
+        item.put("label", command.label());
+        item.put("subtitle", command.subtitle());
+        item.put("chord", command.chord());
+        item.put("demo", command.demo());
+        return item;
     }
 
     /**

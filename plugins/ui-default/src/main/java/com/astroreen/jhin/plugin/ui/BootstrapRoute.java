@@ -99,6 +99,10 @@ final class BootstrapRoute {
             payload.put("tokens", TokenDefaults.tokens(snapshot.panelMotionMs()));
             payload.put("density", snapshot.density());
             payload.put("keymap", DefaultKeymap.entries());
+            // The command-palette metadata (T115): the KeybindCatalog
+            // vocabulary grouped into Actions/Threads/Projects/Models with the
+            // caller's effective chords (X-Jhin-Keybindings overrides applied).
+            payload.put("palette", ClientKeybindings.paletteMetadata(req));
         }
         payload.put("entry", entry(req));
         payload.put("screens", screens(req));

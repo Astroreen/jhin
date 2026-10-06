@@ -4,48 +4,114 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/auth/app_storage.dart';
+import '../../design/icon_registry.dart';
+import '../../design/theme.dart';
+import '../../design/tokens.dart';
 import '../../store/versioned_store.dart';
 import 'command_registry.dart';
 import 'when_context.dart';
 
-/// One palette row: a local command of the [CommandRegistry] or a server
-/// search hit of `POST /ui/action/search` (T69).
+/// The four command-palette result groups (T115), in render order. Mirrors
+/// the server's `KeybindCatalog.PaletteGroup` (the bootstrap `palette` block
+/// carries the same wire values) and the upstream palette's grouped results
+/// (`CommandPalette.logic.ts:594-610`, commit 37de6cb).
+enum PaletteGroup {
+  actions('actions', 'Actions'),
+  threads('threads', 'Threads'),
+  projects('projects', 'Projects'),
+  models('models', 'Models');
+
+  const PaletteGroup(this.wire, this.label);
+
+  /// The wire value of the group (bootstrap `palette.groups[].value`).
+  final String wire;
+
+  /// The header text; the palette renders it upper-case with a count.
+  final String label;
+
+  /// The group of one server search hit: a project navigate target lands in
+  /// the Projects group, every other hit in Threads.
+  static PaletteGroup forServerKind(String kind, String? navigate) {
+    if (kind == 'project' || (navigate != null && navigate.startsWith('project:'))) {
+      return PaletteGroup.projects;
+    }
+    return PaletteGroup.threads;
+  }
+}
+
+/// One palette row: a local command of the [CommandRegistry], a server search
+/// hit of `POST /ui/action/search` (T69) or a decorative demo row (T115).
 ///
 /// A server entry carries the search response's `action` (a §3 action object
 /// or a §4 directive like `{"op":"navigate","screen":"chat:<id>"}`) and/or a
 /// `navigate` screen id shorthand; the client dispatches whichever arrives.
 class PaletteEntry {
-  /// A local command row: the command id doubles as the label (the registry
-  /// carries no product words).
-  const PaletteEntry.command(String commandId)
-      : id = commandId,
-        label = commandId,
+  /// A local command row: the command id doubles as the identity; [label] is
+  /// the human-readable label and [subtitle] the muted command id (the
+  /// `ThreadCommandSubtitle` analogue). [disabled] marks a keymap command the
+  /// registry does not know (T115).
+  PaletteEntry.command(
+    String commandId, {
+    String? label,
+    String? subtitle,
+    this.icon,
+    this.shortcut,
+    this.disabled = false,
+  })  : id = commandId,
+        label = label ?? commandId,
         kind = 'command',
+        group = PaletteGroup.actions,
         commandId = commandId,
         action = null,
-        navigate = null;
+        navigate = null,
+        subtitle = subtitle ?? commandId,
+        demo = false;
 
   /// A server search hit.
-  const PaletteEntry.server({
+  PaletteEntry.server({
     required this.id,
     required this.label,
     required this.kind,
+    this.group = PaletteGroup.threads,
     this.action,
     this.navigate,
-  }) : commandId = null;
+    this.subtitle,
+    this.icon,
+    this.shortcut,
+    this.disabled = false,
+  })  : commandId = null,
+        demo = false;
 
-  /// Stable identity of the row (command id, or the search hit's id).
+  /// A decorative row (T115): rendered, selectable and marked `demo` — its
+  /// submit only runs the demo feedback, never a real command (plan §14.10).
+  PaletteEntry.demo({
+    required this.id,
+    required this.label,
+    required this.group,
+    this.subtitle,
+    this.icon,
+  })  : kind = 'model',
+        commandId = null,
+        action = null,
+        navigate = null,
+        shortcut = null,
+        disabled = false,
+        demo = true;
+
+  /// Stable identity of the row (command id, search hit id or model id).
   final String id;
 
-  /// Display text: the command id for local rows, the server's `title` for
-  /// search hits.
+  /// Display text: the human-readable label.
   final String label;
 
   /// `command` for local rows; the search response's `kind` (`session`,
-  /// `user_message`, `message_end`, …) for server hits.
+  /// `user_message`, `message_end`, …) for server hits; `model` for demos.
   final String kind;
 
-  /// The command id for local rows; null for server hits.
+  /// The palette group this row renders under.
+  final PaletteGroup group;
+
+  /// The command id for local rows; null for server hits and demos.
   final String? commandId;
 
   /// The server hit's action object (§3 action or §4 directive).
@@ -53,6 +119,62 @@ class PaletteEntry {
 
   /// The server hit's navigation target shorthand (`chat:<id>`).
   final String? navigate;
+
+  /// The muted subtitle (the command id for actions, the hit kind for
+  /// threads, the model marker for demos).
+  final String? subtitle;
+
+  /// The icon-registry name of the row icon; the group icon is used when null.
+  final String? icon;
+
+  /// The effective chord label of the right-aligned `kbd` hint, when bound.
+  final String? shortcut;
+
+  /// Whether the row is a disabled affordance the keyboard skips.
+  final bool disabled;
+
+  /// Whether the row is decorative (T115): its submit runs the demo feedback.
+  final bool demo;
+}
+
+/// One rendered group: its [group] and the matching [entries].
+class PaletteGroupView {
+  const PaletteGroupView(this.group, this.entries);
+
+  /// The group identity.
+  final PaletteGroup group;
+
+  /// The matching rows, in render order.
+  final List<PaletteEntry> entries;
+}
+
+/// The human-readable label of one command id: the port of the upstream
+/// `commandLabel` (`KeybindingsSettings.logic.ts:314-340`, commit 37de6cb) —
+/// the six special-case names verbatim plus the `Segment: Segment`
+/// title-casing of the dotted id.
+String humanizeCommand(String command) {
+  const special = <String, String>{
+    'composer.sendAlternate': 'Composer: Opposite Queue or Steer Action',
+    'composer.sendBackground': 'Composer: Start in Background',
+    'composer.sendAndNewThread': 'Composer: Send and Start New Thread',
+    'thread.steerQueuedMessage': 'Queue: Send First Queued Message as Steer',
+    'thread.editQueuedMessage': 'Queue: Edit Last Queued Message',
+    'thread.copyReference': 'Pull Request: Copy Link or Thread ID',
+  };
+  final override = special[command];
+  if (override != null) return override;
+  return command.split('.').map(_titleCaseSegment).join(': ');
+}
+
+String _titleCaseSegment(String segment) {
+  final spaced = segment.replaceAllMapped(
+    RegExp(r'([a-z0-9])([A-Z])'),
+    (match) => '${match.group(1)} ${match.group(2)}',
+  );
+  final parts = spaced.split(RegExp(r'[-_\s]+')).where((part) => part.isNotEmpty);
+  return parts
+      .map((part) => part[0].toUpperCase() + part.substring(1))
+      .join(' ');
 }
 
 /// Fetches the server rows of one palette query.
@@ -68,14 +190,22 @@ typedef PalettePost = Future<Map<String, dynamic>> Function(
 /// Fetches one JSON list — the session-list seam of `thread.jump1..9`.
 typedef PaletteGetList = Future<List<dynamic>> Function(String path);
 
-/// The command-palette model (T69): open/close, the query, the filtered
-/// local commands plus the debounced server search, and the selection.
+/// Resolves the effective chord label of one command id (T115) — the
+/// right-aligned `kbd` hint. Null when the command has no binding.
+typedef PaletteShortcut = String? Function(String commandId);
+
+/// The command-palette model (T69, extended by T115): open/close, the query,
+/// the grouped filtered rows (Actions / Threads / Projects / Models) plus the
+/// debounced server search, and the selection.
 ///
-/// Search policy: queries shorter than two characters list only the local
-/// commands and never touch the network; from two characters the query is
-/// posted to `POST /ui/action/search` after [debounce]. Arrow navigation
-/// clamps at both ends. [submit] dispatches the selected entry exactly once
-/// and closes the palette.
+/// Search policy: a `>`-prefixed query filters to the Actions group only (the
+/// upstream behaviour, `CommandPalette.logic.ts:449-463`) and never touches
+/// the network; otherwise queries shorter than two characters list only the
+/// local commands and never touch the network, and from two characters the
+/// query is posted to `POST /ui/action/search` after [debounce]. Matching is
+/// token-substring over the label and subtitle. Arrow navigation clamps at
+/// both ends and skips group headers; [submit] dispatches the selected entry
+/// exactly once and closes the palette.
 class PaletteController extends ChangeNotifier {
   PaletteController({
     required this.registry,
@@ -83,6 +213,9 @@ class PaletteController extends ChangeNotifier {
     required this.onDispatchLocal,
     required this.onDispatchServer,
     this.whenContext,
+    this.shortcutFor,
+    this.keymapCommandIds,
+    this.onDispatchDemo,
     this.debounce = const Duration(milliseconds: 250),
   });
 
@@ -101,6 +234,16 @@ class PaletteController extends ChangeNotifier {
   /// The `paletteOpen` context toggled while the palette is open.
   final WhenContext? whenContext;
 
+  /// Resolves the effective chord label of a command (the `kbd` hint).
+  final PaletteShortcut? shortcutFor;
+
+  /// The command ids the live keymap binds; ids the registry does not know
+  /// are listed as disabled rows and logged once (T115).
+  final List<String> Function()? keymapCommandIds;
+
+  /// Runs the demo feedback of a decorative row (T115); absent is a no-op.
+  final Future<void> Function(PaletteEntry entry)? onDispatchDemo;
+
   /// Debounce of the server search.
   final Duration debounce;
 
@@ -110,6 +253,30 @@ class PaletteController extends ChangeNotifier {
   int _selectedIndex = 0;
   Timer? _timer;
   int _searchToken = 0;
+  final Set<String> _loggedUnregistered = <String>{};
+
+  /// The decorative Models rows (T115): present in the palette, marked
+  /// `demo` so selecting one only runs the demo feedback.
+  static final List<PaletteEntry> demoEntries = List<PaletteEntry>.unmodifiable(<PaletteEntry>[
+    PaletteEntry.demo(
+        id: 'model:sonnet',
+        label: 'Claude Sonnet',
+        group: PaletteGroup.models,
+        subtitle: 'model',
+        icon: 'smart_toy'),
+    PaletteEntry.demo(
+        id: 'model:gpt',
+        label: 'GPT-5',
+        group: PaletteGroup.models,
+        subtitle: 'model',
+        icon: 'smart_toy'),
+    PaletteEntry.demo(
+        id: 'model:gemini',
+        label: 'Gemini Pro',
+        group: PaletteGroup.models,
+        subtitle: 'model',
+        icon: 'smart_toy'),
+  ]);
 
   /// Whether the overlay is showing.
   bool get isOpen => _open;
@@ -117,18 +284,91 @@ class PaletteController extends ChangeNotifier {
   /// The current query text.
   String get query => _query;
 
+  /// Whether the query is in the upstream `>`-action-filter mode.
+  bool get actionsOnly => _query.startsWith('>');
+
+  /// The query with the `>` action prefix stripped.
+  String get effectiveQuery => actionsOnly ? _query.substring(1) : _query;
+
   /// The selected row index (clamped into [entries]).
   int get selectedIndex => _selectedIndex;
 
-  /// The visible rows: filtered local commands first, then server results.
-  List<PaletteEntry> get entries {
-    final needle = _query.trim().toLowerCase();
-    final local = <PaletteEntry>[
-      for (final id in registry.ids)
-        if (needle.isEmpty || id.toLowerCase().contains(needle))
-          PaletteEntry.command(id),
-    ];
-    return <PaletteEntry>[...local, ..._serverResults];
+  /// The grouped visible rows (T115): Actions / Threads / Projects / Models,
+  /// each non-empty group carrying its header and count. In `>` mode only the
+  /// Actions group survives.
+  List<PaletteGroupView> get groups {
+    final needle = effectiveQuery.trim().toLowerCase();
+    final result = <PaletteGroupView>[];
+
+    final actions = <PaletteEntry>[];
+    for (final id in registry.ids) {
+      final entry = PaletteEntry.command(
+        id,
+        label: humanizeCommand(id),
+        subtitle: id,
+        shortcut: shortcutFor?.call(id),
+      );
+      if (_matches(entry, needle)) actions.add(entry);
+    }
+    final known = registry.ids.toSet();
+    for (final id in keymapCommandIds?.call() ?? const <String>[]) {
+      if (!known.add(id)) continue;
+      if (_loggedUnregistered.add(id)) {
+        debugPrint(
+            'Jhin palette: unregistered command "$id" in the keymap — rendered disabled');
+      }
+      final entry = PaletteEntry.command(
+        id,
+        label: humanizeCommand(id),
+        subtitle: id,
+        disabled: true,
+      );
+      if (_matches(entry, needle)) actions.add(entry);
+    }
+    if (actions.isNotEmpty) {
+      result.add(PaletteGroupView(PaletteGroup.actions, actions));
+    }
+    if (actionsOnly) return result;
+
+    final threads = <PaletteEntry>[];
+    final projects = <PaletteEntry>[];
+    for (final entry in _serverResults) {
+      if (entry.group == PaletteGroup.projects) {
+        projects.add(entry);
+      } else {
+        threads.add(entry);
+      }
+    }
+    if (threads.isNotEmpty) {
+      result.add(PaletteGroupView(PaletteGroup.threads, threads));
+    }
+    if (projects.isNotEmpty) {
+      result.add(PaletteGroupView(PaletteGroup.projects, projects));
+    }
+    final models =
+        demoEntries.where((entry) => _matches(entry, needle)).toList();
+    if (models.isNotEmpty) {
+      result.add(PaletteGroupView(PaletteGroup.models, models));
+    }
+    return result;
+  }
+
+  /// The visible rows flattened across [groups], in render order.
+  List<PaletteEntry> get entries =>
+      <PaletteEntry>[for (final group in groups) ...group.entries];
+
+  /// Whether [entry] matches the [needle]: every whitespace-separated token
+  /// is a substring of the label + subtitle + kind (the upstream token rule,
+  /// `CommandPalette.logic.ts:493-505`). An empty needle matches everything.
+  bool _matches(PaletteEntry entry, String needle) {
+    if (needle.isEmpty) return true;
+    final haystack =
+        '${entry.label} ${entry.subtitle ?? ''} ${entry.kind}'.toLowerCase();
+    for (final token in needle.split(RegExp(r'\s+'))) {
+      if (token.isEmpty) continue;
+      if (!haystack.contains(token)) return false;
+    }
+    return true;
   }
 
   /// Opens the palette with an empty query and the `paletteOpen` context set.
@@ -152,15 +392,16 @@ class PaletteController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Applies a query change: refilters the local rows immediately and
-  /// debounces the server search (skipped entirely below two characters).
+  /// Applies a query change: refilters the groups immediately and debounces
+  /// the server search (skipped entirely in `>` mode and below two
+  /// characters).
   void setQuery(String value) {
     _query = value;
     _selectedIndex = 0;
     _timer?.cancel();
     _timer = null;
-    final trimmed = value.trim();
-    if (trimmed.length < 2) {
+    final trimmed = effectiveQuery.trim();
+    if (actionsOnly || trimmed.length < 2) {
       _serverResults = const [];
       notifyListeners();
       return;
@@ -199,14 +440,18 @@ class PaletteController extends ChangeNotifier {
 
   /// Dispatches the selected (or [index]-ed) entry exactly once and closes
   /// the palette. Local rows go through the registry, server rows through
-  /// their action/navigate.
+  /// their action/navigate, demo rows through [onDispatchDemo]; a disabled
+  /// row is inert.
   Future<void> submit([int? index]) async {
     final list = entries;
     if (list.isEmpty) return;
     final picked = (index ?? _selectedIndex).clamp(0, list.length - 1);
     final entry = list[picked];
+    if (entry.disabled) return;
     close();
-    if (entry.commandId != null) {
+    if (entry.demo) {
+      await onDispatchDemo?.call(entry);
+    } else if (entry.commandId != null) {
       onDispatchLocal(entry.commandId!);
     } else {
       await onDispatchServer(entry);
@@ -220,12 +465,16 @@ class PaletteController extends ChangeNotifier {
   }
 }
 
-/// The command-palette overlay (T69): client-owned chrome, hosted by the
-/// boot shell exactly like the Change-server button — never server-driven.
+/// The command-palette overlay (T69, chrome T115): client-owned chrome,
+/// hosted by the boot shell exactly like the Change-server button — never
+/// server-driven.
 ///
 /// The host builds it only while [PaletteController.isOpen] is true, so every
 /// open starts with a fresh query field. Keys: ArrowUp/ArrowDown move the
-/// selection (clamping), Enter dispatches, Escape closes.
+/// selection (clamping, skipping group headers), Enter dispatches, Escape
+/// closes. The chrome is the `dialog`-glass surface (T89/T115): the
+/// `commandShell` 0.5rem outer inset, the `commandContent` 1rem content inset
+/// and the `JhinDialogGlassRecipe` panel over the dialog backdrop scrim.
 class CommandPalette extends StatefulWidget {
   const CommandPalette({super.key, required this.controller});
 
@@ -285,75 +534,216 @@ class _CommandPaletteState extends State<CommandPalette> {
     return KeyEventResult.ignored;
   }
 
+  IconData _groupIcon(PaletteGroup group) {
+    final name = switch (group) {
+      PaletteGroup.actions => 'bolt',
+      PaletteGroup.threads => 'chat_bubble_outline',
+      PaletteGroup.projects => 'folder',
+      PaletteGroup.models => 'smart_toy',
+    };
+    return kIconRegistry[name] ?? kIconRegistry['circle']!;
+  }
+
+  IconData _entryIcon(PaletteEntry entry) =>
+      (entry.icon != null ? kIconRegistry[entry.icon] : null) ??
+      _groupIcon(entry.group);
+
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
-    final entries = controller.entries;
+    final design = JhinDesignScope.of(context);
+    final surface = design.tokens.surface;
+    final brightness = Theme.brightnessOf(context);
+    final scheme = JhinDesignScope.materialOf(context).colorScheme;
+    final remPx = design.switches.fontSizes.sizeInterface.toDouble();
+    final shellInset =
+        parseCssLength(design.resolve('space', 'commandShell'), remPx: remPx) ??
+            8;
+    final contentInset = parseCssLength(
+            design.resolve('space', 'commandContent'),
+            remPx: remPx) ??
+        16;
+    final background = design.colorOf('background', brightness: brightness) ??
+        scheme.surface;
+    final foreground = design.colorOf('foreground', brightness: brightness) ??
+        scheme.onSurface;
+    final recipe = JhinDialogGlassRecipe.of(
+      surface,
+      brightness,
+      background: background,
+      foreground: foreground,
+    );
+    final muted =
+        design.colorOf('muted-foreground', brightness: brightness) ??
+            scheme.onSurfaceVariant;
+    final border = design.colorOf('border', brightness: brightness) ??
+        scheme.outline;
+
+    final rows = <Widget>[];
+    final groups = controller.groups;
+    var entryIndex = 0;
+    for (final group in groups) {
+      rows.add(_groupHeader(context, group, muted));
+      for (final entry in group.entries) {
+        final index = entryIndex;
+        rows.add(_entryRow(
+          context,
+          entry,
+          index: index,
+          selected: index == controller.selectedIndex,
+          muted: muted,
+          border: border,
+        ));
+        entryIndex++;
+      }
+    }
+
     return Stack(
       children: [
         Positioned.fill(
           child: GestureDetector(
             key: const Key('palette-barrier'),
             onTap: controller.close,
-            child: const ColoredBox(color: Color(0x66000000)),
+            child: ColoredBox(
+              color: JhinDialogGlassRecipe.backdropFill(
+                surface,
+                brightness,
+                background: background,
+              ),
+            ),
           ),
         ),
         Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480, maxHeight: 420),
-            child: Material(
+            constraints: const BoxConstraints(maxWidth: 520, maxHeight: 460),
+            child: KeyedSubtree(
               key: const Key('command-palette'),
-              elevation: 8,
-              borderRadius: BorderRadius.circular(12),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                    child: TextField(
-                      key: const Key('palette-input'),
-                      controller: _query,
-                      focusNode: _focus,
-                      decoration: const InputDecoration(
-                        hintText: 'Search',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      onChanged: controller.setQuery,
-                    ),
-                  ),
-                  Flexible(
-                    child: ListView.builder(
-                      key: const Key('palette-list'),
-                      shrinkWrap: true,
-                      itemCount: entries.length,
-                      itemBuilder: (context, index) {
-                        final entry = entries[index];
-                        final selected = index == controller.selectedIndex;
-                        return ListTile(
-                          key: Key('palette-entry-${entry.id}'),
-                          selected: selected,
-                          dense: true,
-                          title: Text(
-                            entry.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+              child: jhinGlassSurface(
+                context,
+                surface: surface,
+                fill: recipe.fill,
+                borderRadius: jhinSurfaceRadius(surface, 'xl2', remPx: remPx),
+                border: Border.all(color: recipe.borderColor),
+                shadows: recipe.shadows,
+                insetTop: recipe.insetTop,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Padding(
+                    padding: EdgeInsets.all(shellInset),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(contentInset, shellInset,
+                              contentInset, shellInset),
+                          child: TextField(
+                            key: const Key('palette-input'),
+                            controller: _query,
+                            focusNode: _focus,
+                            decoration: const InputDecoration(
+                              hintText:
+                                  'Search commands, projects, and threads...',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                            onChanged: controller.setQuery,
                           ),
-                          subtitle: entry.kind == 'command'
-                              ? null
-                              : Text(entry.kind),
-                          onTap: () =>
-                              unawaited(controller.submit(index)),
-                        );
-                      },
+                        ),
+                        Flexible(
+                          child: ListView.builder(
+                            key: const Key('palette-list'),
+                            shrinkWrap: true,
+                            padding:
+                                EdgeInsets.symmetric(horizontal: shellInset),
+                            itemCount: rows.length,
+                            itemBuilder: (context, index) => rows[index],
+                          ),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(
+                              contentInset, shellInset, contentInset, 0),
+                          child: Row(
+                            children: [
+                              Text('↑↓ Navigate',
+                                  style: TextStyle(fontSize: 11, color: muted)),
+                              SizedBox(width: shellInset * 2),
+                              Text('↵ Select',
+                                  style: TextStyle(fontSize: 11, color: muted)),
+                              SizedBox(width: shellInset * 2),
+                              Text('Esc Close',
+                                  style: TextStyle(fontSize: 11, color: muted)),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _groupHeader(BuildContext context, PaletteGroupView group, Color muted) {
+    return Padding(
+      key: Key('palette-group-${group.group.wire}'),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 2),
+      child: Text(
+        '${group.group.label.toUpperCase()} · ${group.entries.length}',
+        style: TextStyle(
+          fontSize: 11,
+          letterSpacing: 0.6,
+          fontWeight: FontWeight.w600,
+          color: muted,
+        ),
+      ),
+    );
+  }
+
+  Widget _entryRow(
+    BuildContext context,
+    PaletteEntry entry, {
+    required int index,
+    required bool selected,
+    required Color muted,
+    required Color border,
+  }) {
+    return ListTile(
+      key: Key('palette-entry-${entry.id}'),
+      selected: selected,
+      dense: true,
+      enabled: !entry.disabled,
+      leading: Icon(_entryIcon(entry), size: 18),
+      title: Text(
+        entry.label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: entry.subtitle == null
+          ? null
+          : Text(
+              entry.subtitle!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: muted),
+            ),
+      trailing: entry.shortcut == null
+          ? null
+          : Container(
+              key: Key('palette-kbd-${entry.id}'),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                border: Border.all(color: border),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(entry.shortcut!, style: const TextStyle(fontSize: 11)),
+            ),
+      onTap: entry.disabled
+          ? null
+          : () => unawaited(widget.controller.submit(index)),
     );
   }
 }
@@ -423,6 +813,9 @@ class PaletteCommands {
     required this.runDirectives,
     required this.onAppearanceChanged,
     this.accentPresets = const <String>[],
+    this.shortcutFor,
+    this.keymapCommandIds,
+    this.onDispatchDemo,
   }) {
     controller = PaletteController(
       registry: registry,
@@ -430,6 +823,9 @@ class PaletteCommands {
       search: search,
       onDispatchLocal: registry.dispatch,
       onDispatchServer: dispatchServerEntry,
+      shortcutFor: shortcutFor,
+      keymapCommandIds: keymapCommandIds,
+      onDispatchDemo: onDispatchDemo,
     );
     registry.registerIfPlaceholder('palette.open', handler: open);
     for (var i = 1; i <= 9; i++) {
@@ -465,6 +861,15 @@ class PaletteCommands {
   /// `accent` plus its `colors{}` values, extracted by the boot host.
   final List<String> accentPresets;
 
+  /// Resolves the effective chord label of a command (the `kbd` hint).
+  final PaletteShortcut? shortcutFor;
+
+  /// The command ids the live keymap binds (the disabled-row source).
+  final List<String> Function()? keymapCommandIds;
+
+  /// Runs the demo feedback of a decorative row.
+  final Future<void> Function(PaletteEntry entry)? onDispatchDemo;
+
   /// The `POST /ui/action/undo` path.
   static const String undoPath = '/ui/action/undo';
 
@@ -486,6 +891,10 @@ class PaletteCommands {
 
   /// The toast when the session list cannot be fetched.
   static const String jumpFailed = 'Could not open the session.';
+
+  /// The toast of a decorative row (T115): preview only, never a real effect.
+  static const String demoUnavailable =
+      'Preview only — model switching is not available in this build';
 
   /// Client fallback chords (T69): one fallback for every T69 command the
   /// server keymap leaves unbound. `mod+k` opens the palette, `mod+1..9`
@@ -645,12 +1054,18 @@ class PaletteCommands {
     final kind = map['kind'];
     final action = map['action'];
     final navigate = map['navigate'];
+    final kindText = kind is String && kind.isNotEmpty ? kind : 'server';
+    final navigateText =
+        navigate is String && navigate.isNotEmpty ? navigate : null;
     return PaletteEntry.server(
       id: id,
       label: title is String && title.isNotEmpty ? title : id,
-      kind: kind is String && kind.isNotEmpty ? kind : 'server',
+      kind: kindText,
+      group: PaletteGroup.forServerKind(kindText, navigateText),
+      subtitle: kindText,
+      icon: 'chat_bubble_outline',
       action: action is Map ? Map<String, dynamic>.from(action) : null,
-      navigate: navigate is String && navigate.isNotEmpty ? navigate : null,
+      navigate: navigateText,
     );
   }
 

@@ -145,11 +145,35 @@ class _SduiHostState extends State<SduiHost> {
       runDirectives: widget.runDirectives ?? _noDirectives,
       onAppearanceChanged: widget.onAppearanceChanged ?? () {},
       accentPresets: widget.accentPresets,
+      shortcutFor: _shortcutFor,
+      keymapCommandIds: _keymapCommandIds,
+      onDispatchDemo: _dispatchDemo,
     );
     _load();
   }
 
   static Future<void> _noDirectives(List<dynamic> directives) async {}
+
+  /// The effective chord label of one command (T115) — the palette `kbd`
+  /// hint. The first matching rule wins; null when the command is unbound.
+  String? _shortcutFor(String commandId) {
+    for (final rule in _keymap.rules) {
+      if (rule.command == commandId) return rule.chord.toSpec();
+    }
+    return null;
+  }
+
+  /// The command ids the live keymap binds (T115) — the disabled-row source
+  /// for a keymap entry the registry does not know.
+  List<String> _keymapCommandIds() =>
+      _keymap.rules.map((rule) => rule.command).toList();
+
+  /// The demo feedback of a decorative palette row (T115): a toast, never a
+  /// real command.
+  Future<void> _dispatchDemo(PaletteEntry entry) async {
+    final run = widget.runDirectives ?? _noDirectives;
+    await run([PaletteCommands.toast(PaletteCommands.demoUnavailable, 'info')]);
+  }
 
   @override
   void dispose() {
