@@ -4,7 +4,8 @@
  * session list with the activity feed and the "New session" form),
  * {@code settings} (the T109 settings shell overview) with its fourteen
  * {@code settings:*} sub-routes, {@code plugins} and {@code providers} (only
- * while the LLM plugin is loaded), plus the dynamic {@code chat:<session-id>}
+ * while the LLM plugin is loaded), the T113 decorative {@code usage} and
+ * {@code pull-requests} surfaces, plus the dynamic {@code chat:<session-id>}
  * screens and the QA-only probes {@code qa-level3} (T88) and {@code qa-timeline}
  * (T101, both only while the {@code qaProbe} config switch is on). All screen
  * classes are built with the
@@ -31,10 +32,12 @@ import com.astroreen.jhin.plugin.ui.screens.ChatScreen;
 import com.astroreen.jhin.plugin.ui.screens.EnrollScreen;
 import com.astroreen.jhin.plugin.ui.screens.PluginsScreen;
 import com.astroreen.jhin.plugin.ui.screens.ProvidersScreen;
+import com.astroreen.jhin.plugin.ui.screens.PullRequestsScreen;
 import com.astroreen.jhin.plugin.ui.screens.QaProbeScreen;
 import com.astroreen.jhin.plugin.ui.screens.QaTimelineScreen;
 import com.astroreen.jhin.plugin.ui.screens.SessionsScreen;
 import com.astroreen.jhin.plugin.ui.screens.SettingsScreen;
+import com.astroreen.jhin.plugin.ui.screens.UsageScreen;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.sdk.KernelInfo;
 import com.astroreen.jhin.sdk.ServiceRegistry;
@@ -106,6 +109,8 @@ final class Screens implements ScreenRegistry {
                     DefaultKeymap.entries(), overrides, snapshot, facts, providersPanel, archived));
         }
         screens.put("plugins", () -> PluginsScreen.render(kernel.plugins()));
+        screens.put("usage", UsageScreen::render);
+        screens.put("pull-requests", PullRequestsScreen::render);
         if (providersPanel != null) {
             screens.put("providers", () -> ProvidersScreen.render(
                     providerRegistry().orElseThrow(), account));

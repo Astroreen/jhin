@@ -1,0 +1,7 @@
+ok: the real behavior holds: an empty fixture renders the empty state (flutter-real.txt)
+FAIL: an empty fixture rendered a blank screen (as designed)
+  the real behavior is the opposite: the empty fixture renders the
+  NoProjectsHero-style empty state — the T113 empty-state contract;
+  the inverted suite failed as required (flutter-fail.txt); the real
+  behavior is recorded in flutter-real.txt
+FAIL: deliberately wrong expectation: the empty fixture rendered a blank screen (it does not; see .sisyphus/evidence/T113/flutter-fail.txt)

@@ -1,0 +1,87 @@
+{
+  "id": "pull-requests-fixtures",
+  "pullRequests": [
+    {
+      "id": "pr-482",
+      "number": 482,
+      "title": "Add usage meter to the settings panel",
+      "state": "open",
+      "isDraft": false,
+      "headBranch": "feat/usage-meter",
+      "baseBranch": "main",
+      "author": "octocat",
+      "additions": 128,
+      "deletions": 34,
+      "changedFiles": 5,
+      "reviewDecision": "approved",
+      "checksState": "passing",
+      "updatedAt": "2 hours ago",
+      "summary": "Adds a token meter to the usage page and wires the per-provider series into the shared chart primitive.",
+      "reviews": [
+        {"author": "hubot", "decision": "approved", "at": "1 hour ago"},
+        {"author": "monalisa", "decision": "review-required", "at": "3 hours ago"}
+      ]
+    },
+    {
+      "id": "pr-479",
+      "number": 479,
+      "title": "Draft: pull request detail shell",
+      "state": "open",
+      "isDraft": true,
+      "headBranch": "feat/pr-detail",
+      "baseBranch": "main",
+      "author": "monalisa",
+      "additions": 402,
+      "deletions": 12,
+      "changedFiles": 9,
+      "reviewDecision": "review-required",
+      "checksState": "pending",
+      "updatedAt": "5 hours ago",
+      "summary": "Sketches the pull request detail panel: summary, timeline and code tabs over the decorative diff renderer.",
+      "reviews": [
+        {"author": "octocat", "decision": "review-required", "at": "4 hours ago"}
+      ]
+    },
+    {
+      "id": "pr-471",
+      "number": 471,
+      "title": "Cache the bootstrap payload",
+      "state": "merged",
+      "isDraft": false,
+      "headBranch": "perf/bootstrap-cache",
+      "baseBranch": "main",
+      "author": "hubot",
+      "additions": 76,
+      "deletions": 51,
+      "changedFiles": 4,
+      "reviewDecision": "approved",
+      "checksState": "passing",
+      "updatedAt": "Yesterday",
+      "summary": "Caches the bootstrap payload behind the schema version so a warm client skips the full screen inline.",
+      "reviews": [
+        {"author": "octocat", "decision": "approved", "at": "Yesterday"},
+        {"author": "monalisa", "decision": "approved", "at": "Yesterday"}
+      ]
+    },
+    {
+      "id": "pr-468",
+      "number": 468,
+      "title": "Drop the legacy v1 backend",
+      "state": "closed",
+      "isDraft": false,
+      "headBranch": "chore/drop-v1",
+      "baseBranch": "main",
+      "author": "octocat",
+      "additions": 3,
+      "deletions": 1840,
+      "changedFiles": 22,
+      "reviewDecision": "changes-requested",
+      "checksState": "failing",
+      "updatedAt": "2 days ago",
+      "summary": "Removes the old v1 backend tree now that every surface is plugin-owned.",
+      "reviews": [
+        {"author": "hubot", "decision": "changes-requested", "at": "2 days ago"}
+      ]
+    }
+  ]
+}

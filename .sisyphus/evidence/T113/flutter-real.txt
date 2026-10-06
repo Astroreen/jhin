@@ -1,0 +1,4 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/usage_pull_requests_test.dart
+00:00 +0: an empty usage fixture renders the empty state, not a blank screen
+00:00 +1: an empty pull-requests fixture renders the empty state, not a blank screen
+00:00 +2: All tests passed!
