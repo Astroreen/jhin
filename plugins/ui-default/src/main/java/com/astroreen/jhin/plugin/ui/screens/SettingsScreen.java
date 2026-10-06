@@ -66,11 +66,13 @@
 package com.astroreen.jhin.plugin.ui.screens;
 
 import com.astroreen.jhin.plugin.ui.Directives;
+import com.astroreen.jhin.plugin.ui.KeybindCatalog;
 import com.astroreen.jhin.plugin.ui.UiSettings;
 import com.astroreen.jhin.plugin.uikit.ThemeCatalog;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.UiTokens;
+import com.astroreen.jhin.sdk.KernelInfo;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -226,11 +228,67 @@ public final class SettingsScreen {
     /** The plan's contrast-boost slider bounds (T110; upstream pref is 50–200). */
     static final int MAX_CONTRAST_BOOST = 100;
 
+    // --- T111 keybindings / diagnostics / storage panel ids ---
+
+    /** Field id of the decorative keybindings search input (T111). */
+    static final String ID_KEYBIND_SEARCH = "keybindSearch";
+
+    /** Node id prefix of one keybinding row: {@code keybind-<command>}. */
+    static final String ID_KEYBIND_ROW_PREFIX = "keybind-";
+
+    /** Node id of the storage panel's archived-threads shortcut. */
+    static final String ID_ARCHIVED_SHORTCUT = "openArchive";
+
+    /** Node id of the diagnostics report code block. */
+    static final String ID_DIAGNOSTICS_REPORT = "diagnosticsReport";
+
+    /** The demo wording of the decorative diagnostics Export button. */
+    static final String EXPORT_DEMO = "Preview only \u2014 export is not available in this build";
+
+    /** The demo wording of the decorative storage Clear-cache button. */
+    static final String CLEAR_CACHE_DEMO = "Preview only \u2014 cache is not cleared in this build";
+
     /**
      * One settings sub-route: the Jhin screen id, the nav/breadcrumb label
      * and the nav icon name.
      */
     public record Route(String id, String label, String icon) {
+    }
+
+    /**
+     * The T111 facts snapshot the diagnostics and storage panels render from:
+     * the kernel identity, the storage paths, the negotiated contract level,
+     * the requesting client's version/schema and the per-status session
+     * counters. Built once per request by {@code Screens}.
+     *
+     * @param kernelVersion   the running kernel version ({@link KernelInfo#version()})
+     * @param contractLevel   the client's declared SDUI wire level
+     * @param clientVersion   the client's version string, empty when unknown
+     * @param clientSchema    the client's declared persisted-data schema
+     * @param homePath        the installation root ({@code JHIN_HOME})
+     * @param dataPath        the data directory ({@code <home>/data})
+     * @param pluginsPath     the plugins directory ({@code <home>/plugins})
+     * @param plugins         the loaded plugins, in load order
+     * @param activeSessions  non-settled, non-archived, non-snoozed sessions
+     * @param settledSessions sessions with a settle time
+     * @param snoozedSessions sessions snoozed into the future
+     * @param archivedSessions sessions with an archive time
+     * @param dbSizeBytes     the shared SQLite file size in bytes
+     */
+    public record Facts(
+            String kernelVersion,
+            int contractLevel,
+            String clientVersion,
+            int clientSchema,
+            String homePath,
+            String dataPath,
+            String pluginsPath,
+            List<KernelInfo.Loaded> plugins,
+            int activeSessions,
+            int settledSessions,
+            int snoozedSessions,
+            int archivedSessions,
+            long dbSizeBytes) {
     }
 
     /**
@@ -352,6 +410,7 @@ public final class SettingsScreen {
      * @param keymap            the default keymap entries
      * @param clientKeybindings the caller's overrides (command to chord)
      * @param settings          the effective jhin.ui settings
+     * @param facts             the T111 diagnostics/storage facts snapshot
      * @return the screen node
      * @throws IllegalArgumentException when the id is not a settings sub-route
      */
@@ -359,10 +418,11 @@ public final class SettingsScreen {
                                      boolean securityPresent, boolean reloadPresent,
                                      List<Map<String, Object>> keymap,
                                      Map<String, String> clientKeybindings,
-                                     UiSettings.Snapshot settings) {
+                                     UiSettings.Snapshot settings,
+                                     Facts facts) {
         Route route = route(routeId).orElseThrow(
                 () -> new IllegalArgumentException("unknown settings route: " + routeId));
-        UiNode content = panel(route, keymap, clientKeybindings, settings);
+        UiNode content = panel(route, keymap, clientKeybindings, settings, facts);
         return Ui.screen()
                 .title("Settings")
                 .body(shell(routeId, route.label(), content))
@@ -460,19 +520,13 @@ public final class SettingsScreen {
      */
     private static UiNode panel(Route route, List<Map<String, Object>> keymap,
                                 Map<String, String> clientKeybindings,
-                                UiSettings.Snapshot settings) {
+                                UiSettings.Snapshot settings, Facts facts) {
         return switch (route.id()) {
             case "settings:general" -> generalPanel(settings);
             case "settings:appearance" -> appearancePanel(settings);
-            case "settings:keybindings" -> Ui.container()
-                    .direction("column")
-                    .gap(12)
-                    .padding(16)
-                    .child(Ui.card()
-                            .title("Keyboard")
-                            .child(keyboardRows(keymap, clientKeybindings))
-                            .build())
-                    .build();
+            case "settings:keybindings" -> keybindingsPanel(clientKeybindings);
+            case "settings:diagnostics" -> diagnosticsPanel(facts);
+            case "settings:storage" -> storagePanel(facts);
             default -> placeholder(route);
         };
     }
@@ -1002,6 +1056,299 @@ public final class SettingsScreen {
                                 ID_AUTO_SETTLE, ID_INACTIVITY_DAYS)))
                         .build())
                 .build();
+    }
+
+    /**
+     * The {@code settings:keybindings} panel (T111): the upstream keybindings
+     * table — a search field over a command table grouped by category
+     * (Composer / Threads / Navigation / Panels / General), one row per command
+     * with the upstream label, the effective chord as a {@code kbd} pill, the
+     * {@code when} context and a Change button opening the capture dialog
+     * ({@code keybind-edit}); the Restore-defaults button clears every override
+     * ({@code keybind-restore}).
+     *
+     * <p>Upstream anchors (t3code {@code apps/web/src}, commit {@code 37de6cb}):
+     * {@code components/settings/KeybindingsSettings.tsx:1327-1567} (the panel),
+     * the key pill {@code :74-105}, the row layout {@code :1021-1050} and the
+     * command labels {@code KeybindingsSettings.logic.ts:314-340}. The search
+     * field is decorative ({@code demo: true}): Jhin has no client-side table
+     * filter primitive, so the whole table renders and the field only shows the
+     * upstream affordance.
+     *
+     * <p>The command vocabulary is {@link KeybindCatalog}: the T67 set the
+     * client dispatches plus the inert upstream additions (marked {@code demo}).
+     * The chord shown per row is the caller's override when present
+     * ({@code X-Jhin-Keybindings}), otherwise the server default.
+     *
+     * @param clientKeybindings the caller's overrides (command to chord)
+     * @return the panel node
+     */
+    private static UiNode keybindingsPanel(Map<String, String> clientKeybindings) {
+        Ui.ContainerBuilder body = Ui.container()
+                .direction("column")
+                .gap(12)
+                .padding(16)
+                .child(Ui.input(ID_KEYBIND_SEARCH)
+                        .label("Search keybindings")
+                        .placeholder("Search keybindings")
+                        .set("demo", true)
+                        .build());
+        for (KeybindCatalog.Category category : KeybindCatalog.Category.values()) {
+            List<KeybindCatalog.Command> rows = new java.util.ArrayList<>();
+            for (KeybindCatalog.Command command : KeybindCatalog.commands()) {
+                if (command.category() == category) {
+                    rows.add(command);
+                }
+            }
+            if (!rows.isEmpty()) {
+                body.child(keybindCategory(category, rows, clientKeybindings));
+            }
+        }
+        body.child(Ui.button("Restore defaults")
+                .style("secondary")
+                .action(ActionDescriptors.of("keybind-restore"))
+                .build());
+        return Ui.card()
+                .title("Keyboard")
+                .child(body.build())
+                .build();
+    }
+
+    /** One category of the keybindings panel: the group header and its table. */
+    private static UiNode keybindCategory(KeybindCatalog.Category category,
+                                          List<KeybindCatalog.Command> rows,
+                                          Map<String, String> clientKeybindings) {
+        Ui.TableBuilder table = Ui.table()
+                .column("Command", 3)
+                .column("Chord", 2)
+                .column("When", 3)
+                .column("", 1)
+                .zebra(true)
+                .hoverable(true);
+        for (KeybindCatalog.Command command : rows) {
+            table.row(
+                    keybindCommandCell(command),
+                    keybindChordCell(command, clientKeybindings),
+                    keybindWhenCell(command),
+                    keybindChangeButton(command));
+        }
+        return Ui.container()
+                .direction("column")
+                .gap(8)
+                .child(Ui.text(category.label()).style("h3").build())
+                .child(table.build())
+                .build();
+    }
+
+    /**
+     * One command cell: the upstream label over the command id (the id is the
+     * tooltip upstream shows; here it is the caption so the QA tree can assert
+     * the vocabulary).
+     */
+    private static UiNode keybindCommandCell(KeybindCatalog.Command command) {
+        return Ui.container()
+                .id(ID_KEYBIND_ROW_PREFIX + command.id())
+                .direction("column")
+                .gap(2)
+                .child(Ui.text(command.label()).style("body").build())
+                .child(Ui.text(command.id()).style("caption").build())
+                .build();
+    }
+
+    /** The chord cell: a {@code kbd} pill, or the unassigned caption. */
+    private static UiNode keybindChordCell(KeybindCatalog.Command command,
+                                           Map<String, String> clientKeybindings) {
+        String chord = clientKeybindings.getOrDefault(command.id(), command.chord());
+        if (chord == null || chord.isEmpty()) {
+            return Ui.text("Unassigned").style("caption").build();
+        }
+        return Ui.kbd().chord(chord).build();
+    }
+
+    /** The {@code when}-context cell: the expression, or the always caption. */
+    private static UiNode keybindWhenCell(KeybindCatalog.Command command) {
+        if (command.when().isEmpty()) {
+            return Ui.text("Always").style("caption").build();
+        }
+        return Ui.text(command.when()).style("mono").build();
+    }
+
+    /** The row's Change button: opens the capture dialog for that command. */
+    private static UiNode keybindChangeButton(KeybindCatalog.Command command) {
+        Ui.ButtonBuilder button = Ui.button("Change")
+                .style("secondary")
+                .action(ActionDescriptors.of(
+                        "keybind-edit", Map.of("command", command.id()), null));
+        if (command.demo()) {
+            button.set("demo", true);
+        }
+        return button.build();
+    }
+
+    /**
+     * The {@code settings:diagnostics} panel (T111): the kernel version, the
+     * loaded-plugin list, the storage paths, the negotiated contract level and
+     * the requesting client's version, plus a copyable diagnostics blob and a
+     * decorative Export button.
+     *
+     * <p>Upstream anchors (t3code {@code apps/web/src}, commit {@code 37de6cb}):
+     * {@code components/settings/DiagnosticsSettings.tsx:708-1299} (the panel
+     * shell, the stat blocks and the refresh/export affordances). The Jhin
+     * port is read-only host introspection — no process or trace API exists in
+     * this build (plan section 14.1); every value comes from
+     * {@link KernelInfo} and the request header.
+     *
+     * @param facts the diagnostics facts snapshot
+     * @return the panel node
+     */
+    private static UiNode diagnosticsPanel(Facts facts) {
+        Ui.ContainerBuilder body = Ui.container()
+                .direction("column")
+                .gap(12)
+                .padding(16);
+        body.child(Ui.card()
+                .title("System")
+                .child(infoRow("Kernel version", facts.kernelVersion()))
+                .child(infoRow("Contract level", "api " + facts.contractLevel()))
+                .child(infoRow("Client version", facts.clientVersion().isEmpty()
+                        ? "unknown" : facts.clientVersion()))
+                .child(infoRow("Client schema", "schema " + facts.clientSchema()))
+                .build());
+        body.child(Ui.card()
+                .title("Storage paths")
+                .child(infoRow("Home", facts.homePath()))
+                .child(infoRow("Data", facts.dataPath()))
+                .child(infoRow("Plugins", facts.pluginsPath()))
+                .build());
+        body.child(pluginListCard(facts.plugins()));
+        body.child(Ui.card()
+                .title("Diagnostics report")
+                .child(Ui.codeBlock(diagnosticsBlob(facts))
+                        .id(ID_DIAGNOSTICS_REPORT)
+                        .language("text")
+                        .copyable(true)
+                        .build())
+                .child(Ui.button("Export")
+                        .style("secondary")
+                        .set("demo", true)
+                        .action(Directives.client(List.of(Directives.toast(EXPORT_DEMO))))
+                        .build())
+                .build());
+        return body.build();
+    }
+
+    /** The loaded-plugin card of the diagnostics panel. */
+    private static UiNode pluginListCard(List<KernelInfo.Loaded> plugins) {
+        Ui.CardBuilder card = Ui.card().title("Plugins");
+        if (plugins.isEmpty()) {
+            return card.child(Ui.text("No plugins loaded.").style("caption").build()).build();
+        }
+        Ui.ContainerBuilder rows = Ui.container().direction("column").gap(8);
+        for (KernelInfo.Loaded plugin : plugins) {
+            rows.child(Ui.listRow()
+                    .title(plugin.id())
+                    .subtitle(plugin.name())
+                    .trailing(Ui.badge().label(plugin.version()).build())
+                    .build());
+        }
+        return card.child(rows.build()).build();
+    }
+
+    /** The copyable diagnostics text blob. */
+    private static String diagnosticsBlob(Facts facts) {
+        StringBuilder blob = new StringBuilder();
+        blob.append("Jhin diagnostics\n");
+        blob.append("kernel: ").append(facts.kernelVersion()).append('\n');
+        blob.append("contract: api=").append(facts.contractLevel()).append('\n');
+        blob.append("client: version=")
+                .append(facts.clientVersion().isEmpty() ? "unknown" : facts.clientVersion())
+                .append(" schema=").append(facts.clientSchema()).append('\n');
+        blob.append("home: ").append(facts.homePath()).append('\n');
+        blob.append("data: ").append(facts.dataPath()).append('\n');
+        blob.append("plugins: ").append(facts.plugins().size()).append('\n');
+        for (KernelInfo.Loaded plugin : facts.plugins()) {
+            blob.append("- ").append(plugin.id()).append(' ').append(plugin.version())
+                    .append(" (").append(plugin.name()).append(")\n");
+        }
+        blob.append("sessions: active=").append(facts.activeSessions())
+                .append(" settled=").append(facts.settledSessions())
+                .append(" snoozed=").append(facts.snoozedSessions())
+                .append(" archived=").append(facts.archivedSessions()).append('\n');
+        blob.append("db: ").append(formatBytes(facts.dbSizeBytes())).append('\n');
+        return blob.toString();
+    }
+
+    /**
+     * The {@code settings:storage} panel (T111): the session counts by status,
+     * the database size and path, the real archived-threads shortcut
+     * ({@code navigate settings:archived}) and a decorative Clear-cache button.
+     *
+     * <p>Upstream anchors (t3code {@code apps/web/src}, commit {@code 37de6cb}):
+     * {@code components/settings/StorageSettings.tsx:85-288} (the cleanup
+     * rules). Jhin has no worktree or artifact cleanup engine (plan section
+     * 14.1), so the Jhin port reports the shared store's real counters and
+     * keeps the cache action decorative.
+     *
+     * @param facts the storage facts snapshot
+     * @return the panel node
+     */
+    private static UiNode storagePanel(Facts facts) {
+        Ui.ContainerBuilder body = Ui.container()
+                .direction("column")
+                .gap(12)
+                .padding(16);
+        body.child(Ui.card()
+                .title("Sessions")
+                .child(countRow("Active", facts.activeSessions()))
+                .child(countRow("Settled", facts.settledSessions()))
+                .child(countRow("Snoozed", facts.snoozedSessions()))
+                .child(countRow("Archived", facts.archivedSessions()))
+                .build());
+        body.child(Ui.card()
+                .title("Database")
+                .child(infoRow("Size", formatBytes(facts.dbSizeBytes())))
+                .child(infoRow("Path", facts.dataPath() + "/jhin.db"))
+                .build());
+        body.child(Ui.button("Open archive")
+                .id(ID_ARCHIVED_SHORTCUT)
+                .style("secondary")
+                .action(Directives.navigate("settings:archived"))
+                .build());
+        body.child(Ui.button("Clear cache")
+                .style("danger")
+                .set("demo", true)
+                .action(Directives.client(List.of(Directives.toast(CLEAR_CACHE_DEMO))))
+                .build());
+        return body.build();
+    }
+
+    /** One label/value row of the diagnostics and storage cards. */
+    private static UiNode infoRow(String label, String value) {
+        return Ui.listRow().title(label).subtitle(value).build();
+    }
+
+    /** One status row of the storage session counts. */
+    private static UiNode countRow(String label, int count) {
+        return Ui.listRow()
+                .title(label)
+                .trailing(Ui.badge().label(String.valueOf(count)).build())
+                .build();
+    }
+
+    /** A byte count rendered with the upstream KB/MB/GB units. */
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024) {
+            return bytes + " B";
+        }
+        String[] units = {"KB", "MB", "GB"};
+        double value = bytes;
+        int unit = -1;
+        do {
+            value /= 1024;
+            unit++;
+        } while (value >= 1024 && unit < units.length - 1);
+        return String.format(java.util.Locale.ROOT, value >= 10 ? "%.1f %s" : "%.2f %s",
+                value, units[unit]);
     }
 
     /**

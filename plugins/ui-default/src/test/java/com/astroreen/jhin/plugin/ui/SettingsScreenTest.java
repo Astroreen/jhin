@@ -25,6 +25,12 @@ class SettingsScreenTest {
             Map.of("key", "mod+enter", "command", "composer.send"),
             Map.of("key", "ctrl+k", "command", "palette.open"));
 
+    private static final SettingsScreen.Facts FACTS = new SettingsScreen.Facts(
+            "0.2.0", 3, "0.3.0", 4, "/home/jhin", "/home/jhin/data", "/home/jhin/plugins",
+            List.of(new com.astroreen.jhin.sdk.KernelInfo.Loaded(
+                    "jhin.ui", "0.2.0", "Default UI", List.of())),
+            2, 1, 0, 3, 4096L);
+
     @Test
     void theRouteTableHoldsTheFourteenSubRoutesOfThePlan() {
         assertThat(SettingsScreen.ROUTES).hasSize(14);
@@ -185,10 +191,109 @@ class SettingsScreenTest {
     }
 
     @Test
+    void theKeybindingsPanelRendersTheCatalogTable() {
+        Map<String, Object> keybindings = route("settings:keybindings");
+
+        assertThat(cardTitles(keybindings)).contains("Keyboard");
+        assertThat(nodesOfType(keybindings, "table")).hasSize(5);
+        assertThat(nodesOfType(keybindings, "kbd")).isNotEmpty();
+        assertThat(opsIn(keybindings)).contains("keybind-edit", "keybind-restore");
+        assertThat(labels(keybindings)).contains("Change", "Restore defaults");
+        for (String id : List.of("composer.send", "composer.sendAlternate", "thread.jump9",
+                "palette.open", "nav.back", "appearance.cycle", "modelPicker.toggle")) {
+            assertThat(nodesWithId(keybindings, "keybind-" + id)).as(id).hasSize(1);
+        }
+        for (String id : List.of("composer.sendBackground", "composer.sendAndNewThread",
+                "composer.cycleHost", "thread.steerQueuedMessage", "rightPanel.toggle")) {
+            assertThat(nodesWithId(keybindings, "keybind-" + id)).as(id).hasSize(1);
+        }
+        assertThat(stringsIn(keybindings)).contains(
+                "Composer: Opposite Queue or Steer Action",
+                "Composer: Start in Background",
+                "Composer: Send and Start New Thread",
+                "Queue: Send First Queued Message as Steer",
+                "Composer: Cycle Host");
+    }
+
+    @Test
+    void theKeybindingsPanelMarksOnlyUpstreamAdditionsDemo() {
+        Map<String, Object> keybindings = route("settings:keybindings");
+
+        assertThat(changeButtonFor(keybindings, "composer.send")).doesNotContainKey("demo");
+        assertThat(changeButtonFor(keybindings, "composer.sendBackground"))
+                .containsEntry("demo", true);
+        assertThat(changeButtonFor(keybindings, "thread.steerQueuedMessage"))
+                .containsEntry("demo", true);
+    }
+
+    @Test
+    void theKeybindingsPanelShowsTheClientOverrideChord() {
+        Map<String, Object> keybindings = SettingsScreen.renderRoute(
+                "settings:keybindings", Optional.of("acc-1"), true, false, KEYMAP,
+                Map.of("composer.send", "mod+shift+k"), UiSettings.Snapshot.defaults(), FACTS)
+                .toJson();
+
+        assertThat(stringsIn(keybindings)).contains("mod+shift+k");
+    }
+
+    @Test
+    void theDiagnosticsPanelReflectsTheHost() {
+        Map<String, Object> diagnostics = route("settings:diagnostics");
+
+        assertThat(stringsIn(diagnostics)).contains("0.2.0", "0.3.0", "/home/jhin/data",
+                "jhin.ui", "Default UI");
+        Map<String, Object> report = nodesWithId(diagnostics, "diagnosticsReport").get(0);
+        assertThat(report).containsEntry("type", "code_block").containsEntry("copyable", true);
+        assertThat(stringsIn(report)).anyMatch(text -> text.contains("kernel: 0.2.0"));
+        assertThat(button(diagnostics, "Export")).containsEntry("demo", true);
+    }
+
+    @Test
+    void theStoragePanelShowsCountsAndTheArchiveShortcut() {
+        Map<String, Object> storage = route("settings:storage");
+
+        assertThat(stringsIn(storage)).contains("Active", "Settled", "Snoozed", "Archived",
+                "4.00 KB");
+        Map<String, Object> archive = nodesWithId(storage, "openArchive").get(0);
+        assertThat(castMap(archive.get("action"))).containsEntry("op", "navigate")
+                .containsEntry("screen", "settings:archived");
+        assertThat(button(storage, "Clear cache")).containsEntry("demo", true);
+    }
+
+    private static Map<String, Object> button(Object fragment, String label) {
+        List<Map<String, Object>> found = new ArrayList<>();
+        walk(fragment, map -> {
+            if ("button".equals(map.get("type")) && label.equals(map.get("label"))) {
+                found.add(map);
+            }
+        });
+        assertThat(found).as("button " + label).hasSize(1);
+        return found.get(0);
+    }
+
+    /** The Change button whose keybind-edit payload names {@code command}. */
+    private static Map<String, Object> changeButtonFor(Object fragment, String command) {
+        List<Map<String, Object>> found = new ArrayList<>();
+        walk(fragment, map -> {
+            if (!"button".equals(map.get("type")) || !"Change".equals(map.get("label"))) {
+                return;
+            }
+            Object action = map.get("action");
+            if (action instanceof Map<?, ?> descriptor
+                    && descriptor.get("payload") instanceof Map<?, ?> payload
+                    && command.equals(payload.get("command"))) {
+                found.add(map);
+            }
+        });
+        assertThat(found).as("Change button for " + command).hasSize(1);
+        return found.get(0);
+    }
+
+    @Test
     void anUnknownSubRouteIsRejected() {
         assertThatThrownBy(() -> SettingsScreen.renderRoute(
                 "settings:nope", Optional.empty(), true, false, KEYMAP, Map.of(),
-                UiSettings.Snapshot.defaults()))
+                UiSettings.Snapshot.defaults(), FACTS))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("settings:nope");
         assertThat(SettingsScreen.route("settings:nope")).isEmpty();
@@ -201,7 +306,7 @@ class SettingsScreenTest {
 
     private static Map<String, Object> route(String id) {
         return SettingsScreen.renderRoute(id, Optional.of("acc-1"), true, false, KEYMAP, Map.of(),
-                UiSettings.Snapshot.defaults()).toJson();
+                UiSettings.Snapshot.defaults(), FACTS).toJson();
     }
 
     // --- node walking helpers over the JSON wire shape ---

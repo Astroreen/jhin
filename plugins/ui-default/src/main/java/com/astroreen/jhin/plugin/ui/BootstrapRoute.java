@@ -130,7 +130,7 @@ final class BootstrapRoute {
     /** The inline screens, in registration order and tailored per node. */
     private List<Map<String, Object>> screens(HttpRequest req) {
         Map<String, Supplier<UiNode>> screens =
-                registry.screens(principalAccount(req), ClientKeybindings.of(req));
+                registry.screens(principalAccount(req), ClientKeybindings.of(req), req.client());
         List<Map<String, Object>> out = new ArrayList<>();
         for (Map.Entry<String, Supplier<UiNode>> entry : screens.entrySet()) {
             Map<String, Object> screen = new LinkedHashMap<>();

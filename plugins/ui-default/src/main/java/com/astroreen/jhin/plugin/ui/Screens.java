@@ -10,6 +10,11 @@
  * classes are built with the
  * {@code jhin.ui-kit} builder; this registry only decides which of them one
  * caller may see.
+ *
+ * <p>T111: the settings screens are handed a {@link SettingsScreen.Facts}
+ * snapshot (the kernel version, the loaded-plugin list, the storage paths, the
+ * negotiated contract level, the requesting client's version and the storage
+ * counters) so the diagnostics and storage panels render real host data.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -28,6 +33,10 @@ import com.astroreen.jhin.plugin.ui.screens.SettingsScreen;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.sdk.KernelInfo;
 import com.astroreen.jhin.sdk.ServiceRegistry;
+import com.astroreen.jhin.sdk.http.ClientInfo;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -58,7 +67,15 @@ final class Screens implements ScreenRegistry {
     @Override
     public Map<String, Supplier<UiNode>> screens(Optional<String> account,
                                                  Map<String, String> overrides) {
+        return screens(account, overrides, ClientInfo.UNKNOWN);
+    }
+
+    @Override
+    public Map<String, Supplier<UiNode>> screens(Optional<String> account,
+                                                 Map<String, String> overrides,
+                                                 ClientInfo client) {
         UiSettings.Snapshot snapshot = settings.current();
+        SettingsScreen.Facts facts = facts(account, client);
         Map<String, Supplier<UiNode>> screens = new LinkedHashMap<>();
         if (features.security()) {
             screens.put("connect", EnrollScreen::render);
@@ -71,7 +88,7 @@ final class Screens implements ScreenRegistry {
         for (SettingsScreen.Route route : SettingsScreen.ROUTES) {
             screens.put(route.id(), () -> SettingsScreen.renderRoute(
                     route.id(), account, features.security(), features.reload(),
-                    DefaultKeymap.entries(), overrides, snapshot));
+                    DefaultKeymap.entries(), overrides, snapshot, facts));
         }
         screens.put("plugins", () -> PluginsScreen.render(kernel.plugins()));
         if (providersPresent()) {
@@ -88,7 +105,14 @@ final class Screens implements ScreenRegistry {
     @Override
     public Optional<Supplier<UiNode>> screen(String id, Optional<String> account,
                                              Map<String, String> overrides) {
-        Map<String, Supplier<UiNode>> screens = screens(account, overrides);
+        return screen(id, account, overrides, ClientInfo.UNKNOWN);
+    }
+
+    @Override
+    public Optional<Supplier<UiNode>> screen(String id, Optional<String> account,
+                                             Map<String, String> overrides,
+                                             ClientInfo client) {
+        Map<String, Supplier<UiNode>> screens = screens(account, overrides, client);
         Supplier<UiNode> found = screens.get(id);
         if (found != null) {
             return Optional.of(found);
@@ -102,6 +126,51 @@ final class Screens implements ScreenRegistry {
                 .orElseGet(() -> store.get(sessionId));
         return session.map(open -> (Supplier<UiNode>) () ->
                 ChatScreen.render(open, events.list(open.id(), 0)));
+    }
+
+    /**
+     * The T111 facts snapshot of the settings diagnostics and storage panels:
+     * the kernel identity, the storage paths, the negotiated contract level,
+     * the requesting client's version and the per-status session counters.
+     *
+     * @param account the caller's account id, empty when unscoped
+     * @param client  the parsed {@code X-Jhin-Client} header
+     * @return the facts
+     */
+    private SettingsScreen.Facts facts(Optional<String> account, ClientInfo client) {
+        Path home = kernel.home();
+        Path data = home.resolve("data");
+        Path plugins = home.resolve("plugins");
+        return new SettingsScreen.Facts(
+                kernel.version(),
+                client.api(),
+                client.version(),
+                client.schema(),
+                home.toString(),
+                data.toString(),
+                plugins.toString(),
+                kernel.plugins(),
+                count(account, SessionStore.StatusFilter.ACTIVE),
+                count(account, SessionStore.StatusFilter.SETTLED),
+                count(account, SessionStore.StatusFilter.SNOOZED),
+                count(account, SessionStore.StatusFilter.ARCHIVED),
+                dbSize(data.resolve("jhin.db")));
+    }
+
+    /** The session count of one status view for the caller. */
+    private int count(Optional<String> account, SessionStore.StatusFilter filter) {
+        return account
+                .map(owner -> store.list(owner, filter).size())
+                .orElseGet(() -> store.list(filter).size());
+    }
+
+    /** The size of the shared SQLite file in bytes, zero when it is absent. */
+    private static long dbSize(Path file) {
+        try {
+            return Files.exists(file) ? Files.size(file) : 0L;
+        } catch (IOException e) {
+            return 0L;
+        }
     }
 
     /** Whether the providers screen exists for this caller. */

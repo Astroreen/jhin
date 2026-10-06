@@ -297,6 +297,18 @@ class ScreensTest {
         assertThat(screens.screen("nope", Optional.empty(), Map.of())).isEmpty();
     }
 
+    @Test
+    void registryRendersTheClientVersionOnTheDiagnosticsPanel() {
+        Screens screens = registry(NO_PLUGINS);
+
+        Optional<Supplier<UiNode>> diagnostics = screens.screen(
+                "settings:diagnostics", Optional.empty(), Map.of(),
+                new com.astroreen.jhin.sdk.http.ClientInfo(3, "9.9.9", 4, Set.of()));
+
+        assertThat(diagnostics).isPresent();
+        assertThat(stringsIn(diagnostics.get().get().toJson())).contains("9.9.9");
+    }
+
     private Screens registry(Features features) {
         return new Screens(store, events, new FakePluginContext.FakeServices(), kernel(),
                 features, UiSettings.open(tmp));

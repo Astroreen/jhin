@@ -37,7 +37,7 @@ final class ScreenRoute {
         String id = req.pathParams().getOrDefault("id", "");
         Optional<String> account = account(req);
         Optional<Supplier<UiNode>> screen = registry.screen(
-                id, account, ClientKeybindings.of(req));
+                id, account, ClientKeybindings.of(req), req.client());
         if (screen.isEmpty()) {
             return HttpResponse.error(404, "unknown_screen", "no screen with id " + id);
         }

@@ -4,8 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jhin/boot/sdui_host.dart';
 import 'package:jhin/core/auth/app_storage.dart';
 import 'package:jhin/core/auth/string_store.dart';
+import 'package:jhin/sdui/action_dispatcher.dart' as jhin;
 import 'package:jhin/sdui/keyboard/keymap.dart';
 import 'package:jhin/sdui/sdui_runtime.dart';
+import 'package:jhin/sdui/ui_node.dart';
 import 'package:jhin/store/versioned_store.dart';
 
 import '../sdui_fakes.dart';
@@ -236,6 +238,23 @@ void main() {
         {'command': 'composer.send', 'keys': 'mod+shift+enter'}
       ],
     );
+  });
+
+  test('a bare modifier capture fails validation and never saves', () async {
+    // A bare modifier yields no chord, so the keyCapture field stays empty;
+    // the required rule then reports the node's inline errorText.
+    final capture = UiNode.fromJson({
+      'type': 'input',
+      'id': kKeyCaptureFieldId,
+      'required': true,
+      'errorText': 'Press a chord first',
+    });
+    expect(jhin.ActionDispatcher.validateField(capture, ''), 'Press a chord first');
+
+    // A keybind-save without a captured chord persists nothing.
+    await store.applyAction(kKeybindSaveAction, {'command': 'composer.send'});
+    expect(store.byCommand, isEmpty);
+    expect(payloadOf(prefs, StoreKeys.keybindings), isNull);
   });
 
   testWidgets('Reset reverts one command to its server default',

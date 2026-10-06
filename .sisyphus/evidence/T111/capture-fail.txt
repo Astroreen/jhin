@@ -1,0 +1,8 @@
+=== keybind-edit ===
+POST /ui/action/keybind-edit
+client: api=3; version=0.3.0; schema=4; caps=sse
+req:  {"action":"keybind-edit","payload":{"command":"composer.send"}}
+status: 200
+resp: {"client":[{"op":"dialog","node":{"type":"container","direction":"column","gap":12,"padding":16,"children":[{"type":"text","text":"Press the new chord for Composer: Send","style":"h3"},{"type":"text","text":"composer.send","style":"caption"},{"type":"input","id":"keyCapture","label":"Chord","placeholder":"Press a chord…","value":"","required":true,"errorText":"Press a chord first"},{"type":"row","children":[{"type":"button","label":"Save","action":{"path":"/ui/action/keybind-save","method":"POST","name":"keybind-save","payload":{"command":"composer.send"},"include":["keyCapture"]}},{"type":"button","label":"Cancel","style":"text","action":{"op":"dismissDialog"}}]}]},"kind":"sheet"}]}
+assert: status=200, jq '.client[0].op == "dialog" and .client[0].kind == "sheet"'
+assert: ok
