@@ -32,6 +32,21 @@ public final class ProvidersScreen {
      * @return the screen node
      */
     public static UiNode render(ProviderRegistry providers, Optional<String> account) {
+        return Ui.screen().title("Providers").body(panel(providers, account)).build();
+    }
+
+    /**
+     * Builds the providers CRUD panel of one caller without the screen
+     * wrapper, so the settings shell can embed it under
+     * {@code settings:providers} (T112). The panel is the same
+     * {@code card} + {@code list_row} + {@code form} composition the
+     * standalone {@code providers} screen renders.
+     *
+     * @param providers the provider registry to list from and write to
+     * @param account   the caller's account id, empty when unscoped
+     * @return the panel node
+     */
+    public static UiNode panel(ProviderRegistry providers, Optional<String> account) {
         String accountId = account.orElse(ProviderRegistry.LOCAL_ACCOUNT);
         List<ProviderRecord> records = providers.list(accountId);
         Ui.DropdownBuilder format = Ui.dropdown("format");
@@ -80,6 +95,6 @@ public final class ProvidersScreen {
                     .child(rows.build())
                     .build());
         }
-        return Ui.screen().title("Providers").body(body.build()).build();
+        return body.build();
     }
 }

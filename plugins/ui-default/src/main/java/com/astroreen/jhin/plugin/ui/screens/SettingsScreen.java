@@ -65,6 +65,7 @@
  */
 package com.astroreen.jhin.plugin.ui.screens;
 
+import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.ui.Directives;
 import com.astroreen.jhin.plugin.ui.KeybindCatalog;
 import com.astroreen.jhin.plugin.ui.UiSettings;
@@ -73,10 +74,20 @@ import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.UiTokens;
 import com.astroreen.jhin.sdk.KernelInfo;
+import com.astroreen.jhin.sdk.json.Json;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 public final class SettingsScreen {
 
@@ -248,6 +259,62 @@ public final class SettingsScreen {
     /** The demo wording of the decorative storage Clear-cache button. */
     static final String CLEAR_CACHE_DEMO = "Preview only \u2014 cache is not cleared in this build";
 
+    // --- T112 remaining panels (real providers/archived/licenses + six decorative) ---
+
+    /** The classpath fixture the six decorative panels render from (plan section 4.8). */
+    static final String SETTINGS_FIXTURE = "fixtures/settings-fixtures.json";
+
+    /** Node id of the connections panel's QR placeholder. */
+    static final String ID_PAIR_QR = "pairQr";
+
+    /** Node id of the connections panel's Add-device-host button. */
+    static final String ID_ADD_DEVICE_HOST = "addDeviceHost";
+
+    /** Node id of the snap-shot panel's Create-snapshot button. */
+    static final String ID_CREATE_SNAPSHOT = "createSnapshot";
+
+    /** Node id of the source-control panel's PR-template textarea. */
+    static final String ID_PR_TEMPLATE = "prTemplate";
+
+    /** Node id of the source-control panel's branch-prefix input. */
+    static final String ID_BRANCH_PREFIX = "branchPrefix";
+
+    /** Node id of the source-control panel's branch-naming dropdown. */
+    static final String ID_BRANCH_NAMING = "branchNamingMode";
+
+    /** Node id of the source-control panel's follow-templates switch. */
+    static final String ID_FOLLOW_TEMPLATES = "followChangeRequestTemplates";
+
+    /** Node id of the scheduled-tasks panel's New-task button. */
+    static final String ID_NEW_TASK = "newScheduledTask";
+
+    /** The demo wording of the decorative Add-device-host button. */
+    static final String ADD_DEVICE_HOST_DEMO =
+            "Preview only \u2014 device hosts are not added in this build";
+
+    /** The demo wording of the decorative Create-snapshot button. */
+    static final String CREATE_SNAPSHOT_DEMO =
+            "Preview only \u2014 snapshots are not captured in this build";
+
+    /** The demo wording of the decorative Connect buttons. */
+    static final String CONNECT_DEMO = "Preview only \u2014 integrations are not connected in this build";
+
+    /** The demo wording of the decorative New-task button. */
+    static final String NEW_TASK_DEMO = "Preview only \u2014 scheduled tasks are not created in this build";
+
+    /** The static third-party notice text of the licenses panel. */
+    static final String LICENSE_NOTICE =
+            "Jhin bundles the following third-party libraries under their own licenses.\n"
+            + "\n"
+            + "LangChain4j \u2014 Apache License 2.0\n"
+            + "Model Context Protocol Java SDK \u2014 MIT License\n"
+            + "Jackson \u2014 Apache License 2.0\n"
+            + "SQLite JDBC \u2014 Apache License 2.0\n"
+            + "SLF4J \u2014 MIT License\n"
+            + "Flutter \u2014 BSD 3-Clause License\n"
+            + "\n"
+            + "Full license texts ship with each dependency's artifact.";
+
     /**
      * One settings sub-route: the Jhin screen id, the nav/breadcrumb label
      * and the nav icon name.
@@ -400,8 +467,7 @@ public final class SettingsScreen {
      * Builds one settings sub-route screen of one caller: the shell with the
      * settings nav (the route highlighted), the {@code Settings / <name>}
      * breadcrumb and the route's panel. The three pre-T109 sections render
-     * on their new homes; the remaining routes render a decorative
-     * placeholder panel until their owning todos (T110–T112) fill them.
+     * on their new homes; the remaining routes render their T110–T112 panels.
      *
      * @param routeId           the sub-route screen id
      * @param account           the caller's account id, empty when unauthenticated
@@ -420,9 +486,43 @@ public final class SettingsScreen {
                                      Map<String, String> clientKeybindings,
                                      UiSettings.Snapshot settings,
                                      Facts facts) {
+        return renderRoute(routeId, account, securityPresent, reloadPresent, keymap,
+                clientKeybindings, settings, facts, null, List.of());
+    }
+
+    /**
+     * Builds one settings sub-route screen of one caller with the T112 real
+     * panels wired: {@code settings:providers} embeds the providers CRUD
+     * ({@code providers} is {@code null} when the LLM plugin is absent, so
+     * the route falls back to the placeholder) and {@code settings:archived}
+     * lists the caller's archived sessions.
+     *
+     * @param routeId           the sub-route screen id
+     * @param account           the caller's account id, empty when unauthenticated
+     * @param securityPresent   whether the security plugin is loaded
+     * @param reloadPresent     whether the reload plugin is loaded
+     * @param keymap            the default keymap entries
+     * @param clientKeybindings the caller's overrides (command to chord)
+     * @param settings          the effective jhin.ui settings
+     * @param facts             the T111 diagnostics/storage facts snapshot
+     * @param providersPanel    the providers CRUD panel supplier, {@code null}
+     *                          when the LLM plugin is absent
+     * @param archivedSessions  the caller's archived sessions, newest first
+     * @return the screen node
+     * @throws IllegalArgumentException when the id is not a settings sub-route
+     */
+    public static UiNode renderRoute(String routeId, Optional<String> account,
+                                     boolean securityPresent, boolean reloadPresent,
+                                     List<Map<String, Object>> keymap,
+                                     Map<String, String> clientKeybindings,
+                                     UiSettings.Snapshot settings,
+                                     Facts facts,
+                                     Supplier<UiNode> providersPanel,
+                                     List<Session> archivedSessions) {
         Route route = route(routeId).orElseThrow(
                 () -> new IllegalArgumentException("unknown settings route: " + routeId));
-        UiNode content = panel(route, keymap, clientKeybindings, settings, facts);
+        UiNode content = panel(route, keymap, clientKeybindings, settings, facts,
+                providersPanel, archivedSessions);
         return Ui.screen()
                 .title("Settings")
                 .body(shell(routeId, route.label(), content))
@@ -518,15 +618,28 @@ public final class SettingsScreen {
      * their new homes; every other route renders a decorative placeholder
      * card until its owning todo fills it.
      */
-    private static UiNode panel(Route route, List<Map<String, Object>> keymap,
+    private static UiNode panel(Route route,
+                                List<Map<String, Object>> keymap,
                                 Map<String, String> clientKeybindings,
-                                UiSettings.Snapshot settings, Facts facts) {
+                                UiSettings.Snapshot settings, Facts facts,
+                                Supplier<UiNode> providersPanel, List<Session> archivedSessions) {
         return switch (route.id()) {
             case "settings:general" -> generalPanel(settings);
             case "settings:appearance" -> appearancePanel(settings);
             case "settings:keybindings" -> keybindingsPanel(clientKeybindings);
             case "settings:diagnostics" -> diagnosticsPanel(facts);
             case "settings:storage" -> storagePanel(facts);
+            case "settings:providers" -> providersPanel == null
+                    ? placeholder(route)
+                    : providersPanel.get();
+            case "settings:archived" -> archivedPanel(archivedSessions);
+            case "settings:licenses" -> licensesPanel();
+            case "settings:connections" -> connectionsPanel();
+            case "settings:integrations" -> integrationsPanel();
+            case "settings:projects" -> projectsPanel();
+            case "settings:scheduled-tasks" -> scheduledTasksPanel();
+            case "settings:source-control" -> sourceControlPanel();
+            case "settings:snap-shot" -> snapShotPanel();
             default -> placeholder(route);
         };
     }
@@ -549,6 +662,579 @@ public final class SettingsScreen {
                         .build())
                 .build();
     }
+
+    // --- T112 real panels: archived sessions and open-source licenses ---
+
+    /**
+     * The {@code settings:archived} panel (T112): the caller's archived
+     * sessions, newest first, one row per session with the archive and
+     * creation times and a real {@code Restore} button dispatching the
+     * {@code restore} lifecycle action. The panel is real (no {@code demo}
+     * marker): the action un-archives the session through
+     * {@code jhin.sessions}.
+     *
+     * <p>Upstream anchor (t3code {@code apps/web/src}, commit {@code
+     * 37de6cb}): {@code components/settings/SettingsPanels.tsx:3386-3605}
+     * (the {@code ArchivedThreadsPanel}: project-grouped rows with the
+     * archived/created description and the unarchive control). Jhin sessions
+     * carry no project grouping, so the rows render flat; the upstream
+     * {@code Unarchive} control maps onto the {@code restore} action.
+     *
+     * @param sessions the caller's archived sessions, newest first
+     * @return the panel node
+     */
+    private static UiNode archivedPanel(List<Session> sessions) {
+        Ui.CardBuilder card = Ui.card().title("Archive");
+        if (sessions.isEmpty()) {
+            card.child(Ui.text("No archived threads.").style("caption").build());
+        } else {
+            Ui.ContainerBuilder rows = Ui.container().direction("column").gap(8);
+            for (Session session : sessions) {
+                rows.child(archivedRow(session));
+            }
+            card.child(rows.build());
+        }
+        return panelBody().child(card.build()).build();
+    }
+
+    /** One archived-session row: title, archive/created times and Restore. */
+    private static UiNode archivedRow(Session session) {
+        return Ui.listRow()
+                .id("archived-" + session.id())
+                .title(session.title())
+                .subtitle("Archived " + timestamp(session.archivedAt())
+                        + " \u00b7 Created " + timestamp(session.createdAt()))
+                .trailing(Ui.button("Restore")
+                        .style("secondary")
+                        .action(ActionDescriptors.of("restore", Map.of("id", session.id()), null))
+                        .build())
+                .build();
+    }
+
+    /**
+     * The {@code settings:licenses} panel (T112): the static open-source
+     * notice list and the bundled notice text. Real (no {@code demo} marker):
+     * the text is the shipped dependency attribution, not a fixture.
+     *
+     * <p>Upstream anchor (t3code {@code apps/web/src}, commit {@code
+     * 37de6cb}): {@code components/settings/OpenSourceLicenses.tsx:193-269}
+     * (the {@code OpenSourceLicensesPanel}: a notice list with the license
+     * and bundle summary and the expandable notice text). Jhin ships a fixed
+     * static list instead of fetching a manifest.
+     *
+     * @return the panel node
+     */
+    private static UiNode licensesPanel() {
+        Ui.ContainerBuilder rows = Ui.container().direction("column").gap(8);
+        for (String[] entry : LICENSE_ENTRIES) {
+            rows.child(Ui.listRow()
+                    .title(entry[0])
+                    .subtitle(entry[1])
+                    .build());
+        }
+        return panelBody()
+                .child(Ui.card()
+                        .title("Third-party notices")
+                        .child(rows.build())
+                        .child(Ui.codeBlock(LICENSE_NOTICE)
+                                .language("text")
+                                .copyable(true)
+                                .build())
+                        .build())
+                .build();
+    }
+
+    // --- T112 decorative panels (fixtures/settings-fixtures.json) ---
+
+    /**
+     * The {@code settings:connections} panel (T112): the device-host list
+     * from {@code fixtures/settings-fixtures.json}, the decorative
+     * {@code Add device host} button that navigates to the {@code pair}
+     * shell, and the QR-code placeholder rendered as a {@code figure} grid.
+     * Every interactive node carries {@code demo: true} (plan section 14.10).
+     *
+     * <p>Upstream anchors (t3code {@code apps/web/src}, commit {@code
+     * 37de6cb}): {@code components/settings/DeviceHostsSettings.tsx:77-159}
+     * (the {@code Device hosts} row with the {@code Add host} button and the
+     * host list) and {@code components/settings/ConnectionsSettings.tsx:
+     * 886-968} (the pairing QR panel).
+     *
+     * @return the panel node
+     */
+    private static UiNode connectionsPanel() {
+        Map<String, Object> connections = mapOf(settingsFixture().get("connections"));
+        Ui.ContainerBuilder hosts = Ui.container().direction("column").gap(8);
+        for (Map<String, Object> host : listOfMaps(connections.get("deviceHosts"))) {
+            hosts.child(deviceHostRow(host));
+        }
+        return panelBody()
+                .child(Ui.card()
+                        .title("Device hosts")
+                        .child(hosts.build())
+                        .child(Ui.button("Add device host")
+                                .id(ID_ADD_DEVICE_HOST)
+                                .style("secondary")
+                                .icon("add")
+                                .set("demo", true)
+                                .action(Directives.client(List.of(
+                                        Directives.toast(ADD_DEVICE_HOST_DEMO),
+                                        Directives.navigate("pair"))))
+                                .build())
+                        .build())
+                .child(Ui.card()
+                        .title("Pair a device")
+                        .child(qrPlaceholder())
+                        .child(Ui.text(str(connections.get("pairingUrl"))).style("mono").build())
+                        .build())
+                .build();
+    }
+
+    /** One device-host row: label, target and the platform/status chips. */
+    private static UiNode deviceHostRow(Map<String, Object> host) {
+        Ui.RowBuilder trailing = Ui.row().align("center").gap(8);
+        for (Object platform : listOf(host.get("platforms"))) {
+            trailing.child(Ui.chip()
+                    .label(str(platform))
+                    .icon(platformIcon(str(platform)))
+                    .build());
+        }
+        trailing.child(Ui.chip().label(connectionStatus(str(host.get("status")))).build());
+        return Ui.listRow()
+                .id("device-host-" + str(host.get("id")))
+                .leading(Ui.icon().icon("computer").size(20).build())
+                .title(str(host.get("label")))
+                .subtitle(str(host.get("target")))
+                .trailing(trailing.build())
+                .set("demo", true)
+                .build();
+    }
+
+    /**
+     * The QR-code placeholder: a deterministic 7&times;7 {@code figure} grid
+     * inside a bordered box, marked {@code demo: true} (the pairing protocol
+     * is out of scope, plan section 14.1).
+     */
+    private static UiNode qrPlaceholder() {
+        Ui.GridBuilder grid = Ui.grid()
+                .id(ID_PAIR_QR)
+                .columns(7)
+                .crossAxisSpacing(2)
+                .mainAxisSpacing(2)
+                .shrinkWrap(true);
+        for (int i = 0; i < QR_PATTERN.length(); i++) {
+            boolean dark = QR_PATTERN.charAt(i) == '1';
+            grid.child(Ui.figure()
+                    .shape("rectangle")
+                    .color(dark ? 0xFF111111 : 0xFFFFFFFF)
+                    .width(12)
+                    .height(12)
+                    .build());
+        }
+        return Ui.box()
+                .padding(8)
+                .border("$color.border")
+                .borderRadius("$radius.md")
+                .set("demo", true)
+                .child(grid.build())
+                .build();
+    }
+
+    /**
+     * The {@code settings:integrations} panel (T112): the GitHub / Bitbucket
+     * / ChatGPT / Codex rows from the fixture, each with a status chip and a
+     * decorative {@code Connect} button. Every interactive node carries
+     * {@code demo: true}.
+     *
+     * <p>Upstream anchor (t3code {@code apps/web/src}, commit {@code
+     * 37de6cb}): the provider-instance rows of {@code
+     * components/settings/ProviderInstanceCard.tsx} (the name, the status
+     * badge and the connect/enable control). The plan's integration rows are
+     * the decorative port.
+     *
+     * @return the panel node
+     */
+    private static UiNode integrationsPanel() {
+        Ui.ContainerBuilder rows = Ui.container().direction("column").gap(8);
+        for (Map<String, Object> integration : listOfMaps(settingsFixture().get("integrations"))) {
+            rows.child(integrationRow(integration));
+        }
+        return panelBody()
+                .child(Ui.card().title("Integrations").child(rows.build()).build())
+                .build();
+    }
+
+    /** One integration row: name, detail, status chip and Connect button. */
+    private static UiNode integrationRow(Map<String, Object> integration) {
+        boolean connected = "connected".equals(str(integration.get("status")));
+        Ui.RowBuilder trailing = Ui.row().align("center").gap(8)
+                .child(Ui.chip().label(connected ? "Connected" : "Not connected").build())
+                .child(Ui.button("Connect")
+                        .style("secondary")
+                        .enabled(!connected)
+                        .set("demo", true)
+                        .action(Directives.client(List.of(Directives.toast(CONNECT_DEMO))))
+                        .build());
+        return Ui.listRow()
+                .id("integration-" + str(integration.get("id")))
+                .leading(Ui.icon().icon(integrationIcon(str(integration.get("id")))).size(20).build())
+                .title(str(integration.get("name")))
+                .subtitle(str(integration.get("detail")))
+                .trailing(trailing.build())
+                .set("demo", true)
+                .build();
+    }
+
+    /**
+     * The {@code settings:projects} panel (T112): the project rows from the
+     * fixture, each navigating to {@code project:<key>}. Every row carries
+     * {@code demo: true} (the project screen is decorative, T114).
+     *
+     * <p>Upstream anchor (t3code {@code apps/web/src}, commit {@code
+     * 37de6cb}): {@code components/settings/ProjectsSettings.tsx:9-35} (the
+     * project scope notice and the project settings panel entry).
+     *
+     * @return the panel node
+     */
+    private static UiNode projectsPanel() {
+        Ui.ContainerBuilder rows = Ui.container().direction("column").gap(8);
+        for (Map<String, Object> project : listOfMaps(settingsFixture().get("projects"))) {
+            rows.child(projectRow(project));
+        }
+        return panelBody()
+                .child(Ui.card().title("Projects").child(rows.build()).build())
+                .build();
+    }
+
+    /** One project row: monogram, name, branch/thread count, navigate. */
+    private static UiNode projectRow(Map<String, Object> project) {
+        String key = str(project.get("key"));
+        return Ui.listRow()
+                .id("project-" + key)
+                .leading(Ui.avatar()
+                        .initials(str(project.get("monogram")))
+                        .size(28)
+                        .shape("circle")
+                        .build())
+                .title(str(project.get("name")))
+                .subtitle(str(project.get("branch")) + " \u00b7 "
+                        + intOf(project.get("threads")) + " threads")
+                .trailing(Ui.icon().icon("chevron_right").size(18)
+                        .color("$color.muted-foreground").build())
+                .set("demo", true)
+                .action(Directives.navigate("project:" + key))
+                .build();
+    }
+
+    /**
+     * The {@code settings:scheduled-tasks} panel (T112): the task rows from
+     * the fixture with the schedule label, the next-run label, the status
+     * badge and a decorative toggle switch that flips through the client
+     * {@code setState} without persistence. Every interactive node carries
+     * {@code demo: true}.
+     *
+     * <p>Upstream anchor (t3code {@code apps/web/src}, commit {@code
+     * 37de6cb}): {@code components/settings/ScheduledTasksSettings.tsx:
+     * 371-471} (the {@code ScheduledTaskRow}: title, prompt, schedule label,
+     * status badge and the enable switch).
+     *
+     * @return the panel node
+     */
+    private static UiNode scheduledTasksPanel() {
+        Ui.ContainerBuilder rows = Ui.container().direction("column").gap(8);
+        for (Map<String, Object> task : listOfMaps(settingsFixture().get("scheduledTasks"))) {
+            rows.child(scheduledTaskRow(task));
+        }
+        return panelBody()
+                .child(Ui.card()
+                        .title("Scheduled tasks")
+                        .child(rows.build())
+                        .child(Ui.button("New task")
+                                .id(ID_NEW_TASK)
+                                .style("secondary")
+                                .icon("add")
+                                .set("demo", true)
+                                .action(Directives.client(List.of(Directives.toast(NEW_TASK_DEMO))))
+                                .build())
+                        .build())
+                .build();
+    }
+
+    /** One scheduled-task row: title, prompt, schedule label, badge, switch. */
+    private static UiNode scheduledTaskRow(Map<String, Object> task) {
+        String id = str(task.get("id"));
+        String status = str(task.get("status"));
+        Ui.RowBuilder trailing = Ui.row().align("center").gap(8);
+        if (!"never".equals(status)) {
+            trailing.child(Ui.badge().label(status).build());
+        }
+        trailing.child(Ui.toggle("taskEnabled-" + id, "Enabled")
+                .value(bool(task.get("enabled")))
+                .set("demo", true)
+                .build());
+        return Ui.listRow()
+                .id("scheduled-task-" + id)
+                .title(str(task.get("title")))
+                .subtitle(Ui.column()
+                        .gap(2)
+                        .child(Ui.text(str(task.get("prompt")))
+                                .style("caption").maxLines(2).ellipsis(true).build())
+                        .child(Ui.text(str(task.get("schedule")) + " \u00b7 "
+                                        + str(task.get("nextRun")))
+                                .style("caption").build())
+                        .build())
+                .trailing(trailing.build())
+                .set("demo", true)
+                .build();
+    }
+
+    /**
+     * The {@code settings:source-control} panel (T112): the branch-naming
+     * settings, the change-request template textarea and the provider rows
+     * from the fixture. Every interactive node carries {@code demo: true}.
+     *
+     * <p>Upstream anchors (t3code {@code apps/web/src}, commit {@code
+     * 37de6cb}): {@code components/settings/BranchNamingSettings.tsx:22-161}
+     * (the branch-naming mode, prefix and instructions) and {@code
+     * components/settings/SourceControlSettings.tsx:509-622} (the version
+     * control and source-control-provider discovery rows).
+     *
+     * @return the panel node
+     */
+    private static UiNode sourceControlPanel() {
+        Map<String, Object> sc = mapOf(settingsFixture().get("sourceControl"));
+        Ui.ContainerBuilder providers = Ui.container().direction("column").gap(8);
+        for (Map<String, Object> provider : listOfMaps(sc.get("providers"))) {
+            providers.child(sourceControlProviderRow(provider));
+        }
+        return panelBody()
+                .child(Ui.card()
+                        .title("Branch naming")
+                        .child(demoDropdown(ID_BRANCH_NAMING, "Worktree branch naming",
+                                "Choose how new worktree branches are named from your first message.",
+                                List.of(new String[] {"Static prefix", "static"},
+                                        new String[] {"Semantic prefix", "semantic"},
+                                        new String[] {"Custom instructions", "custom"}),
+                                str(sc.get("branchNamingMode"))))
+                        .child(Ui.input(ID_BRANCH_PREFIX)
+                                .label("Branch prefix")
+                                .value(str(sc.get("branchPrefix")))
+                                .placeholder("No prefix")
+                                .set("demo", true)
+                                .build())
+                        .build())
+                .child(Ui.card()
+                        .title("Text generation")
+                        .child(Ui.textarea(ID_PR_TEMPLATE)
+                                .label("Change request template")
+                                .value(str(sc.get("prTemplate")))
+                                .placeholder("## Summary\n\n## Testing")
+                                .set("demo", true)
+                                .build())
+                        .child(Ui.toggle(ID_FOLLOW_TEMPLATES, "Follow change request templates")
+                                .value(true)
+                                .set("demo", true)
+                                .build())
+                        .build())
+                .child(Ui.card()
+                        .title("Source control providers")
+                        .child(providers.build())
+                        .build())
+                .build();
+    }
+
+    /** One source-control provider row: name, version and status chip. */
+    private static UiNode sourceControlProviderRow(Map<String, Object> provider) {
+        String version = str(provider.get("version"));
+        String status = str(provider.get("status"));
+        String label = switch (status) {
+            case "authenticated" -> "Authenticated";
+            case "available" -> "Available";
+            default -> "Not authenticated";
+        };
+        return Ui.listRow()
+                .id("sc-provider-" + str(provider.get("id")))
+                .leading(Ui.icon().icon("account_tree").size(20).build())
+                .title(str(provider.get("name")) + (version.isEmpty() ? "" : " " + version))
+                .trailing(Ui.chip().label(label).build())
+                .set("demo", true)
+                .build();
+    }
+
+    /**
+     * The {@code settings:snap-shot} panel (T112): the snapshot list from
+     * the fixture and the decorative {@code Create snapshot} button. Every
+     * interactive node carries {@code demo: true}.
+     *
+     * <p>Upstream anchor (t3code {@code apps/web/src}, commit {@code
+     * 37de6cb}): {@code components/settings/SnapShotSettings.tsx:368-577}
+     * (the {@code SnapShots} section). The plan's snapshot list is the
+     * decorative port; the capture backend is out of scope (plan section
+     * 14.1).
+     *
+     * @return the panel node
+     */
+    private static UiNode snapShotPanel() {
+        Ui.ContainerBuilder rows = Ui.container().direction("column").gap(8);
+        for (Map<String, Object> snapshot : listOfMaps(settingsFixture().get("snapShots"))) {
+            rows.child(snapshotRow(snapshot));
+        }
+        return panelBody()
+                .child(Ui.card()
+                        .title("SnapShots")
+                        .child(rows.build())
+                        .child(Ui.button("Create snapshot")
+                                .id(ID_CREATE_SNAPSHOT)
+                                .style("secondary")
+                                .icon("photo_camera")
+                                .set("demo", true)
+                                .action(Directives.client(
+                                        List.of(Directives.toast(CREATE_SNAPSHOT_DEMO))))
+                                .build())
+                        .build())
+                .build();
+    }
+
+    /** One snapshot row: thumbnail figure, name, app/time and size. */
+    private static UiNode snapshotRow(Map<String, Object> snapshot) {
+        return Ui.listRow()
+                .id("snapshot-" + str(snapshot.get("id")))
+                .leading(Ui.figure()
+                        .shape("rectangle")
+                        .color(0xFF888888)
+                        .width(40)
+                        .height(28)
+                        .build())
+                .title(str(snapshot.get("name")))
+                .subtitle(str(snapshot.get("app")) + " \u00b7 " + str(snapshot.get("capturedAt")))
+                .trailing(Ui.text(str(snapshot.get("size"))).style("caption").build())
+                .set("demo", true)
+                .build();
+    }
+
+    // --- T112 fixture loading and small helpers ---
+
+    /** The panel body container shared by the T112 panels. */
+    private static Ui.ContainerBuilder panelBody() {
+        return Ui.container().direction("column").gap(12).padding(16);
+    }
+
+    /**
+     * The parsed {@code fixtures/settings-fixtures.json} root. Loaded from
+     * the classpath at build time; a missing resource is an authoring bug and
+     * fails the build.
+     *
+     * @return the fixture root
+     */
+    static Map<String, Object> settingsFixture() {
+        try (InputStream in = SettingsScreen.class.getClassLoader()
+                .getResourceAsStream(SETTINGS_FIXTURE)) {
+            if (in == null) {
+                throw new IllegalStateException("missing classpath resource: " + SETTINGS_FIXTURE);
+            }
+            return Json.readMap(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new UncheckedIOException("cannot read " + SETTINGS_FIXTURE, e);
+        }
+    }
+
+    /** A JSON list value as a list of maps (non-map entries dropped). */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> listOfMaps(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                out.add((Map<String, Object>) map);
+            }
+        }
+        return out;
+    }
+
+    /** A JSON list value as an immutable list (non-list values become empty). */
+    private static List<Object> listOf(Object value) {
+        return value instanceof List<?> list ? List.copyOf(list) : List.of();
+    }
+
+    /** A JSON object value as a map (non-map values become empty). */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> mapOf(Object value) {
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    /** One string field, the empty string when absent. */
+    private static String str(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    /** One boolean field, {@code false} when absent. */
+    private static boolean bool(Object value) {
+        return value instanceof Boolean flag && flag;
+    }
+
+    /** One int field, {@code 0} when absent. */
+    private static int intOf(Object value) {
+        return value instanceof Number number ? number.intValue() : 0;
+    }
+
+    /** The connection status chip label of one fixture status word. */
+    private static String connectionStatus(String status) {
+        return switch (status) {
+            case "connected" -> "Connected";
+            case "disconnected" -> "Not connected";
+            default -> status;
+        };
+    }
+
+    /** The icon of one integration id. */
+    private static String integrationIcon(String id) {
+        return switch (id) {
+            case "github" -> "code";
+            case "bitbucket" -> "cloud";
+            case "chatgpt" -> "smart_toy";
+            case "codex" -> "terminal";
+            default -> "extension";
+        };
+    }
+
+    /** The icon of one device platform. */
+    private static String platformIcon(String platform) {
+        return switch (platform) {
+            case "ios" -> "phone_iphone";
+            case "android" -> "phone_android";
+            default -> "devices";
+        };
+    }
+
+    /** One epoch-millisecond timestamp as a UTC {@code yyyy-MM-dd HH:mm} label. */
+    private static String timestamp(Long epochMs) {
+        if (epochMs == null) {
+            return "unknown";
+        }
+        return DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                .withZone(ZoneId.of("UTC"))
+                .format(Instant.ofEpochMilli(epochMs));
+    }
+
+    /** The deterministic 7&times;7 QR placeholder pattern ({@code 1} = dark cell). */
+    private static final String QR_PATTERN =
+            "1111111"
+            + "1000001"
+            + "1011101"
+            + "1011101"
+            + "1011101"
+            + "1000001"
+            + "1111111";
+
+    /** The static third-party notice entries of the licenses panel. */
+    private static final List<String[]> LICENSE_ENTRIES = List.of(
+            new String[] {"LangChain4j", "Apache License 2.0"},
+            new String[] {"Model Context Protocol Java SDK", "MIT License"},
+            new String[] {"Jackson", "Apache License 2.0"},
+            new String[] {"SQLite JDBC", "Apache License 2.0"},
+            new String[] {"SLF4J", "MIT License"},
+            new String[] {"Flutter", "BSD 3-Clause License"});
 
     /**
      * One {@code FoldedSettingsSection}-style collapsible card (T110): a

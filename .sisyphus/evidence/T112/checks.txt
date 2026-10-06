@@ -1,0 +1,14 @@
+ok: toolchain recorded (Flutter 3.47.0 • channel stable • https://github.com/flutter/flutter.git)
+ok: ui-default and ui-kit suites green (517 tests; transcript in test.txt)
+ok: Flutter suite green (flutter.txt)
+ok: kernel booted with sessions, llm, qa-mock-llm, ui-kit and ui (kernel.log)
+ok: nine T112 routes: screen root, shell and the active nav (routes.json)
+ok: providers CRUD: create -> appears in list -> delete (providers-transcript.txt)
+ok: settings:archived: the archived session with the real Restore action (archived.json)
+ok: settings:providers embeds the CRUD and settings:licenses renders the static notices
+ok: the six decorative panels render their fixture rows
+ok: every interactive node in the six decorative panels carries demo: true
+ok: every node type stays inside the docs/sdui.md section 2.5 catalog
+ok: T78 regression gate green: the settings contracts still hold (gate-t78/)
+ok: T109 regression gate green: the settings shell still holds (gate-t109/)
+ok: T111 regression gate green: the keybindings, diagnostics and storage panels still hold (gate-t111/)

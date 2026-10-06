@@ -1,0 +1,7 @@
+ok: deleting a non-existent provider answers 404 not_found (providers-fail.txt)
+FAIL: deleting a non-existent provider answered 404 not_found (as designed)
+  the failure path is the documented behavior: DELETE /providers/{id}
+  for an unknown id answers the standard 404
+  {"error":"not_found","message":"provider ... not found"} payload
+  (providers-fail.txt)
+FAIL: deliberately wrong expectation: deleting a non-existent provider succeeded (it does not; see .sisyphus/evidence/T112/providers-fail.txt)

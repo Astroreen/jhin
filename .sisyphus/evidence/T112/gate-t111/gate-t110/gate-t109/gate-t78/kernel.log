@@ -1,0 +1,15 @@
+11:56:48.744 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+11:56:48.937 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+11:56:48.953 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+11:56:48.954 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+11:56:48.956 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18478. Install a security plugin.
+2026-10-06T11:56:49.375+03:00  INFO 3246174 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3246174 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-06T11:56:49.377+03:00  INFO 3246174 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-06T11:56:49.833+03:00  INFO 3246174 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18478 (http)
+2026-10-06T11:56:49.841+03:00  INFO 3246174 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-06T11:56:49.842+03:00  INFO 3246174 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-06T11:56:49.859+03:00  INFO 3246174 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 448 ms
+2026-10-06T11:56:50.053+03:00  INFO 3246174 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18478 (http) with context path '/'
+2026-10-06T11:56:50.060+03:00  INFO 3246174 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.025 seconds (process running for 1.691)
+2026-10-06T11:56:51.169+03:00  INFO 3246174 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-06T11:56:51.172+03:00  INFO 3246174 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete

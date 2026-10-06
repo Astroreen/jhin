@@ -1,0 +1,8 @@
+=== delete-missing-provider ===
+DELETE /providers/does-not-exist
+client: api=3; version=0.3.0; schema=4; caps=sse
+req:  
+status: 404
+resp: {"error":"not_found","message":"provider does-not-exist not found"}
+assert: status=404, jq '.error == "not_found"'
+assert: ok

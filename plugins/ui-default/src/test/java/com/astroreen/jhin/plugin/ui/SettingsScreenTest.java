@@ -10,6 +10,9 @@ package com.astroreen.jhin.plugin.ui;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.astroreen.jhin.plugin.llm.api.ProviderConfig;
+import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
+import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.ui.screens.SettingsScreen;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import java.util.ArrayList;
@@ -260,6 +263,162 @@ class SettingsScreenTest {
         assertThat(button(storage, "Clear cache")).containsEntry("demo", true);
     }
 
+    // --- T112 remaining panels ---
+
+    @Test
+    void theProvidersPanelEmbedsTheCrud() {
+        FakeProviderRegistry providers = new FakeProviderRegistry(List.of("mock"));
+        providers.create("acc-1", "mock", new ProviderConfig("key", "echo", null));
+        Map<String, Object> json = routeWith("settings:providers", providers, List.of());
+
+        assertThat(cardTitles(json)).contains("Add provider", "Configured");
+        assertThat(opsIn(json)).contains("create-provider", "delete-provider");
+        assertThat(labels(json)).contains("Delete");
+        Map<String, Object> form = nodesOfType(json, "form").get(0);
+        assertThat(castMap(form.get("submit"))).containsEntry("label", "Add provider");
+        for (String id : List.of("format", "model", "apiKey", "baseUrl")) {
+            assertThat(nodesWithId(json, id)).as(id).hasSize(1);
+        }
+    }
+
+    @Test
+    void theProvidersPanelFallsBackToThePlaceholderWithoutTheRegistry() {
+        Map<String, Object> json = routeWith("settings:providers", null, List.of());
+
+        assertThat(stringsIn(json)).contains("This panel is not available in this build.");
+    }
+
+    @Test
+    void theArchivedPanelListsSessionsWithRestore() {
+        Session archived = new Session("s-arch", "acc-1", "Old thread", "/tmp/old",
+                null, null, "active", 1000L, 2000L, false, null, null, null, 3000L,
+                true, null, null, false);
+        Map<String, Object> json = routeWith("settings:archived", null, List.of(archived));
+
+        assertThat(cardTitles(json)).contains("Archive");
+        assertThat(nodesWithId(json, "archived-s-arch")).hasSize(1);
+        assertThat(stringsIn(json)).contains("Old thread");
+        assertThat(labels(json)).contains("Restore");
+        Map<String, Object> restore = actionNamed(json, "restore");
+        assertThat(restore.get("payload")).isEqualTo(Map.of("id", "s-arch"));
+    }
+
+    @Test
+    void theArchivedPanelShowsTheEmptyState() {
+        Map<String, Object> json = routeWith("settings:archived", null, List.of());
+
+        assertThat(stringsIn(json)).contains("No archived threads.");
+    }
+
+    @Test
+    void theLicensesPanelRendersTheStaticNotices() {
+        Map<String, Object> json = route("settings:licenses");
+
+        assertThat(cardTitles(json)).contains("Third-party notices");
+        assertThat(stringsIn(json)).contains("LangChain4j", "Apache License 2.0", "MIT License");
+        assertThat(nodesOfType(json, "code_block")).isNotEmpty();
+    }
+
+    @Test
+    void theConnectionsPanelRendersTheFixture() {
+        Map<String, Object> json = route("settings:connections");
+
+        assertThat(cardTitles(json)).contains("Device hosts", "Pair a device");
+        assertThat(nodesWithId(json, "device-host-host-build-mac")).hasSize(1);
+        assertThat(nodesWithId(json, "device-host-host-pixel-lab")).hasSize(1);
+        assertThat(stringsIn(json)).contains("Build Mac", "mac-mini.local", "Pixel Lab");
+        assertThat(button(json, "Add device host")).containsEntry("demo", true);
+        assertThat(nodesWithId(json, "pairQr")).hasSize(1);
+        assertThat(nodesOfType(json, "figure")).isNotEmpty();
+    }
+
+    @Test
+    void theIntegrationsPanelRendersTheFixture() {
+        Map<String, Object> json = route("settings:integrations");
+
+        assertThat(cardTitles(json)).contains("Integrations");
+        for (String id : List.of("github", "bitbucket", "chatgpt", "codex")) {
+            assertThat(nodesWithId(json, "integration-" + id)).as(id).hasSize(1);
+        }
+        assertThat(stringsIn(json)).contains("GitHub", "Bitbucket", "ChatGPT", "Codex");
+        assertThat(nodesOfType(json, "chip")).isNotEmpty();
+        List<Map<String, Object>> connects = nodesOfType(json, "button").stream()
+                .filter(node -> "Connect".equals(node.get("label"))).toList();
+        assertThat(connects).isNotEmpty();
+        assertThat(connects).allSatisfy(node -> assertThat(node).containsEntry("demo", true));
+    }
+
+    @Test
+    void theProjectsPanelNavigatesToProjectKeys() {
+        Map<String, Object> json = route("settings:projects");
+
+        assertThat(cardTitles(json)).contains("Projects");
+        for (String key : List.of("pinball-stats", "jhin", "docs-site")) {
+            Map<String, Object> row = nodesWithId(json, "project-" + key).get(0);
+            assertThat(castMap(row.get("action"))).containsEntry("op", "navigate")
+                    .containsEntry("screen", "project:" + key);
+            assertThat(row).containsEntry("demo", true);
+        }
+    }
+
+    @Test
+    void theScheduledTasksPanelRendersCronRowsAndSwitches() {
+        Map<String, Object> json = route("settings:scheduled-tasks");
+
+        assertThat(cardTitles(json)).contains("Scheduled tasks");
+        assertThat(stringsIn(json)).contains("Every 15 min \u00b7 in 12m",
+                "Weekdays at 09:00 \u00b7 in 2h", "Daily at 22:00 \u00b7 Not scheduled");
+        assertThat(nodesWithId(json, "scheduled-task-task-sentry")).hasSize(1);
+        for (String id : List.of("task-sentry", "task-deps", "task-digest")) {
+            Map<String, Object> toggle = nodesWithId(json, "taskEnabled-" + id).get(0);
+            assertThat(toggle).containsEntry("type", "switch").containsEntry("demo", true);
+        }
+        assertThat(button(json, "New task")).containsEntry("demo", true);
+    }
+
+    @Test
+    void theSourceControlPanelRendersBranchNamingAndProviders() {
+        Map<String, Object> json = route("settings:source-control");
+
+        assertThat(cardTitles(json)).contains("Branch naming", "Text generation",
+                "Source control providers");
+        for (String id : List.of("branchNamingMode", "branchPrefix", "prTemplate",
+                "followChangeRequestTemplates", "sc-provider-git", "sc-provider-github")) {
+            assertThat(nodesWithId(json, id)).as(id).hasSize(1);
+        }
+        assertThat(stringsIn(json)).contains("t3code", "Git 2.43.0", "Authenticated");
+    }
+
+    @Test
+    void theSnapShotPanelRendersTheSnapshotList() {
+        Map<String, Object> json = route("settings:snap-shot");
+
+        assertThat(cardTitles(json)).contains("SnapShots");
+        assertThat(nodesWithId(json, "snapshot-snap-editor")).hasSize(1);
+        assertThat(stringsIn(json)).contains("Editor window", "Terminal", "Browser");
+        assertThat(button(json, "Create snapshot")).containsEntry("demo", true);
+    }
+
+    @Test
+    void theDecorativePanelsMarkEveryInteractiveNodeDemo() {
+        for (String id : List.of("settings:connections", "settings:integrations",
+                "settings:projects", "settings:scheduled-tasks", "settings:source-control",
+                "settings:snap-shot")) {
+            Map<String, Object> json = route(id);
+            Object body = nodesOfType(json, "shell").get(0).get("body");
+            List<Map<String, Object>> interactive = new ArrayList<>();
+            walk(body, map -> {
+                String type = String.valueOf(map.get("type"));
+                if ("list_row".equals(type) || "switch".equals(type) || "button".equals(type)) {
+                    interactive.add(map);
+                }
+            });
+            assertThat(interactive).as(id).isNotEmpty();
+            assertThat(interactive).as(id).allSatisfy(node ->
+                    assertThat(node).containsEntry("demo", true));
+        }
+    }
+
     private static Map<String, Object> button(Object fragment, String label) {
         List<Map<String, Object>> found = new ArrayList<>();
         walk(fragment, map -> {
@@ -305,8 +464,17 @@ class SettingsScreenTest {
     }
 
     private static Map<String, Object> route(String id) {
+        return routeWith(id, null, List.of());
+    }
+
+    private static Map<String, Object> routeWith(String id, ProviderRegistry providers,
+                                                 List<Session> archived) {
+        java.util.function.Supplier<UiNode> providersPanel = providers == null
+                ? null
+                : () -> com.astroreen.jhin.plugin.ui.screens.ProvidersScreen.panel(
+                        providers, Optional.of("acc-1"));
         return SettingsScreen.renderRoute(id, Optional.of("acc-1"), true, false, KEYMAP, Map.of(),
-                UiSettings.Snapshot.defaults(), FACTS).toJson();
+                UiSettings.Snapshot.defaults(), FACTS, providersPanel, archived).toJson();
     }
 
     // --- node walking helpers over the JSON wire shape ---

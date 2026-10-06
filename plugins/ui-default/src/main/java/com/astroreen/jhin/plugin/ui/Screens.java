@@ -15,6 +15,11 @@
  * snapshot (the kernel version, the loaded-plugin list, the storage paths, the
  * negotiated contract level, the requesting client's version and the storage
  * counters) so the diagnostics and storage panels render real host data.
+ *
+ * <p>T112: the settings screens also receive the providers CRUD panel supplier
+ * (only built while the LLM plugin is loaded, so the {@code ProviderRegistry}
+ * class is never resolved without it) and the caller's archived sessions, so
+ * {@code settings:providers} and {@code settings:archived} render real data.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -38,6 +43,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -76,6 +82,15 @@ final class Screens implements ScreenRegistry {
                                                  ClientInfo client) {
         UiSettings.Snapshot snapshot = settings.current();
         SettingsScreen.Facts facts = facts(account, client);
+        // The providers panel supplier is only built while the LLM plugin is
+        // loaded: the lambda body references ProviderRegistry, so creating it
+        // without jhin.llm would force the class load and fail the bootstrap.
+        Supplier<UiNode> providersPanel = providersPresent()
+                ? () -> ProvidersScreen.panel(providerRegistry().orElseThrow(), account)
+                : null;
+        List<Session> archived = account
+                .map(owner -> store.list(owner, SessionStore.StatusFilter.ARCHIVED))
+                .orElseGet(() -> store.list(SessionStore.StatusFilter.ARCHIVED));
         Map<String, Supplier<UiNode>> screens = new LinkedHashMap<>();
         if (features.security()) {
             screens.put("connect", EnrollScreen::render);
@@ -88,12 +103,12 @@ final class Screens implements ScreenRegistry {
         for (SettingsScreen.Route route : SettingsScreen.ROUTES) {
             screens.put(route.id(), () -> SettingsScreen.renderRoute(
                     route.id(), account, features.security(), features.reload(),
-                    DefaultKeymap.entries(), overrides, snapshot, facts));
+                    DefaultKeymap.entries(), overrides, snapshot, facts, providersPanel, archived));
         }
         screens.put("plugins", () -> PluginsScreen.render(kernel.plugins()));
-        if (providersPresent()) {
-            ProviderRegistry providers = providerRegistry().orElseThrow();
-            screens.put("providers", () -> ProvidersScreen.render(providers, account));
+        if (providersPanel != null) {
+            screens.put("providers", () -> ProvidersScreen.render(
+                    providerRegistry().orElseThrow(), account));
         }
         if (snapshot.qaProbe()) {
             screens.put("qa-level3", QaProbeScreen::render);

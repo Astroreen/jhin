@@ -1,0 +1,124 @@
+{
+  "id": "settings-fixtures",
+  "connections": {
+    "pairingUrl": "jhin://pair?code=DEMO-1234",
+    "deviceHosts": [
+      {
+        "id": "host-build-mac",
+        "label": "Build Mac",
+        "target": "mac-mini.local",
+        "platforms": ["ios"],
+        "status": "connected"
+      },
+      {
+        "id": "host-pixel-lab",
+        "label": "Pixel Lab",
+        "target": "pixel-8.local",
+        "platforms": ["android"],
+        "status": "connected"
+      },
+      {
+        "id": "host-staging",
+        "label": "Staging box",
+        "target": "staging.internal",
+        "platforms": [],
+        "status": "disconnected"
+      }
+    ]
+  },
+  "integrations": [
+    {"id": "github", "name": "GitHub", "status": "connected", "detail": "octocat"},
+    {"id": "bitbucket", "name": "Bitbucket", "status": "disconnected", "detail": "Not connected"},
+    {"id": "chatgpt", "name": "ChatGPT", "status": "connected", "detail": "demo-user"},
+    {"id": "codex", "name": "Codex", "status": "disconnected", "detail": "Not connected"}
+  ],
+  "projects": [
+    {
+      "id": "pinball-stats",
+      "key": "pinball-stats",
+      "name": "Pinball Stats",
+      "monogram": "PS",
+      "branch": "main",
+      "threads": 3
+    },
+    {
+      "id": "jhin",
+      "key": "jhin",
+      "name": "Jhin",
+      "monogram": "JH",
+      "branch": "main",
+      "threads": 5
+    },
+    {
+      "id": "docs-site",
+      "key": "docs-site",
+      "name": "Docs Site",
+      "monogram": "DS",
+      "branch": "main",
+      "threads": 1
+    }
+  ],
+  "scheduledTasks": [
+    {
+      "id": "task-sentry",
+      "title": "Check for Sentry issues",
+      "prompt": "Review new Sentry issues and open a thread for each regression.",
+      "schedule": "Every 15 min",
+      "nextRun": "in 12m",
+      "status": "succeeded",
+      "enabled": true
+    },
+    {
+      "id": "task-deps",
+      "title": "Weekly dependency bump",
+      "prompt": "Update dependencies and open a pull request.",
+      "schedule": "Weekdays at 09:00",
+      "nextRun": "in 2h",
+      "status": "never",
+      "enabled": true
+    },
+    {
+      "id": "task-digest",
+      "title": "Nightly digest",
+      "prompt": "Summarize the day's merged pull requests.",
+      "schedule": "Daily at 22:00",
+      "nextRun": "Not scheduled",
+      "status": "failed",
+      "enabled": false
+    }
+  ],
+  "sourceControl": {
+    "branchNamingMode": "static",
+    "branchPrefix": "t3code",
+    "prTemplate": "## Summary\n\n## Testing\n",
+    "providers": [
+      {"id": "git", "name": "Git", "version": "2.43.0", "status": "available"},
+      {"id": "github", "name": "GitHub", "version": "2.81.0", "status": "authenticated"},
+      {"id": "gitlab", "name": "GitLab", "version": "1.40.0", "status": "unauthenticated"},
+      {"id": "bitbucket", "name": "Bitbucket", "version": "", "status": "unauthenticated"}
+    ]
+  },
+  "snapShots": [
+    {
+      "id": "snap-editor",
+      "name": "Editor window",
+      "app": "Code",
+      "capturedAt": "2 minutes ago",
+      "size": "1.2 MB"
+    },
+    {
+      "id": "snap-terminal",
+      "name": "Terminal",
+      "app": "Terminal",
+      "capturedAt": "1 hour ago",
+      "size": "640 KB"
+    },
+    {
+      "id": "snap-browser",
+      "name": "Browser",
+      "app": "Firefox",
+      "capturedAt": "Yesterday",
+      "size": "2.4 MB"
+    }
+  ]
+}
