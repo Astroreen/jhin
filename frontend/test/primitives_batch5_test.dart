@@ -470,10 +470,13 @@ void main() {
 
       final intro = nodes[1];
       final spans = intro.listProp('spans')!.cast<Map>();
+      // T104: the external-link glyph span precedes the link text (the
+      // upstream favicon sits inside the anchor, ChatMarkdown.tsx:1439-1467).
       expect(spans.map((s) => s['text']).toList(),
-          ['Intro paragraph with a ', 'link', ' and ', 'bold', '.']);
-      expect(spans[1]['action'], {'op': 'openUrl', 'value': 'https://example.com/x'});
-      expect(spans[3]['style'], {'fontWeight': 700});
+          ['Intro paragraph with a ', '', 'link', ' and ', 'bold', '.']);
+      expect(spans[1]['icon'], 'open_in_new');
+      expect(spans[2]['action'], {'op': 'openUrl', 'value': 'https://example.com/x'});
+      expect(spans[4]['style'], {'fontWeight': 700});
 
       final items = nodes[4].listProp('items')!.cast<Map>();
       expect(items, hasLength(2));
@@ -606,6 +609,8 @@ void main() {
       expect(setData, hasLength(1));
       expect((setData.single.arguments as Map)['text'], 'line1\nline 2');
       expect(harness.toasts, contains('Copied to clipboard'));
+      // The copied glyph holds for 1.2 s (T104) — pump past the reset timer.
+      await tester.pump(const Duration(milliseconds: 1201));
 
       tester.binding.defaultBinaryMessenger
           .setMockMethodCallHandler(SystemChannels.platform, null);

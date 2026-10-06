@@ -6,9 +6,9 @@ import '../ui_node.dart';
 import '../ui_registry.dart';
 
 /// `markdown` (§2.6): `text` (markdown source, required) plus the accepted
-/// `codeBlockStyle` and `syntax` fences styling hints (see the documented
-/// markdown degrade list of §2.6 — in this MVP fences render as a plain
-/// `code_block`).
+/// `codeBlockStyle` and `syntax` fences styling hints and the T104
+/// `skills` list (the known `$skill` names — a known token renders the
+/// inline skill chip).
 ///
 /// Parsing and the block-to-primitive mapping live in
 /// `design/markdown_render.dart`; this primitive just maps the tree and
@@ -28,11 +28,37 @@ Widget buildMarkdown(BuildContext context, UiNode node, RenderContext ctx) {
   if (node.boolProp('italic') == true) legacy['italic'] = true;
   final color = node.props['color'];
   if (color != null) legacy['color'] = color;
-  var tree = markdownToNode(text);
+  final skills = <String>[
+    for (final skill in node.listProp('skills') ?? const <Object?>[])
+      if (skill is String && skill.isNotEmpty) skill,
+  ];
+  var tree = markdownToNode(text, skills: skills.isEmpty ? null : skills.toSet());
+  if (node.boolProp('syntax') == true) {
+    tree = _stampSyntax(tree);
+  }
   if (legacy.isNotEmpty) {
     tree = _inherit(tree, legacy);
   }
   return ctx.build(context, tree);
+}
+
+/// Stamps `syntax: true` onto every mapped `code_block` (§2.6 — the `syntax`
+/// hint colours the fences).
+UiNode _stampSyntax(UiNode node) {
+  final props = Map<String, dynamic>.from(node.props);
+  if (node.type == 'code_block') props['syntax'] = true;
+  final items = node.listProp('items');
+  if (items != null) {
+    props['items'] = [
+      for (final item in items)
+        item is Map ? _stampSyntax(UiNode.fromJson(item)).toJson() : item,
+    ];
+  }
+  return UiNode(
+    type: node.type,
+    props: props,
+    children: [for (final child in node.children) _stampSyntax(child)],
+  );
 }
 
 /// Copies the legacy level-1 text props onto every mapped `text`/`rich_text`

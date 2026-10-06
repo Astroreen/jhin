@@ -1,0 +1,48 @@
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/design/markdown_parity_test.dart
+00:00 +0: headings h1-h6 h1..h3 map to their tokens; h4..h6 carry the small-heading run
+00:00 +1: headings h1-h6 renders and goldens
+00:00 +2: paragraphs and the remark-breaks semantics a paragraph is one text node; a single newline stays a break
+00:00 +3: paragraphs and the remark-breaks semantics renders and goldens
+00:00 +4: ul/ol lists bullet items carry no marker prefix; ordered items their number
+00:00 +5: ul/ol lists renders and goldens
+00:00 +6: tables columns and rows map onto the table primitive
+00:00 +7: tables renders and goldens
+00:00 +8: blockquote maps to the card primitive
+00:00 +9: blockquote renders and goldens
+00:00 +10: inline code the mono family token
+00:00 +11: inline code renders and goldens
+00:00 +12: fenced code language label from the info string
+00:00 +13: fenced code copy sends the exact source and flips the glyph
+00:00 +14: fenced code syntax colours come from the tokens and goldens
+00:00 +15: links openUrl action, underline and the external-link glyph
+00:00 +16: links renders, taps through and goldens
+00:00 +17: images a standalone image renders a zoomable image node
+00:00 +18: images an image inside a sentence stays inline (an image span)
+00:00 +19: images the zoom dialog opens and closes and goldens
+00:00 +20: task lists the checkbox glyph replaces the list marker
+00:00 +21: task lists renders and goldens
+00:00 +22: strong/em/strikethrough the span styles
+00:00 +23: strong/em/strikethrough renders and goldens
+00:00 +24: GitHub alerts the five kinds map onto five distinct tone tokens
+00:00 +25: GitHub alerts a marker with trailing text is an ordinary quote
+00:00 +26: GitHub alerts an unknown kind is an ordinary quote
+00:00 +27: GitHub alerts renders the note card and goldens
+00:00 +28: GitHub alerts renders the tip card and goldens
+00:01 +29: GitHub alerts renders the important card and goldens
+00:01 +30: GitHub alerts renders the warning card and goldens
+00:01 +31: GitHub alerts renders the caution card and goldens
+00:01 +32: citations a t3-citation link renders the citation chip span
+00:01 +33: citations renders the blue pill and goldens
+00:01 +34: skill inlines a known skill token becomes the chip span; unknown stays text
+00:01 +35: skill inlines tokens inside code and links are not split
+00:01 +36: skill inlines renders the pill and goldens
+00:01 +37: non-features (T104.2) display math renders as a math code block
+00:01 +38: non-features (T104.2) inline math renders as a math code block too
+00:01 +39: non-features (T104.2) footnote refs render as plain refs without an action
+00:01 +40: non-features (T104.2) math goldens as a code block
+00:01 +41: malformed markdown never throws (T104.2) every malformed input maps without throwing
+00:01 +42: malformed markdown never throws (T104.2) an unbalanced fence degrades the whole source to plain text
+00:01 +43: malformed markdown never throws (T104.2) an unclosed math marker stays plain text
+00:01 +44: malformed markdown never throws (T104.2) malformed sources render partial content without a crash
+00:01 +45: malformed markdown never throws (T104.2) fail mode: malformed markdown throws (the inverted expectation)
+00:01 +46: All tests passed!

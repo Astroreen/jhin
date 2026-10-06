@@ -564,7 +564,8 @@ Text primitives:
 | `rich_text` | `spans` | span array | — | inline spans, see the span table below |
 | `markdown` | `text` | string | — | markdown source (required) |
 | `markdown` | `codeBlockStyle` | string | — | code-fence style name |
-| `markdown` | `syntax` | bool | `false` | syntax highlighting in fences |
+| `markdown` | `syntax` | bool | `false` | token-driven syntax coloring in fences (T104) |
+| `markdown` | `skills` | string array | — | known `$skill` names; a known token renders the inline skill chip (T104) |
 | `code_block` | `code` | string | — | source text (required) |
 | `code_block` | `language` | string | — | language label |
 | `code_block` | `wrap` | bool | `false` | wrap long lines |
@@ -578,28 +579,39 @@ nodes through the normal primitive pipeline):
 | Markdown | Node |
 |----------|------|
 | paragraph (plain) | `text` |
-| paragraph with inline markup | `rich_text` (spans: link → `action: {op: openUrl, value: href}`, `strong` → `fontWeight: 700`, `em` → `fontStyle: italic`, inline code → `fontFamily: $font.mono`) |
+| paragraph with inline markup | `rich_text` (spans: link → `action: {op: openUrl, value: href}` + `textDecoration: underline` + `color: $color.info-foreground` + a leading `icon: open_in_new` glyph on http(s) links, `strong` → `fontWeight: 700`, `em` → `fontStyle: italic`, inline code → `fontFamily: $font.mono`, `del` → `textDecoration: lineThrough`) |
 | heading `#`…`###` | `text` (`style: h1`…`h3`) |
-| heading `####`…`######` | `text` (`style: h3`) |
-| fenced / indented code | `code_block` (`code`, `language` from the info string) |
+| heading `####`…`######` | `rich_text` with the small-heading run (`fontSize: 14`, `fontWeight: 600`; h6 adds `color: $color.muted-foreground`) |
+| fenced / indented code | `code_block` (`code`, `language` from the info string, `copyable: true` — the header recipe: the muted language label and the ghost copy action) |
+| display math `$$ … $$` | `code_block` (`language: math` — the non-feature: the raw TeX source shows in a mono block) |
 | bullet / ordered list | `list` (`items`; ordered items carry their `1.` prefix; nested lists nest inside a `container` item) |
+| task-list item | `list` item whose leading span is the checkbox glyph (`check_box` tinted `$color.accent` when checked, `check_box_outline_blank` tinted `$color.muted-foreground` otherwise — the glyph replaces the list marker) |
 | blockquote | `card` (`children` = the mapped inner blocks) |
+| blockquote `[!NOTE]` `[!TIP]` `[!IMPORTANT]` `[!WARNING]` `[!CAUTION]` | `column` bordered callout (`border: $color.info`/`$color.success`/`$color.accent`/`$color.warning`/`$color.error`, `borderRadius: $radius.sm`) with the icon + coloured title and the mapped body (the marker must sit alone on its first line, the GitHub rule) |
+| `t3-citation://` link | `rich_text` span with `chip: {kind: citation, label: <quoted text>}` — the inline citation pill, no `openUrl` |
+| known `$skill` token | `rich_text` span with `chip: {kind: skill, label: $name}` — the inline skill pill (only against the `skills` list; never inside code or links) |
 | table | `table` (`columns`, `rows`) |
 | thematic break | `divider` |
-| image | `image` (`src`, `semanticsLabel` from the alt text; splits out of its paragraph) |
+| standalone image (a paragraph's only content) | `image` (`src`, `semanticsLabel` from the alt text, `zoomable: true` — tapping opens the zoom dialog) |
+| inline image | `rich_text` span with `image: {src, semanticsLabel?}` — stays in the sentence |
+| footnote reference `[^1]` | plain text without a link action (the plain-refs non-feature) |
 
 Markdown degrades (§2.4 — the client never crashes on server content):
 
 - an unbalanced (unclosed) fenced code block degrades the whole `markdown`
   node to a single plain `text` carrying the raw source;
+- a `$$` display-math marker that never closes stays plain text;
 - unsupported or malformed blocks — HTML blocks, footnote definitions and
   references, definition lists, unknown elements — degrade to plain `text`
   (their text content; an HTML block keeps its raw source);
 - unknown inline elements flatten to their plain text;
-- `syntax: true` is accepted but syntax highlighting is not implemented in
-  this MVP — fences render as a plain `code_block`;
+- `syntax: true` colours keywords, strings, numbers and comments through the
+  semantic tokens (`$color.accent` / `$color.success` / `$color.warning` /
+  `$color.muted-foreground`); unknown constructs keep the code foreground;
 - `codeBlockStyle` is accepted; the contract defines no literal set yet, so
-  every value renders the default `code_block` look.
+  every value renders the default `code_block` look;
+- a parse that throws (beyond the degrades above) is caught: the raw source
+  renders as plain `text` — the mapping never throws (§2.4).
 
 Control primitives:
 
@@ -939,6 +951,9 @@ Item and part shapes:
 | `rich_text` span | `style` | text style | no | span style |
 | `rich_text` span | `action` | action | no | tappable span; an unknown action drops the action and keeps the text |
 | `rich_text` span | `tooltip` | string | no | span tooltip |
+| `rich_text` span | `icon` | icon name | no | T104: an inline registry glyph instead of text, coloured by `style.color` when set (the external-link glyph, the task-list checkbox) |
+| `rich_text` span | `chip` | `{kind, label}` | no | T104: an inline context pill instead of text (`kind: citation` for `t3-citation://` links, `skill` for known `$skill` tokens); never interactive by itself |
+| `rich_text` span | `image` | `{src, semanticsLabel?}` | no | T104: an inline image instead of text (an image inside a sentence) |
 | `list` section | `label` | string | yes | section label (empty sections still show it) |
 | `list` section | `id` | string | no | section id |
 | `list` section | `collapsible` | bool | no | can collapse |

@@ -1,0 +1,5 @@
+{
+  "id": "msg-2",
+  "text": "# Note\n\n> [!WARNING]\n> handle the `t3-citation://` body\n\n```java\ncode line\n```",
+  "type": "markdown"
+}

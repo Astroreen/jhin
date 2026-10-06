@@ -6,18 +6,23 @@ import '../directives.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
+import 'chip.dart' show buildChip;
 import 'text_common.dart';
 
 /// `rich_text` (§2.6): `spans` — an inline span array of
-/// `{text, style, action, tooltip}`.
+/// `{text, style, action, tooltip, icon, chip, image}`.
 ///
 /// Spans become `TextSpan`s inside one `Text.rich`; a span with `tooltip`
 /// wraps in a `WidgetSpan` so the tooltip can hover over its own text. A
-/// tappable `action` attaches a tap recognizer that dispatches through
-/// [RenderContext.dispatch]; an unknown action (no `path` and no known
-/// directive `op`) drops the action and keeps the text (§2.6 span table).
-/// Unknown span fields are ignored (§2.4). A missing or empty `spans` array
-/// degrades to a visible placeholder.
+/// span may instead carry an `icon` (a registry icon name — T104's external
+/// link glyphs and task-list checkboxes), a `chip` (`{kind, label}` — the
+/// inline citation/skill pill, T104) or an `image` (`{src,
+/// semanticsLabel?}` — the inline image, T104); each renders as a
+/// mid-aligned `WidgetSpan`. A tappable `action` attaches a tap recognizer
+/// that dispatches through [RenderContext.dispatch]; an unknown action (no
+/// `path` and no known directive `op`) drops the action and keeps the text
+/// (§2.6 span table). Unknown span fields are ignored (§2.4). A missing or
+/// empty `spans` array degrades to a visible placeholder.
 Widget buildRichText(BuildContext context, UiNode node, RenderContext ctx) {
   final spans = node.listProp('spans');
   if (spans == null || spans.isEmpty) {
@@ -106,6 +111,52 @@ class _RichTextRunState extends State<_RichTextRun> {
         ..onTap = () => widget.ctx.dispatch(action);
       _recognizers[index] = recognizer;
     }
+
+    // T104 inline widgets: `icon`, `chip` and `image` render mid-aligned
+    // WidgetSpans (the markdown parity pills, glyphs and inline media).
+    final icon = map == null ? null : (map['icon'] is String ? map['icon'] as String : null);
+    if (icon != null) {
+      return WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Icon(iconFor(icon), size: 14, color: style?.color),
+      );
+    }
+    final chip = map == null ? null : asMap(map['chip']);
+    if (chip != null) {
+      final label = chip['label'];
+      if (label is! String || label.isEmpty) return null;
+      return WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: buildChip(
+          context,
+          UiNode(type: 'chip', props: {
+            'label': label,
+            if (chip['kind'] is String) 'kind': chip['kind'],
+          }),
+          widget.ctx,
+        ),
+      );
+    }
+    final image = map == null ? null : asMap(map['image']);
+    if (image != null) {
+      final src = image['src'];
+      if (src is! String || src.isEmpty) return null;
+      final label = image['semanticsLabel'] is String
+          ? image['semanticsLabel'] as String
+          : null;
+      return WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Image.network(src,
+            height: 20,
+            fit: BoxFit.contain,
+            semanticLabel: label,
+            errorBuilder: (context, error, trace) => Icon(
+                iconFor('broken_image_outlined'),
+                size: 14,
+                color: JhinDesignScope.materialOf(context).disabledColor)),
+      );
+    }
+
     final span = TextSpan(text: text, style: style, recognizer: recognizer);
     if (tooltip == null) return span;
     return WidgetSpan(
