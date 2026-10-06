@@ -1,0 +1,2378 @@
+{
+  "type": "screen",
+  "title": "Settings",
+  "body": {
+    "type": "shell",
+    "id": "settings-shell",
+    "breakpoint": 768,
+    "topbar": {
+      "type": "row",
+      "id": "settings-topbar",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "type": "button",
+          "label": "Back to threads",
+          "style": "secondary",
+          "action": {
+            "op": "navigate",
+            "screen": "sessions"
+          }
+        }
+      ]
+    },
+    "topbarCompact": {
+      "type": "row",
+      "id": "settings-topbar-compact",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "spacer"
+        }
+      ]
+    },
+    "pageHeader": {
+      "type": "row",
+      "id": "settings-breadcrumb",
+      "align": "center",
+      "gap": 8,
+      "children": [
+        {
+          "type": "text",
+          "text": "Settings",
+          "style": "small"
+        },
+        {
+          "type": "text",
+          "text": "/",
+          "style": "small"
+        },
+        {
+          "type": "text",
+          "text": "Keybindings",
+          "style": "body",
+          "bold": true
+        }
+      ]
+    },
+    "sidebar": {
+      "type": "nav",
+      "id": "settings-nav",
+      "kind": "sidebar",
+      "items": [
+        {
+          "id": "settings:general",
+          "label": "General",
+          "icon": "settings",
+          "screen": "settings:general"
+        },
+        {
+          "id": "settings:appearance",
+          "label": "Appearance",
+          "icon": "palette",
+          "screen": "settings:appearance"
+        },
+        {
+          "id": "settings:keybindings",
+          "label": "Keybindings",
+          "icon": "keyboard",
+          "screen": "settings:keybindings"
+        },
+        {
+          "id": "settings:providers",
+          "label": "Providers",
+          "icon": "smart_toy",
+          "screen": "settings:providers"
+        },
+        {
+          "id": "settings:connections",
+          "label": "Connections",
+          "icon": "link",
+          "screen": "settings:connections"
+        },
+        {
+          "id": "settings:integrations",
+          "label": "Integrations",
+          "icon": "extension",
+          "screen": "settings:integrations"
+        },
+        {
+          "id": "settings:diagnostics",
+          "label": "Diagnostics",
+          "icon": "monitor_heart",
+          "screen": "settings:diagnostics"
+        },
+        {
+          "id": "settings:storage",
+          "label": "Storage",
+          "icon": "storage",
+          "screen": "settings:storage"
+        },
+        {
+          "id": "settings:archived",
+          "label": "Archive",
+          "icon": "archive",
+          "screen": "settings:archived"
+        },
+        {
+          "id": "settings:projects",
+          "label": "Project",
+          "icon": "folder",
+          "screen": "settings:projects"
+        },
+        {
+          "id": "settings:scheduled-tasks",
+          "label": "Scheduled Tasks",
+          "icon": "schedule",
+          "screen": "settings:scheduled-tasks"
+        },
+        {
+          "id": "settings:source-control",
+          "label": "Source Control",
+          "icon": "account_tree",
+          "screen": "settings:source-control"
+        },
+        {
+          "id": "settings:snap-shot",
+          "label": "SnapShots",
+          "icon": "photo_camera",
+          "screen": "settings:snap-shot"
+        },
+        {
+          "id": "settings:licenses",
+          "label": "Open source licenses",
+          "icon": "description",
+          "screen": "settings:licenses"
+        }
+      ],
+      "activeId": "settings:keybindings"
+    },
+    "stageBackdrop": true,
+    "body": {
+      "type": "card",
+      "title": "Keyboard",
+      "children": [
+        {
+          "type": "container",
+          "direction": "column",
+          "gap": 12,
+          "padding": 16,
+          "children": [
+            {
+              "type": "input",
+              "id": "keybindSearch",
+              "label": "Search keybindings",
+              "placeholder": "Search keybindings",
+              "demo": true
+            },
+            {
+              "type": "container",
+              "direction": "column",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "Composer",
+                  "style": "h3"
+                },
+                {
+                  "type": "table",
+                  "columns": [
+                    {
+                      "label": "Command",
+                      "width": 3
+                    },
+                    {
+                      "label": "Chord",
+                      "width": 2
+                    },
+                    {
+                      "label": "When",
+                      "width": 3
+                    },
+                    {
+                      "label": "",
+                      "width": 1
+                    }
+                  ],
+                  "zebra": true,
+                  "hoverable": true,
+                  "rows": [
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.send",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Send",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.send",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+enter"
+                      },
+                      {
+                        "type": "text",
+                        "text": "composerFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.send"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.sendAndNew",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Send And New",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.sendAndNew",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "ctrl+alt+enter"
+                      },
+                      {
+                        "type": "text",
+                        "text": "composerFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.sendAndNew"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.sendAlternate",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Opposite Queue or Steer Action",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.sendAlternate",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+enter"
+                      },
+                      {
+                        "type": "text",
+                        "text": "composerFocus && turnRunning",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.sendAlternate"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.newline",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Newline",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.newline",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "shift+enter"
+                      },
+                      {
+                        "type": "text",
+                        "text": "composerFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.newline"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.recallPrev",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Recall Prev",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.recallPrev",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+up"
+                      },
+                      {
+                        "type": "text",
+                        "text": "composerFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.recallPrev"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.recallNext",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Recall Next",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.recallNext",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+down"
+                      },
+                      {
+                        "type": "text",
+                        "text": "composerFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.recallNext"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.host",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Host",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.host",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+shift+h"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.host"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.effort",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Effort",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.effort",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+shift+e"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.effort"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.mode",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Mode",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.mode",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+shift+a"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.mode"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.workspace",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Workspace",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.workspace",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+shift+x"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.workspace"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.branch",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Branch",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.branch",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+shift+g"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.branch"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.previousWorktree",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Previous Worktree",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.previousWorktree",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+shift+l"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.previousWorktree"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.sendBackground",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Start in Background",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.sendBackground",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+enter"
+                      },
+                      {
+                        "type": "text",
+                        "text": "composerFocus && draftThreadRoute",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.sendBackground"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.sendAndNewThread",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Send and Start New Thread",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.sendAndNewThread",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+alt+enter"
+                      },
+                      {
+                        "type": "text",
+                        "text": "composerFocus && !draftThreadRoute",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.sendAndNewThread"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.cycleHost",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Cycle Host",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.cycleHost",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "text": "Unassigned",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.cycleHost"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-composer.stash",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Composer: Stash",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "composer.stash",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+s"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "composer.stash"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ]
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "direction": "column",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "Threads",
+                  "style": "h3"
+                },
+                {
+                  "type": "table",
+                  "columns": [
+                    {
+                      "label": "Command",
+                      "width": 3
+                    },
+                    {
+                      "label": "Chord",
+                      "width": 2
+                    },
+                    {
+                      "label": "When",
+                      "width": 3
+                    },
+                    {
+                      "label": "",
+                      "width": 1
+                    }
+                  ],
+                  "zebra": true,
+                  "hoverable": true,
+                  "rows": [
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.next",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Next",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.next",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "text": "Unassigned",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.next"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.prev",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Prev",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.prev",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "text": "Unassigned",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.prev"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.jump1",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Jump1",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.jump1",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+1"
+                      },
+                      {
+                        "type": "text",
+                        "text": "isDesktop",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.jump1"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.jump2",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Jump2",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.jump2",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+2"
+                      },
+                      {
+                        "type": "text",
+                        "text": "isDesktop",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.jump2"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.jump3",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Jump3",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.jump3",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+3"
+                      },
+                      {
+                        "type": "text",
+                        "text": "isDesktop",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.jump3"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.jump4",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Jump4",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.jump4",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+4"
+                      },
+                      {
+                        "type": "text",
+                        "text": "isDesktop",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.jump4"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.jump5",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Jump5",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.jump5",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+5"
+                      },
+                      {
+                        "type": "text",
+                        "text": "isDesktop",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.jump5"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.jump6",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Jump6",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.jump6",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+6"
+                      },
+                      {
+                        "type": "text",
+                        "text": "isDesktop",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.jump6"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.jump7",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Jump7",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.jump7",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+7"
+                      },
+                      {
+                        "type": "text",
+                        "text": "isDesktop",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.jump7"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.jump8",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Jump8",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.jump8",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+8"
+                      },
+                      {
+                        "type": "text",
+                        "text": "isDesktop",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.jump8"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.jump9",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Jump9",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.jump9",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+9"
+                      },
+                      {
+                        "type": "text",
+                        "text": "isDesktop",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.jump9"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.undo",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Undo",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.undo",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "ctrl+z"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.undo"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.settle",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Settle",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.settle",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "text": "Unassigned",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.settle"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.pin",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: Pin",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.pin",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "text": "Unassigned",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.pin"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.new",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Thread: New",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.new",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+n"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.new"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.steerQueuedMessage",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Queue: Send First Queued Message as Steer",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.steerQueuedMessage",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+shift+enter"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.steerQueuedMessage"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.editQueuedMessage",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Queue: Edit Last Queued Message",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.editQueuedMessage",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "alt+arrowup"
+                      },
+                      {
+                        "type": "text",
+                        "text": "composerFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.editQueuedMessage"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-thread.copyReference",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Pull Request: Copy Link or Thread ID",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "thread.copyReference",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+shift+c"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "thread.copyReference"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ]
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "direction": "column",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "Navigation",
+                  "style": "h3"
+                },
+                {
+                  "type": "table",
+                  "columns": [
+                    {
+                      "label": "Command",
+                      "width": 3
+                    },
+                    {
+                      "label": "Chord",
+                      "width": 2
+                    },
+                    {
+                      "label": "When",
+                      "width": 3
+                    },
+                    {
+                      "label": "",
+                      "width": 1
+                    }
+                  ],
+                  "zebra": true,
+                  "hoverable": true,
+                  "rows": [
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-palette.open",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Palette: Open",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "palette.open",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "ctrl+k"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "palette.open"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-nav.back",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Nav: Back",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "nav.back",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "alt+left"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "nav.back"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-nav.forward",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Nav: Forward",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "nav.forward",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "alt+right"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "nav.forward"
+                          }
+                        }
+                      }
+                    ]
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "direction": "column",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "Panels",
+                  "style": "h3"
+                },
+                {
+                  "type": "table",
+                  "columns": [
+                    {
+                      "label": "Command",
+                      "width": 3
+                    },
+                    {
+                      "label": "Chord",
+                      "width": 2
+                    },
+                    {
+                      "label": "When",
+                      "width": 3
+                    },
+                    {
+                      "label": "",
+                      "width": 1
+                    }
+                  ],
+                  "zebra": true,
+                  "hoverable": true,
+                  "rows": [
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-modelPicker.toggle",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Model Picker: Toggle",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "modelPicker.toggle",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+shift+m"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "modelPicker.toggle"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-rightPanel.toggle",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Right Panel: Toggle",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "rightPanel.toggle",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+alt+b"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "rightPanel.toggle"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-terminal.toggle",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Terminal: Toggle",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "terminal.toggle",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+j"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "terminal.toggle"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-preview.toggle",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Preview: Toggle",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "preview.toggle",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+shift+j"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "preview.toggle"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-diff.toggle",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Diff: Toggle",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "diff.toggle",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+d"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "diff.toggle"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-sidebar.toggle",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Sidebar: Toggle",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "sidebar.toggle",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+b"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "sidebar.toggle"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ]
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "container",
+              "direction": "column",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "General",
+                  "style": "h3"
+                },
+                {
+                  "type": "table",
+                  "columns": [
+                    {
+                      "label": "Command",
+                      "width": 3
+                    },
+                    {
+                      "label": "Chord",
+                      "width": 2
+                    },
+                    {
+                      "label": "When",
+                      "width": 3
+                    },
+                    {
+                      "label": "",
+                      "width": 1
+                    }
+                  ],
+                  "zebra": true,
+                  "hoverable": true,
+                  "rows": [
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-appearance.cycle",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Appearance: Cycle",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "appearance.cycle",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "text": "Unassigned",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "appearance.cycle"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-theme.pick",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Theme: Pick",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "theme.pick",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "text": "Unassigned",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "text",
+                        "text": "Always",
+                        "style": "caption"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "theme.pick"
+                          }
+                        }
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-usage.open",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Usage: Open",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "usage.open",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+u"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "usage.open"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ],
+                    [
+                      {
+                        "type": "container",
+                        "id": "keybind-theme.select",
+                        "direction": "column",
+                        "gap": 2,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Theme: Select",
+                            "style": "body"
+                          },
+                          {
+                            "type": "text",
+                            "text": "theme.select",
+                            "style": "caption"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "kbd",
+                        "chord": "mod+alt+a"
+                      },
+                      {
+                        "type": "text",
+                        "text": "!terminalFocus",
+                        "style": "mono"
+                      },
+                      {
+                        "type": "button",
+                        "label": "Change",
+                        "style": "secondary",
+                        "action": {
+                          "path": "/ui/action/keybind-edit",
+                          "method": "POST",
+                          "name": "keybind-edit",
+                          "payload": {
+                            "command": "theme.select"
+                          }
+                        },
+                        "demo": true
+                      }
+                    ]
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "button",
+              "label": "Restore defaults",
+              "style": "secondary",
+              "action": {
+                "path": "/ui/action/keybind-restore",
+                "method": "POST",
+                "name": "keybind-restore"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

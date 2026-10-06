@@ -1,0 +1,236 @@
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:processResources UP-TO-DATE
+> Task :jhin-plugin-mcp:processResources UP-TO-DATE
+> Task :jhin-plugin-qa-mock-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-example:processResources UP-TO-DATE
+> Task :jhin-plugin-reload:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:processResources UP-TO-DATE
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :kernel:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :sdk:generateMetadataFileForMavenPublication
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :sdk:generatePomFileForMavenPublication
+> Task :sdk:publishMavenPublicationToMavenLocal
+> Task :sdk:publishToMavenLocal
+> Task :jhin-plugin-qa-mock-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:compileJava UP-TO-DATE
+> Task :jhin-plugin-reload:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-qa-mock-llm:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-reload:classes UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:classes UP-TO-DATE
+> Task :jhin-plugin-qa-mock-llm:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-reload:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:compileJava UP-TO-DATE
+> Task :jhin-plugin-mcp:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-example:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:classes UP-TO-DATE
+> Task :jhin-plugin-mcp:classes UP-TO-DATE
+> Task :jhin-plugin-example:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:jar UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:jar UP-TO-DATE
+> Task :jhin-plugin-example:jar UP-TO-DATE
+> Task :jhin-plugin-mcp:jar UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+> Task :dist
+dist: flutter build web --release --no-tree-shake-icons (in /home/astroreen/Documents/jhin/frontend)
+Compiling lib/main.dart for the Web...                          
+Wasm dry run succeeded. Consider building and testing your application with the `--wasm` flag. See docs for more info: https://docs.flutter.dev/platform-integration/web/wasm
+Use --no-wasm-dry-run to disable these warnings.
+Compiling lib/main.dart for the Web...                             19.8s
+✓ Built build/web
+dist: flutter build linux --release --no-tree-shake-icons (in /home/astroreen/Documents/jhin/frontend)
+Building Linux application...                                   
+✓ Built build/linux/x64/release/bundle/jhin
+dist: flutter build apk --release --no-tree-shake-icons (in /home/astroreen/Documents/jhin/frontend)
+Running Gradle task 'assembleRelease'...                        
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Configuring project ':integration_test' without an existing directory is not allowed. The configured projectDirectory '/nix/store/vzpwdyanhvadbk6lsmq8f7ayc8403aiw-flutter-wrapped-3.47.0-sdk-links/packages/integration_test/android' does not exist, can't be written to or is not a directory.
+
+* Try:
+> Make sure the project directory exists and is writable.
+> For more information, see https://docs.gradle.org/9.3.1/userguide/multi_project_builds.html#include_existing_projects_only
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+
+BUILD FAILED in 599ms
+Running Gradle task 'assembleRelease'...                           714ms
+Gradle task assembleRelease failed with exit code 1
+dist: frontend apk skipped — 'flutter build apk --release --no-tree-shake-icons' failed with exit code 1
+dist: assembled dist/
+dist:   README.md (2328 bytes)
+dist:   frontend/linux/data/flutter_assets/AssetManifest.bin (2 bytes)
+dist:   frontend/linux/data/flutter_assets/AssetManifest.bin.json (6 bytes)
+dist:   frontend/linux/data/flutter_assets/FontManifest.json (82 bytes)
+dist:   frontend/linux/data/flutter_assets/NOTICES (1326042 bytes)
+dist:   frontend/linux/data/flutter_assets/NOTICES.Z (99858 bytes)
+dist:   frontend/linux/data/flutter_assets/NativeAssetsManifest.json (45 bytes)
+dist:   frontend/linux/data/flutter_assets/fonts/MaterialIcons-Regular.otf (1645184 bytes)
+dist:   frontend/linux/data/flutter_assets/shaders/ink_sparkle.frag (21856 bytes)
+dist:   frontend/linux/data/flutter_assets/shaders/stretch_effect.frag (17616 bytes)
+dist:   frontend/linux/data/flutter_assets/version.json (78 bytes)
+dist:   frontend/linux/data/icudtl.dat (864880 bytes)
+dist:   frontend/linux/jhin (23528 bytes)
+dist:   frontend/linux/lib/libapp.so (8913800 bytes)
+dist:   frontend/linux/lib/libdartjni.so (148768 bytes)
+dist:   frontend/linux/lib/libflutter_linux_gtk.so (17260688 bytes)
+dist:   frontend/linux/lib/libflutter_secure_storage_linux_plugin.so (194448 bytes)
+dist:   frontend/linux/lib/native_assets.json (45 bytes)
+dist:   frontend/web/.last_build_id (32 bytes)
+dist:   frontend/web/assets/AssetManifest.bin (2 bytes)
+dist:   frontend/web/assets/AssetManifest.bin.json (6 bytes)
+dist:   frontend/web/assets/FontManifest.json (82 bytes)
+dist:   frontend/web/assets/NOTICES (1337148 bytes)
+dist:   frontend/web/assets/fonts/MaterialIcons-Regular.otf (1645184 bytes)
+dist:   frontend/web/assets/shaders/ink_sparkle.frag (8890 bytes)
+dist:   frontend/web/assets/shaders/stretch_effect.frag (6737 bytes)
+dist:   frontend/web/canvaskit/canvaskit.js (86987 bytes)
+dist:   frontend/web/canvaskit/canvaskit.js.symbols (1356926 bytes)
+dist:   frontend/web/canvaskit/canvaskit.wasm (7284349 bytes)
+dist:   frontend/web/canvaskit/chromium/canvaskit.js (86226 bytes)
+dist:   frontend/web/canvaskit/chromium/canvaskit.js.symbols (1235870 bytes)
+dist:   frontend/web/canvaskit/chromium/canvaskit.wasm (5428553 bytes)
+dist:   frontend/web/canvaskit/skwasm.js (63537 bytes)
+dist:   frontend/web/canvaskit/skwasm.js.symbols (1540006 bytes)
+dist:   frontend/web/canvaskit/skwasm.wasm (3593521 bytes)
+dist:   frontend/web/canvaskit/skwasm_heavy.js (63650 bytes)
+dist:   frontend/web/canvaskit/skwasm_heavy.js.symbols (1672152 bytes)
+dist:   frontend/web/canvaskit/skwasm_heavy.wasm (5216023 bytes)
+dist:   frontend/web/canvaskit/webparagraph/canvaskit.js (76114 bytes)
+dist:   frontend/web/canvaskit/webparagraph/canvaskit.js.symbols (963641 bytes)
+dist:   frontend/web/canvaskit/webparagraph/canvaskit.wasm (3729073 bytes)
+dist:   frontend/web/canvaskit/wimp.js (59127 bytes)
+dist:   frontend/web/canvaskit/wimp.js.symbols (1813030 bytes)
+dist:   frontend/web/canvaskit/wimp.wasm (3581483 bytes)
+dist:   frontend/web/favicon.png (917 bytes)
+dist:   frontend/web/flutter.js (12136 bytes)
+dist:   frontend/web/flutter_bootstrap.js (13094 bytes)
+dist:   frontend/web/flutter_service_worker.js (784 bytes)
+dist:   frontend/web/icons/Icon-192.png (5292 bytes)
+dist:   frontend/web/icons/Icon-512.png (8252 bytes)
+dist:   frontend/web/icons/Icon-maskable-192.png (5594 bytes)
+dist:   frontend/web/icons/Icon-maskable-512.png (20998 bytes)
+dist:   frontend/web/index.html (1496 bytes)
+dist:   frontend/web/main.dart.js (4118343 bytes)
+dist:   frontend/web/manifest.json (904 bytes)
+dist:   frontend/web/version.json (78 bytes)
+dist:   jhin-kernel-0.2.0.jar (36719050 bytes)
+dist:   plugins-default/jhin-plugin-agent-0.2.0.jar (48677 bytes)
+dist:   plugins-default/jhin-plugin-llm-0.2.0.jar (711247 bytes)
+dist:   plugins-default/jhin-plugin-llm-builtin-0.2.0.jar (4862914 bytes)
+dist:   plugins-default/jhin-plugin-mcp-0.2.0.jar (3503741 bytes)
+dist:   plugins-default/jhin-plugin-reload-0.2.0.jar (3067 bytes)
+dist:   plugins-default/jhin-plugin-security-0.2.0.jar (8522957 bytes)
+dist:   plugins-default/jhin-plugin-sessions-0.2.0.jar (60335 bytes)
+dist:   plugins-default/jhin-plugin-tools-builtin-0.2.0.jar (193984 bytes)
+dist:   plugins-default/jhin-plugin-ui-default-0.2.0.jar (260864 bytes)
+dist:   plugins-default/jhin-plugin-ui-kit-0.2.0.jar (142172 bytes)
+dist:   run.sh (1400 bytes)
+dist:   WARN omitted: frontend apk ('flutter build apk --release --no-tree-shake-icons' failed with exit code 1)
+dist: manifest:
+dist:   # Jhin release bundle manifest (generated by ./gradlew dist)
+dist:   # <sha256>  <size-in-bytes>  <path-relative-to-dist>
+dist:   6eabc61f1a12e295097c6fc9e5c9d92ba71545ef95ddff82ca47e443644b3146  2328  README.md
+dist:   f566cc6fccc657365c0197accf3a7d6f80f85209ff666ff774f4dcbc524aa842  2  frontend/linux/data/flutter_assets/AssetManifest.bin
+dist:   937f7ce783516c54a2bd2007cf32b7dd921c477ddac5ffe8112c6131e43d80a3  6  frontend/linux/data/flutter_assets/AssetManifest.bin.json
+dist:   28b1eb2b3d2e1ad60b8c8b0f9100b1ccbf492f7fa97f5bebb51ea97e73926e7d  82  frontend/linux/data/flutter_assets/FontManifest.json
+dist:   180babb74abfc04520a3c5f083adc44a97ff4ed875f4873054ab8f0df060037e  1326042  frontend/linux/data/flutter_assets/NOTICES
+dist:   079ac1f62c2eeef37c7a33bde1c6d5a3bef3a8951814a3b70af6c5cd7b8ba243  99858  frontend/linux/data/flutter_assets/NOTICES.Z
+dist:   9548a31e4a048135c1d94f919328bfb62ae2c7bb3cab96557c7941daa97776cb  45  frontend/linux/data/flutter_assets/NativeAssetsManifest.json
+dist:   d9865b671a09d683d13a863089d8825e0f61a37696ce5d7d448bc8023aa62453  1645184  frontend/linux/data/flutter_assets/fonts/MaterialIcons-Regular.otf
+dist:   1fe8436a743884cb65078fe8c7b38e18f5365f2a2961270916f426fd13c604af  21856  frontend/linux/data/flutter_assets/shaders/ink_sparkle.frag
+dist:   bc7599dbbbaab310efe41520574138d21fb18a88c8fe4495ed79315309336f6f  17616  frontend/linux/data/flutter_assets/shaders/stretch_effect.frag
+dist:   f77235553ec709ba2c651adf49e2e5b21b0827a8b79678e00f8c999fa8ddc1bd  78  frontend/linux/data/flutter_assets/version.json
+dist:   325a86063d26334c2eabe1743cea073b612540fbf3d8fc2ef0b5708e3763a8c7  864880  frontend/linux/data/icudtl.dat
+dist:   0f191afd600c7f447dff8ca9ad386581a8d36788e4a6a640590ff6570bb9adaf  23528  frontend/linux/jhin
+dist:   2ca8960e409f388b9ae7a50d983a1c8910e2ba55dc31afe85f42b4617e40719c  8913800  frontend/linux/lib/libapp.so
+dist:   dc660749057dd339e8f8db2f69378f64ca1a40e8c8d69e4ee60ce2d5f34b8627  148768  frontend/linux/lib/libdartjni.so
+dist:   a915d7626890b76d4f15b8519b99eac2c34c983d67d59c9581383c8e7df955f2  17260688  frontend/linux/lib/libflutter_linux_gtk.so
+dist:   9563a1bd6f5a4a66f687a3568367564587d47558a13bc8c9482c4602ea5d1539  194448  frontend/linux/lib/libflutter_secure_storage_linux_plugin.so
+dist:   9548a31e4a048135c1d94f919328bfb62ae2c7bb3cab96557c7941daa97776cb  45  frontend/linux/lib/native_assets.json
+dist:   ed2b9567770c7b73c32c4b7c901a4eea727006efda9b2100749f09ba17e2bc07  32  frontend/web/.last_build_id
+dist:   f566cc6fccc657365c0197accf3a7d6f80f85209ff666ff774f4dcbc524aa842  2  frontend/web/assets/AssetManifest.bin
+dist:   937f7ce783516c54a2bd2007cf32b7dd921c477ddac5ffe8112c6131e43d80a3  6  frontend/web/assets/AssetManifest.bin.json
+dist:   28b1eb2b3d2e1ad60b8c8b0f9100b1ccbf492f7fa97f5bebb51ea97e73926e7d  82  frontend/web/assets/FontManifest.json
+dist:   0c158bf533f8d57ab91ea372c1fcc11f085c05e927442e680887145d555f61c4  1337148  frontend/web/assets/NOTICES
+dist:   d9865b671a09d683d13a863089d8825e0f61a37696ce5d7d448bc8023aa62453  1645184  frontend/web/assets/fonts/MaterialIcons-Regular.otf
+dist:   2dca5ab93d4ec29e963f996f3916320ba60825e9537dfb149a68008c7a16b026  8890  frontend/web/assets/shaders/ink_sparkle.frag
+dist:   ab412f07a5b9b50b67a885b24dbe16929738ae28630407d6490c924caf0a3220  6737  frontend/web/assets/shaders/stretch_effect.frag
+dist:   bb559f6080c7d312ac2a912b4abec9f68ff3d3022d4a603c7796b9b31460642b  86987  frontend/web/canvaskit/canvaskit.js
+dist:   3ccb198725cdef9d0676094bdf89c8f118d2a48643e54d794022f0e5cac21a65  1356926  frontend/web/canvaskit/canvaskit.js.symbols
+dist:   2898c0795cf4a694e86ee3445c7414c2503fbcb46967154762f50ebde988da04  7284349  frontend/web/canvaskit/canvaskit.wasm
+dist:   6018b12bd8ed37e6952eee72d59c1cf7ad707ccdb74a0a45190010f77edd9068  86226  frontend/web/canvaskit/chromium/canvaskit.js
+dist:   20b0dafc6fa554ae23c7760d1d09ee74df668b92b475f7ba7cb6cf930185ee40  1235870  frontend/web/canvaskit/chromium/canvaskit.js.symbols
+dist:   ba4024133403777f41c709b9e76e9f4bdb76c73d33adba8645527a59d815d824  5428553  frontend/web/canvaskit/chromium/canvaskit.wasm
+dist:   71d7d3e34bf71b52bdba3b588b103bba8148ba28de5754083e01b3398e7a6e1c  63537  frontend/web/canvaskit/skwasm.js
+dist:   72ff0eb1ea5cf6b8b1a78c1473640dd32fde01df3a6503d17e9a82a4ba7b5315  1540006  frontend/web/canvaskit/skwasm.js.symbols
+dist:   a957befea55cf597eeebcf3286f1b88f463f3ad8bfc13e55aa8f5d34cd2ade4d  3593521  frontend/web/canvaskit/skwasm.wasm
+dist:   cec554b46ddcf4c0e63d799e0556d546f42d2c3f69316fb4f67ed776f6104558  63650  frontend/web/canvaskit/skwasm_heavy.js
+dist:   9a2ee9896274656d6cc6a8ae92a20c9e4fa60d134a413c97b1e52d8dc74ef5e6  1672152  frontend/web/canvaskit/skwasm_heavy.js.symbols
+dist:   781a14fc7e9cd387ee6df4a056f62af7e940c60cc42ce04571cc2e810042c588  5216023  frontend/web/canvaskit/skwasm_heavy.wasm
+dist:   3110e3e4d9b7b5657d336f253aaca8acca5777cde9319fb69ac302d6ff5a8b23  76114  frontend/web/canvaskit/webparagraph/canvaskit.js
+dist:   754a1570410fe044416673195bc736b18084806aa87e26f5c3bb0121e84679a3  963641  frontend/web/canvaskit/webparagraph/canvaskit.js.symbols
+dist:   7a61c4ad71781875a80bbfc5ee6e49686dd190d629e0fe986d3ecc05ada58856  3729073  frontend/web/canvaskit/webparagraph/canvaskit.wasm
+dist:   8fd8a47480c6eb0a374d159912d0b3fb15661b41f5c113ecdd39c2f01f2bee46  59127  frontend/web/canvaskit/wimp.js
+dist:   eb9fd88577b7201ad79cf0c469cb067111379f33a97dbdd23ecdafbbef77c093  1813030  frontend/web/canvaskit/wimp.js.symbols
+dist:   7474f6074c42c4be503c9059c9b5058e468a68a8917ac6c3607f0da4922f7e5a  3581483  frontend/web/canvaskit/wimp.wasm
+dist:   7ab2525f4b86b65d3e4c70358a17e5a1aaf6f437f99cbcc046dad73d59bb9015  917  frontend/web/favicon.png
+dist:   2beb1ce6b159c71540aa66030af1d7964b6a92377cc78473745e02f97b74effe  12136  frontend/web/flutter.js
+dist:   61d6e9c8ae04ec763e15a9ff702c3dcde8660a979d70ea04961f946d0dcb377d  13094  frontend/web/flutter_bootstrap.js
+dist:   a131df5ca46154cc4eb79044f7f5a14029c2f8bfccf8cef34e3ec3b5a9f5a88c  784  frontend/web/flutter_service_worker.js
+dist:   3dce99077602f70421c1c6b2a240bc9b83d64d86681d45f2154143310c980be3  5292  frontend/web/icons/Icon-192.png
+dist:   baccb205ae45f0b421be1657259b4943ac40c95094ab877f3bcbe12cd544dcbe  8252  frontend/web/icons/Icon-512.png
+dist:   d2c842e22a9f4ec9d996b23373a905c88d9a203b220c5c151885ad621f974b5c  5594  frontend/web/icons/Icon-maskable-192.png
+dist:   6aee06cdcab6b2aef74b1734c4778f4421d2da100b0ff9e52b21b55240202929  20998  frontend/web/icons/Icon-maskable-512.png
+dist:   90e73be2103df9260b3776b82916700c000428edf6f6b53adebd3e2762accad2  1496  frontend/web/index.html
+dist:   fcd38bf8a21a69d069014ac34bc0a0a861d158ad985cad8f770cbedbd47a55c4  4118343  frontend/web/main.dart.js
+dist:   6d6874402a5163a52b781eee4bdb0d49cb4628832511bac043b623b7a031f59a  904  frontend/web/manifest.json
+dist:   f77235553ec709ba2c651adf49e2e5b21b0827a8b79678e00f8c999fa8ddc1bd  78  frontend/web/version.json
+dist:   4370061d6785d20675726f4ea0d92c90e3f5cdd0195a2081d3a50f8ace69f162  36719050  jhin-kernel-0.2.0.jar
+dist:   6e47002f7b8f150435117d4d97bd7ddaa22661145daec6d26148f3d3d8e452e7  48677  plugins-default/jhin-plugin-agent-0.2.0.jar
+dist:   dae703dbf26f54640724c52a44d6d4b69c5d5038780c0cc8ba948ae242d10e90  711247  plugins-default/jhin-plugin-llm-0.2.0.jar
+dist:   d12174fa23bd17b9fba267f368b2026cd3ccf1290078b5ba899de878cbf64364  4862914  plugins-default/jhin-plugin-llm-builtin-0.2.0.jar
+dist:   ec680205b62404e6d358ac3df7156fc2a03f4333f879d5800b2253b329ecc860  3503741  plugins-default/jhin-plugin-mcp-0.2.0.jar
+dist:   22e5bffe8b3e73ae954088d9ea97cae105a187ff27df81f9edd6478c8cb6b1e3  3067  plugins-default/jhin-plugin-reload-0.2.0.jar
+dist:   b9d9b18422b0359db6214a11cff2a7a4a3eb988f3f09605b6b430b2ffc4ce98b  8522957  plugins-default/jhin-plugin-security-0.2.0.jar
+dist:   6cc6b45bc5c0f823d8f66b9929923a3d983454cc230c9a253ec4aea9b790ae50  60335  plugins-default/jhin-plugin-sessions-0.2.0.jar
+dist:   51ed1eb439e02e221a54ae140b5aa9eb0ec5a9544d21ade19c7885ea86f38061  193984  plugins-default/jhin-plugin-tools-builtin-0.2.0.jar
+dist:   f79d2c9c38ed24d035c7792e4cea35522a157738792ad6f5ba8eb7347c8fc27e  260864  plugins-default/jhin-plugin-ui-default-0.2.0.jar
+dist:   3d41c958dfe69ff3609de5e1675b36282424e7af46a88b056be236e57a6af346  142172  plugins-default/jhin-plugin-ui-kit-0.2.0.jar
+dist:   b0c183955e777e5ac7f558a394a77d318a824afb74b6a373e58a38ef84bb9723  1400  run.sh
+dist:   # omitted artifacts (steps skipped with WARN):
+dist:   #   - frontend apk ('flutter build apk --release --no-tree-shake-icons' failed with exit code 1)
+
+BUILD SUCCESSFUL in 23s
+46 actionable tasks: 4 executed, 42 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html

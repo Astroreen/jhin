@@ -1,0 +1,235 @@
+T98 QA: the thread action menu, the hover card and the undo notice
+evidence dir: .sisyphus/evidence/T121/gate-t120/gate-t98
+ok: toolchain recorded (Flutter 3.47.0 • channel stable • https://github.com/flutter/flutter.git)
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processTestResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processTestResources NO-SOURCE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:testClasses UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-kit:test
+> Task :jhin-plugin-ui-default:test
+
+BUILD SUCCESSFUL in 23s
+24 actionable tasks: 2 executed, 22 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+ok: ui-default and ui-kit suites green (565 tests; transcript in test.txt)
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/thread_menu_test.dart
+00:00 +0: a children item opens the nested submenu popup and a child dispatches
+
+Warning: A call to tap() with finder "Found 1 widget with text "open": [
+  Text("open", inherit: true, size: 14.0, weight: 400, height: 1.5x, dependencies: [DefaultSelectionStyle, DefaultTextStyle, MediaQuery]),
+]" derived an Offset (Offset(28.5, 10.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderParagraph#63f84 relayoutBoundary=up13
+The hit test result at that offset is: HitTestResult(RenderPointerListener#c9bf9@Offset(28.5, 10.5), RenderSemanticsAnnotations#b04d1@Offset(28.5, 10.5), RenderMouseRegion#b54b7@Offset(28.5, 10.5), RenderSemanticsAnnotations#92bae@Offset(28.5, 10.5), RenderMouseRegion#536d1@Offset(28.5, 10.5), RenderSemanticsAnnotations#faf0d@Offset(28.5, 10.5), RenderPointerListener#5abbc@Offset(28.5, 10.5), _RenderExclusiveMouseRegion#78881@Offset(28.5, 10.5), RenderSemanticsAnnotations#e388f@Offset(28.5, 10.5), _RenderLayoutSurrogateProxyBox#96a6d@Offset(28.5, 10.5), RenderSemanticsAnnotations#92602@Offset(28.5, 10.5), RenderCustomMultiChildLayoutBox#a910b@Offset(28.5, 10.5), _RenderInkFeatures#2c64a@Offset(28.5, 10.5), RenderPhysicalModel#1b485@Offset(28.5, 10.5), RenderSemanticsAnnotations#e1925@Offset(28.5, 10.5), RenderRepaintBoundary#ba3d3@Offset(28.5, 10.5), RenderIgnorePointer#31af7@Offset(28.5, 10.5), RenderAnimatedOpacity#fb1b6@Offset(28.5, 10.5), RenderAnimatedOpacity#edb16@Offset(28.5, 10.5), _RenderColoredBox#ca716@Offset(28.5, 10.5), RenderAnimatedOpacity#848ae@Offset(28.5, 10.5), RenderIgnorePointer#524f4@Offset(28.5, 10.5), RenderAnimatedOpacity#be50f@Offset(28.5, 10.5), RenderRepaintBoundary#3a7ce@Offset(28.5, 10.5), RenderSemanticsAnnotations#22802@Offset(28.5, 10.5), RenderOffstage#09bfd@Offset(28.5, 10.5), RenderSemanticsAnnotations#87251@Offset(28.5, 10.5), _RenderTheater#17b4d@Offset(28.5, 10.5), RenderAbsorbPointer#90d88@Offset(28.5, 10.5), RenderPointerListener#2c905@Offset(28.5, 10.5), RenderSemanticsAnnotations#9ebb3@Offset(28.5, 10.5), RenderCustomPaint#f145f@Offset(28.5, 10.5), RenderSemanticsAnnotations#13345@Offset(28.5, 10.5), RenderSemanticsAnnotations#74958@Offset(28.5, 10.5), RenderSemanticsAnnotations#cfd42@Offset(28.5, 10.5), RenderTapRegionSurface#dccb9@Offset(28.5, 10.5), RenderSemanticsAnnotations#fecfa@Offset(28.5, 10.5), RenderSemanticsAnnotations#2547f@Offset(28.5, 10.5), HitTestEntry<HitTestTarget>#a0d27(_ReusableRenderView#f39b1), HitTestEntry<HitTestTarget>#d66d9(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///home/astroreen/Documents/jhin/frontend/test/sdui/thread_menu_test.dart:110:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+00:00 +1: checked entries render the check mark and dispatch
+
+Warning: A call to tap() with finder "Found 1 widget with text "open": [
+  Text("open", inherit: true, size: 14.0, weight: 400, height: 1.5x, dependencies: [DefaultSelectionStyle, DefaultTextStyle, MediaQuery]),
+]" derived an Offset (Offset(28.5, 10.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderParagraph#c04b8 relayoutBoundary=up13
+The hit test result at that offset is: HitTestResult(RenderPointerListener#b0261@Offset(28.5, 10.5), RenderSemanticsAnnotations#dc318@Offset(28.5, 10.5), RenderMouseRegion#d72ee@Offset(28.5, 10.5), RenderSemanticsAnnotations#56713@Offset(28.5, 10.5), RenderMouseRegion#ee158@Offset(28.5, 10.5), RenderSemanticsAnnotations#792b9@Offset(28.5, 10.5), RenderPointerListener#70ab6@Offset(28.5, 10.5), _RenderExclusiveMouseRegion#3a92f@Offset(28.5, 10.5), RenderSemanticsAnnotations#10f1f@Offset(28.5, 10.5), _RenderLayoutSurrogateProxyBox#b9e7d@Offset(28.5, 10.5), RenderSemanticsAnnotations#0b025@Offset(28.5, 10.5), RenderCustomMultiChildLayoutBox#77fa2@Offset(28.5, 10.5), _RenderInkFeatures#b4aeb@Offset(28.5, 10.5), RenderPhysicalModel#33c32@Offset(28.5, 10.5), RenderSemanticsAnnotations#e3848@Offset(28.5, 10.5), RenderRepaintBoundary#b6e66@Offset(28.5, 10.5), RenderIgnorePointer#7808a@Offset(28.5, 10.5), RenderAnimatedOpacity#334ec@Offset(28.5, 10.5), RenderAnimatedOpacity#ed8ca@Offset(28.5, 10.5), _RenderColoredBox#aeb79@Offset(28.5, 10.5), RenderAnimatedOpacity#f55cf@Offset(28.5, 10.5), RenderIgnorePointer#1a9f8@Offset(28.5, 10.5), RenderAnimatedOpacity#16ee0@Offset(28.5, 10.5), RenderRepaintBoundary#013a1@Offset(28.5, 10.5), RenderSemanticsAnnotations#13bda@Offset(28.5, 10.5), RenderOffstage#8f254@Offset(28.5, 10.5), RenderSemanticsAnnotations#6ab8b@Offset(28.5, 10.5), _RenderTheater#210c6@Offset(28.5, 10.5), RenderAbsorbPointer#8e2d6@Offset(28.5, 10.5), RenderPointerListener#17b4f@Offset(28.5, 10.5), RenderSemanticsAnnotations#04662@Offset(28.5, 10.5), RenderCustomPaint#66dac@Offset(28.5, 10.5), RenderSemanticsAnnotations#2ab49@Offset(28.5, 10.5), RenderSemanticsAnnotations#e7666@Offset(28.5, 10.5), RenderSemanticsAnnotations#d7ab3@Offset(28.5, 10.5), RenderTapRegionSurface#b53c0@Offset(28.5, 10.5), RenderSemanticsAnnotations#4c4ef@Offset(28.5, 10.5), RenderSemanticsAnnotations#55f61@Offset(28.5, 10.5), HitTestEntry<HitTestTarget>#65db4(_ReusableRenderView#f39b1), HitTestEntry<HitTestTarget>#657da(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///home/astroreen/Documents/jhin/frontend/test/sdui/thread_menu_test.dart:131:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+00:00 +2: separatorBefore renders a divider above the entry
+
+Warning: A call to tap() with finder "Found 1 widget with text "open": [
+  Text("open", inherit: true, size: 14.0, weight: 400, height: 1.5x, dependencies: [DefaultSelectionStyle, DefaultTextStyle, MediaQuery]),
+]" derived an Offset (Offset(28.5, 10.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderParagraph#29e22 relayoutBoundary=up13
+The hit test result at that offset is: HitTestResult(RenderPointerListener#d8c67@Offset(28.5, 10.5), RenderSemanticsAnnotations#78c01@Offset(28.5, 10.5), RenderMouseRegion#9aa5d@Offset(28.5, 10.5), RenderSemanticsAnnotations#44c11@Offset(28.5, 10.5), RenderMouseRegion#244a1@Offset(28.5, 10.5), RenderSemanticsAnnotations#9c3a6@Offset(28.5, 10.5), RenderPointerListener#f50da@Offset(28.5, 10.5), _RenderExclusiveMouseRegion#c95dd@Offset(28.5, 10.5), RenderSemanticsAnnotations#95837@Offset(28.5, 10.5), _RenderLayoutSurrogateProxyBox#a580b@Offset(28.5, 10.5), RenderSemanticsAnnotations#facef@Offset(28.5, 10.5), RenderCustomMultiChildLayoutBox#b845d@Offset(28.5, 10.5), _RenderInkFeatures#65e61@Offset(28.5, 10.5), RenderPhysicalModel#1b0e2@Offset(28.5, 10.5), RenderSemanticsAnnotations#f83a2@Offset(28.5, 10.5), RenderRepaintBoundary#fd178@Offset(28.5, 10.5), RenderIgnorePointer#d573f@Offset(28.5, 10.5), RenderAnimatedOpacity#bd2c5@Offset(28.5, 10.5), RenderAnimatedOpacity#6b10a@Offset(28.5, 10.5), _RenderColoredBox#ad63f@Offset(28.5, 10.5), RenderAnimatedOpacity#61cf0@Offset(28.5, 10.5), RenderIgnorePointer#090bf@Offset(28.5, 10.5), RenderAnimatedOpacity#e01b7@Offset(28.5, 10.5), RenderRepaintBoundary#92d43@Offset(28.5, 10.5), RenderSemanticsAnnotations#a39ea@Offset(28.5, 10.5), RenderOffstage#a386b@Offset(28.5, 10.5), RenderSemanticsAnnotations#48810@Offset(28.5, 10.5), _RenderTheater#d4b58@Offset(28.5, 10.5), RenderAbsorbPointer#a72dd@Offset(28.5, 10.5), RenderPointerListener#0bf00@Offset(28.5, 10.5), RenderSemanticsAnnotations#4ff75@Offset(28.5, 10.5), RenderCustomPaint#5c812@Offset(28.5, 10.5), RenderSemanticsAnnotations#1701b@Offset(28.5, 10.5), RenderSemanticsAnnotations#6ce9b@Offset(28.5, 10.5), RenderSemanticsAnnotations#7126a@Offset(28.5, 10.5), RenderTapRegionSurface#8091f@Offset(28.5, 10.5), RenderSemanticsAnnotations#6d906@Offset(28.5, 10.5), RenderSemanticsAnnotations#e1bdf@Offset(28.5, 10.5), HitTestEntry<HitTestTarget>#f287b(_ReusableRenderView#f39b1), HitTestEntry<HitTestTarget>#36e81(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///home/astroreen/Documents/jhin/frontend/test/sdui/thread_menu_test.dart:149:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+00:00 +3: the sheet presentation renders children as an indented group with the checked marks
+
+Warning: A call to tap() with finder "Found 1 widget with text "open": [
+  Text("open", inherit: true, size: 14.0, weight: 400, height: 1.5x, dependencies: [DefaultSelectionStyle, DefaultTextStyle, MediaQuery]),
+]" derived an Offset (Offset(28.5, 10.5)) that would not hit test on the specified widget.
+Maybe the widget is actually off-screen, or another widget is obscuring it, or the widget cannot receive pointer events.
+The finder corresponds to this RenderBox: RenderParagraph#bd3af relayoutBoundary=up4
+The hit test result at that offset is: HitTestResult(RenderPointerListener#ac76c@Offset(28.5, 10.5), RenderSemanticsGestureHandler#e33eb@Offset(28.5, 10.5), RenderCustomMultiChildLayoutBox#fc530@Offset(28.5, 10.5), _RenderInkFeatures#662e3@Offset(28.5, 10.5), RenderPhysicalModel#5809c@Offset(28.5, 10.5), RenderSemanticsAnnotations#4b959@Offset(28.5, 10.5), RenderRepaintBoundary#2967a@Offset(28.5, 10.5), RenderIgnorePointer#13700@Offset(28.5, 10.5), RenderAnimatedOpacity#744c3@Offset(28.5, 10.5), RenderAnimatedOpacity#69d78@Offset(28.5, 10.5), _RenderColoredBox#2f4d4@Offset(28.5, 10.5), RenderAnimatedOpacity#0c871@Offset(28.5, 10.5), RenderIgnorePointer#e4ee3@Offset(28.5, 10.5), RenderAnimatedOpacity#29d94@Offset(28.5, 10.5), RenderRepaintBoundary#4bab2@Offset(28.5, 10.5), RenderSemanticsAnnotations#683ae@Offset(28.5, 10.5), RenderOffstage#99bb7@Offset(28.5, 10.5), RenderSemanticsAnnotations#50520@Offset(28.5, 10.5), _RenderTheater#6510c@Offset(28.5, 10.5), RenderAbsorbPointer#8eff3@Offset(28.5, 10.5), RenderPointerListener#4db93@Offset(28.5, 10.5), RenderSemanticsAnnotations#2facf@Offset(28.5, 10.5), RenderCustomPaint#9851d@Offset(28.5, 10.5), RenderSemanticsAnnotations#e03c0@Offset(28.5, 10.5), RenderSemanticsAnnotations#0e20e@Offset(28.5, 10.5), RenderSemanticsAnnotations#2228a@Offset(28.5, 10.5), RenderTapRegionSurface#a3d8b@Offset(28.5, 10.5), RenderSemanticsAnnotations#bd995@Offset(28.5, 10.5), RenderSemanticsAnnotations#348ea@Offset(28.5, 10.5), HitTestEntry<HitTestTarget>#e675f(_ReusableRenderView#f39b1), HitTestEntry<HitTestTarget>#7c3a2(<AutomatedTestWidgetsFlutterBinding>))
+#0      WidgetController._getElementPoint (package:flutter_test/src/controller.dart:2165:25)
+#1      WidgetController.getCenter (package:flutter_test/src/controller.dart:1947:12)
+#2      WidgetController.tap (package:flutter_test/src/controller.dart:1080:7)
+#3      main.<anonymous closure> (file:///home/astroreen/Documents/jhin/frontend/test/sdui/thread_menu_test.dart:160:18)
+<asynchronous suspension>
+#4      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#5      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1953:5)
+<asynchronous suspension>
+#6      StackZoneSpecification._registerCallback.<anonymous closure> (package:stack_trace/src/stack_zone_specification.dart:114:42)
+<asynchronous suspension>
+To silence this warning, pass "warnIfMissed: false" to "tap()".
+To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to true.
+
+00:00 +4: All tests passed!
+ok: Flutter menu suite green: the nested submenu popup, the checked marks, the separatorBefore dividers, the sheet group (flutter-menu.txt)
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/thread_undo_notice_test.dart
+00:00 +0: an action-carrying toast renders the undo-notice card at the bottom edge
+00:00 +1: the Undo tap dispatches the inline action and consumes the notice
+00:00 +2: the notice closes after its window (5 s default)
+00:00 +3: a custom duration wins and the close orb dismisses early
+00:00 +4: a plain toast keeps the banner (no undo card)
+00:00 +5: All tests passed!
+ok: Flutter notice suite green: the undo-notice card at the bottom edge, the 5 s window, the undo dispatch, the plain-toast banner (flutter-notice.txt)
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/sidebar_row_test.dart
+00:00 +0: the status cluster renders one glyph per kind with the literal tooltips
+00:00 +1: an unknown kind renders the idle fallback and logs
+00:00 +2: hoverReveal hides the trailing cluster at rest and shows it on hover
+00:00 +3: the selected row paints sidebar-row-active with the ring
+00:00 +4: the dragging row lifts into the opaque card
+00:00 +5: the search-match pill shows from two matching characters
+00:00 +6: the search-match pill stays hidden under two characters or on a non-matching row
+00:00 +7: the commandSubtitle marker renders as the trailing muted command id text
+00:00 +8: a row without commandSubtitle renders no marker
+00:00 +9: the section filter keeps matching rows and renders the match-count line
+00:00 +10: the filter is ASCII case-folded and the empty result renders the upstream No threads found line
+00:00 +11: the header and footer blocks pin outside the scrollable
+00:00 +12: golden: the sidebar with one thread per status kind (light)
+00:00 +13: All tests passed!
+ok: Flutter row suite green: the command-subtitle marker, the T97 anatomy still holds (flutter-row.txt)
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:jar UP-TO-DATE
+
+BUILD SUCCESSFUL in 478ms
+19 actionable tasks: 19 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+> Task :kernel:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 607ms
+6 actionable tasks: 6 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+16:03:08.469 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+16:03:08.659 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+16:03:08.674 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+16:03:08.675 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+16:03:08.677 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18498. Install a security plugin.
+2026-10-06T16:03:09.105+03:00  INFO 3892118 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3892118 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-06T16:03:09.107+03:00  INFO 3892118 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-06T16:03:09.563+03:00  INFO 3892118 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18498 (http)
+2026-10-06T16:03:09.571+03:00  INFO 3892118 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-06T16:03:09.571+03:00  INFO 3892118 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-06T16:03:09.588+03:00  INFO 3892118 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 447 ms
+2026-10-06T16:03:09.795+03:00  INFO 3892118 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18498 (http) with context path '/'
+2026-10-06T16:03:09.802+03:00  INFO 3892118 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.047 seconds (process running for 1.705)
+ok: kernel booted with sessions, ui-kit and ui (kernel.log)
+ok: seeded one session (undo-transcript.txt)
+ok: menu items: Pin thread / Settle thread / Snooze / Regenerate title / Auto-settle behavior / Arrange threads / Archive thread / Delete, the real lifecycle actions (menu.json)
+ok: snooze submenu: the upstream presets with the (when) time column, the separator-prefixed Custom… opening the custom-snooze-dialog (menu.json)
+ok: snooze presets dispatch the real snooze action with a future until (menu.json)
+ok: custom snooze dialog: the demo-marked picker shell, the confirm dispatches demo-snooze (dismissDialog + preview toast, nothing persists) (menu.json)
+ok: auto-settle submenu: the checked Enabled/Disabled radio entries dispatching auto-settle (menu.json)
+ok: archive above the separator, the destructive Delete with its confirm (menu.json)
+ok: hover card: the ThreadHoverCard port over the row title, delay 500, placement right, title + workdir preview (menu.json)
+ok: every node type is inside the docs/sdui.md section 2.5 catalog (avatar box button card column form hover_card icon icon_button input list list_row menu row sheet spacer split text )
+ok: pin action answered refresh (undo-transcript.txt)
+ok: the session is pinned (the action pins without an explicit order, so pinned_order stays null until a reorder assigns it) (undo-transcript.txt)
+ok: undo action answered [toast Undone, refresh] (undo-transcript.txt)
+ok: the undo restored the pinned state: pinned false, pinned_order null (undo-transcript.txt)
+ok: settle answered the upstream undo notice: Settled 1 thread, with the undo action and the 5000 ms window (undo-transcript.txt)
+ok: unsettle answered refresh only — no notice, upstream parity (undo-transcript.txt)
+ok: pin answered refresh only — no notice, upstream parity (undo-transcript.txt)
+ok: unpin answered the Unpinned 1 thread, notice (undo-transcript.txt)
+2026-10-06T16:03:11.123+03:00  INFO 3892118 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-06T16:03:11.126+03:00  INFO 3892118 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+ok: summary recorded (summary.txt)
+T98 QA green: the thread action menu, the hover card and the undo notice

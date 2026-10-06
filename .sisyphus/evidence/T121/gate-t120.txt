@@ -1,0 +1,209 @@
+T120 QA: full-bundle lifecycle, screen inventory walk, contract downgrade and store upgrade
+evidence dir: .sisyphus/evidence/T121/gate-t120
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processTestResources NO-SOURCE
+> Task :jhin-plugin-ui-kit:processTestResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:testClasses UP-TO-DATE
+> Task :jhin-plugin-ui-kit:test
+> Task :jhin-plugin-ui-default:test
+
+BUILD SUCCESSFUL in 23s
+24 actionable tasks: 2 executed, 22 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+ok: ui-default and ui-kit suites green (565 tests; test.txt)
+00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart
+00:00 +0: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner rules (docs/updates.md §3) rule 1: a key without an envelope is legacy schema 1 — wrapped and migrated
+00:00 +1: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) the chain is 1→2→3→4 and the current schema is 4
+00:00 +2: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) the chain is 1→2→3→4 and the current schema is 4
+00:00 +3: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) the chain is 1→2→3→4 and the current schema is 4
+00:00 +4: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) the chain is 1→2→3→4 and the current schema is 4
+00:00 +5: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner rules (docs/updates.md §3) rule 3: a newer schema is copied to quarantine, the original is never destroyed
+00:00 +6: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) a real schema-3 store gains themeId t3-chat and loses nothing
+00:00 +7: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) a real schema-3 store gains themeId t3-chat and loses nothing
+00:00 +8: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) a real schema-3 store gains themeId t3-chat and loses nothing
+00:00 +9: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) full chain: the real legacy profiles blob migrates 1→2→3 with identical data
+00:00 +10: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) an appearance that already carries a themeId is never clobbered
+00:00 +11: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) step 1→2 splits the legacy sessionState per profile
+00:00 +12: /home/astroreen/Documents/jhin/frontend/test/store/v3_to_v4_migration_test.dart: schema 3→4: themeId persistence (T85) a fresh store seeds appearance through the 2→3 defaults and the reader default answers t3-chat
+00:00 +13: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) step 2→3 migrates the old theme key into appearance
+00:00 +14: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) step 2→3 seeds keybindings without clobbering an existing file
+00:00 +15: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) step 2→3 introduces appearance, keybindings and tokensEtag when absent
+00:00 +16: /home/astroreen/Documents/jhin/frontend/test/store/migration_runner_test.dart: MigrationRunner schema steps (docs/updates.md §5) a quarantined key migrates on a later healthy run and leaves the list
+00:00 +17: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: KeymapStore (T70) load on a fresh store yields no overrides (server defaults stay active)
+00:00 +18: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: KeymapStore (T70) load on a fresh store yields no overrides (server defaults stay active)
+00:00 +19: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: KeymapStore (T70) load on a fresh store yields no overrides (server defaults stay active)
+00:00 +20: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: KeymapStore (T70) setOverride persists the enveloped store shape and survives a restart
+00:00 +21: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: KeymapStore (T70) setOverride replaces the previous override of the same command
+00:00 +22: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: KeymapStore (T70) resetCommand reverts one command; restoreDefaults clears all
+00:00 +23: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: KeymapStore (T70) applyAction maps the three client-owned keybind names (§3)
+00:00 +24: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: KeymapStore (T70) headerJson advertises the store shape for X-Jhin-Keybindings
+00:00 +25: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: corruption safety (T70 evidence) a corrupted keybindings blob falls back to server defaults and quarantines the raw bytes (evidence)
+corrupt blob: '{"rules": [this is not json' (27 bytes)
+load -> 0 override rules (server defaults active)
+quarantine copy migration.quarantine:keybindings:1 == raw (27 bytes preserved)
+quarantine list contains keybindings: [keybindings]
+original key untouched: true
+00:00 +26: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: corruption safety (T70 evidence) an enveloped blob with a wrong data shape is quarantined the same way
+00:00 +27: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: corruption safety (T70 evidence) a malformed rules entry is dropped; the well-formed ones survive
+00:00 +28: /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart: corruption safety (T70 evidence) a second load keeps the first quarantine copy (never overwritten)
+00:00 +29: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
+00:00 +30: /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart: T54 evidence fixtures a schema-9 blob is quarantined and the original survives
+00:00 +31: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope encode/decode round-trips a map payload
+00:00 +32: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope encode/decode round-trips list, string and null payloads
+00:00 +33: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope a JSON array without an envelope is legacy schema 1
+00:00 +34: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope a non-JSON raw string is legacy schema 1 carrying the raw value
+00:00 +35: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope a JSON object without schema/data is legacy schema 1
+00:00 +36: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope malformed JSON never throws and degrades to legacy
+00:00 +37: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope null means the key is absent
+00:00 +38: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoredValue envelope an envelope with a non-int schema degrades to legacy
+00:00 +39: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoreKeys bookkeeping keys are recognized
+00:00 +40: /home/astroreen/Documents/jhin/frontend/test/store/versioned_store_test.dart: StoreKeys quarantine copy keys carry the schema
+00:00 +41: /home/astroreen/Documents/jhin/frontend/test/store/keybindings_migration_test.dart: schema:2 store blob missing keybindings (T70 acceptance) v2_to_v3 seeds keybindings without clobbering the other keys
+00:00 +42: /home/astroreen/Documents/jhin/frontend/test/store/keybindings_migration_test.dart: schema:2 store blob missing keybindings (T70 acceptance) an existing keybindings blob keeps its rules while the rest migrates
+00:00 +43: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) profiles are written enveloped at the current schema
+00:00 +44: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) activeProfileId is written enveloped and reads back
+00:00 +45: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) a legacy bare-string activeProfileId still reads
+00:00 +46: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) a legacy un-enveloped profiles blob still reads with identical values
+00:00 +47: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) malformed stored JSON never throws out of the store API
+00:00 +48: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) the secure backend is never enveloped
+00:00 +49: /home/astroreen/Documents/jhin/frontend/test/store/app_storage_envelope_test.dart: AppStorage envelope wiring (docs/updates.md §1) readData/writeData give every non-secure key the enveloped path
+00:00 +50: All tests passed!
+ok: store upgrade green: the real schema-3 fixture migrates to schema 4 and seeds themeId t3-chat, no data loss (flutter-store.txt)
+> Task :jhin-plugin-agent:processResources UP-TO-DATE
+> Task :jhin-plugin-mcp:processResources UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:processResources UP-TO-DATE
+> Task :jhin-plugin-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-qa-mock-llm:processResources UP-TO-DATE
+> Task :jhin-plugin-reload:processResources UP-TO-DATE
+> Task :jhin-plugin-example:processResources UP-TO-DATE
+> Task :jhin-plugin-security:processResources UP-TO-DATE
+> Task :jhin-plugin-sessions:processResources UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-default:processResources UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :kernel:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-reload:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-security:compileJava UP-TO-DATE
+> Task :jhin-plugin-sessions:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-security:classes UP-TO-DATE
+> Task :jhin-plugin-reload:classes UP-TO-DATE
+> Task :jhin-plugin-sessions:classes UP-TO-DATE
+> Task :jhin-plugin-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:jar UP-TO-DATE
+> Task :jhin-plugin-reload:jar UP-TO-DATE
+> Task :jhin-plugin-sessions:jar UP-TO-DATE
+> Task :jhin-plugin-llm:jar UP-TO-DATE
+> Task :jhin-plugin-security:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :jhin-plugin-qa-mock-llm:compileJava UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:compileJava UP-TO-DATE
+> Task :jhin-plugin-agent:compileJava UP-TO-DATE
+> Task :jhin-plugin-qa-mock-llm:classes UP-TO-DATE
+> Task :jhin-plugin-agent:classes UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:classes UP-TO-DATE
+> Task :jhin-plugin-qa-mock-llm:jar UP-TO-DATE
+> Task :jhin-plugin-agent:jar UP-TO-DATE
+> Task :jhin-plugin-llm-builtin:jar UP-TO-DATE
+> Task :jhin-plugin-ui-default:compileJava UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:compileJava UP-TO-DATE
+> Task :jhin-plugin-mcp:compileJava UP-TO-DATE
+> Task :jhin-plugin-example:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-default:classes UP-TO-DATE
+> Task :jhin-plugin-example:classes UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:classes UP-TO-DATE
+> Task :jhin-plugin-mcp:classes UP-TO-DATE
+> Task :jhin-plugin-ui-default:jar UP-TO-DATE
+> Task :jhin-plugin-example:jar UP-TO-DATE
+> Task :jhin-plugin-tools-builtin:jar UP-TO-DATE
+> Task :jhin-plugin-mcp:jar UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 602ms
+42 actionable tasks: 42 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+> Task :kernel:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :kernel:compileJava UP-TO-DATE
+> Task :kernel:classes UP-TO-DATE
+> Task :kernel:resolveMainClassName UP-TO-DATE
+> Task :kernel:bootJar UP-TO-DATE
+
+BUILD SUCCESSFUL in 590ms
+6 actionable tasks: 6 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.3.1/userguide/configuration_cache_enabling.html
+16:02:22.552 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
+16:02:22.730 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
+16:02:22.733 [main] WARN plugin.jhin.qa-mock-llm -- qa-mock-llm is a QA harness (format mock); never ship this jar in a release bundle
+16:02:23.099 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
+16:02:23.143 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+16:02:23.148 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
+16:02:23.171 [main] INFO plugin.jhin.example -- jhin.agent present: registered 1 tool(s)
+16:02:23.174 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/tmp.DRAVCPhATi/mcp.json; no MCP servers to start
+16:02:23.178 [main] ERROR com.astroreen.jhin.kernel.loader.PluginLifecycle -- plugin jhin.tools-builtin failed: duplicate publication of com.astroreen.jhin.plugin.agent.api.ToolProvider already published by plugin jhin.example, attempted by plugin jhin.tools-builtin
+16:02:23.191 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
+16:02:23.191 [main] ERROR com.astroreen.jhin.kernel.KernelBoot -- plugin load finished with 1 failed: jhin.tools-builtin: duplicate publication of com.astroreen.jhin.plugin.agent.api.ToolProvider already published by plugin jhin.example, attempted by plugin jhin.tools-builtin
+2026-10-06T16:02:23.638+03:00  INFO 3887028 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3887028 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-06T16:02:23.640+03:00  INFO 3887028 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-06T16:02:24.103+03:00  INFO 3887028 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18518 (https)
+2026-10-06T16:02:24.113+03:00  INFO 3887028 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-06T16:02:24.113+03:00  INFO 3887028 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-06T16:02:24.129+03:00  INFO 3887028 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 453 ms
+2026-10-06T16:02:24.391+03:00  INFO 3887028 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18518], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
+2026-10-06T16:02:24.397+03:00  INFO 3887028 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18518 (https) with context path '/'
+2026-10-06T16:02:24.408+03:00  INFO 3887028 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.126 seconds (process running for 2.22)
+ok: full 12-jar bundle booted; UI-critical plugins loaded (kernel.log, kernel-plugins.txt, health.json)
+ok: recorded discrepancy: jhin.tools-builtin cannot coexist with the jhin.example template (duplicate ToolProvider publication); kernel-plugins.txt
+ok: bootstrap at api=3;schema=4: contract {api:3, minApi:2, schema:4, minSchema:3}, theme.id t3-chat (bootstrap.json)
+ok: enrolled a device and seeded one session (1c2c2a2f-fd26-41bf-879e-5fb4996a8f27) for the dynamic chat:<id> route (enroll.txt)
+ok: 23 section 4.2 routes: HTTP 200 with a screen root, every node type inside the section 2.5 catalog (routes.json, routes/)
+ok: documented discrepancy: chat:new and draft:<id> (plan section 4.2) are not registered and answer 404 unknown_screen (absent-routes.txt)
+ok: downgrade verified: 23 routes at api=2;schema=3 carry zero level-3 types and no glass/glassTint/statusPulse (downgrade-transcript.txt, routes-l2/)
+ok: the bootstrap screens[] lists every static section 4.2 route; dynamic chat:<id>/project:<key> stay out; 'shell' is not a screen id (bootstrap.json)
+ok: T78 regression gate green: the settings contracts still hold (gate-t78/)
+2026-10-06T16:02:54.414+03:00  INFO 3887028 --- [   jhin-sched-1] plugin.jhin.sessions                     : settlement sweep: settled 0 of 0 candidates
+ok: T98 regression gate green: the undo sequence still holds (gate-t98/)
+ok: summary recorded (summary.txt)
+T120 QA green: full-bundle routes, contract downgrade and store upgrade verified
+2026-10-06T16:03:12.139+03:00  INFO 3887028 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-06T16:03:12.142+03:00  INFO 3887028 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete

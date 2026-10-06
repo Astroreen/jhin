@@ -1,0 +1,4 @@
+ok: the missing ui-kit jar fails boot with the documented error (fail-boot/kernel.log)
+ok: the health payload still answers and lists jhin.ui as failed (health-fail.json)
+FAIL (intentional): removed a plugin jar from the dist to prove the documented boot error appears
+FAIL: --fail mode: intentional failure-path exit

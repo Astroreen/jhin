@@ -1,0 +1,6 @@
+=== enroll ===
+POST /enroll {code:<single-use>, deviceName:t120}
+resp: {"token":"77d80370ca266d636dc9f2d77074a27d6b46cf8c8073ec0913bcdf355f8c9b75","accountId":"d1743aea-25f6-4e84-9bad-d484863a180f","accountName":"t120","deviceId":"f14c6c77-39d5-4f72-9ffb-89ed4dd4b89b"}
+=== seed session ===
+POST /sessions {title:t120-e2e, workdir:/tmp/t120}
+resp: {"id":"1c2c2a2f-fd26-41bf-879e-5fb4996a8f27","accountId":"d1743aea-25f6-4e84-9bad-d484863a180f","title":"t120-e2e","workdir":"/tmp/t120","model":null,"providerId":null,"status":"active","createdAt":1791291746183,"updatedAt":1791291746183,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}

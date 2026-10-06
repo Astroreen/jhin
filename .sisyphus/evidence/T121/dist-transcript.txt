@@ -1,0 +1,62 @@
+=== dist boot ===
+jar: dist/jhin-kernel-0.2.0.jar
+bundled: dist/plugins-default (JHIN_BUNDLED_PLUGINS override)
+GET /_jhin/health -> 200
+{
+  "api": 1,
+  "failed": [],
+  "kernel": "0.2.0",
+  "plugins": [
+    {
+      "id": "jhin.llm",
+      "name": "LLM",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.llm-builtin",
+      "name": "LLM Built-in",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.reload",
+      "name": "Reload",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.security",
+      "name": "Security",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.sessions",
+      "name": "Sessions",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.agent",
+      "name": "Agent",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.mcp",
+      "name": "MCP",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.tools-builtin",
+      "name": "Tools Built-in",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.ui-kit",
+      "name": "UI Kit",
+      "version": "0.2.0"
+    },
+    {
+      "id": "jhin.ui",
+      "name": "UI",
+      "version": "0.2.0"
+    }
+  ],
+  "status": "ok"
+}

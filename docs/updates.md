@@ -255,3 +255,37 @@ in either surfaces here. Its `--fail` path requests a `schema=2` client below
 `contract.minSchema` and confirms the client-owned `version_gate` entry is
 named without a server-rendered gate node.
 
+## 12. Release notes: the release bundle
+
+`./gradlew dist` assembles the installable bundle under `dist/` (the generated
+`dist/README.md` and [deploy/README.md](../deploy/README.md) carry the install
+steps). This section records what the bundle carries, what is decorative in it
+and what to strip; the clone-level notes are in §10.
+
+**What was copied into the bundle.** The kernel boot jar
+(`jhin-kernel-<version>.jar`), the ten default plugin jars under
+`plugins-default/` — sessions, security, llm, llm-builtin, agent,
+tools-builtin, mcp, ui-kit, ui-default and reload — the web client under
+`frontend/web/` (plus the Linux desktop bundle when the host toolchain is
+present), the restart loop `run.sh` and a `MANIFEST.txt` with the size and
+SHA-256 of every artifact. The `jhin.example` copy-paste template and the
+`jhin.qa-mock-llm` harness are built with the rest but are deliberately never
+copied: the `dist` task fails if either name appears anywhere inside `dist/`.
+
+**What is decorative.** The bundle ships the same decorative surfaces the
+clone documents in §10 — the terminal drawer, the diff viewer and changed-files
+tree, the browser preview, the usage and pull-request pages, the device
+pairing / connect / welcome / project screens and the decorative settings
+panels. They are presentation only: every interactive node carries
+`demo: true` and dispatches inline client directives, never a database write,
+and the client paints the shared disabled-affordance marker so nothing
+decorative looks silently real.
+
+**What to strip.** The bundle is a set of independent plugin jars: delete a
+jar from `plugins-default/` (or from `$JHIN_HOME/plugins/`) and restart to
+remove that feature — the kernel boots with whatever remains and reports the
+missing dependency in the log (`plugin load finished with N failed: …`). To
+remove the decorative surfaces themselves, drop the `demo` nodes and replace
+their inline directives with real actions; the token layer, the palette
+generator and the decorative mechanism are the intended seams (§10).
+

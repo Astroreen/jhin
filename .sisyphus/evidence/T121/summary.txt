@@ -1,0 +1,18 @@
+# T121 dist verification summary
+
+bundle: dist/jhin-kernel-0.2.0.jar + 10 default plugin jars under plugins-default/
+jvm tests (ui-default + ui-kit): 565
+flutter release build commands: web, linux, apk — all with --no-tree-shake-icons
+
+dist boot: GET /_jhin/health -> 200, ten default plugins loaded
+  (booted with JHIN_BUNDLED_PLUGINS=dist/plugins-default)
+
+recorded discrepancy: the dist jar does not auto-seed plugins-default.
+  The Spring Boot fat jar's code source is a nested-jar URL, so
+  ownJarDir() cannot resolve the directory next to the jar and the
+  seeder logs 'no bundled plugin directory'. The documented
+  JHIN_BUNDLED_PLUGINS override is required to boot the shipped bundle.
+  Recorded for the next planning pass; not fixed here (plan section 17).
+
+release notes: docs/updates.md section 12 (what was copied, what is
+  decorative, what to strip); evidence index: .sisyphus/evidence/README.md

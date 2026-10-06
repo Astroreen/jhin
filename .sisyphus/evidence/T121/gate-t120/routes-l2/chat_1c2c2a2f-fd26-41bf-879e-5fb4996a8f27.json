@@ -1,0 +1,3355 @@
+{
+  "type": "screen",
+  "title": "t120-e2e",
+  "body": {
+    "type": "stack",
+    "id": "chat-frame-stack",
+    "fit": "expand",
+    "children": [
+      {
+        "type": "column",
+        "id": "chat-frame",
+        "gap": 0,
+        "children": [
+          {
+            "type": "row",
+            "id": "chat-header",
+            "align": "center",
+            "gap": 8,
+            "padding": [
+              12,
+              16
+            ],
+            "children": [
+              {
+                "type": "text",
+                "text": "t120-e2e",
+                "fontSize": 14,
+                "fontWeight": 600,
+                "maxLines": 1
+              },
+              {
+                "type": "badge",
+                "id": "runStatus",
+                "label": "Idle"
+              },
+              {
+                "type": "spacer"
+              },
+              {
+                "type": "icon_button",
+                "id": "chat_right_panel-toggle",
+                "icon": "view_sidebar",
+                "action": {
+                  "op": "setState",
+                  "id": "chat_right_panel",
+                  "value": true
+                },
+                "tooltip": "Toggle panel",
+                "demo": true
+              },
+              {
+                "type": "icon_button",
+                "id": "chat_terminal-toggle",
+                "icon": "dock",
+                "action": {
+                  "op": "setState",
+                  "id": "chat_terminal",
+                  "value": true
+                },
+                "tooltip": "Toggle panel",
+                "demo": true
+              },
+              {
+                "type": "menu",
+                "trigger": {
+                  "type": "icon_button",
+                  "icon": "more_vert",
+                  "action": {
+                    "path": "/ui/action/noop",
+                    "method": "POST",
+                    "name": "noop"
+                  }
+                },
+                "items": [
+                  {
+                    "label": "Pin thread",
+                    "icon": "keep",
+                    "action": {
+                      "path": "/ui/action/pin",
+                      "method": "POST",
+                      "name": "pin",
+                      "payload": {
+                        "id": "1c2c2a2f-fd26-41bf-879e-5fb4996a8f27"
+                      }
+                    }
+                  },
+                  {
+                    "label": "Settle thread",
+                    "icon": "check_circle",
+                    "action": {
+                      "path": "/ui/action/settle",
+                      "method": "POST",
+                      "name": "settle",
+                      "payload": {
+                        "id": "1c2c2a2f-fd26-41bf-879e-5fb4996a8f27"
+                      }
+                    }
+                  },
+                  {
+                    "label": "Snooze",
+                    "icon": "schedule",
+                    "children": [
+                      {
+                        "label": "In 1 hour (5:02 PM)",
+                        "action": {
+                          "path": "/ui/action/snooze",
+                          "method": "POST",
+                          "name": "snooze",
+                          "payload": {
+                            "until": 1791295347872,
+                            "id": "1c2c2a2f-fd26-41bf-879e-5fb4996a8f27"
+                          }
+                        }
+                      },
+                      {
+                        "label": "In 3 hours (7:02 PM)",
+                        "action": {
+                          "path": "/ui/action/snooze",
+                          "method": "POST",
+                          "name": "snooze",
+                          "payload": {
+                            "until": 1791302547872,
+                            "id": "1c2c2a2f-fd26-41bf-879e-5fb4996a8f27"
+                          }
+                        }
+                      },
+                      {
+                        "label": "This evening (6:00 PM)",
+                        "action": {
+                          "path": "/ui/action/snooze",
+                          "method": "POST",
+                          "name": "snooze",
+                          "payload": {
+                            "until": 1791298800000,
+                            "id": "1c2c2a2f-fd26-41bf-879e-5fb4996a8f27"
+                          }
+                        }
+                      },
+                      {
+                        "label": "Tomorrow (9:00 AM)",
+                        "action": {
+                          "path": "/ui/action/snooze",
+                          "method": "POST",
+                          "name": "snooze",
+                          "payload": {
+                            "until": 1791352800000,
+                            "id": "1c2c2a2f-fd26-41bf-879e-5fb4996a8f27"
+                          }
+                        }
+                      },
+                      {
+                        "label": "Next week (Mon 9:00 AM)",
+                        "action": {
+                          "path": "/ui/action/snooze",
+                          "method": "POST",
+                          "name": "snooze",
+                          "payload": {
+                            "until": 1791784800000,
+                            "id": "1c2c2a2f-fd26-41bf-879e-5fb4996a8f27"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "label": "Regenerate title",
+                    "icon": "refresh",
+                    "separatorBefore": true,
+                    "action": {
+                      "path": "/ui/action/regenerate-title",
+                      "method": "POST",
+                      "name": "regenerate-title",
+                      "payload": {
+                        "id": "1c2c2a2f-fd26-41bf-879e-5fb4996a8f27"
+                      }
+                    }
+                  },
+                  {
+                    "label": "Archive thread",
+                    "icon": "archive",
+                    "separatorBefore": true,
+                    "action": {
+                      "path": "/ui/action/archive",
+                      "method": "POST",
+                      "name": "archive",
+                      "payload": {
+                        "id": "1c2c2a2f-fd26-41bf-879e-5fb4996a8f27"
+                      }
+                    },
+                    "confirm": "Archive this thread?"
+                  },
+                  {
+                    "label": "Delete",
+                    "icon": "delete",
+                    "action": {
+                      "path": "/ui/action/delete-session",
+                      "method": "POST",
+                      "name": "delete-session",
+                      "payload": {
+                        "id": "1c2c2a2f-fd26-41bf-879e-5fb4996a8f27"
+                      }
+                    },
+                    "confirm": "Delete this thread? This cannot be undone.",
+                    "danger": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "expanded",
+            "child": {
+              "type": "container",
+              "id": "chat-lane",
+              "direction": "column",
+              "gap": 0,
+              "laneWidth": "46rem",
+              "children": [
+                {
+                  "type": "expanded",
+                  "flex": 1,
+                  "child": {
+                    "type": "scroll",
+                    "children": [
+                      {
+                        "type": "column",
+                        "id": "chat-timeline",
+                        "gap": 8,
+                        "children": [
+                          {
+                            "type": "expanded",
+                            "child": {
+                              "type": "list",
+                              "id": "messages",
+                              "empty": "No messages yet."
+                            }
+                          },
+                          {
+                            "type": "stream_view",
+                            "id": "stream",
+                            "topic": "/ui/stream/session/1c2c2a2f-fd26-41bf-879e-5fb4996a8f27?fromSeq=0",
+                            "mode": "append",
+                            "itemLimit": 200,
+                            "autoScroll": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "box",
+                  "id": "composer-seam",
+                  "height": 10,
+                  "alignment": "center",
+                  "child": {
+                    "type": "sized_box"
+                  },
+                  "gradient": {
+                    "begin": "bottomCenter",
+                    "end": "topCenter",
+                    "colors": [
+                      "#2E000000",
+                      "#00000000"
+                    ]
+                  }
+                },
+                {
+                  "type": "column",
+                  "id": "composer",
+                  "gap": 8,
+                  "padding": 12,
+                  "children": [
+                    {
+                      "type": "row",
+                      "id": "composer-controls",
+                      "align": "center",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "row",
+                          "id": "composer-model-picker-control",
+                          "align": "center",
+                          "gap": 0,
+                          "children": [
+                            {
+                              "type": "button",
+                              "label": "Model: ${chat_model}",
+                              "id": "composer-model-picker",
+                              "icon": "auto_awesome",
+                              "action": {
+                                "op": "dialog",
+                                "node": {
+                                  "type": "column",
+                                  "id": "composer-model-dialog",
+                                  "gap": 4,
+                                  "children": [
+                                    {
+                                      "type": "row",
+                                      "gap": 8,
+                                      "align": "center",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "text": "Model",
+                                          "fontWeight": 600
+                                        },
+                                        {
+                                          "type": "text",
+                                          "text": "mod+shift+m",
+                                          "style": "mono"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Opus 4.6",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_model",
+                                            "value": "Opus 4.6"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "Opus 4.6 selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Sonnet 4.6",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_model",
+                                            "value": "Sonnet 4.6"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "Sonnet 4.6 selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "GPT-5 Codex",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_model",
+                                            "value": "GPT-5 Codex"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "GPT-5 Codex selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Gemini 3 Pro",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_model",
+                                            "value": "Gemini 3 Pro"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "Gemini 3 Pro selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Done",
+                                      "action": {
+                                        "op": "dismissDialog"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              "demo": true,
+                              "tooltip": "mod+shift+m — picker (preview only)"
+                            },
+                            {
+                              "type": "box",
+                              "child": {
+                                "type": "icon_button",
+                                "icon": "expand_more",
+                                "iconSize": 16,
+                                "demo": true,
+                                "action": {
+                                  "op": "dialog",
+                                  "node": {
+                                    "type": "column",
+                                    "id": "composer-model-dialog",
+                                    "gap": 4,
+                                    "children": [
+                                      {
+                                        "type": "row",
+                                        "gap": 8,
+                                        "align": "center",
+                                        "children": [
+                                          {
+                                            "type": "text",
+                                            "text": "Model",
+                                            "fontWeight": 600
+                                          },
+                                          {
+                                            "type": "text",
+                                            "text": "mod+shift+m",
+                                            "style": "mono"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Opus 4.6",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_model",
+                                              "value": "Opus 4.6"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "Opus 4.6 selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Sonnet 4.6",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_model",
+                                              "value": "Sonnet 4.6"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "Sonnet 4.6 selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "GPT-5 Codex",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_model",
+                                              "value": "GPT-5 Codex"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "GPT-5 Codex selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Gemini 3 Pro",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_model",
+                                              "value": "Gemini 3 Pro"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "Gemini 3 Pro selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Done",
+                                        "action": {
+                                          "op": "dismissDialog"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "row",
+                          "id": "composer-provider-picker-control",
+                          "align": "center",
+                          "gap": 0,
+                          "children": [
+                            {
+                              "type": "button",
+                              "label": "Provider: ${chat_provider}",
+                              "id": "composer-provider-picker",
+                              "icon": "smart_toy",
+                              "action": {
+                                "op": "dialog",
+                                "node": {
+                                  "type": "column",
+                                  "id": "composer-provider-dialog",
+                                  "gap": 4,
+                                  "children": [
+                                    {
+                                      "type": "row",
+                                      "gap": 8,
+                                      "align": "center",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "text": "Provider",
+                                          "fontWeight": 600
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "anthropic",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_provider",
+                                            "value": "anthropic"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "anthropic selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "openai",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_provider",
+                                            "value": "openai"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "openai selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "google",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_provider",
+                                            "value": "google"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "google selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Done",
+                                      "action": {
+                                        "op": "dismissDialog"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              "demo": true,
+                              "tooltip": "Picker (preview only)"
+                            },
+                            {
+                              "type": "box",
+                              "child": {
+                                "type": "icon_button",
+                                "icon": "expand_more",
+                                "iconSize": 16,
+                                "demo": true,
+                                "action": {
+                                  "op": "dialog",
+                                  "node": {
+                                    "type": "column",
+                                    "id": "composer-provider-dialog",
+                                    "gap": 4,
+                                    "children": [
+                                      {
+                                        "type": "row",
+                                        "gap": 8,
+                                        "align": "center",
+                                        "children": [
+                                          {
+                                            "type": "text",
+                                            "text": "Provider",
+                                            "fontWeight": 600
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "anthropic",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_provider",
+                                              "value": "anthropic"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "anthropic selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "openai",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_provider",
+                                              "value": "openai"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "openai selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "google",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_provider",
+                                              "value": "google"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "google selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Done",
+                                        "action": {
+                                          "op": "dismissDialog"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "row",
+                          "id": "composer-effort-picker-control",
+                          "align": "center",
+                          "gap": 0,
+                          "children": [
+                            {
+                              "type": "button",
+                              "label": "Effort: ${chat_effort}",
+                              "id": "composer-effort-picker",
+                              "icon": "speed",
+                              "action": {
+                                "op": "dialog",
+                                "node": {
+                                  "type": "column",
+                                  "id": "composer-effort-dialog",
+                                  "gap": 4,
+                                  "children": [
+                                    {
+                                      "type": "row",
+                                      "gap": 8,
+                                      "align": "center",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "text": "Effort",
+                                          "fontWeight": 600
+                                        },
+                                        {
+                                          "type": "text",
+                                          "text": "mod+shift+e",
+                                          "style": "mono"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Low",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_effort",
+                                            "value": "Low"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "Low selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Med",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_effort",
+                                            "value": "Med"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "Med selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "High",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_effort",
+                                            "value": "High"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "High selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Done",
+                                      "action": {
+                                        "op": "dismissDialog"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              "demo": true,
+                              "tooltip": "mod+shift+e — picker (preview only)"
+                            },
+                            {
+                              "type": "box",
+                              "child": {
+                                "type": "icon_button",
+                                "icon": "expand_more",
+                                "iconSize": 16,
+                                "demo": true,
+                                "action": {
+                                  "op": "dialog",
+                                  "node": {
+                                    "type": "column",
+                                    "id": "composer-effort-dialog",
+                                    "gap": 4,
+                                    "children": [
+                                      {
+                                        "type": "row",
+                                        "gap": 8,
+                                        "align": "center",
+                                        "children": [
+                                          {
+                                            "type": "text",
+                                            "text": "Effort",
+                                            "fontWeight": 600
+                                          },
+                                          {
+                                            "type": "text",
+                                            "text": "mod+shift+e",
+                                            "style": "mono"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Low",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_effort",
+                                              "value": "Low"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "Low selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Med",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_effort",
+                                              "value": "Med"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "Med selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "High",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_effort",
+                                              "value": "High"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "High selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Done",
+                                        "action": {
+                                          "op": "dismissDialog"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "row",
+                          "id": "composer-mode-picker-control",
+                          "align": "center",
+                          "gap": 0,
+                          "children": [
+                            {
+                              "type": "button",
+                              "label": "Access: ${chat_mode}",
+                              "id": "composer-mode-picker",
+                              "icon": "shield",
+                              "action": {
+                                "op": "dialog",
+                                "node": {
+                                  "type": "column",
+                                  "id": "composer-mode-dialog",
+                                  "gap": 8,
+                                  "children": [
+                                    {
+                                      "type": "row",
+                                      "gap": 8,
+                                      "align": "center",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "text": "Permissions",
+                                          "fontWeight": 600
+                                        },
+                                        {
+                                          "type": "text",
+                                          "text": "mod+shift+a",
+                                          "style": "mono"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "list",
+                                      "id": "permissions-modes",
+                                      "items": [
+                                        {
+                                          "type": "list_row",
+                                          "id": "permission-mode-read-only",
+                                          "leading": {
+                                            "type": "icon",
+                                            "id": "permission-mode-read-only-radio",
+                                            "icon": "radio_button_checked",
+                                            "size": 18,
+                                            "color": "$color.accent"
+                                          },
+                                          "title": "Read only",
+                                          "subtitle": "Read files and run read-only commands.",
+                                          "selected": true,
+                                          "action": {
+                                            "client": [
+                                              {
+                                                "op": "setState",
+                                                "id": "chat_mode",
+                                                "value": "Read only"
+                                              },
+                                              {
+                                                "op": "patch",
+                                                "id": "permission-mode-read-only-radio",
+                                                "props": {
+                                                  "icon": "radio_button_checked",
+                                                  "color": "$color.accent"
+                                                }
+                                              },
+                                              {
+                                                "op": "patch",
+                                                "id": "permission-mode-ask-radio",
+                                                "props": {
+                                                  "icon": "radio_button_unchecked",
+                                                  "color": "$color.muted-foreground"
+                                                }
+                                              },
+                                              {
+                                                "op": "patch",
+                                                "id": "permission-mode-full-access-radio",
+                                                "props": {
+                                                  "icon": "radio_button_unchecked",
+                                                  "color": "$color.muted-foreground"
+                                                }
+                                              },
+                                              {
+                                                "op": "toast",
+                                                "text": "Read only selected (preview only)"
+                                              }
+                                            ]
+                                          },
+                                          "demo": true
+                                        },
+                                        {
+                                          "type": "list_row",
+                                          "id": "permission-mode-ask",
+                                          "leading": {
+                                            "type": "icon",
+                                            "id": "permission-mode-ask-radio",
+                                            "icon": "radio_button_unchecked",
+                                            "size": 18,
+                                            "color": "$color.muted-foreground"
+                                          },
+                                          "title": "Ask",
+                                          "subtitle": "Ask before commands and file changes.",
+                                          "selected": false,
+                                          "action": {
+                                            "client": [
+                                              {
+                                                "op": "setState",
+                                                "id": "chat_mode",
+                                                "value": "Ask"
+                                              },
+                                              {
+                                                "op": "patch",
+                                                "id": "permission-mode-read-only-radio",
+                                                "props": {
+                                                  "icon": "radio_button_unchecked",
+                                                  "color": "$color.muted-foreground"
+                                                }
+                                              },
+                                              {
+                                                "op": "patch",
+                                                "id": "permission-mode-ask-radio",
+                                                "props": {
+                                                  "icon": "radio_button_checked",
+                                                  "color": "$color.accent"
+                                                }
+                                              },
+                                              {
+                                                "op": "patch",
+                                                "id": "permission-mode-full-access-radio",
+                                                "props": {
+                                                  "icon": "radio_button_unchecked",
+                                                  "color": "$color.muted-foreground"
+                                                }
+                                              },
+                                              {
+                                                "op": "toast",
+                                                "text": "Ask selected (preview only)"
+                                              }
+                                            ]
+                                          },
+                                          "demo": true
+                                        },
+                                        {
+                                          "type": "list_row",
+                                          "id": "permission-mode-full-access",
+                                          "leading": {
+                                            "type": "icon",
+                                            "id": "permission-mode-full-access-radio",
+                                            "icon": "radio_button_unchecked",
+                                            "size": 18,
+                                            "color": "$color.muted-foreground"
+                                          },
+                                          "title": "Full access",
+                                          "subtitle": "Allow commands and edits without prompts.",
+                                          "selected": false,
+                                          "action": {
+                                            "client": [
+                                              {
+                                                "op": "setState",
+                                                "id": "chat_mode",
+                                                "value": "Full access"
+                                              },
+                                              {
+                                                "op": "patch",
+                                                "id": "permission-mode-read-only-radio",
+                                                "props": {
+                                                  "icon": "radio_button_unchecked",
+                                                  "color": "$color.muted-foreground"
+                                                }
+                                              },
+                                              {
+                                                "op": "patch",
+                                                "id": "permission-mode-ask-radio",
+                                                "props": {
+                                                  "icon": "radio_button_unchecked",
+                                                  "color": "$color.muted-foreground"
+                                                }
+                                              },
+                                              {
+                                                "op": "patch",
+                                                "id": "permission-mode-full-access-radio",
+                                                "props": {
+                                                  "icon": "radio_button_checked",
+                                                  "color": "$color.accent"
+                                                }
+                                              },
+                                              {
+                                                "op": "toast",
+                                                "text": "Full access selected (preview only)"
+                                              }
+                                            ]
+                                          },
+                                          "demo": true
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "text",
+                                      "text": "Preview only — permission changes are not saved in this build.",
+                                      "id": "permissions-note",
+                                      "fontSize": 12,
+                                      "color": "$color.muted-foreground"
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Save",
+                                      "id": "permissions-save",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "toast",
+                                            "text": "Permissions saved (preview only)"
+                                          },
+                                          {
+                                            "op": "dismissDialog"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    }
+                                  ]
+                                }
+                              },
+                              "demo": true,
+                              "tooltip": "mod+shift+a — picker (preview only)"
+                            },
+                            {
+                              "type": "box",
+                              "child": {
+                                "type": "icon_button",
+                                "icon": "expand_more",
+                                "iconSize": 16,
+                                "demo": true,
+                                "action": {
+                                  "op": "dialog",
+                                  "node": {
+                                    "type": "column",
+                                    "id": "composer-mode-dialog",
+                                    "gap": 8,
+                                    "children": [
+                                      {
+                                        "type": "row",
+                                        "gap": 8,
+                                        "align": "center",
+                                        "children": [
+                                          {
+                                            "type": "text",
+                                            "text": "Permissions",
+                                            "fontWeight": 600
+                                          },
+                                          {
+                                            "type": "text",
+                                            "text": "mod+shift+a",
+                                            "style": "mono"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "list",
+                                        "id": "permissions-modes",
+                                        "items": [
+                                          {
+                                            "type": "list_row",
+                                            "id": "permission-mode-read-only",
+                                            "leading": {
+                                              "type": "icon",
+                                              "id": "permission-mode-read-only-radio",
+                                              "icon": "radio_button_checked",
+                                              "size": 18,
+                                              "color": "$color.accent"
+                                            },
+                                            "title": "Read only",
+                                            "subtitle": "Read files and run read-only commands.",
+                                            "selected": true,
+                                            "action": {
+                                              "client": [
+                                                {
+                                                  "op": "setState",
+                                                  "id": "chat_mode",
+                                                  "value": "Read only"
+                                                },
+                                                {
+                                                  "op": "patch",
+                                                  "id": "permission-mode-read-only-radio",
+                                                  "props": {
+                                                    "icon": "radio_button_checked",
+                                                    "color": "$color.accent"
+                                                  }
+                                                },
+                                                {
+                                                  "op": "patch",
+                                                  "id": "permission-mode-ask-radio",
+                                                  "props": {
+                                                    "icon": "radio_button_unchecked",
+                                                    "color": "$color.muted-foreground"
+                                                  }
+                                                },
+                                                {
+                                                  "op": "patch",
+                                                  "id": "permission-mode-full-access-radio",
+                                                  "props": {
+                                                    "icon": "radio_button_unchecked",
+                                                    "color": "$color.muted-foreground"
+                                                  }
+                                                },
+                                                {
+                                                  "op": "toast",
+                                                  "text": "Read only selected (preview only)"
+                                                }
+                                              ]
+                                            },
+                                            "demo": true
+                                          },
+                                          {
+                                            "type": "list_row",
+                                            "id": "permission-mode-ask",
+                                            "leading": {
+                                              "type": "icon",
+                                              "id": "permission-mode-ask-radio",
+                                              "icon": "radio_button_unchecked",
+                                              "size": 18,
+                                              "color": "$color.muted-foreground"
+                                            },
+                                            "title": "Ask",
+                                            "subtitle": "Ask before commands and file changes.",
+                                            "selected": false,
+                                            "action": {
+                                              "client": [
+                                                {
+                                                  "op": "setState",
+                                                  "id": "chat_mode",
+                                                  "value": "Ask"
+                                                },
+                                                {
+                                                  "op": "patch",
+                                                  "id": "permission-mode-read-only-radio",
+                                                  "props": {
+                                                    "icon": "radio_button_unchecked",
+                                                    "color": "$color.muted-foreground"
+                                                  }
+                                                },
+                                                {
+                                                  "op": "patch",
+                                                  "id": "permission-mode-ask-radio",
+                                                  "props": {
+                                                    "icon": "radio_button_checked",
+                                                    "color": "$color.accent"
+                                                  }
+                                                },
+                                                {
+                                                  "op": "patch",
+                                                  "id": "permission-mode-full-access-radio",
+                                                  "props": {
+                                                    "icon": "radio_button_unchecked",
+                                                    "color": "$color.muted-foreground"
+                                                  }
+                                                },
+                                                {
+                                                  "op": "toast",
+                                                  "text": "Ask selected (preview only)"
+                                                }
+                                              ]
+                                            },
+                                            "demo": true
+                                          },
+                                          {
+                                            "type": "list_row",
+                                            "id": "permission-mode-full-access",
+                                            "leading": {
+                                              "type": "icon",
+                                              "id": "permission-mode-full-access-radio",
+                                              "icon": "radio_button_unchecked",
+                                              "size": 18,
+                                              "color": "$color.muted-foreground"
+                                            },
+                                            "title": "Full access",
+                                            "subtitle": "Allow commands and edits without prompts.",
+                                            "selected": false,
+                                            "action": {
+                                              "client": [
+                                                {
+                                                  "op": "setState",
+                                                  "id": "chat_mode",
+                                                  "value": "Full access"
+                                                },
+                                                {
+                                                  "op": "patch",
+                                                  "id": "permission-mode-read-only-radio",
+                                                  "props": {
+                                                    "icon": "radio_button_unchecked",
+                                                    "color": "$color.muted-foreground"
+                                                  }
+                                                },
+                                                {
+                                                  "op": "patch",
+                                                  "id": "permission-mode-ask-radio",
+                                                  "props": {
+                                                    "icon": "radio_button_unchecked",
+                                                    "color": "$color.muted-foreground"
+                                                  }
+                                                },
+                                                {
+                                                  "op": "patch",
+                                                  "id": "permission-mode-full-access-radio",
+                                                  "props": {
+                                                    "icon": "radio_button_checked",
+                                                    "color": "$color.accent"
+                                                  }
+                                                },
+                                                {
+                                                  "op": "toast",
+                                                  "text": "Full access selected (preview only)"
+                                                }
+                                              ]
+                                            },
+                                            "demo": true
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "text",
+                                        "text": "Preview only — permission changes are not saved in this build.",
+                                        "id": "permissions-note",
+                                        "fontSize": 12,
+                                        "color": "$color.muted-foreground"
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Save",
+                                        "id": "permissions-save",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "toast",
+                                              "text": "Permissions saved (preview only)"
+                                            },
+                                            {
+                                              "op": "dismissDialog"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "row",
+                          "id": "composer-workspace-picker-control",
+                          "align": "center",
+                          "gap": 0,
+                          "children": [
+                            {
+                              "type": "button",
+                              "label": "${chat_workspace}",
+                              "id": "composer-workspace-picker",
+                              "icon": "folder_open",
+                              "action": {
+                                "op": "dialog",
+                                "node": {
+                                  "type": "column",
+                                  "id": "composer-workspace-dialog",
+                                  "gap": 4,
+                                  "children": [
+                                    {
+                                      "type": "row",
+                                      "gap": 8,
+                                      "align": "center",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "text": "Workspace",
+                                          "fontWeight": 600
+                                        },
+                                        {
+                                          "type": "text",
+                                          "text": "mod+shift+x",
+                                          "style": "mono"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "jhin",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_workspace",
+                                            "value": "jhin"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "jhin selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "api-redesign (worktree)",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_workspace",
+                                            "value": "api-redesign (worktree)"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "api-redesign (worktree) selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "New worktree…",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_workspace",
+                                            "value": "New worktree…"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "New worktree… selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Done",
+                                      "action": {
+                                        "op": "dismissDialog"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              "demo": true,
+                              "tooltip": "mod+shift+x — picker (preview only)"
+                            },
+                            {
+                              "type": "box",
+                              "child": {
+                                "type": "icon_button",
+                                "icon": "expand_more",
+                                "iconSize": 16,
+                                "demo": true,
+                                "action": {
+                                  "op": "dialog",
+                                  "node": {
+                                    "type": "column",
+                                    "id": "composer-workspace-dialog",
+                                    "gap": 4,
+                                    "children": [
+                                      {
+                                        "type": "row",
+                                        "gap": 8,
+                                        "align": "center",
+                                        "children": [
+                                          {
+                                            "type": "text",
+                                            "text": "Workspace",
+                                            "fontWeight": 600
+                                          },
+                                          {
+                                            "type": "text",
+                                            "text": "mod+shift+x",
+                                            "style": "mono"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "jhin",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_workspace",
+                                              "value": "jhin"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "jhin selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "api-redesign (worktree)",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_workspace",
+                                              "value": "api-redesign (worktree)"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "api-redesign (worktree) selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "New worktree…",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_workspace",
+                                              "value": "New worktree…"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "New worktree… selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Done",
+                                        "action": {
+                                          "op": "dismissDialog"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "row",
+                          "id": "composer-branch-picker-control",
+                          "align": "center",
+                          "gap": 0,
+                          "children": [
+                            {
+                              "type": "button",
+                              "label": "${chat_branch}",
+                              "id": "composer-branch-picker",
+                              "icon": "alt_route",
+                              "action": {
+                                "op": "dialog",
+                                "node": {
+                                  "type": "column",
+                                  "id": "composer-branch-dialog",
+                                  "gap": 4,
+                                  "children": [
+                                    {
+                                      "type": "row",
+                                      "gap": 8,
+                                      "align": "center",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "text": "Branch",
+                                          "fontWeight": 600
+                                        },
+                                        {
+                                          "type": "text",
+                                          "text": "mod+shift+g",
+                                          "style": "mono"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "main",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_branch",
+                                            "value": "main"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "main selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "feat/composer-rows",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_branch",
+                                            "value": "feat/composer-rows"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "feat/composer-rows selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Done",
+                                      "action": {
+                                        "op": "dismissDialog"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              "demo": true,
+                              "tooltip": "mod+shift+g — picker (preview only)"
+                            },
+                            {
+                              "type": "box",
+                              "child": {
+                                "type": "icon_button",
+                                "icon": "expand_more",
+                                "iconSize": 16,
+                                "demo": true,
+                                "action": {
+                                  "op": "dialog",
+                                  "node": {
+                                    "type": "column",
+                                    "id": "composer-branch-dialog",
+                                    "gap": 4,
+                                    "children": [
+                                      {
+                                        "type": "row",
+                                        "gap": 8,
+                                        "align": "center",
+                                        "children": [
+                                          {
+                                            "type": "text",
+                                            "text": "Branch",
+                                            "fontWeight": 600
+                                          },
+                                          {
+                                            "type": "text",
+                                            "text": "mod+shift+g",
+                                            "style": "mono"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "main",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_branch",
+                                              "value": "main"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "main selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "feat/composer-rows",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_branch",
+                                              "value": "feat/composer-rows"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "feat/composer-rows selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Done",
+                                        "action": {
+                                          "op": "dismissDialog"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "row",
+                          "id": "composer-host-picker-control",
+                          "align": "center",
+                          "gap": 0,
+                          "children": [
+                            {
+                              "type": "button",
+                              "label": "${chat_host}",
+                              "id": "composer-host-picker",
+                              "icon": "computer",
+                              "action": {
+                                "op": "dialog",
+                                "node": {
+                                  "type": "column",
+                                  "id": "composer-host-dialog",
+                                  "gap": 4,
+                                  "children": [
+                                    {
+                                      "type": "row",
+                                      "gap": 8,
+                                      "align": "center",
+                                      "children": [
+                                        {
+                                          "type": "text",
+                                          "text": "Host",
+                                          "fontWeight": 600
+                                        },
+                                        {
+                                          "type": "text",
+                                          "text": "mod+shift+h",
+                                          "style": "mono"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "This machine",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_host",
+                                            "value": "This machine"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "This machine selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "gpu-box (decorative)",
+                                      "action": {
+                                        "client": [
+                                          {
+                                            "op": "setState",
+                                            "id": "chat_host",
+                                            "value": "gpu-box (decorative)"
+                                          },
+                                          {
+                                            "op": "toast",
+                                            "text": "gpu-box (decorative) selected (preview only)"
+                                          }
+                                        ]
+                                      },
+                                      "demo": true
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Done",
+                                      "action": {
+                                        "op": "dismissDialog"
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              "demo": true,
+                              "tooltip": "mod+shift+h — picker (preview only)"
+                            },
+                            {
+                              "type": "box",
+                              "child": {
+                                "type": "icon_button",
+                                "icon": "expand_more",
+                                "iconSize": 16,
+                                "demo": true,
+                                "action": {
+                                  "op": "dialog",
+                                  "node": {
+                                    "type": "column",
+                                    "id": "composer-host-dialog",
+                                    "gap": 4,
+                                    "children": [
+                                      {
+                                        "type": "row",
+                                        "gap": 8,
+                                        "align": "center",
+                                        "children": [
+                                          {
+                                            "type": "text",
+                                            "text": "Host",
+                                            "fontWeight": 600
+                                          },
+                                          {
+                                            "type": "text",
+                                            "text": "mod+shift+h",
+                                            "style": "mono"
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "This machine",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_host",
+                                              "value": "This machine"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "This machine selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "gpu-box (decorative)",
+                                        "action": {
+                                          "client": [
+                                            {
+                                              "op": "setState",
+                                              "id": "chat_host",
+                                              "value": "gpu-box (decorative)"
+                                            },
+                                            {
+                                              "op": "toast",
+                                              "text": "gpu-box (decorative) selected (preview only)"
+                                            }
+                                          ]
+                                        },
+                                        "demo": true
+                                      },
+                                      {
+                                        "type": "button",
+                                        "label": "Done",
+                                        "action": {
+                                          "op": "dismissDialog"
+                                        }
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "wrap",
+                      "id": "composer-chips",
+                      "spacing": 6,
+                      "children": [
+                        {
+                          "type": "chip",
+                          "label": "@ada",
+                          "icon": "alternate_email",
+                          "kind": "mention",
+                          "action": {
+                            "client": [
+                              {
+                                "op": "toast",
+                                "text": "@ada context (preview only)"
+                              }
+                            ]
+                          },
+                          "demo": true
+                        },
+                        {
+                          "type": "chip",
+                          "label": "jhin-plugin",
+                          "icon": "auto_awesome",
+                          "kind": "skill",
+                          "action": {
+                            "client": [
+                              {
+                                "op": "toast",
+                                "text": "jhin-plugin context (preview only)"
+                              }
+                            ]
+                          },
+                          "demo": true
+                        },
+                        {
+                          "type": "chip",
+                          "label": "Fix the login bug",
+                          "icon": "chat_bubble",
+                          "kind": "thread",
+                          "action": {
+                            "client": [
+                              {
+                                "op": "toast",
+                                "text": "Fix the login bug context (preview only)"
+                              }
+                            ]
+                          },
+                          "demo": true
+                        },
+                        {
+                          "type": "chip",
+                          "label": "screenshot.png",
+                          "icon": "image",
+                          "kind": "image",
+                          "action": {
+                            "client": [
+                              {
+                                "op": "toast",
+                                "text": "screenshot.png context (preview only)"
+                              }
+                            ]
+                          },
+                          "demo": true
+                        },
+                        {
+                          "type": "chip",
+                          "label": "src/auth.java",
+                          "icon": "insert_drive_file",
+                          "kind": "file",
+                          "action": {
+                            "client": [
+                              {
+                                "op": "toast",
+                                "text": "src/auth.java context (preview only)"
+                              }
+                            ]
+                          },
+                          "demo": true
+                        },
+                        {
+                          "type": "chip",
+                          "label": "build output",
+                          "icon": "terminal",
+                          "kind": "terminal",
+                          "action": {
+                            "client": [
+                              {
+                                "op": "toast",
+                                "text": "build output context (preview only)"
+                              }
+                            ]
+                          },
+                          "demo": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "box",
+                      "id": "context-meter",
+                      "height": 6,
+                      "borderRadius": 999,
+                      "gradient": {
+                        "begin": "centerLeft",
+                        "end": "centerRight",
+                        "colors": [
+                          "$color.success",
+                          "$color.success",
+                          "$color.warning",
+                          "$color.warning",
+                          "$color.error",
+                          "$color.error"
+                        ],
+                        "stops": [
+                          0.0,
+                          0.5,
+                          0.5,
+                          0.8,
+                          0.8,
+                          1.0
+                        ]
+                      },
+                      "demo": true,
+                      "tooltip": "Context window (preview only)"
+                    },
+                    {
+                      "type": "textarea",
+                      "id": "messageInput",
+                      "label": "Message",
+                      "required": true,
+                      "errorText": "Write a message first",
+                      "minLines": 1,
+                      "maxLines": 8,
+                      "autofocus": true,
+                      "flex": 1,
+                      "constraints": {
+                        "minHeight": 160
+                      }
+                    },
+                    {
+                      "type": "row",
+                      "id": "composer-footer",
+                      "align": "center",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "icon_button",
+                          "id": "composer-attach",
+                          "icon": "attach_file",
+                          "tooltip": "Attach files",
+                          "action": {
+                            "client": [
+                              {
+                                "op": "toast",
+                                "text": "Attach files (preview only)"
+                              }
+                            ]
+                          },
+                          "demo": true
+                        },
+                        {
+                          "type": "icon_button",
+                          "id": "composer-voice",
+                          "icon": "mic",
+                          "tooltip": "Voice input",
+                          "action": {
+                            "client": [
+                              {
+                                "op": "toast",
+                                "text": "Voice input (preview only)"
+                              }
+                            ]
+                          },
+                          "demo": true
+                        },
+                        {
+                          "type": "menu",
+                          "id": "composer-stash-menu",
+                          "trigger": {
+                            "type": "icon_button",
+                            "icon": "bookmark",
+                            "tooltip": "Stash prompt"
+                          },
+                          "items": [
+                            {
+                              "label": "Stash prompt…",
+                              "icon": "bookmark",
+                              "action": {
+                                "op": "dialog",
+                                "node": {
+                                  "type": "column",
+                                  "id": "composer-stash-dialog",
+                                  "gap": 8,
+                                  "children": [
+                                    {
+                                      "type": "input",
+                                      "id": "stash-prompt",
+                                      "label": "Stash Prompt"
+                                    },
+                                    {
+                                      "type": "input",
+                                      "id": "stash-name",
+                                      "label": "Stash Name"
+                                    },
+                                    {
+                                      "type": "row",
+                                      "gap": 8,
+                                      "children": [
+                                        {
+                                          "type": "button",
+                                          "label": "Stash",
+                                          "action": {
+                                            "client": [
+                                              {
+                                                "op": "dismissDialog"
+                                              },
+                                              {
+                                                "op": "toast",
+                                                "text": "Prompt stashed (preview only)"
+                                              }
+                                            ]
+                                          },
+                                          "demo": true
+                                        },
+                                        {
+                                          "type": "button",
+                                          "label": "Cancel",
+                                          "action": {
+                                            "op": "dismissDialog"
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "label": "Stashed prompts",
+                              "icon": "insert_drive_file",
+                              "action": {
+                                "op": "dialog",
+                                "node": {
+                                  "type": "column",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "text": "Nothing stashed yet."
+                                    },
+                                    {
+                                      "type": "button",
+                                      "label": "Done",
+                                      "action": {
+                                        "op": "dismissDialog"
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          ],
+                          "demo": true
+                        },
+                        {
+                          "type": "badge",
+                          "id": "queue-badge",
+                          "label": "Queue",
+                          "count": 2,
+                          "color": "$color.warning",
+                          "when": "chat_dispatch == 'queue'",
+                          "demo": true
+                        },
+                        {
+                          "type": "spacer"
+                        },
+                        {
+                          "type": "button",
+                          "label": "Send",
+                          "id": "composer-send",
+                          "style": "primary",
+                          "icon": "send",
+                          "action": {
+                            "path": "/ui/action/send",
+                            "method": "POST",
+                            "name": "send",
+                            "payload": {
+                              "sessionId": "1c2c2a2f-fd26-41bf-879e-5fb4996a8f27"
+                            },
+                            "include": [
+                              "messageInput"
+                            ]
+                          }
+                        },
+                        {
+                          "type": "menu",
+                          "id": "composer-send-menu",
+                          "trigger": {
+                            "type": "icon_button",
+                            "icon": "expand_more",
+                            "tooltip": "Dispatch mode"
+                          },
+                          "items": [
+                            {
+                              "label": "Direct",
+                              "icon": "send",
+                              "action": {
+                                "client": [
+                                  {
+                                    "op": "setState",
+                                    "id": "chat_dispatch",
+                                    "value": "direct"
+                                  },
+                                  {
+                                    "op": "toast",
+                                    "text": "Dispatch: direct (preview only)"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "label": "Queue",
+                              "icon": "queue",
+                              "action": {
+                                "client": [
+                                  {
+                                    "op": "setState",
+                                    "id": "chat_dispatch",
+                                    "value": "queue"
+                                  },
+                                  {
+                                    "op": "toast",
+                                    "text": "Dispatch: queue (preview only)"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "label": "Steer",
+                              "icon": "call_split",
+                              "action": {
+                                "client": [
+                                  {
+                                    "op": "setState",
+                                    "id": "chat_dispatch",
+                                    "value": "steer"
+                                  },
+                                  {
+                                    "op": "toast",
+                                    "text": "Dispatch: steer (preview only)"
+                                  }
+                                ]
+                              }
+                            }
+                          ],
+                          "demo": true
+                        }
+                      ]
+                    },
+                    {
+                      "type": "container",
+                      "visible": false,
+                      "children": [
+                        {
+                          "type": "input",
+                          "id": "chat_model",
+                          "value": "Opus 4.6",
+                          "visible": false
+                        },
+                        {
+                          "type": "input",
+                          "id": "chat_provider",
+                          "value": "anthropic",
+                          "visible": false
+                        },
+                        {
+                          "type": "input",
+                          "id": "chat_effort",
+                          "value": "Med",
+                          "visible": false
+                        },
+                        {
+                          "type": "input",
+                          "id": "chat_mode",
+                          "value": "Ask",
+                          "visible": false
+                        },
+                        {
+                          "type": "input",
+                          "id": "chat_workspace",
+                          "value": "jhin",
+                          "visible": false
+                        },
+                        {
+                          "type": "input",
+                          "id": "chat_branch",
+                          "value": "main",
+                          "visible": false
+                        },
+                        {
+                          "type": "input",
+                          "id": "chat_host",
+                          "value": "This machine",
+                          "visible": false
+                        },
+                        {
+                          "type": "input",
+                          "id": "chat_dispatch",
+                          "value": "direct",
+                          "visible": false
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "positioned",
+        "id": "right-panel-slot",
+        "top": 0,
+        "right": 0,
+        "bottom": 0,
+        "when": "chat_right_panel == true",
+        "child": {
+          "type": "container",
+          "id": "right-panel",
+          "direction": "column",
+          "gap": 0,
+          "panelWidth": "17.5rem",
+          "color": "$color.sidebar",
+          "border": "$color.sidebar-border",
+          "borderWidth": 1,
+          "children": [
+            {
+              "type": "tabs",
+              "id": "right-panel-tabs",
+              "activeIndex": 0,
+              "hasClose": true,
+              "closeAction": {
+                "op": "setState",
+                "id": "chat_right_panel",
+                "value": false
+              },
+              "demo": true,
+              "items": [
+                {
+                  "label": "Details",
+                  "icon": "info",
+                  "panel": {
+                    "type": "column",
+                    "id": "right-panel-details",
+                    "gap": 12,
+                    "padding": 12,
+                    "children": [
+                      {
+                        "type": "row",
+                        "id": "right-panel-header",
+                        "align": "center",
+                        "gap": 8,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "t120-e2e",
+                            "fontSize": 14,
+                            "fontWeight": 600,
+                            "maxLines": 1,
+                            "ellipsis": true,
+                            "flex": 1
+                          },
+                          {
+                            "type": "badge",
+                            "id": "right-panel-status",
+                            "label": "Idle"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "column",
+                        "gap": 4,
+                        "children": [
+                          {
+                            "type": "row",
+                            "id": "right-panel-model",
+                            "align": "center",
+                            "gap": 8,
+                            "children": [
+                              {
+                                "type": "text",
+                                "text": "Model",
+                                "fontSize": 12,
+                                "color": "$color.sidebar-muted-foreground"
+                              },
+                              {
+                                "type": "spacer"
+                              },
+                              {
+                                "type": "text",
+                                "text": "—",
+                                "fontSize": 12,
+                                "maxLines": 1,
+                                "ellipsis": true
+                              }
+                            ]
+                          },
+                          {
+                            "type": "row",
+                            "id": "right-panel-effort",
+                            "align": "center",
+                            "gap": 8,
+                            "children": [
+                              {
+                                "type": "text",
+                                "text": "Effort",
+                                "fontSize": 12,
+                                "color": "$color.sidebar-muted-foreground"
+                              },
+                              {
+                                "type": "spacer"
+                              },
+                              {
+                                "type": "text",
+                                "text": "Med",
+                                "fontSize": 12,
+                                "maxLines": 1,
+                                "ellipsis": true
+                              }
+                            ]
+                          },
+                          {
+                            "type": "row",
+                            "id": "right-panel-provider",
+                            "align": "center",
+                            "gap": 8,
+                            "children": [
+                              {
+                                "type": "text",
+                                "text": "Provider",
+                                "fontSize": 12,
+                                "color": "$color.sidebar-muted-foreground"
+                              },
+                              {
+                                "type": "spacer"
+                              },
+                              {
+                                "type": "text",
+                                "text": "—",
+                                "fontSize": 12,
+                                "maxLines": 1,
+                                "ellipsis": true
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "column",
+                        "gap": 4,
+                        "children": [
+                          {
+                            "type": "row",
+                            "id": "right-panel-created",
+                            "align": "center",
+                            "gap": 8,
+                            "children": [
+                              {
+                                "type": "text",
+                                "text": "Created",
+                                "fontSize": 12,
+                                "color": "$color.sidebar-muted-foreground"
+                              },
+                              {
+                                "type": "spacer"
+                              },
+                              {
+                                "type": "text",
+                                "text": "Oct 6, 4:02 PM",
+                                "fontSize": 12,
+                                "maxLines": 1,
+                                "ellipsis": true
+                              }
+                            ]
+                          },
+                          {
+                            "type": "row",
+                            "id": "right-panel-updated",
+                            "align": "center",
+                            "gap": 8,
+                            "children": [
+                              {
+                                "type": "text",
+                                "text": "Updated",
+                                "fontSize": 12,
+                                "color": "$color.sidebar-muted-foreground"
+                              },
+                              {
+                                "type": "spacer"
+                              },
+                              {
+                                "type": "text",
+                                "text": "Oct 6, 4:02 PM",
+                                "fontSize": 12,
+                                "maxLines": 1,
+                                "ellipsis": true
+                              }
+                            ]
+                          },
+                          {
+                            "type": "row",
+                            "id": "right-panel-settled",
+                            "align": "center",
+                            "gap": 8,
+                            "children": [
+                              {
+                                "type": "text",
+                                "text": "Settled",
+                                "fontSize": 12,
+                                "color": "$color.sidebar-muted-foreground"
+                              },
+                              {
+                                "type": "spacer"
+                              },
+                              {
+                                "type": "text",
+                                "text": "—",
+                                "fontSize": 12,
+                                "maxLines": 1,
+                                "ellipsis": true
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "column",
+                        "id": "right-panel-relationships",
+                        "gap": 4,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Relationships",
+                            "fontSize": 12,
+                            "fontWeight": 600,
+                            "color": "$color.sidebar-muted-foreground",
+                            "padding": [
+                              0,
+                              0,
+                              4,
+                              0
+                            ]
+                          },
+                          {
+                            "type": "button",
+                            "label": "Fix the login bug",
+                            "id": "right-panel-rel-corner_left_up",
+                            "icon": "corner_left_up",
+                            "style": "text",
+                            "action": {
+                              "client": [
+                                {
+                                  "op": "toast",
+                                  "text": "Parent thread: Fix the login bug (preview only)"
+                                }
+                              ]
+                            },
+                            "demo": true
+                          },
+                          {
+                            "type": "button",
+                            "label": "Add OAuth callback",
+                            "id": "right-panel-rel-call_split",
+                            "icon": "call_split",
+                            "style": "text",
+                            "action": {
+                              "client": [
+                                {
+                                  "op": "toast",
+                                  "text": "Fork: Add OAuth callback (preview only)"
+                                }
+                              ]
+                            },
+                            "demo": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "column",
+                        "id": "right-panel-prs",
+                        "gap": 4,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "Pull requests",
+                            "fontSize": 12,
+                            "fontWeight": 600,
+                            "color": "$color.sidebar-muted-foreground",
+                            "padding": [
+                              0,
+                              0,
+                              4,
+                              0
+                            ]
+                          },
+                          {
+                            "type": "row",
+                            "id": "right-panel-pr-142",
+                            "align": "center",
+                            "gap": 8,
+                            "children": [
+                              {
+                                "type": "icon",
+                                "icon": "call_merge",
+                                "size": 16,
+                                "color": "$color.sidebar-muted-foreground"
+                              },
+                              {
+                                "type": "text",
+                                "text": "#142: Add OAuth callback",
+                                "fontSize": 12,
+                                "maxLines": 1,
+                                "ellipsis": true,
+                                "flex": 1
+                              },
+                              {
+                                "type": "menu",
+                                "id": "right-panel-pr-menu-142",
+                                "trigger": {
+                                  "type": "icon_button",
+                                  "icon": "more_horiz",
+                                  "tooltip": "Pull request actions"
+                                },
+                                "items": [
+                                  {
+                                    "label": "Link to thread",
+                                    "icon": "link",
+                                    "action": {
+                                      "client": [
+                                        {
+                                          "op": "toast",
+                                          "text": "Linked #142 to this thread (preview only)"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "label": "Unlink from thread",
+                                    "icon": "link_off",
+                                    "action": {
+                                      "client": [
+                                        {
+                                          "op": "toast",
+                                          "text": "Unlinked #142 (preview only)"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ],
+                                "demo": true
+                              }
+                            ]
+                          },
+                          {
+                            "type": "row",
+                            "id": "right-panel-pr-139",
+                            "align": "center",
+                            "gap": 8,
+                            "children": [
+                              {
+                                "type": "icon",
+                                "icon": "call_merge",
+                                "size": 16,
+                                "color": "$color.sidebar-muted-foreground"
+                              },
+                              {
+                                "type": "text",
+                                "text": "#139: Drop the legacy importer",
+                                "fontSize": 12,
+                                "maxLines": 1,
+                                "ellipsis": true,
+                                "flex": 1
+                              },
+                              {
+                                "type": "menu",
+                                "id": "right-panel-pr-menu-139",
+                                "trigger": {
+                                  "type": "icon_button",
+                                  "icon": "more_horiz",
+                                  "tooltip": "Pull request actions"
+                                },
+                                "items": [
+                                  {
+                                    "label": "Link to thread",
+                                    "icon": "link",
+                                    "action": {
+                                      "client": [
+                                        {
+                                          "op": "toast",
+                                          "text": "Linked #139 to this thread (preview only)"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "label": "Unlink from thread",
+                                    "icon": "link_off",
+                                    "action": {
+                                      "client": [
+                                        {
+                                          "op": "toast",
+                                          "text": "Unlinked #139 (preview only)"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ],
+                                "demo": true
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "label": "Diff",
+                  "icon": "difference",
+                  "panel": {
+                    "type": "column",
+                    "id": "right-panel-diff",
+                    "gap": 8,
+                    "padding": 12,
+                    "children": [
+                      {
+                        "type": "row",
+                        "id": "right-panel-diff-header",
+                        "align": "center",
+                        "gap": 8,
+                        "children": [
+                          {
+                            "type": "text",
+                            "text": "3 changed files",
+                            "fontSize": 12,
+                            "fontWeight": 600
+                          },
+                          {
+                            "type": "text",
+                            "text": "+17",
+                            "fontSize": 12,
+                            "color": "$color.diff-addition-foreground"
+                          },
+                          {
+                            "type": "text",
+                            "text": "-10",
+                            "fontSize": 12,
+                            "color": "$color.diff-deletion-foreground"
+                          },
+                          {
+                            "type": "spacer"
+                          },
+                          {
+                            "type": "icon_button",
+                            "id": "right-panel-diff-copy",
+                            "icon": "content_copy",
+                            "iconSize": 16,
+                            "tooltip": "Copy path",
+                            "action": {
+                              "client": [
+                                {
+                                  "op": "toast",
+                                  "text": "Copied path (preview only)"
+                                }
+                              ]
+                            },
+                            "demo": true
+                          },
+                          {
+                            "type": "icon_button",
+                            "id": "right-panel-diff-view-toggle-unified",
+                            "icon": "table_rows",
+                            "iconSize": 16,
+                            "tooltip": "Unified view",
+                            "action": {
+                              "client": [
+                                {
+                                  "op": "setState",
+                                  "id": "chat_diff_view",
+                                  "value": "unified"
+                                },
+                                {
+                                  "op": "patch",
+                                  "id": "right-panel-diff-view",
+                                  "props": {
+                                    "view": "unified"
+                                  }
+                                }
+                              ]
+                            },
+                            "demo": true
+                          },
+                          {
+                            "type": "icon_button",
+                            "id": "right-panel-diff-view-toggle-split",
+                            "icon": "view_column",
+                            "iconSize": 16,
+                            "tooltip": "Split view",
+                            "action": {
+                              "client": [
+                                {
+                                  "op": "setState",
+                                  "id": "chat_diff_view",
+                                  "value": "split"
+                                },
+                                {
+                                  "op": "patch",
+                                  "id": "right-panel-diff-view",
+                                  "props": {
+                                    "view": "split"
+                                  }
+                                }
+                              ]
+                            },
+                            "demo": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "code_block",
+                        "id": "right-panel-diff-view",
+                        "language": "typescript",
+                        "demo": true,
+                        "code": "lib/agent/run.ts\n@@ -12,7 +12,9 @@ run loop\n@@ -31,6 +33,8 @@ teardown\n@@ -58,4 +62,6 @@ exports"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "label": "Files",
+                  "icon": "folder",
+                  "panel": {
+                    "type": "column",
+                    "id": "right-panel-files",
+                    "gap": 8,
+                    "padding": 12,
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "Changed files",
+                        "fontSize": 12,
+                        "fontWeight": 600
+                      },
+                      {
+                        "type": "tree",
+                        "id": "right-panel-files-tree",
+                        "items": [
+                          {
+                            "label": "lib",
+                            "icon": "folder",
+                            "expanded": true,
+                            "items": [
+                              {
+                                "label": "agent",
+                                "icon": "folder",
+                                "expanded": true,
+                                "items": [
+                                  {
+                                    "label": "run.ts",
+                                    "path": "lib/agent/run.ts",
+                                    "icon": "description",
+                                    "badge": {
+                                      "type": "badge",
+                                      "label": "M",
+                                      "color": "$color.sidebar-muted-foreground"
+                                    },
+                                    "stat": "+5 −2",
+                                    "action": {
+                                      "client": [
+                                        {
+                                          "op": "setState",
+                                          "id": "chat_diff_file",
+                                          "value": "lib/agent/run.ts"
+                                        },
+                                        {
+                                          "op": "patch",
+                                          "id": "right-panel-diff-view",
+                                          "props": {
+                                            "file": "lib/agent/run.ts",
+                                            "language": "typescript",
+                                            "stats": {
+                                              "additions": 5,
+                                              "deletions": 2
+                                            },
+                                            "hunks": [
+                                              {
+                                                "header": "@@ -12,7 +12,9 @@ run loop",
+                                                "lines": [
+                                                  {
+                                                    "kind": "ctx",
+                                                    "oldNo": 12,
+                                                    "newNo": 12,
+                                                    "text": "for (final turn of turns) {"
+                                                  },
+                                                  {
+                                                    "kind": "del",
+                                                    "oldNo": 13,
+                                                    "text": "  await runOne(turn);"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 13,
+                                                    "text": "  await runOne(turn, options);"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 14,
+                                                    "text": "  await report(turn);"
+                                                  },
+                                                  {
+                                                    "kind": "ctx",
+                                                    "oldNo": 14,
+                                                    "newNo": 15,
+                                                    "text": "}"
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "header": "@@ -31,6 +33,8 @@ teardown",
+                                                "lines": [
+                                                  {
+                                                    "kind": "meta",
+                                                    "text": "// hunk header context only"
+                                                  },
+                                                  {
+                                                    "kind": "ctx",
+                                                    "oldNo": 31,
+                                                    "newNo": 33,
+                                                    "text": "  cleanup();"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 34,
+                                                    "text": "  cleanup.sync();"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 35,
+                                                    "text": "  cleanup.flush();"
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "header": "@@ -58,4 +62,6 @@ exports",
+                                                "lines": [
+                                                  {
+                                                    "kind": "del",
+                                                    "oldNo": 58,
+                                                    "text": "export { run };"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 62,
+                                                    "text": "export { run, runOne };"
+                                                  },
+                                                  {
+                                                    "kind": "ctx",
+                                                    "oldNo": 59,
+                                                    "newNo": 63,
+                                                    "text": "// end of file"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "label": "prompt.ts",
+                                    "path": "lib/agent/prompt.ts",
+                                    "icon": "description",
+                                    "badge": {
+                                      "type": "badge",
+                                      "label": "A",
+                                      "color": "$color.diff-addition-foreground"
+                                    },
+                                    "stat": "+12 −0",
+                                    "action": {
+                                      "client": [
+                                        {
+                                          "op": "setState",
+                                          "id": "chat_diff_file",
+                                          "value": "lib/agent/prompt.ts"
+                                        },
+                                        {
+                                          "op": "patch",
+                                          "id": "right-panel-diff-view",
+                                          "props": {
+                                            "file": "lib/agent/prompt.ts",
+                                            "language": "typescript",
+                                            "stats": {
+                                              "additions": 12,
+                                              "deletions": 0
+                                            },
+                                            "hunks": [
+                                              {
+                                                "header": "@@ -0,0 +1,4 @@",
+                                                "lines": [
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 1,
+                                                    "text": "import { systemPrompt } from \"./prompt\";"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 2,
+                                                    "text": ""
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 3,
+                                                    "text": "export const PROMPT = systemPrompt({"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 4,
+                                                    "text": "  role: \"agent\","
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "header": "@@ -0,0 +5,4 @@",
+                                                "lines": [
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 5,
+                                                    "text": "  tools: [\"read\", \"write\"],"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 6,
+                                                    "text": "  maxTurns: 12,"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 7,
+                                                    "text": "});"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 8,
+                                                    "text": ""
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "header": "@@ -0,0 +9,4 @@",
+                                                "lines": [
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 9,
+                                                    "text": "export function promptFor(task: string) {"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 10,
+                                                    "text": "  return PROMPT + task;"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 11,
+                                                    "text": "}"
+                                                  },
+                                                  {
+                                                    "kind": "add",
+                                                    "newNo": 12,
+                                                    "text": "// end"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  {
+                                    "label": "legacy.ts",
+                                    "path": "lib/agent/legacy.ts",
+                                    "icon": "description",
+                                    "badge": {
+                                      "type": "badge",
+                                      "label": "D",
+                                      "color": "$color.diff-deletion-foreground"
+                                    },
+                                    "stat": "+0 −8",
+                                    "action": {
+                                      "client": [
+                                        {
+                                          "op": "setState",
+                                          "id": "chat_diff_file",
+                                          "value": "lib/agent/legacy.ts"
+                                        },
+                                        {
+                                          "op": "patch",
+                                          "id": "right-panel-diff-view",
+                                          "props": {
+                                            "file": "lib/agent/legacy.ts",
+                                            "language": "typescript",
+                                            "stats": {
+                                              "additions": 0,
+                                              "deletions": 8
+                                            },
+                                            "hunks": [
+                                              {
+                                                "header": "@@ -1,3 +0,0 @@",
+                                                "lines": [
+                                                  {
+                                                    "kind": "del",
+                                                    "oldNo": 1,
+                                                    "text": "import { oldRunner } from \"./legacy\";"
+                                                  },
+                                                  {
+                                                    "kind": "del",
+                                                    "oldNo": 2,
+                                                    "text": ""
+                                                  },
+                                                  {
+                                                    "kind": "del",
+                                                    "oldNo": 3,
+                                                    "text": "export function legacyRun() {"
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "header": "@@ -4,3 +0,0 @@",
+                                                "lines": [
+                                                  {
+                                                    "kind": "del",
+                                                    "oldNo": 4,
+                                                    "text": "  return oldRunner();"
+                                                  },
+                                                  {
+                                                    "kind": "del",
+                                                    "oldNo": 5,
+                                                    "text": "}"
+                                                  },
+                                                  {
+                                                    "kind": "del",
+                                                    "oldNo": 6,
+                                                    "text": ""
+                                                  }
+                                                ]
+                                              },
+                                              {
+                                                "header": "@@ -7,2 +0,0 @@",
+                                                "lines": [
+                                                  {
+                                                    "kind": "del",
+                                                    "oldNo": 7,
+                                                    "text": "// deprecated"
+                                                  },
+                                                  {
+                                                    "kind": "del",
+                                                    "oldNo": 8,
+                                                    "text": "export default legacyRun;"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "label": "Preview",
+                  "icon": "public",
+                  "panel": {
+                    "type": "column",
+                    "id": "right-panel-preview",
+                    "gap": 8,
+                    "padding": 12,
+                    "children": [
+                      {
+                        "type": "column",
+                        "id": "right-panel-preview-browser",
+                        "gap": 8,
+                        "children": [
+                          {
+                            "type": "row",
+                            "id": "right-panel-preview-url-bar",
+                            "align": "center",
+                            "gap": 8,
+                            "children": [
+                              {
+                                "type": "input",
+                                "id": "preview_url",
+                                "value": "http://localhost:5173",
+                                "placeholder": "Search or enter URL",
+                                "readOnly": true,
+                                "required": true,
+                                "errorText": "Enter a URL to preview",
+                                "flex": 1
+                              },
+                              {
+                                "type": "icon_button",
+                                "id": "right-panel-preview-reload",
+                                "icon": "refresh",
+                                "iconSize": 16,
+                                "tooltip": "Reload",
+                                "action": {
+                                  "path": "/ui/action/preview-reload",
+                                  "method": "POST",
+                                  "name": "preview-reload",
+                                  "include": [
+                                    "preview_url"
+                                  ]
+                                },
+                                "demo": true
+                              }
+                            ]
+                          },
+                          {
+                            "type": "progress",
+                            "id": "right-panel-preview-progress",
+                            "kind": "linear",
+                            "loading": false
+                          },
+                          {
+                            "type": "column",
+                            "id": "right-panel-preview-viewport",
+                            "align": "center",
+                            "gap": 8,
+                            "padding": 24,
+                            "children": [
+                              {
+                                "type": "figure",
+                                "id": "right-panel-preview-figure",
+                                "shape": "rectangle",
+                                "color": "$color.muted",
+                                "width": 160,
+                                "height": 96
+                              },
+                              {
+                                "type": "text",
+                                "text": "Preview is not available in this build",
+                                "fontSize": 13,
+                                "fontWeight": 600
+                              },
+                              {
+                                "type": "text",
+                                "text": "Browser previews are only available in the desktop app.",
+                                "fontSize": 12,
+                                "color": "$color.sidebar-muted-foreground"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "column",
+                        "id": "right-panel-preview-file",
+                        "gap": 8,
+                        "children": [
+                          {
+                            "type": "row",
+                            "id": "right-panel-preview-header",
+                            "align": "center",
+                            "gap": 8,
+                            "children": [
+                              {
+                                "type": "text",
+                                "text": "lib/agent/run.ts",
+                                "fontSize": 12,
+                                "fontWeight": 600,
+                                "maxLines": 1,
+                                "ellipsis": true,
+                                "flex": 1
+                              },
+                              {
+                                "type": "button",
+                                "label": "Open in…",
+                                "id": "right-panel-preview-open",
+                                "icon": "open_in_new",
+                                "style": "text",
+                                "action": {
+                                  "client": [
+                                    {
+                                      "op": "toast",
+                                      "text": "Open in editor (preview only)"
+                                    }
+                                  ]
+                                },
+                                "demo": true
+                              }
+                            ]
+                          },
+                          {
+                            "type": "code_block",
+                            "code": "import { runOne } from \"./run-one\";\nimport { report } from \"./report\";\n\nexport async function run(turns, options) {\n  for (final turn of turns) {\n    await runOne(turn, options);\n    await report(turn);\n  }\n  cleanup();\n  cleanup.sync();\n  cleanup.flush();\n}\n\nexport { run, runOne };\n// end of file\n",
+                            "id": "right-panel-preview-code",
+                            "language": "typescript",
+                            "copyable": true,
+                            "lineNumbers": true,
+                            "syntax": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "label": "Pull Requests",
+                  "icon": "call_merge",
+                  "panel": {
+                    "type": "column",
+                    "padding": 12,
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "No linked pull requests.",
+                        "fontSize": 12,
+                        "color": "$color.sidebar-muted-foreground"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "label": "Usage",
+                  "icon": "bar_chart",
+                  "panel": {
+                    "type": "column",
+                    "padding": 12,
+                    "children": [
+                      {
+                        "type": "text",
+                        "text": "No usage recorded.",
+                        "fontSize": 12,
+                        "color": "$color.sidebar-muted-foreground"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+=== absent-chat:new ===
+GET /ui/screen/chat:new
+client: api=3; version=0.3.0; schema=4; caps=sse
+req:  
+status: 404
+resp: {"error":"unknown_screen","message":"no screen with id chat:new"}
+assert: status=404, jq '.error == "unknown_screen"'
+assert: ok
+=== absent-draft:abc ===
+GET /ui/screen/draft:abc
+client: api=3; version=0.3.0; schema=4; caps=sse
+req:  
+status: 404
+resp: {"error":"unknown_screen","message":"no screen with id draft:abc"}
+assert: status=404, jq '.error == "unknown_screen"'
+assert: ok
