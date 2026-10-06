@@ -351,11 +351,13 @@ jq -e '
 ok "composer seam: the 10px seam-above gradient band (chat-frame.json)"
 
 # The composer docks below the seam, inside the lane, with the send action.
+# T103 turned the composer into the full control surface: a column carrying
+# the reserved surface id (the T100 seam/lane dock is unchanged).
 jq -e '
   ([.. | objects | select(.id? == "chat-lane")][0].children
     | map(select(.id? != null).id))
     == ["composer-seam", "composer"]
-  and [.. | objects | select(.id? == "composer")][0].direction == "row"
+  and [.. | objects | select(.id? == "composer")][0].type == "column"
   and [.. | objects | select(.id? == "messageInput")][0].minLines == 1
 ' "$evidence/chat-frame.json" > /dev/null \
   || fail "the composer dock is wrong (chat-frame.json)"

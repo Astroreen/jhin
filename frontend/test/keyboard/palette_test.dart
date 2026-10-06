@@ -181,9 +181,26 @@ void main() {
           .toList();
       expect(posts, isEmpty);
       expect(expected, isNotEmpty);
-      for (final id in expected) {
-        expect(entryTile(id), findsOneWidget);
+      // The T103 picker commands grew the local set past the palette's
+      // 420px list window — the builder list lazily builds, so the list is
+      // dragged until every entry has been built and asserted.
+      final list = find.byKey(const Key('palette-list'));
+      var missed = List<String>.from(expected);
+      var drags = 0;
+      while (missed.isNotEmpty && drags <= expected.length) {
+        for (final id in List<String>.from(missed)) {
+          if (entryTile(id).evaluate().isNotEmpty) {
+            expect(entryTile(id), findsOneWidget);
+            missed.remove(id);
+          }
+        }
+        if (missed.isEmpty) break;
+        await tester.drag(list, const Offset(0, -120));
+        await tester.pump();
+        drags++;
       }
+      expect(missed, isEmpty,
+          reason: 'every matching local command must be listed');
       print('evidence/palette: query=\'s\' localOnly=true '
           'entries=${expected.length} searchPosts=${posts.length}');
     });

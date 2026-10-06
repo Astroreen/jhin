@@ -3796,6 +3796,19 @@ public final class Ui {
             props.put("variant", UiEnums.require("variant", value, UiEnums.CHIP_VARIANT));
             return this;
         }
+
+        /**
+         * The ContextChip colour identity (T103): the upstream pill kinds —
+         * {@code neutral/image/video/file/mention/terminal/element/
+         * preview-annotation/review-comment/pull-request/pr-open/pr-draft/
+         * pr-merged/pr-closed/skill/thread/citation}; validated. The client
+         * tints the pill with the kind's accent (the per-kind restrained
+         * hue identity); {@code neutral} (the default) keeps the plain chip.
+         */
+        public ChipBuilder kind(String value) {
+            props.put("kind", UiEnums.require("kind", value, UiEnums.CHIP_KIND));
+            return this;
+        }
     }
 
     /** The {@code avatar} primitive: image/initials/icon fallback chain. */

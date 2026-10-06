@@ -20,10 +20,34 @@ final class DefaultKeymap {
     static List<Map<String, Object>> entries() {
         List<Map<String, Object>> keymap = new ArrayList<>();
         keymap.add(binding("mod+enter", "composer.send", "composerFocus"));
+        // The T103 upstream chord (packages/shared/src/keybindings.ts:51-52,
+        // commit 37de6cb): the opposite queue/steer action while a turn runs.
+        // Registered AFTER the send rule — the last matching rule wins, so
+        // the running-turn gate takes the chord only while it holds.
+        keymap.add(binding("mod+enter", "composer.sendAlternate",
+                "composerFocus && turnRunning"));
         keymap.add(binding("ctrl+alt+enter", "composer.sendAndNew", "composerFocus"));
         keymap.add(binding("shift+enter", "composer.newline", "composerFocus"));
         keymap.add(binding("mod+up", "composer.recallPrev", "composerFocus"));
         keymap.add(binding("mod+down", "composer.recallNext", "composerFocus"));
+        // The T103 picker chords (packages/shared/src/keybindings.ts:70-76):
+        // the upstream `when: "!terminalFocus"` set expressed over the Jhin
+        // command contexts — fires in the composer and outside editables,
+        // never inside another field.
+        keymap.add(binding("mod+shift+m", "modelPicker.toggle",
+                "composerFocus || !editableFocus"));
+        keymap.add(binding("mod+shift+h", "composer.host",
+                "composerFocus || !editableFocus"));
+        keymap.add(binding("mod+shift+e", "composer.effort",
+                "composerFocus || !editableFocus"));
+        keymap.add(binding("mod+shift+a", "composer.mode",
+                "composerFocus || !editableFocus"));
+        keymap.add(binding("mod+shift+x", "composer.workspace",
+                "composerFocus || !editableFocus"));
+        keymap.add(binding("mod+shift+g", "composer.branch",
+                "composerFocus || !editableFocus"));
+        keymap.add(binding("mod+shift+l", "composer.previousWorktree",
+                "composerFocus || !editableFocus"));
         keymap.add(binding("ctrl+k", "palette.open", null));
         keymap.add(binding("ctrl+z", "thread.undo", null));
         keymap.add(binding("alt+left", "nav.back", null));

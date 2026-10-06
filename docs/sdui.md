@@ -154,15 +154,29 @@ The shipped default `keymap` (the `jhin.ui` payload, in registration order):
 | `key` | `command` | `when` |
 |-------|-----------|--------|
 | `mod+enter` | `composer.send` | `composerFocus` |
+| `mod+enter` | `composer.sendAlternate` | `composerFocus && turnRunning` |
 | `ctrl+alt+enter` | `composer.sendAndNew` | `composerFocus` |
 | `shift+enter` | `composer.newline` | `composerFocus` |
 | `mod+up` | `composer.recallPrev` | `composerFocus` |
 | `mod+down` | `composer.recallNext` | `composerFocus` |
+| `mod+shift+m` | `modelPicker.toggle` | `composerFocus \|\| !editableFocus` |
+| `mod+shift+h` | `composer.host` | `composerFocus \|\| !editableFocus` |
+| `mod+shift+e` | `composer.effort` | `composerFocus \|\| !editableFocus` |
+| `mod+shift+a` | `composer.mode` | `composerFocus \|\| !editableFocus` |
+| `mod+shift+x` | `composer.workspace` | `composerFocus \|\| !editableFocus` |
+| `mod+shift+g` | `composer.branch` | `composerFocus \|\| !editableFocus` |
+| `mod+shift+l` | `composer.previousWorktree` | `composerFocus \|\| !editableFocus` |
 | `ctrl+k` | `palette.open` | — |
 | `ctrl+z` | `thread.undo` | — |
 | `alt+left` | `nav.back` | — |
 | `alt+right` | `nav.forward` | — |
 | `mod+n` | `thread.new` | — |
+
+The `composer.sendAlternate` rule is registered *after* the `composer.send`
+rule and both match `mod+enter` — the last matching rule wins, so the
+running-turn gate takes the chord only while `turnRunning` holds and the
+idle composer keeps the T68 send. The picker chords open the matching
+composer picker dialogs (T103).
 
 The `theme`/`density`/`tokens.motion.panel` seed values are not fixed
 constants: the `jhin.ui` plugin persists them server-side (its `settings.json`
@@ -805,6 +819,7 @@ Surface primitives:
 | `chip` | `selected` | bool | `false` | selected state |
 | `chip` | `onDeleted` | action | — | delete action; without it the delete affordance is hidden |
 | `chip` | `variant` | `assist`/`filter`/`input`/`action` | `assist` | chip variant |
+| `chip` | `kind` | `neutral`/`image`/`video`/`file`/`mention`/`terminal`/`element`/`preview-annotation`/`review-comment`/`pull-request`/`pr-open`/`pr-draft`/`pr-merged`/`pr-closed`/`skill`/`thread`/`citation` | `neutral` | the ContextChip colour identity (T103): the client tints the pill with the kind's restrained accent — fill at 11% alpha, border mixed 34% and label 22% toward the accent — so only the hue carries the identity; `neutral` keeps the plain chip; an unknown literal degrades to `neutral` |
 | `badge` | `label` | string | — | label |
 | `badge` | `color` | color | — | color |
 | `badge` | `count` | num | — | count |
@@ -988,6 +1003,14 @@ One lifecycle action deserves a note: `undo` (`POST /ui/action/undo`) reverts
 the most recent lifecycle action inside its 5-second server-side window; the
 server answers with a `toast` + `refresh` pair, or a `nothing-to-undo` toast
 when the window has closed.
+
+**Inline directive composite.** An action prop may also be the composite
+`{"client": [ …directives ]}` (a directive list in the section 4 wire form):
+the client runs it entirely locally, in order, with no server round-trip.
+This is the decorative-control composition of docs/sdui.md §2.1 `demo` —
+`[setState, toast]`, `[dismissDialog, toast]` and friends. The server
+tailors the embedded list exactly like a response directive list (dropping
+what the requesting client cannot honour).
 
 ## 4. Client directives
 

@@ -204,6 +204,26 @@ final class CapabilityTailor {
             Map<String, Object> directive = (Map<String, Object>) map;
             return Directives.dropped(directive, client) ? SKIP : value;
         }
+        if (value instanceof Map<?, ?> map && map.get("client") instanceof List<?>) {
+            // The inline directive composite of a decorative control (the
+            // plan section 4.4 shape): tailor the embedded list the same way
+            // a response directive list is tailored; empty results drop the
+            // whole prop.
+            List<Object> kept = new ArrayList<>();
+            for (Object entry : (List<?>) map.get("client")) {
+                Object tailored = tailorValue(entry, client);
+                if (tailored != SKIP) {
+                    kept.add(tailored);
+                }
+            }
+            if (kept.isEmpty()) {
+                return SKIP;
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> composite = new LinkedHashMap<>((Map<String, Object>) map);
+            composite.put("client", kept);
+            return composite;
+        }
         return value;
     }
 

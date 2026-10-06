@@ -1,0 +1,9 @@
+ok: the real behavior holds: the empty draft posts no send (flutter-real.txt)
+FAIL: an empty draft posts the send action (as designed)
+  the real behavior is the opposite: the empty draft dispatches
+  nothing — no network call — and the inline error
+  ("Write a message first") shows instead (the T68 validation
+  gate); the inverted suite failed as required
+  (flutter-fail.txt); the real behavior is recorded in
+  flutter-real.txt
+FAIL: deliberately wrong expectation: an empty draft posted a send (it does not; see .sisyphus/evidence/T103/flutter-fail.txt)

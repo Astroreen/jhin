@@ -4,12 +4,12 @@
  * assistant cards, collapsible {@code work} tool entries, the {@code event}
  * error row and the {@code working} strip of an open run — with the
  * continuation gaps baked in (rows sharing a continuation key close with no
- * gap). The composer carries the {@code messageInput} textarea, the
- * {@code send} action and the {@code composer.sendAndNew} command; Cancel
- * appears only while a run is live. The T100 frame wraps the timeline in the
- * content lane ({@code laneWidth}), the top scroll fade and the composer-seam
- * divider, and the header row carries the title, the status badge, the
- * demo-marked panel toggles and the thread action menu.
+ * gap). The T103 composer carries the {@code messageInput} textarea at the
+ * 160px minimum height, the real {@code send} action and the stop button
+ * that appears only while a run is live. The T100 frame wraps the timeline
+ * in the content lane ({@code laneWidth}), the top scroll fade and the
+ * composer-seam divider, and the header row carries the title, the status
+ * badge, the demo-marked panel toggles and the thread action menu.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -76,7 +76,7 @@ class ChatScreenTest {
     }
 
     @Test
-    void cancelButtonIsPresentOnlyWhileARunIsLive() {
+    void stopButtonIsPresentOnlyWhileARunIsLive() {
         Map<String, Object> idle = render(List.of());
         Map<String, Object> running = render(List.of(
                 event(1, EventType.RUN_START, "{\"runId\":\"r1\"}")));
@@ -87,10 +87,10 @@ class ChatScreenTest {
                 event(1, EventType.RUN_START, "{\"runId\":\"r1\"}"),
                 event(2, EventType.ERROR, "{\"message\":\"boom\"}")));
 
-        assertThat(labels(idle)).doesNotContain("Cancel");
-        assertThat(labels(running)).contains("Cancel");
-        assertThat(labels(finished)).doesNotContain("Cancel");
-        assertThat(labels(failed)).doesNotContain("Cancel");
+        assertThat(stopButton(idle)).isEmpty();
+        assertThat(stopButton(running)).isNotEmpty();
+        assertThat(stopButton(finished)).isEmpty();
+        assertThat(stopButton(failed)).isEmpty();
 
         assertThat(statusBadge(idle)).containsEntry("label", "Idle");
         assertThat(statusBadge(running)).containsEntry("label", "Running\u2026");
@@ -198,6 +198,8 @@ class ChatScreenTest {
         assertThat(input).containsEntry("id", "messageInput")
                 .containsEntry("minLines", 1)
                 .containsEntry("maxLines", 8);
+        assertThat(castMap(input.get("constraints"))).containsEntry("minHeight",
+                ChatScreen.COMPOSER_MIN_HEIGHT);
 
         Map<String, Object> send = button(json, "Send");
         assertThat(send).containsEntry("icon", "send");
@@ -207,12 +209,6 @@ class ChatScreenTest {
                 .containsEntry("method", "POST");
         assertThat(castList(action.get("include"))).containsExactly("messageInput");
         assertThat(castMap(action.get("payload"))).containsEntry("sessionId", SESSION_ID);
-
-        Map<String, Object> fresh = nodesOfType(json, "icon_button").stream()
-                .filter(node -> "composer.sendAndNew".equals(node.get("command")))
-                .findFirst()
-                .orElseThrow();
-        assertThat(fresh).containsEntry("command", "composer.sendAndNew");
     }
 
     @Test
@@ -263,8 +259,9 @@ class ChatScreenTest {
                 .containsEntry("end", "topCenter");
         assertThat(castList(gradient.get("colors"))).containsExactly("#2E000000", "#00000000");
 
-        // The composer docks below the seam, inside the lane.
-        Map<String, Object> composer = nodesOfType(json, "container").stream()
+        // The composer docks below the seam, inside the lane (the T103
+        // composer is the column carrying the reserved surface id).
+        Map<String, Object> composer = nodesOfType(json, "column").stream()
                 .filter(node -> "composer".equals(node.get("id")))
                 .findFirst()
                 .orElseThrow();
@@ -384,22 +381,17 @@ class ChatScreenTest {
                 .orElseThrow();
     }
 
+    private static List<Map<String, Object>> stopButton(Map<String, Object> screen) {
+        return nodesOfType(screen, "icon_button").stream()
+                .filter(node -> ChatScreen.STOP_ID.equals(node.get("id")))
+                .toList();
+    }
+
     private static Map<String, Object> button(Map<String, Object> screen, String label) {
         return nodesOfType(screen, "button").stream()
                 .filter(node -> label.equals(node.get("label")))
                 .findFirst()
                 .orElseThrow();
-    }
-
-    private static List<String> labels(Map<String, Object> screen) {
-        List<String> labels = new ArrayList<>();
-        walk(screen, node -> {
-            Object label = node.get("label");
-            if (label instanceof String text) {
-                labels.add(text);
-            }
-        });
-        return labels;
     }
 
     private static void collectIds(Object fragment, List<String> ids) {

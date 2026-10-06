@@ -1,0 +1,1110 @@
+[
+  {
+    "children": [
+      {
+        "border": "$color.border",
+        "borderRadius": "$radius.lg",
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.border",
+                "icon": "compress",
+                "size": 16,
+                "type": "icon"
+              },
+              {
+                "style": "small",
+                "text": "Context compacted",
+                "type": "text"
+              }
+            ],
+            "gap": 8,
+            "type": "row"
+          },
+          {
+            "color": "$color.muted-foreground",
+            "style": "caption",
+            "text": "12k → 4k tokens",
+            "type": "text"
+          }
+        ],
+        "id": "ev-16-card",
+        "padding": 12,
+        "type": "card"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-16",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:compaction",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "demo": true,
+        "file": "src/auth.java",
+        "hunks": [
+          {
+            "header": "@@ -40,7 +40,8 @@",
+            "lines": [
+              {
+                "kind": "add",
+                "newNo": 42,
+                "text": "if (clock.now().isAfter(expiry)) {"
+              }
+            ]
+          }
+        ],
+        "id": "ev-20-diff",
+        "language": "java",
+        "stats": {
+          "additions": 12,
+          "deletions": 3
+        },
+        "type": "diff_view"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-20",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:diff",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "border": "$color.border",
+        "borderRadius": "$radius.lg",
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.muted-foreground",
+                "icon": "edit_note",
+                "size": 16,
+                "type": "icon"
+              },
+              {
+                "style": "small",
+                "text": "2 changed files",
+                "type": "text"
+              },
+              {
+                "color": "$color.diff-addition",
+                "style": "mono",
+                "text": "+16",
+                "type": "text"
+              },
+              {
+                "color": "$color.diff-deletion",
+                "style": "mono",
+                "text": "-3",
+                "type": "text"
+              }
+            ],
+            "gap": 8,
+            "id": "ev-21-head",
+            "type": "row"
+          },
+          {
+            "align": "center",
+            "children": [
+              {
+                "ellipsis": true,
+                "flex": 1,
+                "maxLines": 1,
+                "style": "mono",
+                "text": "src/auth.java",
+                "type": "text"
+              },
+              {
+                "color": "$color.diff-addition",
+                "style": "mono",
+                "text": "+12",
+                "type": "text"
+              },
+              {
+                "color": "$color.diff-deletion",
+                "style": "mono",
+                "text": "-3",
+                "type": "text"
+              },
+              {
+                "label": "M",
+                "type": "badge"
+              }
+            ],
+            "gap": 8,
+            "type": "row"
+          },
+          {
+            "align": "center",
+            "children": [
+              {
+                "ellipsis": true,
+                "flex": 1,
+                "maxLines": 1,
+                "style": "mono",
+                "text": "src/login.java",
+                "type": "text"
+              },
+              {
+                "color": "$color.diff-addition",
+                "style": "mono",
+                "text": "+4",
+                "type": "text"
+              },
+              {
+                "color": "$color.diff-deletion",
+                "style": "mono",
+                "text": "-0",
+                "type": "text"
+              },
+              {
+                "label": "A",
+                "type": "badge"
+              }
+            ],
+            "gap": 8,
+            "type": "row"
+          }
+        ],
+        "id": "ev-21-card",
+        "padding": 12,
+        "type": "card"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-21",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:file-write",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "border": "$color.border",
+        "borderRadius": "$radius.lg",
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.muted-foreground",
+                "icon": "terminal",
+                "size": 16,
+                "type": "icon"
+              },
+              {
+                "style": "small",
+                "text": "shell",
+                "type": "text"
+              },
+              {
+                "color": "$color.success",
+                "label": "Done",
+                "type": "badge"
+              },
+              {
+                "type": "spacer"
+              },
+              {
+                "action": {
+                  "id": "ev-22-body",
+                  "op": "patch",
+                  "props": {
+                    "visible": true
+                  }
+                },
+                "icon": "expand_more",
+                "iconSize": 16,
+                "id": "ev-22-chevron",
+                "tooltip": "Show details",
+                "type": "icon_button"
+              }
+            ],
+            "gap": 8,
+            "id": "ev-22-head",
+            "type": "row"
+          },
+          {
+            "color": "$color.muted-foreground",
+            "ellipsis": true,
+            "maxLines": 1,
+            "style": "mono",
+            "text": "gradle test --tests auth",
+            "type": "text"
+          },
+          {
+            "children": [
+              {
+                "code": "BUILD SUCCESSFUL",
+                "copyable": true,
+                "id": "ev-22-output",
+                "maxLines": 12,
+                "type": "code_block"
+              },
+              {
+                "align": "center",
+                "children": [
+                  {
+                    "color": "$color.muted-foreground",
+                    "style": "caption",
+                    "text": "14:03",
+                    "type": "text"
+                  },
+                  {
+                    "type": "spacer"
+                  },
+                  {
+                    "action": {
+                      "id": "ev-22-copy",
+                      "op": "setState",
+                      "value": true
+                    },
+                    "demo": true,
+                    "icon": "copy",
+                    "iconSize": 16,
+                    "id": "ev-22-copy",
+                    "tooltip": "Copy output",
+                    "type": "icon_button"
+                  },
+                  {
+                    "action": {
+                      "id": "ev-22-body",
+                      "op": "patch",
+                      "props": {
+                        "visible": false
+                      }
+                    },
+                    "icon": "unfold_less",
+                    "iconSize": 16,
+                    "id": "ev-22-collapse",
+                    "tooltip": "Hide details",
+                    "type": "icon_button"
+                  }
+                ],
+                "gap": 8,
+                "id": "ev-22-footer",
+                "type": "row"
+              }
+            ],
+            "gap": 8,
+            "id": "ev-22-body",
+            "type": "column",
+            "visible": false
+          }
+        ],
+        "id": "ev-22-card",
+        "padding": 12,
+        "type": "card"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-22",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:shell",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "style": "body",
+        "text": "Reading the auth flow next.",
+        "type": "text"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-23",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:message",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "border": "$color.border",
+        "borderRadius": "$radius.lg",
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.muted-foreground",
+                "icon": "construction",
+                "size": 16,
+                "type": "icon"
+              },
+              {
+                "style": "small",
+                "text": "read",
+                "type": "text"
+              },
+              {
+                "color": "$color.info",
+                "label": "Running",
+                "type": "badge"
+              },
+              {
+                "type": "spacer"
+              },
+              {
+                "action": {
+                  "id": "ev-24-body",
+                  "op": "patch",
+                  "props": {
+                    "visible": true
+                  }
+                },
+                "icon": "expand_more",
+                "iconSize": 16,
+                "id": "ev-24-chevron",
+                "tooltip": "Show details",
+                "type": "icon_button"
+              }
+            ],
+            "gap": 8,
+            "id": "ev-24-head",
+            "type": "row"
+          },
+          {
+            "color": "$color.muted-foreground",
+            "ellipsis": true,
+            "maxLines": 1,
+            "style": "mono",
+            "text": "{\"path\":\"src/auth.java\"}",
+            "type": "text"
+          },
+          {
+            "children": [
+              {
+                "color": "$color.muted-foreground",
+                "id": "ev-24-empty",
+                "italic": true,
+                "style": "caption",
+                "text": "No output.",
+                "type": "text"
+              },
+              {
+                "align": "center",
+                "children": [
+                  {
+                    "color": "$color.muted-foreground",
+                    "style": "caption",
+                    "text": "14:03",
+                    "type": "text"
+                  },
+                  {
+                    "type": "spacer"
+                  },
+                  {
+                    "action": {
+                      "id": "ev-24-copy",
+                      "op": "setState",
+                      "value": true
+                    },
+                    "demo": true,
+                    "icon": "copy",
+                    "iconSize": 16,
+                    "id": "ev-24-copy",
+                    "tooltip": "Copy output",
+                    "type": "icon_button"
+                  },
+                  {
+                    "action": {
+                      "id": "ev-24-body",
+                      "op": "patch",
+                      "props": {
+                        "visible": false
+                      }
+                    },
+                    "icon": "unfold_less",
+                    "iconSize": 16,
+                    "id": "ev-24-collapse",
+                    "tooltip": "Hide details",
+                    "type": "icon_button"
+                  }
+                ],
+                "gap": 8,
+                "id": "ev-24-footer",
+                "type": "row"
+              }
+            ],
+            "gap": 8,
+            "id": "ev-24-body",
+            "type": "column",
+            "visible": false
+          }
+        ],
+        "id": "ev-24-card",
+        "padding": 12,
+        "type": "card"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-24",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:tool-call",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "border": "$color.border",
+        "borderRadius": "$radius.lg",
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.muted-foreground",
+                "icon": "construction",
+                "size": 16,
+                "type": "icon"
+              },
+              {
+                "style": "small",
+                "text": "read",
+                "type": "text"
+              },
+              {
+                "color": "$color.success",
+                "label": "Done",
+                "type": "badge"
+              },
+              {
+                "type": "spacer"
+              },
+              {
+                "action": {
+                  "id": "ev-25-body",
+                  "op": "patch",
+                  "props": {
+                    "visible": true
+                  }
+                },
+                "icon": "expand_more",
+                "iconSize": 16,
+                "id": "ev-25-chevron",
+                "tooltip": "Show details",
+                "type": "icon_button"
+              }
+            ],
+            "gap": 8,
+            "id": "ev-25-head",
+            "type": "row"
+          },
+          {
+            "color": "$color.muted-foreground",
+            "ellipsis": true,
+            "maxLines": 1,
+            "style": "mono",
+            "text": "{\"path\":\"src/auth.java\"}",
+            "type": "text"
+          },
+          {
+            "children": [
+              {
+                "code": "public class Auth {",
+                "copyable": true,
+                "id": "ev-25-output",
+                "language": "java",
+                "maxLines": 12,
+                "type": "code_block"
+              },
+              {
+                "align": "center",
+                "children": [
+                  {
+                    "color": "$color.muted-foreground",
+                    "style": "caption",
+                    "text": "14:03",
+                    "type": "text"
+                  },
+                  {
+                    "type": "spacer"
+                  },
+                  {
+                    "action": {
+                      "id": "ev-25-copy",
+                      "op": "setState",
+                      "value": true
+                    },
+                    "demo": true,
+                    "icon": "copy",
+                    "iconSize": 16,
+                    "id": "ev-25-copy",
+                    "tooltip": "Copy output",
+                    "type": "icon_button"
+                  },
+                  {
+                    "action": {
+                      "id": "ev-25-body",
+                      "op": "patch",
+                      "props": {
+                        "visible": false
+                      }
+                    },
+                    "icon": "unfold_less",
+                    "iconSize": 16,
+                    "id": "ev-25-collapse",
+                    "tooltip": "Hide details",
+                    "type": "icon_button"
+                  }
+                ],
+                "gap": 8,
+                "id": "ev-25-footer",
+                "type": "row"
+              }
+            ],
+            "gap": 8,
+            "id": "ev-25-body",
+            "type": "column",
+            "visible": false
+          }
+        ],
+        "id": "ev-25-card",
+        "padding": 12,
+        "type": "card"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-25",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:tool-result",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "border": "$color.warning",
+        "borderRadius": "$radius.lg",
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.warning",
+                "icon": "gpp_maybe",
+                "size": 16,
+                "type": "icon"
+              },
+              {
+                "color": "$color.warning",
+                "style": "small",
+                "text": "Command approval",
+                "type": "text"
+              }
+            ],
+            "gap": 8,
+            "id": "ev-26-head",
+            "type": "row"
+          },
+          {
+            "code": "gradle test",
+            "language": "shell",
+            "maxLines": 4,
+            "type": "code_block"
+          },
+          {
+            "children": [
+              {
+                "action": {
+                  "id": "ev-26-option-0",
+                  "op": "setState",
+                  "value": "Allow"
+                },
+                "demo": true,
+                "label": "Allow",
+                "type": "chip"
+              },
+              {
+                "action": {
+                  "id": "ev-26-option-1",
+                  "op": "setState",
+                  "value": "Deny"
+                },
+                "demo": true,
+                "label": "Deny",
+                "type": "chip"
+              }
+            ],
+            "gap": 8,
+            "id": "ev-26-options",
+            "type": "row"
+          }
+        ],
+        "id": "ev-26-card",
+        "padding": 12,
+        "type": "card"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-26",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:approval-request",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "actions": [
+          {
+            "action": {
+              "id": "ev-27-resume",
+              "op": "setState",
+              "value": true
+            },
+            "demo": true,
+            "label": "Resume",
+            "type": "button"
+          },
+          {
+            "action": {
+              "id": "ev-27-resume-reset",
+              "op": "setState",
+              "value": true
+            },
+            "demo": true,
+            "label": "Resume at reset",
+            "type": "button"
+          }
+        ],
+        "content": {
+          "children": [
+            {
+              "color": "$color.warning",
+              "icon": "speed",
+              "size": 16,
+              "type": "icon"
+            },
+            {
+              "child": {
+                "children": [
+                  {
+                    "color": "$color.warning",
+                    "style": "small",
+                    "text": "Usage limit reached",
+                    "type": "text"
+                  },
+                  {
+                    "color": "$color.muted-foreground",
+                    "style": "caption",
+                    "text": "Resets 2026-10-06 15:00",
+                    "type": "text"
+                  }
+                ],
+                "gap": 2,
+                "type": "column"
+              },
+              "type": "expanded"
+            }
+          ],
+          "gap": 8,
+          "type": "row"
+        },
+        "id": "ev-27-banner",
+        "type": "banner"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-27",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:limit-notice",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "border": "$color.error",
+        "borderRadius": "$radius.lg",
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.error",
+                "icon": "warning",
+                "size": 16,
+                "type": "icon"
+              },
+              {
+                "style": "small",
+                "text": "Error",
+                "type": "text"
+              }
+            ],
+            "gap": 8,
+            "type": "row"
+          },
+          {
+            "color": "$color.muted-foreground",
+            "style": "caption",
+            "text": "boom",
+            "type": "text"
+          }
+        ],
+        "id": "ev-28-card",
+        "padding": 12,
+        "type": "card"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-28",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:error",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "border": "$color.border",
+        "borderRadius": "$radius.lg",
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.border",
+                "icon": "info",
+                "size": 16,
+                "type": "icon"
+              },
+              {
+                "style": "small",
+                "text": "System notice",
+                "type": "text"
+              }
+            ],
+            "gap": 8,
+            "type": "row"
+          },
+          {
+            "color": "$color.muted-foreground",
+            "style": "caption",
+            "text": "The provider catalog refreshed.",
+            "type": "text"
+          }
+        ],
+        "id": "ev-29-card",
+        "padding": 12,
+        "type": "card"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-29",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:system-notice",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "children": [
+          {
+            "bottom": 0,
+            "child": {
+              "color": "$color.warning",
+              "type": "box"
+            },
+            "left": 0,
+            "top": 0,
+            "type": "positioned",
+            "width": 3
+          },
+          {
+            "border": "$color.border",
+            "borderRadius": "$radius.lg",
+            "children": [
+              {
+                "style": "body",
+                "text": "Also run the integration suite.",
+                "type": "text"
+              }
+            ],
+            "id": "ev-30-card",
+            "padding": [
+              12,
+              12,
+              12,
+              15
+            ],
+            "type": "card"
+          }
+        ],
+        "id": "ev-30-stripe",
+        "type": "stack"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-30",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:queued-message",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "align": "centerRight",
+    "children": [
+      {
+        "border": "$color.border",
+        "borderRadius": "$radius.xl2",
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.muted-foreground",
+                "icon": "smart_toy",
+                "size": 16,
+                "type": "icon"
+              },
+              {
+                "ellipsis": true,
+                "flex": 1,
+                "maxLines": 1,
+                "style": "small",
+                "text": "Scout: find the token expiry",
+                "type": "text"
+              },
+              {
+                "color": "$color.info",
+                "label": "Running",
+                "type": "badge"
+              }
+            ],
+            "gap": 8,
+            "type": "row"
+          }
+        ],
+        "id": "ev-31-bar",
+        "padding": 12,
+        "type": "card"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-31",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:subagent",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "color": "$color.info",
+        "label": "src/auth.java:42",
+        "type": "badge"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-32",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:citation",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "color": "$color.primary",
+        "label": "jhin-plugin",
+        "type": "badge"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-33",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:skill-invocation",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "align": "center",
+        "children": [
+          {
+            "color": "$color.muted-foreground",
+            "icon": "construction",
+            "size": 16,
+            "type": "icon"
+          },
+          {
+            "ellipsis": true,
+            "flex": 1,
+            "maxLines": 1,
+            "style": "small",
+            "text": "read 4 files",
+            "type": "text"
+          },
+          {
+            "color": "$color.muted-foreground",
+            "style": "caption",
+            "text": "14:02",
+            "type": "text"
+          }
+        ],
+        "gap": 8,
+        "id": "ev-34-log",
+        "type": "row"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-34",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:work-log-entry",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "border": "$color.border",
+        "borderRadius": "$radius.lg",
+        "children": [
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.muted-foreground",
+                "icon": "help_outline",
+                "size": 16,
+                "type": "icon"
+              },
+              {
+                "style": "small",
+                "text": "Which auth flow?",
+                "type": "text"
+              }
+            ],
+            "gap": 8,
+            "id": "ev-35-head",
+            "type": "row"
+          },
+          {
+            "align": "center",
+            "children": [
+              {
+                "color": "$color.success",
+                "icon": "check_circle",
+                "size": 14,
+                "type": "icon"
+              },
+              {
+                "style": "caption",
+                "text": "The token one",
+                "type": "text"
+              }
+            ],
+            "gap": 8,
+            "type": "row"
+          }
+        ],
+        "id": "ev-35-card",
+        "padding": 12,
+        "type": "card"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-35",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:question",
+    "rowKind": "event",
+    "type": "container"
+  },
+  {
+    "children": [
+      {
+        "border": "$color.border",
+        "borderRadius": "$radius.lg",
+        "children": [
+          {
+            "color": "$color.muted-foreground",
+            "style": "caption",
+            "text": "Unknown event: holo",
+            "type": "text"
+          }
+        ],
+        "id": "ev-36-card",
+        "padding": 12,
+        "type": "card"
+      }
+    ],
+    "direction": "column",
+    "gap": 4,
+    "id": "ev-36",
+    "margin": {
+      "bottom": 8
+    },
+    "rowKey": "event:unknown",
+    "rowKind": "event",
+    "type": "container"
+  }
+]

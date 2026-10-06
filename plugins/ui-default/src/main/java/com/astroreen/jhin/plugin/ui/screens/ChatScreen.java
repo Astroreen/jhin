@@ -48,14 +48,31 @@
  * {@code CHAT_TIMELINE_ANCHOR_OFFSET} (24 px,
  * {@code timelineScrollAnchoring.ts:39}) as the end inset.
  *
- * <p><b>Composer.</b> The textarea carries the reserved id {@code messageInput}
- * the Send action and the T68 keyboard layer operate on, and renders at the
- * prompt font size (the upstream {@code --font-size-prompt-touch} floor,
- * index.css:131); Send posts to the {@code send} action ({@code POST
- * /ui/action/send} with {@code sessionId} and the included
- * {@code messageInput}), Cancel (danger) appears only while a run is live
- * and the New {@code icon_button} carries the {@code composer.sendAndNew}
- * command. The status badge reads {@code Running\u2026} while the last
+ * <p><b>Composer.</b> The full upstream control surface (T103): the header
+ * row of decorative pickers (model, provider, effort, access mode, workspace,
+ * branch, host — each a {@code demo} button whose picker opens a dialog list
+ * that sets local state and toasts, the upstream control-row anatomy,
+ * {@code ChatComposer.tsx:5375-5555} + {@code ComposerControl.tsx}), the
+ * context chips row (the upstream {@code ContextChip} pill kinds,
+ * {@code ContextChip.tsx:25-83}), the decorative context-window meter (the
+ * plan's gradient bar, green / yellow / red at the 50 / 80% marks) and the
+ * footer row — attach ({@code Paperclip}, {@code ChatComposer.tsx:7496-7504}),
+ * voice (the plan adds a Microphone affordance; upstream has none in the
+ * composer), the stash menu (the {@code ComposerStashMenu} shell), the queue
+ * indicator badge, the send split-button (Direct / Queue / Steer) and the
+ * stop button ({@code Square}, visible only while a run is live — the
+ * upstream destructive round stop, {@code ComposerPrimaryActions.tsx:123-145}).
+ * The textarea carries the reserved id {@code messageInput} the Send action
+ * and the T68 keyboard layer operate on, renders at the prompt font size
+ * (the upstream {@code --font-size-prompt-touch} floor, index.css:131) and
+ * holds the {@value #COMPOSER_MIN_HEIGHT}px minimum height growing with
+ * content. Send posts to the {@code send} action ({@code POST
+ * /ui/action/send} with {@code sessionId} and the included {@code
+ * messageInput}); the stop button posts the real {@code cancel} action. The
+ * pickers seed their decorative defaults into the client state (the
+ * invisible {@code value} carriers) so their labels interpolate live —
+ * selecting an option changes the visible label and toasts, never the
+ * server. The status badge reads {@code Running\u2026} while the last
  * {@code run_start} is unpaired, {@code Limited} when the last run closed
  * with an {@code error} and {@code Idle} otherwise.
  */
@@ -80,9 +97,6 @@ public final class ChatScreen {
     /** The input id the send action and the composer commands include. */
     private static final String MESSAGE_INPUT = "messageInput";
 
-    /** The command the New icon button carries (the T68 send-and-new flow). */
-    private static final String SEND_AND_NEW = "composer.sendAndNew";
-
     /** The content lane id and its server-side default width (T100). */
     public static final String LANE_ID = "chat-lane";
 
@@ -105,6 +119,54 @@ public final class ChatScreen {
     /** UiState ids of the decorative panel toggles (the E-phase panels). */
     public static final String STATE_RIGHT_PANEL = "chat_right_panel";
     public static final String STATE_TERMINAL = "chat_terminal";
+
+    /** The composer surface id (the client paints shadow.composer there). */
+    public static final String COMPOSER_ID = "composer";
+
+    /** The composer header control row id. */
+    public static final String CONTROLS_ID = "composer-controls";
+
+    /** The context chips row id. */
+    public static final String CHIPS_ID = "composer-chips";
+
+    /** The context-window meter id. */
+    public static final String METER_ID = "context-meter";
+
+    /** The composer footer row id. */
+    public static final String FOOTER_ID = "composer-footer";
+
+    /** The stop button id (visible only while a run is live). */
+    public static final String STOP_ID = "composer-stop";
+
+    /** The queue indicator badge id. */
+    public static final String QUEUE_BADGE_ID = "queue-badge";
+
+    /**
+     * The composer minimum height in px (the plan's {@code
+     * COMPOSER_MIN_HEIGHT}); the textarea grows with its content above it.
+     */
+    public static final int COMPOSER_MIN_HEIGHT = 160;
+
+    /** The UiState ids of the decorative picker selections (T103). */
+    public static final String STATE_MODEL = "chat_model";
+    public static final String STATE_PROVIDER = "chat_provider";
+    public static final String STATE_EFFORT = "chat_effort";
+    public static final String STATE_MODE = "chat_mode";
+    public static final String STATE_WORKSPACE = "chat_workspace";
+    public static final String STATE_BRANCH = "chat_branch";
+    public static final String STATE_HOST = "chat_host";
+
+    /** The UiState id of the send split-button's dispatch mode (T103). */
+    public static final String STATE_DISPATCH = "chat_dispatch";
+
+    /** The composer picker control node ids (the T103 chords open these). */
+    public static final String PICKER_MODEL = "composer-model-picker";
+    public static final String PICKER_PROVIDER = "composer-provider-picker";
+    public static final String PICKER_EFFORT = "composer-effort-picker";
+    public static final String PICKER_MODE = "composer-mode-picker";
+    public static final String PICKER_WORKSPACE = "composer-workspace-picker";
+    public static final String PICKER_BRANCH = "composer-branch-picker";
+    public static final String PICKER_HOST = "composer-host-picker";
 
     /** The seam shade: the recipe's {@code rgb(0 0 0 / 18%)} as AARRGGBB. */
     private static final String SEAM_SHADE = "#2E000000";
@@ -467,15 +529,21 @@ public final class ChatScreen {
                         Boolean.TRUE.equals(payload.get("error")), seq)));
     }
 
-    /** The composer: message input, Send, the live-only Cancel and New. */
+    /**
+     * The composer (T103): the header control row, the context chips, the
+     * context-window meter, the draft textarea and the footer row. The
+     * surface keeps the reserved {@code composer} id the client paints the
+     * composer shadow and the bottom safe-area inset on.
+     */
     private static UiNode composer(String sessionId, boolean runLive) {
         Map<String, Object> runPayload = Map.of("sessionId", sessionId);
-        Ui.ContainerBuilder row = Ui.container()
-                .id("composer")
-                .direction("row")
+        Ui.ColumnBuilder column = Ui.column()
+                .id(COMPOSER_ID)
                 .gap(8)
-                .align("center")
                 .padding(12)
+                .child(controlRow())
+                .child(chipsRow())
+                .child(contextMeter())
                 .child(Ui.textarea(MESSAGE_INPUT)
                         .label("Message")
                         .required(true)
@@ -484,24 +552,404 @@ public final class ChatScreen {
                         .maxLines(8)
                         .autofocus(true)
                         .flex(1)
+                        .constraints(Map.of("minHeight", COMPOSER_MIN_HEIGHT))
                         .build())
-                .child(Ui.button("Send")
-                        .style("primary")
-                        .icon("send")
-                        .action(ActionDescriptors.of("send", runPayload, List.of(MESSAGE_INPUT)))
+                .child(footerRow(sessionId, runLive, runPayload))
+                .child(seedState());
+        return column.build();
+    }
+
+    /**
+     * The header control row (T103.1): the seven decorative pickers — model,
+     * provider, effort, access mode, workspace, git branch and host. Each is
+     * a {@code demo} button (icon + live label + chevron) whose action opens
+     * the picker dialog; the dialog list sets local state and toasts.
+     */
+    private static UiNode controlRow() {
+        return Ui.row()
+                .id(CONTROLS_ID)
+                .align("center")
+                .gap(4)
+                .child(picker(PICKER_MODEL, "Model: ${" + STATE_MODEL + "}",
+                        "auto_awesome", "mod+shift+m", modelDialog()))
+                .child(picker(PICKER_PROVIDER, "Provider: ${" + STATE_PROVIDER + "}",
+                        "smart_toy", null, providerDialog()))
+                .child(picker(PICKER_EFFORT, "Effort: ${" + STATE_EFFORT + "}",
+                        "speed", "mod+shift+e", effortDialog()))
+                .child(picker(PICKER_MODE, "Access: ${" + STATE_MODE + "}",
+                        "shield", "mod+shift+a", modeDialog()))
+                .child(picker(PICKER_WORKSPACE, "${" + STATE_WORKSPACE + "}",
+                        "folder_open", "mod+shift+x", workspaceDialog()))
+                .child(picker(PICKER_BRANCH, "${" + STATE_BRANCH + "}",
+                        "alt_route", "mod+shift+g", branchDialog()))
+                .child(picker(PICKER_HOST, "${" + STATE_HOST + "}",
+                        "computer", "mod+shift+h", hostDialog()))
+                .build();
+    }
+
+    /**
+     * One picker control: the {@code demo} button carrying the icon, the
+     * interpolating label and the dialog-opening action, plus the chord hint
+     * in its tooltip where upstream advertises one.
+     */
+    private static UiNode picker(String id, String label, String icon, String chord,
+                                 UiNode dialogNode) {
+        Ui.ButtonBuilder button = Ui.button(label)
+                .id(id)
+                .icon(icon)
+                .action(Directives.dialog(dialogNode.toJson()))
+                .set("demo", true)
+                .tooltip(chord == null ? "Picker (preview only)" : chord + " — picker (preview only)");
+        Ui.BoxBuilder chevronWrap = Ui.box()
+                .child(Ui.iconButton()
+                        .icon("expand_more")
+                        .iconSize(16)
+                        .set("demo", true)
+                        .action(Directives.dialog(dialogNode.toJson()))
                         .build());
+        return Ui.row()
+                .id(id + "-control")
+                .align("center")
+                .gap(0)
+                .child(button.build())
+                .child(chevronWrap.build())
+                .build();
+    }
+
+    /**
+     * The shared shape of the picker dialogs: the title row (name + chord
+     * hint) over the option list, closed by the {@code Done} action. Options
+     * dispatch the inline directive composite — {@code setState} + the
+     * preview toast — so a selection changes the visible label with no
+     * server round-trip.
+     */
+    private static Ui.ColumnBuilder dialogOptions(String dialogId, String name, String chord) {
+        Ui.RowBuilder title = Ui.row()
+                .gap(8)
+                .align("center")
+                .child(Ui.text(name).fontWeight(600).build());
+        if (chord != null) {
+            title.child(Ui.kbd().chord(chord).build());
+        }
+        return Ui.column()
+                .id(dialogId)
+                .gap(4)
+                .child(title.build());
+    }
+
+    /** The trailing action row of a picker dialog. */
+    private static UiNode dialogDone() {
+        return Ui.button("Done")
+                .action(Directives.dismissDialog())
+                .build();
+    }
+
+    /** The model picker dialog (decorative fixtures). */
+    private static UiNode modelDialog() {
+        return dialogOptions("composer-model-dialog", "Model", "mod+shift+m")
+                .child(option(STATE_MODEL, "Opus 4.6"))
+                .child(option(STATE_MODEL, "Sonnet 4.6"))
+                .child(option(STATE_MODEL, "GPT-5 Codex"))
+                .child(option(STATE_MODEL, "Gemini 3 Pro"))
+                .child(dialogDone())
+                .build();
+    }
+
+    /** The provider selector dialog: the three built-in provider kinds. */
+    private static UiNode providerDialog() {
+        return dialogOptions("composer-provider-dialog", "Provider", null)
+                .child(option(STATE_PROVIDER, "anthropic"))
+                .child(option(STATE_PROVIDER, "openai"))
+                .child(option(STATE_PROVIDER, "google"))
+                .child(dialogDone())
+                .build();
+    }
+
+    /** The effort picker dialog: Low / Med / High. */
+    private static UiNode effortDialog() {
+        return dialogOptions("composer-effort-dialog", "Effort", "mod+shift+e")
+                .child(option(STATE_EFFORT, "Low"))
+                .child(option(STATE_EFFORT, "Med"))
+                .child(option(STATE_EFFORT, "High"))
+                .child(dialogDone())
+                .build();
+    }
+
+    /** The access-mode picker dialog: the upstream permission modes. */
+    private static UiNode modeDialog() {
+        return dialogOptions("composer-mode-dialog", "Access mode", "mod+shift+a")
+                .child(option(STATE_MODE, "Read only"))
+                .child(option(STATE_MODE, "Ask"))
+                .child(option(STATE_MODE, "Full access"))
+                .child(dialogDone())
+                .build();
+    }
+
+    /** The workspace selector dialog: the current worktree plus fixtures. */
+    private static UiNode workspaceDialog() {
+        return dialogOptions("composer-workspace-dialog", "Workspace", "mod+shift+x")
+                .child(option(STATE_WORKSPACE, "jhin"))
+                .child(option(STATE_WORKSPACE, "api-redesign (worktree)"))
+                .child(option(STATE_WORKSPACE, "New worktree…"))
+                .child(dialogDone())
+                .build();
+    }
+
+    /** The git branch selector dialog. */
+    private static UiNode branchDialog() {
+        return dialogOptions("composer-branch-dialog", "Branch", "mod+shift+g")
+                .child(option(STATE_BRANCH, "main"))
+                .child(option(STATE_BRANCH, "feat/composer-rows"))
+                .child(dialogDone())
+                .build();
+    }
+
+    /**
+     * The machine/host selector dialog: the single real entry plus the
+     * decorative rows (the plan section 3.2 multi-environment rule).
+     */
+    private static UiNode hostDialog() {
+        return dialogOptions("composer-host-dialog", "Host", "mod+shift+h")
+                .child(option(STATE_HOST, "This machine"))
+                .child(option(STATE_HOST, "gpu-box (decorative)"))
+                .child(dialogDone())
+                .build();
+    }
+
+    /** One picker dialog option: setState + preview toast, demo-marked. */
+    private static UiNode option(String stateId, String value) {
+        return Ui.button(value)
+                .action(Directives.client(List.of(
+                        Directives.setState(stateId, value),
+                        Directives.toast(value + " selected (preview only)"))))
+                .set("demo", true)
+                .build();
+    }
+
+    /**
+     * The context chips row (T103.2): the six upstream {@code ContextChip}
+     * kinds (mention, skill, thread, image, file, terminal) as decorative
+     * pills; a tap toasts the preview notice.
+     */
+    private static UiNode chipsRow() {
+        return Ui.wrap()
+                .id(CHIPS_ID)
+                .spacing(6)
+                .child(contextChip("mention", "@ada", "alternate_email"))
+                .child(contextChip("skill", "jhin-plugin", "auto_awesome"))
+                .child(contextChip("thread", "Fix the login bug", "chat_bubble"))
+                .child(contextChip("image", "screenshot.png", "image"))
+                .child(contextChip("file", "src/auth.java", "insert_drive_file"))
+                .child(contextChip("terminal", "build output", "terminal"))
+                .build();
+    }
+
+    /** One decorative context chip of the upstream pill kind. */
+    private static UiNode contextChip(String kind, String label, String icon) {
+        return Ui.chip()
+                .label(label)
+                .icon(icon)
+                .kind(kind)
+                .action(Directives.client(List.of(
+                        Directives.toast(label + " context (preview only)"))))
+                .set("demo", true)
+                .build();
+    }
+
+    /**
+     * The context-window meter (T103.2, decorative): the plan's gradient bar
+     * — green to the 50% mark, yellow to the 80% mark, red beyond — with the
+     * hard colour stops at the thresholds.
+     */
+    private static UiNode contextMeter() {
+        Map<String, Object> gradient = new LinkedHashMap<>();
+        gradient.put("begin", "centerLeft");
+        gradient.put("end", "centerRight");
+        gradient.put("colors", List.of(
+                "$color.success", "$color.success",
+                "$color.warning", "$color.warning",
+                "$color.error", "$color.error"));
+        gradient.put("stops", List.of(0.0, 0.5, 0.5, 0.8, 0.8, 1.0));
+        return Ui.box()
+                .id(METER_ID)
+                .height(6)
+                .borderRadius(999)
+                .gradient(gradient)
+                .set("demo", true)
+                .tooltip("Context window (preview only)")
+                .build();
+    }
+
+    /**
+     * The footer row (T103.1): attach, voice, the prompt-stash menu, the
+     * queue indicator badge, then the stop button (while a run is live), the
+     * real send button and the Direct/Queue/Steer split menu.
+     */
+    private static UiNode footerRow(String sessionId, boolean runLive,
+                                    Map<String, Object> runPayload) {
+        Ui.RowBuilder row = Ui.row()
+                .id(FOOTER_ID)
+                .align("center")
+                .gap(4)
+                .child(footerIcon("attach", "attach_file", "Attach files"))
+                .child(footerIcon("voice", "mic", "Voice input"))
+                .child(stashMenu())
+                .child(queueBadge())
+                .child(Ui.spacer().build());
         if (runLive) {
-            row.child(Ui.button("Cancel")
-                    .style("danger")
+            row.child(Ui.iconButton()
+                    .id(STOP_ID)
+                    .icon("stop")
+                    .color("$color.error")
                     .action(ActionDescriptors.of("cancel", runPayload, List.of()))
+                    .tooltip("Interrupt")
                     .build());
         }
-        row.child(Ui.iconButton()
-                .icon("add")
-                .set("command", SEND_AND_NEW)
-                .tooltip("New session")
+        row.child(Ui.button("Send")
+                .id("composer-send")
+                .style("primary")
+                .icon("send")
+                .action(ActionDescriptors.of("send", runPayload, List.of(MESSAGE_INPUT)))
                 .build());
+        row.child(sendSplitMenu());
         return row.build();
+    }
+
+    /** One decorative footer icon affordance (attach / voice). */
+    private static UiNode footerIcon(String id, String icon, String tooltip) {
+        return Ui.iconButton()
+                .id("composer-" + id)
+                .icon(icon)
+                .tooltip(tooltip)
+                .action(Directives.client(List.of(
+                        Directives.toast(tooltip + " (preview only)"))))
+                .set("demo", true)
+                .build();
+    }
+
+    /**
+     * The prompt stash menu (T103.2, the {@code ComposerStashMenu} shell):
+     * the bookmark trigger opens the stash dialog with the {@code Stash
+     * Prompt} / {@code Stash Name} inputs; saving toasts the preview notice.
+     */
+    private static UiNode stashMenu() {
+        Ui.ColumnBuilder dialog = Ui.column()
+                .id("composer-stash-dialog")
+                .gap(8)
+                .child(Ui.input("stash-prompt")
+                        .label("Stash Prompt")
+                        .build())
+                .child(Ui.input("stash-name")
+                        .label("Stash Name")
+                        .build())
+                .child(Ui.row()
+                        .gap(8)
+                        .child(Ui.button("Stash")
+                                .action(Directives.client(List.of(
+                                        Directives.dismissDialog(),
+                                        Directives.toast("Prompt stashed (preview only)"))))
+                                .set("demo", true)
+                                .build())
+                        .child(Ui.button("Cancel")
+                                .action(Directives.dismissDialog())
+                                .build())
+                        .build());
+        return Ui.menu()
+                .id("composer-stash-menu")
+                .trigger(Ui.iconButton()
+                        .icon("bookmark")
+                        .tooltip("Stash prompt")
+                        .build())
+                .item(Ui.menuItem("Stash prompt…")
+                        .icon("bookmark")
+                        .action(Directives.dialog(dialog.build().toJson()))
+                        .build())
+                .item(Ui.menuItem("Stashed prompts")
+                        .icon("insert_drive_file")
+                        .action(Directives.dialog(Ui.column()
+                                .child(Ui.text("Nothing stashed yet.").build())
+                                .child(dialogDone())
+                                .build()
+                                .toJson()))
+                        .build())
+                .set("demo", true)
+                .build();
+    }
+
+
+    /**
+     * The queue indicator badge (T103.1, decorative): a count fixture that
+     * shows while the send split-button's dispatch mode is {@code queue} —
+     * the {@code when} expression reads the same local state the split menu
+     * writes.
+     */
+    private static UiNode queueBadge() {
+        return Ui.badge()
+                .id(QUEUE_BADGE_ID)
+                .label("Queue")
+                .count(2)
+                .color("$color.warning")
+                .when(STATE_DISPATCH + " == 'queue'")
+                .set("demo", true)
+                .build();
+    }
+
+    /** The send split-button menu: Direct / Queue / Steer, demo-marked. */
+    private static UiNode sendSplitMenu() {
+        return Ui.menu()
+                .id("composer-send-menu")
+                .trigger(Ui.iconButton()
+                        .icon("expand_more")
+                        .tooltip("Dispatch mode")
+                        .build())
+                .item(Ui.menuItem("Direct")
+                        .icon("send")
+                        .action(dispatchOption("direct"))
+                        .build())
+                .item(Ui.menuItem("Queue")
+                        .icon("queue")
+                        .action(dispatchOption("queue"))
+                        .build())
+                .item(Ui.menuItem("Steer")
+                        .icon("call_split")
+                        .action(dispatchOption("steer"))
+                        .build())
+                .set("demo", true)
+                .build();
+    }
+
+    /** One send split-menu selection: setState + preview toast. */
+    private static Map<String, Object> dispatchOption(String mode) {
+        return Directives.client(List.of(
+                Directives.setState(STATE_DISPATCH, mode),
+                Directives.toast("Dispatch: " + mode + " (preview only)")));
+    }
+
+    /**
+     * The invisible seed carriers of the decorative picker defaults (the §8.4
+     * {@code value} seeding): the client seeds the state from them on screen
+     * apply, so the picker labels interpolate the fixtures from first render.
+     */
+    private static UiNode seedState() {
+        return Ui.container()
+                .visible(false)
+                .child(seed(STATE_MODEL, "Opus 4.6"))
+                .child(seed(STATE_PROVIDER, "anthropic"))
+                .child(seed(STATE_EFFORT, "Med"))
+                .child(seed(STATE_MODE, "Ask"))
+                .child(seed(STATE_WORKSPACE, "jhin"))
+                .child(seed(STATE_BRANCH, "main"))
+                .child(seed(STATE_HOST, "This machine"))
+                .child(seed(STATE_DISPATCH, "direct"))
+                .build();
+    }
+
+    /** One seed carrier: an invisible input holding a fixture default. */
+    private static UiNode seed(String stateId, String value) {
+        return Ui.input(stateId)
+                .value(value)
+                .visible(false)
+                .build();
     }
 
     /** Parses a payload JSON object; blank text yields the empty map. */

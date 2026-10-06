@@ -61,6 +61,15 @@ class ActionDispatcher {
   Future<void> _dispatch(Map<String, dynamic> action) async {
     final path = action['path'];
     if (path is! String || path.isEmpty) {
+      // The inline directive composite of a decorative control (§3, the
+      // plan §4.4 shape): an action prop whose `client` list runs entirely
+      // locally, in order — the "buttons that change contents" composition
+      // (setState/patch/dialog/toast) with no server round-trip.
+      final inline = action['client'];
+      if (inline is List && inline.isNotEmpty) {
+        await runDirectives(inline);
+        return;
+      }
       // A directive-only action (`op` without `path`) is a client-side
       // effect embedded inline in a node prop — for example the server's
       // offline/error Retry buttons (§8.5). Run it directly.

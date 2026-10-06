@@ -114,6 +114,23 @@ public final class Directives {
         return toast;
     }
 
+    /**
+     * {@code client}(ops): the inline directive composite of a decorative
+     * control (docs/sdui.md section 3, the plan section 4.4 shape) — an
+     * action prop whose {@code client} list the client runs entirely
+     * locally, in order, with no server round-trip. This is what "buttons
+     * that do nothing change contents" dispatches: {@code [setState, toast]}
+     * and friends composed into one tap.
+     *
+     * @param ops the directive list to run client-side, in order
+     * @return the composite action prop map
+     */
+    public static Map<String, Object> client(List<Map<String, Object>> ops) {
+        Map<String, Object> composite = new LinkedHashMap<>();
+        composite.put("client", List.copyOf(ops));
+        return composite;
+    }
+
     /** {@code dialog}(node): opens a dialog rendering the given node. */
     public static Map<String, Object> dialog(Map<String, Object> node) {
         return op("dialog", "node", node);

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../design/context_chip_accents.dart';
+import '../../design/theme.dart';
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart';
 
 /// `chip` (§2.6): `label` (required), `icon`, `avatar`, `selected`,
-/// `onDeleted`, `variant: assist|filter|input|action` (default `assist`).
+/// `onDeleted`, `variant: assist|filter|input|action` (default `assist`),
+/// `kind` (T103 ContextChip identity).
 ///
 /// A filter chip toggles its `selected` state on tap; every variant
 /// dispatches the universal `action` (§2.1) on tap and `onLongPress` on a
@@ -15,6 +18,16 @@ import '../ui_registry.dart';
 /// unknown variant degrades to `assist` (§2.4). The Flutter material set
 /// has no `AssistChip` and chips take no `icon` parameter, so `assist`
 /// renders the base `Chip` and an `icon` fills the avatar slot.
+///
+/// T103: the `kind` prop applies the upstream ContextChip identity
+/// (`components/ContextChip.tsx:25-83`, commit 37de6cb) — a restrained
+/// accent tint per kind where only the hue carries the identity: the fill
+/// at 11% alpha, the border mixed 34% toward the accent and the label 22%
+/// (the upstream `color-mix` recipes; approximated with RGB lerp — the
+/// accents sit at one lightness so the mix direction is the same). The
+/// accents live in the design layer (`design/context_chip_accents.dart`).
+/// An unknown kind renders the plain (neutral) chip.
+
 Widget buildChip(BuildContext context, UiNode node, RenderContext ctx) {
   return _Chip(node: node, ctx: ctx);
 }
@@ -57,6 +70,22 @@ class _ChipState extends State<_Chip> {
     final action = asMap(node.props['action']) ?? asMap(node.props['onTap']);
     final longPressAction = asMap(node.props['onLongPress']);
     final deleteAction = asMap(node.props['onDeleted']);
+    // The T103 kind tint: fill at 11%, border mixed 34% and label 22% toward
+    // the accent (the upstream ContextChip recipes, approximated with RGB
+    // lerp). An unknown or neutral kind leaves the Material defaults.
+    final accent = kChipKindAccents[node.stringProp('kind')];
+    final scheme = JhinDesignScope.materialOf(context).colorScheme;
+    final tint = accent == null
+        ? null
+        : (
+            background: accent.withValues(alpha: 0.11),
+            side: BorderSide(
+              color: Color.lerp(scheme.outlineVariant, accent, 0.34)!,
+            ),
+            labelStyle: TextStyle(
+              color: Color.lerp(scheme.onSurface, accent, 0.22)!,
+            ),
+          );
 
     void onTap() {
       if (variant == 'filter') {
@@ -70,22 +99,37 @@ class _ChipState extends State<_Chip> {
           label: Text(label),
           avatar: avatar,
           selected: _selected,
+          backgroundColor: tint?.background,
+          side: tint?.side,
+          labelStyle: tint?.labelStyle,
           onSelected: enabled ? (_) => onTap() : null,
         ),
       'input' => InputChip(
           label: Text(label),
           avatar: avatar,
           selected: _selected,
+          backgroundColor: tint?.background,
+          side: tint?.side,
+          labelStyle: tint?.labelStyle,
           onPressed: enabled ? onTap : null,
         ),
       'action' => ActionChip(
           label: Text(label),
           avatar: avatar,
+          backgroundColor: tint?.background,
+          side: tint?.side,
+          labelStyle: tint?.labelStyle,
           onPressed: enabled ? onTap : null,
         ),
       // `assist` and any unknown literal (§2.4 degrade): the base `Chip`
       // has no press handler, so the tap rides a `GestureDetector`.
-      _ => Chip(label: Text(label), avatar: avatar),
+      _ => Chip(
+          label: Text(label),
+          avatar: avatar,
+          backgroundColor: tint?.background,
+          side: tint?.side,
+          labelStyle: tint?.labelStyle,
+        ),
     };
 
     Widget result = chip;

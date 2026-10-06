@@ -50,7 +50,9 @@ void main() {
     test('every vocabulary id is registered', () {
       final registry = CommandRegistry();
 
-      expect(CommandRegistry.vocabularyIds, hasLength(25));
+      // T103 grew the vocabulary: the 25 T67–T70 ids plus the alternate send
+      // and the seven picker commands.
+      expect(CommandRegistry.vocabularyIds, hasLength(33));
       for (final id in CommandRegistry.vocabularyIds) {
         expect(registry.isRegistered(id), isTrue, reason: 'missing $id');
         expect(registry.ids, contains(id));

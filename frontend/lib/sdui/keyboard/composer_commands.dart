@@ -269,14 +269,19 @@ class ComposerHistory {
 typedef ComposerPost = Future<Map<String, dynamic>> Function(
     String path, Object body);
 
-/// The five composer commands (T68) and their default chords.
+/// The composer commands (T68) and their default chords.
 ///
 /// `composer.send` dispatches the screen's `send` action exactly once;
 /// `composer.sendAndNew` sends, creates a fresh session and navigates to the
 /// `chat:<id>` of the create-session response (the draft's workdir/model
 /// carry over); `composer.newline` inserts a newline and never submits;
 /// `composer.recallPrev` / `composer.recallNext` walk the per-profile
-/// sent-prompt history.
+/// sent-prompt history. T103 adds the upstream chords
+/// (`packages/shared/src/keybindings.ts:47-76`, commit 37de6cb):
+/// `composer.sendAlternate` is the opposite queue/steer action while a turn
+/// runs, and the seven picker chords (`modelPicker.toggle`,
+/// `composer.host/effort/mode/workspace/branch/previousWorktree`) open the
+/// matching composer picker dialog.
 ///
 /// Dispatch reports handled/declined: the recall commands DECLINE outside
 /// the recall gate (non-empty draft, caret off the first/last line) so the
@@ -291,11 +296,44 @@ class ComposerCommands {
   }) {
     registry.registerIfPlaceholder('composer.send', handler: send);
     registry.registerIfPlaceholder('composer.sendAndNew', handler: sendAndNew);
+    registry.registerIfPlaceholder('composer.sendAlternate',
+        handler: sendAlternate);
     registry.registerIfPlaceholder('composer.newline', handler: newline);
     registry.registerIfPlaceholder('composer.recallPrev', handler: recallPrev);
     registry.registerIfPlaceholder('composer.recallNext', handler: recallNext);
+    registry.registerIfPlaceholder('modelPicker.toggle',
+        handler: _pickerOpener('composer-model-picker'));
+    registry.registerIfPlaceholder(
+        'composer.host', handler: _pickerOpener('composer-host-picker'));
+    registry.registerIfPlaceholder(
+        'composer.effort', handler: _pickerOpener('composer-effort-picker'));
+    registry.registerIfPlaceholder(
+        'composer.mode', handler: _pickerOpener('composer-mode-picker'));
+    registry.registerIfPlaceholder('composer.workspace',
+        handler: _pickerOpener('composer-workspace-picker'));
+    registry.registerIfPlaceholder(
+        'composer.branch', handler: _pickerOpener('composer-branch-picker'));
+    registry.registerIfPlaceholder('composer.previousWorktree',
+        handler: _pickerOpener('composer-worktree-picker'));
     unawaited(history.load());
   }
+
+  /// The UiState id of the decorative follow-up dispatch mode (T103): the
+  /// Direct/Queue/Steer split-menu selection the send-alternate command
+  /// flips (upstream `followUpBehavior`, ComposerPrimaryActions.tsx:34).
+  static const String followUpStateId = 'chat_dispatch';
+
+  /// The composer picker control node ids the picker chords open (T103) —
+  /// the buttons the server renders in the composer header row.
+  static const List<String> pickerIds = <String>[
+    'composer-model-picker',
+    'composer-host-picker',
+    'composer-effort-picker',
+    'composer-mode-picker',
+    'composer-workspace-picker',
+    'composer-branch-picker',
+    'composer-worktree-picker',
+  ];
 
   /// The command registry the handlers are installed on.
   final CommandRegistry registry;
@@ -309,10 +347,25 @@ class ComposerCommands {
   /// The action post channel (errors propagate).
   final ComposerPost post;
 
-  /// Client fallback chords (T68): applied by the boot host for commands
-  /// the server keymap carries no rule for.
+  /// Client fallback chords (T68) plus the T103 upstream chords: applied by
+  /// the boot host for commands the server keymap carries no rule for.
+  /// `composer.sendAlternate` mirrors the upstream
+  /// `mod+enter -> composer.sendAlternate` rule
+  /// (packages/shared/src/keybindings.ts:51-52) — it is gated on
+  /// `turnRunning`, so the idle `mod+enter` send rule below keeps the T68
+  /// semantics and the alternate takes the chord only while a turn runs
+  /// (the WhenContext `turnRunning` source is the live-run marker; until a
+  /// live source feeds it the rule stays reserved and the send stands).
+  /// The picker chords fire anywhere outside another editable (upstream
+  /// `when: "!terminalFocus"`; the terminal context does not exist here, so
+  /// the same set is expressed over `composerFocus`/`editableFocus`).
   static const List<Object?> defaultKeymapRules = <Object?>[
     {'key': 'mod+enter', 'command': 'composer.send', 'when': 'composerFocus'},
+    {
+      'key': 'mod+enter',
+      'command': 'composer.sendAlternate',
+      'when': 'composerFocus && turnRunning',
+    },
     {
       'key': 'mod+alt+enter',
       'command': 'composer.sendAndNew',
@@ -325,6 +378,41 @@ class ComposerCommands {
     },
     {'key': 'up', 'command': 'composer.recallPrev', 'when': 'composerFocus'},
     {'key': 'down', 'command': 'composer.recallNext', 'when': 'composerFocus'},
+    {
+      'key': 'mod+shift+m',
+      'command': 'modelPicker.toggle',
+      'when': 'composerFocus || !editableFocus',
+    },
+    {
+      'key': 'mod+shift+h',
+      'command': 'composer.host',
+      'when': 'composerFocus || !editableFocus',
+    },
+    {
+      'key': 'mod+shift+e',
+      'command': 'composer.effort',
+      'when': 'composerFocus || !editableFocus',
+    },
+    {
+      'key': 'mod+shift+a',
+      'command': 'composer.mode',
+      'when': 'composerFocus || !editableFocus',
+    },
+    {
+      'key': 'mod+shift+x',
+      'command': 'composer.workspace',
+      'when': 'composerFocus || !editableFocus',
+    },
+    {
+      'key': 'mod+shift+g',
+      'command': 'composer.branch',
+      'when': 'composerFocus || !editableFocus',
+    },
+    {
+      'key': 'mod+shift+l',
+      'command': 'composer.previousWorktree',
+      'when': 'composerFocus || !editableFocus',
+    },
   ];
 
   /// The inline error of an empty composer (the node's own `errorText` prop
@@ -367,6 +455,44 @@ class ComposerCommands {
     if (!_validate(field)) return true;
     unawaited(_sendAndNew(field));
     return true;
+  }
+
+  /// `composer.sendAlternate` (T103) — the opposite queue/steer action
+  /// (upstream `composer.sendAlternate`, ComposerPrimaryActions.tsx:117):
+  /// while a turn runs the follow-up dispatch mode flips to its opposite
+  /// and a toast names it. The mode is decorative (no queue/steer backend),
+  /// so the toast carries the preview wording.
+  bool sendAlternate() {
+    final field = binding.active;
+    if (field == null) return false;
+    final current =
+        field.state[followUpStateId] is String ? field.state[followUpStateId] as String : 'steer';
+    final opposite = current == 'queue' ? 'steer' : 'queue';
+    field.ctx.setState(followUpStateId, opposite);
+    unawaited(field.ctx.runDirectives(<dynamic>[
+      {
+        'op': 'toast',
+        'text': 'Follow-up: $opposite (preview only)',
+      },
+    ]));
+    return true;
+  }
+
+  /// The T103 picker opener: runs the inline dialog directive of the named
+  /// composer picker control (the same action its button tap dispatches).
+  /// Declines when no composer field hosts the command or the control is
+  /// absent — the key falls through, never swallowed.
+  CommandHandler _pickerOpener(String nodeId) {
+    return () {
+      final field = binding.active;
+      if (field == null) return false;
+      final node = field.ctx.root?.call().findById(nodeId);
+      final action = node?.props['action'];
+      if (action is! Map || action.isEmpty) return false;
+      unawaited(
+          field.ctx.runDirectives(<dynamic>[Map<String, dynamic>.from(action)]));
+      return true;
+    };
   }
 
   Future<void> _sendThenClear(ComposerField field) async {

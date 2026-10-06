@@ -160,6 +160,16 @@ final class UiEnums {
     /** docs/sdui.md 2.6 {@code chip} {@code variant}. */
     static final Set<String> CHIP_VARIANT = Set.of("assist", "filter", "input", "action");
 
+    /**
+     * docs/sdui.md 2.6 {@code chip} {@code kind}: the ContextChip colour
+     * identities (T103; {@code components/ContextChip.tsx:30-48}, commit
+     * {@code 37de6cb}). {@code neutral} is the default (no accent tint).
+     */
+    static final Set<String> CHIP_KIND = Set.of(
+            "neutral", "image", "video", "file", "mention", "terminal", "element",
+            "preview-annotation", "review-comment", "pull-request", "pr-open",
+            "pr-draft", "pr-merged", "pr-closed", "skill", "thread", "citation");
+
     /** docs/sdui.md 2.6 {@code avatar} {@code shape}. */
     static final Set<String> AVATAR_SHAPE = Set.of("circle", "square");
 
@@ -221,6 +231,7 @@ final class UiEnums {
             Map.entry("WrapBuilder.runAlignment", WRAP_ALIGNMENT),
             Map.entry("WrapBuilder.crossAxisAlignment", WRAP_ALIGNMENT),
             Map.entry("ChipBuilder.variant", CHIP_VARIANT),
+            Map.entry("ChipBuilder.kind", CHIP_KIND),
             Map.entry("AvatarBuilder.shape", AVATAR_SHAPE),
             Map.entry("SkeletonBuilder.variant", SKELETON_VARIANT),
             Map.entry("TabsBuilder.variant", TAB_VARIANT),

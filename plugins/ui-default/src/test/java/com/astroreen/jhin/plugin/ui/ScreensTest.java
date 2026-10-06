@@ -143,7 +143,7 @@ class ScreensTest {
     }
 
     @Test
-    void chatScreenCarriesCancelOnlyWhileARunIsLive() {
+    void chatScreenCarriesStopOnlyWhileARunIsLive() {
         Session session = store.create("demo", "/tmp/work");
         EventRecord runStart = new EventRecord(session.id(), 1, 1L, EventType.RUN_START,
                 "{\"runId\":\"r1\"}");
@@ -151,9 +151,9 @@ class ScreensTest {
         Map<String, Object> idle = ChatScreen.render(session, List.of()).toJson();
         Map<String, Object> running = ChatScreen.render(session, List.of(runStart)).toJson();
 
-        assertThat(labels(idle)).doesNotContain("Cancel");
-        assertThat(labels(running)).contains("Cancel");
-        assertThat(castMap(button(running, "Cancel").get("action")))
+        assertThat(nodesWithId(idle, "composer-stop")).isEmpty();
+        assertThat(nodesWithId(running, "composer-stop")).hasSize(1);
+        assertThat(castMap(nodesWithId(running, "composer-stop").get(0).get("action")))
                 .containsEntry("name", "cancel");
     }
 
@@ -348,6 +348,16 @@ class ScreensTest {
         });
         assertThat(found).as("button " + label).hasSize(1);
         return found.get(0);
+    }
+
+    private static List<Map<String, Object>> nodesWithId(Object fragment, String id) {
+        List<Map<String, Object>> found = new ArrayList<>();
+        walk(fragment, map -> {
+            if (id.equals(map.get("id"))) {
+                found.add(map);
+            }
+        });
+        return found;
     }
 
     private static List<String> labels(Object fragment) {
