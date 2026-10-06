@@ -69,17 +69,17 @@ class UiPluginTest {
         Map<String, Object> payload = Json.readMap(new String(bootstrap().body()));
 
         assertThat(payload).containsEntry("entry", "sessions");
-        assertThat(screenIds(payload)).doesNotContain("connect", "providers");
+        assertThat(screenIds(payload)).doesNotContain("pair", "providers");
     }
 
     @Test
-    void bootstrapEntryIsConnectWhenSecurityIsPresent() throws Exception {
+    void bootstrapEntryIsPairWhenSecurityIsPresent() throws Exception {
         start(name -> name.endsWith("api.EnrollmentService"));
 
         Map<String, Object> payload = Json.readMap(new String(bootstrap().body()));
 
-        assertThat(payload).containsEntry("entry", "connect");
-        assertThat(screenIds(payload)).contains("connect");
+        assertThat(payload).containsEntry("entry", "pair");
+        assertThat(screenIds(payload)).contains("pair", "connect");
     }
 
     @Test

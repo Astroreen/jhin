@@ -244,7 +244,7 @@ class ScreensTest {
 
         Set<String> ids = screens.screens(Optional.empty(), Map.of()).keySet();
         assertThat(ids).contains("sessions", "settings", "plugins");
-        assertThat(ids).doesNotContain("connect", "providers");
+        assertThat(ids).doesNotContain("pair", "providers");
         assertThat(ids).containsAll(
                 SettingsScreen.ROUTES.stream().map(SettingsScreen.Route::id).toList());
     }
@@ -257,7 +257,7 @@ class ScreensTest {
                 UiSettings.open(tmp));
 
         Set<String> ids = screens.screens(Optional.empty(), Map.of()).keySet();
-        assertThat(ids).contains("connect", "sessions", "settings", "plugins", "providers");
+        assertThat(ids).contains("connect", "pair", "sessions", "settings", "plugins", "providers");
         assertThat(ids).containsAll(
                 SettingsScreen.ROUTES.stream().map(SettingsScreen.Route::id).toList());
     }
@@ -295,6 +295,28 @@ class ScreensTest {
         assertThat(typesIn(json)).contains("stream_view");
         assertThat(screens.screen("chat:missing", Optional.empty(), Map.of())).isEmpty();
         assertThat(screens.screen("nope", Optional.empty(), Map.of())).isEmpty();
+    }
+
+    @Test
+    void registryResolvesTheWelcomeConnectAndPairScreens() {
+        Screens screens = registry(EVERYTHING);
+
+        assertThat(screens.screen("welcome", Optional.empty(), Map.of())).isPresent();
+        assertThat(screens.screen("connect", Optional.empty(), Map.of())).isPresent();
+        assertThat(screens.screen("pair", Optional.empty(), Map.of())).isPresent();
+        assertThat(typesIn(screens.screen("welcome", Optional.empty(), Map.of())
+                .orElseThrow().get().toJson())).contains("screen", "shell");
+    }
+
+    @Test
+    void registryResolvesTheDynamicProjectScreenIds() {
+        Screens screens = registry(NO_PLUGINS);
+
+        Optional<Supplier<UiNode>> project =
+                screens.screen("project:jhin", Optional.empty(), Map.of());
+        assertThat(project).isPresent();
+        assertThat(typesIn(project.get().get().toJson())).contains("screen", "shell");
+        assertThat(screens.screen("project:nope", Optional.empty(), Map.of())).isEmpty();
     }
 
     @Test

@@ -76,6 +76,22 @@ void main() {
   testWidgets('loading state (built-in skeleton frame)', (tester) async {
     await pumpState(tester, nodeView(loadingFrameJson), 'loading');
   });
+
+  testWidgets('no-active-thread hero (T114)', (tester) async {
+    await pumpState(
+      tester,
+      const NoActiveThreadState(onStartConversation: _noop),
+      'no-active-thread',
+    );
+  });
+
+  testWidgets('no-projects hero (T114)', (tester) async {
+    await pumpState(
+      tester,
+      const NoProjectsHero(onAddProject: _noop, onStartWithoutProject: _noop),
+      'no-projects',
+    );
+  });
 }
 
 void _noop() {}

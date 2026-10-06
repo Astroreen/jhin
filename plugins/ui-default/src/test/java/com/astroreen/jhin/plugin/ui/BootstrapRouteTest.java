@@ -74,10 +74,10 @@ class BootstrapRouteTest {
     }
 
     @Test
-    void entryIsConnectWhenSecurityIsPresentWithoutPrincipal() {
+    void entryIsPairWhenSecurityIsPresentWithoutPrincipal() {
         Map<String, Object> payload = bootstrap(true, request(NO_CAPS), screens());
 
-        assertThat(payload.get("entry")).isEqualTo("connect");
+        assertThat(payload.get("entry")).isEqualTo("pair");
     }
 
     @Test

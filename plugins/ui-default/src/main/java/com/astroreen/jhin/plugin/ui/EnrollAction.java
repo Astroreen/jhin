@@ -6,12 +6,15 @@
  *
  * <p>Registered only while the security plugin is loaded and published its
  * {@code EnrollmentService}; the token minting is the security plugin's
- * {@code POST /enroll} semantics called directly. A refused code surfaces as
- * an error toast carrying the security message.
+ * {@code POST /enroll} semantics called directly. A refused code patches the
+ * pair screen's {@code enroll-error} banner visible with the security message
+ * (T114), so the failure is shown on the screen and not only as a transient
+ * toast.
  */
 package com.astroreen.jhin.plugin.ui;
 
 import com.astroreen.jhin.plugin.security.api.EnrollmentService;
+import com.astroreen.jhin.plugin.ui.screens.EnrollScreen;
 import com.astroreen.jhin.sdk.http.HttpRequest;
 import java.util.List;
 import java.util.Map;
@@ -29,13 +32,14 @@ final class EnrollAction {
      *
      * @param req     the request that carried the action
      * @param payload the merged payload: {@code code}, {@code deviceName}
-     * @return {@code [setToken, navigate]} on success, one error toast otherwise
+     * @return {@code [setToken, navigate]} on success, the error-banner patch
+     *         otherwise
      */
     List<Map<String, Object>> handle(HttpRequest req, Map<String, Object> payload) {
         String code = ActionSupport.text(payload, "code");
         String deviceName = ActionSupport.text(payload, "deviceName");
         if (code == null || deviceName == null) {
-            return ActionSupport.error("The enrollment code and a device name are required.");
+            return errorBanner("The enrollment code and a device name are required.");
         }
         try {
             EnrollmentService.Redeemed redeemed = enrollment.redeem(code, deviceName);
@@ -43,8 +47,21 @@ final class EnrollAction {
                     Directives.setToken(redeemed.token()),
                     Directives.navigate("sessions"));
         } catch (RuntimeException e) {
-            return ActionSupport.error(messageOf(e));
+            return errorBanner(messageOf(e));
         }
+    }
+
+    /**
+     * The refusal answer: the pair screen's {@code enroll-error} banner is
+     * patched visible with the security message (T114). The patch carries the
+     * message so the screen shows the documented error, not only a toast.
+     *
+     * @param message the security message
+     * @return the one-directive answer
+     */
+    private static List<Map<String, Object>> errorBanner(String message) {
+        return List.of(Directives.patch(EnrollScreen.ERROR_ID,
+                Map.of("visible", true, "content", message)));
     }
 
     private static String messageOf(Throwable t) {

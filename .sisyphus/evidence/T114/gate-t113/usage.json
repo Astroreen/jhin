@@ -1,0 +1,550 @@
+{
+  "type": "screen",
+  "title": "Usage",
+  "body": {
+    "type": "shell",
+    "id": "usage-shell",
+    "breakpoint": 768,
+    "topbar": {
+      "type": "row",
+      "id": "usage-topbar",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "text",
+          "text": "Usage",
+          "style": "body",
+          "bold": true
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "type": "nav",
+          "kind": "tabs",
+          "items": [
+            {
+              "label": "Sessions",
+              "screen": "sessions"
+            },
+            {
+              "label": "Settings",
+              "screen": "settings"
+            },
+            {
+              "label": "Plugins",
+              "screen": "plugins"
+            }
+          ]
+        }
+      ]
+    },
+    "topbarCompact": {
+      "type": "row",
+      "id": "usage-topbar-compact",
+      "align": "center",
+      "children": [
+        {
+          "type": "text",
+          "text": "Jhin",
+          "style": "h3",
+          "bold": true
+        },
+        {
+          "type": "text",
+          "text": "Usage",
+          "style": "body"
+        },
+        {
+          "type": "spacer"
+        }
+      ]
+    },
+    "pageHeader": {
+      "type": "row",
+      "id": "usage-page-header",
+      "align": "center",
+      "gap": 8,
+      "children": [
+        {
+          "type": "text",
+          "text": "Usage",
+          "style": "h3"
+        },
+        {
+          "type": "spacer"
+        },
+        {
+          "type": "segmented",
+          "id": "usageMetric",
+          "segments": [
+            {
+              "label": "Tokens",
+              "value": "tokens"
+            },
+            {
+              "label": "Cost",
+              "value": "cost"
+            },
+            {
+              "label": "Limits",
+              "value": "limits"
+            }
+          ],
+          "value": "tokens",
+          "demo": true
+        },
+        {
+          "type": "segmented",
+          "id": "usagePeriod",
+          "segments": [
+            {
+              "label": "24h",
+              "value": "1"
+            },
+            {
+              "label": "7d",
+              "value": "7"
+            },
+            {
+              "label": "30d",
+              "value": "30"
+            }
+          ],
+          "value": "30",
+          "demo": true
+        },
+        {
+          "type": "icon_button",
+          "id": "usageRefresh",
+          "icon": "refresh",
+          "tooltip": "Refresh usage",
+          "demo": true,
+          "action": {
+            "client": [
+              {
+                "op": "toast",
+                "text": "Preview only — usage is not refreshed in this build"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "body": {
+      "type": "container",
+      "id": "usage-body",
+      "direction": "column",
+      "gap": 16,
+      "padding": 16,
+      "children": [
+        {
+          "type": "card",
+          "title": "Usage",
+          "children": [
+            {
+              "type": "row",
+              "align": "center",
+              "gap": 16,
+              "children": [
+                {
+                  "type": "column",
+                  "gap": 2,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "4.0M",
+                      "style": "h1"
+                    },
+                    {
+                      "type": "text",
+                      "text": "69 sessions",
+                      "style": "caption"
+                    }
+                  ]
+                },
+                {
+                  "type": "spacer"
+                },
+                {
+                  "type": "text",
+                  "text": "Last 30 days",
+                  "style": "caption"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Codex",
+          "children": [
+            {
+              "type": "row",
+              "align": "center",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "2.5M",
+                  "style": "h2"
+                },
+                {
+                  "type": "spacer"
+                },
+                {
+                  "type": "text",
+                  "text": "$18.75",
+                  "style": "caption"
+                }
+              ]
+            },
+            {
+              "type": "chart_line",
+              "id": "usage-chart-codex",
+              "series": [
+                {
+                  "label": "Codex",
+                  "values": [
+                    40000,
+                    49500,
+                    59000,
+                    68500,
+                    78000,
+                    87500,
+                    97000,
+                    50500,
+                    60000,
+                    69500,
+                    79000,
+                    88500,
+                    98000,
+                    107500,
+                    61000,
+                    70500,
+                    80000,
+                    89500,
+                    99000,
+                    108500,
+                    118000,
+                    71500,
+                    81000,
+                    90500,
+                    100000,
+                    109500,
+                    119000,
+                    128500,
+                    82000,
+                    91500
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Claude Code",
+          "children": [
+            {
+              "type": "row",
+              "align": "center",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "text",
+                  "text": "1.5M",
+                  "style": "h2"
+                },
+                {
+                  "type": "spacer"
+                },
+                {
+                  "type": "text",
+                  "text": "$11.40",
+                  "style": "caption"
+                }
+              ]
+            },
+            {
+              "type": "chart_line",
+              "id": "usage-chart-claude",
+              "series": [
+                {
+                  "label": "Claude Code",
+                  "values": [
+                    25000,
+                    31900,
+                    38800,
+                    45700,
+                    52600,
+                    29500,
+                    36400,
+                    43300,
+                    50200,
+                    57100,
+                    34000,
+                    40900,
+                    47800,
+                    54700,
+                    61600,
+                    38500,
+                    45400,
+                    52300,
+                    59200,
+                    66100,
+                    43000,
+                    49900,
+                    56800,
+                    63700,
+                    70600,
+                    47500,
+                    54400,
+                    61300,
+                    68200,
+                    75100
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Limits",
+          "children": [
+            {
+              "type": "container",
+              "direction": "column",
+              "gap": 8,
+              "children": [
+                {
+                  "type": "row",
+                  "id": "limit-codex-weekly",
+                  "align": "center",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "codex · Weekly",
+                      "style": "small"
+                    },
+                    {
+                      "type": "spacer"
+                    },
+                    {
+                      "type": "text",
+                      "text": "62% left",
+                      "style": "caption"
+                    },
+                    {
+                      "type": "progress",
+                      "kind": "linear",
+                      "value": 0.62,
+                      "width": 120
+                    },
+                    {
+                      "type": "text",
+                      "text": "3d 4h",
+                      "style": "caption"
+                    }
+                  ]
+                },
+                {
+                  "type": "row",
+                  "id": "limit-claude-5h",
+                  "align": "center",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "claude · 5-hour",
+                      "style": "small"
+                    },
+                    {
+                      "type": "spacer"
+                    },
+                    {
+                      "type": "text",
+                      "text": "88% left",
+                      "style": "caption"
+                    },
+                    {
+                      "type": "progress",
+                      "kind": "linear",
+                      "value": 0.88,
+                      "width": 120
+                    },
+                    {
+                      "type": "text",
+                      "text": "2h 10m",
+                      "style": "caption"
+                    }
+                  ]
+                },
+                {
+                  "type": "row",
+                  "id": "limit-claude-weekly",
+                  "align": "center",
+                  "gap": 8,
+                  "children": [
+                    {
+                      "type": "text",
+                      "text": "claude · Weekly",
+                      "style": "small"
+                    },
+                    {
+                      "type": "spacer"
+                    },
+                    {
+                      "type": "text",
+                      "text": "41% left",
+                      "style": "caption"
+                    },
+                    {
+                      "type": "progress",
+                      "kind": "linear",
+                      "value": 0.41,
+                      "width": 120
+                    },
+                    {
+                      "type": "text",
+                      "text": "5d 1h",
+                      "style": "caption"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "card",
+          "title": "Providers",
+          "children": [
+            {
+              "type": "list",
+              "id": "usage-providers",
+              "items": [
+                {
+                  "type": "list_row",
+                  "id": "usage-provider-codex",
+                  "leading": {
+                    "type": "icon",
+                    "icon": "smart_toy",
+                    "size": 20
+                  },
+                  "title": "Codex",
+                  "subtitle": "2.5M tokens · 42 sessions",
+                  "trailing": {
+                    "type": "text",
+                    "text": "$18.75",
+                    "style": "caption"
+                  },
+                  "demo": true
+                },
+                {
+                  "type": "list_row",
+                  "id": "usage-provider-claude",
+                  "leading": {
+                    "type": "icon",
+                    "icon": "auto_awesome",
+                    "size": 20
+                  },
+                  "title": "Claude Code",
+                  "subtitle": "1.5M tokens · 27 sessions",
+                  "trailing": {
+                    "type": "text",
+                    "text": "$11.40",
+                    "style": "caption"
+                  },
+                  "demo": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "button",
+          "label": "Add usage limit source",
+          "id": "addUsageLimitSource",
+          "style": "secondary",
+          "icon": "add",
+          "demo": true,
+          "action": {
+            "op": "dialog",
+            "node": {
+              "type": "dialog",
+              "id": "add-usage-limit-source-dialog",
+              "title": "Add usage limit source",
+              "content": {
+                "type": "column",
+                "gap": 12,
+                "children": [
+                  {
+                    "type": "dropdown",
+                    "id": "limitSourceProvider",
+                    "hint": "Provider",
+                    "items": [
+                      {
+                        "label": "Codex",
+                        "value": "codex"
+                      },
+                      {
+                        "label": "Claude Code",
+                        "value": "claude"
+                      }
+                    ],
+                    "value": "codex",
+                    "demo": true
+                  },
+                  {
+                    "type": "input",
+                    "id": "limitSourceLabel",
+                    "label": "Limit label",
+                    "value": "Weekly",
+                    "placeholder": "Weekly",
+                    "demo": true
+                  }
+                ]
+              },
+              "actions": [
+                {
+                  "type": "button",
+                  "label": "Cancel",
+                  "style": "text",
+                  "action": {
+                    "op": "dismissDialog"
+                  }
+                },
+                {
+                  "type": "button",
+                  "label": "Add source",
+                  "style": "primary",
+                  "demo": true,
+                  "action": {
+                    "client": [
+                      {
+                        "op": "toast",
+                        "text": "Preview only — usage limit sources are not added in this build"
+                      },
+                      {
+                        "op": "dismissDialog"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

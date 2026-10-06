@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
+import com.astroreen.jhin.plugin.ui.screens.EnrollScreen;
 import com.astroreen.jhin.sdk.http.ClientInfo;
 import com.astroreen.jhin.sdk.http.HttpRequest;
 import java.nio.file.Path;
@@ -95,8 +96,11 @@ class ActionsTest {
                 Map.of("code", FakeEnrollmentService.BAD_CODE, "deviceName", "qa-device"));
 
         assertThat(ops).hasSize(1);
-        assertThat(ops.get(0)).containsEntry("op", "toast").containsEntry("style", "error");
-        assertThat(String.valueOf(ops.get(0).get("text"))).contains("enrollment code expired");
+        assertThat(ops.get(0)).containsEntry("op", "patch")
+                .containsEntry("id", EnrollScreen.ERROR_ID);
+        Map<String, Object> props = castMap(ops.get(0).get("props"));
+        assertThat(props).containsEntry("visible", true);
+        assertThat(String.valueOf(props.get("content"))).contains("enrollment code expired");
     }
 
     @Test
@@ -104,7 +108,8 @@ class ActionsTest {
         List<Map<String, Object>> ops = handlers.get("enroll").handle(request(), Map.of("code", "x"));
 
         assertThat(ops).hasSize(1);
-        assertThat(ops.get(0)).containsEntry("op", "toast").containsEntry("style", "error");
+        assertThat(ops.get(0)).containsEntry("op", "patch")
+                .containsEntry("id", EnrollScreen.ERROR_ID);
     }
 
     @Test

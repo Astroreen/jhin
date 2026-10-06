@@ -27,7 +27,7 @@
  * section 3 rule 6) — gated on the raw declared api, not just the negotiated
  * one, because an api=1 client predates both the {@code schema} header field
  * and the version-gate screen itself and would not understand either;
- * otherwise {@code connect} when the security plugin is loaded and the
+ * otherwise {@code pair} when the security plugin is loaded and the
  * caller carries no principal, {@code sessions} otherwise.
  */
 package com.astroreen.jhin.plugin.ui;
@@ -124,7 +124,7 @@ final class BootstrapRoute {
             return VERSION_GATE_SCREEN;
         }
         boolean signIn = securityPresent && !Principals.present(req);
-        return signIn ? "connect" : "sessions";
+        return signIn ? "pair" : "sessions";
     }
 
     /** The inline screens, in registration order and tailored per node. */

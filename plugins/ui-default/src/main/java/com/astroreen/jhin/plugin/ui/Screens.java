@@ -1,14 +1,16 @@
 /**
- * The default screen registry of the T37 surface: {@code connect} (the enroll
- * form, only while the security plugin is loaded), {@code sessions} (the
- * session list with the activity feed and the "New session" form),
- * {@code settings} (the T109 settings shell overview) with its fourteen
- * {@code settings:*} sub-routes, {@code plugins} and {@code providers} (only
- * while the LLM plugin is loaded), the T113 decorative {@code usage} and
- * {@code pull-requests} surfaces, plus the dynamic {@code chat:<session-id>}
- * screens and the QA-only probes {@code qa-level3} (T88) and {@code qa-timeline}
- * (T101, both only while the {@code qaProbe} config switch is on). All screen
- * classes are built with the
+ * The default screen registry of the T37 surface: {@code pair} (the enroll
+ * form, only while the security plugin is loaded), {@code connect} (the T114
+ * decorative device-connection explainer), {@code welcome} (the T114
+ * decorative onboarding wizard), {@code sessions} (the session list with the
+ * activity feed and the "New session" form), {@code settings} (the T109
+ * settings shell overview) with its fourteen {@code settings:*} sub-routes,
+ * {@code plugins} and {@code providers} (only while the LLM plugin is
+ * loaded), the T113 decorative {@code usage} and {@code pull-requests}
+ * surfaces, plus the dynamic {@code chat:<session-id>} and
+ * {@code project:<key>} (T114) screens and the QA-only probes
+ * {@code qa-level3} (T88) and {@code qa-timeline} (T101, both only while the
+ * {@code qaProbe} config switch is on). All screen classes are built with the
  * {@code jhin.ui-kit} builder; this registry only decides which of them one
  * caller may see.
  *
@@ -21,6 +23,11 @@
  * (only built while the LLM plugin is loaded, so the {@code ProviderRegistry}
  * class is never resolved without it) and the caller's archived sessions, so
  * {@code settings:providers} and {@code settings:archived} render real data.
+ *
+ * <p>T114: the {@code pair} route is the real enrollment form (the bootstrap
+ * entry for an unauthenticated caller); {@code connect} is the decorative
+ * explainer; {@code project:<key>} resolves the fixture project and lists the
+ * caller's sessions whose workdir is the project path.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -29,8 +36,10 @@ import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
 import com.astroreen.jhin.plugin.ui.screens.ChatScreen;
+import com.astroreen.jhin.plugin.ui.screens.ConnectScreen;
 import com.astroreen.jhin.plugin.ui.screens.EnrollScreen;
 import com.astroreen.jhin.plugin.ui.screens.PluginsScreen;
+import com.astroreen.jhin.plugin.ui.screens.ProjectScreen;
 import com.astroreen.jhin.plugin.ui.screens.ProvidersScreen;
 import com.astroreen.jhin.plugin.ui.screens.PullRequestsScreen;
 import com.astroreen.jhin.plugin.ui.screens.QaProbeScreen;
@@ -38,6 +47,7 @@ import com.astroreen.jhin.plugin.ui.screens.QaTimelineScreen;
 import com.astroreen.jhin.plugin.ui.screens.SessionsScreen;
 import com.astroreen.jhin.plugin.ui.screens.SettingsScreen;
 import com.astroreen.jhin.plugin.ui.screens.UsageScreen;
+import com.astroreen.jhin.plugin.ui.screens.WelcomeScreen;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.sdk.KernelInfo;
 import com.astroreen.jhin.sdk.ServiceRegistry;
@@ -55,6 +65,9 @@ final class Screens implements ScreenRegistry {
 
     /** Id prefix of the dynamic per-session chat screens. */
     private static final String CHAT_PREFIX = "chat:";
+
+    /** Id prefix of the dynamic per-project screens (T114). */
+    private static final String PROJECT_PREFIX = "project:";
 
     private final SessionStore store;
     private final EventLog events;
@@ -96,8 +109,10 @@ final class Screens implements ScreenRegistry {
                 .orElseGet(() -> store.list(SessionStore.StatusFilter.ARCHIVED));
         Map<String, Supplier<UiNode>> screens = new LinkedHashMap<>();
         if (features.security()) {
-            screens.put("connect", EnrollScreen::render);
+            screens.put(EnrollScreen.PAIR_ID, EnrollScreen::render);
         }
+        screens.put("connect", ConnectScreen::render);
+        screens.put("welcome", WelcomeScreen::render);
         screens.put("sessions", () -> SessionsScreen.render(
                 store, account, providersPresent(), false));
         screens.put("settings", () -> SettingsScreen.render(
@@ -136,6 +151,12 @@ final class Screens implements ScreenRegistry {
         Supplier<UiNode> found = screens.get(id);
         if (found != null) {
             return Optional.of(found);
+        }
+        if (id.startsWith(PROJECT_PREFIX)) {
+            String key = id.substring(PROJECT_PREFIX.length());
+            List<Session> sessions = account.map(store::list).orElseGet(store::list);
+            return ProjectScreen.render(key, sessions)
+                    .map(node -> (Supplier<UiNode>) () -> node);
         }
         if (!id.startsWith(CHAT_PREFIX)) {
             return Optional.empty();

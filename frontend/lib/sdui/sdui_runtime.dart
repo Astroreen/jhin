@@ -91,6 +91,7 @@ class SduiRuntime extends ChangeNotifier
     'switch',
     'slider',
     'dropdown',
+    'segmented',
   };
 
   /// Screen id to node JSON — inline screens, fetched screens and the

@@ -1,0 +1,47 @@
+{
+  "id": "projects-fixtures",
+  "projects": [
+    {
+      "id": "jhin",
+      "key": "jhin",
+      "name": "Jhin",
+      "monogram": "JH",
+      "path": "/home/astroreen/Documents/jhin",
+      "branch": "main",
+      "worktree": "default",
+      "badges": ["active", "git"],
+      "scripts": [
+        {"id": "build", "label": "Build", "command": "./gradlew build"},
+        {"id": "test", "label": "Test", "command": "./gradlew test"},
+        {"id": "lint", "label": "Lint", "command": "./gradlew check"}
+      ]
+    },
+    {
+      "id": "pinball-stats",
+      "key": "pinball-stats",
+      "name": "Pinball Stats",
+      "monogram": "PS",
+      "path": "/home/astroreen/code/pinball-stats",
+      "branch": "feat/leaderboard",
+      "worktree": "leaderboard",
+      "badges": ["active"],
+      "scripts": [
+        {"id": "dev", "label": "Dev server", "command": "pnpm dev"},
+        {"id": "test", "label": "Test", "command": "pnpm test"}
+      ]
+    },
+    {
+      "id": "docs-site",
+      "key": "docs-site",
+      "name": "Docs Site",
+      "monogram": "DS",
+      "path": "/home/astroreen/code/docs-site",
+      "branch": "main",
+      "worktree": "default",
+      "badges": ["archived"],
+      "scripts": [
+        {"id": "build", "label": "Build", "command": "pnpm build"}
+      ]
+    }
+  ]
+}
