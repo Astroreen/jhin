@@ -46,6 +46,41 @@ class GalleryDump {
     private static final Path COVERAGE_OUTPUT =
             Path.of("build", "gallery", "coverage.txt").toAbsolutePath().normalize();
 
+    /**
+     * The T119 full-catalog gallery: one JSON file per catalog name plus an
+     * index and a count, under the T119 evidence directory (gitignored). The
+     * pinned {@code gallery_nodes.dart} regression set stays at 58; this is a
+     * separate, additive dump so the review can see all 68 catalog names.
+     */
+    private static final Path FULL_GALLERY_OUTPUT =
+            Path.of("..", "..", ".sisyphus", "evidence", "T119", "gallery").toAbsolutePath().normalize();
+
+    /**
+     * The full level-3 contract catalog (T119): the 68 names
+     * {@code catalog_primitives()} extracts from docs/sdui.md section 2.5 —
+     * the 58 pinned primitives plus the six level-3 node types
+     * ({@code split}, {@code hover_card}, {@code kbd}, {@code toast_stack},
+     * {@code scroll_fade}, {@code diff_view}) and the four universal
+     * additions ({@code glass}, {@code demo}, {@code status}, {@code safe} —
+     * the last four are props of the universal surface, not node types, and
+     * are represented here by a node carrying the prop.
+     */
+    private static final List<String> FULL_CATALOG = List.of(
+            "screen", "nav", "container", "card", "text", "markdown", "rich_text",
+            "code_block", "button", "input", "textarea",
+            "dropdown", "checkbox", "switch", "slider", "form", "list", "stream_view",
+            "table", "tree", "divider", "spacer", "progress", "image", "figure", "chart_line",
+            "chart_bar", "chart_pie", "drawer",
+            "box", "row", "column", "flex", "expanded", "flexible", "sized_box",
+            "align", "center", "aspect_ratio",
+            "stack", "positioned", "wrap", "grid", "scroll",
+            "icon", "icon_button",
+            "list_row", "badge", "chip", "avatar", "skeleton",
+            "menu", "sheet", "dialog", "banner",
+            "tabs", "segmented", "shell",
+            "split", "hover_card", "kbd", "toast_stack", "scroll_fade", "diff_view",
+            "glass", "demo", "status", "safe");
+
     /** The 58 current primitives (the 25 of T57, the T58 layout set, the T59 stack/wrap/grid/scroll set, the T60 rich_text/code_block text set, the T61 icon/icon_button set, the T63 list_row/badge/chip/avatar/skeleton set, the T64 menu/sheet/dialog/banner set, the T65 tabs/segmented/shell set and the T66 textarea/tree set). */
     private static final List<String> EXPECTED_PRIMITIVES = List.of(
             "screen", "nav", "container", "card", "text", "markdown", "rich_text",
@@ -1013,5 +1048,128 @@ class GalleryDump {
         System.out.println("GalleryDump: wrote " + DART_OUTPUT + " (" + all.size() + " fixtures, "
                 + perType.size() + " primitives)");
         System.out.println(coverage);
+    }
+
+    /**
+     * One representative node per full-catalog name (T119). The 58 pinned
+     * primitives reuse the first (basic) fixture of {@link #fixtures()}; the
+     * six level-3 node types are authored through their typed builders; the
+     * four universal additions are represented by a node carrying the prop
+     * (they are props of the universal surface, not node types).
+     */
+    private static Map<String, UiNode> fullCatalogNodes() {
+        Map<String, UiNode> byName = new LinkedHashMap<>();
+        for (Fixture f : fixtures()) {
+            byName.putIfAbsent(f.node().type(), f.node());
+        }
+
+        byName.put("split", Ui.split()
+                .id("gallery-split")
+                .first(Ui.text("Sidebar pane").build())
+                .second(Ui.text("Main pane").build())
+                .axis("horizontal")
+                .initial(256).min(208).max(640).minSecond(640)
+                .persistKey("gallery_split")
+                .handleStyle("rail")
+                .build());
+        byName.put("hover_card", Ui.hoverCard()
+                .id("gallery-hover_card")
+                .trigger(Ui.text("Hover trigger").build())
+                .content(Ui.text("Hover content").build())
+                .delay(500)
+                .placement("top")
+                .build());
+        byName.put("kbd", Ui.kbd()
+                .id("gallery-kbd")
+                .chord("mod+shift+m")
+                .build());
+        byName.put("toast_stack", Ui.toastStack()
+                .id("gallery-toast_stack")
+                .direction("bottom")
+                .item(Ui.toastItem("Saved").style("success"))
+                .build());
+        byName.put("scroll_fade", Ui.scrollFade()
+                .id("gallery-scroll_fade")
+                .child(Ui.text("Scrollable body").build())
+                .edge("top")
+                .height(24)
+                .mode("topbar")
+                .build());
+        byName.put("diff_view", Ui.diffView()
+                .id("gallery-diff_view")
+                .file("lib/agent/run.ts")
+                .language("typescript")
+                .view("unified")
+                .colorScheme("default")
+                .stats(1, 1)
+                .demo(true)
+                .hunk(Ui.diffHunk("@@ -1,2 +1,2 @@")
+                        .line(Ui.diffLine("ctx").oldNo(1).newNo(1).text("unchanged"))
+                        .line(Ui.diffLine("del").oldNo(2).text("old line"))
+                        .line(Ui.diffLine("add").newNo(2).text("new line")))
+                .build());
+
+        // The four universal additions (props, not node types): a node
+        // carrying each prop, keyed by the catalog name catalog_primitives()
+        // extracts from docs/sdui.md section 2.5.
+        byName.put("glass", Ui.card()
+                .id("gallery-glass")
+                .glass(true)
+                .glassTint("$color.destructive")
+                .child(Ui.text("Glass card").build())
+                .build());
+        byName.put("demo", Ui.button("Decorative")
+                .id("gallery-demo")
+                .demo(true)
+                .build());
+        byName.put("status", Ui.progress()
+                .id("gallery-status")
+                .kind("linear")
+                .statusPulse("pulse")
+                .build());
+        byName.put("safe", new UiNode("box", entry(
+                "id", "gallery-safe",
+                "safeArea", entry("top", true, "bottom", true)),
+                List.of(Ui.text("Safe area body").build())));
+
+        return byName;
+    }
+
+    /**
+     * T119: dumps the full 68-name catalog gallery into the T119 evidence
+     * directory — one JSON file per name plus {@code gallery.json} (the index)
+     * and {@code count.txt}. Additive: the pinned 58-set
+     * {@code gallery_nodes.dart} regression is untouched.
+     */
+    @Test
+    void dumpFullCatalogGallery() throws IOException {
+        Map<String, UiNode> byName = fullCatalogNodes();
+
+        assertThat(byName.keySet()).containsExactlyInAnyOrderElementsOf(FULL_CATALOG);
+        assertThat(byName).hasSize(68);
+
+        Files.createDirectories(FULL_GALLERY_OUTPUT);
+        StringBuilder index = new StringBuilder();
+        index.append("[\n");
+        boolean first = true;
+        for (Map.Entry<String, UiNode> e : byName.entrySet()) {
+            String json = Json.write(e.getValue().toJson());
+            Files.writeString(FULL_GALLERY_OUTPUT.resolve(e.getKey() + ".json"), json + "\n",
+                    StandardCharsets.UTF_8);
+            if (!first) {
+                index.append(",\n");
+            }
+            first = false;
+            index.append("  {\"name\": \"").append(e.getKey())
+                    .append("\", \"type\": \"").append(e.getValue().type()).append("\"}");
+        }
+        index.append("\n]\n");
+        Files.writeString(FULL_GALLERY_OUTPUT.resolve("gallery.json"), index.toString(),
+                StandardCharsets.UTF_8);
+        Files.writeString(FULL_GALLERY_OUTPUT.resolve("count.txt"),
+                byName.size() + "\n", StandardCharsets.UTF_8);
+
+        System.out.println("GalleryDump: wrote " + FULL_GALLERY_OUTPUT + " (" + byName.size()
+                + " catalog entries)");
     }
 }

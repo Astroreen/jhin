@@ -1,0 +1,6 @@
+ok: the intentionally stale golden failed UiRegressionTest (stale-golden.txt)
+ok: the golden was restored and UiRegressionTest is green again (stale-golden-restored.txt)
+FAIL: the intentionally stale golden passed UiRegressionTest (as designed)
+  the real behavior is the opposite: the mutated 00-screen.json failed the byte compare
+  the fixture was restored; UiRegressionTest is green again
+FAIL: deliberately wrong expectation: the stale golden passed UiRegressionTest (it fails; see .sisyphus/evidence/T119/stale-golden.txt)

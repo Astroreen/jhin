@@ -1,0 +1,1 @@
+{"type":"input","id":"fixture-input-basic","label":"Code","value":"v","placeholder":"p","multiline":true,"obscure":false,"keyboard":"number","required":true,"min":1,"max":9,"pattern":"[0-9]+","errorText":"bad"}

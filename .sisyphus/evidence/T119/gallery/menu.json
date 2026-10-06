@@ -1,0 +1,1 @@
+{"type":"menu","id":"fixture-menu-basic","trigger":{"type":"button","label":"Open","action":{"name":"menu-basic","method":"POST","path":"/ui/action/menu-basic"}},"items":[{"label":"Open","action":{"name":"menu-open","method":"POST","path":"/ui/action/menu-open"}},{"label":"Save","icon":"save","action":{"name":"menu-save","method":"POST","path":"/ui/action/menu-save"}}]}

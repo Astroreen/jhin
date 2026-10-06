@@ -1,0 +1,1 @@
+{"type":"table","id":"fixture-table-basic","columns":[{"label":"Name","width":2},{"label":"Path"}],"rows":[["a",{"type":"text","text":"b"}],["c"]]}

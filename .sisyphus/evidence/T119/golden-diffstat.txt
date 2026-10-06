@@ -1,0 +1,74 @@
+# T119 golden diffstat vs the pre-plan goldens
+
+pre-plan commit: 11dceea (fix(devenv): add required vscode settings to generator template)
+current commit:  13b4052 (docs: align sdui, architecture, plugin guide and AGENTS with contract level 3)
+
+## ui-kit wire-JSON regression goldens
+ plugins/ui-kit/src/test/resources/regression/24-glass-card.json   | 1 +
+ plugins/ui-kit/src/test/resources/regression/25-glass-sheet.json  | 1 +
+ plugins/ui-kit/src/test/resources/regression/26-glass-dialog.json | 1 +
+ plugins/ui-kit/src/test/resources/regression/27-glass-menu.json   | 1 +
+ plugins/ui-kit/src/test/resources/regression/28-glass-banner.json | 1 +
+ plugins/ui-kit/src/test/resources/regression/29-split.json        | 1 +
+ plugins/ui-kit/src/test/resources/regression/30-hover_card.json   | 1 +
+ plugins/ui-kit/src/test/resources/regression/31-kbd.json          | 1 +
+ plugins/ui-kit/src/test/resources/regression/32-toast_stack.json  | 1 +
+ plugins/ui-kit/src/test/resources/regression/33-scroll_fade.json  | 1 +
+ plugins/ui-kit/src/test/resources/regression/34-status-pulse.json | 1 +
+ plugins/ui-kit/src/test/resources/regression/35-diff_view.json    | 1 +
+ 12 files changed, 12 insertions(+)
+
+## committed Flutter pixel goldens
+ frontend/test/boot/goldens/state-error.png          | Bin 12719 -> 11248 bytes
+ frontend/test/boot/goldens/state-loading.png        | Bin 17509 -> 10857 bytes
+ .../test/boot/goldens/state-no-active-thread.png    | Bin 0 -> 9823 bytes
+ frontend/test/boot/goldens/state-no-projects.png    | Bin 0 -> 11000 bytes
+ frontend/test/boot/goldens/state-offline.png        | Bin 13382 -> 11537 bytes
+ .../gallery/goldens/fixture-button-basic-dark.png   | Bin 9228 -> 9144 bytes
+ .../gallery/goldens/fixture-button-basic-light.png  | Bin 9486 -> 9350 bytes
+ .../goldens/fixture-button-propheavy-dark.png       | Bin 9530 -> 9481 bytes
+ .../goldens/fixture-button-propheavy-light.png      | Bin 9518 -> 9360 bytes
+ .../goldens/fixture-code_block-basic-dark.png       | Bin 8508 -> 8346 bytes
+ .../goldens/fixture-code_block-basic-light.png      | Bin 8376 -> 8391 bytes
+ .../goldens/fixture-code_block-propheavy-dark.png   | Bin 8559 -> 8574 bytes
+ .../goldens/fixture-code_block-propheavy-light.png  | Bin 8495 -> 8538 bytes
+ .../goldens/fixture-dialog-propheavy-dark.png       | Bin 10666 -> 10551 bytes
+ .../goldens/fixture-dialog-propheavy-light.png      | Bin 10867 -> 10708 bytes
+ .../gallery/goldens/fixture-glass-banner-dark.png   | Bin 0 -> 7972 bytes
+ .../gallery/goldens/fixture-glass-banner-light.png  | Bin 0 -> 7896 bytes
+ .../gallery/goldens/fixture-glass-card-dark.png     | Bin 0 -> 8260 bytes
+ .../gallery/goldens/fixture-glass-card-light.png    | Bin 0 -> 8184 bytes
+ .../gallery/goldens/fixture-glass-dialog-dark.png   | Bin 0 -> 12769 bytes
+ .../gallery/goldens/fixture-glass-dialog-light.png  | Bin 0 -> 17624 bytes
+ .../gallery/goldens/fixture-glass-menu-dark.png     | Bin 0 -> 8802 bytes
+ .../gallery/goldens/fixture-glass-menu-light.png    | Bin 0 -> 8633 bytes
+ .../gallery/goldens/fixture-glass-sheet-dark.png    | Bin 0 -> 8620 bytes
+ .../gallery/goldens/fixture-glass-sheet-light.png   | Bin 0 -> 8900 bytes
+ .../goldens/fixture-list_row-propheavy-dark.png     | Bin 9121 -> 9480 bytes
+ .../goldens/fixture-list_row-propheavy-light.png    | Bin 8849 -> 9251 bytes
+ .../gallery/goldens/fixture-menu-basic-dark.png     | Bin 9076 -> 9032 bytes
+ .../gallery/goldens/fixture-menu-basic-light.png    | Bin 9415 -> 9189 bytes
+ .../goldens/fixture-sheet-propheavy-dark.png        | Bin 10379 -> 10448 bytes
+ .../goldens/fixture-sheet-propheavy-light.png       | Bin 10500 -> 10518 bytes
+ .../gallery/goldens/fixture-skeleton-basic-dark.png | Bin 11840 -> 8420 bytes
+ .../goldens/fixture-skeleton-basic-light.png        | Bin 11384 -> 8328 bytes
+ .../goldens/fixture-skeleton-propheavy-dark.png     | Bin 7861 -> 7899 bytes
+ .../goldens/fixture-skeleton-propheavy-light.png    | Bin 7931 -> 7897 bytes
+ frontend/test/gallery/goldens/shell-narrow.png      | Bin 6333 -> 6187 bytes
+ 36 files changed, 0 insertions(+), 0 deletions(-)
+
+## change summary by status
+ui-kit regression JSON:
+     12   A
+committed Flutter PNG:
+     12   A
+     24   M
+
+## current committed golden counts
+  ui-kit regression JSON: 36
+  gallery PNG:            247
+  boot PNG:               7
+
+## T119 regenerated evidence goldens
+  evidence PNG frames:    106
+  evidence token dumps:   4

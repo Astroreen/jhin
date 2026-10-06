@@ -1,0 +1,1 @@
+{"type":"icon_button","id":"fixture-icon_button-basic","icon":"settings","action":{"name":"icon-button-basic","method":"POST","path":"/ui/action/icon-button-basic"}}

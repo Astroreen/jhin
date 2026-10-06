@@ -1,0 +1,29 @@
+> Task :jhin-plugin-ui-kit:processResources UP-TO-DATE
+> Task :sdk:compileJava UP-TO-DATE
+> Task :sdk:processResources NO-SOURCE
+> Task :sdk:classes UP-TO-DATE
+> Task :sdk:jar UP-TO-DATE
+> Task :jhin-plugin-ui-kit:processTestResources
+> Task :jhin-plugin-ui-kit:compileJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:classes UP-TO-DATE
+> Task :jhin-plugin-ui-kit:compileTestJava UP-TO-DATE
+> Task :jhin-plugin-ui-kit:testClasses
+
+> Task :jhin-plugin-ui-kit:test FAILED
+
+UiRegressionTest > wireShapesAreByteIdenticalToTheCapturedFixtures() FAILED
+    org.opentest4j.AssertionFailedError at UiRegressionTest.java:312
+
+1 test completed, 1 failed
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':jhin-plugin-ui-kit:test'.
+> There were failing tests. See the report at: file:///home/astroreen/Documents/jhin/plugins/ui-kit/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+
+BUILD FAILED in 935ms
+7 actionable tasks: 2 executed, 5 up-to-date
