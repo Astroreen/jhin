@@ -2,38 +2,43 @@
  * Translation of session events into SDUI stream frames (the frame shapes of
  * the streams contract) and into one-line summaries for server-side snapshots.
  *
- * <p><b>Frame model.</b> Each event becomes exactly one frame:
+ * <p><b>Frame model.</b> Each event becomes exactly one frame, and every
+ * timeline frame is a T101 row node built by {@link MessageCardBuilder}
+ * (the frame → row mapping):
  * <ul>
- *   <li>{@code user_message} — the tinted {@code card} bubble of
- *       {@link MessageCardBuilder#userBubble};</li>
- *   <li>{@code message_start} — the empty assistant {@code card} bubble whose
+ *   <li>{@code user_message} — the {@code message:user} bubble row;</li>
+ *   <li>{@code message_start} — the {@code message:assistant} row whose
  *       markdown child carries the {@code id} {@code msg-<seq>};</li>
- *   <li>{@code text_delta} — grows that text node in place ({@code patch} with
- *       the accumulated text; the first delta of a mid-stream join opens the
- *       node itself);</li>
- *   <li>{@code message_end} — finalizes the streamed text ({@code patch} with
- *       the complete message);</li>
- *   <li>{@code run_start} / {@code run_end} — {@code patch} frames against the
- *       run status badge ({@code runStatus}) of the surrounding screen, so the
- *       composer status line flips live;</li>
- *   <li>{@code tool_use} — the compact {@code code_block} node with the raw
- *       tool arguments JSON;</li>
- *   <li>{@code tool_result} — the collapsed {@code card} node built from the
- *       {@code structured} payload when present (the {@code card}/{@code image}
- *       family inside a collapsible list section), else a plain card with the
- *       text content; a malformed payload degrades to that same plain card;</li>
+ *   <li>{@code text_delta} — grows that text node in place ({@code patch}
+ *       with the accumulated text; the first delta of a mid-stream join opens
+ *       the node itself);</li>
+ *   <li>{@code message_end} — finalizes the streamed text ({@code patch}
+ *       with the complete message);</li>
+ *   <li>{@code run_start} — the {@code working} spinner row (the live
+ *       "agent is working" indicator);</li>
+ *   <li>{@code run_end} — the {@code remove} frame dropping the open working
+ *       row; with no tracked row (a mid-stream join) it falls back to the
+ *       run-status badge patch;</li>
+ *   <li>{@code tool_use} — the {@code work:log} row with the collapsible
+ *       arguments section;</li>
+ *   <li>{@code tool_result} — the {@code work:log} row with the collapsible
+ *       result section (a malformed or unknown {@code structured} payload
+ *       degrades to the plain text detail);</li>
  *   <li>{@code session_updated} — the sidebar-row {@code patch} frame
  *       {@code {"patch":{"id":"session-row:<sessionId>","props":{…}}}} whose
  *       props carry the title and the lifecycle fields of the row;</li>
- *   <li>{@code error} — the danger {@code banner} node.</li>
+ *   <li>{@code error} — the {@code event:error} row (the danger tone);</li>
+ *   <li>anything else — the {@code unknown} placeholder row (never a
+ *       throw).</li>
  * </ul>
  *
  * <p><b>State.</b> The growing-message frames need the id and the accumulated
- * text of the open message, so translation is stateful per stream. The
- * forwarder that feeds live frames to every listener seeds its state by
- * absorbing the persisted history first, so its frames match the replayed ones
- * event for event; a replay that starts mid-message ({@code fromSeq}) seeds
- * the same way before emitting its window.
+ * text of the open message, and the {@code run_end} remove needs the working
+ * row id, so translation is stateful per stream. The forwarder that feeds
+ * live frames to every listener seeds its state by absorbing the persisted
+ * history first, so its frames match the replayed ones event for event; a
+ * replay that starts mid-message ({@code fromSeq}) seeds the same way before
+ * emitting its window.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -56,12 +61,14 @@ final class EventFrames {
     }
 
     /**
-     * One stream's translation state: the open assistant message, if any.
+     * One stream's translation state: the open assistant message and the
+     * open working row, if any.
      */
     static final class Translator {
 
         private String messageId;
         private String accumulated = "";
+        private String workingRowId;
 
         /**
          * Translates one event into its frame.
@@ -69,31 +76,37 @@ final class EventFrames {
          * @param wireType    the event kind wire name
          * @param payloadJson the event payload as JSON text (may be blank)
          * @param seq         the event sequence number (drives the node ids)
-         * @return the frame map, exactly one of {@code {node:…}} or
-         *         {@code {patch:…}}
+         * @return the frame map, exactly one of {@code {node:…}},
+         *         {@code {patch:…}} or {@code {remove:…}}
          */
         Map<String, Object> frame(String wireType, String payloadJson, long seq) {
             Map<String, Object> payload = parse(payloadJson);
             return switch (wireType) {
-                case "user_message" -> node(MessageCardBuilder.userBubble(textOf(payload), seq));
+                case "user_message" -> node(MessageCardBuilder.userMessageRow(
+                        textOf(payload), seq));
                 case "message_start" -> openMessage(seq);
                 case "text_delta" -> growMessage(payload, seq);
                 case "message_end" -> endMessage(payload, seq);
-                case "run_start" -> patch(MessageCardBuilder.STATUS_ID,
-                        MessageCardBuilder.statusProps(MessageCardBuilder.STATUS_RUNNING, "$color.accent"));
-                case "run_end" -> patch(MessageCardBuilder.STATUS_ID,
-                        MessageCardBuilder.statusProps(MessageCardBuilder.STATUS_IDLE, null));
-                case "tool_use" -> node(MessageCardBuilder.toolUse(
-                        String.valueOf(payload.getOrDefault("name", "tool")),
-                        argumentsOf(payload), seq));
-                case "tool_result" -> node(MessageCardBuilder.toolResult(
-                        String.valueOf(payload.getOrDefault("name", "tool")),
-                        contentOf(payload), jsonOf(payload.get("structured")),
-                        Boolean.TRUE.equals(payload.get("error")), seq));
+                case "run_start" -> {
+                    workingRowId = MessageCardBuilder.eventId(seq);
+                    yield node(MessageCardBuilder.workingRow(seq));
+                }
+                case "run_end" -> endRun(payload, seq);
+                case "tool_use" -> node(MessageCardBuilder.workRow(
+                        seq,
+                        toolLabel(payload) + " " + argumentsOf(payload),
+                        List.of(MessageCardBuilder.toolArgumentsNode(
+                                argumentsOf(payload), seq))));
+                case "tool_result" -> node(MessageCardBuilder.workRow(
+                        seq,
+                        toolLabel(payload) + " result",
+                        List.of(MessageCardBuilder.toolResultNode(
+                                contentOf(payload),
+                                Boolean.TRUE.equals(payload.get("error")), seq))));
                 case "session_updated" -> sessionUpdatedFrame(payloadJson);
-                case "error" -> node(MessageCardBuilder.errorBanner(errorMessageOf(payload), seq));
-                default -> node(Ui.text("Event: " + wireType).id("ev-" + seq)
-                        .style("caption").build());
+                case "error" -> node(MessageCardBuilder.dispatchEventRow(
+                        "error", payload, seq));
+                default -> node(MessageCardBuilder.unknownRow(seq, wireType));
             };
         }
 
@@ -113,7 +126,7 @@ final class EventFrames {
         private Map<String, Object> openMessage(long seq) {
             messageId = MessageCardBuilder.messageId(seq);
             accumulated = "";
-            return node(MessageCardBuilder.assistantBubble(seq, ""));
+            return node(MessageCardBuilder.assistantMessageRow(seq, ""));
         }
 
         private Map<String, Object> growMessage(Map<String, Object> payload, long seq) {
@@ -121,7 +134,7 @@ final class EventFrames {
             if (messageId == null) {
                 messageId = MessageCardBuilder.messageId(seq);
                 accumulated = delta;
-                return node(MessageCardBuilder.assistantBubble(seq, accumulated));
+                return node(MessageCardBuilder.assistantMessageRow(seq, accumulated));
             }
             accumulated += delta;
             return patch(messageId, Map.of("text", accumulated));
@@ -130,11 +143,26 @@ final class EventFrames {
         private Map<String, Object> endMessage(Map<String, Object> payload, long seq) {
             String finalText = payload.containsKey("text") ? textOf(payload) : accumulated;
             if (messageId == null) {
-                return node(MessageCardBuilder.assistantBubble(seq, finalText));
+                return node(MessageCardBuilder.assistantMessageRow(seq, finalText));
             }
             Map<String, Object> frame = patch(messageId, Map.of("text", finalText));
             messageId = null;
             accumulated = "";
+            return frame;
+        }
+
+        /**
+         * The {@code run_end} frame: the {@code remove} of the open working
+         * row; with no tracked row (a mid-stream join) it falls back to the
+         * run-status badge patch so the composer status line still settles.
+         */
+        private Map<String, Object> endRun(Map<String, Object> payload, long seq) {
+            if (workingRowId == null) {
+                return patch(MessageCardBuilder.STATUS_ID,
+                        MessageCardBuilder.statusProps(MessageCardBuilder.STATUS_IDLE, null));
+            }
+            Map<String, Object> frame = remove(workingRowId);
+            workingRowId = null;
             return frame;
         }
     }
@@ -233,6 +261,20 @@ final class EventFrames {
         return frame;
     }
 
+    /** The {@code {remove:…}} frame wrapper. */
+    private static Map<String, Object> remove(String id) {
+        Map<String, Object> frame = new LinkedHashMap<>();
+        frame.put("remove", id);
+        return frame;
+    }
+
+    /** The tool label of a {@code tool_use}/{@code tool_result} payload. */
+    private static String toolLabel(Map<String, Object> payload) {
+        Object name = payload.get("name");
+        return (name == null || String.valueOf(name).isBlank())
+                ? "tool" : String.valueOf(name);
+    }
+
     /** The raw tool arguments of a {@code tool_use} payload. */
     private static String argumentsOf(Map<String, Object> payload) {
         return jsonOf(payload.get("arguments"));
@@ -242,12 +284,6 @@ final class EventFrames {
     private static String contentOf(Map<String, Object> payload) {
         Object content = payload.get("content");
         return (content != null) ? String.valueOf(content) : textOf(payload);
-    }
-
-    /** The error message of an {@code error} payload. */
-    private static String errorMessageOf(Map<String, Object> payload) {
-        Object reported = payload.get("message");
-        return (reported != null) ? String.valueOf(reported) : textOf(payload);
     }
 
     /** The raw JSON text of a payload field: strings pass through, objects re-serialize. */

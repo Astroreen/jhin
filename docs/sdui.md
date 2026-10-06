@@ -413,6 +413,8 @@ Layout primitives:
 | `container` | `align` | alignment | — | child alignment |
 | `container` | `scroll` | bool | `false` | scrollable container |
 | `container` | `laneWidth` | length | — | chat content lane (T100): caps the container width and centers it — the `.chat-content-lane` recipe. The client `chatWidth` switch resolves the effective lane (`normal` keeps the server default `46rem`, `wide` forces `72rem`, `full` removes the cap), the way upstream sets `--chat-content-max-width` per `data-chat-width` on `:root` |
+| `container` | `rowKind` | string | — | timeline row kind (T101): one of the 14 chat row kinds (`message`, `assistant-meta`, `event`, `work`, `work-live`, `work-toggle`, `thinking`, `proposed-plan`, `working`, `worktree-setup`, `turn-fold`, `attempt-fold`, `context-compaction`, `unknown`); the client resolves the row's trailing gap from it (the upstream `pb-*` scale) |
+| `container` | `rowKey` | string | — | continuation key (T101): `` `${type}:${subtype}` `` — consecutive stream items sharing the key render as one visual group with no gap inside (the upstream `continuesWorkLog` rule) |
 | `box` | `child` | node | — | single child |
 | `box` | `children` | node array | — | children (laid out per `direction` when several) |
 | `box` | `direction` | `row`/`column` | — | children direction |

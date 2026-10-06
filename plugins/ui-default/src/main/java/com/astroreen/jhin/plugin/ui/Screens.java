@@ -4,8 +4,9 @@
  * session list with the activity feed and the "New session" form),
  * {@code settings}, {@code plugins} and {@code providers} (only while the LLM
  * plugin is loaded), plus the dynamic {@code chat:<session-id>} screens and
- * the QA-only {@code qa-level3} probe (T88, only while the {@code qaProbe}
- * config switch is on). All screen classes are built with the
+ * the QA-only probes {@code qa-level3} (T88) and {@code qa-timeline} (T101,
+ * both only while the {@code qaProbe} config switch is on). All screen
+ * classes are built with the
  * {@code jhin.ui-kit} builder; this registry only decides which of them one
  * caller may see.
  */
@@ -20,6 +21,7 @@ import com.astroreen.jhin.plugin.ui.screens.EnrollScreen;
 import com.astroreen.jhin.plugin.ui.screens.PluginsScreen;
 import com.astroreen.jhin.plugin.ui.screens.ProvidersScreen;
 import com.astroreen.jhin.plugin.ui.screens.QaProbeScreen;
+import com.astroreen.jhin.plugin.ui.screens.QaTimelineScreen;
 import com.astroreen.jhin.plugin.ui.screens.SessionsScreen;
 import com.astroreen.jhin.plugin.ui.screens.SettingsScreen;
 import com.astroreen.jhin.plugin.uikit.UiNode;
@@ -72,6 +74,7 @@ final class Screens implements ScreenRegistry {
         }
         if (snapshot.qaProbe()) {
             screens.put("qa-level3", QaProbeScreen::render);
+            screens.put("qa-timeline", QaTimelineScreen::render);
         }
         return screens;
     }

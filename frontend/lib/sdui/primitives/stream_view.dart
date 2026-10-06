@@ -37,6 +37,41 @@ import 'scroll.dart';
 /// already accepted is replaced in place, and an id that was dropped by
 /// `itemLimit` or `remove`d stays gone). Nodes without an `id` always
 /// append.
+/// T101 timeline row kinds: every stream item may carry `rowKind` (one of
+/// the 14 kinds of docs/sdui.md §8.6 — `message`, `assistant-meta`, `event`,
+/// `work`, `work-live`, `work-toggle`, `thinking`, `proposed-plan`,
+/// `working`, `worktree-setup`, `turn-fold`, `attempt-fold`,
+/// `context-compaction`, `unknown`) and the continuation key `rowKey`
+/// (`${type}:${subtype}`, plan §4.5). Consecutive items sharing a `rowKey`
+/// render as one visual group — the trailing row of a group closes with the
+/// kind gap, members inside close with none (the upstream `continuesWorkLog`
+/// rule, t3code commit 37de6cb, `MessagesTimeline.logic.ts:1773-1781`). The
+/// kind gaps port the upstream `pb-*` scale
+/// (`MessagesTimeline.tsx:1766-1784`, `WorkLog.tsx:19-21`): 16 px for the
+/// message family, 8 px for the work/event family, 6 px for the fold and
+/// working strips. An item with an unrecognized `rowKind` renders with the
+/// default gap — never a throw.
+double timelineRowGap(String? rowKind) => switch (rowKind) {
+      'work' ||
+      'work-live' ||
+      'work-toggle' ||
+      'thinking' ||
+      'event' ||
+      'worktree-setup' ||
+      'attempt-fold' ||
+      'unknown' =>
+        8,
+      'turn-fold' || 'working' => 6,
+      _ => 16,
+    };
+
+/// Whether two consecutive stream items belong to one visual group: both
+/// carry the same non-empty `rowKey`.
+bool timelineRowsContinue(Map<String, dynamic> item, Map<String, dynamic> next) {
+  final key = item['rowKey']?.toString();
+  return key != null && key.isNotEmpty && key == next['rowKey']?.toString();
+}
+
 Widget buildStreamView(BuildContext context, UiNode node, RenderContext ctx) {
   final topic = node.stringProp('topic');
   if (topic == null || topic.isEmpty) {
@@ -250,8 +285,19 @@ class _StreamViewState extends State<_StreamView> {
             // newest row clear of the composer seam.
             padding: const EdgeInsets.only(bottom: kChatTimelineAnchorOffset),
             itemCount: _items.length,
-            itemBuilder: (context, index) =>
-                widget.ctx.build(context, UiNode.fromJson(_items[index])),
+            itemBuilder: (context, index) {
+              // The T101 row spacing: a row whose continuation key the next
+              // row shares closes with no gap; the rest close with the kind
+              // gap (the upstream pb-* scale).
+              final continues = index + 1 < _items.length &&
+                  timelineRowsContinue(_items[index], _items[index + 1]);
+              final gap =
+                  continues ? 0.0 : timelineRowGap(_items[index]['rowKind']?.toString());
+              return Padding(
+                padding: EdgeInsets.only(bottom: gap),
+                child: widget.ctx.build(context, UiNode.fromJson(_items[index])),
+              );
+            },
           ),
         ),
       if (_status == SseConnectionStatus.reconnecting) const _ReconnectingRow(),

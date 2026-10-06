@@ -109,60 +109,70 @@ class StreamRouteTest {
         List<Map<String, Object>> frames = lastPreamble();
 
         assertThat(frames).hasSize(10);
-        assertThat(nodeType(frames.get(0))).isEqualTo("card");
-        assertThat(nodeOf(frames.get(0))).containsEntry("color", "$color.accentMuted");
-        assertThat(childText(frames.get(0))).isEqualTo("hi");
-        assertThat(nodeType(frames.get(1))).isEqualTo("card");
-        assertThat(nodeOf(frames.get(1)).get("id")).isEqualTo("ev-2");
-        assertThat(Json.write(nodeOf(frames.get(1)))).contains("\"id\":\"msg-2\"");
+        // user_message -> the message:user row on the message surface.
+        Map<String, Object> user = nodeOf(frames.get(0));
+        assertThat(user).containsEntry("rowKind", "message").containsEntry("rowKey", "message:user");
+        assertThat(Json.write(user)).contains("$color.message").contains("hi");
+        // message_start -> the message:assistant row with the msg patch target.
+        Map<String, Object> assistant = nodeOf(frames.get(1));
+        assertThat(assistant).containsEntry("rowKind", "message").containsEntry("rowKey", "message:assistant");
+        assertThat(assistant.get("id")).isEqualTo("ev-2");
+        assertThat(Json.write(assistant)).contains("\"id\":\"msg-2\"");
         assertThat(patchOf(frames.get(2)).get("id")).isEqualTo("msg-2");
         assertThat(castMap(patchOf(frames.get(2)).get("props"))).containsEntry("text", "Hel");
         assertThat(castMap(patchOf(frames.get(3)).get("props"))).containsEntry("text", "Hello");
         assertThat(castMap(patchOf(frames.get(4)).get("props"))).containsEntry("text", "Hello");
-        assertThat(patchOf(frames.get(5)).get("id")).isEqualTo("runStatus");
-        assertThat(castMap(patchOf(frames.get(5)).get("props"))).containsEntry("label", "Running\u2026");
-        assertThat(patchOf(frames.get(6)).get("id")).isEqualTo("runStatus");
-        assertThat(castMap(patchOf(frames.get(6)).get("props"))).containsEntry("label", "Idle");
-        assertThat(nodeType(frames.get(7))).isEqualTo("code_block");
-        assertThat(Json.write(nodeOf(frames.get(7)))).contains("read");
-        assertThat(nodeType(frames.get(8))).isEqualTo("card");
-        assertThat(nodeOf(frames.get(8)).get("title")).isEqualTo("read");
-        assertThat(childText(frames.get(8))).isEqualTo("done");
-        assertThat(nodeType(frames.get(9))).isEqualTo("banner");
-        assertThat(Json.write(nodeOf(frames.get(9)))).contains("$color.error");
-        assertThat(Json.write(nodeOf(frames.get(9)))).contains("boom");
+        // run_start -> the working row; run_end -> the remove of that row.
+        Map<String, Object> working = nodeOf(frames.get(5));
+        assertThat(working).containsEntry("rowKind", "working").containsEntry("rowKey", "working:run");
+        assertThat(Json.write(working)).contains("agent is working");
+        assertThat(frames.get(6)).containsEntry("remove", "ev-6");
+        // tool events -> work:log rows with the collapsible sections.
+        Map<String, Object> toolUse = nodeOf(frames.get(7));
+        assertThat(toolUse).containsEntry("rowKind", "work").containsEntry("rowKey", "work:log");
+        assertThat(Json.write(toolUse)).contains("read").contains("\"collapsed\":true");
+        Map<String, Object> toolResult = nodeOf(frames.get(8));
+        assertThat(toolResult).containsEntry("rowKind", "work").containsEntry("rowKey", "work:log");
+        assertThat(Json.write(toolResult)).contains("done");
+        // error -> the event:error row in the danger tone.
+        Map<String, Object> error = nodeOf(frames.get(9));
+        assertThat(error).containsEntry("rowKind", "event").containsEntry("rowKey", "event:error");
+        assertThat(Json.write(error)).contains("$color.error").contains("boom");
     }
 
     @Test
-    void toolResultRendersTheStructuredCardFamily() throws Exception {
+    void toolResultRendersTheWorkRowDetail() throws Exception {
         eventLog.append(sessionId, EventType.TOOL_RESULT, Json.write(Map.of(
                 "id", "c1", "name", "read", "content", "raw", "error", false,
                 "structured", "{\"kind\":\"card\",\"title\":\"File\",\"rows\":[{\"label\":\"path\",\"value\":\"/a\"}]}")));
-        eventLog.append(sessionId, EventType.TOOL_RESULT, Json.write(Map.of(
-                "id", "c2", "name", "read", "content", "raw",
-                "structured", "{\"kind\":\"image\",\"title\":\"Shot\",\"mimeType\":\"image/png\",\"data\":\"aGk=\"}")));
         eventLog.append(sessionId, EventType.TOOL_RESULT, Json.write(Map.of(
                 "id", "c3", "name", "bash", "content", "plain text", "error", true)));
 
         open("");
         List<Map<String, Object>> frames = lastPreamble();
 
-        Map<String, Object> card = nodeOf(frames.get(0));
-        assertThat(card).containsEntry("title", "File");
-        String cardJson = Json.write(card);
-        assertThat(cardJson).contains("path: /a");
-        assertThat(cardJson).contains("\"collapsed\":true");
+        // The structured payload is T102 scope: the T101 work row renders the
+        // plain content detail inside the collapsible section.
+        Map<String, Object> first = nodeOf(frames.get(0));
+        assertThat(first).containsEntry("rowKind", "work");
+        String firstJson = Json.write(first);
+        assertThat(firstJson).contains("read result").contains("raw");
+        assertThat(firstJson).doesNotContain("path: /a");
 
-        Map<String, Object> imageCard = nodeOf(frames.get(1));
-        assertThat(imageCard).containsEntry("title", "Shot");
-        String imageJson = Json.write(imageCard);
-        assertThat(imageJson).contains("data:image/png;base64,aGk=");
-        assertThat(imageJson).contains("\"collapsed\":true");
-
-        Map<String, Object> plain = nodeOf(frames.get(2));
-        assertThat(plain).containsEntry("title", "bash");
-        assertThat(Json.write(plain))
+        Map<String, Object> failed = nodeOf(frames.get(1));
+        assertThat(failed).containsEntry("rowKind", "work");
+        assertThat(Json.write(failed))
                 .contains("plain text").contains("$color.error");
+    }
+
+    @Test
+    void unknownWireEventFallsBackToTheUnknownRow() throws Exception {
+        EventFrames.Translator translator = new EventFrames.Translator();
+        Map<String, Object> frame = translator.frame("holo", "{\"text\":\"?\"}", 7);
+
+        Map<String, Object> row = nodeOf(frame);
+        assertThat(row).containsEntry("rowKind", "unknown").containsEntry("rowKey", "unknown:unknown");
+        assertThat(Json.write(row)).contains("Unknown row: holo");
     }
 
     @Test
@@ -318,10 +328,26 @@ class StreamRouteTest {
         return String.valueOf(nodeOf(frame).get("type"));
     }
 
-    /** The text of the first text child of a node frame (bubble shorthand). */
+    /** The text of the first text descendant of a node frame (row shorthand). */
     private static String childText(Map<String, Object> frame) {
-        List<Object> children = castList(nodeOf(frame).get("children"));
-        return String.valueOf(castMap(children.get(0)).get("text"));
+        return deepText(nodeOf(frame));
+    }
+
+    /** The first {@code text} prop found depth-first under the node. */
+    private static String deepText(Map<String, Object> node) {
+        Object text = node.get("text");
+        if (text instanceof String value) {
+            return value;
+        }
+        for (Object child : castList(node.get("children"))) {
+            if (child instanceof Map<?, ?> map) {
+                String found = deepText(castMap(child));
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")

@@ -26,15 +26,16 @@
  * actions (the upstream header menu is the thread action menu,
  * {@code ChatHeader.tsx} + {@code useThreadActionMenu}).
  *
- * <p><b>Message list.</b> The persisted event history renders through
- * {@link MessageCardBuilder} into a {@code list} of card bubbles: user
- * messages tinted {@value com.astroreen.jhin.plugin.ui.screens.MessageCardBuilder#USER_TINT}
- * and pushed right, plain assistant bubbles with markdown text, compact
- * {@code code_block}s for {@code tool_use} arguments and collapsed
- * {@code tool_result} cards; {@code error} events hoist to {@code banner}
- * nodes at the top of the list. The ids ({@code ev-<seq>}, {@code msg-<seq>})
- * are the same ones {@code EventFrames} emits, so live frames patch the
- * rendered history in place.
+     * <p><b>Message list.</b> The persisted event history renders through
+     * {@link MessageCardBuilder} into the T101 timeline rows of a {@code
+     * list}: user messages as the {@code message:user} bubble on the message
+     * surface, assistant messages as the bordered {@code message:assistant}
+     * card with markdown text, collapsible {@code work:log} entries for the
+     * tool events, the {@code event:error} row and the {@code working} strip
+     * of an open run. Consecutive rows sharing a continuation key close with
+     * no gap ({@link MessageCardBuilder#applyContinuation}). The ids ({@code
+     * ev-<seq>}, {@code msg-<seq>}) are the same ones {@code EventFrames}
+     * emits, so live frames patch the rendered history in place.
  *
  * <p><b>Live tail.</b> The {@code stream_view} ({@code id} {@code stream},
  * {@code itemLimit} {@code 200}, {@code autoScroll}) opens
@@ -357,19 +358,23 @@ public final class ChatScreen {
     }
 
     /**
-     * The scrollable message list: error banners on top, then the transcript
-     * in sequence order (an open assistant message is flushed as-is).
+     * The scrollable timeline: the T101 rows of the persisted history in
+     * sequence order — {@code message} bubbles, {@code work} tool entries,
+     * the {@code event} error row, the {@code working} strip of an open run
+     * — with the continuation gaps baked in (rows sharing a continuation key
+     * close with no gap). An open assistant message is flushed as-is.
      */
     private static UiNode messageList(List<EventRecord> history) {
-        List<UiNode> banners = new ArrayList<>();
-        List<UiNode> items = new ArrayList<>();
+        List<UiNode> rows = new ArrayList<>();
         long openSeq = -1;
         StringBuilder buffer = new StringBuilder();
+        Long workingSeq = null;
         for (EventRecord record : history) {
             long seq = record.seq();
             Map<String, Object> payload = parse(record.payload());
             switch (record.type().wire()) {
-                case "user_message" -> items.add(MessageCardBuilder.userBubble(textOf(payload, "text"), seq));
+                case "user_message" -> rows.add(MessageCardBuilder.userMessageRow(
+                        textOf(payload, "text"), seq));
                 case "message_start" -> {
                     openSeq = seq;
                     buffer.setLength(0);
@@ -384,31 +389,39 @@ public final class ChatScreen {
                 case "message_end" -> {
                     String text = payload.containsKey("text")
                             ? textOf(payload, "text") : buffer.toString();
-                    items.add(MessageCardBuilder.assistantBubble(
+                    rows.add(MessageCardBuilder.assistantMessageRow(
                             openSeq >= 0 ? openSeq : seq, text));
                     openSeq = -1;
                     buffer.setLength(0);
                 }
-                case "tool_use" -> items.add(MessageCardBuilder.toolUse(
-                        textOf(payload, "name"), jsonOf(payload.get("arguments")), seq));
-                case "tool_result" -> items.add(MessageCardBuilder.toolResult(
-                        textOf(payload, "name"), textOf(payload, "content"),
-                        jsonOf(payload.get("structured")),
-                        Boolean.TRUE.equals(payload.get("error")), seq));
-                case "error" -> banners.add(MessageCardBuilder.errorBanner(
-                        textOf(payload, "message"), seq));
+                case "tool_use" -> rows.add(MessageCardBuilder.workRow(
+                        seq,
+                        textOf(payload, "name") + " " + jsonOf(payload.get("arguments")),
+                        List.of(MessageCardBuilder.toolArgumentsNode(
+                                jsonOf(payload.get("arguments")), seq))));
+                case "tool_result" -> rows.add(MessageCardBuilder.workRow(
+                        seq,
+                        textOf(payload, "name") + " result",
+                        List.of(MessageCardBuilder.toolResultNode(
+                                textOf(payload, "content"),
+                                Boolean.TRUE.equals(payload.get("error")), seq))));
+                case "run_start" -> workingSeq = seq;
+                case "run_end" -> workingSeq = null;
+                case "error" -> rows.add(MessageCardBuilder.dispatchEventRow(
+                        "error", payload, seq));
                 default -> {
                 }
             }
         }
         if (openSeq >= 0) {
-            items.add(MessageCardBuilder.assistantBubble(openSeq, buffer.toString()));
+            rows.add(MessageCardBuilder.assistantMessageRow(openSeq, buffer.toString()));
         }
-        List<UiNode> merged = new ArrayList<>(banners);
-        merged.addAll(items);
+        if (workingSeq != null) {
+            rows.add(MessageCardBuilder.workingRow(workingSeq));
+        }
         Ui.ListBuilder list = Ui.list().id("messages").set("empty", "No messages yet.");
-        for (UiNode node : merged) {
-            list.item(node);
+        for (UiNode row : MessageCardBuilder.applyContinuation(rows)) {
+            list.item(row);
         }
         return list.build();
     }

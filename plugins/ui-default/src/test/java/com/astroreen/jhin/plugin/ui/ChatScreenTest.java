@@ -1,14 +1,15 @@
 /**
- * The T77 chat redesign (framed by T100): the transcript renders user
- * bubbles, assistant bubbles, compact tool code blocks and collapsed tool
- * result cards; the composer carries the {@code messageInput} textarea, the
+ * The T101 chat timeline: the transcript renders the 14 row kinds of
+ * {@code MessageCardBuilder} — user bubbles on the message surface, bordered
+ * assistant cards, collapsible {@code work} tool entries, the {@code event}
+ * error row and the {@code working} strip of an open run — with the
+ * continuation gaps baked in (rows sharing a continuation key close with no
+ * gap). The composer carries the {@code messageInput} textarea, the
  * {@code send} action and the {@code composer.sendAndNew} command; Cancel
- * appears only while a run is live; malformed {@code tool_result} payloads
- * degrade to a plain card and {@code error} events hoist to banners at the
- * top of the list. The T100 frame wraps the timeline in the content lane
- * ({@code laneWidth}), the top scroll fade and the composer-seam divider,
- * and the header row carries the title, the status badge, the demo-marked
- * panel toggles and the thread action menu.
+ * appears only while a run is live. The T100 frame wraps the timeline in the
+ * content lane ({@code laneWidth}), the top scroll fade and the composer-seam
+ * divider, and the header row carries the title, the status badge, the
+ * demo-marked panel toggles and the thread action menu.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -29,34 +30,48 @@ class ChatScreenTest {
     private static final String SESSION_ID = "s-1";
 
     @Test
-    void fullRunTranscriptRendersUserAssistantToolCardAndAssistant() {
+    void fullRunTranscriptRendersUserAssistantToolRowsAndAssistant() {
         Map<String, Object> json = render(fullRun());
 
         List<Map<String, Object>> items = messageItems(json);
         assertThat(items).hasSize(5);
 
         Map<String, Object> first = items.get(0);
-        assertThat(first).containsEntry("type", "card")
+        assertThat(first).containsEntry("type", "container")
                 .containsEntry("id", "ev-2")
-                .containsEntry("color", "$color.accentMuted")
+                .containsEntry("rowKind", "message")
+                .containsEntry("rowKey", "message:user")
                 .containsEntry("align", "centerRight");
-        assertThat(Json.write(first)).contains("Fix the bug");
+        assertThat(Json.write(first)).contains("Fix the bug").contains("$color.message");
 
         Map<String, Object> assistant = items.get(1);
-        assertThat(assistant).containsEntry("type", "card").containsEntry("id", "ev-3");
+        assertThat(assistant).containsEntry("type", "container")
+                .containsEntry("id", "ev-3")
+                .containsEntry("rowKind", "message")
+                .containsEntry("rowKey", "message:assistant")
+                .containsEntry("align", "centerLeft");
         assertThat(Json.write(assistant)).contains("\"id\":\"msg-3\"").contains("Let me look.");
 
         Map<String, Object> toolUse = items.get(2);
-        assertThat(toolUse).containsEntry("type", "code_block").containsEntry("id", "ev-7");
-        assertThat(Json.write(toolUse)).contains("/tmp/a.txt").contains("hello world!");
+        assertThat(toolUse).containsEntry("type", "container")
+                .containsEntry("id", "ev-7")
+                .containsEntry("rowKind", "work")
+                .containsEntry("rowKey", "work:log");
+        assertThat(Json.write(toolUse)).contains("/tmp/a.txt").contains("hello world!")
+                .contains("\"collapsed\":true");
 
         Map<String, Object> toolResult = items.get(3);
-        assertThat(toolResult).containsEntry("type", "card").containsEntry("id", "ev-8");
-        assertThat(toolResult).containsEntry("title", "write");
-        assertThat(Json.write(toolResult)).contains("\"collapsed\":true").contains("bytes: 12");
+        assertThat(toolResult).containsEntry("type", "container")
+                .containsEntry("id", "ev-8")
+                .containsEntry("rowKind", "work")
+                .containsEntry("rowKey", "work:log");
+        assertThat(Json.write(toolResult)).contains("ok");
 
         Map<String, Object> closing = items.get(4);
-        assertThat(closing).containsEntry("type", "card").containsEntry("id", "ev-9");
+        assertThat(closing).containsEntry("type", "container")
+                .containsEntry("id", "ev-9")
+                .containsEntry("rowKind", "message")
+                .containsEntry("rowKey", "message:assistant");
         assertThat(Json.write(closing)).contains("\"id\":\"msg-9\"").contains("All done");
     }
 
@@ -84,7 +99,7 @@ class ChatScreenTest {
     }
 
     @Test
-    void malformedToolResultDegradesToPlainCard() {
+    void toolResultRowsRenderThePlainContentDetail() {
         Map<String, Object> json = render(List.of(
                 event(1, EventType.TOOL_RESULT, Json.write(Map.of(
                         "id", "c1", "name", "bash", "content", "raw output",
@@ -92,35 +107,66 @@ class ChatScreenTest {
 
         List<Map<String, Object>> items = messageItems(json);
         assertThat(items).hasSize(1);
-        Map<String, Object> card = items.get(0);
-        assertThat(card).containsEntry("type", "card").containsEntry("title", "bash");
-        assertThat(Json.write(card)).contains("raw output");
-        assertThat(Json.write(card)).doesNotContain("collapsible");
+        Map<String, Object> row = items.get(0);
+        assertThat(row).containsEntry("type", "container").containsEntry("rowKind", "work");
+        assertThat(Json.write(row)).contains("raw output");
     }
 
     @Test
-    void unknownStructuredKindAlsoDegradesToPlainCard() {
+    void failedToolResultDetailCarriesTheDangerColor() {
         Map<String, Object> json = render(List.of(
                 event(1, EventType.TOOL_RESULT, Json.write(Map.of(
-                        "id", "c1", "name", "bash", "content", "raw output",
-                        "structured", "{\"kind\":\"bogus\",\"title\":\"Nope\"}")))));
+                        "id", "c1", "name", "bash", "content", "boom out",
+                        "error", true)))));
 
-        Map<String, Object> card = messageItems(json).get(0);
-        assertThat(card).containsEntry("type", "card");
-        assertThat(Json.write(card)).contains("raw output").doesNotContain("collapsible");
+        Map<String, Object> row = messageItems(json).get(0);
+        assertThat(row).containsEntry("type", "container").containsEntry("rowKind", "work");
+        assertThat(Json.write(row)).contains("boom out").contains("$color.error");
     }
 
     @Test
-    void errorEventsRenderBannersAtTheTopOfTheList() {
+    void errorEventsRenderEventRowsInSequenceOrder() {
         Map<String, Object> json = render(List.of(
                 event(1, EventType.USER_MESSAGE, "{\"text\":\"hello\"}"),
                 event(2, EventType.ERROR, "{\"message\":\"boom\"}")));
 
         List<Map<String, Object>> items = messageItems(json);
         assertThat(items).hasSize(2);
-        assertThat(items.get(0)).containsEntry("type", "banner").containsEntry("id", "ev-2");
-        assertThat(Json.write(items.get(0))).contains("boom").contains("$color.error");
-        assertThat(items.get(1)).containsEntry("type", "card").containsEntry("id", "ev-1");
+        assertThat(items.get(1)).containsEntry("type", "container")
+                .containsEntry("id", "ev-2")
+                .containsEntry("rowKind", "event")
+                .containsEntry("rowKey", "event:error");
+        assertThat(Json.write(items.get(1))).contains("boom").contains("$color.error");
+        assertThat(items.get(0)).containsEntry("type", "container").containsEntry("id", "ev-1");
+    }
+
+    @Test
+    void anOpenRunRendersTheWorkingRowAndAClosedRunDoesNot() {
+        Map<String, Object> open = render(List.of(
+                event(1, EventType.RUN_START, "{\"runId\":\"r1\"}")));
+        Map<String, Object> closed = render(List.of(
+                event(1, EventType.RUN_START, "{\"runId\":\"r1\"}"),
+                event(2, EventType.RUN_END, "{\"runId\":\"r1\"}")));
+
+        List<Map<String, Object>> openItems = messageItems(open);
+        assertThat(openItems).hasSize(1);
+        assertThat(openItems.get(0)).containsEntry("rowKind", "working")
+                .containsEntry("rowKey", "working:run");
+        assertThat(messageItems(closed)).isEmpty();
+    }
+
+    @Test
+    void consecutiveRowsSharingAContinuationKeyCloseWithNoGap() {
+        Map<String, Object> json = render(fullRun());
+
+        List<Map<String, Object>> items = messageItems(json);
+        // ev-7 and ev-8 are both work:log rows — the first closes with no
+        // gap, the second (the group end) with the 8px work gap.
+        assertThat(items.get(2)).containsEntry("rowKey", "work:log");
+        assertThat(castMap(items.get(2).get("margin"))).containsEntry("bottom", 0);
+        assertThat(castMap(items.get(3).get("margin"))).containsEntry("bottom", 8);
+        // The closing assistant message closes with the 16px message gap.
+        assertThat(castMap(items.get(4).get("margin"))).containsEntry("bottom", 16);
     }
 
     @Test
@@ -325,7 +371,8 @@ class ChatScreenTest {
                 .filter(node -> "messages".equals(node.get("id")))
                 .findFirst()
                 .orElseThrow();
-        return castList(list.get("items")).stream()
+        List<Object> items = castList(list.get("items"));
+        return items == null ? List.of() : items.stream()
                 .map(ChatScreenTest::castMap)
                 .toList();
     }
