@@ -35,6 +35,23 @@ import '../ui_registry.dart';
 Widget buildSplit(BuildContext context, UiNode node, RenderContext ctx) =>
     _SplitView(node: node, ctx: ctx);
 
+/// The grip handle visual (T90/T106): the 1 px divider line that brightens
+/// on hover — the upstream right-panel handle. Shared by `split`'s grip mode
+/// and the terminal drawer's resize grip (the T106 reuse).
+Widget gripHandleVisual(BuildContext context,
+    {required bool vertical, required bool hovering}) {
+  final material = JhinDesignScope.materialOf(context);
+  final lineColor =
+      hovering ? material.colorScheme.primary : material.dividerColor;
+  return Center(
+    child: Container(
+      width: vertical ? double.infinity : 1.0,
+      height: vertical ? 1.0 : double.infinity,
+      color: lineColor,
+    ),
+  );
+}
+
 /// The arrow-key resize step (the T90 spec: 16 px).
 const double _keyboardStep = 16;
 
@@ -264,13 +281,15 @@ class _SplitViewState extends State<_SplitView> {
     // that brightens on hover (the upstream right-panel handle), the
     // invisible handle paints nothing.
     final visuals = showLine
-        ? Center(
-            child: Container(
-              width: _vertical ? double.infinity : (isGrip ? 1.0 : 2.0),
-              height: _vertical ? (isGrip ? 1.0 : 2.0) : double.infinity,
-              color: lineColor,
-            ),
-          )
+        ? (isGrip
+            ? gripHandleVisual(context, vertical: _vertical, hovering: _hovering)
+            : Center(
+                child: Container(
+                  width: _vertical ? double.infinity : 2.0,
+                  height: _vertical ? 2.0 : double.infinity,
+                  color: lineColor,
+                ),
+              ))
         : const SizedBox.shrink();
 
     final hitArea = RawGestureDetector(

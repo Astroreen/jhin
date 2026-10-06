@@ -1,0 +1,25 @@
+{
+  "id": "terminal-transcript",
+  "lines": [
+    "$ jhin status",
+    "jhin 0.3.0 - kernel healthy",
+    "plugins: 12 loaded",
+    "$ jhin sessions list",
+    "s-1  Fix the login bug        active",
+    "s-2  Add OAuth callback       settled",
+    "$ jhin plugins",
+    "jhin.sessions       0.3.0",
+    "jhin.security       0.3.0",
+    "jhin.llm            0.3.0",
+    "jhin.agent          0.3.0",
+    "jhin.tools-builtin  0.3.0",
+    "jhin.mcp            0.3.0",
+    "jhin.ui-kit         0.3.0",
+    "jhin.ui             0.3.0",
+    "jhin.reload         0.3.0",
+    "jhin.qa-mock-llm    0.3.0",
+    "$ jhin health",
+    "ok",
+    "$ "
+  ]
+}

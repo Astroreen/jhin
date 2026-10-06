@@ -84,6 +84,7 @@ public final class ShellScreen {
                         .pageHeader(pageHeader(arrange))
                         .stageBackdrop(true)
                         .body(sidebar)
+                        .terminal(TerminalDrawerBuilder.build())
                         .build())
                 .build();
     }

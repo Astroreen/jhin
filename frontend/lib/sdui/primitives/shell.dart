@@ -1,14 +1,18 @@
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../design/theme.dart';
 import '../../design/tokens.dart';
+import '../expr.dart' show evalWhen;
 import '../render_context.dart';
 import '../ui_node.dart';
 import '../ui_registry.dart' show insetAll;
 import 'scroll_fade.dart'
     show kScrollFadeTopbarAlphas, kScrollFadeTopbarStops, scrollFadeBandMask;
+import 'split.dart' show gripHandleVisual;
 
 /// `shell` (§2.6): `sidebar?`, `header?`, `body?`, `detail?`, `rail?`,
 /// `topbar?`, `topbarCompact?`, `pageHeader?`, `terminal?`, `stageBackdrop?`,
@@ -321,7 +325,20 @@ class _ShellViewState extends State<_ShellView> {
   /// server-authored content; below the breakpoint the drawer caps at 40% of
   /// the viewport height (plan T95 step 7). The drawer height is the
   /// terminal node's `height` prop when it carries one, 240 otherwise.
+  ///
+  /// A terminal node carrying a `persistKey` (the T106 drawer) owns its own
+  /// resize grip and persistence: the client renders [_TerminalDrawer],
+  /// which drags between `minDrawerHeight` and `maxDrawerRatio` of the
+  /// viewport and persists under the key. The node's `when` gates the whole
+  /// drawer (grip included).
   Widget _terminalDrawer(BuildContext context, UiNode terminalNode, bool narrow) {
+    final when = terminalNode.when;
+    if (when != null && evalWhen(when, widget.ctx.state) == false) {
+      return const SizedBox.shrink();
+    }
+    if (terminalNode.stringProp('persistKey') != null) {
+      return _TerminalDrawer(node: terminalNode, ctx: widget.ctx);
+    }
     final theme = JhinDesignScope.materialOf(context);
     var drawerHeight = terminalNode.numProp('height')?.toDouble() ?? 240;
     if (narrow) {
@@ -631,4 +648,223 @@ class _StageBackdropPainter extends CustomPainter {
       old.bottom != bottom ||
       old.highlight != highlight ||
       old.line != line;
+}
+
+/// The T106 terminal drawer: the resizable bottom drawer of the shell. The
+/// grip drag resizes the height between `minDrawerHeight` (default 100) and
+/// `maxDrawerRatio` of the viewport (default 0.5), persisted under
+/// `persistKey` through the same store seam `split` uses (T90) — one write
+/// per drag end. `Escape` and `mod+w` close the focused terminal first (the
+/// upstream precedence): the drawer is the focused surface while it is open,
+/// so the chord closes it and never falls through to the right panel.
+class _TerminalDrawer extends StatefulWidget {
+  const _TerminalDrawer({required this.node, required this.ctx});
+
+  final UiNode node;
+  final RenderContext ctx;
+
+  @override
+  State<_TerminalDrawer> createState() => _TerminalDrawerState();
+}
+
+class _TerminalDrawerState extends State<_TerminalDrawer> {
+  static const double _defaultHeight = 240;
+  static const double _defaultMin = 100;
+  static const double _defaultMaxRatio = 0.5;
+
+  /// The live drawer height; null until the persisted value (if any) has
+  /// been read — the node `initialHeight` renders meanwhile.
+  double? _height;
+
+  bool _dragging = false;
+  bool _hovering = false;
+  double _dragStartHeight = 0;
+  double _dragStartY = 0;
+
+  String? _restoredKey;
+  bool _restoreInFlight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleRestore();
+    HardwareKeyboard.instance.addHandler(_onKey);
+  }
+
+  @override
+  void didUpdateWidget(covariant _TerminalDrawer old) {
+    super.didUpdateWidget(old);
+    if (widget.node.stringProp('persistKey') != _restoredKey) {
+      _scheduleRestore();
+    }
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
+    super.dispose();
+  }
+
+  // --- props -------------------------------------------------------------
+
+  String? get _persistKey {
+    final key = widget.node.stringProp('persistKey');
+    return key == null || key.isEmpty ? null : key;
+  }
+
+  double get _min =>
+      widget.node.numProp('minDrawerHeight')?.toDouble() ?? _defaultMin;
+
+  double get _maxRatio =>
+      widget.node.numProp('maxDrawerRatio')?.toDouble() ?? _defaultMaxRatio;
+
+  double get _initial =>
+      widget.node.numProp('initialHeight')?.toDouble() ?? _defaultHeight;
+
+  double _maxHeight(BuildContext context) {
+    final viewport = MediaQuery.sizeOf(context).height;
+    return math.max(_min, viewport * _maxRatio);
+  }
+
+  double _clamp(double value, BuildContext context) =>
+      value.clamp(_min, _maxHeight(context));
+
+  // --- persistence -------------------------------------------------------
+
+  void _scheduleRestore() {
+    final key = _persistKey;
+    final read = widget.ctx.readPersisted;
+    if (key == null || read == null || _restoreInFlight) return;
+    _restoreInFlight = true;
+    _restoredKey = key;
+    Future<void>(() async {
+      final stored = await read(key);
+      _restoreInFlight = false;
+      if (!mounted) return;
+      final value = stored is num
+          ? stored.toDouble()
+          : (stored is String ? double.tryParse(stored) : null);
+      if (value == null || value < 0) return;
+      setState(() => _height = value);
+    });
+  }
+
+  void _persist(double height) {
+    final key = _persistKey;
+    final write = widget.ctx.writePersisted;
+    if (key == null || write == null) return;
+    Future<void>(() => write(key, height));
+  }
+
+  // --- interaction -------------------------------------------------------
+
+  void _dragStart(DragStartDetails details) {
+    setState(() {
+      _dragging = true;
+      _dragStartHeight = _height ?? _initial;
+      _dragStartY = details.globalPosition.dy;
+    });
+  }
+
+  void _dragUpdate(DragUpdateDetails details) {
+    final delta = _dragStartY - details.globalPosition.dy;
+    setState(() {
+      _height = _clamp(_dragStartHeight + delta, context);
+    });
+  }
+
+  void _dragEnd([DragEndDetails? details]) {
+    if (!_dragging) return;
+    setState(() => _dragging = false);
+    _persist(_height ?? _initial);
+  }
+
+  /// The drawer key handler: `Escape` and `mod+w` close the focused
+  /// terminal first. Any other chord is ignored so it falls through to the
+  /// rest of the app (the upstream precedence).
+  bool _onKey(KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
+    final keyboard = HardwareKeyboard.instance;
+    final mod = keyboard.isMetaPressed || keyboard.isControlPressed;
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape) {
+      _close();
+      return true;
+    }
+    if (mod && key == LogicalKeyboardKey.keyW) {
+      _close();
+      return true;
+    }
+    return false;
+  }
+
+  void _close() {
+    final stateId = widget.node.stringProp('closeState');
+    if (stateId != null && stateId.isNotEmpty) {
+      widget.ctx.setState(stateId, false);
+    }
+  }
+
+  // --- build -------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    final height = _height ?? _initial;
+    return SizedBox(
+      key: const Key('terminal-drawer-surface'),
+      height: height,
+      child: Stack(
+        children: [
+          Positioned.fill(child: widget.ctx.build(context, widget.node)),
+          Positioned(
+            top: 0,
+            left: 0,
+            width: 48,
+            height: 32,
+            child: _grip(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The resize grip: the shared grip visual (T90) over a raw vertical drag
+  /// recognizer (mouse + touch + stylus) with the row-resize cursor.
+  Widget _grip(BuildContext context) {
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: {
+        VerticalDragGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<VerticalDragGestureRecognizer>(
+          () => VerticalDragGestureRecognizer(supportedDevices: _dragDevices),
+          (instance) {
+            instance
+              ..dragStartBehavior = DragStartBehavior.down
+              ..onStart = _dragStart
+              ..onUpdate = _dragUpdate
+              ..onEnd = _dragEnd
+              ..onCancel = () => _dragEnd();
+          },
+        ),
+      },
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeUpDown,
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: Semantics(
+          label: 'Resize terminal',
+          child: SizedBox.expand(
+            key: const Key('terminal-drawer-grip'),
+            child: gripHandleVisual(context, vertical: true, hovering: _hovering),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static const Set<PointerDeviceKind> _dragDevices = {
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.touch,
+    PointerDeviceKind.stylus,
+  };
 }
