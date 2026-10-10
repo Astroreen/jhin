@@ -1,22 +1,28 @@
-# Jhin SDUI contract (level 3)
+# Jhin SDUI contract (level 4)
 
-The Flutter client is a server-driven-UI renderer: the server authors screens
-as JSON trees over a primitive catalog and the client renders them. The client
-hardcodes exactly one screen — the server-profile surface (add-server and
-profile switching) — and one endpoint, the bootstrap fetch
-(`GET /_jhin/bootstrap`); everything else comes from the server. An unknown
-primitive renders a placeholder card and the client never crashes on server
+Jhin's UI is server-driven and the wire is **HTML**: the server authors
+screens with the `Ui` fluent builder over a primitive catalog, serializes the
+resulting tree to semantic HTML, and a thin vanilla-JS DOM runtime drives
+bootstrap, actions, directives, state, expressions and SSE. The client
+hardcodes exactly one surface — the pairing fallback, the built-in enroll
+form shown when the bootstrap answers 401/403 — and one endpoint, the
+bootstrap fetch (`GET /_jhin/bootstrap`); everything else comes from the
+server. The browser renders markup it does not know as inert, and the runtime
+ignores attributes it does not know, so the client never crashes on server
 content.
 
-This document is the **normative wire contract, level 3** (`api: 3`). It
-defines what a level-3 client parses and what a level-3 server emits; the
-shape an `api=1` client still receives is summarized in
-[Appendix A](#appendix-a-contract-level-1), and section 6 defines the
-level-3 → level-2 → level-1 downgrade chains for older clients. Server
-side: `plugins/ui-kit/` (the `Ui` builder over the catalog) and
-`plugins/ui-default/` (bootstrap, screens, actions, streams). Client side:
-`frontend/lib/sdui/`. See
-[architecture.md](architecture.md) for the runtime and
+This document is the **normative wire contract, level 4** (`api: 4`). It
+defines what the web client parses and what the server emits. The version
+constants (`sdk/src/main/java/com/astroreen/jhin/sdk/ApiVersion.java`) are
+**api 4 / minApi 4 / schema 5 / minSchema 5**. There is **no level-3
+compatibility path**: the JSON node-tree wire is gone, and a request that
+declares `api < 4` is answered with `426 Upgrade Required` (section 6).
+Server side: `plugins/ui-kit/` (the `Ui` builder and the HTML renderer) and
+`plugins/ui-default/` (bootstrap, screens, actions, streams, the web shell
+and its assets). Client side:
+`plugins/ui-default/src/main/resources/web/app.js`. See
+[architecture.md](architecture.md) for the runtime,
+[web-client.md](web-client.md) for the decisions behind the HTML wire and
 [plugin-dev.md](plugin-dev.md) for writing plugins.
 
 **Conformance format.** Every prop key in this document is machine-parseable:
@@ -29,11 +35,13 @@ here, so the doc and the code cannot drift apart.
 
 `GET /_jhin/bootstrap` returns the whole client start-up payload. The client
 advertises itself in every request with the `X-Jhin-Client` header
-(section 6); the server replies at `min(client api, server api)` and never
-emits fields the negotiated level does not define. Two producers exist:
+(section 6); a request that declares `api < 4`, or carries no header at all,
+is refused with `426 Upgrade Required` instead of a payload. Two producers
+exist:
 
 **Kernel fallback** (a bare kernel without a UI plugin; `KernelRoutes`) —
-unchanged from level 1:
+unchanged, and exempt from the upgrade gate so a bare server can always be
+probed:
 
 ```json
 {
@@ -45,71 +53,73 @@ unchanged from level 1:
 }
 ```
 
-**`jhin.ui` payload, contract level 3** (a plugin route on the same path
+**`jhin.ui` payload, contract level 4** (a plugin route on the same path
 supersedes the fallback silently; `BootstrapRoute`):
 
 ```json
 {
-  "api": 3,
+  "api": 4,
   "empty": false,
   "title": "Jhin",
-  "contract": { "api": 3, "minApi": 2, "schema": 4, "minSchema": 3 },
-  "theme": {
-    "appearance": "system",
-    "canvas": "#16161e",
-    "accent": "#7e57c2",
-    "colors": { "error": "#f7768e", "success": "#9ece6a", "warning": "#e0af68", "info": "#7aa2f7" },
-    "stageArt": { "stage-art-top": "#f28ac1", "stage-art-mid": "#cb3e86", "stage-art-bottom": "#73194f", "stage-art-highlight": "#ffe6f6", "stage-art-line": "#ffe7f8" },
-    "mode": "system"
-  },
-  "tokens": {
-    "spacing": { "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "xxl": 32 },
-    "radius": { "sm": 6, "md": 10, "lg": 14, "full": 9999 },
-    "typography": {
-      "h1":   { "size": 28, "height": 1.25, "weight": 700 },
-      "h2":   { "size": 22, "height": 1.30, "weight": 700 },
-      "h3":   { "size": 18, "height": 1.35, "weight": 600 },
-      "body": { "size": 14, "height": 1.50, "weight": 400 },
-      "small":{ "size": 12, "height": 1.45, "weight": 400 },
-      "mono": { "size": 13, "height": 1.55, "weight": 400, "font": "monospace" }
-    },
-    "elevation": { "none": 0, "sm": 1, "md": 4, "lg": 8 },
-    "motion": { "instant": 0, "fast": 120, "normal": 200, "slow": 320, "panel": 0 }
-  },
+  "contract": { "api": 4, "minApi": 4, "schema": 5, "minSchema": 5 },
+  "theme":   { "...unchanged: appearance, canvas, accent, colors, stageArt, mode..." },
+  "tokens":  { "...unchanged: the eleven UiTokens families..." },
   "density": "comfortable",
-  "keymap": [ { "key": "mod+enter", "command": "composer.send", "when": "composerFocus" } ],
+  "keymap":  [ { "key": "mod+enter", "command": "composer.send", "when": "composerFocus" } ],
+  "palette": { "...unchanged T115 command-palette metadata..." },
   "entry": "sessions",
-  "screens": [ { "id": "sessions", "node": { "type": "shell", "props": {}, "children": [] } } ],
+  "screens": [ { "id": "sessions", "html": "<div data-jhin-type=\"shell\" …>…</div>" } ],
   "screenEndpoint": "/ui/screen/{id}",
-  "fallbacks": { "offline": {}, "error": {} }
+  "actionEndpoint": "/ui/action/{name}",
+  "streamEndpoint": "/ui/stream/session/{sessionId}",
+  "shell": { "js": "/ui/assets/app.js", "css": "/ui/assets/app.css" },
+  "fallbacks": { "offline": "<div …>…</div>", "error": "<div …>…</div>" }
 }
 ```
+
+Rules:
+
+- `screens[]` keeps its role: the **inline subset** the bootstrap embeds (the
+  static screens), in registration order, cached and never lazily fetched —
+  only `refresh` re-fetches them. Dynamic ids (`chat:<session-id>`, `pair`,
+  `version_gate`) are resolved by the screen endpoint. Same as before, with
+  `html` in place of a serialized tree.
+- `shell` names the asset routes (`GET /ui/assets/app.js`,
+  `GET /ui/assets/app.css`). The field is present from the level-4 cutover
+  onwards — while the `GET /` route still inlines identical content, the
+  field already names the routes, so the runtime never branches on phase.
+- `theme`, `tokens`, `density`, `keymap` and `palette` are **unchanged** in
+  shape. They drive `TokenCss` (section 9.4) and the runtime's keymap merge.
 
 Top-level fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `api` | int | contract level the payload was produced at (`3`) |
+| `api` | int | contract level the payload was produced at (`4`) |
 | `empty` | bool | `true` tells the client to render its built-in empty state ("no UI plugin installed") instead of a screen stack |
 | `title` | string | product chrome title |
-| `contract` | object | version negotiation block, see below |
+| `contract` | object | version block, see below |
 | `theme` | object | theme seed block, see below |
 | `tokens` | object | design-token overrides, see below |
-| `density` | string | control density: `compact`, `comfortable` or `spacious`; scales padding and height of controls |
+| `density` | string | control density: `compact`, `comfortable` or `spacious`; selects the `[data-density]` scale on `<html>` (section 9.4) |
 | `keymap` | array | default key bindings, `[{key, command, when?}]`, see below |
+| `palette` | object | command-palette metadata (T115), unchanged |
 | `entry` | string | the screen id pushed first |
-| `screens` | array | inline screens `[{id, node}]`, in registration order; cached, never lazily fetched, only `refresh` re-fetches them |
-| `screenEndpoint` | string | path template for on-demand screens; the client substitutes `{id}` (URL-encoded) and expects `{node: …}` or a bare node |
-| `fallbacks` | object | server-authored offline and error art (`offline`, `error`), cached by the client on first success |
+| `screens` | array | inline screens `[{id, html}]`, in registration order |
+| `screenEndpoint` | string | path template for on-demand screens; the client substitutes `{id}` (URL-encoded) and expects `{id, html}` |
+| `actionEndpoint` | string | path template for action posts; the client substitutes `{name}` |
+| `streamEndpoint` | string | path template for the per-session SSE topic; the client substitutes `{sessionId}` |
+| `shell` | object | the runtime asset routes `{js, css}` |
+| `fallbacks` | object | server-rendered offline and error art as HTML strings (`offline`, `error`), cached by the client on first success |
 
 `contract` keys:
 
 | Key | Meaning |
 |-----|---------|
-| `api` | the server's wire contract level (`3`) |
-| `minApi` | the lowest wire level the server still speaks |
-| `schema` | the client persisted-data schema version the server was built for (`4`, see [updates.md](updates.md)) |
-| `minSchema` | the lowest persisted-data schema the server accepts; a client whose on-disk schema is lower MUST refuse to render product screens and show the built-in `version_gate` "update required" surface |
+| `api` | the server's wire contract level (`4`) |
+| `minApi` | the lowest wire level the server still speaks (`4` — there is no downgrade path) |
+| `schema` | the client persisted-data schema version the server was built for (`5`, see [updates.md](updates.md)) |
+| `minSchema` | the lowest persisted-data schema the server accepts (`5`); a client whose stored schema is lower MUST refuse to render product screens and show the built-in `version_gate` "update required" surface |
 
 `theme` keys:
 
@@ -122,14 +132,13 @@ Top-level fields:
 | `stageArt` | object | the five `stage-art-*` backdrop tokens of the selected catalogue theme (`stage-art-top`, `stage-art-mid`, `stage-art-bottom`, `stage-art-highlight`, `stage-art-line`), as `#RRGGBB` hex; theme-scoped metadata the sidebar stage backdrop paints from (T95), not palette generation |
 | `mode` | `system`/`light`/`dark` | legacy level-1 spelling of the same idea; MUST equal `appearance` |
 
-From `{appearance, canvas, accent}` the client **generates** the full material
-palette (T3-style short theme format): `ColorScheme.fromSeed(seed: accent)`
-with the surface/background family derived from `canvas` and on-colors from
-luminance. `colors` overrides are applied last, by token name.
+From `{appearance, canvas, accent}` the **server** generates the full palette
+(`PaletteGen`/`Oklch`) and emits it as CSS custom properties in the two
+`:root` layers of section 9.4; `colors` overrides are applied last, by token
+name. The client performs no palette math and parses no token values.
 
-`tokens` overrides the client's built-in defaults key-by-key; any absent key
-keeps the built-in. All numbers are logical px; `typography.*.weight` is
-100–900.
+`tokens` overrides the built-in defaults key-by-key; any absent key keeps the
+built-in. All numbers are logical px; `typography.*.weight` is 100–900.
 
 | Token group | Keys and built-in defaults |
 |-------------|----------------------------|
@@ -206,20 +215,27 @@ holds the thread-behavior proxy keys `autoSettleDefault` and `inactivityDays`
 auto-settle sweep threshold itself stays the `jhin.sessions.inactivityMs`
 operator config.
 
-Node shape everywhere (section 2):
+The authoring model (section 2) is unchanged — the server builds a tree of
+`UiNode` values:
 
 ```json
 {"type": "text", "props": {"text": "Hello", "style": "h2"}, "children": []}
 ```
 
-`children` is optional; a string child is a text shorthand.
+`children` is optional; a string child is a text shorthand. At level 4 this
+tree is a **server-side** model only: it never travels the wire. What travels
+is the HTML the renderer produces from it (section 9), while `UiNode.toJson()`
+stays in service for the control plane (action payloads, dumps, tests).
 
 ## 2. Node model
 
-A node is `{"type": "<primitive>", "props": {…}, "children": […]}`. Every node
-accepts the universal prop surface below, implemented once in the client
-registry before the primitive builder runs, plus the per-primitive props of
-section 2.6.
+A node is `{"type": "<primitive>", "props": {…}, "children": […]}` inside the
+server. Every node accepts the universal prop surface below, applied once by
+`HtmlRenderer`/`UniversalProps` before the primitive renderer runs, plus the
+per-primitive props of section 2.6. The catalog and the prop vocabulary are
+**unchanged**: level 4 changes the serialization (HTML instead of a JSON
+tree), the application order (section 2.3) and the direction of degradation
+(section 2.4) — not the vocabulary a plugin writes.
 
 ### 2.1 Universal props
 
@@ -320,14 +336,13 @@ primitives.
 |-------|------|------|---------|---------|
 | A11y | `excludeSemantics` | bool | `false` | exclude descendant semantics; the semantics label/hint/value props above wire into the same `Semantics` wrapper |
 
-The level-3 universal surface (contract level 3, section 2.5). A level-2
-client never receives `glass`, `glassTint` or `statusPulse` — the server
-strips them at the source (section 6) — while `demo` and the `safeArea` group
-are inert markers a level-2 client ignores:
+The extended universal surface — the level-3 additions, carried into level 4
+unchanged. Every client that speaks `api=4` receives them in full; nothing is
+stripped for an older level, because there is no older level:
 
 | Group | Prop | Type | Default | Meaning |
 |-------|------|------|---------|---------|
-| Level 3 | `glass` | bool | `false` | render the node's surface with the glass treatment: a backdrop blur at the token blur radius, a tinted fill at the token opacity and the token saturation (`tokens.glass`). Only the five glass-capable surfaces honour it — `card`, `sheet`, `dialog`, `menu`, `banner` — other nodes ignore it. Without backdrop support (or below level 3, where it is stripped) the surface degrades to a solid fill at the tint colour |
+| Level 3 | `glass` | bool | `false` | render the node's surface with the glass treatment: a backdrop blur at the token blur radius, a tinted fill at the token opacity and the token saturation (`tokens.glass`). Only the five glass-capable surfaces honour it — `card`, `sheet`, `dialog`, `menu`, `banner` — other nodes ignore it. Without backdrop support the surface degrades to a solid fill at the tint colour |
 | Level 3 | `glassTint` | color or token | — | the tint colour of the glass fill (the upstream `--alert-glass-tint`): a `$color.*` token or hex literal, painted as a 4% wash over the glass fill. Only the five glass-capable surfaces honour it; without backdrop support the wash drops with the glass fill (the solid fill wins) |
 | Level 3 | `demo` | bool | `false` | the node is decorative: interactive but non-functional — it dispatches inline directives only (`setState`/`patch`/`dialog`/`toast`, never a server-side write) and the client renders the shared disabled-affordance marker for it: a small corner `preview` badge plus the shared tooltip `Preview only — not available in this build`. Every interactive node without a real effect MUST carry it (plan section 14.10; the T117 sweep enforces it). On a `tabs` node with `hasClose` the badge moves to the bottom-right so it never covers the last tab's close `X` |
 | Level 3 | `statusPulse` | `pulse`/`ping`/`skeleton`/`preview-loading`/`none` | `none` | duty-cycled attention indicator on indicator-bearing nodes (`progress`): `pulse` runs the 2 s status pulse, `ping` the 2 s ping ring, `skeleton` the 2.4 s shimmer (the `tokens.motion` duty cycles); `preview-loading` (T108) renders the browser-preview bar — a 2 px full-width bar scaling 0.04 → 0.9 over 5.3 s with `cubic-bezier(0.1, 0.5, 0.2, 1)`, held at 0.9 (`forwards`), and reads the `loading` prop for its play state. Other nodes ignore it; the OS reduced-motion preference collapses every mode to a static render |
@@ -335,51 +350,74 @@ are inert markers a level-2 client ignores:
 
 ### 2.2 Token references
 
-Any string prop whose value starts with `$` is a client-side token lookup:
+Any string prop whose value starts with `$` is a token reference:
 `$spacing.md`, `$color.accent`, `$radius.lg`, `$motion.fast`, `$size.sidebar`,
-`$font.mono`. Resolution happens **client-side only** — the server never
-expands `$tokens`, which keeps tokens themeable per client. Token namespaces
-mirror the bootstrap `tokens` block plus `color` (theme palette), `size`
-(layout constants such as `$size.sidebar`) and `font`. An unknown or failed
-lookup degrades silently: the literal string is used and the node still
-renders, exactly like the `when`/`${…}` degrade rule (section 7).
+`$font.mono`. At level 4 the reference is resolved **by indirection**: the
+renderer emits `$family.key` as `var(--<family>-<key>)` (the dot becomes a
+hyphen), so the value is still resolved per theme — by the CSS cascade
+instead of a client-side lookup table (section 9.4). Token namespaces mirror
+the bootstrap `tokens` block plus `color` (theme palette), `size` (layout
+constants such as `$size.sidebar`) and `font`. Unknown keys are rejected at
+build time by `UiTokens`; a reference that still reaches the wire unresolved
+renders as the literal string and the node still renders, exactly like the
+`when`/`${…}` degrade rule (section 7).
 
-### 2.3 Fixed wrapping order
+`UiTokens` values are already verbatim CSS (`var(--accent)`,
+`color-mix(in oklab, …)`, `0.625rem`, `cubic-bezier(0.32, 0.72, 0, 1)`,
+`2.4s`), so the client never parses a token value: there is no
+`parseCssLength` and no `parseCssDuration` in the runtime.
 
-The universal surface wraps the primitive in a deterministic order (tested):
+### 2.3 Universal prop application order
 
-1. build the primitive;
-2. apply the text style (text-bearing nodes);
-3. `DecoratedBox` (`color`/`gradient`/`border`/`borderRadius`/`shadow`);
-4. `Padding` (`padding`);
-5. `ConstrainedBox` (`minWidth`/`maxWidth`/`minHeight`/`maxHeight`/`width`/`height`);
-6. `AspectRatio` (`aspectRatio`);
-7. `Opacity` (`opacity`);
-8. `Transform` (`transform`);
-9. `ClipRRect`/`ClipOval`/`ClipRect` (`clip`);
-10. `Align` (`align`);
-11. `Tooltip` (`tooltip`);
-12. gesture wrapper — `InkWell` when `action`/`onTap` on a Material surface,
-    `GestureDetector` otherwise (`onLongPress`, `confirm`, `enabled`, `cursor`);
-13. `Semantics` (`semanticsLabel`/`semanticsHint`/`semanticsValue`/`excludeSemantics`);
-14. `Flexible`/`Expanded` (`flex`/`fit`);
-15. `Padding` (`margin`).
+**One node → one element** (plus an explicit wrapper only where CSS cannot
+express the prop). The former 15-step widget wrapping order survives as an
+application **order** on a single box, because in CSS decoration, padding,
+constraints, aspect ratio, opacity, transform, clip and alignment are all
+properties of the same box. `UniversalProps` applies them in this order —
+tested, not re-derivable:
 
-The interaction cluster (steps 11–13) carries two fixed extra wrappers: `MouseRegion` (`cursor`) is the outermost wrapper of the cluster and `Focus` (`focusable`) sits between the gesture wrapper and `Semantics`; the gesture wrapper is skipped for primitives that already own their interaction (`button`, `icon_button`, `dropdown`), so no node ever carries two dispatch handlers.
+1. **decoration** — `color`/`gradient`/`border`/`borderWidth`/`borderStyle`/`borderRadius`/`shadow`, plus the text style on text-bearing nodes;
+2. **padding** — `padding`;
+3. **constraints** — `minWidth`/`maxWidth`/`minHeight`/`maxHeight`/`width`/`height`;
+4. **aspect-ratio** — `aspectRatio`;
+5. **opacity** — `opacity`;
+6. **transform** — `transform`;
+7. **clip** — `clip`/`clipBehavior` as `overflow` (the radius from step 1 clips with it);
+8. **align** — `align`/`alignment` as `justify-content`/`justify-items`/`align-self`;
+9. **`title`** — the `tooltip` prop;
+10. **pointer and keyboard handlers** — `action`/`onTap`/`onLongPress`/`confirm`/`enabled`/`cursor`/`focusable` as `data-jhin-action`, `data-jhin-confirm`, `cursor` and `tabindex`;
+11. **ARIA** — `semanticsLabel`/`semanticsHint`/`semanticsValue`/`excludeSemantics` as `aria-label`/`aria-description`/`aria-valuetext`/`aria-hidden`, and `enabled: false` as `aria-disabled`;
+12. **flex** — `flex` → `flex-grow`, `fit` → `flex` (`tight` fills, `loose` shrinks);
+13. **margin** — `margin`.
+
+Primitives that already own their interaction (`button`, `icon_button`,
+`dropdown`) never receive a second handler: step 10 writes the action onto
+the semantic element itself, so no node ever carries two dispatch paths.
 
 ### 2.4 Degradation rules
 
-- An unknown `type` renders a muted `Unsupported UI element: <type>` card.
-- A malformed prop degrades that node only, never the screen.
-- An unknown token reference degrades to the literal string.
-- An unknown enum literal degrades to the prop's default.
-- An unknown icon name renders an empty icon and logs — never a crash.
+The direction is inverted from level 3. The server can only emit types it
+knows, so the surviving risk is a **stale `app.js` against a newer server**,
+not a stale client against a newer wire:
+
+- Unknown markup is inert: the browser renders unknown classes and attributes
+  without complaint, so the HTML always paints.
+- An unknown `data-jhin-type` in the runtime's directive and prop-applier
+  paths is ignored with a `console.warn` — never a throw.
+- An unknown node type on the server renders the `jhin-unsupported`
+  placeholder card.
+- An unknown token reference renders as the literal string.
+- A `when` parse failure keeps the node **visible** (only an explicit `false`
+  hides).
+- A `${…}` failure leaves the raw template in place as text.
+- An unknown icon name renders an empty `<svg>` and logs (section 9.6).
 - The client never crashes on server content.
 
 ### 2.5 Primitive catalog
 
-The level-2 contract grew the catalog from 25 to 58; the level-3 contract
-grows it to 68. `container` stays as the legacy name; `box` is its superset.
+The catalog is the **68 names** below — unchanged at level 4, which changes
+the serialization and not the vocabulary. `container` stays as the legacy
+name; `box` is its superset.
 
 - Layout — `screen`, `shell`, `container`, `box`, `row`, `column`, `flex`,
   `expanded`, `flexible`, `stack`, `positioned`, `align`, `center`,
@@ -562,10 +600,6 @@ Layout primitives:
 | `split` | `minSecond` | num | — | minimum second-pane extent |
 | `split` | `persistKey` | string | — | client store key the divider position persists under |
 | `split` | `handleStyle` | `rail`/`grip`/`invisible` | `rail` | drag-handle look; the handle resizes by drag (mouse and touch) and by arrow keys (16 px steps) when focused |
-
-Level-3 degradation targets (applied by the server for a level-2 client,
-section 6): `split` degrades to a `column` — the two panes stack in order,
-the divider, the clamps and the persistence are lost.
 
 Text primitives:
 
@@ -823,10 +857,6 @@ Control primitives:
 | `scroll_fade` | `height` | num or token | 24 | fade extent (px) |
 | `scroll_fade` | `mode` | `topbar`/`virtualized` | `topbar` | fade recipe (`topbar` for chrome bars, `virtualized` for lazy lists) |
 
-Level-3 degradation targets: `kbd` degrades to a `text` carrying the chord
-string (mono style); `scroll_fade` degrades to a `scroll` wrapping the same
-child — the fade gradient is dropped.
-
 Surface primitives:
 
 | Primitive | Prop | Type | Default | Description |
@@ -890,12 +920,6 @@ Surface primitives:
 | `toast_stack` | `items` | item array | — | the transient notices, see the item table below (required) |
 | `toast_stack` | `direction` | `top`/`bottom` | `bottom` | screen edge the stack grows from; items queue, each dismissible, each with its own window |
 
-Level-3 degradation targets: `hover_card` degrades to its `trigger` node with
-the universal props (including `tooltip`) merged onto it — the card content is
-dropped; `toast_stack` degrades to a `column` of plain `text` nodes, one per
-item — the `toast` directive remains the level-2 channel for transient
-notices.
-
 Data primitives:
 
 | Primitive | Prop | Type | Default | Description |
@@ -917,9 +941,6 @@ Data primitives:
 | `diff_view` | `colorScheme` | `default`/`blue-orange` | `default` | diff colour scheme (the `data-diff-color-scheme` mapping) |
 | `diff_view` | `stats` | object | — | `{additions, deletions}` rendered as the green/red stat header |
 | `diff_view` | `demo` | bool | — | MUST be `true`: the view is decorative and renders from server-authored hunks only — no diff engine exists client-side or server-side |
-
-Level-3 degradation target: `diff_view` degrades to a `code_block` carrying
-the file name and the hunk headers as the code text.
 
 `diff_view` is decorative and always carries `demo: true` (section 2.1): it
 renders exactly the hunks the server authors, with the `diff-addition` /
@@ -1055,10 +1076,19 @@ what the requesting client cannot honour).
 
 ## 4. Client directives
 
-Seventeen directives (`Directives` on the server, `DirectiveExecutor` on the
-client). Wire form is the `op` discriminator plus the listed fields. They
-appear in action responses, in `{client: […]}` stream frames and inline in
-node props (a button action may be one directive).
+Seventeen directives (`Directives` on the server, the `directives` module of
+`app.js` on the client). Wire form is the `op` discriminator plus the listed
+fields. They appear in action responses, in `{client: […]}` stream frames and
+inline in node props (a button action may be one directive).
+
+Exactly **three** ops changed shape at level 4 — `patch`, `setScreen` and
+`dialog` carry an `html` fragment where they used to carry merged props or a
+serialized tree. The other fourteen —
+`navigate back replace refresh reloadBootstrap setToken clearToken
+setServerUrl openProfiles toast dismissDialog setState openUrl undo` — are
+byte-identical to level 3, including the capability drops of
+`Directives.filter`. All seventeen **names** are unchanged, and `setState`
+stays the state channel for `when` and `${…}`.
 
 | Directive | Args | Effect |
 |-----------|------|--------|
@@ -1067,18 +1097,26 @@ node props (a button action may be one directive).
 | `replace` | `screen` | replace the current screen |
 | `refresh` | — | re-fetch the current screen (forces network) |
 | `reloadBootstrap` | — | drop the client caches and re-run bootstrap |
-| `setToken` | `value` | store the bearer token for this profile (`""` clears) |
+| `setToken` | `value` | store the bearer token for this origin (`""` clears) |
 | `clearToken` | — | drop the stored bearer token |
 | `setServerUrl` | `value` | rewrite the active profile URL and reboot against it |
 | `openProfiles` | — | open the client-owned server profile surface |
 | `toast` | `text`, `style?`, `action?`, `duration?` | show a transient message (`style: "error"` for failures); with an `action` the toast is the T98 undo notice — it renders through the `toast_stack` undo-notice card look (label + `Undo` + close) for `duration` ms (default 5000, the upstream 5 s undo window) and dispatches the action on the `Undo` tap |
-| `dialog` | `node` | open a dialog rendering the given node (`kind: "sheet"` opens a bottom sheet) |
+| `dialog` | `html`, `kind?` | open a dialog rendering the given HTML fragment (`kind: "sheet"` opens a bottom sheet) |
 | `dismissDialog` | — | close the open dialog |
 | `setState` | `id`, `value` | set one local `UiState` field (feeds `when` / `${…}`) |
-| `patch` | `id`, `props` | merge props into one rendered node in place |
-| `setScreen` | `id`, `node` | replace the node of a known screen id |
+| `patch` | `id`, `html` | replace the inner HTML of the rendered element with that id, in place (section 9.5) |
+| `setScreen` | `id`, `html` | replace the HTML of a known screen id |
 | `openUrl` | `value` | open a URL in the client's browser surface |
 | `undo` | — | revert the most recent lifecycle action inside its 5-second window; with no open window it is a no-op toast |
+
+The three level-4 shapes, verbatim:
+
+```json
+{"op": "patch",     "id": "msg-7",   "html": "<p>accumulated markdown…</p>"}
+{"op": "setScreen", "id": "sessions","html": "<div data-jhin-type=\"shell\" …>…</div>"}
+{"op": "dialog",    "html": "<div data-jhin-type=\"sheet\" …>…</div>", "kind": "sheet"}
+```
 
 **Capability drops** (`X-Jhin-Client` capabilities, section 6): `openUrl` is
 dropped without `open_url`; `setToken` and `clearToken` without
@@ -1161,27 +1199,43 @@ across every decorative route (plan section 14.10).
 ## 5. Streams and frames
 
 `stream_view.topic` is the SSE endpoint path to open (for `jhin.ui`,
-`/ui/stream/session/{id}`). The connection is reconnecting with exponential
-backoff and replays from `Last-Event-ID`; every SSE event whose data decodes
-to a JSON object is one **frame**. Four frame shapes, exactly one per event:
+`/ui/stream/session/{id}`, named by `streamEndpoint`; the overview topic is
+`/ui/stream/sessions-overview`). The connection is reconnecting with
+exponential backoff and replays from `Last-Event-ID`; every SSE event whose
+data decodes to a JSON object is one **frame**. Five frame shapes, exactly
+one per event:
 
-| Frame | Shape | Effect |
-|-------|-------|--------|
-| node | `{"node": {…node}}` | append (or replace everything with `mode: replace`); a re-delivered `id` replaces the item in place |
-| patch | `{"patch": {"id": "…", "props": {…}}}` | merge `props` into the stream item with that `id`; with no such item the patch targets the surrounding screen |
-| remove | `{"remove": "<id>"}` | drop the item; the id stays tombstoned — a replay never resurrects it |
-| client | `{"client": [ …directives ]}` | run the directive list — e.g. `toast`, `dialog`, `navigate`, `refresh`, `undo` |
+```json
+{ "node":    { "id": "msg-7", "html": "<div data-jhin-id=\"msg-7\" …>…</div>" } }
+{ "patch":   { "id": "msg-7", "html": "<p>accumulated markdown…</p>" } }
+{ "replace": { "id": "row-3", "html": "<div data-jhin-id=\"row-3\" …>…</div>" } }
+{ "remove":  "msg-7" }
+{ "client":  [ { "op": "toast", "text": "…" } ] }
+```
+
+| Frame | Effect |
+|-------|--------|
+| `node` | append the fragment to the stream view — or replace the whole container when the view carries `mode: replace`; a re-delivered `id` replaces that item in place. Identical semantics to level 3, with an `html` fragment instead of a tree |
+| `patch` | **innerHTML swap** of `#<id>`: the element, its id and its attributes survive, only its content is replaced |
+| `replace` | **outerHTML swap**: the element itself is replaced — the fallback for a change that is not expressible as inner content |
+| `remove` | drop the item; the id stays tombstoned — a replay never resurrects it |
+| `client` | run the directive list — e.g. `toast`, `dialog`, `navigate`, `refresh`, `undo` |
+
+A `patch` or `replace` whose target id is absent falls back to the nearest
+ancestor `[data-jhin-id]`; with no such ancestor it is dropped with a
+`console.warn` (level 3's "no item → surrounding screen" rule). Focus and
+selection are restored around every swap per section 9.5.
 
 `itemLimit` drops the oldest items; dropped or removed ids are never
 resurrected. With `autoScroll` the view anchors like the upstream messages
-timeline (T100): a `node`/`remove` frame (and a whole `mode: replace`)
-jumps to the bottom while the view follows the end — the user scrolling
-away beyond the 24 px `CHAT_TIMELINE_ANCHOR_OFFSET` tolerance
+timeline (T100): a `node`, `replace` or `remove` frame (and a whole
+`mode: replace`) jumps to the bottom while the view follows the end — the
+user scrolling away beyond the 24 px `CHAT_TIMELINE_ANCHOR_OFFSET` tolerance
 (`timelineScrollAnchoring.ts:39`, upstream commit 37de6cb) switches to
 free-scrolling until the end is reached again — while a `patch` frame
-never scrolls: it updates the rendered item in place and the position is
+**never scrolls**: it updates the rendered item in place and the position is
 preserved. The list reserves the anchor offset as its end inset so the
-newest row clears the composer seam. Nodes without an `id` always append.
+newest row clears the composer seam. Fragments without an `id` always append.
 
 **Session event payloads** (`jhin.sessions` event log, translated into frames
 by `jhin.ui`'s `EventFrames`): each stored event carries a gap-free
@@ -1262,78 +1316,70 @@ names, so every patch lands on matching keys:
 | `session-row` | `settledReason` | the settle reason, or `null` |
 | `session-row` | `sortOrder` | the manual position, or `null` |
 
-## 6. Client capabilities and schema negotiation
+## 6. Client capabilities and the 426 upgrade gate
 
-The `X-Jhin-Client` header is
+The `X-Jhin-Client` header grammar is unchanged:
 `api=<int>; version=<semver>; schema=<int>; caps=<comma-list>` (keys in any
-order, unknown keys ignored, all fields optional):
+order, unknown keys ignored):
 
-- `api` — the wire contract level the client can parse (this repository's
-  client speaks `api=3`; an absent header behaves as `api=1`).
+- `api` — the wire contract level the client can parse. The web client sends
+  `api=4`; an absent header behaves as `api=1`.
 - `version` — the client's own semver.
-- `schema` — the client's persisted-data schema version (starts at 4, the
-  store chain v1→v4; an absent value behaves as `1`).
+- `schema` — the client's persisted-data schema version (`5` at level 4; an
+  absent value behaves as `1`).
 - `caps` — capability names, comma-separated. Known names: `sse`,
   `tls_pinning`, `secure_storage`, `open_url`, `multi_profile`; the set only
   grows.
 
-The server replies at `min(client api, server api)` and never emits fields the
-negotiated level does not define. It must treat an absent capability as
-unsupported and degrade at the source (`CapabilityTailor`). The negotiation
-is independent of the schema gate: a client whose `schema` is below
-`contract.minSchema` still receives a normal (tailored) payload whose `entry`
-names the client-owned `version_gate` surface, so a stale client shows the
-"update required" chrome instead of product screens and never crashes.
+**The 426 upgrade rule.** There is no negotiation of the wire format and no
+downgrade chain: a request whose `X-Jhin-Client` declares `api < 4`, or which
+carries no `X-Jhin-Client` header at all, is answered
 
-**Level-3 → level-2 downgrade table** (applied when the negotiated api is 2 —
-the level-3 primitives and universal props are exactly the ones a level-2
-client cannot parse):
+```
+HTTP/1.1 426 Upgrade Required
+Content-Type: application/json
 
-| Level-3 primitive or prop | Degrades to |
-|---------------------------|-------------|
-| `split` | `column` (the two panes stack in order; divider, clamps and persistence are lost) |
-| `hover_card` | replaced by its `trigger` node with the universal props (including `tooltip`) merged onto it; the card content is dropped |
-| `toast_stack` | a `column` of plain `text` nodes, one per item; the `toast` directive remains the level-2 channel for the same transient notices |
-| `kbd` | `text` carrying the chord string (mono style) |
-| `scroll_fade` | `scroll` wrapping the same child (the fade gradient is dropped) |
-| `diff_view` | `code_block` carrying the file name and the hunk headers as the code text |
-| universal `glass` | stripped — surfaces render solid |
-| universal `glassTint` | stripped — the tint wash drops with the glass fill |
-| universal `statusPulse` | stripped — indicators render static |
-| universal `demo` | kept — an inert marker for a level-2 client |
-| `safeArea` group | kept — an inert marker for a level-2 client |
+{"error":"contract_upgrade","message":"This server speaks the HTML UI contract (api=4). Upgrade your client.","minApi":4}
+```
 
-**Level-2 → level-1 primitive downgrade table** (applied when the negotiated
-api is below 2; the level-3 table runs first, so a `split` arrives at this
-table already rewritten to a `column`, which this table does not touch):
+The body is JSON so an old client parses it and renders its own BootError
+surface instead of garbage. The gate covers the UI-bearing routes —
+`GET /_jhin/bootstrap`, `GET /ui/screen/{id}`, `POST /ui/action/{name}` and
+the `GET /ui/stream/…` topics; the kernel's own `GET /_jhin/health` and the
+bare-kernel bootstrap fallback are exempt, so a server can always be probed.
+**There is no level-3 compatibility path and no `caps=html` negotiation
+gate**: the level-3 → level-2 → level-1 downgrade tables of the previous
+contract are deleted, not deprecated. [Appendix A](#appendix-a-contract-level-1)
+records the level-1 shape as history only; no server emits it at level 4.
 
-| Level-2 primitive | Degrades to |
-|-------------------|-------------|
-| `shell` | `container` |
-| `row` | `container` (direction row) |
-| `list_row` | `card` |
-| `chip` | `text` |
-| `badge` | `text` |
-| `sheet` | `card` |
-| `dialog` | `card` |
-| `code_block` | `text` (mono style) |
-| `tabs` | `nav` (kind tabs) |
-| `skeleton` | `progress` |
-| `avatar` | `figure` (shape circle) |
-| `menu` | `list` |
-| `tree` | `list` |
-| `rich_text` | `text` |
+**Capabilities still tailor directives, never markup.** `Directives.filter`
+drops at the source what the requesting client cannot honour (an inline
+directive prop is removed rather than emitted and ignored): `openUrl`
+without `open_url`; `setToken` and `clearToken` without `secure_storage`;
+`setServerUrl` without `multi_profile` — and `openProfiles` with it, since
+the client-owned profile surface does not exist in the web runtime. Without
+`sse` a `stream_view` renders a server-side snapshot of the stream tail as a
+plain list (the universal props survive the replacement, so patches
+addressed at the id still land).
 
-Capability-based degrades: without `sse` a `stream_view` becomes a `list`
-carrying a server-side snapshot of the stream tail (universal props survive
-the replacement so patches addressed at the id still land); unhonourable
-inline directives are removed from node props (section 4).
+The web client's capability matrix:
 
-Level-1 clients additionally receive the level-1 shape: no `contract`,
-`tokens`, `density` or `keymap`, and a `theme` reduced to `seedColor` + `mode`
-(Appendix A). When the client's `schema` is below `contract.minSchema`, the
-server includes a `version_gate` screen as the `entry` so a stale installed
-client shows the "update required" surface instead of product screens.
+| Capability | Advertised | Why |
+|------------|-----------|-----|
+| `sse` | yes | `EventSource`, with a fetch-stream fallback |
+| `open_url` | yes | `window.open` |
+| `secure_storage` | yes | `localStorage["jhin.token"]` — the single-user self-hosted trade-off, documented in [web-client.md](web-client.md) |
+| `tls_pinning` | no | the browser owns certificate validation |
+| `multi_profile` | no | the origin *is* the server |
+
+So the web client sends
+`X-Jhin-Client: api=4; version=<app version>; schema=5; caps=sse,open_url,secure_storage`.
+
+**The schema gate is independent of the upgrade gate.** A client that speaks
+`api=4` but whose stored schema is below `contract.minSchema` still receives
+a normal payload, with `entry` naming the `version_gate` surface, so a stale
+store shows the "update required" chrome instead of product screens and
+never crashes.
 
 ## 7. Expression subset
 
@@ -1356,30 +1402,31 @@ older client:
 
 ## 8. Caching and payload versioning
 
-Per server profile (`ServerProfile` in `frontend/lib/core/auth/app_storage.dart`,
-persisted locally):
+The web runtime persists per origin (`localStorage`, see
+[updates.md](updates.md)):
 
-- `cachedBootstrap` — the last successful bootstrap payload. Used to render
-  immediately when the server is unreachable; the server's `fallbacks` art
-  (from the same payload) is cached alongside it for offline/error screens.
-- `cachedScreens` — screen id → node JSON, an in-memory LRU bounded at **50**
-  entries and persisted with the profile. A cached screen renders immediately
-  and **revalidates in the background** (stale-while-revalidate); inline
-  screens (those travelling with the bootstrap) are never fetched, only
-  `refresh` re-fetches them.
-- `fallbacks` — the cached offline/error nodes.
+- `jhin.bootstrap` — the last successful bootstrap payload. Used to paint
+  immediately when the server is unreachable; the server's `fallbacks` HTML
+  travels with it and serves the offline and error surfaces.
+- `jhin.screens` — screen id → HTML string, an LRU bounded at **50** entries.
+  A cached screen renders immediately and **revalidates in the background**
+  (stale-while-revalidate); inline screens (those travelling with the
+  bootstrap) are never fetched, only `refresh` re-fetches them.
+- `jhin.token` — the bearer token (the `secure_storage` capability).
+- `jhin.keybindings` — the user keymap overrides.
 
 `refresh` and `reloadBootstrap` force network. `reloadBootstrap` drops the
 screen cache, the `setScreen` overrides and the cached bootstrap first, then
-re-runs `GET /_jhin/bootstrap` and persists the fresh payload.
+re-runs `GET /_jhin/bootstrap` and persists the fresh payload. The runtime
+assets themselves revalidate by `ETag` against `GET /ui/assets/{name}`.
 
 **Payload versioning.** Cached payloads carry the `api` and the contract
-`schema` they were produced at. On an `app`, `api` or `schema` change the
-client drops `cachedScreens` and revalidates `cachedBootstrap` — a stale
-screen built for api 1 must never be replayed into an api-3 renderer, and a
-payload cached under schema 3 must never seed a schema-4 store. This is the
-cache half of the data-upgrade system; the persisted-state half is specified
-in [updates.md](updates.md).
+`schema` they were produced at. On an app, `api` or `schema` change the
+client drops the screen cache and revalidates the bootstrap — a level-3 tree
+cached by an older build must never be replayed into the level-4 DOM runtime,
+and a payload cached under schema 4 must never seed a schema-5 store. This is
+the cache half of the data-upgrade system; the persisted-state half is
+specified in [updates.md](updates.md).
 
 **Request enrichment: `X-Jhin-Keybindings`.** Every JSON request (screen
 fetch and action post) carries the caller's current user keymap overrides so
@@ -1392,7 +1439,175 @@ malformed header means no overrides and the server renders its defaults. The
 client sends it from the live store, so a `refresh` after a rebind renders the
 fresh chords without a restart.
 
+## 9. HTML rendering rules
+
+`HtmlRenderer.render(UiNode) → String` and
+`HtmlRenderer.renderFragment(UiNode) → String` (no `<html>` wrapper) are pure
+functions: no per-request server state, no session affinity. Props nested
+inside props (`fields`, `items`, `rows`, `spans`, `hunks`, `series`, …)
+render through the same recursive pipeline, mirroring `UiNode.toJson()`'s
+`wireValue()`. `UniversalProps` applies the universal surface in the
+section 2.3 order; the per-family renderers own the element choice below.
+
+### 9.1 Semantic element mapping
+
+**Semantic HTML first** — primitives map to real elements, so the
+accessibility tree comes free and an agent can read the UI structurally:
+
+| Primitive | Element | Primitive | Element |
+|---|---|---|---|
+| `text` | `<span>`, or `<p>` when `style` is block-ish (h1–h3/body) | `button` / `icon_button` | `<button type="button">` |
+| `markdown` | server-rendered `<p>`/`<h1>`–`<h3>`/`<ul>`/`<pre>`/`<table>` … | `input` / `textarea` | `<input>` / `<textarea>` |
+| `code_block` | `<pre><code class="language-x">` | `checkbox` | `<input type="checkbox">` + `<label>` |
+| `list_row` | `<div role="listitem">`, or `<button>` when it carries an action | `switch` (wire type `switch`) | `<input type="checkbox" role="switch">` |
+| `nav` | `<nav>` + `<button aria-current>` items | `slider` | `<input type="range">` |
+| `tabs` | `<div role="tablist">` + `role="tab"` children | `dropdown` | `<select>` + `<option>` |
+| `table` | `<table>` / `<thead>` / `<tbody>` | `progress` | `<progress>`, or `<div role="progressbar">` |
+| `tree` | `<ul role="tree">` + `role="treeitem"` | `badge` / `chip` | `<span class="jhin-badge">` (+ `role="status"` when colored) |
+| `icon` | `<svg data-jhin-icon="name">` (the inline-SVG registry, section 9.6) | `divider` | `<hr>` |
+| `card` / `sheet` / `dialog` / `banner` / `drawer` | `<section>` / `<dialog>` / `<aside>` | `avatar` | `<span class="jhin-avatar">` / `<img>` |
+| `stream_view` | `<div role="log" aria-live="polite">` | `image` | `<img>` |
+| `shell` / `container` / `row` / `column` / `flex` / `box` / `stack` / `wrap` / `grid` / `scroll` / `list` | `<div>` with the `display: flex` / `display: grid` classes | `kbd` | `<kbd>` |
+| `diff_view` | `<div class="jhin-diff">` with `<ins>` / `<del>` lines | everything else | `<div>` |
+
+### 9.2 Attribute protocol (the agent-visible contract)
+
+Every rendered node carries:
+
+| Attribute | When | Value |
+|-----------|------|-------|
+| `data-jhin-type` | always | the primitive name, e.g. `data-jhin-type="button"` |
+| `data-jhin-id` | the node has an `id` prop | the server-authored id |
+| `data-jhin-when` | the node has a `when` prop | the raw expression source |
+| `data-jhin-template` | a string prop carries a `${…}` template | the raw template |
+| `data-jhin-action` | the node carries an action | the action JSON, in a **single-quoted** attribute with the JSON escaped |
+| `data-jhin-confirm` | the action carries a `confirm` | the confirmation message |
+| `data-jhin-icon` | on the `<svg>` of an `icon` | the icon name |
+
+The HTML `id` attribute is set **only** on nodes that opt in through the `id`
+prop, so server ids never collide with shell ids — the runtime's own
+elements use the `jhin-` prefix (`#jhin-root`, `#jhin-toasts`, …). Interactive
+nodes additionally get `aria-label` from `semanticsLabel`, `title` from
+`tooltip` and `aria-disabled` from `enabled: false`.
+
+Because the contract is attribute-shaped, `document.querySelector(
+'[data-jhin-type="button"]')` works, and a visible box maps straight back to
+the Java call-site that produced it: grep the renderers
+(`plugins/ui-kit/src/main/java/com/astroreen/jhin/plugin/uikit/html/renderers/`)
+for the type and the screen builders
+(`plugins/ui-default/src/main/java/com/astroreen/jhin/plugin/ui/screens/`)
+for the id.
+
+### 9.3 Escaping policy
+
+`HtmlEsc` is the **only** escaping authority:
+
+- Every text prop — `text`, `label`, `title`, `subtitle`, `placeholder`,
+  `message`, code bodies, the markdown source before parsing, and every prop
+  interpolated into `style`, `class` or any attribute — is escaped by
+  `HtmlEsc`: `&`, `<`, `>`, `"` and `'` become entities.
+- Attribute values are **always** double-quoted and escaped; the one
+  single-quoted attribute (`data-jhin-action`) carries JSON whose `'` is
+  escaped by the same authority.
+- `commonmark` runs with **raw HTML blocks and inline HTML disabled**, so LLM
+  output, file contents and tool output can never inject markup through
+  `markdown`.
+- The single unescaped path is `Ui.raw(String html)` → a `raw` node whose
+  renderer emits the string verbatim. It is a documented escape hatch for
+  **trusted server-authored chrome only**; `RawEscapeSweepTest` fails when a
+  product screen under `plugins/ui-default/.../screens/` uses it. See
+  [web-client.md](web-client.md).
+
+### 9.4 Token → CSS
+
+`TokenCss.root(theme, tokens, density) → String` emits two `:root` layers,
+exactly mirroring `JhinTokenSurface`:
+
+1. **palette layer** — `--accent`, `--background`, `--card`, … generated
+   server-side by `PaletteGen`/`Oklch` from `{appearance, canvas, accent}`
+   plus the `theme.colors` overrides, with the `--contrast-*` indirection
+   variables carrying the user contrast boost;
+2. **alias layer** — `--color-accent: var(--accent)`,
+   `--radius-base: 0.625rem`, `--text-sm-size: 0.875rem`, `--font-sans: …`,
+   `--motion-ease-drawer: cubic-bezier(…)`,
+   `--space-workspace-gutter-base` / `--space-workspace-gutter-sm`, and the
+   `{light, dark}` families (`glass.blur`, `shadow.composer`) emitted under
+   `@media (prefers-color-scheme: light)` / `(prefers-color-scheme: dark)`
+   plus a `[data-appearance]` override attribute on `<html>` so an explicit
+   theme choice beats the OS preference.
+
+A `$family.key` wire reference becomes `var(--<family>-<key>)` (dots become
+hyphens). Unknown keys are already rejected at build time by `UiTokens`.
+
+**Density** is an attribute, not a recomputation: `[data-density="compact"]`,
+`[data-density="comfortable"]` and `[data-density="spacious"]` on `<html>`
+scale the spacing family through `calc()` at 0.75, 1.0 and 1.25. The client
+performs no token math: `parseCssLength` and `parseCssDuration` do not exist
+in the runtime.
+
+### 9.5 Patch application and focus
+
+Patches are surgical — a fragment swap, never a screen reload and never a
+prop merge:
+
+- **`patch` (innerHTML).** If `document.activeElement` lives inside the
+  target, record its `data-jhin-id` (or a stable selector) and its
+  `selectionStart`/`selectionEnd`, swap the content, then restore focus and
+  the selection when an element with the same `data-jhin-id` exists in the
+  new content.
+- **`replace` (outerHTML).** The same rule, applied one level up.
+- **Missing target.** A patch whose target id is absent targets the nearest
+  ancestor `[data-jhin-id]`; with no such ancestor it is dropped with a
+  `console.warn`.
+- **Scrolling.** `node`, `replace` and `remove` honour the T100 anchoring;
+  `patch` never scrolls (section 5).
+
+This is what keeps `text_delta` at token frequency cheap: the server
+re-renders one markdown block and the runtime swaps that block's content,
+leaving the composer's focus and selection intact.
+
+### 9.6 Icons
+
+Icons are a **generated inline-SVG subset**:
+`plugins/ui-kit/src/main/resources/uikit/icons/<name>.svg`, one file per icon
+name actually referenced by `Ui.icon(...).icon("name")` across the
+repository. The `IconSweep` test enumerates the usages and fails when a
+referenced name has no SVG file. A missing name renders an empty `<svg>` and
+logs to the console — never a crash (section 2.4). Authoring a new icon is
+dropping an SVG file into that directory; no client release is involved.
+
+## 10. What stays unchanged
+
+Level 4 is a serialization change. These surfaces are **identical** to level
+3 and must not be rewritten:
+
+- the action protocol of section 3, including the client-side dispatch order
+  and the include-merge typing rules;
+- the seventeen directive **names** and every non-HTML payload (section 4);
+- the capability header grammar (`X-Jhin-Client`, section 6);
+- the expression grammar and its degradation rules (section 7);
+- the keymap semantics and the `when` contexts of section 4.1, including
+  last-match-wins and the `mod` platform mapping;
+- the theme and token **vocabulary** (the eleven `UiTokens` families, the
+  `theme` seed block, `density`);
+- the stream replay, de-duplication and preamble logic, `Last-Event-ID`, and
+  the T100 auto-scroll anchoring;
+- the `X-Jhin-Keybindings` request-enrichment header (section 8);
+- the `session_updated` → sidebar-row prop mapping (section 5);
+- the sixteen event-card kinds and the standard tool-card anatomy
+  (section 5);
+- the `Ui` fluent builder API for plugins — only serialization changed, so
+  every existing plugin screen compiles untouched (the one additive API is
+  `Ui.raw`, section 9.3).
+
 ## Appendix A. Contract level 1
+
+**History only.** Level 1 is not a supported wire at level 4: a client that
+declares it receives the `426` of section 6. The shape is recorded here
+because the kernel's bare-server bootstrap fallback still reports `api: 1`,
+and because the store-migration chain in [updates.md](updates.md) refers to
+it.
+
 
 An `api=1` client (or a server negotiating down to level 1) still receives
 and emits this shape:
@@ -1428,3 +1643,4 @@ Level-1 specifics:
   (no `schema` field).
 - Directives are the sixteen of section 4 minus `undo`.
 - The header format is `api=1; version=x.y.z; caps=a,b,c`.
+

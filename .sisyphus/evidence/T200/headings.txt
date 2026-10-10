@@ -1,0 +1,26 @@
+# Jhin SDUI contract (level 4)
+## 1. Bootstrap payload
+## 2. Node model
+### 2.1 Universal props
+### 2.2 Token references
+### 2.3 Universal prop application order
+### 2.4 Degradation rules
+### 2.5 Primitive catalog
+### 2.6 Per-primitive props
+## 3. Action protocol
+## 4. Client directives
+### 4.1 Keymap `when` contexts
+### 4.2 Decorative nodes and the `demo` marker
+## 5. Streams and frames
+## 6. Client capabilities and the 426 upgrade gate
+## 7. Expression subset
+## 8. Caching and payload versioning
+## 9. HTML rendering rules
+### 9.1 Semantic element mapping
+### 9.2 Attribute protocol (the agent-visible contract)
+### 9.3 Escaping policy
+### 9.4 Token → CSS
+### 9.5 Patch application and focus
+### 9.6 Icons
+## 10. What stays unchanged
+## Appendix A. Contract level 1
