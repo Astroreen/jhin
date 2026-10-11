@@ -1,0 +1,6 @@
+# T201 raw escape-hatch proof (scripts/qa/t201.sh)
+# Ui.raw("<img onerror=…>") must render VERBATIM — the hatch works.
+builder=Ui.raw("<img onerror=alert(1)>")
+rendered=<div data-jhin-type="raw" class="jhin-raw"><img onerror=alert(1)></div>
+contains-verbatim=true
+contains-escaped=false

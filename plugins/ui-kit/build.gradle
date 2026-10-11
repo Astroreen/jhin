@@ -9,6 +9,13 @@ base {
 }
 
 dependencies {
+    // Markdown rendering for the `markdown` primitive (SDUI contract level 4).
+    // UI-kit only — never the SDK (C-2). The GFM tables extension is the same
+    // published MIT library family and is what makes markdown tables render as
+    // semantic <table> HTML; raw HTML stays disabled in the parser.
+    implementation 'org.commonmark:commonmark:0.24.0'
+    implementation 'org.commonmark:commonmark-ext-gfm-tables:0.24.0'
+
     // Unit tests need the JUnit platform launcher at runtime. Stays out of the
     // plugin jar (testRuntimeOnly is not part of runtimeClasspath).
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'

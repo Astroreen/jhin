@@ -1,0 +1,34 @@
+# T201 XSS matrix — every injectable prop position, input <script>alert(1)</script>
+# rendered outputs must contain zero raw <script (inputs may show it)
+
+position=text
+input=<script>alert(1)</script>
+output=<span data-jhin-type="text" class="jhin-text">&lt;script&gt;alert(1)&lt;/script&gt;</span>
+
+position=label
+input=<script>alert(1)</script>
+output=<button data-jhin-type="button" type="button" class="jhin-button jhin-button-primary">&lt;script&gt;alert(1)&lt;/script&gt;</button>
+
+position=title
+input=<script>alert(1)</script>
+output=<section data-jhin-type="card" class="jhin-card"><h2 class="jhin-surface-title">&lt;script&gt;alert(1)&lt;/script&gt;</h2></section>
+
+position=markdown
+input=<script>alert(1)</script>
+output=<div data-jhin-type="markdown" class="jhin-markdown"><p>&lt;script&gt;alert(1)&lt;/script&gt;</p></div>
+
+position=tooltip
+input=<script>alert(1)</script>
+output=<span data-jhin-type="text" title="&lt;script&gt;alert(1)&lt;/script&gt;" class="jhin-text">x</span>
+
+position=semanticsLabel
+input=<script>alert(1)</script>
+output=<span data-jhin-type="text" aria-label="&lt;script&gt;alert(1)&lt;/script&gt;" class="jhin-text">x</span>
+
+position=placeholder
+input=<script>alert(1)</script>
+output=<input data-jhin-type="input" id="f" data-jhin-id="f" class="jhin-input" type="text" placeholder="&lt;script&gt;alert(1)&lt;/script&gt;">
+
+position=code
+input=<script>alert(1)</script>
+output=<pre data-jhin-type="code_block" class="jhin-code-block"><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>

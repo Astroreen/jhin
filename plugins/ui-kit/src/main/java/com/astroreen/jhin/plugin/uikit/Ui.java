@@ -55,6 +55,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 public final class Ui {
@@ -125,6 +126,37 @@ public final class Ui {
      */
     public static String radius(String token) {
         return token;
+    }
+
+    /**
+     * The HTML escape hatch: a {@code raw} node whose renderer emits the
+     * string <strong>verbatim</strong>, with no escaping
+     * (docs/web-client.md section 3). This is the single unescaped path in
+     * the whole renderer and is reserved for <strong>trusted,
+     * server-authored chrome only</strong> — hand-tuned SVG art, shell
+     * decorations. No product screen may use it: LLM output, file contents,
+     * tool output and every prop value must go through ordinary primitives,
+     * which escape. {@code RawEscapeSweepTest} fails the build when a screen
+     * under {@code plugins/ui-default} calls this method.
+     *
+     * @param html the already-safe markup, emitted exactly as given
+     * @return the {@code raw} builder
+     */
+    public static RawBuilder raw(String html) {
+        return new RawBuilder(html);
+    }
+
+    /** {@code raw}(html): the escape-hatch node; see {@link Ui#raw(String)}. */
+    public static final class RawBuilder extends NodeBuilder<RawBuilder> {
+
+        private RawBuilder(String html) {
+            props.put("html", Objects.requireNonNull(html, "html"));
+        }
+
+        @Override
+        String type() {
+            return "raw";
+        }
     }
 
     // --- primitive factories ---

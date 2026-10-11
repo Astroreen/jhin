@@ -1,0 +1,5 @@
+# T201 raw-escape sweep (scripts/qa/t201.sh)
+# Rule: no product screen under plugins/ui-default/src/main/java may call Ui.raw(
+scanned=52
+offenders=0
+result=0 uses of Ui.raw( under plugins/ui-default/src/main/java
