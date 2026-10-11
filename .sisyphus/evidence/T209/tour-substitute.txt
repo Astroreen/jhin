@@ -69,8 +69,8 @@ GET /sw.js
 GET /ui/icons/icon-192.png
   header:       -
   | HTTP/1.1 200 
-  | etag: "sha256-d2b6a68881b93882f91f506d58dd22bc9cc34b133fa669dc259b1008b6e8ca3b"
   | cache-control: no-cache
+  | etag: "sha256-d2b6a68881b93882f91f506d58dd22bc9cc34b133fa669dc259b1008b6e8ca3b"
   | Content-Type: image/png
   status:       200 (expected 200)
   content-type: 'image/png' (raw wire; expected image/png)
@@ -80,8 +80,8 @@ GET /ui/icons/icon-192.png
 GET /ui/icons/icon-512.png
   header:       -
   | HTTP/1.1 200 
-  | etag: "sha256-bea8b163ae3118af0d5a3b772a87371fc15f16823a01bd62fa33e07c101a71ac"
   | cache-control: no-cache
+  | etag: "sha256-bea8b163ae3118af0d5a3b772a87371fc15f16823a01bd62fa33e07c101a71ac"
   | Content-Type: image/png
   status:       200 (expected 200)
   content-type: 'image/png' (raw wire; expected image/png)

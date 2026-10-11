@@ -94,48 +94,6 @@
       "dependsOn": "jhin: kernel jar",
       "description": "Run the kernel CLI subcommand create-enrollment <account> (registered by the security plugin).",
       "problemMatcher": []
-    },
-    {
-      "label": "frontend: analyze",
-      "type": "shell",
-      "command": "export JAVA_HOME=\"$(dirname \"$(dirname \"$(readlink -f .devenv/profile/bin/java)\")\")\" && export PATH=\"$JAVA_HOME/bin:$PATH\" && cd frontend && flutter analyze",
-      "options": { "cwd": "${workspaceFolder}" },
-      "description": "Static analysis of the Flutter client.",
-      "problemMatcher": []
-    },
-    {
-      "label": "frontend: test",
-      "type": "shell",
-      "command": "export JAVA_HOME=\"$(dirname \"$(dirname \"$(readlink -f .devenv/profile/bin/java)\")\")\" && export PATH=\"$JAVA_HOME/bin:$PATH\" && cd frontend && flutter test",
-      "options": { "cwd": "${workspaceFolder}" },
-      "group": { "kind": "test", "isDefault": false },
-      "description": "Run the Flutter unit and widget tests.",
-      "problemMatcher": []
-    },
-    {
-      "label": "frontend: run linux",
-      "type": "shell",
-      "command": "export JAVA_HOME=\"$(dirname \"$(dirname \"$(readlink -f .devenv/profile/bin/java)\")\")\" && export PATH=\"$JAVA_HOME/bin:$PATH\" && cd frontend && flutter run -d linux",
-      "options": { "cwd": "${workspaceFolder}" },
-      "description": "Run the Flutter client on the Linux desktop target.",
-      "problemMatcher": []
-    },
-    {
-      "label": "frontend: run web",
-      "type": "shell",
-      "command": "export JAVA_HOME=\"$(dirname \"$(dirname \"$(readlink -f .devenv/profile/bin/java)\")\")\" && export PATH=\"$JAVA_HOME/bin:$PATH\" && cd frontend && flutter run -d web-server --web-port 8080",
-      "options": { "cwd": "${workspaceFolder}" },
-      "description": "Run the Flutter client on the web-server target at port 8080.",
-      "problemMatcher": []
-    },
-    {
-      "label": "frontend: build linux",
-      "type": "shell",
-      "command": "export JAVA_HOME=\"$(dirname \"$(dirname \"$(readlink -f .devenv/profile/bin/java)\")\")\" && export PATH=\"$JAVA_HOME/bin:$PATH\" && cd frontend && flutter build linux",
-      "options": { "cwd": "${workspaceFolder}" },
-      "group": "build",
-      "description": "Build the release Linux desktop bundle of the Flutter client.",
-      "problemMatcher": []
     }
   ],
   "inputs": [

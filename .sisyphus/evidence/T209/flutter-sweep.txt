@@ -4,8 +4,8 @@ docs/web-client.md:41:- **No DOM, no accessibility tree.** Flutter renders to a 
 docs/web-client.md:49:  HTML/React/Tailwind; none targets Flutter/Dart. Backend-authored UI quality
 scripts/qa/t78.sh:38:#     server-rendered node tree (the Flutter goldens cover client-side
 scripts/qa/t78.sh:329:  echo "the Flutter goldens cover client-side fixtures only."
-kernel/src/main/java/com/astroreen/jhin/kernel/http/JhinServlet.java:24:    /** Answered before every other step; the Flutter web build needs it. */
 scripts/qa/t50.sh:15:#   - the QA helper scripts pass `bash -n` and flutter-test.sh --help exits 0.
+kernel/src/main/java/com/astroreen/jhin/kernel/http/JhinServlet.java:24:    /** Answered before every other step; the Flutter web build needs it. */
 scripts/qa/t76.sh:23:#     server-rendered node tree (the Flutter goldens cover client-side
 scripts/qa/t77.sh:32:#     exists for the server-rendered node tree (the Flutter goldens cover
 

@@ -17,13 +17,16 @@
 #      kernel/` prints NOTHING (the tree holds the whole T209, chunks 1–3;
 #      the kernel stayed untouched — the one stale Flutter comment in
 #      JhinServlet.java is deliberately left, plan gate "zero kernel edits");
-#   3. flutter-sweep.txt — `rg -n -i "flutter|\bdart\b" --glob '!.sisyphus/**'`
-#      over the whole tree (minus this checker's own prose, which names the
-#      retired stack by design): every hit must sit on the ALLOWED paths only
-#      (the explicit allowlist below — the kernel's one stale comment, the
-#      docs/web-client.md ADR rationale and the kept historical scripts'
-#      prose). The full hit list is recorded either way; one hit outside the
-#      allowlist fails the run;
+#   3. flutter-sweep.txt — `rg --hidden -n -i "flutter|\bdart\b"` over the
+#      whole tree (hidden dirs included, so the tracked .vscode workspace
+#      config counts) plus a second pass over the git-tracked files that
+#      .gitignore hides from rg (tracked files are NOT exempt from
+#      ignore rules for rg), minus .sisyphus evidence and this checker's
+#      own prose, which names the retired stack by design: every hit must
+#      sit on the ALLOWED paths only (the explicit allowlist below — the
+#      kernel's one stale comment, the docs/web-client.md ADR rationale and
+#      the kept historical scripts' prose). The full hit list is recorded
+#      either way; one hit outside the allowlist fails the run;
 #   4. stale-docs.txt — must be EMPTY: the prose docs (AGENTS.md README.md
 #      docs/ deploy/) carry no stale surface term of the retired stack
 #      (flutter|dart|frontend/|no-tree-shake|icon_registry|api=3|api: 3|
@@ -211,16 +214,36 @@ scripts/qa/t80.sh
 EOF
 )
 set +e
-# The sweep excludes .sisyphus evidence (the plan's glob) and this checker
-# itself: t209.sh's prose and its rg pattern strings name the retired stack
-# by design — it documents the sweep, so it is meta, not product surface
+# The sweep runs rg --hidden (hidden dirs like .vscode/ count) and excludes
+# .sisyphus evidence (the plan's glob), .git and this checker itself:
+# t209.sh's prose and its rg pattern strings name the retired stack by
+# design — it documents the sweep, so it is meta, not product surface
 # (the allowlist below stays exactly the plan's list).
-rg -n -i "flutter|\bdart\b" --glob '!.sisyphus/**' --glob '!scripts/qa/t209.sh' \
+rg --hidden -n -i "flutter|\bdart\b" --glob '!.git/**' --glob '!.sisyphus/**' \
+    --glob '!scripts/qa/t209.sh' \
     > "$EVIDENCE/flutter-sweep.txt" 2>&1
 RG_STATUS=$?
 set -e
 [ "$RG_STATUS" -eq 0 ] || [ "$RG_STATUS" -eq 1 ] \
     || fail "rg flutter sweep exited $RG_STATUS (see $EVIDENCE/flutter-sweep.txt)"
+# Second pass — the git-tracked surface that .gitignore hides from rg.
+# rg respects .gitignore even with --hidden and does not exempt tracked
+# files (the tracked .vscode workspace config is ignored by the '.vscode/'
+# rule — the Final Verification blind spot), so the tracked-but-ignored
+# files are swept explicitly through their git paths. The .sisyphus
+# evidence tree stays excluded (above, by design) and untracked ignored
+# files (e.g. .opencode/node_modules) stay out, as intended.
+tracked_ignored=$(git ls-files -ci --exclude-standard | grep -v '^\.sisyphus/' || true)
+while IFS= read -r tracked_file; do
+    [ -n "$tracked_file" ] || continue
+    RG_STATUS=0
+    rg --hidden -n -i "flutter|\bdart\b" "$tracked_file" \
+        >> "$EVIDENCE/flutter-sweep.txt" 2>&1 || RG_STATUS=$?
+    [ "$RG_STATUS" -eq 0 ] || [ "$RG_STATUS" -eq 1 ] \
+        || fail "rg tracked-ignored flutter sweep exited $RG_STATUS on $tracked_file (see $EVIDENCE/flutter-sweep.txt)"
+done <<EOF
+$tracked_ignored
+EOF
 hit_count=$(grep -c ':' "$EVIDENCE/flutter-sweep.txt" || true)
 sweep_files=$(cut -d: -f1 "$EVIDENCE/flutter-sweep.txt" | sort -u || true)
 {

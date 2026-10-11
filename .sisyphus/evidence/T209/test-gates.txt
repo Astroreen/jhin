@@ -1,7 +1,7 @@
 T209 build gates — the whole composite build green with the Flutter client gone:
-BUILD SUCCESSFUL in 943ms
+BUILD SUCCESSFUL in 5s
 > Task :kernel:test
-BUILD SUCCESSFUL in 26s
+BUILD SUCCESSFUL in 27s
 
   :jhin-plugin-ui-default:test  457 tests (expected 457 = 458 minus the deleted ContextChipAccentsTest)
   :jhin-plugin-ui-kit:test      310 tests (expected 310)
