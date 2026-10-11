@@ -13,7 +13,7 @@
  * otherwise) and the {@code mod+1..9} thread jumps gated on {@code isDesktop}.
  * The upstream {@code mod+alt+enter} send-and-background is the existing T68
  * {@code ctrl+alt+enter -> composer.sendAndNew} binding (T103 dropped the
- * draft-route branch; see {@code scripts/qa/t103.sh}).
+ * draft-route branch).
  */
 package com.astroreen.jhin.plugin.ui;
 

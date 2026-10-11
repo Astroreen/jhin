@@ -25,7 +25,7 @@
  * cursor and selection colour tokens.
  *
  * <p><b>Resize.</b> The drawer height is owned by the client shell
- * ({@code shell.dart}'s terminal slot): the grip drag resizes it between
+ * (the web runtime's terminal slot): the grip drag resizes it between
  * {@value #MIN_HEIGHT} px and {@value #MAX_RATIO} of the viewport, persisted
  * under {@value #PERSIST_KEY} through the same store seam {@code split}
  * uses (T90). {@code Escape} and {@code mod+w} close the focused terminal

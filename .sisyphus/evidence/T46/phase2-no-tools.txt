@@ -3,7 +3,7 @@ T46 phase 2 transcript: the agent turn after deleting jhin-plugin-tools-builtin
 setup:
   removed $JHIN_HOME/plugins/jhin-plugin-tools-builtin-*.jar (home has 10 jars)
   restarted the host, health no longer lists jhin.tools-builtin (plugins: 10)
-  second message: {text:"do the work again"} -> runId 56080262-32d6-4697-b7f4-019b6320346e
+  second message: {text:"do the work again"} -> runId 03afb14e-1936-4017-8515-c686bb223e01
 
 captured events (type per line, fromSeq=9):
   user_message

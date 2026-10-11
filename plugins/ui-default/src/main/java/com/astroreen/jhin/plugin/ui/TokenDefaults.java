@@ -2,8 +2,8 @@
  * The fallback layer of the bootstrap {@code tokens} block (docs/sdui.md
  * section 1): the eleven token families of the {@link UiTokens} surface with
  * their exact upstream values, so a client is fully styled even before any
- * screen is authored. Every value here is the built-in default the Flutter
- * side mirrors; the {@code motion.panel} duration is the one configurable
+ * screen is authored. Every value here is the built-in default the web client
+ * renders from; the {@code motion.panel} duration is the one configurable
  * value — it comes from the {@code jhin.ui} settings store ({@code
  * panelMotionMs}, see {@link UiSettings}) and is passed in per bootstrap.
  */

@@ -1,20 +1,20 @@
-11:54:56.548 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-agent-0.2.0.jar: already seeded and unchanged
-11:54:56.557 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-llm-0.2.0.jar: already seeded and unchanged
-11:54:56.562 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-llm-builtin-0.2.0.jar: already seeded and unchanged
-11:54:56.565 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-mcp-0.2.0.jar: already seeded and unchanged
-11:54:56.566 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-qa-mock-llm-0.2.0.jar: already seeded and unchanged
-11:54:56.566 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-reload-0.2.0.jar: already seeded and unchanged
-11:54:56.573 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-security-0.2.0.jar: already seeded and unchanged
-11:54:56.574 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-sessions-0.2.0.jar: already seeded and unchanged
-11:54:56.575 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-tools-builtin-0.2.0.jar: already seeded and unchanged
-11:54:56.575 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-ui-default-0.2.0.jar: already seeded and unchanged
-11:54:56.576 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-ui-kit-0.2.0.jar: already seeded and unchanged
-11:54:56.724 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
-11:54:56.728 [main] WARN plugin.jhin.qa-mock-llm -- qa-mock-llm is a QA harness (format mock); never ship this jar in a release bundle
-11:54:56.780 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
-11:54:56.784 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log and routes published
-11:54:56.789 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
-11:54:56.791 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-bundle-home.W4jZio/mcp.json; no MCP servers to start
-11:54:56.793 [main] INFO plugin.jhin.tools-builtin -- jhin.tools-builtin started: 8 tools: ls, write, read, edit, edit-diff, find, grep, bash
-11:54:56.801 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action and stream routes registered
-created account: qa (id: a8717b43-ea88-4208-b32f-c6cd277ac7da)
+23:45:16.038 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-agent-0.2.0.jar: already seeded and unchanged
+23:45:16.050 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-llm-0.2.0.jar: already seeded and unchanged
+23:45:16.055 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-llm-builtin-0.2.0.jar: already seeded and unchanged
+23:45:16.058 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-mcp-0.2.0.jar: already seeded and unchanged
+23:45:16.058 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-qa-mock-llm-0.2.0.jar: already seeded and unchanged
+23:45:16.059 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-reload-0.2.0.jar: already seeded and unchanged
+23:45:16.065 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-security-0.2.0.jar: already seeded and unchanged
+23:45:16.066 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-sessions-0.2.0.jar: already seeded and unchanged
+23:45:16.067 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-tools-builtin-0.2.0.jar: already seeded and unchanged
+23:45:16.067 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-ui-default-0.2.0.jar: already seeded and unchanged
+23:45:16.068 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-ui-kit-0.2.0.jar: already seeded and unchanged
+23:45:16.208 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
+23:45:16.213 [main] WARN plugin.jhin.qa-mock-llm -- qa-mock-llm is a QA harness (format mock); never ship this jar in a release bundle
+23:45:16.272 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
+23:45:16.281 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+23:45:16.288 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
+23:45:16.289 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-bundle-home.oudgdr/mcp.json; no MCP servers to start
+23:45:16.293 [main] INFO plugin.jhin.tools-builtin -- jhin.tools-builtin started: 8 tools: ls, write, read, edit, edit-diff, find, grep, bash
+23:45:16.315 [main] INFO plugin.jhin.ui -- ui plugin started: web shell, asset, manifest, icon, service worker, bootstrap, screen, action, search and stream routes registered
+created account: qa (id: e04b3bc5-46fd-4cc0-95a7-06e115442554)

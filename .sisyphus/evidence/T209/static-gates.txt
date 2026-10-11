@@ -1,0 +1,12 @@
+T209 static gates — the hard rules on the shipped web client (plan section 8 must-NOT-haves).
+
+gate 1 — no eval / new Function in app.js:
+  grep -c 'eval\|new Function' plugins/ui-default/src/main/resources/web/app.js -> 0 (must be 0)
+gate 2 — no '<' in app.css (CSS must not smuggle markup):
+  grep -c '<' plugins/ui-default/src/main/resources/web/app.css -> 0 (must be 0)
+gate 3 — app.js size budget:
+  wc -c plugins/ui-default/src/main/resources/web/app.js -> 59970 bytes (must be 59970 and <= 60000)
+gate 4 — app.css size budget:
+  wc -c plugins/ui-default/src/main/resources/web/app.css -> 35229 bytes (must be 35229 and <= 40000)
+gate 5 — the 68-primitive gallery dump:
+  ls plugins/ui-default/src/test/resources/gallery/*.html | wc -l -> 68 (must be 68)

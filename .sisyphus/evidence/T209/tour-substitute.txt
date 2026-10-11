@@ -1,0 +1,114 @@
+T209 cold browser tour substitute — the full served surface, curled.
+
+Browser tools are UNAVAILABLE in this environment (browser-unavailable.txt),
+so the tour is the served surface itself: every endpoint the web client
+touches on a cold start, through the live kernel, with status + content-type
+recorded and asserted. Nothing visual is fabricated.
+
+=== health ===
+GET /_jhin/health
+  header:       -
+  | HTTP/1.1 200 
+  | Content-Type: application/json;charset=utf-8
+  status:       200 (expected 200)
+  content-type: 'application/json;charset=utf-8' (raw wire; expected application/json)
+  body:         225 bytes
+
+=== web shell ===
+GET /
+  header:       -
+  | HTTP/1.1 200 
+  | Content-Type: text/html;charset=utf-8
+  status:       200 (expected 200)
+  content-type: 'text/html;charset=utf-8' (raw wire; expected text/html)
+  body:         17627 bytes
+
+=== client runtime ===
+GET /ui/assets/app.js
+  header:       -
+  | HTTP/1.1 200 
+  | cache-control: no-cache
+  | etag: "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22"
+  | Content-Type: application/javascript;charset=utf-8
+  status:       200 (expected 200)
+  content-type: 'application/javascript;charset=utf-8' (raw wire; expected application/javascript)
+  body:         59970 bytes
+
+=== client styles ===
+GET /ui/assets/app.css
+  header:       -
+  | HTTP/1.1 200 
+  | cache-control: no-cache
+  | etag: "sha256-9f0af9aa38e05720d8abcd631c57f7a99c3855e8ed285720968eb359c3b6446e"
+  | Content-Type: text/css;charset=utf-8
+  status:       200 (expected 200)
+  content-type: 'text/css;charset=utf-8' (raw wire; expected text/css)
+  body:         35229 bytes
+
+=== PWA manifest ===
+GET /manifest.json
+  header:       -
+  | HTTP/1.1 200 
+  | cache-control: no-cache
+  | Content-Type: application/manifest+json;charset=utf-8
+  status:       200 (expected 200)
+  content-type: 'application/manifest+json;charset=utf-8' (raw wire; expected application/manifest+json)
+  body:         298 bytes
+
+=== service worker ===
+GET /sw.js
+  header:       -
+  | HTTP/1.1 200 
+  | cache-control: no-cache
+  | Content-Type: application/javascript;charset=utf-8
+  status:       200 (expected 200)
+  content-type: 'application/javascript;charset=utf-8' (raw wire; expected application/javascript)
+  body:         2346 bytes
+
+=== PWA icon 192 ===
+GET /ui/icons/icon-192.png
+  header:       -
+  | HTTP/1.1 200 
+  | etag: "sha256-d2b6a68881b93882f91f506d58dd22bc9cc34b133fa669dc259b1008b6e8ca3b"
+  | cache-control: no-cache
+  | Content-Type: image/png
+  status:       200 (expected 200)
+  content-type: 'image/png' (raw wire; expected image/png)
+  body:         3540 bytes
+
+=== PWA icon 512 ===
+GET /ui/icons/icon-512.png
+  header:       -
+  | HTTP/1.1 200 
+  | etag: "sha256-bea8b163ae3118af0d5a3b772a87371fc15f16823a01bd62fa33e07c101a71ac"
+  | cache-control: no-cache
+  | Content-Type: image/png
+  status:       200 (expected 200)
+  content-type: 'image/png' (raw wire; expected image/png)
+  body:         10916 bytes
+
+=== bootstrap (api=4) ===
+GET /_jhin/bootstrap
+  header:       X-Jhin-Client: api=4; version=0.0.0-web; schema=5; caps=sse,open_url,secure_storage
+  | HTTP/1.1 200 
+  | Content-Type: application/json;charset=utf-8
+  status:       200 (expected 200)
+  content-type: 'application/json;charset=utf-8' (raw wire; expected application/json)
+  body:         303165 bytes
+  jq assert:    ok — (.screens | length) > 0 and all(.screens[]; (.id | length) > 0 and (.html | length) > 0)
+
+=== sessions screen ===
+GET /ui/screen/sessions
+  header:       X-Jhin-Client: api=4; version=0.0.0-web; schema=5; caps=sse,open_url,secure_storage
+  | HTTP/1.1 200 
+  | Content-Type: application/json;charset=utf-8
+  status:       200 (expected 200)
+  content-type: 'application/json;charset=utf-8' (raw wire; expected application/json)
+  body:         12162 bytes
+  jq assert:    ok — .id == "sessions" and (.html | length) > 0
+
+=== bootstrap contract + screens (key numbers) ===
+  contract: {"api":4,"minApi":4,"schema":5,"minSchema":5}
+  screens:  21 inline {id, html} entries
+  assert:   contract api 4/minApi 4/schema 5/minSchema 5 — ok
+

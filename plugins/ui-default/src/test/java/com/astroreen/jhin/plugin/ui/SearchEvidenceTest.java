@@ -1,6 +1,6 @@
 /**
  * T69 QA evidence: dumps representative {@code POST /ui/action/search}
- * answers into the module build directory for {@code scripts/qa/t69.sh} to
+ * answers into the module build directory for a QA script to
  * copy and jq-assert — a title hit, a user_message hit, a message_end hit,
  * a one-character query and a blank query. Not an assertion suite itself
  * ({@link SearchRouteTest} already asserts the shapes); this only captures

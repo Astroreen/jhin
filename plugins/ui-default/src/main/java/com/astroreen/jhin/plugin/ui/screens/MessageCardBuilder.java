@@ -40,7 +40,7 @@
  * the kind gap of the upstream {@code pb-*} scale
  * ({@code MessagesTimeline.tsx:1766-1784}: 16 for messages and friends, 8
  * for work/event rows, 6 for the fold and working strips). The live tail
- * computes the same table client-side ({@code stream_view.dart}).
+ * computes the same table client-side (the stream view of {@code app.js}).
  *
  * <p><b>The 16 event kinds</b> (T102, plan section 4.5): the {@code event}
  * row dispatches on the event item type through {@link #dispatchEventRow} —

@@ -18,11 +18,12 @@ For writing plugins see [plugin-dev.md](plugin-dev.md); for the UI contract see
    providers, the agent loop, tools and every screen are jars loaded from the
    home plugins directory. Each plugin runs in its own class loader and
    extends the host through registries reached from `PluginContext`.
-3. **Flutter SDUI client** (`frontend/`) — a thin server-driven-UI renderer for
-   Android, Linux desktop and Web. It hardcodes exactly one screen (the
-   server-profile surface) and one endpoint (`GET /_jhin/bootstrap`); everything
-   else is server-authored JSON over the primitive catalog (68 primitives at
-   contract level 3, see [sdui.md](sdui.md) section 2.5).
+3. **HTML web client** (the `web/` resources of `jhin.ui`) — a thin
+   vanilla-JS runtime the host serves. It hardcodes exactly one surface (the
+   pairing fallback — the enroll form on 401/403) and one endpoint
+   (`GET /_jhin/bootstrap`); everything else is server-rendered HTML over the
+   primitive catalog (68 names at contract level 4, see [sdui.md](sdui.md)
+   section 2.5).
 
 A bare kernel is not a product: it answers only `GET /_jhin/health` and
 `GET /_jhin/bootstrap` and reports an empty UI until plugins are installed.
@@ -253,8 +254,9 @@ logs `no TLS material registered; the listener speaks plain HTTP`.
 **OPTIONS / CORS.** `OPTIONS` is answered before anything else runs with a
 permissive pre-flight: `204` and `Access-Control-Allow-Origin: *`,
 `Access-Control-Allow-Headers: *`,
-`Access-Control-Allow-Methods: GET,POST,PATCH,DELETE,OPTIONS`. The Flutter web
-build depends on this.
+`Access-Control-Allow-Methods: GET,POST,PATCH,DELETE,OPTIONS`. The web client
+is served same-origin and does not depend on it; the pre-flight stays
+permissive for tooling that talks to the host from another origin.
 
 ### 5.4 Streams and the preamble race
 
@@ -353,14 +355,12 @@ typed families `color` (the 56 semantic `--color-*` aliases), `contrast` (the
 the whole `tokens` block in the bootstrap payload ([sdui.md](sdui.md)
 section 1).
 
-The client mirrors the same key set in `frontend/lib/design/tokens.dart`
-(`JhinTokens`) and resolves it in `frontend/lib/design/theme.dart`
-(`JhinTheme.from` / `JhinTheme.fromBootstrap` build the theme from the
-bootstrap `theme`, `tokens` and `density` blocks; `JhinDesignScope` is the
-inherited widget that hands it down the tree). Node props reference tokens by
-name as `$token` strings; the client resolves every `$…` reference against the
-theme at render time and degrades an unknown reference to the literal string.
-Widgets below the token layer do not hardcode colors or paddings.
+The web client renders from the same vocabulary: node props reference tokens
+by name as `$token` strings, `TokenCss.root` emits the whole surface as CSS
+variables in the shell's inline token CSS and every `$…` reference becomes a
+`var(--family-key)` at render time ([sdui.md](sdui.md) section 9.4).
+`app.css` styles from those variables alone — no literal colors or paddings
+in the runtime.
 
 ### 6.2 Theme catalogue and palette generator
 
@@ -370,16 +370,15 @@ five t3code built-ins (`t3-chat`, `grove`, `ocean`, `ember`, `iris`) plus the
 seed pair (the upstream `themePalettes.ts` roles) and the per-theme
 `--stage-art-*` backdrop metadata; `jhin` keeps the pre-catalogue
 `#16161e` / `#7E57C2` seeds so selecting it reproduces the original palette.
-The selected id persists as `themeId` (default `t3-chat`) through the
-`jhin.ui` settings and the client store (schema v4, [updates.md](updates.md)).
+The selected id persists as `themeId` (default `t3-chat`) in the `jhin.ui`
+settings store (the plugin data directory).
 
 `plugins/ui-kit/.../PaletteGen.java` (with `Oklch.java`) is the two-seed
 generator: given an appearance and a canvas/accent pair it derives the full
 semantic colour surface — the perceptual lightness ladder, WCAG-solved
 foregrounds (≥ 7:1), the +50° companion action colour and the status blends —
-as 8-bit hex, the wire format of the token layer.
-`frontend/lib/design/palette_gen.dart` is the identical algorithm for
-client-side live preview; the two ports are tested against shared vectors.
+as 8-bit hex, the wire format of the token layer. It is the single port: the
+web runtime performs no palette math ([sdui.md](sdui.md) section 9.4).
 
 ### 6.3 Decorative-surface pattern
 
@@ -387,11 +386,11 @@ A decorative control is a node whose `action` is an inline directive list
 (`{client: [setState, patch, setScreen, dialog, toast]}`) resolved entirely
 client-side, with no server round-trip and no database write. Every such
 interactive node MUST carry the universal `demo: true` prop
-([sdui.md](sdui.md) section 2.1): the client renders the shared
-disabled-affordance marker — a small corner `preview` badge plus the tooltip
-`Preview only — not available in this build`
-(`frontend/lib/sdui/demo_marker.dart`) — so nothing decorative looks silently
-real. The server-side `DemoMarkerSweepTest` and `scripts/qa/t117.sh` enforce
+([sdui.md](sdui.md) section 2.1): the rendered node carries the shared
+`data-jhin-demo` marker and the web client paints the disabled-affordance — a
+small corner `preview` badge plus the tooltip
+`Preview only — not available in this build` (`app.css`) — so nothing
+decorative looks silently real. The server-side `DemoMarkerSweepTest` enforces
 the marking across every decorative route; real screens must never carry
 `demo` on a real action.
 
@@ -409,30 +408,36 @@ builder may emit. `UiConformanceTest` keeps the emittable keys and the
 
 ### 6.5 Versioned client store
 
-The client's persisted blob is an envelope — `{schema, app, writtenAt, data}` —
-owned by `frontend/lib/store/versioned_store.dart`. Migrations run
-automatically at startup: `StoreMigration` steps (v1 → v2 → v3) under the six
-`MigrationRunner` rules documented in [updates.md](updates.md). A value whose
-migration throws is copied to `migration.quarantine:<key>:<schema>` and
-recorded in `migration.quarantine` instead of being dropped — downgrades never
-destroy data. `frontend/lib/boot/version_gate.dart` compares the on-disk
-schema with the bootstrap `contract` block (`schema` / `minSchema`) and shows
-the built-in "update required" surface instead of product screens on mismatch.
+The web runtime's persisted state is an envelope —
+`{schema, app, writtenAt, data}` — over its `localStorage` keys (the `jhin.*`
+set of [sdui.md](sdui.md) section 8). Migrations run automatically at
+startup: `StoreMigration` steps under the six `MigrationRunner` rules
+documented in [updates.md](updates.md). A value whose migration throws is
+copied to `migration.quarantine:<key>:<schema>` and recorded in
+`migration.quarantine` instead of being dropped — downgrades never destroy
+data. The version gate is server-driven: `BootstrapRoute` names the
+client-owned `version_gate` entry when the caller's advertised store schema is
+below `contract.minSchema`, so a stale store shows the "update required"
+chrome instead of product screens.
 
 ### 6.6 Keyboard layer
 
-`frontend/lib/sdui/keyboard/` turns key events into named commands:
-`CommandRegistry` (the fixed set of 25 command ids), `WhenContexts` (the
-`when` expression context), `Keymap` (binding resolution, last match wins) and
-`KeymapStore` (user overrides). Defaults ship in the bootstrap `keymap` array;
-the server negotiates overrides through the `X-Jhin-Keybindings` header
-([sdui.md](sdui.md) section 8).
+The command vocabulary lives server-side: `KeybindCatalog` holds the fixed set
+of 25 command ids and `DefaultKeymap` the default chords, which travel in the
+bootstrap `keymap` array; the caller's overrides travel back per request in
+the `X-Jhin-Keybindings` header ([sdui.md](sdui.md) section 8). The web
+runtime (`app.js`) turns key events into named commands, merges the user
+overrides from its `jhin.keybindings` store (last match wins) and dispatches
+the matching action.
 
 ### 6.7 Gallery and golden harness
 
-The ui-kit `GalleryDump` probe writes a gallery of every primitive into
-`frontend/test/gallery/`, where widget tests render it and compare against
-goldens. Any primitive, prop or token change surfaces as a golden diff there.
+The ui-kit `GalleryDump` probe builds a basic and a prop-heavy fixture for
+every primitive through the real `Ui` builders and reports the per-primitive
+coverage table (`build/gallery/coverage.txt`); `UiRegressionTest` pins the
+JSON wire shape of one representative node per builder against the committed
+fixtures under `plugins/ui-kit/src/test/resources/regression/`, so any
+primitive, prop or token change surfaces as a fixture diff.
 
 ## 7. Security model notes
 

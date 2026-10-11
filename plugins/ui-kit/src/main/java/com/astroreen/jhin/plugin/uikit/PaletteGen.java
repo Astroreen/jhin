@@ -278,9 +278,9 @@ public final class PaletteGen {
 
     /**
      * Truncated remainder for the companion hue: Java's {@code %} semantics,
-     * which the Dart port reproduces with the same formula ({@code _truncMod})
-     * because Dart's {@code %} is Euclidean. In the reachable domain
-     * ({@code hue + 50} in {@code [-130, 230]}) both sides are exact.
+     * spelled as an explicit formula so the result does not depend on a
+     * language's remainder convention. In the reachable domain
+     * ({@code hue + 50} in {@code [-130, 230]}) the division is exact.
      */
     private static double truncMod(double value, double modulus) {
         return value - modulus * (long) (value / modulus);

@@ -1,0 +1,6 @@
+
+=== exclusions applied ===
+  docs/web-client.md            whole file (the ADR rationale, history by design)
+  docs/sdui.md lines >= 1604   the '## Appendix A' history block (to EOF)
+
+assert: the filtered hit list above is EMPTY.

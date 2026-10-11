@@ -1,0 +1,71 @@
+T209 QA: PASS — retire the Flutter client: the HTML web client is the only client
+
+PASS lines:
+  -- OK: build + :kernel:test green (457/310/64/117, KernelPurityTest green; /home/astroreen/Documents/jhin/.sisyphus/evidence/T209/test-gates.txt)
+  -- OK: kernel untouched: git diff HEAD --stat kernel/ is empty (kernel-purity.txt)
+  -- OK: flutter|dart sweep clean: every hit on the allowlist (10 hit lines, 0 outside)
+  -- OK: stale-docs sweep empty: 0 retired-stack terms in AGENTS.md/README.md/docs/ deploy/ outside the ADR + Appendix A (stale-docs.txt)
+  -- OK: e2e-bundle.sh green at contract level 4 (T46 QA green; /home/astroreen/Documents/jhin/.sisyphus/evidence/T209/e2e-bundle.txt)
+  -- OK: static gates green (0 eval, 0 '<', app.js 59970 B, app.css 35229 B, gallery 68)
+  -- OK: 3 jars staged for seeding (/home/astroreen/Documents/jhin/.sisyphus/evidence/T209/kernel-env.txt)
+  -- OK: kernel up on http://localhost:18443 (pid 3524711), GET /_jhin/health -> 200 in 3 s
+  -- OK: tour substitute green: 10 endpoints 200 with the expected media types (bootstrap screens[].html x21, /ui/screen/sessions {id,html}; tour-substitute.txt)
+  -- OK: browser-unavailable.txt written (screenshot tour / PWA install UX / offline experience honestly absent, substitutes listed)
+
+gates:
+  ./gradlew build + :kernel:test                          green (build.log)
+  :jhin-plugin-ui-default:test  457 tests                  green (457 = 458 minus ContextChipAccentsTest)
+  :jhin-plugin-ui-kit:test      310 tests                  green
+  :sdk:test                     64 tests                   green
+  :kernel:test                  117 tests                  green (KernelPurityTest)
+  failures / errors                                          0 / 0
+  git diff HEAD --stat kernel/                            empty (zero kernel edits)
+  flutter|dart sweep                                      10 hit lines, 0 outside the allowlist
+  stale-docs sweep                                        0 hits outside the ADR + Appendix A exclusions
+  e2e-bundle.sh                                           T46 QA green (level-4 contract)
+  eval/new Function in app.js                             0 (0)
+  '<' in app.css                                          0 (0)
+  app.js bytes                                            59970 (== 59970, <= 60000)
+  app.css bytes                                           35229 (== 35229, <= 40000)
+  gallery HTML files                                      68 (== 68)
+
+tour substitute (tour-substitute.txt):
+  GET /_jhin/health            200  application/json
+  GET /                        200  text/html (the web shell)
+  GET /ui/assets/app.js        200  application/javascript; charset=utf-8
+  GET /ui/assets/app.css       200  text/css; charset=utf-8
+  GET /manifest.json           200  application/manifest+json; charset=utf-8
+  GET /sw.js                   200  application/javascript; charset=utf-8
+  GET /ui/icons/icon-192.png   200  image/png
+  GET /ui/icons/icon-512.png   200  image/png
+  GET /_jhin/bootstrap (api=4) 200  application/json — screens[].html x21, contract 4/4/5/5
+  GET /ui/screen/sessions      200  application/json — {id, html}
+
+kernel:
+  mode   plain HTTP on http://localhost:18443 (no jhin.security -> no TlsProvider -> plain HTTP;
+         port 18443 because 8443 is occupied on this machine)
+  plugins jhin.sessions, jhin.ui-kit, jhin.ui (no mock LLM — the tour drives no run)
+  client  none on the shell/asset/manifest/icon/worker/health fetches;
+          X-Jhin-Client: api=4; version=0.0.0-web; schema=5; caps=sse,open_url,secure_storage on /_jhin/bootstrap and /ui/screen/*
+
+browser gap (browser-unavailable.txt):
+  screenshot tour of every screen   NOT produced (needs a real browser) — substitute:
+                                    tour-substitute.txt (the curled served surface)
+  PWA install UX                    NOT produced (needs a real browser) — substitute:
+                                    manifest + icons proven served
+  offline experience                NOT produced (needs a real browser offline) —
+                                    substitutes: served sw.js + shell paint target
+                                    (the T208 strategy evidence)
+
+leftovers handled (the chunk-2 handover):
+  1. SettingsScreen LICENSE_NOTICE/LICENSE_ENTRIES no longer list Flutter/Dart
+     (the license screen must not claim a client that is not bundled);
+  2. t80.sh kept — its dead '--no-tree-shake-icons' README assert repointed at
+     the surviving 'HTML web client' phrase;
+  3. e2e-lifecycle.sh DELETED (with its t81.sh wrapper): its core asserts are
+     dead against the level-4 wire — fetch_sidebar wants the retired
+     .node.body.sidebar node-tree shape (screens answer {id, html}) and the
+     contract-downgrade section wants api<4 downgraded shapes (the server
+     refuses api<4 with 426 contract_upgrade). The minimal level-4 fix could
+     not make it green without rewriting its heart; the sanctioned
+     fix-or-delete decision is delete.

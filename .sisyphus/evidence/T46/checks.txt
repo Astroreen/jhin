@@ -3,7 +3,7 @@ ok: dist/plugins-default carries exactly the ten default plugin jars
 ok: dist listing shows neither jhin-plugin-example nor jhin-plugin-qa-mock-llm
 ok: build green: dist/jhin-kernel-0.2.0.jar + 10 default plugins + harness plugins/qa-mock-llm/build/libs/jhin-plugin-qa-mock-llm-0.2.0.jar
 ok: bundled plugin dir holds 10 default jars + the qa-mock-llm jar
-ok: kernel up on https://localhost:18443 (pid 3471734, home /tmp/e2e-bundle-home.W4jZio)
+ok: kernel up on https://localhost:18443 (pid 3524040, home /tmp/e2e-bundle-home.oudgdr)
 ok: health lists all eleven seeded plugins
 ok: health lists jhin.sessions
 ok: health lists jhin.security
@@ -23,20 +23,24 @@ ok: cli create-account qa and create-enrollment qa, code captured once
 ok: POST /enroll
 ok: POST /enroll -> 200, device token captured
 ok: POST /providers {format:mock, model:mock-1}
-ok: GET /providers/formats lists mock (harness factory visible), provider id 2c63150b-4456-4e64-9a8c-fca7336acb21
+ok: GET /providers/formats lists mock (harness factory visible), provider id 26b1a54b-74bc-4c65-9296-7ef80a2f2a87
 ok: POST /sessions {title, workdir, providerId}
-ok: POST /sessions -> 201, session a43b337c-fa93-434d-a366-e2cf69e94092 (workdir /tmp/e2e-bundle-work.ysYeu7)
+ok: POST /sessions -> 201, session a706e4f9-e194-41dc-b672-86a5b2e8c968 (workdir /tmp/e2e-bundle-work.A7g3GH)
 ok: POST /sessions/{id}/messages {text:do the work}
 ok: event sequence contains in order: run_start tool_use tool_result message_end run_end
 ok: the tool_use event names the write tool
-ok: the tool-written file exists in the session workdir: /tmp/e2e-bundle-work.ysYeu7/qa-mock-output.txt
-ok: GET /_jhin/bootstrap reports empty:false
-ok: GET /ui/screen/chat:a43b337c-fa93-434d-a366-e2cf69e94092 -> 200 (chat screen reachable)
+ok: the tool-written file exists in the session workdir: /tmp/e2e-bundle-work.A7g3GH/qa-mock-output.txt
+ok: GET /_jhin/bootstrap -> 200 at api=4 (contract level 4)
+ok: GET /_jhin/bootstrap carries screens[].html (level-4 shape)
+ok: GET /ui/screen/sessions -> 200 (screen reachable)
+ok: GET /ui/screen/sessions answers {id, html} (level-4 shape)
+ok: GET /ui/screen/chat:a706e4f9-e194-41dc-b672-86a5b2e8c968 -> 200 (screen reachable)
+ok: GET /ui/screen/chat:a706e4f9-e194-41dc-b672-86a5b2e8c968 answers {id, html} (level-4 shape)
 ok: harness seam: the model observed 8 tool specification(s) in phase 1
 ok: phase 1 captured 9 events, last seq 9
 ok: jhin-plugin-tools-builtin jar removed from $JHIN_HOME/plugins
 ok: kernel boot1 stopped on SIGTERM and was reaped with wait (rc 143)
-ok: kernel restarted on https://localhost:18443 (pid 3472126) without the tools plugin
+ok: kernel restarted on https://localhost:18443 (pid 3524437) without the tools plugin
 ok: health no longer lists jhin.tools-builtin (deletion is final)
 ok: health lists the remaining ten plugins
 ok: POST /sessions/{id}/messages {text:do the work again}

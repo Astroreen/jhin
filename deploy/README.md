@@ -3,6 +3,8 @@
 Quickstart and product overview live in the top-level [README.md](../README.md).
 This page covers service deployment: running the kernel jar, the restart loop
 for `POST /admin/reload`, the systemd unit example and the data directory.
+The host serves the web client itself — there is no client to deploy and no
+client toolchain on the server.
 
 ## Requirements
 

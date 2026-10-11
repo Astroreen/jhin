@@ -1,0 +1,11 @@
+T209 kernel purity — the task changed NOTHING under kernel/.
+
+$ git diff HEAD --stat kernel/
+$ git status --porcelain kernel/
+
+assert: both commands print nothing — the working tree holds the whole
+T209 (chunks 1–3) and the kernel sources are byte-identical to HEAD.
+The one stale Flutter comment in
+kernel/src/main/java/com/astroreen/jhin/kernel/http/JhinServlet.java is
+deliberately LEFT (zero kernel edits is a plan gate; it is on the
+flutter-sweep allowlist instead).

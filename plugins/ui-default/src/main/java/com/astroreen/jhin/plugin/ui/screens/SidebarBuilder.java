@@ -116,7 +116,8 @@
  * to {@code idle} and is logged), plus {@code pinned} appended while the
  * session is pinned (upstream keeps the pin glyph visible while pinned,
  * {@code components/Sidebar.tsx:1089-1096}). The icon mapping lives
- * client-side ({@code icon_registry.dart}); the upstream-lucide &rarr;
+ * client-side (the inline-SVG icon registry of the web runtime); the
+ * upstream-lucide &rarr;
  * Material table is recorded in {@code evidence/T97/icon-map.json}.
  *
  * <p><b>Row identity.</b> Every row node is {@code session-row:<id>}, the id

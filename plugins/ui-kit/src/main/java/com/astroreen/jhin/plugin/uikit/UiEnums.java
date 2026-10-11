@@ -98,7 +98,7 @@ final class UiEnums {
     static final Set<String> KEYBOARD_TYPE =
             Set.of("text", "number", "phone", "email", "url", "visiblePassword", "multiline");
 
-    /** docs/sdui.md 2.6 input {@code textInputAction} (the doc lists the common subset; the rest are the Flutter IME actions). */
+    /** docs/sdui.md 2.6 input {@code textInputAction} (the doc lists the common subset; the rest are the IME actions of the upstream input model). */
     static final Set<String> TEXT_INPUT_ACTION = Set.of(
             "none", "unspecified", "done", "go", "next", "previous", "search", "send", "newline",
             "continueAction", "join", "route");
@@ -147,7 +147,7 @@ final class UiEnums {
     /** docs/sdui.md 2.6 {@code scroll} {@code scrollDirection}. */
     static final Set<String> SCROLL_DIRECTION = Set.of("vertical", "horizontal");
 
-    /** docs/sdui.md 2.6 {@code icon} {@code blendMode} (the Flutter BlendMode names). */
+    /** docs/sdui.md 2.6 {@code icon} {@code blendMode} (the upstream BlendMode names). */
     static final Set<String> BLEND_MODE = Set.of(
             "clear", "src", "dst", "srcOver", "dstOver", "srcIn", "dstIn", "srcOut", "dstOut",
             "srcATop", "dstATop", "xor", "plus", "modulate", "screen", "overlay", "darken",

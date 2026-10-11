@@ -611,7 +611,7 @@ Text primitives:
 | `text` | `italic` | bool | `false` | italic |
 | `text` | `color` | color | — | text color |
 | `text` | `strutStyle` | object | — | `{size?, height?, leading?}` |
-| `text` | `textWidthBasis` | `parent`/`longestLine`/`character` | `parent` | width basis (`character` has no Flutter counterpart and degrades to `parent`) |
+| `text` | `textWidthBasis` | `parent`/`longestLine`/`character` | `parent` | width basis (`character` has no HTML counterpart and degrades to `parent`) |
 | `text` | `locale` | string | — | BCP-47 tag |
 | `text` | `selectionColor` | color | — | selection color |
 | `rich_text` | `spans` | span array | — | inline spans, see the span table below |
@@ -1193,7 +1193,7 @@ round-trip and no database write. Every such node MUST carry the universal
 disabled-affordance marker — a small corner `preview` badge plus the tooltip
 `Preview only — not available in this build` — so nothing decorative looks
 silently real. Real screens must never carry `demo` on a real action. The
-server-side `DemoMarkerSweepTest` and `scripts/qa/t117.sh` enforce the marking
+server-side `DemoMarkerSweepTest` enforces the marking
 across every decorative route (plan section 14.10).
 
 ## 5. Streams and frames
@@ -1298,10 +1298,11 @@ rule — an unset field keeps the node visible, section 7 — cannot express a
 collapsed-by-default region, so the patch/`visible` pair carries the
 reveal.)
 
-The `session_updated` patch targets the sidebar row node `session-row:<id>`
-and carries the row props below (absent fields become `null`, so cleared
-lifecycle state resets the row). A sidebar row node carries the same prop
-names, so every patch lands on matching keys:
+The `session_updated` patch targets the sidebar row node `session-row:<id>`:
+the event payload's fields map onto the row props below (absent fields become
+`null`, so cleared lifecycle state resets the row), the server re-renders the
+row and the frame carries that html. A sidebar row node carries the same prop
+names, so every update lands on matching keys:
 
 | Row | Prop | Meaning |
 |-----|------|---------|

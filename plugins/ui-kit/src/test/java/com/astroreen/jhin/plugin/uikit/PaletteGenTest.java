@@ -14,8 +14,7 @@
  * {@code .sisyphus/evidence/T84/upstream-notes.txt}.
  *
  * <p>The suite also writes the nine generated maps to
- * {@code build/tmp/t84-palettes.json} so the QA script can diff them against
- * the Dart port byte for byte (plan §15.2).
+ * {@code build/tmp/t84-palettes.json} as a reviewable artifact (plan §15.2).
  */
 package com.astroreen.jhin.plugin.uikit;
 

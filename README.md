@@ -2,15 +2,16 @@
 
 Jhin is a self-hosted coding agent. One host process loads plugin jars from a
 local directory and executes everything itself — sessions, security, LLM
-providers, the agent loop, tools and every screen are plugins — and one Flutter
-client renders the UI on Android, Linux desktop and Web.
+providers, the agent loop, tools and every screen are plugins — and the only
+client is the HTML web client the host serves: a thin vanilla-JS runtime over
+server-rendered HTML.
 
 ## How it fits together
 
 ```
 +--------------------------------------------------------------+
-|  Flutter SDUI client (Android / Linux / Web)                 |
-|  renders server-authored JSON over a catalog of 68           |
+|  HTML web client (any browser)                               |
+|  thin vanilla-JS runtime over server-rendered HTML           |
 +-------------------------------+------------------------------+
                                 | JSON + SSE
 +-------------------------------v------------------------------+
@@ -32,14 +33,15 @@ Three layers, strictly separated:
 2. **Plugins** — the product itself, delivered as jars into
    `$JHIN_HOME/plugins/`. Every behaviour a plugin may adjust arrives this way,
    never as a kernel patch.
-3. **Flutter SDUI client** — a thin renderer. It hardcodes exactly one screen
-   (server profiles) and one endpoint (the bootstrap fetch); everything else is
-   server-driven UI.
+3. **HTML web client** — a thin vanilla-JS runtime the host serves. It
+   hardcodes exactly one surface (the pairing fallback — the enroll form shown
+   on 401/403) and one endpoint (the bootstrap fetch); everything else is
+   server-driven HTML.
 
 ## Install from a release bundle
 
-Requirements: a Java 21 runtime for the host; the client ships as an app
-bundle or a desktop/web build.
+Requirements: a Java 21 runtime — the host serves the web client itself;
+there is no client to install and no client build.
 
 1. Unpack the release bundle and start the host:
 
@@ -52,18 +54,20 @@ bundle or a desktop/web build.
    `JHIN_HOME` (default `~/.jhin`): `data/jhin.db`, `plugins/`, `keystore/`,
    `logs/`. Default listener: `https://0.0.0.0:8443`. With the security plugin
    loaded, a self-signed certificate is generated into `keystore/` on first
-   start and its SHA-256 fingerprint is logged for pinning.
+   start and its SHA-256 fingerprint is logged for verification.
 
-2. Open the client and enter the server URL on the profile screen (for example
-   `https://host:8443`). The client probes `GET /_jhin/health`, then fetches
-   `GET /_jhin/bootstrap` and renders whatever the server sent. Enrollment
-   (device tokens) is a server-driven flow once the security plugin is
-   installed.
+2. Open `https://host:8443/` in a browser. The web client fetches
+   `GET /_jhin/bootstrap` and renders whatever the server sent. With the
+   security plugin installed and no device token yet, the server answers
+   `401`/`403` and the client shows its built-in pairing form: enroll the
+   browser with a single-use code issued by the host CLI
+   (`cli create-enrollment <account>`) and the issued device token is stored
+   for the origin.
 
-3. Trust-on-first-use: the first accepted TLS fingerprint is pinned per
-   profile and mismatches are refused afterwards. On **web**, certificate
-   acceptance is client-side — the browser decides about self-signed
-   certificates; pinning applies to the native clients.
+3. TLS: with the security plugin the listener speaks HTTPS with a self-signed
+   certificate; the browser decides what to accept — the web runtime pins no
+   certificates. Verify the logged SHA-256 fingerprint out of band if your
+   threat model asks for it.
 
 ## Empty by default
 
@@ -75,24 +79,16 @@ into `$JHIN_HOME/plugins/` and restart the host. Bundled jars of the
 distribution are seeded there automatically on start (a user-modified copy is
 never overwritten).
 
-## Building the clients
+## Building the distribution
 
-The Flutter client (Android / Linux desktop / Web) is built with the standard
-Flutter toolchain. Release builds **must** pass `--no-tree-shake-icons`:
+There is no client toolchain: the web client is plain HTML, CSS and JavaScript
+files that ship inside the `jhin.ui` plugin jar and are served by the host.
+Everything builds with the Gradle wrapper and a fat jar:
 
 ```bash
-flutter build apk --release --no-tree-shake-icons
-flutter build linux --release --no-tree-shake-icons
-flutter build web --release --no-tree-shake-icons
+./gradlew build   # sdk, kernel and the plugin jars
+./gradlew dist    # the release bundle: kernel jar + plugin jars + run.sh
 ```
-
-The client resolves icon names through a generated registry
-(`frontend/lib/design/icon_registry.dart`, regenerated with
-`devenv shell -- dart frontend/tool/gen_icons.dart`) instead of compile-time
-`Icons.*` references, so the icon tree-shaker cannot see which glyphs are
-used and would strip them from the font. The flag keeps the full Material
-icon font in the binary; the size cost is accepted. Debug builds are
-unaffected (no icon tree shaking runs there).
 
 ## Updating and upgrades
 
@@ -101,13 +97,13 @@ Upgrades apply themselves; there is no manual migration step:
 - **Host data.** Database migrations run automatically on every start, before
   any plugin loads; applied versions are recorded and skipped afterwards —
   restarting the host is the whole upgrade procedure.
-- **Client data.** The client's persisted store is a versioned envelope; its
-  migrations run automatically at client startup (see
+- **Client data.** The web runtime's persisted store is a versioned envelope;
+  its migrations run automatically at startup (see
   [docs/updates.md](docs/updates.md)).
-- **Version gate.** When the client build and the server disagree about the
-  wire contract or the data schema, the client shows a built-in "update
-  required" surface instead of product screens (the bootstrap `contract` block
-  is what is compared).
+- **Version gate.** A client below the wire floor is refused with
+  `426 Upgrade Required`; one whose stored schema is below `minSchema` gets
+  the built-in "update required" surface instead of product screens (the
+  bootstrap `contract` block is what is compared).
 - **Downgrades never destroy data.** Values written by a newer schema are
   quarantined (`migration.quarantine`) rather than deleted, so returning to an
   older build loses nothing.

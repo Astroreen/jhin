@@ -12,8 +12,8 @@ import java.util.Set;
  * The universal-prop surface of docs/sdui.md section 2.1 applied to ONE
  * element, in the fixed application order of section 2.3.
  *
- * <p>The 15-step Flutter wrapping order collapses into properties of a single
- * box: decoration &rarr; padding &rarr; min/max/width/height &rarr;
+ * <p>The former 15-step widget wrapping order collapses into properties of a
+ * single box: decoration &rarr; padding &rarr; min/max/width/height &rarr;
  * aspect-ratio &rarr; opacity &rarr; transform &rarr; clip(overflow) &rarr;
  * align(justify/self) &rarr; {@code title} (tooltip) &rarr; pointer/keyboard
  * handlers &rarr; ARIA &rarr; flex ({@code flex}/{@code fit} map to

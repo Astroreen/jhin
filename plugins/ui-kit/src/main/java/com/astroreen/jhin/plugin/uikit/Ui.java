@@ -11,9 +11,9 @@
  * ({@link com.astroreen.jhin.plugin.uikit.has.HasGlass}) is accepted on
  * exactly the five glass-capable surfaces — card, sheet, dialog, menu and
  * banner; every other builder rejects it through the escape hatch. Every
- * Flutter parameter of the widget
- * a primitive renders has exactly one typed setter; unset params are simply
- * absent from the emitted JSON so the client uses its token defaults.
+ * parameter a primitive accepts has exactly one typed setter; unset params
+ * are simply absent from the emitted JSON so the client uses its token
+ * defaults.
  *
  * <p>Builders validate enum-typed literals immediately ({@code
  * IllegalArgumentException} on an unknown value — a builder bug is a
@@ -3415,11 +3415,11 @@ public final class Ui {
     /**
      * {@code icon}(icon, size?, color?, semanticLabel?, fill?, weight?,
      * grade?, opticalSize?, shadows?, textDirection?, blendMode?) — the
-     * Flutter {@code Icon} parameter set of docs/sdui.md section 2.6.
+     * {@code Icon} parameter set of docs/sdui.md section 2.6.
      * {@code color} (inherited) is the icon color and {@code textDirection}
      * (inherited) the rendering direction; the name resolves through the
-     * generated client registry, and an unknown name degrades to an empty
-     * icon client-side (section 2.4).
+     * inline-SVG icon registry (section 9.6), and an unknown name degrades to
+     * an empty icon (section 2.4).
      */
     public static final class IconBuilder extends NodeBuilder<IconBuilder> {
 
@@ -3479,7 +3479,7 @@ public final class Ui {
             return this;
         }
 
-        /** The color blend mode: the Flutter {@code BlendMode} names; validated. */
+        /** The color blend mode: the upstream {@code BlendMode} names; validated. */
         public IconBuilder blendMode(String value) {
             props.put("blendMode", UiEnums.require("blendMode", value, UiEnums.BLEND_MODE));
             return this;
@@ -3491,7 +3491,7 @@ public final class Ui {
      * highlightColor?, splashColor?, focusColor?, hoverColor?, padding?,
      * alignment?, constraints?, autofocus?, isSelected?, selectedIcon?,
      * mouseCursor?, visualDensity?, enableFeedback?, splashRadius?, style?) —
-     * the full Flutter {@code IconButton} parameter set of docs/sdui.md
+     * the full {@code IconButton} parameter set of docs/sdui.md
      * section 2.6.
      * {@code color}/{@code padding} (inherited) are the button's own icon
      * color and icon padding; {@code action}/{@code tooltip}/{@code confirm}

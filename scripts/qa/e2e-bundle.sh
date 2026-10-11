@@ -47,7 +47,7 @@ mkdir -p "$evidence"
 exec > >(tee "$evidence/e2e-bundle.txt") 2>&1
 
 base="https://localhost:18443"
-client_hdr='X-Jhin-Client: api=1; version=0.2.0; caps=sse,open_url,secure_storage,multi_profile'
+client_hdr='X-Jhin-Client: api=4; version=0.0.0-web; schema=5; caps=sse,open_url,secure_storage'
 kernel_pid=""
 token=""
 sid=""
@@ -353,16 +353,27 @@ fi
 code=$(curl -k -s --max-time 15 -o "$evidence/bootstrap.body" -w '%{http_code}' \
   -H "$client_hdr" "$base/_jhin/bootstrap") || fail "GET /_jhin/bootstrap: curl failed"
 printf '%s\n' "$code" > "$evidence/bootstrap.status"
-if jq -e '.empty == false' "$evidence/bootstrap.body" > /dev/null; then
-  ok "GET /_jhin/bootstrap reports empty:false"
+assert_eq "$code" "200" "GET /_jhin/bootstrap -> 200 at api=4 (contract level 4)"
+if jq -e '(.screens | length) > 0 and all(.screens[]; (.id | length) > 0 and (.html | length) > 0)' \
+    "$evidence/bootstrap.body" > /dev/null; then
+  ok "GET /_jhin/bootstrap carries screens[].html (level-4 shape)"
 else
-  bad "bootstrap lacks empty:false: $(cat "$evidence/bootstrap.body")"
+  bad "bootstrap lacks screens[].html: $(cat "$evidence/bootstrap.body")"
 fi
-code=$(curl -k -s --max-time 15 -o "$evidence/screen-chat.body" -w '%{http_code}' \
-  -H "$client_hdr" -H "Authorization: Bearer $token" "$base/ui/screen/chat:$sid") \
-  || fail "GET /ui/screen/chat:{id}: curl failed"
-printf '%s\n' "$code" > "$evidence/screen-chat.status"
-assert_eq "$code" "200" "GET /ui/screen/chat:$sid -> 200 (chat screen reachable)"
+for screen_id in "sessions" "chat:$sid"; do
+  screen_key=${screen_id%%:*}
+  code=$(curl -k -s --max-time 15 -o "$evidence/screen-$screen_key.body" -w '%{http_code}' \
+    -H "$client_hdr" -H "Authorization: Bearer $token" "$base/ui/screen/$screen_id") \
+    || fail "GET /ui/screen/$screen_id: curl failed"
+  printf '%s\n' "$code" > "$evidence/screen-$screen_key.status"
+  assert_eq "$code" "200" "GET /ui/screen/$screen_id -> 200 (screen reachable)"
+  if jq -e --arg id "$screen_id" '.id == $id and (.html | length) > 0' \
+      "$evidence/screen-$screen_key.body" > /dev/null; then
+    ok "GET /ui/screen/$screen_id answers {id, html} (level-4 shape)"
+  else
+    bad "GET /ui/screen/$screen_id lacks {id, html}: $(cat "$evidence/screen-$screen_key.body")"
+  fi
+done
 count1=$(observed_tool_count "$evidence/kernel-1.log")
 if [ -n "$count1" ] && [ "$count1" -gt 0 ] 2> /dev/null; then
   ok "harness seam: the model observed $count1 tool specification(s) in phase 1"
@@ -511,6 +522,6 @@ if [ "$failures" -gt 0 ]; then
   exit 1
 fi
 log "T46 QA green: the full bundle ran a real agent turn (run_start, tool_use, tool_result,"
-log "  message_end, run_end; tool-written file present; bootstrap empty:false; chat reachable)"
+log "  message_end, run_end; tool-written file present; bootstrap screens[].html; screens reachable)"
 log "  and survived plugin deletion (message_end/run_end with zero tools)"
 log "exit code: 0"

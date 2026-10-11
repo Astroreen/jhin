@@ -13,8 +13,7 @@ build/
 bin/
 *.class
 
-# Flutter / Dart
-.dart_tool/
+# build outputs
 dist/
 coverage/
 

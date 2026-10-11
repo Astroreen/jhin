@@ -1,0 +1,31 @@
+T209 cold browser tour — UNAVAILABLE in this environment.
+
+Browser tooling (the screenshot tour of every screen, the PWA install UX and
+the offline experience) cannot run on this QA machine; the T202–T208
+precedent applies: every browser step is recorded here and substituted with
+curl over the served surface (tour-substitute.txt). No screenshot, snapshot
+or visual artifact was produced and nothing was fabricated in their place.
+
+Uncovered without a browser (accepted for this environment):
+  - a screenshot tour of every screen (sessions, chat, settings:*,
+    settings:licenses, pair, the version-gate and the fallback art): the
+    rendered pixels, layout, theme tokens and responsive behaviour of each
+    screen as a user sees them;
+  - the PWA install UX: the beforeinstallprompt affordance, the install
+    prompt and the installed-app chrome (the manifest and its two icons are
+    proven served — tour-substitute.txt — but no install flow runs here);
+  - the offline experience: the service-worker install/activate lifecycle in
+    a real engine, the cached-shell cold start with the network down and the
+    fallbacks.offline art painted into #jhin-root (the worker script and the
+    shell paint target are proven served; the T208 sw-checks/offline-strategy
+    evidence covers the strategy contract).
+
+Substitutes of this run (evidence):
+  - tour-substitute.txt — the full served surface curled through the live
+    kernel: health, shell, app.js, app.css, manifest, worker, both icons,
+    the api=4 bootstrap (screens[].html, contract 4/4/5/5) and the sessions
+    screen ({id, html}) — status + content-type per endpoint;
+  - static-gates.txt — the client-side must-NOT-haves (0 eval, 0 '<',
+    the byte budgets, the 68-primitive gallery);
+  - stale-docs.txt / flutter-sweep.txt — the retired stack is gone from the
+    product surface and survives only on the allowlisted history paths.

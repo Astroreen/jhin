@@ -19,12 +19,11 @@
  *
  * <p>Every transcendental here is implemented on plain IEEE-754 double
  * arithmetic with a fixed iteration count and a fixed evaluation order, so
- * the Java port and the Dart port ({@code frontend/lib/design/palette_gen.dart})
- * produce bit-identical results on any toolchain. That is the answer to the
- * plan's §15.2 rounding-parity risk: parity is guaranteed by construction,
- * not by luck of matching {@code libm}. {@code Math.sqrt} is used freely —
- * square root is the one operation IEEE-754 requires to be correctly
- * rounded, so both languages agree bit-for-bit.
+ * the generator produces bit-identical results on any toolchain. That is the
+ * answer to the plan's §15.2 rounding-parity risk: determinism is guaranteed
+ * by construction, not by luck of matching {@code libm}. {@code Math.sqrt} is
+ * used freely — square root is the one operation IEEE-754 requires to be
+ * correctly rounded.
  */
 package com.astroreen.jhin.plugin.uikit;
 

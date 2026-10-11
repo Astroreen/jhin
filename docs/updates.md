@@ -10,19 +10,18 @@ model.
 
 ## 1. Persisted-key envelope
 
-Every non-secure persisted key in `AppStorage`/`SharedPreferences` gets an
+Every non-secure persisted key of the web runtime's local store
+(`localStorage`, the `jhin.*` keys of [sdui.md](sdui.md) section 8) gets an
 **envelope**:
 
 ```json
 {
-  "schema": 4,
-  "app": "0.3.0",
-  "writtenAt": "2026-10-03T09:30:00Z",
+  "schema": 5,
+  "app": "0.2.0",
+  "writtenAt": "2026-10-11T09:30:00Z",
   "data": {
-    "profiles": [
-      { "id": "home", "url": "https://jhin.example.org", "label": "Home" }
-    ],
-    "activeProfileId": "home"
+    "mod+shift+p": "palette.open",
+    "mod+enter": "composer.send"
   }
 }
 ```
@@ -36,39 +35,38 @@ Envelope fields:
 | `writtenAt` | string | ISO-8601 UTC timestamp of the write |
 | `data` | object | the actual payload |
 
-**Precedent:** a stored value with no envelope is legacy `schema 1` (the
-current on-disk shape) — it is wrapped and migrated on first read.
+**Precedent:** a stored value with no envelope is legacy `schema 1` — it is
+wrapped and migrated on first read.
 
-Current keys and their owners: `profiles` (list of `ServerProfile`: url,
-label, certFingerprint, tokenRef, cachedBootstrap, cachedScreens, fallbacks),
-`activeProfileId`, `sessionState:<profileId>` (screen stack + cache),
-`appearance` (themeMode, textSize, density, panelMotionMs), `keybindings`
-(user override rules), `commands.paletteHistory`, `composer.history:<profileId>`
-(per-profile sent-prompt history of the composer), `migration.quarantine`.
-**Secure storage (`flutter_secure_storage`) is NOT enveloped** — device
-tokens are opaque and version-independent.
+Current keys and their owners: `jhin.bootstrap` (the last successful bootstrap
+payload, cached so the offline and error art can paint), `jhin.screens`
+(screen id → HTML, an LRU bounded at 50), `jhin.keybindings` (user keymap
+overrides) and the `storeKey`-named UI-state keys (for example the sidebar
+section collapse state). **The bearer token is NOT enveloped** —
+`jhin.token` (the `secure_storage` capability) is opaque and
+version-independent.
 
 ## 2. StoreMigration API
 
-Migration model (`frontend/lib/store/`):
+Migration model (the web runtime's store module,
+`plugins/ui-default/src/main/resources/web/app.js`):
 
-```dart
-abstract class StoreMigration {
-  int get from; int get to;
-  void upgrade(Map<String, dynamic> data);   // in-place transform of the `data` blob
+```js
+// one step of the chain
+class StoreMigration {
+  from; to;
+  upgrade(data) {}   // in-place transform of the `data` blob
 }
-final class StoreMigrations {
-  static const current = 3;
-  static final List<StoreMigration> steps = [ _V1ToV2(), _V2ToV3() ];
-}
-final class MigrationRunner {
-  Future<MigrationReport> run(AppStorage storage);  // see rules below
-}
+const StoreMigrations = {
+  current: 5,
+  steps: [v1ToV2, v2ToV3, v3ToV4, v4ToV5]
+};
+// MigrationRunner.run(storage) -> MigrationReport (see rules below)
 ```
 
 `MigrationReport` carries what happened: the keys migrated, the keys
-quarantined and the number of failures. `main()` awaits it before `JhinApp`
-builds.
+quarantined and the number of failures. The runtime awaits it before the
+first render.
 
 ## 3. The six runner rules
 
@@ -76,7 +74,7 @@ All tested. Stated verbatim; every implementation and future step must
 satisfy them exactly.
 
 1. **Precedent:** on first read, a key without an envelope is legacy
-   `schema 1` (the current on-disk shape) — wrapped and migrated.
+   `schema 1` — wrapped and migrated.
 2. **Ordered, atomic per key:** apply `from→to` steps in order; before
    mutating, copy the raw value to `migration.backup:<key>`; on success write
    the enveloped value and delete the backup; on throw, restore the backup
@@ -88,12 +86,15 @@ satisfy them exactly.
    data.
 4. **Partial failure is survivable:** one failing key quarantines itself;
    other keys still migrate; the app boots.
-5. **Runs before anything reads state:** `main()` awaits `MigrationReport`
-   before `JhinApp` builds; failures surface in `BootError`-style UI but
-   never block launch.
-6. **Version gate:** `contract.minSchema` from bootstrap + `schema` on disk
-   determine the "update required" surface; it is a *client-owned* screen
-   (allowed by C-10 — it is chrome, not product).
+5. **Runs before anything reads state:** the runner completes before the
+   runtime renders any state; failures surface in the built-in error chrome
+   but never block the shell.
+6. **Version gate:** a client that passes the upgrade gate (`api` ≥ 4) but
+   whose stored `schema` is below `contract.minSchema` (`5`) gets the
+   `version_gate` entry — the "update required" surface, a *client-owned*
+   screen (allowed by C-10 — it is chrome, not product). A client declaring
+   `api` < 4 never reaches the gate: it is refused with `426 Upgrade Required`
+   ([sdui.md](sdui.md) section 6).
 
 ## 4. Downgrade and quarantine behavior
 
@@ -116,21 +117,24 @@ successful commit.
 
 ## 5. Schema steps
 
-`StoreMigrations.current` is `4`. The steps defined so far:
+`StoreMigrations.current` is `5` (`CLIENT_SCHEMA`). The steps defined so far
+(1 → 4 are the numbering history of the retired client's store; 4 → 5 re-bases
+the web runtime's local store):
 
 | Step | What it does |
 |------|--------------|
 | 1 → 2 | wrap legacy blobs into the envelope and split `sessionState` per profile |
 | 2 → 3 | introduce `appearance` + `keybindings` + `tokensEtag` and migrate the old `theme` key into `appearance` |
 | 3 → 4 | persist the selected catalogue theme id: `appearance` gains `themeId` (default `t3-chat`), merged without clobbering (T85) |
+| 4 → 5 | the contract-level-4 store: the persisted key set becomes the web runtime's `jhin.*` keys ([sdui.md](sdui.md) section 8); anything the step cannot interpret is quarantined (rule 3), never deleted |
 
 ## 6. How to add a migration step
 
 1. Bump `StoreMigrations.current` to the new schema version `N + 1`.
-2. Write `frontend/lib/store/migrations/v<N>_to_v<N+1>.dart`: a
-   `StoreMigration` with `from = N`, `to = N + 1` and an `upgrade()` that
-   transforms the `data` blob **in place** (mutate the map; do not return a
-   new one).
+2. Add a `StoreMigration` step (`from = N`, `to = N + 1`) in the web runtime's
+   store module (`plugins/ui-default/src/main/resources/web/app.js`): an
+   `upgrade()` that transforms the `data` blob **in place** (mutate the map;
+   do not return a new one).
 3. Append the step to `StoreMigrations.steps` — order matters, the runner
    applies `from→to` steps in list order.
 4. Add tests with real blobs: a legacy (un-enveloped) fixture, a fixture at
@@ -152,18 +156,14 @@ server-side note: the sessions undo journal (the 5-second undo window) is
 in-memory and therefore assumes a single host instance — a second instance
 cannot see the first one's entries.
 
-## 8. Build note: icon registry and tree-shaking
+## 8. Build note: the web runtime ships as-is
 
-Release builds of the client must pass `--no-tree-shake-icons` (see the
-top-level [README](../README.md) build section). Icon names are resolved at
-runtime through the generated registry
-(`frontend/lib/design/icon_registry.dart`) — the registry's `IconData`
-entries are looked up dynamically, so the Flutter icon tree-shaker cannot see
-which glyphs are used and would strip them from the bundled font, leaving
-every server-authored icon blank. The flag keeps the full Material icon font
-in the binary; the size cost is accepted. Ship this flag with every client
-release — a build without it is a broken update for the UI, even though the
-persisted-state migrations above run unchanged.
+There is no client build and no client toolchain: `app.js` and `app.css` are
+committed plain files inside the `jhin.ui` plugin jar and the host serves them
+from `GET /ui/assets/*`. Nothing about the client has to be flagged or bundled
+at release time — `./gradlew dist` assembles the whole distribution (see the
+top-level [README](../README.md) build section). The persisted-state
+migrations above run unchanged.
 
 ## 9. Release notes: the UI overhaul
 
@@ -200,7 +200,7 @@ update — the app never renders a broken half-state.
 ## 10. Release notes: the t3code UI clone
 
 This release aligns the client's visual language with the t3code design system
-and grows the SDUI contract to **level 3** (`api: 3`, schema `4`).
+and grows the SDUI contract to **level 3** (schema `4`).
 
 **What was copied.** The token vocabulary (the 56 semantic `--color-*` aliases
 plus the `contrast`, `radius`, `text`, `font`, `space`, `layout`, `glass`,
@@ -232,28 +232,18 @@ rest of the UI keeps working unchanged.
 
 ## 11. End-to-end verification of the upgrade path
 
-`scripts/qa/t120.sh` boots the full plugin bundle in a throwaway `JHIN_HOME`
-and proves the three upgrade surfaces together:
+The upgrade surfaces are proven at contract level 4 by the headless QA
+scripts (curl + gradle) and the SDK tests:
 
-- **Route inventory.** Every screen id the plan's section 4.2 inventory maps
-  onto the implementation is fetched at `api=3;schema=4` and must answer HTTP
-  200 with a `screen` root node whose types all live in the section 2.5
-  catalog. The two ids the plan lists but the implementation deliberately does
-  not expose — `chat:new` (the client owns the new-thread draft) and
-  `draft:<id>` (drafts are client state) — are recorded as
-  `404 unknown_screen`.
-- **Contract downgrade.** Every route is fetched again at `api=2;schema=3`;
-  the level-3 → level-2 table must leave zero level-3 primitives and no
-  `glass`/`glassTint`/`statusPulse` prop anywhere in the tree, including nodes
-  embedded in a directive (`dialog`/`setScreen` `node`) or a descriptor map.
-- **Store upgrade.** The Flutter store suite runs the real schema-3 fixture
-  through the 3 → 4 step and asserts `themeId` defaults to `t3-chat` with no
-  data loss; the booted host's bootstrap reports the same default theme id.
-
-The script also re-runs the T78 settings and T98 undo gates, so a regression
-in either surfaces here. Its `--fail` path requests a `schema=2` client below
-`contract.minSchema` and confirms the client-owned `version_gate` entry is
-named without a server-rendered gate node.
+- **Upgrade gate.** `scripts/qa/t202.sh` fetches `GET /_jhin/bootstrap` with
+  a below-floor client and with no `X-Jhin-Client` header at all and asserts the
+  `426 Upgrade Required` refusal with the exact `contract_upgrade` body
+  (`minApi: 4`); `GET /_jhin/health` stays `200`.
+- **Version gate.** `BootstrapContractTest` asserts the `version_gate` entry
+  for a client whose declared schema is below `contract.minSchema` (HTTP 200,
+  never a crash) and the product entry for a client at `schema=5`.
+- **Release bundle.** `scripts/qa/e2e-bundle.sh` boots the assembled bundle in
+  a throwaway `JHIN_HOME` and runs one real agent turn end to end.
 
 ## 12. Release notes: the release bundle
 
@@ -265,12 +255,13 @@ and what to strip; the clone-level notes are in §10.
 **What was copied into the bundle.** The kernel boot jar
 (`jhin-kernel-<version>.jar`), the ten default plugin jars under
 `plugins-default/` — sessions, security, llm, llm-builtin, agent,
-tools-builtin, mcp, ui-kit, ui-default and reload — the web client under
-`frontend/web/` (plus the Linux desktop bundle when the host toolchain is
-present), the restart loop `run.sh` and a `MANIFEST.txt` with the size and
-SHA-256 of every artifact. The `jhin.example` copy-paste template and the
-`jhin.qa-mock-llm` harness are built with the rest but are deliberately never
-copied: the `dist` task fails if either name appears anywhere inside `dist/`.
+tools-builtin, mcp, ui-kit, ui-default and reload — the restart loop `run.sh`
+and a `MANIFEST.txt` with the size and SHA-256 of every artifact. The web
+client is not a separate artifact: its plain HTML/CSS/JS files ship inside the
+`jhin.ui` jar and the host serves them at `GET /`. The `jhin.example`
+copy-paste template and the `jhin.qa-mock-llm` harness are built with the
+rest but are deliberately never copied: the `dist` task fails if either name
+appears anywhere inside `dist/`.
 
 **What is decorative.** The bundle ships the same decorative surfaces the
 clone documents in §10 — the terminal drawer, the diff viewer and changed-files
@@ -288,4 +279,27 @@ missing dependency in the log (`plugin load finished with N failed: …`). To
 remove the decorative surfaces themselves, drop the `demo` nodes and replace
 their inline directives with real actions; the token layer, the palette
 generator and the decorative mechanism are the intended seams (§10).
+
+## 13. Release notes: the HTML web client (contract level 4)
+
+**What changed.** The wire is HTML now: every screen travels as an
+`{id, html}` fragment rendered from the plugin's `Ui` tree, and the JSON
+node-tree payloads are gone. The only client is the web client the host serves
+at `GET /` — there is no separate client install and no client build to run at
+upgrade time.
+
+**Breaking: old clients are refused.** A request that declares
+`X-Jhin-Client: api < 4`, or carries no such header at all, is answered with
+`426 Upgrade Required` and the `contract_upgrade` body instead of any payload
+([sdui.md](sdui.md) section 6). There is no downgrade path and no dual-wire
+period: upgrade the client, not the server.
+
+**Schema 5.** The persisted-data schema is `5` (`CLIENT_SCHEMA`) and the
+server accepts nothing below `minSchema: 5`; the bootstrap `contract` block
+reports `{api: 4, minApi: 4, schema: 5, minSchema: 5}`. A client that passes
+the upgrade gate (`api=4`) with a stored schema below `5` gets the
+`version_gate` entry — the built-in "update required" surface — instead of
+product screens, and its data is never destroyed (the quarantine rules above
+still apply). The envelope of §1 and the runner rules of §3 are unchanged
+except for the version numbers.
 

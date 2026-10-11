@@ -4,7 +4,7 @@
  * the category grouping of the keybinding table.
  *
  * <p>Two layers. The <b>T67 set</b> is the client's dispatchable vocabulary
- * ({@code frontend/lib/sdui/keyboard/command_registry.dart:66-100}) — every id
+ * (the web runtime's command dispatch, {@code app.js}) — every id
  * there is a real command the client dispatches; the panel renders these rows
  * with a live {@code Change} affordance. The <b>upstream additions</b> are the
  * command ids of t3code's {@code STATIC_KEYBINDING_COMMANDS}
@@ -52,8 +52,8 @@ public final class KeybindCatalog {
 
     /**
      * The four command-palette result groups (T115), in render order. Mirrors
-     * the client's {@code PaletteGroup} enum
-     * ({@code frontend/lib/sdui/keyboard/palette.dart}); the wire name is the
+     * the web client's palette grouping (the command palette of
+     * {@code app.js}); the wire name is the
      * lower-case group value the bootstrap {@code palette} block carries and
      * the client renders as the upper-case header.
      */

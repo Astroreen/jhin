@@ -1,21 +1,19 @@
 { pkgs, lib, ... }:
 
-# Jhin v2 — kernel + plugins composite (Java 21 / Gradle 9, Flutter + JDK 17)
+# Jhin v2 — kernel + plugins composite (Java 21 / Gradle 9)
 #
 # Combined dev environment for the whole Jhin monorepo.
 #
 # Why: the editor and the terminal are usually open at the repository root
-# (VSCode -> /Documents/jhin), and both toolchains are wanted right away -
-# Java 21 + Gradle (sdk, kernel, plugins) and Flutter + JDK 17 + Android
-# (frontend) - without stepping into a subproject.
+# (VSCode -> /Documents/jhin), and the toolchain is wanted right away -
+# Java 21 + Gradle (sdk, kernel, plugins) - without stepping into a subproject.
 #
-# The toolchains are intentionally re-declared here instead of merging via
+# The toolchain is intentionally re-declared here instead of merging via
 # imports: the environments would conflict on variables (JAVA_HOME,
 # LD_LIBRARY_PATH, GRADLE_OPTS), so module merging would produce Nix module
 # errors. This file is the single source for the root shell.
 let
   jdk21 = pkgs.openjdk21;
-  jdk17 = pkgs.jdk17;
 
   # Kernel listener port. The kernel resolves the port as
   # JHIN_KERNEL_PORT (this variable) > config.json `kernel.port` > 8443,
@@ -35,27 +33,14 @@ in
       enable = true;
       # `pkgs.gradle_9` is only the `gradle` CLI convenience binary for this
       # shell - every real build goes through `./gradlew`, which pins its
-      # own distribution per gradle-wrapper.properties (root and
-      # frontend/android are both pinned to 9.3.1; AGP 9.1.0 in
-      # frontend/android requires Gradle >=9.3.1, so that is the floor for
-      # the whole repo). Keep this package on the same 9.x line so a stray
+      # own distribution per gradle-wrapper.properties (9.3.1). Keep this
+      # package on the same 9.x line so a stray
       # `gradle` invocation doesn't spin up yet another daemon version.
       package = pkgs.gradle_9;
     };
   };
 
   packages = with pkgs; [
-    # Frontend: Flutter/Dart + Android/Linux-desktop tooling.
-    flutter
-    jdk17
-    android-tools
-    aapt
-    cmake
-    ninja
-    pkg-config
-    gtk3
-    pcre
-    libsecret
     # Shared monorepo dev utilities.
     git
     jq
@@ -68,11 +53,7 @@ in
     # Kernel listener port (see the `jhinPort` binding above).
     JHIN_KERNEL_PORT = jhinPort;
 
-    # Flutter Android builds (SDK location on the dev machine).
-    ANDROID_HOME = "${builtins.getEnv "HOME"}/Android/Sdk";
-    ANDROID_SDK_ROOT = "${builtins.getEnv "HOME"}/Android/Sdk";
-    ANDROID_EMULATOR_USE_SYSTEM_LIBS = "1";
-    GRADLE_OPTS = "-Dorg.gradle.project.android.aapt2FromMavenOverride=${pkgs.aapt}/bin/aapt2 -Dandroid.cmake.path=${pkgs.cmake}/bin/cmake -Dorg.gradle.java.installations.auto-detect=false -Dorg.gradle.java.installations.auto-download=false -Dorg.gradle.java.installations.paths=${jdk17.home},${jdk21.home}";
+    GRADLE_OPTS = "-Dorg.gradle.java.installations.auto-detect=false -Dorg.gradle.java.installations.auto-download=false -Dorg.gradle.java.installations.paths=${jdk21.home}";
     GRADLE_USER_HOME = "${builtins.getEnv "PWD"}/.gradle_home";
 
     # nix-ld: native binaries (the JVM, native libraries from Maven
@@ -85,9 +66,6 @@ in
       pkgs.zlib
     ];
     LD_LIBRARY_PATH = lib.makeLibraryPath [
-      pkgs.gtk3
-      pkgs.pcre
-      pkgs.libsecret
       pkgs.zlib
       pkgs.glibc
       pkgs.stdenv.cc.cc
@@ -212,11 +190,6 @@ in
       echo "jhin-home-reset: reset '$home'"
     '';
 
-    # Flutter frontend (unchanged).
-    frontend-run.exec = "cd frontend && flutter run";
-    frontend-runp.exec = "cd frontend && flutter run -d linux";
-    frontend-runr.exec = "cd frontend && flutter run -d web-server --web-port 8080";
-
     # Generates .vscode/settings.json for the root composite build (T41).
     # VSCode reads it as workspace settings; the file is .gitignore-d (the
     # paths change on every update). Written idempotently (mktemp + cmp -s):
@@ -226,9 +199,8 @@ in
     # is a Gradle composite (settings.gradle with the sdk, kernel and eleven
     # plugin included builds), so java.import.gradle.enabled imports that one
     # root build and everything it includes. java.import.exclusions keeps
-    # build outputs (**/dist/**, **/.gradle_home/**), the Flutter tree
-    # (**/frontend/**) and the scaffold template (**/.opencode/**) out of the
-    # Java importer.
+    # build outputs (**/dist/**, **/.gradle_home/**) and the scaffold
+    # template (**/.opencode/**) out of the Java importer.
     #
     # Three keys here are load-bearing for the composite import and must not
     # be dropped from this template - the file is regenerated on every shell
@@ -252,13 +224,10 @@ in
     settings_tmp=$(mktemp)
     cat > "$settings_tmp" <<EOF
 {
-  "dart.flutterSdkPath": "${pkgs.flutter}",
-
   "java.jdt.ls.java.home": "${jdk21.home}",
   "java.import.gradle.java.home": "${jdk21.home}",
   "java.configuration.runtimes": [
-    { "name": "JavaSE-21", "path": "${jdk21.home}", "default": true },
-    { "name": "JavaSE-17", "path": "${jdk17.home}" }
+    { "name": "JavaSE-21", "path": "${jdk21.home}", "default": true }
   ],
 
   "java.gradle.buildServer.enabled": "on",
@@ -280,7 +249,6 @@ in
     "**/.direnv/**",
     "**/.gradle/**",
     "**/.gradle_home/**",
-    "**/frontend/**",
     "**/.opencode/**"
   ],
 
@@ -297,16 +265,10 @@ EOF
   };
 
   enterShell = ''
-    # Flutter Android builds need JDK 17 (not 21) - pin it in the Flutter
-    # config. Done in enterShell (not at eval time) so the global config is
-    # not touched on every evaluation.
-    flutter config --jdk-dir ${jdk17.home} > /dev/null 2>&1
-
     # Devenv scripts
     generate-vscode-settings
 
-    echo "Jhin v2 — kernel + plugins composite (Java 21 / Gradle 9, Flutter + JDK 17)"
+    echo "Jhin v2 — kernel + plugins composite (Java 21 / Gradle 9)"
     java -version
-    flutter --version | head -n 1
   '';
 }

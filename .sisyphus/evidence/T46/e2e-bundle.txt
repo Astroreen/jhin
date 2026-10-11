@@ -8,35 +8,35 @@ ok: build green: dist/jhin-kernel-0.2.0.jar + 10 default plugins + harness plugi
 STEP 2: seed a fresh JHIN_HOME from the bundle plus the harness jar
 ok: bundled plugin dir holds 10 default jars + the qa-mock-llm jar
 STEP 3: boot the full bundle on TLS port 18443
-11:54:53.961 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-agent-0.2.0.jar (5a7076be89f2ed6eca73085be6c6590007d547fd39fb11116759e97ea054461c)
-11:54:53.991 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-llm-0.2.0.jar (dae703dbf26f54640724c52a44d6d4b69c5d5038780c0cc8ba948ae242d10e90)
-11:54:54.016 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-llm-builtin-0.2.0.jar (d12174fa23bd17b9fba267f368b2026cd3ccf1290078b5ba899de878cbf64364)
-11:54:54.045 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-mcp-0.2.0.jar (ec680205b62404e6d358ac3df7156fc2a03f4333f879d5800b2253b329ecc860)
-11:54:54.067 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-qa-mock-llm-0.2.0.jar (f34bd440661ef2999a42dfa8f1e767102fe1107543ae1d4b00ddb1a263ac9ba0)
-11:54:54.090 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-reload-0.2.0.jar (22e5bffe8b3e73ae954088d9ea97cae105a187ff27df81f9edd6478c8cb6b1e3)
-11:54:54.124 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-security-0.2.0.jar (d958051ac87be2fc95033a5e21edd1f4b3b4acc44e02e1f219c7cab2f3df92fc)
-11:54:54.151 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-sessions-0.2.0.jar (8b870d58298807ba73d2410df4f70d335c6009a35a50f76d716b94c76458e990)
-11:54:54.172 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-tools-builtin-0.2.0.jar (51ed1eb439e02e221a54ae140b5aa9eb0ec5a9544d21ade19c7885ea86f38061)
-11:54:54.194 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-ui-default-0.2.0.jar (575f8cffec6d62964b907d8a57292fa39a5e86fe1d29c777618822d923ddb328)
-11:54:54.226 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-ui-kit-0.2.0.jar (ee57a9cf2696bd9999a5d2fb163a595f0b690ed3d9f7ecc74c682b28578c7947)
-11:54:54.391 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
-11:54:54.395 [main] WARN plugin.jhin.qa-mock-llm -- qa-mock-llm is a QA harness (format mock); never ship this jar in a release bundle
-11:54:54.654 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
-11:54:54.687 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log and routes published
-11:54:54.692 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
-11:54:54.694 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-bundle-home.W4jZio/mcp.json; no MCP servers to start
-11:54:54.696 [main] INFO plugin.jhin.tools-builtin -- jhin.tools-builtin started: 8 tools: ls, write, read, edit, edit-diff, find, grep, bash
-11:54:54.704 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action and stream routes registered
-2026-10-01T11:54:55.131+03:00  INFO 3471734 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3471734 (/home/astroreen/Documents/jhin/dist/jhin-kernel-0.2.0.jar started by astroreen in /home/astroreen/Documents/jhin)
-2026-10-01T11:54:55.133+03:00  INFO 3471734 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
-2026-10-01T11:54:55.609+03:00  INFO 3471734 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18443 (https)
-2026-10-01T11:54:55.618+03:00  INFO 3471734 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
-2026-10-01T11:54:55.619+03:00  INFO 3471734 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
-2026-10-01T11:54:55.633+03:00  INFO 3471734 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 466 ms
-2026-10-01T11:54:55.892+03:00  INFO 3471734 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18443], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
-2026-10-01T11:54:55.899+03:00  INFO 3471734 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (https) with context path '/'
-2026-10-01T11:54:55.907+03:00  INFO 3471734 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.109 seconds (process running for 2.339)
-ok: kernel up on https://localhost:18443 (pid 3471734, home /tmp/e2e-bundle-home.W4jZio)
+23:45:13.458 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-agent-0.2.0.jar (6e47002f7b8f150435117d4d97bd7ddaa22661145daec6d26148f3d3d8e452e7)
+23:45:13.487 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-llm-0.2.0.jar (dae703dbf26f54640724c52a44d6d4b69c5d5038780c0cc8ba948ae242d10e90)
+23:45:13.513 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-llm-builtin-0.2.0.jar (d12174fa23bd17b9fba267f368b2026cd3ccf1290078b5ba899de878cbf64364)
+23:45:13.537 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-mcp-0.2.0.jar (ec680205b62404e6d358ac3df7156fc2a03f4333f879d5800b2253b329ecc860)
+23:45:13.558 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-qa-mock-llm-0.2.0.jar (2e0bc52718b144e87c5a1d68b0bc5e25db4784b1c5539ef1345a04db57d61d9a)
+23:45:13.578 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-reload-0.2.0.jar (22e5bffe8b3e73ae954088d9ea97cae105a187ff27df81f9edd6478c8cb6b1e3)
+23:45:13.610 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-security-0.2.0.jar (b9d9b18422b0359db6214a11cff2a7a4a3eb988f3f09605b6b430b2ffc4ce98b)
+23:45:13.630 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-sessions-0.2.0.jar (6cc6b45bc5c0f823d8f66b9929923a3d983454cc230c9a253ec4aea9b790ae50)
+23:45:13.653 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-tools-builtin-0.2.0.jar (51ed1eb439e02e221a54ae140b5aa9eb0ec5a9544d21ade19c7885ea86f38061)
+23:45:13.677 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-ui-default-0.2.0.jar (37c84856a653feb472b8c2ab0bc84686d985150a7a816583407291a47a4cd4c8)
+23:45:13.703 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-ui-kit-0.2.0.jar (87465029b4ef93f2bdfb0aaf91a229cd081f4b358f6c665cf12766e67c7b17a0)
+23:45:13.891 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
+23:45:13.894 [main] WARN plugin.jhin.qa-mock-llm -- qa-mock-llm is a QA harness (format mock); never ship this jar in a release bundle
+23:45:14.216 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
+23:45:14.259 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+23:45:14.265 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
+23:45:14.266 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-bundle-home.oudgdr/mcp.json; no MCP servers to start
+23:45:14.269 [main] INFO plugin.jhin.tools-builtin -- jhin.tools-builtin started: 8 tools: ls, write, read, edit, edit-diff, find, grep, bash
+23:45:14.290 [main] INFO plugin.jhin.ui -- ui plugin started: web shell, asset, manifest, icon, service worker, bootstrap, screen, action, search and stream routes registered
+2026-10-11T23:45:14.718+03:00  INFO 3524040 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3524040 (/home/astroreen/Documents/jhin/dist/jhin-kernel-0.2.0.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-11T23:45:14.719+03:00  INFO 3524040 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-11T23:45:15.186+03:00  INFO 3524040 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18443 (https)
+2026-10-11T23:45:15.197+03:00  INFO 3524040 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-11T23:45:15.197+03:00  INFO 3524040 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-11T23:45:15.213+03:00  INFO 3524040 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 461 ms
+2026-10-11T23:45:15.490+03:00  INFO 3524040 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18443], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
+2026-10-11T23:45:15.497+03:00  INFO 3524040 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (https) with context path '/'
+2026-10-11T23:45:15.503+03:00  INFO 3524040 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.127 seconds (process running for 2.446)
+ok: kernel up on https://localhost:18443 (pid 3524040, home /tmp/e2e-bundle-home.oudgdr)
 ok: health lists all eleven seeded plugins
 ok: health lists jhin.sessions
 ok: health lists jhin.security
@@ -59,72 +59,76 @@ ok: POST /enroll
 ok: POST /enroll -> 200, device token captured
 STEP 6: create the mock provider
 ok: POST /providers {format:mock, model:mock-1}
-ok: GET /providers/formats lists mock (harness factory visible), provider id 2c63150b-4456-4e64-9a8c-fca7336acb21
+ok: GET /providers/formats lists mock (harness factory visible), provider id 26b1a54b-74bc-4c65-9296-7ef80a2f2a87
 STEP 7: create the session with a fresh workdir
 ok: POST /sessions {title, workdir, providerId}
-ok: POST /sessions -> 201, session a43b337c-fa93-434d-a366-e2cf69e94092 (workdir /tmp/e2e-bundle-work.ysYeu7)
+ok: POST /sessions -> 201, session a706e4f9-e194-41dc-b672-86a5b2e8c968 (workdir /tmp/e2e-bundle-work.A7g3GH)
 STEP 8: run one real agent turn and consume the event stream
 ok: POST /sessions/{id}/messages {text:do the work}
-2026-10-01T11:54:57.857+03:00  INFO 3471734 --- [hin-agent-run-1] plugin.jhin.qa-mock-llm                  : qa-mock-llm: tool specifications observed: 8
-2026-10-01T11:54:57.931+03:00  INFO 3471734 --- [hin-agent-run-1] plugin.jhin.qa-mock-llm                  : qa-mock-llm: tool specifications observed: 8
+2026-10-11T23:45:17.350+03:00  INFO 3524040 --- [hin-agent-run-1] plugin.jhin.qa-mock-llm                  : qa-mock-llm: tool specifications observed: 8
+2026-10-11T23:45:17.417+03:00  INFO 3524040 --- [hin-agent-run-1] plugin.jhin.qa-mock-llm                  : qa-mock-llm: tool specifications observed: 8
 ok: event sequence contains in order: run_start tool_use tool_result message_end run_end
 ok: the tool_use event names the write tool
-ok: the tool-written file exists in the session workdir: /tmp/e2e-bundle-work.ysYeu7/qa-mock-output.txt
-ok: GET /_jhin/bootstrap reports empty:false
-ok: GET /ui/screen/chat:a43b337c-fa93-434d-a366-e2cf69e94092 -> 200 (chat screen reachable)
+ok: the tool-written file exists in the session workdir: /tmp/e2e-bundle-work.A7g3GH/qa-mock-output.txt
+ok: GET /_jhin/bootstrap -> 200 at api=4 (contract level 4)
+ok: GET /_jhin/bootstrap carries screens[].html (level-4 shape)
+ok: GET /ui/screen/sessions -> 200 (screen reachable)
+ok: GET /ui/screen/sessions answers {id, html} (level-4 shape)
+ok: GET /ui/screen/chat:a706e4f9-e194-41dc-b672-86a5b2e8c968 -> 200 (screen reachable)
+ok: GET /ui/screen/chat:a706e4f9-e194-41dc-b672-86a5b2e8c968 answers {id, html} (level-4 shape)
 ok: harness seam: the model observed 8 tool specification(s) in phase 1
 ok: phase 1 captured 9 events, last seq 9
 STEP 9: deletability — remove the tools plugin jar and restart
 ok: jhin-plugin-tools-builtin jar removed from $JHIN_HOME/plugins
-2026-10-01T11:54:58.401+03:00  INFO 3471734 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
-2026-10-01T11:54:58.604+03:00  INFO 3471734 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+2026-10-11T23:45:18.046+03:00  INFO 3524040 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-11T23:45:18.099+03:00  INFO 3524040 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
 ok: kernel boot1 stopped on SIGTERM and was reaped with wait (rc 143)
-11:54:59.262 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-agent-0.2.0.jar: already seeded and unchanged
-11:54:59.271 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-llm-0.2.0.jar: already seeded and unchanged
-11:54:59.276 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-llm-builtin-0.2.0.jar: already seeded and unchanged
-11:54:59.279 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-mcp-0.2.0.jar: already seeded and unchanged
-11:54:59.279 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-qa-mock-llm-0.2.0.jar: already seeded and unchanged
-11:54:59.280 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-reload-0.2.0.jar: already seeded and unchanged
-11:54:59.287 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-security-0.2.0.jar: already seeded and unchanged
-11:54:59.288 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-sessions-0.2.0.jar: already seeded and unchanged
-11:54:59.289 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-tools-builtin-0.2.0.jar: the seeded copy was removed and stays removed
-11:54:59.289 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-ui-default-0.2.0.jar: already seeded and unchanged
-11:54:59.290 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-ui-kit-0.2.0.jar: already seeded and unchanged
-11:54:59.435 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
-11:54:59.439 [main] WARN plugin.jhin.qa-mock-llm -- qa-mock-llm is a QA harness (format mock); never ship this jar in a release bundle
-11:54:59.495 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
-11:54:59.500 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log and routes published
-11:54:59.506 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
-11:54:59.507 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-bundle-home.W4jZio/mcp.json; no MCP servers to start
-11:54:59.515 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action and stream routes registered
-2026-10-01T11:54:59.961+03:00  INFO 3472126 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3472126 (/home/astroreen/Documents/jhin/dist/jhin-kernel-0.2.0.jar started by astroreen in /home/astroreen/Documents/jhin)
-2026-10-01T11:54:59.962+03:00  INFO 3472126 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
-2026-10-01T11:55:00.426+03:00  INFO 3472126 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18443 (https)
-2026-10-01T11:55:00.437+03:00  INFO 3472126 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
-2026-10-01T11:55:00.437+03:00  INFO 3472126 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
-2026-10-01T11:55:00.453+03:00  INFO 3472126 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 459 ms
-2026-10-01T11:55:00.724+03:00  INFO 3472126 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18443], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
-2026-10-01T11:55:00.734+03:00  INFO 3472126 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (https) with context path '/'
-2026-10-01T11:55:00.744+03:00  INFO 3472126 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.12 seconds (process running for 1.818)
-ok: kernel restarted on https://localhost:18443 (pid 3472126) without the tools plugin
+23:45:18.906 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-agent-0.2.0.jar: already seeded and unchanged
+23:45:18.915 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-llm-0.2.0.jar: already seeded and unchanged
+23:45:18.920 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-llm-builtin-0.2.0.jar: already seeded and unchanged
+23:45:18.923 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-mcp-0.2.0.jar: already seeded and unchanged
+23:45:18.923 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-qa-mock-llm-0.2.0.jar: already seeded and unchanged
+23:45:18.924 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-reload-0.2.0.jar: already seeded and unchanged
+23:45:18.930 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-security-0.2.0.jar: already seeded and unchanged
+23:45:18.931 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-sessions-0.2.0.jar: already seeded and unchanged
+23:45:18.932 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-tools-builtin-0.2.0.jar: the seeded copy was removed and stays removed
+23:45:18.932 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-ui-default-0.2.0.jar: already seeded and unchanged
+23:45:18.933 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-ui-kit-0.2.0.jar: already seeded and unchanged
+23:45:19.074 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
+23:45:19.078 [main] WARN plugin.jhin.qa-mock-llm -- qa-mock-llm is a QA harness (format mock); never ship this jar in a release bundle
+23:45:19.136 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
+23:45:19.144 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+23:45:19.150 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
+23:45:19.152 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-bundle-home.oudgdr/mcp.json; no MCP servers to start
+23:45:19.174 [main] INFO plugin.jhin.ui -- ui plugin started: web shell, asset, manifest, icon, service worker, bootstrap, screen, action, search and stream routes registered
+2026-10-11T23:45:19.597+03:00  INFO 3524437 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 3524437 (/home/astroreen/Documents/jhin/dist/jhin-kernel-0.2.0.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-11T23:45:19.598+03:00  INFO 3524437 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-11T23:45:20.077+03:00  INFO 3524437 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18443 (https)
+2026-10-11T23:45:20.087+03:00  INFO 3524437 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-11T23:45:20.087+03:00  INFO 3524437 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-11T23:45:20.103+03:00  INFO 3524437 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 469 ms
+2026-10-11T23:45:20.391+03:00  INFO 3524437 --- [           main] o.a.t.util.net.NioEndpoint.certificate   : Connector [https-jsse-nio-0.0.0.0-18443], TLS virtual host [_default_], certificate type [UNDEFINED] configured from keystore [Set directly - location unknown] using alias [tomcat] with trust store [null]
+2026-10-11T23:45:20.397+03:00  INFO 3524437 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (https) with context path '/'
+2026-10-11T23:45:20.403+03:00  INFO 3524437 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.143 seconds (process running for 1.819)
+ok: kernel restarted on https://localhost:18443 (pid 3524437) without the tools plugin
 ok: health no longer lists jhin.tools-builtin (deletion is final)
 ok: health lists the remaining ten plugins
 STEP 10: the agent still runs — one turn, zero tools
 ok: POST /sessions/{id}/messages {text:do the work again}
-2026-10-01T11:55:01.227+03:00  INFO 3472126 --- [hin-agent-run-1] plugin.jhin.qa-mock-llm                  : qa-mock-llm: tool specifications observed: 0
+2026-10-11T23:45:20.881+03:00  INFO 3524437 --- [hin-agent-run-1] plugin.jhin.qa-mock-llm                  : qa-mock-llm: tool specifications observed: 0
 ok: phase 2 turn completes: message_end and run_end present
 ok: phase 2 shows NO tool_use — zero tools registered
 ok: phase 2 shows NO tool_result
 ok: harness seam: the model observed tools: 0 in phase 2
 ok: phase 2 transcript written to .sisyphus/evidence/T46/phase2-no-tools.txt
 STEP 11: graceful shutdown (SIGTERM + wait)
-2026-10-01T11:55:01.739+03:00  INFO 3472126 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
-2026-10-01T11:55:01.941+03:00  INFO 3472126 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
+2026-10-11T23:45:21.379+03:00  INFO 3524437 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-11T23:45:21.582+03:00  INFO 3524437 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete
 ok: kernel boot2 stopped on SIGTERM and was reaped with wait (rc 143)
 STEP 12: failure-mode contrast for the final phase (failure.txt)
 ok: contrast verified (with tools -> tool_use, without tools -> none)
 ok: mutated expectation exited 1 as required (failure demo recorded)
 T46 QA green: the full bundle ran a real agent turn (run_start, tool_use, tool_result,
-  message_end, run_end; tool-written file present; bootstrap empty:false; chat reachable)
+  message_end, run_end; tool-written file present; bootstrap screens[].html; screens reachable)
   and survived plugin deletion (message_end/run_end with zero tools)
 exit code: 0

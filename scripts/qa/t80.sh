@@ -13,7 +13,7 @@
 #   - proves the documentation coverage with rg into doc-coverage.txt:
 #     'qa-mock-llm' in AGENTS.md; 'ctx\.sched', 'SessionLifecycleService',
 #     'TitleService', 'UndoJournal', 'RunActivityService' and 'session_updated'
-#     in docs/plugin-dev.md; '--no-tree-shake-icons' in README.md.
+#     in docs/plugin-dev.md; 'HTML web client' in README.md.
 #
 # Failure path: a deliberately wrong expectation — that 'UndoJournal' is
 # absent from docs/plugin-dev.md — asserted against the real file; the checker
@@ -120,6 +120,6 @@ require_hit 'TitleService' docs/plugin-dev.md 'plugin-dev.md documents TitleServ
 require_hit 'UndoJournal' docs/plugin-dev.md 'plugin-dev.md documents UndoJournal'
 require_hit 'RunActivityService' docs/plugin-dev.md 'plugin-dev.md documents RunActivityService'
 require_hit 'session_updated' docs/plugin-dev.md 'plugin-dev.md documents session_updated'
-require_hit --no-tree-shake-icons README.md 'README.md documents --no-tree-shake-icons'
+require_hit 'HTML web client' README.md 'README.md documents the HTML web client'
 
 log "T80 QA green: evidence in $evidence"

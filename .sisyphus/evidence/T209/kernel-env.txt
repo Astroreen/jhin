@@ -1,0 +1,17 @@
+JHIN_HOME=/tmp/t209-home.YQe7XO
+JHIN_BUNDLED_PLUGINS=/tmp/t209-bundled.EmlPQm
+port=18443
+base=http://localhost:18443
+mode=plain HTTP loopback
+mode-reason=jhin.security is not loaded -> no TlsProvider registered -> the kernel
+            listener speaks plain HTTP (the t207/t208 QA pattern; plan section 9
+            allows the QA-only plain-HTTP mode in scripts).
+port-reason=the kernel default 8443 is occupied by another service on this machine
+plugins=jhin.sessions, jhin.ui-kit, jhin.ui
+plugin-reason=jhin.sessions + jhin.ui-kit + jhin.ui are the non-optional requires
+              of jhin.ui (the t202–t208 QA bundle). The tour curls the served
+              surface only and drives no LLM run, so the mock LLM harness is
+              deliberately absent and no bearer token is used anywhere.
+client-header=none on the shell/asset/manifest/icon/worker/health fetches (a fresh
+               browser sends none); X-Jhin-Client: api=4; version=0.0.0-web; schema=5; caps=sse,open_url,secure_storage on /_jhin/bootstrap and
+               /ui/screen/* (those routes negotiate and refuse api<4 with 426).

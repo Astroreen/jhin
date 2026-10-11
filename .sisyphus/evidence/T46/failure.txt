@@ -3,7 +3,7 @@ T46 failure-mode evidence: the deletability contrast (phase 2 IS the failure mod
 run WITH the tools plugin (phase 1, full bundle):
   events: user_message run_start message_start tool_use tool_result message_start text_delta message_end run_end 
   tool_use events: 1
-  tool-written file: /tmp/e2e-bundle-work.ysYeu7/qa-mock-output.txt (present)
+  tool-written file: /tmp/e2e-bundle-work.A7g3GH/qa-mock-output.txt (present)
 
 run WITHOUT the tools plugin (phase 2, jar deleted):
   events: user_message run_start message_start text_delta message_end run_end 

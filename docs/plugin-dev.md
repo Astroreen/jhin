@@ -740,10 +740,17 @@ Full field validation with the load-time rules runs in the kernel at startup
 
 ## 8. UI plugins: tokens, themes and decorative screens
 
-A UI plugin builds screens with the `jhin.ui-kit` builder and registers them
-through `jhin.ui`; it never hardcodes a colour, a radius or a spacing value.
-The three building blocks are `UiTokens`, `PaletteGen` and `ThemeCatalog`, all
-in the exported package `com.astroreen.jhin.plugin.uikit`.
+**Screens are HTML.** A UI plugin builds screens as `Ui` trees with the
+`jhin.ui-kit` builder and registers them through `jhin.ui`; it never hardcodes
+a colour, a radius or a spacing value. The server renders each authored tree
+to an HTML fragment (`HtmlRenderer.renderFragment`) and the wire carries it as
+`{id, html}` — in the bootstrap `screens` array and in every
+`GET /ui/screen/{id}` response. The `data-jhin-*` attribute protocol inside
+that HTML is the wire contract the agent and the runtime address nodes by:
+see [sdui.md](sdui.md) section 9 and [web-client.md](web-client.md), not this
+page. The three building blocks of authoring are `UiTokens`, `PaletteGen` and
+`ThemeCatalog`, all in the exported package
+`com.astroreen.jhin.plugin.uikit`.
 
 **Tokens.** `UiTokens` is the vocabulary of every visual constant. Reference a
 token by family and key — `UiTokens.color("sidebar-row-hover")`,
@@ -777,7 +784,7 @@ Ui.button("Split view")
     .demo(true)
     .action(Map.of("client", List.of(
         Map.of("op", "setState", "id", "diffView", "value", "split"),
-        Map.of("op", "patch", "id", "diffBody", "props", Map.of("columns", 2)),
+        Map.of("op", "patch", "id", "diffBody", "html", "<div>two-column preview</div>"),
         Map.of("op", "toast", "text", "Preview only — no diff engine in this build"))))
     .build();
 ```
@@ -788,7 +795,6 @@ marker (a corner `preview` badge plus the tooltip `Preview only — not
 available in this build`) so nothing decorative looks silently real. The
 builder enforces it where the primitive is inherently decorative (for example
 `diff_view`, whose `build()` throws `demo marker required` without it), and
-the `DemoMarkerSweepTest` plus `scripts/qa/t117.sh` sweep every decorative
-route. Real screens must never carry `demo` on a real action. Decorative
-surfaces may read fixtures and dispatch inline directives only — never a
-database write (plan section 14.1).
+the `DemoMarkerSweepTest` sweeps every decorative route. Real screens must
+never carry `demo` on a real action. Decorative surfaces may read fixtures and
+dispatch inline directives only — never a database write (plan section 14.1).

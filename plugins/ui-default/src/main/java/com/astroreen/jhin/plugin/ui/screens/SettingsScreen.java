@@ -311,7 +311,6 @@ public final class SettingsScreen {
             + "Jackson \u2014 Apache License 2.0\n"
             + "SQLite JDBC \u2014 Apache License 2.0\n"
             + "SLF4J \u2014 MIT License\n"
-            + "Flutter \u2014 BSD 3-Clause License\n"
             + "\n"
             + "Full license texts ship with each dependency's artifact.";
 
@@ -1233,8 +1232,7 @@ public final class SettingsScreen {
             new String[] {"Model Context Protocol Java SDK", "MIT License"},
             new String[] {"Jackson", "Apache License 2.0"},
             new String[] {"SQLite JDBC", "Apache License 2.0"},
-            new String[] {"SLF4J", "MIT License"},
-            new String[] {"Flutter", "BSD 3-Clause License"});
+            new String[] {"SLF4J", "MIT License"});
 
     /**
      * One {@code FoldedSettingsSection}-style collapsible card (T110): a

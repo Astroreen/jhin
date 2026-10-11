@@ -1,0 +1,10 @@
+T209 build gates — the whole composite build green with the Flutter client gone:
+BUILD SUCCESSFUL in 943ms
+> Task :kernel:test
+BUILD SUCCESSFUL in 26s
+
+  :jhin-plugin-ui-default:test  457 tests (expected 457 = 458 minus the deleted ContextChipAccentsTest)
+  :jhin-plugin-ui-kit:test      310 tests (expected 310)
+  :sdk:test                     64 tests (expected 64)
+  :kernel:test                  117 tests (expected 117; KernelPurityTest green in kernel/build/test-results/test/TEST-com.astroreen.jhin.kernel.KernelPurityTest.xml)
+  failures=0 errors=0 (expected 0/0)

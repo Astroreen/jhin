@@ -1,0 +1,27 @@
+docs/web-client.md:3:**Status:** accepted · **Date:** 2026-10-11 · **Supersedes:** the Flutter
+docs/web-client.md:39:rendered UI and iterate on it.** The Flutter client could not satisfy it:
+docs/web-client.md:41:- **No DOM, no accessibility tree.** Flutter renders to a canvas, so an agent
+docs/web-client.md:49:  HTML/React/Tailwind; none targets Flutter/Dart. Backend-authored UI quality
+scripts/qa/t78.sh:38:#     server-rendered node tree (the Flutter goldens cover client-side
+scripts/qa/t78.sh:329:  echo "the Flutter goldens cover client-side fixtures only."
+kernel/src/main/java/com/astroreen/jhin/kernel/http/JhinServlet.java:24:    /** Answered before every other step; the Flutter web build needs it. */
+scripts/qa/t50.sh:15:#   - the QA helper scripts pass `bash -n` and flutter-test.sh --help exits 0.
+scripts/qa/t76.sh:23:#     server-rendered node tree (the Flutter goldens cover client-side
+scripts/qa/t77.sh:32:#     exists for the server-rendered node tree (the Flutter goldens cover
+
+=== allowlist (hits outside these paths fail the run) ===
+  kernel/src/main/java/com/astroreen/jhin/kernel/http/JhinServlet.java
+  docs/web-client.md
+  scripts/qa/t50.sh
+  scripts/qa/t76.sh
+  scripts/qa/t77.sh
+  scripts/qa/t78.sh
+  scripts/qa/t80.sh
+
+=== per-file verdict ===
+  ALLOWED  docs/web-client.md
+  ALLOWED  kernel/src/main/java/com/astroreen/jhin/kernel/http/JhinServlet.java
+  ALLOWED  scripts/qa/t50.sh
+  ALLOWED  scripts/qa/t76.sh
+  ALLOWED  scripts/qa/t77.sh
+  ALLOWED  scripts/qa/t78.sh

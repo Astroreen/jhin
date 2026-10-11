@@ -75,14 +75,13 @@ declare `compileOnly platform('dev.langchain4j:langchain4j-bom:1.20.1')` and
 mirror) directly in those plugins. `implementation` must not be used — it
 would inline langchain4j into the fat jars, which the plugin design forbids.
 
-### Android / nested builds poisoning the import
+### Nested builds poisoning the import
 
-`frontend/android` and the scaffold template under `.opencode/` used to be
-picked up by Gradle auto-detection. The Android Gradle plugin runs against a
-read-only nix store path and fails, which used to abort the whole workspace
-initialisation. `.vscode/settings.json` keeps `**/frontend/**` and
-`**/.opencode/**` in `java.import.exclusions` for this reason — do not remove
-them. The template also logs a harmless `Could not read script
+The scaffold template under `.opencode/` is a standalone Gradle build; when
+Gradle auto-detection picks it up it can abort the whole workspace
+initialisation. `.vscode/settings.json` keeps `**/.opencode/**` in
+`java.import.exclusions` for this reason — do not remove it. The template
+also logs a harmless `Could not read script
 '.opencode/skill/gradle/plugin-conventions.gradle'` in the *Gradle for Java*
 output when it is still evaluated in place; it is noise, not a Jhin build
 failure.
@@ -109,9 +108,8 @@ substitution, so `mavenLocal()` / `mavenCentral()` from
 `gradle/plugin-conventions.gradle` take over and an internal coordinate such
 as `com.astroreen:jhin-plugin-qa-mock-llm:0.2.0` (declared in
 `plugins/agent/build.gradle`) escapes to Maven Central, 404s and leaves the
-import stuck. The same discovery pass pulls in `frontend/android` and the
-`.opencode/` template, which is where the stray Gradle 9.2.0 and JDK 17
-daemons come from.
+import stuck. The same discovery pass pulls in the `.opencode/` template,
+which is where the stray Gradle 9.2.0 and JDK 17 daemons come from.
 
 Fix: `"gradle.nestedProjects": false`, which overrides the user-level value
 for this workspace only. It lives in the `generate-vscode-settings` template
@@ -143,8 +141,8 @@ trade-off, and enabling it again only changes warnings, never resolution.
 ## Settings that must stay in `.vscode/settings.json`
 
 - `java.gradle.buildServer.enabled: "on"` — BSP, required (see above).
-- `java.import.exclusions` — keep `**/frontend/**`, `**/.gradle*/**`,
-  `**/.opencode/**`, `**/build/**`.
+- `java.import.exclusions` — keep `**/.gradle*/**`, `**/.opencode/**`,
+  `**/build/**`.
 - `gradle.nestedProjects: false` — required even though it is the extension
   default, because a user-level `settings.json` may set it to `true`; see
   "Import stalls on a `jhin-plugin-*` POM download".

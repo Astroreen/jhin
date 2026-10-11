@@ -13,21 +13,9 @@
 //   dist/jhin-kernel-0.2.0.jar   kernel boot jar, renamed for the bundle
 //   dist/plugins-default/*.jar   the ten default plugins (never the example
 //                                and never the qa-mock-llm harness)
-//   dist/frontend/web/           flutter build web --release --no-tree-shake-icons
-//   dist/frontend/linux/         flutter build linux --release --no-tree-shake-icons bundle
-//   dist/frontend/jhin.apk       flutter build apk --release --no-tree-shake-icons
 //   dist/run.sh                  restart loop (copied from deploy/run.sh)
 //   dist/README.md               install and first-run instructions
 //   dist/MANIFEST.txt            size and SHA-256 per artifact
-//
-// Every Flutter step degrades instead of failing the release. Each step is
-// guarded by an availability check — `flutter` on PATH plus the toolchain the
-// target needs (Android SDK for the apk, cmake/ninja/pkg-config and a C
-// compiler for the Linux desktop bundle) — and a step whose toolchain is
-// missing, or whose build cannot produce the artifact, logs a WARN and the
-// bundle simply omits that client. A CI image without the Android SDK still
-// gets a green build and a complete host bundle; every omission is loud in
-// the log and in MANIFEST.txt.
 // ---------------------------------------------------------------------------
 
 // The ten default plugins shipped in the bundle. The example plugin and the
@@ -65,18 +53,9 @@ def findModuleJar = { File libsDir ->
     jars[0]
 }
 
-// True when `tool` is an executable on PATH (used for the toolchain guards).
-def onPath = { String tool ->
-    def path = System.getenv('PATH') ?: ''
-    path.split(File.pathSeparator).any { dir ->
-        def f = new File(dir, tool)
-        f.isFile() && f.canExecute()
-    }
-}
-
 tasks.register('dist') {
     group = 'build'
-    description = 'Assembles the release bundle under dist/ (kernel, default plugins, clients).'
+    description = 'Assembles the release bundle under dist/ (kernel, default plugins).'
 
     // Backend artifacts: the SDK is published first so the included builds
     // resolve it from mavenLocal when they are built standalone, then the
@@ -90,15 +69,12 @@ tasks.register('dist') {
 
     doLast {
         def distDir = file('dist')
-        def frontendDir = file('frontend')
-        def skipped = []
 
         // Fresh tree every run: a stale artifact must never leak into a release.
         if (distDir.exists()) {
             distDir.deleteDir()
         }
         new File(distDir, 'plugins-default').mkdirs()
-        new File(distDir, 'frontend').mkdirs()
 
         // --- kernel boot jar, renamed for the bundle --------------------
         def kernelJar = findModuleJar(file('kernel/build/libs'))
@@ -123,87 +99,6 @@ tasks.register('dist') {
         def runSh = new File(distDir, 'run.sh')
         java.nio.file.Files.copy(file('deploy/run.sh').toPath(), runSh.toPath())
         runSh.setExecutable(true)
-
-        // --- Flutter clients, availability-guarded ----------------------
-        // Runs one `flutter build` and returns true when the artifact was
-        // produced. Missing toolchain and a failed build both degrade to a
-        // WARN plus an omitted artifact (see the header comment).
-        def runFlutter = { List<String> args, String label, Closure<String> unavailable ->
-            if (!onPath('flutter')) {
-                def why = 'flutter is not on PATH'
-                logger.warn("dist: ${label} skipped — ${why}")
-                skipped << "${label} (${why})"
-                return false
-            }
-            def why = unavailable()
-            if (why != null) {
-                logger.warn("dist: ${label} skipped — ${why}")
-                skipped << "${label} (${why})"
-                return false
-            }
-            def command = ['flutter'] + args
-            logger.lifecycle("dist: ${command.join(' ')} (in ${frontendDir})")
-            def process = new ProcessBuilder(command)
-                .directory(frontendDir)
-                .redirectErrorStream(true)
-                .start()
-            process.inputStream.eachLine { line -> logger.lifecycle(line) }
-            def exit = process.waitFor()
-            if (exit != 0) {
-                why = "'${command.join(' ')}' failed with exit code ${exit}"
-                logger.warn("dist: ${label} skipped — ${why}")
-                skipped << "${label} (${why})"
-                return false
-            }
-            true
-        }
-
-        def copyTree = { File from, File to ->
-            to.mkdirs()
-            from.eachFileRecurse { f ->
-                def rel = f.path.substring(from.path.length() + 1)
-                def dest = new File(to, rel)
-                if (f.isDirectory()) {
-                    dest.mkdirs()
-                } else {
-                    dest.parentFile.mkdirs()
-                    java.nio.file.Files.copy(f.toPath(), dest.toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
-                }
-            }
-        }
-
-        // Web: needs only flutter. --no-tree-shake-icons is mandatory: icon
-        // names resolve through the generated registry at runtime (see
-        // docs/updates.md §8), so the tree-shaker would strip every glyph.
-        if (runFlutter(['build', 'web', '--release', '--no-tree-shake-icons'], 'frontend web bundle', { null })) {
-            copyTree(new File(frontendDir, 'build/web'), new File(distDir, 'frontend/web'))
-        }
-
-        // Linux desktop: needs the desktop toolchain.
-        if (runFlutter(['build', 'linux', '--release', '--no-tree-shake-icons'], 'frontend linux bundle', {
-                if (!onPath('cmake') || !onPath('ninja') || !onPath('pkg-config')) {
-                    return 'cmake, ninja and pkg-config are required for the linux target'
-                }
-                if (!onPath('clang') && !onPath('gcc') && !onPath('cc')) {
-                    return 'a C compiler is required for the linux target'
-                }
-                null
-            })) {
-            copyTree(new File(frontendDir, 'build/linux/x64/release/bundle'),
-                new File(distDir, 'frontend/linux'))
-        }
-
-        // Android: needs an Android SDK.
-        if (runFlutter(['build', 'apk', '--release', '--no-tree-shake-icons'], 'frontend apk', {
-                def sdk = ['ANDROID_SDK_ROOT', 'ANDROID_HOME']
-                    .collect { System.getenv(it) }
-                    .find { it != null && new File(it).isDirectory() }
-                sdk == null ? 'no Android SDK (ANDROID_SDK_ROOT / ANDROID_HOME)' : null
-            })) {
-            def apk = new File(frontendDir, 'build/app/outputs/flutter-apk/app-release.apk')
-            java.nio.file.Files.copy(apk.toPath(), new File(distDir, 'frontend/jhin.apk').toPath())
-        }
 
         // --- hard guards ------------------------------------------------
         // The bundle must carry the kernel jar, the default plugin jars and
@@ -240,17 +135,14 @@ tasks.register('dist') {
         def readme = """\
 # Jhin — release bundle
 
-This directory is a self-contained Jhin release: the host process, the
-default plugins and the clients. Copy it anywhere; the only requirement for
-the host is a Java 21 runtime.
+This directory is a self-contained Jhin release: the host process and the
+default plugins. Copy it anywhere; the only requirement for the host is a
+Java 21 runtime.
 
 ## Layout
 
     jhin-kernel-${kernelVersion}.jar   the host process
     plugins-default/        default plugin jars, seeded into the home on start
-    frontend/linux/         Linux desktop client (release bundle)
-    frontend/web/           web client (static files)
-    frontend/jhin.apk       Android client
     run.sh                  restart loop around the kernel jar
     MANIFEST.txt            size and SHA-256 per artifact
 
@@ -272,15 +164,13 @@ the host is a Java 21 runtime.
    overwritten — and the listener comes up on https://0.0.0.0:8443. With the
    security plugin loaded a self-signed certificate is generated into
    keystore/ and its SHA-256 fingerprint is logged for pinning.
-4. Open a client and enter the server URL on the profile screen (for example
-   https://host:8443). The client probes GET /_jhin/health, fetches
+4. Open https://host:8443/ in a browser: the host serves the web client
+   itself. The client probes GET /_jhin/health, fetches
    GET /_jhin/bootstrap and renders what the server sent.
 
-## Clients
+## Web client
 
-- Linux desktop: frontend/linux/jhin
-- Web: serve frontend/web/ with any static file server and open index.html
-- Android: install frontend/jhin.apk
+- Browser: https://host:8443/ (served by the host)
 
 ## Empty by default
 
@@ -319,16 +209,11 @@ ships with the source tree under docs/.
         manifestLines.each { rel, f ->
             manifest.append("${sha256(f)}  ${f.length()}  ${rel}\n")
         }
-        if (!skipped.isEmpty()) {
-            manifest.append('# omitted artifacts (steps skipped with WARN):\n')
-            skipped.each { manifest.append("#   - ${it}\n") }
-        }
         new File(distDir, 'MANIFEST.txt').text = manifest.toString()
 
         // --- summary ----------------------------------------------------
         logger.lifecycle('dist: assembled dist/')
         manifestLines.each { rel, f -> logger.lifecycle("dist:   ${rel} (${f.length()} bytes)") }
-        skipped.each { logger.lifecycle("dist:   WARN omitted: ${it}") }
         logger.lifecycle('dist: manifest:')
         manifest.toString().split('\n').each { logger.lifecycle("dist:   ${it}") }
     }
