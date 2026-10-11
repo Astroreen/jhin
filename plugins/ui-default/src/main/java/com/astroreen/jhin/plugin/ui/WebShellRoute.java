@@ -178,7 +178,8 @@ final class WebShellRoute {
                 .replace(TOKEN_STYLE_OPEN, "<style id=\"jhin-token-css\" nonce=\"" + nonce + "\">")
                 .replace(TOKEN_CSS_PLACEHOLDER, tokenCss)
                 .replace(APP_STYLE_ELEMENT,
-                        "<link rel=\"stylesheet\" href=\"" + APP_CSS_URL + "\">")
+                        "<link rel=\"manifest\" href=\"/manifest.json\">"
+                                + "<link rel=\"stylesheet\" href=\"" + APP_CSS_URL + "\">")
                 .replace(APP_SCRIPT_ELEMENT, "<script src=\"" + APP_JS_URL
                         + "\" defer nonce=\"" + nonce + "\"></script>" + swSnippet(nonce));
     }
@@ -189,7 +190,8 @@ final class WebShellRoute {
                 .replace(TOKEN_STYLE_OPEN, "<style id=\"jhin-token-css\" nonce=\"" + nonce + "\">")
                 .replace(TOKEN_CSS_PLACEHOLDER, tokenCss)
                 .replace("<style id=\"jhin-app-css\">",
-                        "<style id=\"jhin-app-css\" nonce=\"" + nonce + "\">")
+                        "<link rel=\"manifest\" href=\"/manifest.json\">"
+                                + "<style id=\"jhin-app-css\" nonce=\"" + nonce + "\">")
                 .replace(APP_CSS_PLACEHOLDER, appCss)
                 .replace(APP_SCRIPT_ELEMENT, "<script id=\"jhin-app-js\" nonce=\"" + nonce
                         + "\">" + appJs + "</script>" + swSnippet(nonce));

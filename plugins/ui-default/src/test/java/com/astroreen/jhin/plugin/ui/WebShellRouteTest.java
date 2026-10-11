@@ -77,6 +77,15 @@ class WebShellRouteTest {
     }
 
     @Test
+    void linksThePwaManifestInBothBranches() {
+        for (HttpResponse response : new HttpResponse[] {linked(), inline()}) {
+            assertThat(bodyOf(response))
+                    .contains("rel=\"manifest\"")
+                    .contains("href=\"/manifest.json\"");
+        }
+    }
+
+    @Test
     void keepsTheTokenCssInlineInTheProductionBranch() {
         assertThat(bodyOf(linked())).contains("--color-accent: var(--accent)");
     }
