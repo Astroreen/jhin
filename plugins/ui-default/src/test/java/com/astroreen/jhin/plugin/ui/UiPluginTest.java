@@ -57,6 +57,7 @@ class UiPluginTest {
         assertThat(routes).extracting(RouteSpec::method, RouteSpec::path)
                 .containsExactlyInAnyOrder(
                         org.assertj.core.groups.Tuple.tuple("GET", "/"),
+                        org.assertj.core.groups.Tuple.tuple("GET", "/ui/assets/{name}"),
                         org.assertj.core.groups.Tuple.tuple("GET", "/_jhin/bootstrap"),
                         org.assertj.core.groups.Tuple.tuple("GET", "/ui/screen/{id}"),
                         org.assertj.core.groups.Tuple.tuple("POST", "/ui/action/search"),

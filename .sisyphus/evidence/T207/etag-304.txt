@@ -1,0 +1,37 @@
+T207 ETag revalidation — GET /ui/assets/app.js through If-None-Match.
+
+etag captured from the 200: "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22"
+
+case 6a — If-None-Match: "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22" (exact tag)
+  status: 304 (expected 304)
+  body:   0 bytes (expected 0)
+  etag echoed: "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22" (expected "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22")
+  | HTTP/1.1 304 
+  | etag: "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22"
+  | cache-control: no-cache
+  | content-security-policy: default-src 'self'; script-src 'self' 'nonce-qRiBx7S-4Hk0zRsOjBRdZ0FU'; style-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'none'
+  | Date: Sun, 11 Oct 2026 15:27:05 GMT
+  | 
+
+case 6b — If-None-Match: * (wildcard)
+  status: 304 (expected 304)
+  body:   0 bytes (expected 0)
+  | HTTP/1.1 304 
+  | etag: "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22"
+  | cache-control: no-cache
+  | content-security-policy: default-src 'self'; script-src 'self' 'nonce-603HriR1YNSH69UGBtghZcXk'; style-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'none'
+  | Date: Sun, 11 Oct 2026 15:27:05 GMT
+  | 
+
+case 6c — If-None-Match: "sha256-0000000000000000000000000000000000000000000000000000000000000000" (mismatch)
+  status: 200 (expected 200)
+  body:   59970 bytes (expected 59970 — the full payload)
+
+case 6d — If-None-Match: W/"sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22" (weak prefix, weak comparison)
+  status: 304 (expected 304)
+
+case 6e — If-None-Match: "deadbeef", "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22" (comma list, second entry matches)
+  status: 304 (expected 304)
+
+note: 6d/6e probe the RFC 9110 weak-compare forms the route documents;
+the plan's hard cases are 6a-6c.

@@ -1,0 +1,34 @@
+T207 browser steps — UNAVAILABLE in this environment.
+
+Browser tooling (the agent browser / console-messages capture / evaluate)
+cannot run on this QA machine; the T202–T206 precedent applies: every
+browser step is recorded here and substituted with curl + static asserts.
+
+Not executed (the plan's agent console-messages capture):
+  - open GET / in a real engine and read the console for CSP violation
+    reports: that a nonce-less inline script/style would be blocked AND
+    reported, and that the served document produces zero such reports;
+  - DevTools network evidence of the ETag revalidation (304 round-trips
+    from the browser cache on reload);
+  - visual rendering of the shell with the linked assets (FOUC-free load,
+    token CSS applied, app.js booting the SDUI runtime).
+
+Substituted (evidence of this run):
+  - the CSP-violation class is proven away statically (csp-clean.txt):
+    every <style>/<script> element of the served shell carries nonce="X"
+    where X is the nonce of that response's own script-src directive — the
+    exact condition a violating (nonce-less or wrong-nonce) inline element
+    would fail, checked on the served bytes instead of in a console;
+  - eval/new Function gate: 0 occurrences in app.js (csp-clean.txt) —
+    no eval-based CSP violation source exists in the payload;
+  - ETag/304 behaviour proven at the HTTP layer instead of in a browser
+    cache (etag-304.txt: exact tag -> 304 empty + tag echoed, wildcard ->
+    304, mismatch -> 200, plus the RFC 9110 weak-compare W/ and list
+    forms).
+
+Uncovered without a browser (accepted for this environment):
+  - real engine CSP enforcement and the console reports themselves;
+  - live nonce acceptance for the inline token style under the policy;
+  - browser cache revalidation timing/UX (no-cache -> revalidate on
+    reload) observed only as HTTP behaviour here;
+  - the visual result of the linked-asset shell (layout, theme tokens).

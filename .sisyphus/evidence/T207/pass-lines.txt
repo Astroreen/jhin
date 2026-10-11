@@ -1,0 +1,10 @@
+-- OK: build + four test gates green (430/310/64/117; /home/astroreen/Documents/jhin/.sisyphus/evidence/T207/test-gates.txt)
+-- OK: static gates green (0 '<' in app.css, app.js 59970 B <= 60000, app.css 35229 B <= 40000)
+-- OK: budget.txt written (app.js 59970 / 60000, app.css 35229 / 40000; WebAssetBudgetTest 2 cases, failures=0)
+-- OK: 3 jars staged for seeding (/home/astroreen/Documents/jhin/.sisyphus/evidence/T207/kernel-env.txt)
+-- OK: kernel up on http://localhost:18443 (pid 2910938), GET /_jhin/health -> 200 in 3 s
+-- OK: headers green (app.js application/javascript;charset=utf-8 + "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22" + no-cache; app.css text/css;charset=utf-8 + "sha256-9f0af9aa38e05720d8abcd631c57f7a99c3855e8ed285720968eb359c3b6446e" + no-cache; / text/html + CSP)
+-- OK: If-None-Match green (exact -> 304 empty + etag echoed, * -> 304, mismatch -> 200 59970 B; W/ and list -> 304)
+-- OK: CSP clean (exact directive set; nonce nNYml8zmKaQUGH0UIXWn1lci shared by script+style, 2nd response ICiEaUl737yi-EcYwXuxXIWg differs; linked mode; 0 eval)
+-- OK: traversal matrix green (10 probes, none 200; 404s carry not_found; control 200 59970 B)
+-- OK: browser-unavailable.txt written (console capture substituted by nonce-match + eval gate)

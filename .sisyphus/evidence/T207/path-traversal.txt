@@ -1,0 +1,59 @@
+T207 traversal matrix — GET through the live kernel (curl --path-as-is,
+so dot segments and doubled slashes reach the connector verbatim).
+
+hard rule: none of these may answer 200 with asset bytes (each is
+400/404/other non-200); 404 bodies must carry the not_found envelope.
+
+GET /ui/assets/../app.js
+  raw dot-segments: RouteMatcher sees 4 segments -> kernel 404 (Tomcat normalizes only its internal mapping, requestURI stays raw)
+  status: 404  body: 75 bytes
+  body:   {"error":"not_found","message":"no plugin serves GET /ui/assets/../app.js"}
+
+GET /ui/assets/..%2fapp.js
+  encoded slash: Tomcat 400 pre-dispatch (T203 precedent)
+  status: 400  body: 435 bytes
+  body:   <!doctype html><html lang="en"><head><title>HTTP Status 400 – Bad Request</title><style type="text/css">body {font-family:Tahoma,Arial,sans-serif;} h1, h2, h3, b {color:white;background-color:#525D7
+
+GET /ui/assets/%2e%2e%2fapp.js
+  fully encoded traversal: Tomcat 400 pre-dispatch
+  status: 400  body: 435 bytes
+  body:   <!doctype html><html lang="en"><head><title>HTTP Status 400 – Bad Request</title><style type="text/css">body {font-family:Tahoma,Arial,sans-serif;} h1, h2, h3, b {color:white;background-color:#525D7
+
+GET /ui/assets/app.js%00
+  null byte: Tomcat 400 (suspicious URI) or handler 404
+  status: 400  body: 435 bytes
+  body:   <!doctype html><html lang="en"><head><title>HTTP Status 400 – Bad Request</title><style type="text/css">body {font-family:Tahoma,Arial,sans-serif;} h1, h2, h3, b {color:white;background-color:#525D7
+
+GET /ui/assets/app.js.map
+  source-map probe -> handler 404
+  status: 404  body: 63 bytes
+  body:   {"error":"not_found","message":"no asset with name app.js.map"}
+
+GET /ui/assets/index.html
+  template name -> handler 404
+  status: 404  body: 63 bytes
+  body:   {"error":"not_found","message":"no asset with name index.html"}
+
+GET /ui/assets/APP.JS
+  case variant -> handler 404 (exact lowercase allowlist)
+  status: 404  body: 59 bytes
+  body:   {"error":"not_found","message":"no asset with name APP.JS"}
+
+GET /ui/assets/x/app.js
+  nested segment -> kernel 404 (4 segments)
+  status: 404  body: 74 bytes
+  body:   {"error":"not_found","message":"no plugin serves GET /ui/assets/x/app.js"}
+
+GET /ui/assets//app.js
+  doubled slash -> strict path check 404 (name matched, path mismatch)
+  status: 404  body: 59 bytes
+  body:   {"error":"not_found","message":"no asset with name app.js"}
+
+GET /ui/assets/app.js/
+  trailing slash -> strict path check 404 (name matched, path mismatch)
+  status: 404  body: 59 bytes
+  body:   {"error":"not_found","message":"no asset with name app.js"}
+
+control — GET /ui/assets/app.js (the allowlisted name)
+  status: 200 (expected 200)  body: 59970 bytes (expected 59970)
+  (positive control: the matrix above is not vacuously green)

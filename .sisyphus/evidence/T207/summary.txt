@@ -1,0 +1,62 @@
+T207 QA: PASS — ETag asset routes and a nonce CSP for the web shell
+
+PASS lines:
+  -- OK: build + four test gates green (430/310/64/117; /home/astroreen/Documents/jhin/.sisyphus/evidence/T207/test-gates.txt)
+  -- OK: static gates green (0 '<' in app.css, app.js 59970 B <= 60000, app.css 35229 B <= 40000)
+  -- OK: budget.txt written (app.js 59970 / 60000, app.css 35229 / 40000; WebAssetBudgetTest 2 cases, failures=0)
+  -- OK: 3 jars staged for seeding (/home/astroreen/Documents/jhin/.sisyphus/evidence/T207/kernel-env.txt)
+  -- OK: kernel up on http://localhost:18443 (pid 2910938), GET /_jhin/health -> 200 in 3 s
+  -- OK: headers green (app.js application/javascript;charset=utf-8 + "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22" + no-cache; app.css text/css;charset=utf-8 + "sha256-9f0af9aa38e05720d8abcd631c57f7a99c3855e8ed285720968eb359c3b6446e" + no-cache; / text/html + CSP)
+  -- OK: If-None-Match green (exact -> 304 empty + etag echoed, * -> 304, mismatch -> 200 59970 B; W/ and list -> 304)
+  -- OK: CSP clean (exact directive set; nonce nNYml8zmKaQUGH0UIXWn1lci shared by script+style, 2nd response ICiEaUl737yi-EcYwXuxXIWg differs; linked mode; 0 eval)
+  -- OK: traversal matrix green (10 probes, none 200; 404s carry not_found; control 200 59970 B)
+  -- OK: browser-unavailable.txt written (console capture substituted by nonce-match + eval gate)
+
+gates:
+  build (bootJar + 3 plugin jars)                        green (build.log)
+  :jhin-plugin-ui-default:test  430 tests                  green (AssetRouteTest, WebAssetBudgetTest)
+  :jhin-plugin-ui-kit:test      310 tests                  green
+  :sdk:test                     64 tests                   green
+  :kernel:test                  117 tests                  green (KernelPurityTest)
+  failures / errors                                          0 / 0
+  '<' in app.css                                          0 (0)
+  app.js bytes                                            59970 (<= 60000)
+  app.css bytes                                           35229 (<= 40000)
+  WebAssetBudgetTest                                      2 cases, failures=0 (budget.txt)
+
+kernel:
+  mode   plain HTTP on http://localhost:18443 (no jhin.security -> no TlsProvider -> plain HTTP;
+         port 18443 because 8443 is occupied on this machine)
+  plugins jhin.sessions, jhin.ui-kit, jhin.ui (no mock LLM — T207 drives no run)
+  client  no X-Jhin-Client sent (browser first-load path)
+
+headers (headers.txt):
+  GET /ui/assets/app.js   200  application/javascript; charset=utf-8
+                            etag "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22", cache-control no-cache, CSP present
+  GET /ui/assets/app.css  200  text/css; charset=utf-8
+                            etag "sha256-9f0af9aa38e05720d8abcd631c57f7a99c3855e8ed285720968eb359c3b6446e", cache-control no-cache, CSP present
+  GET /                   200  text/html; charset=utf-8, CSP present
+
+etag (etag-304.txt):
+  If-None-Match: "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22" -> 304, body 0 B, etag echoed
+  If-None-Match: *  -> 304
+  If-None-Match: "sha256-0000000000000000000000000000000000000000000000000000000000000000" -> 200, body 59970 B
+  W/ prefix -> 304;  comma list -> 304
+
+csp (csp-clean.txt):
+  directive set exact (5 directives, byte-for-byte)   yes
+  nonce X=nNYml8zmKaQUGH0UIXWn1lci shared by <script src> + <style id="jhin-token-css">
+  per-response freshness (1st != 2nd)                 yes (2nd: ICiEaUl737yi-EcYwXuxXIWg)
+  linked mode: 1 <link …app.css>, 1 <script src=…app.js>, 0 jhinFetch, 0 __JHIN_
+  eval/new Function in app.js                         0 (0)
+
+traversal (path-traversal.txt):
+  10 matrix probes (raw .., ..%2f, %2e%2e%2f, %00, app.js.map, index.html,
+  APP.JS, nested, doubled slash, trailing slash)       none 200
+  404 bodies carry not_found                           yes
+  control GET /ui/assets/app.js                        200, 59970 B
+
+browser: unavailable — browser-unavailable.txt lists the console-messages
+         capture gap and the static substitutes (nonce-match of every
+         style/script element against the CSP header, 0 eval in app.js).
+evidence: /home/astroreen/Documents/jhin/.sisyphus/evidence/T207

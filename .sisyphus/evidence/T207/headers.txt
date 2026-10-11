@@ -1,0 +1,46 @@
+T207 web headers — GET /ui/assets/app.js, GET /ui/assets/app.css, GET /
+(curl -sD- -o /dev/null, no X-Jhin-Client — the browser first-load path).
+
+=== GET /ui/assets/app.js ===
+HTTP/1.1 200 
+etag: "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22"
+cache-control: no-cache
+content-security-policy: default-src 'self'; script-src 'self' 'nonce--zDnTRDsyskp6JjJGW_ZwSHt'; style-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'none'
+Content-Type: application/javascript;charset=utf-8
+Content-Length: 59970
+Date: Sun, 11 Oct 2026 15:27:05 GMT
+
+
+=== GET /ui/assets/app.css ===
+HTTP/1.1 200 
+etag: "sha256-9f0af9aa38e05720d8abcd631c57f7a99c3855e8ed285720968eb359c3b6446e"
+cache-control: no-cache
+content-security-policy: default-src 'self'; script-src 'self' 'nonce-WhfWm7_av9MMGjYZZJxMYOJH'; style-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'none'
+Content-Type: text/css;charset=utf-8
+Content-Length: 35229
+Date: Sun, 11 Oct 2026 15:27:05 GMT
+
+
+=== GET / ===
+HTTP/1.1 200 
+content-security-policy: default-src 'self'; script-src 'self' 'nonce-6B6Hb8tjnF2ycrt5Mi_valjw'; style-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'none'
+Content-Type: text/html;charset=utf-8
+Content-Length: 17406
+Date: Sun, 11 Oct 2026 15:27:05 GMT
+
+
+asserts:
+  app.js  status 200 (200)  content-type 'application/javascript;charset=utf-8' (raw wire)
+          etag "sha256-17f6461c71930259081cb0db27825483d8e5f3a46a18f01a3d79648b4916fb22"  cache-control 'no-cache'  csp present: yes
+  app.css status 200 (200)  content-type 'text/css;charset=utf-8' (raw wire)
+          etag "sha256-9f0af9aa38e05720d8abcd631c57f7a99c3855e8ed285720968eb359c3b6446e"  cache-control 'no-cache'  csp present: yes
+  /       status 200 (200)  content-type 'text/html;charset=utf-8' (raw wire)
+          etag '' (absent on the per-response document)
+          cache-control '' (absent)
+          csp present: yes
+
+content-type comparison is OWS-tolerant (norm_ct strips the optional
+whitespace): the embedded Tomcat re-serializes Content-Type through its
+MIME parser and drops the space after ';' on the wire, so the raw value
+above reads '...;charset=utf-8' while the SDK-level header (and its unit
+tests) is '...; charset=utf-8' — RFC 9110 equal media types.
