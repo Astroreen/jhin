@@ -1,0 +1,17 @@
+08:35:21.582 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-sessions-0.2.0.jar (6cc6b45bc5c0f823d8f66b9929923a3d983454cc230c9a253ec4aea9b790ae50)
+08:35:21.610 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-ui-default-0.2.0.jar (004f25b237e0220af874a66bd0eb8f1fd916bd276c27f6aa2803f469f9783fa9)
+08:35:21.635 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- seeded jhin-plugin-ui-kit-0.2.0.jar (740d67f56903fe08e314590a2783eaf0419b545c7c3e58039da17016d2b6e3e5)
+08:35:21.827 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
+08:35:21.844 [main] INFO plugin.jhin.ui -- ui plugin started: web shell, bootstrap, screen, action, search and stream routes registered
+08:35:21.844 [main] INFO com.astroreen.jhin.kernel.KernelBoot -- no TLS material registered; the listener speaks plain HTTP
+08:35:21.846 [main] WARN com.astroreen.jhin.kernel.KernelBoot -- SECURITY: no HTTP filter registered — this server is fully open on 0.0.0.0:18443. Install a security plugin.
+2026-10-11T08:35:22.249+03:00  INFO 1700292 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Starting KernelMain v0.2.0-SNAPSHOT using Java 21.0.12.1 with PID 1700292 (/home/astroreen/Documents/jhin/kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar started by astroreen in /home/astroreen/Documents/jhin)
+2026-10-11T08:35:22.250+03:00  INFO 1700292 --- [           main] com.astroreen.jhin.kernel.KernelMain     : No active profile set, falling back to 1 default profile: "default"
+2026-10-11T08:35:22.699+03:00  INFO 1700292 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat initialized with port 18443 (http)
+2026-10-11T08:35:22.706+03:00  INFO 1700292 --- [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-10-11T08:35:22.707+03:00  INFO 1700292 --- [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/11.0.24]
+2026-10-11T08:35:22.723+03:00  INFO 1700292 --- [           main] b.w.c.s.WebApplicationContextInitializer : Root WebApplicationContext: initialization completed in 438 ms
+2026-10-11T08:35:22.916+03:00  INFO 1700292 --- [           main] o.s.boot.tomcat.TomcatWebServer          : Tomcat started on port 18443 (http) with context path '/'
+2026-10-11T08:35:22.923+03:00  INFO 1700292 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 0.998 seconds (process running for 1.734)
+2026-10-11T08:35:23.885+03:00  INFO 1700292 --- [ionShutdownHook] o.s.boot.tomcat.GracefulShutdown         : Commencing graceful shutdown. Waiting for active requests to complete
+2026-10-11T08:35:23.888+03:00  INFO 1700292 --- [tomcat-shutdown] o.s.boot.tomcat.GracefulShutdown         : Graceful shutdown complete

@@ -73,7 +73,10 @@ class DiffPanelTest {
                 .containsEntry("value", "split");
         assertThat(ops.get(1)).containsEntry("op", "patch")
                 .containsEntry("id", RightPanelBuilder.DIFF_VIEW_ID);
-        assertThat(castMap(ops.get(1).get("props"))).containsEntry("view", "split");
+        assertThat(ops.get(1)).doesNotContainKey("props");
+        assertThat(String.valueOf(ops.get(1).get("html")))
+                .contains("data-jhin-type=\"diff_view\"")
+                .contains("data-jhin-view=\"split\"");
     }
 
     @Test
@@ -123,10 +126,11 @@ class DiffPanelTest {
                 .containsEntry("value", "lib/agent/prompt.ts");
         assertThat(ops.get(1)).containsEntry("op", "patch")
                 .containsEntry("id", RightPanelBuilder.DIFF_VIEW_ID);
-        Map<String, Object> props = castMap(ops.get(1).get("props"));
-        assertThat(props).containsEntry("file", "lib/agent/prompt.ts")
-                .containsEntry("language", "typescript");
-        assertThat((List<?>) props.get("hunks")).hasSize(3);
+        assertThat(ops.get(1)).doesNotContainKey("props");
+        String html = String.valueOf(ops.get(1).get("html"));
+        assertThat(html).contains("data-jhin-type=\"diff_view\"")
+                .contains("lib/agent/prompt.ts");
+        assertThat(html.split("class=\"jhin-diff-hunk\"", -1)).hasSize(4);
     }
 
     @Test

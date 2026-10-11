@@ -236,8 +236,8 @@ class SessionsScreenTest {
         Map<String, Object> directive = ops.get(0);
         assertThat(directive).containsEntry("op", "setScreen")
                 .containsEntry("id", "sessions");
-        Map<String, Object> node = castMap(directive.get("node"));
-        assertThat(stringsIn(node)).contains("Done arranging");
+        assertThat(directive).doesNotContainKey("node");
+        assertThat(String.valueOf(directive.get("html"))).contains("Done arranging");
     }
 
     @Test
@@ -250,16 +250,12 @@ class SessionsScreenTest {
         assertThat(ops).hasSize(1);
         Map<String, Object> directive = ops.get(0);
         assertThat(directive).containsEntry("op", "dialog").containsEntry("kind", "sheet");
-        Map<String, Object> sheet = castMap(directive.get("node"));
-        assertThat(stringsIn(sheet)).contains("15 minutes", "1 hour", "4 hours",
+        assertThat(directive).doesNotContainKey("node");
+        String html = String.valueOf(directive.get("html"));
+        assertThat(html).contains("15 minutes", "1 hour", "4 hours",
                 "Tomorrow", "Next week");
-        List<Map<String, Object>> buttons = nodesOfType(sheet, "button");
-        assertThat(buttons).hasSize(6);
-        assertThat(castMap(buttons.get(0).get("action")))
-                .containsEntry("name", "snooze");
-        assertThat(castMap(castMap(buttons.get(0).get("action")).get("payload")))
-                .containsEntry("id", session.id())
-                .containsEntry("durationMs", 900_000L);
+        assertThat(html.split("data-jhin-type=\"button\"", -1)).hasSize(7);
+        assertThat(html).contains("snooze").contains(session.id()).contains("900000");
     }
 
     private static FakeHttpRequest request() {

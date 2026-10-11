@@ -7,14 +7,17 @@
  * <p>Registered only while the security plugin is loaded and published its
  * {@code EnrollmentService}; the token minting is the security plugin's
  * {@code POST /enroll} semantics called directly. A refused code patches the
- * pair screen's {@code enroll-error} banner visible with the security message
- * (T114), so the failure is shown on the screen and not only as a transient
- * toast.
+ * pair screen's {@code enroll-error} banner with the security message (T114),
+ * so the failure is shown on the screen and not only as a transient toast —
+ * the patch {@code html} is the banner re-rendered visible with the message
+ * (contract level 4: an HTML swap, never a prop merge).
  */
 package com.astroreen.jhin.plugin.ui;
 
 import com.astroreen.jhin.plugin.security.api.EnrollmentService;
 import com.astroreen.jhin.plugin.ui.screens.EnrollScreen;
+import com.astroreen.jhin.plugin.uikit.Ui;
+import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.sdk.http.HttpRequest;
 import java.util.List;
 import java.util.Map;
@@ -53,15 +56,20 @@ final class EnrollAction {
 
     /**
      * The refusal answer: the pair screen's {@code enroll-error} banner is
-     * patched visible with the security message (T114). The patch carries the
-     * message so the screen shows the documented error, not only a toast.
+     * patched to the banner re-rendered visible with the security message
+     * (T114). The patch carries the message so the screen shows the
+     * documented error, not only a toast.
      *
      * @param message the security message
      * @return the one-directive answer
      */
     private static List<Map<String, Object>> errorBanner(String message) {
-        return List.of(Directives.patch(EnrollScreen.ERROR_ID,
-                Map.of("visible", true, "content", message)));
+        UiNode banner = Ui.banner()
+                .id(EnrollScreen.ERROR_ID)
+                .visible(true)
+                .content(message)
+                .build();
+        return List.of(Directives.patch(EnrollScreen.ERROR_ID, banner));
     }
 
     private static String messageOf(Throwable t) {

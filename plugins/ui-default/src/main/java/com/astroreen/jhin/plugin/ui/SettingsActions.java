@@ -9,14 +9,15 @@
  * <p>Validation happens server-side as well as client-side (the fields carry
  * {@code pattern}/{@code errorText} for the client's zero-round-trip check):
  * an invalid hex color, an out-of-range value or an unknown {@code themeId}
- * is never persisted. The answer patches the offending input's
- * {@code errorText} (both the flat prop and the {@code decoration} map the
- * client renders from) and toasts the message, so a raw dispatch — a QA
+ * is never persisted. The answer patches the offending input to its
+ * inline-error re-render (the {@code errorText} + {@code decoration} props
+ * the client renders from) and toasts the message, so a raw dispatch — a QA
  * curl, a stale client — still shows why nothing was saved.
  */
 package com.astroreen.jhin.plugin.ui;
 
 import com.astroreen.jhin.plugin.uikit.ThemeCatalog;
+import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.sdk.http.HttpRequest;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -151,23 +152,52 @@ final class SettingsActions {
     }
 
     /**
-     * The validation-failure answer: an inline {@code errorText} on the
-     * offending field plus an error toast. Nothing is persisted.
+     * The validation-failure answer: the offending field is patched to its
+     * inline-error re-render plus an error toast. Nothing is persisted.
      *
      * @param field   the failing input id
      * @param message the message to show
      * @return the directive list
      */
     private static List<Map<String, Object>> invalid(String field, String message) {
+        List<Map<String, Object>> ops = new ArrayList<>();
+        ops.add(Directives.patch(field, errorField(field, message)));
+        ops.add(Directives.toast(message, "error"));
+        return ops;
+    }
+
+    /**
+     * The inline-error replacement node of one settings field: the field
+     * rebuilt with the merged {@code errorText} + {@code decoration} props
+     * the old prop patch carried (contract level 4 swaps content, never
+     * merges props). The message also rides {@code tooltip} so it survives in
+     * the rendered fragment (the {@code title} attribute) while
+     * {@code errorText} keeps the semantic for a prop-aware applier.
+     *
+     * @param field   the failing input id
+     * @param message the message to show
+     * @return the replacement node
+     */
+    private static UiNode errorField(String field, String message) {
         Map<String, Object> decoration = new LinkedHashMap<>();
         decoration.put("errorText", message);
         Map<String, Object> props = new LinkedHashMap<>();
+        props.put("id", field);
         props.put("errorText", message);
         props.put("decoration", decoration);
-        List<Map<String, Object>> ops = new ArrayList<>();
-        ops.add(Directives.patch(field, props));
-        ops.add(Directives.toast(message, "error"));
-        return ops;
+        props.put("tooltip", message);
+        return new UiNode(fieldType(field), props, List.of());
+    }
+
+    /** The wire type of one settings field (its type in the settings screens). */
+    private static String fieldType(String field) {
+        return switch (field) {
+            case UiSettings.KEY_APPEARANCE, UiSettings.KEY_DENSITY -> "segmented";
+            case UiSettings.KEY_PANEL_MOTION_MS, UiSettings.KEY_INACTIVITY_DAYS -> "slider";
+            case UiSettings.KEY_AUTO_SETTLE_DEFAULT -> "switch";
+            case UiSettings.KEY_THEME_ID -> "container";
+            default -> "input";
+        };
     }
 
     /** One payload field as a number; {@code null} when absent or not numeric. */

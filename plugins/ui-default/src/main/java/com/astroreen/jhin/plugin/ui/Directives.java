@@ -4,17 +4,23 @@
  *
  * <p>Every factory returns one directive as a JSON-ready map with its
  * {@code op} discriminator; an ordered list of them is what an action response
- * ({@code {"client":[…]}}) or a stream frame carries. {@link #filter(List,
- * ClientInfo)} drops the directives the requesting client cannot honour:
- * {@code openUrl} without the {@code open_url} capability, {@code setToken} and
- * {@code clearToken} without {@code secure_storage}, {@code setServerUrl}
- * without {@code multi_profile}. The same decision ({@link #dropped}) is used
- * when a directive is embedded inline in a node prop (for example a button
- * action): the prop is removed from the node instead of being emitted and
- * ignored by the client.
+ * ({@code {"client":[…]}}) or a stream frame carries. Since contract level 4
+ * (docs/sdui.md section 4) three ops carry an HTML fragment instead of a node
+ * tree or merged props — {@code patch}, {@code setScreen} and {@code dialog}
+ * — and their factories render the authored node through
+ * {@link HtmlRenderer#renderFragment(UiNode)}; the other fourteen are
+ * byte-identical to level 3. {@link #filter(List, ClientInfo)} drops the
+ * directives the requesting client cannot honour: {@code openUrl} without the
+ * {@code open_url} capability, {@code setToken} and {@code clearToken} without
+ * {@code secure_storage}, {@code setServerUrl} without {@code multi_profile}.
+ * The same decision ({@link #dropped}) is used when a directive is embedded
+ * inline in a node prop (for example a button action): the prop is removed
+ * from the node instead of being emitted and ignored by the client.
  */
 package com.astroreen.jhin.plugin.ui;
 
+import com.astroreen.jhin.plugin.uikit.UiNode;
+import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
 import com.astroreen.jhin.sdk.http.ClientInfo;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -131,21 +137,36 @@ public final class Directives {
         return composite;
     }
 
-    /** {@code dialog}(node): opens a dialog rendering the given node. */
-    public static Map<String, Object> dialog(Map<String, Object> node) {
-        return op("dialog", "node", node);
+    /**
+     * {@code dialog}(html): opens a dialog rendering the given HTML fragment
+     * (contract level 4: the fragment is the
+     * {@link HtmlRenderer#renderFragment(UiNode)} of the authored dialog
+     * node, never a node map).
+     */
+    public static Map<String, Object> dialog(String html) {
+        return op("dialog", "html", html);
     }
 
     /**
-     * {@code dialog}(node, kind): opens a dialog; {@code kind: "sheet"} opens
+     * {@code dialog}(html, kind): opens a dialog; {@code kind: "sheet"} opens
      * a bottom sheet (docs/sdui.md section 4).
      */
-    public static Map<String, Object> dialog(Map<String, Object> node, String kind) {
-        Map<String, Object> dialog = dialog(node);
+    public static Map<String, Object> dialog(String html, String kind) {
+        Map<String, Object> dialog = dialog(html);
         if (kind != null) {
             dialog.put("kind", kind);
         }
         return dialog;
+    }
+
+    /** {@code dialog}(content): opens a dialog rendering the node's HTML fragment. */
+    public static Map<String, Object> dialog(UiNode content) {
+        return dialog(HtmlRenderer.renderFragment(content));
+    }
+
+    /** {@code dialog}(content, kind): the node fragment in a {@code kind} dialog. */
+    public static Map<String, Object> dialog(UiNode content, String kind) {
+        return dialog(HtmlRenderer.renderFragment(content), kind);
     }
 
     /** {@code dismissDialog}: closes the open dialog. */
@@ -160,18 +181,31 @@ public final class Directives {
         return setState;
     }
 
-    /** {@code patch}(id, props): updates props of one rendered node in place. */
-    public static Map<String, Object> patch(String id, Map<String, Object> props) {
+    /**
+     * {@code patch}(id, html): replaces the inner HTML of the rendered
+     * element with that id, in place (docs/sdui.md section 9.5).
+     */
+    public static Map<String, Object> patch(String id, String html) {
         Map<String, Object> patch = op("patch", "id", id);
-        patch.put("props", props);
+        patch.put("html", html);
         return patch;
     }
 
-    /** {@code setScreen}(id, node): replaces the node of a known screen id. */
-    public static Map<String, Object> setScreen(String id, Map<String, Object> node) {
+    /** {@code patch}(id, content): the node's HTML fragment as the swap content. */
+    public static Map<String, Object> patch(String id, UiNode content) {
+        return patch(id, HtmlRenderer.renderFragment(content));
+    }
+
+    /** {@code setScreen}(id, html): replaces the HTML of a known screen id. */
+    public static Map<String, Object> setScreen(String id, String html) {
         Map<String, Object> setScreen = op("setScreen", "id", id);
-        setScreen.put("node", node);
+        setScreen.put("html", html);
         return setScreen;
+    }
+
+    /** {@code setScreen}(id, content): the node's HTML fragment as the new screen. */
+    public static Map<String, Object> setScreen(String id, UiNode content) {
+        return setScreen(id, HtmlRenderer.renderFragment(content));
     }
 
     /** {@code openUrl}(value): opens a URL in the client's browser surface. */

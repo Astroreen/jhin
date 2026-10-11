@@ -1,0 +1,1 @@
+{"status":"ok","kernel":"0.2.0","api":1,"plugins":[{"id":"jhin.sessions","version":"0.2.0","name":"Sessions"},{"id":"jhin.ui-kit","version":"0.2.0","name":"UI Kit"},{"id":"jhin.ui","version":"0.2.0","name":"UI"}],"failed":[]}

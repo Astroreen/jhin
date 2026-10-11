@@ -1,5 +1,5 @@
 /**
- * Screen route behaviour: the {@code {"id":…,"node":…}} contract of a known
+ * Screen route behaviour: the {@code {"id":…,"html":…}} contract of a known
  * screen (tailored to the caller's client capabilities) and the
  * {@code unknown_screen} failure code.
  */
@@ -26,8 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ScreenRouteTest {
 
-    private static final ClientInfo NO_CAPS = new ClientInfo(1, "0.2.0", Set.of());
-    private static final ClientInfo SSE_CAPS = new ClientInfo(1, "0.2.0", Set.of("sse"));
+    private static final ClientInfo NO_CAPS = new ClientInfo(4, "0.4.0", Set.of());
+    private static final ClientInfo SSE_CAPS = new ClientInfo(4, "0.4.0", Set.of("sse"));
 
     @TempDir
     Path tmp;
@@ -61,15 +61,16 @@ class ScreenRouteTest {
     }
 
     @Test
-    void knownScreenAnswersWithIdAndNode() {
+    void knownScreenAnswersWithIdAndHtml() {
         HttpResponse response = route.handle(request("known", SSE_CAPS));
 
         assertThat(response.status()).isEqualTo(200);
         Map<String, Object> body = Json.readMap(new String(response.body()));
         assertThat(body).containsEntry("id", "known");
-        Map<String, Object> node = castMap(body.get("node"));
-        assertThat(node).containsEntry("type", "screen");
-        assertThat(node).containsEntry("title", "Fixture");
+        assertThat(body).doesNotContainKey("node");
+        String html = String.valueOf(body.get("html"));
+        assertThat(html).startsWith("<").contains("data-jhin-type=\"screen\"")
+                .contains("Fixture");
     }
 
     @Test
@@ -121,10 +122,5 @@ class ScreenRouteTest {
 
     private static String jsonText(Map<String, Object> body) {
         return Json.write(body);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> castMap(Object value) {
-        return (Map<String, Object>) value;
     }
 }

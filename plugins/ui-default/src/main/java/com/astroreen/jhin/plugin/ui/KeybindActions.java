@@ -63,7 +63,7 @@ final class KeybindActions {
                                 .build())
                         .build())
                 .build();
-        return List.of(Directives.dialog(form.toJson(), "sheet"));
+        return List.of(Directives.dialog(form, "sheet"));
     }
 
     /**

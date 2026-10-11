@@ -57,46 +57,38 @@ class ComposerRowsTest {
     void everyPickerDialogListsOptionsThatSetStateAndToast() {
         Map<String, Object> json = render(List.of());
 
-        Map<String, Object> modelDialog = byId(json, "composer-model-dialog");
-        assertThat(modelDialog).isNotNull();
-        List<Map<String, Object>> options = descendants(modelDialog, "button").stream()
-                .filter(node -> node.get("action") instanceof Map<?, ?> action
-                        && action.containsKey("client"))
-                .toList();
-        assertThat(options).hasSize(4);
+        String modelDialog = dialogHtmlOf(json, ChatScreen.PICKER_MODEL);
+        assertThat(modelDialog).startsWith("<").contains("composer-model-dialog");
+        // The option rows dispatch the inline directive composite — setState
+        // + the preview toast — inside their action attribute; four options.
+        assertThat(modelDialog).contains("data-jhin-action").contains("setState")
+                .contains(ChatScreen.STATE_MODEL).contains("Opus 4.6")
+                .contains("toast").contains("preview only");
+        // Four option buttons plus the Done action.
+        assertThat(modelDialog.split("data-jhin-type=\"button\"", -1)).hasSize(6);
 
-        Map<String, Object> first = options.get(0);
-        assertThat(first).containsEntry("demo", true).containsEntry("label", "Opus 4.6");
-        assertThat(castList(castMap(first.get("action")).get("client"))).hasSize(2);
-        Map<String, Object> setState = castMap(castList(castMap(first.get("action")).get("client")).get(0));
-        assertThat(setState).containsEntry("op", "setState")
-                .containsEntry("id", ChatScreen.STATE_MODEL)
-                .containsEntry("value", "Opus 4.6");
-        Map<String, Object> toast = castMap(castList(castMap(first.get("action")).get("client")).get(1));
-        assertThat(toast).containsEntry("op", "toast");
-        assertThat(String.valueOf(toast.get("text"))).contains("preview only");
-
-        // The dialog title row carries the keyboard chord hint (mod+shift+m).
-        assertThat(Json.write(modelDialog)).contains("mod+shift+m");
+        // The dialog title row carries the keyboard chord hint — the chord
+        // renders as its kbd keys (mod + shift + m).
+        assertThat(modelDialog).contains("data-jhin-type=\"kbd\"")
+                .contains("jhin-kbd-key\">mod</kbd>")
+                .contains("jhin-kbd-key\">shift</kbd>")
+                .contains("jhin-kbd-key\">m</kbd>");
         // The dialog closes through the Done action.
-        Map<String, Object> done = descendants(modelDialog, "button").stream()
-                .filter(node -> node.get("action") instanceof Map<?, ?> action
-                        && "dismissDialog".equals(((Map<?, ?>) action).get("op")))
-                .findFirst()
-                .orElseThrow();
-        assertThat(done).containsEntry("label", "Done");
+        assertThat(modelDialog).contains("Done").contains("dismissDialog");
 
         // The remaining six dialogs exist with their option lists.
-        assertThat(byId(json, "composer-provider-dialog")).isNotNull();
-        assertThat(byId(json, "composer-effort-dialog")).isNotNull();
-        assertThat(byId(json, "composer-mode-dialog")).isNotNull();
-        assertThat(byId(json, "composer-workspace-dialog")).isNotNull();
-        assertThat(byId(json, "composer-branch-dialog")).isNotNull();
-        assertThat(byId(json, "composer-host-dialog")).isNotNull();
-        assertThat(Json.write(byId(json, "composer-effort-dialog")))
-                .contains("Low").contains("Med").contains("High");
-        assertThat(Json.write(byId(json, "composer-mode-dialog")))
-                .contains("Read only").contains("Ask").contains("Full access");
+        assertThat(dialogHtmlOf(json, ChatScreen.PICKER_PROVIDER))
+                .contains("composer-provider-dialog", "anthropic", "openai", "google");
+        assertThat(dialogHtmlOf(json, ChatScreen.PICKER_EFFORT))
+                .contains("composer-effort-dialog", "Low", "Med", "High");
+        assertThat(dialogHtmlOf(json, ChatScreen.PICKER_MODE))
+                .contains("composer-mode-dialog", "Read only", "Ask", "Full access");
+        assertThat(dialogHtmlOf(json, ChatScreen.PICKER_WORKSPACE))
+                .contains("composer-workspace-dialog");
+        assertThat(dialogHtmlOf(json, ChatScreen.PICKER_BRANCH))
+                .contains("composer-branch-dialog");
+        assertThat(dialogHtmlOf(json, ChatScreen.PICKER_HOST))
+                .contains("composer-host-dialog");
     }
 
     @Test
@@ -176,9 +168,8 @@ class ComposerRowsTest {
         // The prompt-stash menu opens the dialog with the two inputs.
         Map<String, Object> stash = byId(json, "composer-stash-menu");
         assertThat(Json.write(stash)).contains("Stash prompt…").contains("bookmark");
-        Map<String, Object> stashDialog = byId(json, "composer-stash-dialog");
-        assertThat(descendants(stashDialog, "input").stream().map(node -> node.get("id")))
-                .containsExactly("stash-prompt", "stash-name");
+        assertThat(Json.write(stash))
+                .contains("composer-stash-dialog", "stash-prompt", "stash-name");
     }
 
     @Test
@@ -225,6 +216,13 @@ class ComposerRowsTest {
             }
         });
         return found.isEmpty() ? null : found.get(0);
+    }
+
+    /** The dialog fragment one picker button opens (the action's {@code html}). */
+    private static String dialogHtmlOf(Object fragment, String pickerId) {
+        Map<String, Object> button = byId(fragment, pickerId);
+        assertThat(button).as("picker " + pickerId).isNotNull();
+        return String.valueOf(castMap(button.get("action")).get("html"));
     }
 
     private static List<Map<String, Object>> descendants(Object fragment, String type) {

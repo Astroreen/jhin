@@ -100,57 +100,33 @@ class PreviewPanelTest {
     void thePermissionsDialogCarriesTheThreeModesTheNoteAndSave() {
         Map<String, Object> json = render();
 
-        Map<String, Object> dialog =
-                node(json, "column", ChatScreen.PERMISSIONS_DIALOG_ID);
-        assertThat(dialog).isNotNull();
+        String dialog = dialogHtmlOf(json, ChatScreen.PICKER_MODE);
+        assertThat(dialog).startsWith("<").contains(ChatScreen.PERMISSIONS_DIALOG_ID);
 
-        Map<String, Object> modes =
-                node(json, "list", ChatScreen.PERMISSIONS_MODES_ID);
-        assertThat(modes).isNotNull();
-        List<Map<String, Object>> rows = itemsOf(modes);
-        assertThat(rows).hasSize(3);
-        assertThat(rows.stream().map(row -> row.get("title")))
-                .containsExactlyElementsOf(ChatScreen.PERMISSION_MODES);
+        assertThat(dialog).contains(ChatScreen.PERMISSIONS_MODES_ID);
+        assertThat(dialog).contains(ChatScreen.PERMISSION_MODES.get(0),
+                ChatScreen.PERMISSION_MODES.get(1), ChatScreen.PERMISSION_MODES.get(2));
         // Every row is a demo radio row with a leading radio glyph.
-        for (Map<String, Object> row : rows) {
-            assertThat(row).containsEntry("demo", true);
-            Map<String, Object> leading = castMap(row.get("leading"));
-            assertThat(leading).containsEntry("type", "icon");
-            assertThat((String) leading.get("icon")).startsWith("radio_button_");
-        }
+        assertThat(dialog).contains("radio_button_checked").contains("radio_button_unchecked");
 
-        Map<String, Object> note = node(json, "text", ChatScreen.PERMISSIONS_NOTE_ID);
-        assertThat(note).isNotNull();
-        assertThat((String) note.get("text")).contains("Preview only");
+        assertThat(dialog).contains(ChatScreen.PERMISSIONS_NOTE_ID).contains("Preview only");
 
-        Map<String, Object> save = node(json, "button", ChatScreen.PERMISSIONS_SAVE_ID);
-        assertThat(save).isNotNull().containsEntry("label", "Save").containsEntry("demo", true);
-        List<Map<String, Object>> ops = clientOps(save);
-        assertThat(ops).extracting(op -> op.get("op"))
-                .containsExactly("toast", "dismissDialog");
+        assertThat(dialog).contains(ChatScreen.PERMISSIONS_SAVE_ID).contains("Save");
+        assertThat(dialog).contains("toast", "dismissDialog");
     }
 
     @Test
     void aPermissionRowFlipsTheRadioGroupAndSetsTheMode() {
         Map<String, Object> json = render();
 
-        Map<String, Object> modes =
-                node(json, "list", ChatScreen.PERMISSIONS_MODES_ID);
-        Map<String, Object> full = itemsOf(modes).stream()
-                .filter(row -> "Full access".equals(row.get("title")))
-                .findFirst().orElseThrow();
-
-        List<Map<String, Object>> ops = clientOps(full);
-        assertThat(ops.get(0)).containsEntry("op", "setState")
-                .containsEntry("id", ChatScreen.STATE_MODE)
-                .containsEntry("value", "Full access");
-        // The three radio glyphs are patched to the new selection.
-        long checked = ops.stream()
-                .filter(op -> "patch".equals(op.get("op")))
-                .filter(op -> "radio_button_checked"
-                        .equals(castMap(op.get("props")).get("icon")))
-                .count();
-        assertThat(checked).isEqualTo(1);
+        String dialog = dialogHtmlOf(json, ChatScreen.PICKER_MODE);
+        // The row dispatch sets the local mode...
+        assertThat(dialog).contains("setState").contains(ChatScreen.STATE_MODE)
+                .contains("Full access");
+        // ...and flips the three radio glyphs through patch fragments whose
+        // html is the glyph re-rendered in its new state (one checked).
+        assertThat(dialog).contains("radio_button_checked").contains("radio_button_unchecked");
+        assertThat(dialog).contains("selected (preview only)");
     }
 
     // --- fixture and walkers ---
@@ -162,11 +138,11 @@ class PreviewPanelTest {
         return ChatScreen.render(session, List.of()).toJson();
     }
 
-    /** The client directive list of a node action. */
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> clientOps(Map<String, Object> node) {
-        Map<String, Object> action = castMap(node.get("action"));
-        return (List<Map<String, Object>>) action.get("client");
+    /** The dialog fragment one picker button opens (the action's {@code html}). */
+    private static String dialogHtmlOf(Map<String, Object> tree, String pickerId) {
+        Map<String, Object> button = node(tree, "button", pickerId);
+        assertThat(button).as("picker " + pickerId).isNotNull();
+        return String.valueOf(castMap(button.get("action")).get("html"));
     }
 
     /** The text values of every descendant text node. */
@@ -185,12 +161,6 @@ class PreviewPanelTest {
                 .filter(found -> id.equals(found.get("id")))
                 .findFirst()
                 .orElse(null);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> itemsOf(Map<String, Object> node) {
-        Object items = node.get("items");
-        return items == null ? List.of() : (List<Map<String, Object>>) items;
     }
 
     private static List<Map<String, Object>> descendantsOfType(Object fragment, String type) {

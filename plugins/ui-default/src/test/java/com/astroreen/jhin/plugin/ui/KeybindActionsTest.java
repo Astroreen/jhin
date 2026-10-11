@@ -12,7 +12,6 @@ import com.astroreen.jhin.sdk.http.ClientInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 
 final class KeybindActionsTest {
@@ -27,33 +26,29 @@ final class KeybindActionsTest {
         assertThat(directives).hasSize(1);
         Map<String, Object> dialog = directives.get(0);
         assertThat(dialog).containsEntry("op", "dialog").containsEntry("kind", "sheet");
+        assertThat(dialog).doesNotContainKey("node");
 
-        Map<String, Object> node = castMap(dialog.get("node"));
-        assertThat(typesIn(node)).contains("input", "button", "row");
-        assertThat(inputIds(node)).contains(KeybindActions.CAPTURE_ID);
-        // The current chord pre-fills the capture field.
-        Map<String, Object> capture = nodesOfType(node, "input").get(0);
-        assertThat(capture).containsEntry("id", "keyCapture")
-                .containsEntry("value", "mod+shift+enter")
-                .containsEntry("required", true);
-
+        String html = String.valueOf(dialog.get("html"));
+        assertThat(html).startsWith("<").contains("data-jhin-type=");
+        assertThat(html).contains("data-jhin-type=\"input\"")
+                .contains("data-jhin-type=\"button\"")
+                .contains("data-jhin-type=\"row\"");
+        // The capture field carries its id, the pre-filled chord and required.
+        assertThat(html).contains("keyCapture")
+                .contains("mod+shift+enter")
+                .contains("required=\"required\"");
         // Save posts back with the captured value included; Cancel is a
         // client-side dismissDialog directive.
-        Map<String, Object> save = button(node, "Save");
-        Map<String, Object> action = castMap(save.get("action"));
-        assertThat(action).containsEntry("name", "keybind-save");
-        assertThat(castList(action.get("include"))).containsExactly("keyCapture");
-        Map<String, Object> cancel = button(node, "Cancel");
-        assertThat(castMap(cancel.get("action"))).containsEntry("op", "dismissDialog");
+        assertThat(html).contains("keybind-save").contains("keyCapture")
+                .contains("dismissDialog");
     }
 
     @Test
     void editWithoutAHeaderPrefillsNoChord() {
         List<Map<String, Object>> directives =
                 KeybindActions.edit(requestWithOverrides(""), Map.of("command", "palette.open"));
-        Map<String, Object> node = castMap(directives.get(0).get("node"));
-        Map<String, Object> capture = nodesOfType(node, "input").get(0);
-        assertThat(capture).containsEntry("value", "");
+        String html = String.valueOf(directives.get(0).get("html"));
+        assertThat(html).contains("data-jhin-type=\"input\"").contains("value=\"\"");
     }
 
     @Test
@@ -153,62 +148,6 @@ final class KeybindActionsTest {
             ops.add(String.valueOf(directive.get("op")));
         }
         return ops;
-    }
-
-    private static Map<String, Object> button(Object fragment, String label) {
-        List<Map<String, Object>> found = new ArrayList<>();
-        walk(fragment, map -> {
-            if ("button".equals(map.get("type")) && label.equals(map.get("label"))) {
-                found.add(map);
-            }
-        });
-        assertThat(found).as("button " + label).hasSize(1);
-        return found.get(0);
-    }
-
-    private static List<String> inputIds(Object fragment) {
-        List<String> ids = new ArrayList<>();
-        walk(fragment, map -> {
-            if ("input".equals(map.get("type")) && map.get("id") != null) {
-                ids.add(String.valueOf(map.get("id")));
-            }
-        });
-        return ids;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<Map<String, Object>> nodesOfType(Object fragment, String type) {
-        List<Map<String, Object>> found = new ArrayList<>();
-        walk(fragment, map -> {
-            if (type.equals(map.get("type"))) {
-                found.add(map);
-            }
-        });
-        return found;
-    }
-
-    private static java.util.Set<String> typesIn(Object fragment) {
-        java.util.Set<String> types = new java.util.HashSet<>();
-        walk(fragment, map -> {
-            if (map.get("type") != null) {
-                types.add(String.valueOf(map.get("type")));
-            }
-        });
-        return types;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static void walk(Object fragment, Consumer<Map<String, Object>> visit) {
-        if (fragment instanceof Map<?, ?> map) {
-            visit.accept((Map<String, Object>) map);
-            for (Object value : map.values()) {
-                walk(value, visit);
-            }
-        } else if (fragment instanceof List<?> list) {
-            for (Object item : list) {
-                walk(item, visit);
-            }
-        }
     }
 
     @SuppressWarnings("unchecked")

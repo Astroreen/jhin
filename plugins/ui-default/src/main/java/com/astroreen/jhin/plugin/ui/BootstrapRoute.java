@@ -99,11 +99,7 @@ final class BootstrapRoute {
     HttpResponse handle(HttpRequest req) {
         ClientInfo client = req.client();
         if (client.api() < ApiVersion.SDUI_CONTRACT_MIN) {
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("error", "contract_upgrade");
-            body.put("message", "This server speaks the HTML UI contract (api=4). Upgrade your client.");
-            body.put("minApi", ApiVersion.SDUI_CONTRACT_MIN);
-            return HttpResponse.json(426, body);
+            return contractUpgrade();
         }
         boolean level2 = tailor.isLevel2(client);
         UiSettings.Snapshot snapshot = settings.current();
@@ -130,6 +126,24 @@ final class BootstrapRoute {
         payload.put("screenEndpoint", SCREEN_ENDPOINT);
         payload.put("fallbacks", fallbacks(req));
         return HttpResponse.json(200, payload);
+    }
+
+    /**
+     * The {@code 426 Upgrade Required} refusal of a client below
+     * {@link ApiVersion#SDUI_CONTRACT_MIN} (including the absent
+     * {@code X-Jhin-Client} header, which parses as api=1): the exact
+     * {@code contract_upgrade} body of docs/sdui.md section 1. Package-visible
+     * so every UI-bearing route (the bootstrap and the screen route) shares
+     * one construction.
+     *
+     * @return the {@code 426} response
+     */
+    static HttpResponse contractUpgrade() {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", "contract_upgrade");
+        body.put("message", "This server speaks the HTML UI contract (api=4). Upgrade your client.");
+        body.put("minApi", ApiVersion.SDUI_CONTRACT_MIN);
+        return HttpResponse.json(426, body);
     }
 
     /** The {@code contract} block (docs/sdui.md section 1): fixed constants, not caller-dependent. */

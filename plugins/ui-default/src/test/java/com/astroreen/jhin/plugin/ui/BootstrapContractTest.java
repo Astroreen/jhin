@@ -591,23 +591,31 @@ class BootstrapContractTest {
                 .doesNotContainKey("content");
     }
 
+    /**
+     * A directive payload is a pre-rendered HTML fragment since contract
+     * level 4 (docs/sdui.md section 4): the tailor keeps the {@code html} of
+     * a kept {@code dialog} byte-identical — there is no node tree left
+     * inside the directive to degrade, the fragment is rendered at the
+     * authoring call site.
+     */
     @Test
-    void directiveEmbeddedNodesAreTailored() {
+    void directiveHtmlFragmentsPassThroughTheTailor() {
         UiNode dialog = new UiNode("column", Map.of("id", "model-dialog"),
                 List.of(new UiNode("kbd", Map.of("chord", "mod+shift+m"), List.of())));
         UiNode button = new UiNode("button", Map.of(
                 "id", "picker",
                 "label", "Opus",
-                "action", Map.of("op", "dialog", "node", dialog.toJson())), List.of());
+                "action", Directives.dialog(dialog)), List.of());
+        String fragment = com.astroreen.jhin.plugin.uikit.html.HtmlRenderer.renderFragment(dialog);
 
-        UiNode degraded = tailor.tailor(button, level2());
+        for (ClientInfo client : List.of(level1(), level2(), level3())) {
+            UiNode degraded = tailor.tailor(button, client);
 
-        Map<String, Object> action = castMap(degraded.props().get("action"));
-        Map<String, Object> node = castMap(action.get("node"));
-        Map<String, Object> kbd = castMap(((List<?>) node.get("children")).get(0));
-        assertThat(kbd).containsEntry("type", "text")
-                .containsEntry("text", "mod+shift+m")
-                .doesNotContainKey("chord");
+            Map<String, Object> action = castMap(degraded.props().get("action"));
+            assertThat(action).containsEntry("op", "dialog");
+            assertThat(action).doesNotContainKey("node");
+            assertThat(String.valueOf(action.get("html"))).isEqualTo(fragment);
+        }
     }
 
     // ---- helpers ----

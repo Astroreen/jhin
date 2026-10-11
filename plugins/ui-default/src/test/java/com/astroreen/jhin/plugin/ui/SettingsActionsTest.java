@@ -95,8 +95,8 @@ class SettingsActionsTest {
                 .containsExactly("patch", "toast");
         Map<String, Object> patch = castMap(ops.get(0));
         assertThat(patch).containsEntry("id", "accent");
-        Map<String, Object> props = castMap(patch.get("props"));
-        assertThat(String.valueOf(props.get("errorText"))).contains("#RRGGBB");
+        assertThat(patch).doesNotContainKey("props");
+        assertThat(String.valueOf(patch.get("html"))).contains("#RRGGBB");
         assertThat(String.valueOf(ops.get(1))).contains("#RRGGBB");
 
         // Nothing was persisted: the previous save still answers.
@@ -321,8 +321,8 @@ class SettingsActionsTest {
                 .containsExactly("patch", "toast");
         Map<String, Object> patch = castMap(ops.get(0));
         assertThat(patch).containsEntry("id", "themeId");
-        assertThat(String.valueOf(castMap(patch.get("props")).get("errorText")))
-                .isEqualTo(SettingsActions.THEME_ERROR);
+        assertThat(patch).doesNotContainKey("props");
+        assertThat(String.valueOf(patch.get("html"))).contains(SettingsActions.THEME_ERROR);
         assertThat(String.valueOf(ops.get(1))).contains("error");
 
         // Nothing was persisted: the previous save still answers.

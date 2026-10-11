@@ -326,7 +326,7 @@ public final class UsageScreen {
                 .style("secondary")
                 .icon("add")
                 .set("demo", true)
-                .action(Directives.dialog(addSourceDialog().toJson()))
+                .action(Directives.dialog(addSourceDialog()))
                 .build();
     }
 

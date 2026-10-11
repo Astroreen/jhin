@@ -98,9 +98,8 @@ class ActionsTest {
         assertThat(ops).hasSize(1);
         assertThat(ops.get(0)).containsEntry("op", "patch")
                 .containsEntry("id", EnrollScreen.ERROR_ID);
-        Map<String, Object> props = castMap(ops.get(0).get("props"));
-        assertThat(props).containsEntry("visible", true);
-        assertThat(String.valueOf(props.get("content"))).contains("enrollment code expired");
+        assertThat(ops.get(0)).doesNotContainKey("props");
+        assertThat(String.valueOf(ops.get(0).get("html"))).contains("enrollment code expired");
     }
 
     @Test

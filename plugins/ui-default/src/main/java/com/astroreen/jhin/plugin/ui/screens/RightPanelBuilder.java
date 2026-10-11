@@ -368,7 +368,8 @@ public final class RightPanelBuilder {
                 .tooltip(tooltip)
                 .action(Directives.client(List.of(
                         Directives.setState(STATE_DIFF_VIEW, view),
-                        Directives.patch(DIFF_VIEW_ID, Map.of("view", view)))))
+                        Directives.patch(DIFF_VIEW_ID,
+                                diffViewNode(Map.of("view", view))))))
                 .set("demo", true)
                 .build();
     }
@@ -454,7 +455,8 @@ public final class RightPanelBuilder {
                 + " \u2212" + intOf(node, "deletions"));
         item.put("action", Directives.client(List.of(
                 Directives.setState(STATE_DIFF_FILE, path),
-                Directives.patch(DIFF_VIEW_ID, diffViewPatch(path, diffFiles)))));
+                Directives.patch(DIFF_VIEW_ID,
+                        diffViewNode(diffViewPatch(path, diffFiles))))));
         return item;
     }
 
@@ -483,6 +485,37 @@ public final class RightPanelBuilder {
             }
         }
         return Map.of();
+    }
+
+    /**
+     * The {@code diff_view} replacement node of one patch content map: the
+     * content the old prop patch merged is rendered as the level-4
+     * {@code patch} {@code html} instead (docs/sdui.md section 4 — a content
+     * swap, never a prop merge). Absent keys leave the field unset; the node
+     * keeps the {@code DIFF_VIEW_ID} address and the decorative marker of the
+     * authored view.
+     */
+    private static UiNode diffViewNode(Map<String, Object> content) {
+        Ui.DiffViewBuilder builder = Ui.diffView()
+                .id(DIFF_VIEW_ID)
+                .demo(true);
+        if (content.get("view") != null) {
+            builder.view(str(content.get("view")));
+        }
+        if (content.get("file") != null) {
+            builder.file(str(content.get("file")));
+        }
+        if (content.get("language") != null) {
+            builder.language(str(content.get("language")));
+        }
+        if (content.get("stats") instanceof Map<?, ?>) {
+            builder.stats(intOf(content.get("stats"), "additions"),
+                    intOf(content.get("stats"), "deletions"));
+        }
+        for (Map<String, Object> hunk : listOfMaps(content.get("hunks"))) {
+            builder.hunk(hunk);
+        }
+        return builder.build();
     }
 
     /**
@@ -563,11 +596,24 @@ public final class RightPanelBuilder {
      * {@code data-loading} attribute).
      */
     private static UiNode progressBar() {
+        return previewProgress(false);
+    }
+
+    /**
+     * The preview progress bar node at one loading state (T108): the same
+     * node the {@code preview-reload} action patches in place (the level-4
+     * {@code patch} {@code html} is this node re-rendered with
+     * {@code loading: true}).
+     *
+     * @param loading whether the bar is loading
+     * @return the progress node
+     */
+    public static UiNode previewProgress(boolean loading) {
         return Ui.progress()
                 .id(PREVIEW_PROGRESS_ID)
                 .kind("linear")
                 .statusPulse(PREVIEW_LOADING_MODE)
-                .loading(false)
+                .loading(loading)
                 .build();
     }
 

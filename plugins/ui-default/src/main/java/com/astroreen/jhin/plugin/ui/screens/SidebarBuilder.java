@@ -519,7 +519,7 @@ public final class SidebarBuilder {
                 .child(Ui.button(NEW_THREAD_LABEL)
                         .style("primary")
                         .icon("add")
-                        .action(Directives.dialog(newThreadDialog().toJson()))
+                        .action(Directives.dialog(newThreadDialog()))
                         .build())
                 .build();
     }
@@ -1016,7 +1016,7 @@ public final class SidebarBuilder {
         // decorative arrange sheet.
         menu.item(Ui.menuItem("Arrange threads")
                 .icon("drag_handle")
-                .action(Directives.dialog(arrangeSheet(arrangeTitles).toJson(), "sheet"))
+                .action(Directives.dialog(arrangeSheet(arrangeTitles), "sheet"))
                 .build());
         if (arrange) {
             menu.item(Ui.menuItem("Move up")
@@ -1064,7 +1064,7 @@ public final class SidebarBuilder {
         }
         children.add(Ui.menuItem("Custom\u2026")
                 .separatorBefore(true)
-                .action(Directives.dialog(customSnoozeDialog(id).toJson()))
+                .action(Directives.dialog(customSnoozeDialog(id)))
                 .build());
         return children;
     }
@@ -1138,8 +1138,7 @@ public final class SidebarBuilder {
             rows.add(Ui.listRow()
                     .title(title)
                     .dragHandle(true)
-                    .build()
-                    .toJson());
+                    .build());
         }
         return Ui.sheet()
                 .title(ARRANGE_SHEET_TITLE)

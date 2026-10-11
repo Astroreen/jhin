@@ -157,7 +157,7 @@ final class SessionActions {
             Long durationMs = longField(payload, "durationMs");
             Long until = longField(payload, "until");
             if (durationMs == null && until == null) {
-                return List.of(Directives.dialog(snoozeSheet(id).toJson(), "sheet"));
+                return List.of(Directives.dialog(snoozeSheet(id), "sheet"));
             }
             return lifecycleOp(payload, key -> until != null
                     ? lifecycle.snooze(key, until)
@@ -214,7 +214,7 @@ final class SessionActions {
             boolean arrange = Boolean.TRUE.equals(payload.get("arrange"));
             UiNode screen = SessionsScreen.render(
                     store, ActionSupport.account(req), providersLink.getAsBoolean(), arrange);
-            return List.of(Directives.setScreen("sessions", screen.toJson()));
+            return List.of(Directives.setScreen("sessions", screen));
         };
     }
 

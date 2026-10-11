@@ -243,21 +243,20 @@ class SidebarBuilderTest {
                 .containsEntry("style", "primary");
         Map<String, Object> action = castMap(button.get("action"));
         assertThat(action).containsEntry("op", "dialog");
-        assertThat(castMap(action.get("node"))).containsEntry("id", "new-thread-dialog");
+        assertThat(action).doesNotContainKey("node");
+        assertThat(String.valueOf(action.get("html"))).contains("new-thread-dialog");
     }
 
     @Test
     void newThreadDialogSubmitsTheRealCreateSessionAction() {
         UiNode json = SidebarBuilder.build(List.of(), NOW, false);
-        Map<String, Object> dialog = newThreadDialogOf(json);
+        String dialog = newThreadDialogHtmlOf(json);
 
-        Map<String, Object> form = castMap(castList(dialog.get("children")).get(1));
-        assertThat(form).containsEntry("type", "form");
-        Map<String, Object> submit = castMap(form.get("submit"));
-        assertThat(submit).containsEntry("label", "Create thread");
-        Map<String, Object> action = castMap(submit.get("action"));
-        assertThat(action).containsEntry("name", "create-session")
-                .containsEntry("include", List.of("newThreadTitle", "newThreadWorkdir"));
+        assertThat(dialog).contains("data-jhin-type=\"form\"")
+                .contains("Create thread");
+        assertThat(dialog).contains("create-session")
+                .contains("newThreadTitle")
+                .contains("newThreadWorkdir");
     }
 
     @Test
@@ -765,23 +764,14 @@ class SidebarBuilderTest {
         assertThat(item).containsEntry("icon", "drag_handle");
         Map<String, Object> action = castMap(item.get("action"));
         assertThat(action).containsEntry("op", "dialog").containsEntry("kind", "sheet");
+        assertThat(action).doesNotContainKey("node");
 
-        Map<String, Object> sheet = castMap(action.get("node"));
-        assertThat(sheet).containsEntry("type", "sheet")
-                .containsEntry("title", "Arrange threads")
-                .containsEntry("demo", true);
-        Map<String, Object> body = castMap(sheet.get("body"));
-        assertThat(body).containsEntry("id", "arrange-sheet-body");
-        List<Map<String, Object>> rows = castList(body.get("children"))
-                .stream().map(SidebarBuilderTest::castMap).toList();
-        assertThat(rows).isNotEmpty();
-        for (Map<String, Object> row : rows) {
-            assertThat(row).containsEntry("type", "list_row")
-                    .containsEntry("dragHandle", true);
-        }
-        Map<String, Object> footer = castMap(sheet.get("footer"));
-        assertThat(stringsIn(footer)).contains("Done");
-        assertThat(stringsIn(footer)).contains("dismissDialog");
+        String sheet = String.valueOf(action.get("html"));
+        assertThat(sheet).contains("data-jhin-type=\"sheet\"")
+                .contains("Arrange threads")
+                .contains("arrange-sheet-body");
+        assertThat(sheet).contains("data-jhin-type=\"list_row\"");
+        assertThat(sheet).contains("Done").contains("dismissDialog");
     }
 
     @Test
@@ -843,12 +833,12 @@ class SidebarBuilderTest {
                 .map(String::valueOf).toList();
     }
 
-    /** The new-thread dialog node of one sidebar tree (the button's dialog). */
-    private static Map<String, Object> newThreadDialogOf(UiNode split) {
+    /** The new-thread dialog HTML of one sidebar tree (the button's dialog fragment). */
+    private static String newThreadDialogHtmlOf(UiNode split) {
         Map<String, Object> header = castMap(castMap(split.toJson().get("first")).get("header"));
         Map<String, Object> search = castMap(castList(header.get("children")).get(1));
         Map<String, Object> button = castMap(castList(search.get("children")).get(1));
-        return castMap(castMap(button.get("action")).get("node"));
+        return String.valueOf(castMap(button.get("action")).get("html"));
     }
 
     private static Session session(String id, long updatedAt, PatchBuilder patch) {

@@ -1,0 +1,44 @@
+T203 QA: PASS
+
+mode: plain HTTP loopback — jhin.security is not loaded, so no TlsProvider is
+      registered and the kernel listener speaks plain HTTP (kernel.log: "no
+      TLS material registered; the listener speaks plain HTTP"). The frozen
+      kernel CLI has no --no-tls flag (KernelBoot parses only --server.address
+      and --server.port); plan section 9 allows the QA-only plain-HTTP mode.
+port: 18443 (the kernel default 8443 is occupied by another service on this machine)
+plugins seeded into the temp JHIN_HOME: jhin.sessions, jhin.ui-kit, jhin.ui
+
+curl status codes:
+  GET /_jhin/bootstrap  X-Jhin-Client: api=4   200  21 inline screens, {id,html}, no node key
+  GET /ui/screen/sessions  api=4               200  {id,html}, data-jhin-type=
+  GET /ui/screen/chat:42283796-eb4a-46dc-bfaf-97687a25e889  api=4  200  chat fragment (composer markers)
+  POST /ui/action/create-session               200  client list, no node/props key
+  POST /ui/action/keybind-edit                 200  dialog op with html
+  POST /ui/action/arrange-toggle               200  setScreen op with html
+  POST /ui/action/preview-reload               200  patch op with html
+  GET /_jhin/bootstrap  X-Jhin-Client: api=1   426  contract_upgrade body byte-exact
+  GET /_jhin/bootstrap  (header absent)        426  contract_upgrade body byte-exact
+  GET /ui/screen/..%2F..%2Fetc                 400  no resolution, no html (see negative.txt)
+  GET /ui/screen/../../etc                     404  no resolution, no html (see negative.txt)
+  GET /ui/screen/..                            404  unknown_screen (traversal id reaches the route)
+  GET /ui/screen/..%252F..%252Fetc             404  unknown_screen (double-encoded traversal id)
+  GET /ui/screen/nonexistent-screen            404  unknown_screen
+
+directives: setScreen/patch/dialog all carry html on the wire; no "node" or
+            "props" key appears in any action response.
+traversal:  the two plan probes never reach ScreenRoute on this stack — the
+            URL-encoded ..%2F..%2Fetc is refused by the embedded Tomcat
+            connector with 400 (encoded slash) and the raw /ui/screen/../../etc
+            matches no route template (404 not_found). Both are non-200 with
+            no screen payload, so the plan's property ("a screen id of
+            ../../etc must 404" — traversal must not resolve) holds; the
+            ScreenRoute unknown_screen refusal is proven on the ids that do
+            reach it (/ui/screen/.. and ..%252F..%252Fetc). Exact raw
+            responses: negative.txt.
+node-count: 1412 data-jhin-type= occurrences across the screens html
+            fragments (asserted >= 30; fallbacks carried 11 more).
+markers:    sidebar (sidebar-split/sidebar-sections/nav) on the sessions
+            fragment, composer (textarea/composer/messageInput) on the chat
+            fragment — sessions-markers.txt explains the split.
+browser:    unavailable in this environment — browser-unavailable.txt records
+            the substitution and the one uncovered visual case.

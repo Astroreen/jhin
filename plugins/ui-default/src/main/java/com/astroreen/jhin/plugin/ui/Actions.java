@@ -153,15 +153,16 @@ final class Actions {
      * {@code preview-loading} bar. The client validates the included URL
      * first (the input is {@code required}), so an empty address never
      * reaches this handler — it shows the inline error instead. The answer
-     * patches the progress node to {@code loading: true} and toasts the
-     * preview wording; there is no browser automation (plan section 14.1).
+     * patches the progress node to its {@code loading: true} re-render and
+     * toasts the preview wording; there is no browser automation (plan
+     * section 14.1).
      */
     private static List<Map<String, Object>> previewReload(
             @SuppressWarnings("unused") HttpRequest req,
             @SuppressWarnings("unused") Map<String, Object> payload) {
         return List.of(
                 Directives.patch(RightPanelBuilder.PREVIEW_PROGRESS_ID,
-                        Map.of("loading", true)),
+                        RightPanelBuilder.previewProgress(true)),
                 Directives.toast("Reloading preview (preview only)"));
     }
 

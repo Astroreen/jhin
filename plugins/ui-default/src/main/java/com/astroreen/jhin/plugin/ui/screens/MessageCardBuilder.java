@@ -70,6 +70,7 @@ package com.astroreen.jhin.plugin.ui.screens;
 import com.astroreen.jhin.plugin.ui.Directives;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
+import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
 import com.astroreen.jhin.sdk.json.Json;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -999,30 +1000,8 @@ public final class MessageCardBuilder {
     public static UiNode toolCardRow(String kind, long seq, Map<String, Object> payload) {
         Map<String, Object> p = payload == null ? Map.of() : payload;
         String id = eventId(seq);
-        Ui.CardBuilder card = Ui.card()
-                .id(id + "-card")
-                .border(BORDER)
-                .borderRadius(EVENT_RADIUS)
-                .padding(12);
-        // header: tool icon + name + status chip + chevron
-        card.child(Ui.row().id(id + "-head").align("center").gap(8)
-                .child(Ui.icon().icon(iconOf(kind)).size(16).color(MUTED).build())
-                .child(Ui.text(textOf(p, "name", "tool")).style("small").build())
-                .child(statusChip(textOf(p, "status", "success")))
-                .child(Ui.spacer().build())
-                .child(Ui.iconButton().id(id + "-chevron").icon("expand_more")
-                        .iconSize(16)
-                        .action(Directives.patch(id + "-body", Map.of("visible", true)))
-                        .tooltip("Show details")
-                        .build())
-                .build());
-        // the collapsible argument summary line
-        String summary = textOf(p, "summary", "");
-        if (!summary.isBlank()) {
-            card.child(Ui.text(summary).style("mono").color(MUTED)
-                    .maxLines(1).ellipsis(true).build());
-        }
-        // the expanded body: the output region + the footer
+        // the expanded body first — the output region + the footer — so the
+        // header chevron can carry its rendered content as the show patch
         List<UiNode> body = new ArrayList<>();
         body.add(outputRegion(seq, p));
         Ui.RowBuilder footer = Ui.row().id(id + "-footer").align("center").gap(8);
@@ -1038,14 +1017,56 @@ public final class MessageCardBuilder {
                 .build());
         footer.child(Ui.iconButton().id(id + "-collapse").icon("unfold_less")
                 .iconSize(16)
-                .action(Directives.patch(id + "-body", Map.of("visible", false)))
+                .action(Directives.patch(id + "-body", ""))
                 .tooltip("Hide details")
                 .build());
         body.add(footer.build());
         List<Object> bodyNodes = new ArrayList<>(body);
+        Ui.CardBuilder card = Ui.card()
+                .id(id + "-card")
+                .border(BORDER)
+                .borderRadius(EVENT_RADIUS)
+                .padding(12);
+        // header: tool icon + name + status chip + chevron
+        card.child(Ui.row().id(id + "-head").align("center").gap(8)
+                .child(Ui.icon().icon(iconOf(kind)).size(16).color(MUTED).build())
+                .child(Ui.text(textOf(p, "name", "tool")).style("small").build())
+                .child(statusChip(textOf(p, "status", "success")))
+                .child(Ui.spacer().build())
+                .child(Ui.iconButton().id(id + "-chevron").icon("expand_more")
+                        .iconSize(16)
+                        .action(Directives.patch(id + "-body", renderFragmentOf(bodyNodes)))
+                        .tooltip("Show details")
+                        .build())
+                .build());
+        // the collapsible argument summary line
+        String summary = textOf(p, "summary", "");
+        if (!summary.isBlank()) {
+            card.child(Ui.text(summary).style("mono").color(MUTED)
+                    .maxLines(1).ellipsis(true).build());
+        }
         card.child(Ui.column().id(id + "-body").visible(false).gap(8)
                 .children(bodyNodes).build());
         return rowContainer(KIND_EVENT, kind, seq, null, 4, card.build());
+    }
+
+    /**
+     * The rendered inner content of one node list: the level-4
+     * {@code patch} {@code html} a content swap carries — the nodes
+     * themselves rendered, never the wrapping region (docs/sdui.md section
+     * 9.5: {@code patch} replaces the inner HTML of the target).
+     *
+     * @param nodes the content nodes
+     * @return the concatenated HTML fragments
+     */
+    private static String renderFragmentOf(List<Object> nodes) {
+        StringBuilder html = new StringBuilder();
+        for (Object node : nodes) {
+            if (node instanceof UiNode inner) {
+                html.append(HtmlRenderer.renderFragment(inner));
+            }
+        }
+        return html.toString();
     }
 
     /**

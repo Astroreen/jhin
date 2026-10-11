@@ -87,9 +87,10 @@ class UsageScreenTest {
         assertThat(button).containsEntry("type", "button").containsEntry("demo", true);
         Map<String, Object> action = castMap(button.get("action"));
         assertThat(action).containsEntry("op", "dialog");
-        Map<String, Object> dialog = castMap(action.get("node"));
-        assertThat(dialog).containsEntry("id", UsageScreen.ADD_SOURCE_DIALOG_ID);
-        assertThat(stringsIn(dialog)).contains("Add usage limit source");
+        assertThat(action).doesNotContainKey("node");
+        String dialog = String.valueOf(action.get("html"));
+        assertThat(dialog).contains(UsageScreen.ADD_SOURCE_DIALOG_ID);
+        assertThat(dialog).contains("Add usage limit source");
     }
 
     @Test

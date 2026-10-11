@@ -1,0 +1,12 @@
+T203 node-count substitute — the browser evaluate step cannot run here
+(see browser-unavailable.txt). The node count is taken over the html
+fragments of the inline screens (the "screens" array of bootstrap.json)
+instead of a live DOM:
+
+  data-jhin-type= occurrences, screens html fragments: 1412
+  data-jhin-type= occurrences, fallbacks html strings:  11
+
+Asserted number: 1412 (>= 30), the screens-only count.
+The inline screens alone carry 1412 nodes (21 screens, far above
+the threshold), so the fallbacks were not needed to reach 30 and were
+not added to the asserted figure.

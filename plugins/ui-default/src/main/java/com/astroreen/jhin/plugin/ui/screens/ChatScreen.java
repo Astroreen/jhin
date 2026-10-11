@@ -613,7 +613,7 @@ public final class ChatScreen {
         Ui.ButtonBuilder button = Ui.button(label)
                 .id(id)
                 .icon(icon)
-                .action(Directives.dialog(dialogNode.toJson()))
+                .action(Directives.dialog(dialogNode))
                 .set("demo", true)
                 .tooltip(chord == null ? "Picker (preview only)" : chord + " — picker (preview only)");
         Ui.BoxBuilder chevronWrap = Ui.box()
@@ -621,7 +621,7 @@ public final class ChatScreen {
                         .icon("expand_more")
                         .iconSize(16)
                         .set("demo", true)
-                        .action(Directives.dialog(dialogNode.toJson()))
+                        .action(Directives.dialog(dialogNode))
                         .build());
         return Ui.row()
                 .id(id + "-control")
@@ -735,12 +735,7 @@ public final class ChatScreen {
         boolean selected = PERMISSION_MODES.get(0).equals(mode);
         return Ui.listRow()
                 .id("permission-mode-" + permissionSlug(mode))
-                .leading(Ui.icon()
-                        .id("permission-mode-" + permissionSlug(mode) + "-radio")
-                        .icon(selected ? "radio_button_checked" : "radio_button_unchecked")
-                        .size(18)
-                        .color(selected ? "$color.accent" : "$color.muted-foreground")
-                        .build())
+                .leading(radioGlyph(mode, selected))
                 .title(mode)
                 .subtitle(permissionDescription(mode))
                 .selected(selected)
@@ -750,8 +745,23 @@ public final class ChatScreen {
     }
 
     /**
+     * The leading radio glyph of one permission row: the id is the
+     * {@code patch} address the selection flip swaps in place.
+     */
+    private static UiNode radioGlyph(String mode, boolean selected) {
+        return Ui.icon()
+                .id("permission-mode-" + permissionSlug(mode) + "-radio")
+                .icon(selected ? "radio_button_checked" : "radio_button_unchecked")
+                .size(18)
+                .color(selected ? "$color.accent" : "$color.muted-foreground")
+                .build();
+    }
+
+    /**
      * The inline composite of one permission row: set the local mode, flip
      * every radio glyph to the new selection and toast the preview wording.
+     * The flip is a {@code patch} per glyph whose {@code html} is the glyph
+     * re-rendered in its new state (contract level 4 — no prop merge).
      */
     private static List<Map<String, Object>> permissionSelectOps(String mode) {
         List<Map<String, Object>> ops = new ArrayList<>();
@@ -760,11 +770,7 @@ public final class ChatScreen {
             boolean selected = candidate.equals(mode);
             ops.add(Directives.patch(
                     "permission-mode-" + permissionSlug(candidate) + "-radio",
-                    Map.of(
-                            "icon", selected
-                                    ? "radio_button_checked" : "radio_button_unchecked",
-                            "color", selected
-                                    ? "$color.accent" : "$color.muted-foreground")));
+                    radioGlyph(candidate, selected)));
         }
         ops.add(Directives.toast(mode + " selected (preview only)"));
         return ops;
@@ -961,15 +967,14 @@ public final class ChatScreen {
                         .build())
                 .item(Ui.menuItem("Stash prompt…")
                         .icon("bookmark")
-                        .action(Directives.dialog(dialog.build().toJson()))
+                        .action(Directives.dialog(dialog.build()))
                         .build())
                 .item(Ui.menuItem("Stashed prompts")
                         .icon("insert_drive_file")
                         .action(Directives.dialog(Ui.column()
                                 .child(Ui.text("Nothing stashed yet.").build())
                                 .child(dialogDone())
-                                .build()
-                                .toJson()))
+                                .build()))
                         .build())
                 .set("demo", true)
                 .build();

@@ -1,0 +1,35 @@
+T203 negative path — raw responses.
+
+=== GET /_jhin/bootstrap  X-Jhin-Client: api=1 ===
+HTTP/1.1 426 
+Content-Type: application/json;charset=utf-8
+Content-Length: 121
+Date: Sun, 11 Oct 2026 05:35:23 GMT
+
+{"error":"contract_upgrade","message":"This server speaks the HTML UI contract (api=4). Upgrade your client.","minApi":4}
+=== GET /_jhin/bootstrap  (no X-Jhin-Client header) ===
+HTTP/1.1 426 
+Content-Type: application/json;charset=utf-8
+Content-Length: 121
+Date: Sun, 11 Oct 2026 05:35:23 GMT
+
+{"error":"contract_upgrade","message":"This server speaks the HTML UI contract (api=4). Upgrade your client.","minApi":4}
+=== GET /ui/screen/..%2F..%2Fetc  (URL-encoded ../../etc) -> HTTP 400 ===
+Refused before the screen route: the embedded Tomcat connector rejects
+percent-encoded slashes (%2F) in the path with 400, so the request never
+reaches any plugin handler (kernel frozen; no connector setting to relax).
+The plan's security property holds: the traversal does not resolve to a
+screen.
+<!doctype html><html lang="en"><head><title>HTTP Status 400 – Bad Request</title><style type="text/css">body {font-family:Tahoma,Arial,sans-serif;} h1, h2, h3, b {color:white;background-color:#525D76;} h1 {font-size:22px;} h2 {font-size:16px;} h3 {font-size:14px;} p {font-size:12px;} a {color:black;} .line {height:1px;background-color:#525D76;border:none;}</style></head><body><h1>HTTP Status 400 – Bad Request</h1></body></html>
+=== GET /ui/screen/../../etc  (raw dot segments, curl --path-as-is) -> HTTP 404 ===
+Refused at route resolution: the raw path splits into 5 segments
+(ui, screen, .., .., etc) and matches no registered template (the screen
+route is the 3-segment /ui/screen/{id}), so the kernel answers 404
+not_found and no screen is rendered.
+{"error":"not_found","message":"no plugin serves GET /ui/screen/../../etc"}
+=== GET /ui/screen/..  (traversal id reaching ScreenRoute) -> HTTP 404 ===
+{"error":"unknown_screen","message":"no screen with id .."}
+=== GET /ui/screen/..%252F..%252Fetc  (double-encoded ../../etc) -> HTTP 404 ===
+{"error":"unknown_screen","message":"no screen with id ..%2F..%2Fetc"}
+=== GET /ui/screen/nonexistent-screen -> HTTP 404 ===
+{"error":"unknown_screen","message":"no screen with id nonexistent-screen"}
