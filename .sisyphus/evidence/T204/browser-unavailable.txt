@@ -1,0 +1,59 @@
+T204 browser step: UNAVAILABLE in this environment.
+
+Why: the executing agent has no browser tools — no browser navigate, no
+screenshot, no ARIA snapshot, no evaluate, no network interception. The same
+limitation is recorded for T202/T203 in evidence/T202/browser-unavailable.txt
+and evidence/T203/browser-unavailable.txt; the available tools are a shell,
+file read/write/edit, grep/glob and a URL-to-markdown fetcher (webfetch),
+none of which can drive a live DOM. Nothing is fabricated: no snapshot.yaml,
+no screen.png and no runtime interaction log are produced.
+
+The T204 browser scenario and its coverage map:
+
+  step                                          covered by
+  --------------------------------------------  -----------------------------
+  open the web shell                            static + live (GET / -> 200
+                                                text/html with inlined
+                                                initKeymap + renderPairing)
+  click a session                               UNCOVERED (visual DOM click;
+                                                the sessions screen html and
+                                                its actions are live-proven,
+                                                the click is not)
+  type in the composer                          UNCOVERED (typing); the
+                                                validation order is proven
+                                                statically
+                                                (validation-negative.txt)
+  mod+enter send                                UNCOVERED (key event); the
+                                                chord vocabulary, contexts
+                                                and last-match-wins table
+                                                are proven statically
+                                                (static-gates.txt 2f)
+  toast appears                                 UNCOVERED (visual); the toast
+                                                op is in the 17-op switch
+                                                (static-gates.txt 2e) and
+                                                toasts ride action responses
+                                                on the wire (pairing-enroll.txt)
+  mod+k palette opens                           UNCOVERED (overlay visual);
+                                                initKeymap + jhin.keybindings
+                                                overrides proven statically
+                                                (static-gates.txt 2f)
+  Escape closes palette                         UNCOVERED (key event)
+  alt+left back                                 UNCOVERED (key event); the
+                                                back op and the nav stack are
+                                                in the switch (static-gates.txt 2e)
+
+Also uncovered (no browser, no network interception):
+  - the runtime proof of validation-negative.txt (empty required input ->
+    zero network calls) — static ordering proven instead;
+  - the runtime proof of bad-directive.txt (unknown op -> ignored, no crash)
+    — static default branch proven instead;
+  - focus-restore after patch/setScreen/dialog swaps;
+  - overlay composition (confirm/toast/undo dialogs) rendering on screen;
+  - the palette overlay itself is runtime chrome (see the commit Deviations).
+
+Everything else of T204 is proven by scripts/qa/t204.sh: static gates on the
+runtime assets (static-gates.txt), the served shell and bootstrap
+(shell.html, bootstrap-api4.json), the action matrix with html-carrying
+patch/setScreen/dialog ops (action-*.json), the pairing endpoint
+(pairing-enroll.txt) and the two negative artifacts (validation-negative.txt,
+bad-directive.txt). See summary.txt.

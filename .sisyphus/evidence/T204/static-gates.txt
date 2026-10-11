@@ -1,0 +1,25 @@
+T204 static gates — the plan's hard rules on the runtime assets.
+
+gate 2a — no eval / new Function in app.js:
+  grep -c "eval\|new Function" plugins/ui-default/src/main/resources/web/app.js -> 0 (must be 0)
+gate 2b — no '<' in app.css:
+  grep -c '<' plugins/ui-default/src/main/resources/web/app.css -> 0 (must be 0)
+gate 2c — app.js size budget (T207 <= 60000 bytes):
+  wc -c plugins/ui-default/src/main/resources/web/app.js -> 59887 bytes (must be <= 60000)
+  wc -c plugins/ui-default/src/main/resources/web/app.css -> 27548 bytes (recorded, no budget)
+gate 2d — node --check plugins/ui-default/src/main/resources/web/app.js:
+  node v24.20.0 -> PASS
+gate 2e — the 17 directive ops in the runDirective dispatch switch:
+  expected: back clearToken dialog dismissDialog navigate openProfiles openUrl patch refresh reloadBootstrap replace setScreen setServerUrl setState setToken toast undo 
+  found:    back clearToken dialog dismissDialog navigate openProfiles openUrl patch refresh reloadBootstrap replace setScreen setServerUrl setState setToken toast undo 
+gate 2f — keymap entry points (initKeymap, jhin.keybindings, chordId|parseChord): PRESENT
+  1458:  function chordId(mods, key) {
+  1464:  function parseChord(spec) {
+  1502:      raw = window.localStorage.getItem("jhin.keybindings");
+  1511:      console.warn("jhin: ignoring unparseable jhin.keybindings");
+  1515:      console.warn("jhin: ignoring jhin.keybindings of unknown shape");
+  1792:  function initKeymap() {
+  1795:      if (!event || event.key === null || event.key === "jhin.keybindings") {
+gate 2g — pairing entry points (renderPairing, /ui/action/enroll): PRESENT
+  825:  function renderPairing() {
+  896:      res = await jhinFetch("/ui/action/enroll", {

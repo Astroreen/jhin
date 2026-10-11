@@ -1,0 +1,108 @@
+  async function runDirective(directive) {
+    const op = directive.op;
+    if (typeof op !== "string" || op === "") {
+      console.warn("jhin: ignoring directive without an op:", directive);
+      return;
+    }
+    switch (op) {
+      case "navigate": {
+        const screen = directive.screen;
+        if (typeof screen !== "string" || screen === "") { return malformedDirective(op, directive); }
+        navPushCurrent();
+        await showScreen(screen);
+        break;
+      }
+      case "back":
+        await navGoBack();
+        break;
+      case "replace": {
+        const screen = directive.screen;
+        if (typeof screen !== "string" || screen === "") { return malformedDirective(op, directive); }
+        await showScreen(screen);
+        break;
+      }
+      case "refresh":
+        if (currentScreenId !== null) {
+          refreshScreen(currentScreenId);
+        }
+        break;
+      case "reloadBootstrap":
+        await bootstrap();
+        break;
+      case "setToken": {
+        const value = directive.value;
+        if (typeof value !== "string") { return malformedDirective(op, directive); }
+        writeToken(value);
+        break;
+      }
+      case "clearToken":
+        writeToken("");
+        break;
+      case "setServerUrl":
+        console.warn("jhin: setServerUrl is not available in the web runtime");
+        break;
+      case "openProfiles":
+        console.warn("jhin: openProfiles is not available in the web runtime");
+        break;
+      case "toast": {
+        const text = directive.text;
+        if (typeof text !== "string") { return malformedDirective(op, directive); }
+        if (directive.action && typeof directive.action === "object") {
+          showUndoNotice(text, directive.action,
+            typeof directive.duration === "number" ? directive.duration : 5000);
+        } else {
+          showToast(text, typeof directive.style === "string" ? directive.style : null);
+        }
+        break;
+      }
+      case "dialog": {
+        const html = directive.html;
+        if (typeof html !== "string") {
+          return malformedDirective(op, directive);
+        }
+        openDialogOverlay(html, typeof directive.kind === "string" ? directive.kind : null);
+        break;
+      }
+      case "dismissDialog":
+        closeDialogOverlay();
+        break;
+      case "setState": {
+        const id = directive.id;
+        if (typeof id !== "string" || id === "") { return malformedDirective(op, directive); }
+        setState(id, directive.value);
+        break;
+      }
+      case "patch": {
+        const id = directive.id;
+        const html = directive.html;
+        if (typeof id !== "string" || typeof html !== "string") { return malformedDirective(op, directive); }
+        applyPatch(id, html);
+        break;
+      }
+      case "setScreen": {
+        const id = directive.id;
+        const html = directive.html;
+        if (typeof id !== "string" || typeof html !== "string") { return malformedDirective(op, directive); }
+        cachePut(id, html);
+        inlineIds.add(id);
+        if (currentScreenId === id) {
+          renderScreen(id, html);
+        }
+        break;
+      }
+      case "openUrl": {
+        const value = directive.value;
+        if (typeof value !== "string") { return malformedDirective(op, directive); }
+        window.open(value, "_blank", "noopener");
+        break;
+      }
+      case "undo":
+        await serverAction({ path: "/ui/action/undo", name: "undo" }, {});
+        break;
+      default:
+        console.warn("jhin: ignoring unknown directive op:", op);
+    }
+  }
+
+  /** patch(id, html): the innerHTML swap of section 9.5. */
+  function applyPatch(id, html) {

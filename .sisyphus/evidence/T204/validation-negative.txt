@@ -1,0 +1,30 @@
+T204 negative artifact 1 — validation: an empty required input blocks the POST.
+
+Static proof (dispatch order in dispatchAction, app.js):
+  fieldProblem definition (the required-empty rule):
+    app.js:977  if (field.hasAttribute("required") && text === "") { return errorText; }
+  the include loop of dispatchAction validates every included field first:
+    app.js:1099    const problem = fieldProblem(field, UiState.values[id]);
+  the failure path returns BEFORE any network call:
+    app.js:1108    if (failed) { return; }
+  only the success path reaches the action POST:
+    app.js:1123    await serverAction(action, payload);
+  the single action POST of the whole runtime (inside serverAction):
+    app.js:1052      const res = await jhinFetch(action.path, {
+
+Ordering asserted by scripts/qa/t204.sh: 977 < 1099
+< 1108 < 1123, and jhinFetch(action.path) has exactly 1
+call site (the one inside serverAction). dispatchAction starts at
+app.js:1077, so all four ordering points are in one function body
+except the fetch, which is in the callee reached only after the guard.
+
+Consequence: when a required field is empty, fieldProblem returns the error
+text, setFieldError renders it inline, UiState.errors records it, failed
+becomes true, and dispatchAction returns at app.js:1108 — zero
+round-trips on validation failure (section 3 dispatch order).
+
+Runtime proof (type empty -> click -> assert no network call) needs a browser
+with network interception. This environment has NO browser tools (see
+browser-unavailable.txt), so the runtime proof is UNAVAILABLE and is not
+fabricated. The static ordering above is the evidence a human can audit at
+the cited line numbers.

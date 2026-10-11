@@ -1,0 +1,34 @@
+T204 pairing endpoint — POST /ui/action/enroll with a bogus code.
+
+Request (unauthenticated; this bundle has no bearer filter without
+jhin.security):
+  {"action":"enroll","payload":{"code":"QA-T204-BOGUS","deviceName":"qa-t204-device"}}
+
+Actual answer: HTTP 200
+--- response body (pairing-enroll.json) ---
+{"client":[{"op":"toast","text":"This server has no security plugin installed.","style":"info"}]}
+--- why this status ---
+The enroll ROUTE is registered by jhin.ui (Actions.handlers.put("enroll", …))
+and is reachable without any token in this bundle — the pairing surface must
+work before a device has credentials. The enroll MACHINERY is jhin.security's:
+EnrollAction redeems the code through the security plugin's EnrollmentService
+(plugins/ui-default/src/main/java/com/astroreen/jhin/plugin/ui/EnrollAction.java: enrollment.redeem(code, deviceName)), and that service is only
+published when jhin.security is loaded. This QA bundle seeds exactly three jars
+(jhin.sessions, jhin.ui-kit, jhin.ui), so Features.security() is false and
+Actions.enroll answers its absent-plugin stand-in: an explanatory toast
+directive wrapped in {"client":[…]} — a non-crash JSON body, which is what
+this assert requires. A bundle WITH jhin.security would instead reach
+EnrollAction and answer a refusal as the enroll-error banner patch (also a
+200 {"client":[…]} body); a 401/403 could only come from the security bearer
+filter, which deliberately does not cover the enroll action.
+
+Kernel liveness after the POST: GET /_jhin/health -> HTTP 200.
+
+Static wiring of the pairing form (asserted regardless, so the client-side
+contract is proven even where the security machinery is absent):
+  app.js  896:      res = await jhinFetch("/ui/action/enroll", {
+  app.js  899:        body: JSON.stringify({ action: "enroll", payload: { code: code, deviceName: deviceName } })
+  EnrollAction.java  42:        String code = ActionSupport.text(payload, "code");
+  EnrollAction.java  43:        String deviceName = ActionSupport.text(payload, "deviceName");
+The payload keys posted by renderPairing/submitPairing match the keys
+EnrollAction.handle reads: "code" and "deviceName".

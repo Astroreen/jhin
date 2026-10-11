@@ -1,0 +1,61 @@
+T204 QA: PASS
+
+mode: plain HTTP loopback — jhin.security is not loaded, so no TlsProvider is
+      registered and the kernel listener speaks plain HTTP (kernel.log: "no
+      TLS material registered; the listener speaks plain HTTP"). The frozen
+      kernel CLI has no --no-tls flag (KernelBoot parses only --server.address
+      and --server.port); plan section 9 allows the QA-only plain-HTTP mode.
+port: 18443 (the kernel default 8443 is occupied by another service on this machine)
+plugins seeded into the temp JHIN_HOME: jhin.sessions, jhin.ui-kit, jhin.ui
+
+build + test gates:
+  :jhin-plugin-ui-default:test    green (WebShellRouteTest reads app.js/app.css)
+  :jhin-plugin-ui-kit:test        green
+  :sdk:test                       green
+
+static gates (static-gates.txt):
+  no eval / new Function in app.js              0 occurrences (0 required)
+  no '<' in app.css                             0 occurrences (0 required)
+  app.js bytes                                  59887 (<= 60000 required)
+  node --check app.js                           PASS
+  17 directive ops in the dispatch switch       exact set match (directive-ops.diff empty)
+  keymap entry points                           initKeymap, jhin.keybindings, chordId/parseChord
+  pairing entry points                          renderPairing, /ui/action/enroll
+
+curl status codes:
+  GET /                                         200  text/html, inlined initKeymap + renderPairing
+  GET /_jhin/bootstrap  X-Jhin-Client: api=4    200  screens[0].html starts with <div data-jhin-type=
+  POST /ui/action/create-session                200  client directive list
+  POST /ui/action/keybind-edit                  200  dialog op with html
+  POST /ui/action/arrange-toggle                200  setScreen op with html
+  POST /ui/action/preview-reload                200  patch op with html
+  POST /ui/action/enroll (bogus code)           200  non-crash JSON (see pairing-enroll.txt)
+  GET /_jhin/health (after the enroll POST)     200  kernel alive
+
+negatives:
+  validation-negative.txt  static proof: fieldProblem (app.js:977,
+                           app.js:1099) runs before the failed
+                           guard (app.js:1108) and the serverAction call
+                           (app.js:1123); jhinFetch(action.path) has
+                           exactly 1 call site — an empty required
+                           input blocks the POST with zero round-trips. Runtime
+                           proof needs a browser: UNAVAILABLE.
+  bad-directive.txt        static proof: the runDirective default branch
+                           (app.js:1295-1296) warns and
+                           returns; the switch region has 0
+                           throw occurrences. Runtime proof needs a browser:
+                           UNAVAILABLE.
+
+browser: unavailable in this environment — browser-unavailable.txt maps the
+         T204 scenario steps to the static/live coverage and lists what stays
+         uncovered (visual DOM interaction, key events, overlays).
+
+known gaps (recorded, not fabricated):
+  - no browser: no visual DOM interaction, no runtime network-interception
+    proof for validation or bad-directive handling;
+  - the enroll POST exercises the absent-security stand-in of this 3-plugin
+    bundle (pairing-enroll.txt records the actual 200 and why); the
+    full security redeem path is proven by the jhin.security suites, not here;
+  - palette overlay is runtime chrome, not server-driven (commit Deviations);
+  - forward stack, X-Jhin-Keybindings, keybind-save/reset side-effects and
+    the {"rules":[…]} store shape are out of this chunk (commit Deviations).
