@@ -159,6 +159,8 @@ body {
   min-width: 0;
   min-height: 0;
   overscroll-behavior: contain;
+  /* safe-area: the scroll bottom clears the home-indicator inset */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .jhin-divider {
@@ -217,6 +219,39 @@ body {
   height: 100dvh;
 }
 
+@media (min-width: 769px) {
+  /* The prop-driven collapsed rail (section 2.6 collapsed /
+     sidebarCollapsedWidth), wide layout only: below the breakpoint the
+     overlay drawer owns the sidebar. The shell wears data-jhin-collapsed
+     and the sidebar drops to the documented 56px collapsed width (TokenCss
+     carries no collapsed-width key, so the default is a stylesheet literal;
+     an inline width on the nav still wins). Items become icon stops. */
+  .jhin-shell[data-jhin-collapsed="true"]:has(> .jhin-nav-sidebar) {
+    padding-left: 56px;
+  }
+
+  .jhin-shell[data-jhin-collapsed="true"]>.jhin-nav-sidebar {
+    width: 56px;
+    overflow: hidden;
+  }
+
+  .jhin-shell[data-jhin-collapsed="true"]>.jhin-nav-sidebar .jhin-nav-item {
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .jhin-shell[data-jhin-collapsed="true"]>.jhin-nav-sidebar .jhin-nav-item .jhin-icon {
+    font-size: var(--text-sm-size);
+  }
+
+  .jhin-shell[data-jhin-collapsed="true"]>.jhin-nav-sidebar .jhin-nav-section,
+  .jhin-shell[data-jhin-collapsed="true"]>.jhin-nav-sidebar .jhin-nav-count {
+    display: none;
+  }
+}
+
 @media (max-width: 768px) {
   .jhin-shell:has(> .jhin-nav-sidebar) {
     padding-left: 0;
@@ -224,17 +259,41 @@ body {
 
   .jhin-shell>.jhin-nav-sidebar {
     max-width: 86vw;
-    transform: translateX(-100%);
+    /* Closed = an 8px peek strip at the left edge: the nav box stays
+       hoverable so the drawer opens without a JS toggle, while every child
+       is visibility:hidden and the raw label text is transparent — the
+       closed state paints nothing and carries zero tab stops. */
+    transform: translateX(calc(-100% + 8px));
     transition: transform var(--motion-panel) var(--motion-ease-drawer);
-    box-shadow: var(--shadow-composer);
+    background: transparent;
+    border-right-color: transparent;
+    color: transparent;
   }
 
+  .jhin-shell>.jhin-nav-sidebar>* {
+    visibility: hidden;
+  }
+
+  .jhin-shell>.jhin-nav-sidebar:hover,
+  .jhin-shell>.jhin-nav-sidebar:focus-within,
   #jhin-root.jhin-drawer-open .jhin-nav-sidebar {
     transform: translateX(0);
     z-index: var(--z-sheet);
+    background: var(--color-sidebar);
+    border-right-color: var(--color-sidebar-border);
+    color: var(--color-sidebar-foreground);
+    box-shadow: var(--shadow-composer);
   }
 
-  #jhin-root.jhin-drawer-open::before {
+  .jhin-shell>.jhin-nav-sidebar:hover>*,
+  .jhin-shell>.jhin-nav-sidebar:focus-within>*,
+  #jhin-root.jhin-drawer-open .jhin-nav-sidebar>* {
+    visibility: visible;
+  }
+
+  #jhin-root.jhin-drawer-open::before,
+  .jhin-shell:has(> .jhin-nav-sidebar:hover)::before,
+  .jhin-shell:has(> .jhin-nav-sidebar:focus-within)::before {
     content: "";
     position: fixed;
     inset: 0;
@@ -611,6 +670,12 @@ body {
 
 .jhin-tabs {
   display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.jhin-tabs-list {
+  display: flex;
   align-items: center;
   gap: var(--spacing-xs);
   border-bottom: 1px solid var(--color-outline);
@@ -650,7 +715,7 @@ body {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
-  height: var(--spacing-lg);
+  height: var(--jhin-fade-height, var(--spacing-lg));
   background: linear-gradient(to bottom, var(--color-canvas), transparent);
   pointer-events: none;
   z-index: 1;
@@ -660,7 +725,7 @@ body {
   content: "";
   position: absolute;
   inset: auto 0 0 0;
-  height: var(--spacing-lg);
+  height: var(--jhin-fade-height, var(--spacing-lg));
   background: linear-gradient(to top, var(--color-canvas), transparent);
   pointer-events: none;
   z-index: 1;
@@ -1073,6 +1138,8 @@ body {
   flex-direction: column;
   gap: var(--spacing-xs);
   padding: var(--space-sidebar-content);
+  /* safe-area: the drawer bottom clears the home-indicator inset */
+  padding-bottom: calc(var(--space-sidebar-content) + env(safe-area-inset-bottom, 0px));
 }
 
 .jhin-nav-section {
@@ -1119,6 +1186,71 @@ body {
   gap: var(--spacing-sm);
   min-height: var(--layout-topbar-height);
   padding: var(--spacing-sm) var(--space-workspace-gutter-base);
+  /* safe-area: the bar top clears the notch inset */
+  padding-top: calc(var(--spacing-sm) + env(safe-area-inset-top, 0px));
+}
+
+/* --- shell chrome: top bars and safe area (T206.3) --------------------- */
+
+/* The workspace top bars of the shell (section 2.6 topbar / topbarCompact).
+   The renderer emits no slot class for the shell regions, so this block keys
+   on the ui-default screen id suffix convention (ids ending in -topbar and
+   -topbar-compact). The wide bar renders at the layout.topbar-height token
+   with the workspace gutters and the top safe-area inset (section 2.6). */
+[id$="-topbar"],
+[id$="-topbar-compact"] {
+  min-height: var(--layout-topbar-height);
+  padding: var(--spacing-sm) var(--space-workspace-gutter-base);
+  padding-top: calc(var(--spacing-sm) + env(safe-area-inset-top, 0px));
+}
+
+[id$="-topbar-compact"] {
+  display: none;
+}
+
+/* The universal safeArea prop (section 2.1) reaches HTML as the reflected
+   data-jhin-safe-area hook (bool or per-edge JSON). The CSS half opts a node
+   into inset padding through zero-height edge spacers: they ADD the platform
+   insets to the padding the node already wears (inline or class) and add
+   nothing on edges the platform reports as zero (section 2.1). Top and
+   bottom are the expressible edges; the demo badge keeps its ::after. */
+[data-jhin-safe-area="true"]::before,
+[data-jhin-safe-area*='"top":true']::before {
+  content: "";
+  display: block;
+  flex: 0 0 auto;
+  height: env(safe-area-inset-top, 0px);
+}
+
+[data-jhin-safe-area="true"]:not([data-jhin-demo="true"])::after,
+[data-jhin-safe-area*='"bottom":true']:not([data-jhin-demo="true"])::after {
+  content: "";
+  display: block;
+  flex: 0 0 auto;
+  height: env(safe-area-inset-bottom, 0px);
+}
+
+@media (max-width: 768px) {
+  /* Compact chrome below the breakpoint (section 2.6 topbarCompact /
+     breakpoint): the wide top bar steps aside for its condensed variant
+     (absent, the wide bar is reused) and the paddings and gutters compress
+     to the documented 0.5rem. The drawer overlay itself lives in the
+     breakpoint block above, next to the sidebar rules it extends. */
+  .jhin-shell:has(> [id$="-topbar-compact"])>[id$="-topbar"] {
+    display: none;
+  }
+
+  [id$="-topbar-compact"] {
+    display: flex;
+  }
+
+  [id$="-topbar"],
+  [id$="-topbar-compact"],
+  .jhin-appbar {
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) 0.5rem;
+    padding-top: calc(var(--spacing-xs) + env(safe-area-inset-top, 0px));
+  }
 }
 
 /* --- inline validation errors (module 6) ------------------------------ */
@@ -1345,6 +1477,133 @@ body {
   font-size: var(--text-base-size);
   line-height: var(--text-base-line-height);
   text-align: center;
+}
+
+/* --- T206 renderer catalog -------------------------------------------- */
+
+.jhin-tabs-panels {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.jhin-tab-close {
+  display: inline-flex;
+  margin-left: var(--spacing-xs);
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+}
+
+.jhin-tab-pinned {
+  opacity: 0.7;
+}
+
+.jhin-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.jhin-chart-series {
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.jhin-chart-bar-rect,
+.jhin-chart-slice {
+  stroke: var(--color-canvas);
+  stroke-width: 1;
+}
+
+.jhin-rich-text {
+  min-width: 0;
+}
+
+.jhin-rich-image {
+  max-height: 1.2em;
+  vertical-align: text-bottom;
+}
+
+.jhin-status-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--spacing-xs);
+  border-radius: var(--radius-full);
+  background: var(--color-muted-foreground);
+}
+
+.jhin-status-indicator[data-jhin-status="working"],
+.jhin-status-indicator[data-jhin-status="monitoring"] {
+  background: var(--color-accent);
+}
+
+.jhin-status-indicator[data-jhin-status="failed"],
+.jhin-status-indicator[data-jhin-status="needs-approval"] {
+  background: var(--color-destructive);
+}
+
+.jhin-drag-handle {
+  display: inline-flex;
+  color: var(--color-muted-foreground);
+  cursor: grab;
+}
+
+.jhin-list-row.jhin-dragging {
+  background: var(--color-card);
+  box-shadow: var(--shadow-composer);
+}
+
+.jhin-command-subtitle {
+  margin-left: var(--spacing-xs);
+  color: var(--color-muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-size);
+}
+
+.jhin-list-section-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--spacing-sm);
+  border-radius: var(--radius-full);
+  background: var(--color-secondary);
+  color: var(--color-secondary-foreground);
+  font-size: var(--text-xs-size);
+}
+
+.jhin-banner-dismiss {
+  align-self: flex-end;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  cursor: pointer;
+}
+
+.jhin-diff-language {
+  margin-left: var(--spacing-sm);
+  color: var(--color-muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-size);
+}
+
+[data-jhin-demo="true"] {
+  position: relative;
+}
+
+[data-jhin-demo="true"]::after {
+  content: "Preview";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 0 var(--spacing-xs);
+  border-radius: var(--radius-sm) 0 0 0;
+  background: var(--color-secondary);
+  color: var(--color-secondary-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs-size);
+  line-height: 1.4;
+  pointer-events: none;
 }
 
 /* --- reduced motion --------------------------------------------------- */

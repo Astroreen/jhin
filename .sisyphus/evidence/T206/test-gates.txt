@@ -1,0 +1,13 @@
+T206 test gates — the four suites green with the T206 catalog:
+BUILD SUCCESSFUL in 909ms
+> Task :sdk:test
+> Task :jhin-plugin-ui-kit:test
+> Task :jhin-plugin-ui-default:test
+> Task :kernel:test
+BUILD SUCCESSFUL in 30s
+
+  :jhin-plugin-ui-kit:test      310 tests (expected 310)
+  :jhin-plugin-ui-default:test  411 tests (expected 411; HtmlConformanceTest among them)
+  :sdk:test                     64 tests (expected 64)
+  :kernel:test                  117 tests (expected 117; KernelPurityTest)
+  failures=0 errors=0 (expected 0/0)

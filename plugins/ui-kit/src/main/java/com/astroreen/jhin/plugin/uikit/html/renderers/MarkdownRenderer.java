@@ -6,6 +6,7 @@ package com.astroreen.jhin.plugin.uikit.html.renderers;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
+import com.astroreen.jhin.plugin.uikit.html.PropReflection;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.commonmark.ext.gfm.tables.TableBlock;
@@ -99,6 +100,9 @@ public final class MarkdownRenderer implements NodeRenderer {
         if (text != null) {
             appendBlocks(element, String.valueOf(text));
         }
+        // codeBlockStyle/syntax/skills are T104 features beyond prop
+        // reflection; they reach the wire as data-jhin-* attributes.
+        PropReflection.reflect(node, element, Set.of("text", "maxLines", "softWrap"));
     }
 
     /**

@@ -72,6 +72,19 @@ public final class UniversalProps {
     /** Primitives whose {@code alignment} is their own layout prop (section 2.6), never the universal alias. */
     private static final Set<String> OWN_ALIGNMENT = Set.of("stack", "wrap", "icon_button");
 
+    /**
+     * Type-specific roles of the universal {@code color} (section 2.6 gives
+     * the prop a per-primitive meaning): {@code divider} paints its line,
+     * {@code progress} its bar; everything else keeps the group default
+     * (foreground on {@link #COLOR_BEARING}, background elsewhere).
+     */
+    private static final Map<String, String> COLOR_PROPERTY = Map.of(
+            "divider", "border-top-color",
+            "progress", "accent-color");
+
+    /** The shared {@code demo} tooltip (section 2.1 level 3). */
+    private static final String DEMO_TOOLTIP = "Preview only — not available in this build";
+
     /** {@code clip} literals (section 2.1) to CSS {@code overflow}. */
     private static final Map<String, String> CLIP_OVERFLOW = Map.of(
             "none", "visible",
@@ -221,6 +234,7 @@ public final class UniversalProps {
         title(props, element);
         handlers(props, element);
         aria(props, element);
+        level3(props, element);
         String style = styleOf(type, props);
         if (!style.isEmpty()) {
             element.attr("style", style);
@@ -269,11 +283,12 @@ public final class UniversalProps {
     /** Step 1 — decoration, plus the text style on text-bearing nodes. */
     private static void decoration(Map<String, Object> props, String type, StringBuilder style) {
         boolean textBearing = type != null && TEXT_BEARING.contains(type);
-        boolean colorBearing = type != null && COLOR_BEARING.contains(type);
+        String colorProperty = colorProperty(type);
         Object color = props.get("color");
-        if (color != null) {
-            String value = cssText(color, "color");
-            decl(style, colorBearing ? "color" : "background-color", value);
+        // The divider line color lands after the border shorthand below so
+        // the shorthand cannot clobber it.
+        if (color != null && !"border-top-color".equals(colorProperty)) {
+            decl(style, colorProperty, cssText(color, "color"));
         }
         if (props.get("gradient") instanceof Map<?, ?> gradient) {
             String value = gradientImage(gradient);
@@ -290,6 +305,9 @@ public final class UniversalProps {
             String borderColor = border != null ? cssText(border, "border") : "currentColor";
             decl(style, "border", width + " " + borderType + " " + borderColor);
         }
+        if (color != null && "border-top-color".equals(colorProperty)) {
+            decl(style, colorProperty, cssText(color, "color"));
+        }
         if (props.get("borderRadius") != null) {
             decl(style, "border-radius", cssLength(props.get("borderRadius"), "borderRadius"));
         }
@@ -302,6 +320,15 @@ public final class UniversalProps {
         if (textBearing) {
             textStyle(props, style);
         }
+    }
+
+    /** The CSS property the universal {@code color} writes for this type. */
+    private static String colorProperty(String type) {
+        String role = type == null ? null : COLOR_PROPERTY.get(type);
+        if (role != null) {
+            return role;
+        }
+        return type != null && COLOR_BEARING.contains(type) ? "color" : "background-color";
     }
 
     private static void textStyle(Map<String, Object> props, StringBuilder style) {
@@ -342,6 +369,17 @@ public final class UniversalProps {
         if (overflow != null && !"visible".equals(overflow)) {
             decl(style, "text-overflow", overflow);
         }
+        if (props.get("softWrap") instanceof Boolean softWrap) {
+            decl(style, "white-space", softWrap ? "normal" : "nowrap");
+        }
+        if (props.get("maxLines") instanceof Number lines) {
+            // The line-clamp recipe: the -webkit-box display pair is what
+            // makes -webkit-line-clamp take effect (T206).
+            decl(style, "display", "-webkit-box");
+            decl(style, "-webkit-box-orient", "vertical");
+            decl(style, "-webkit-line-clamp", cssPlain(lines, "maxLines"));
+            decl(style, "overflow", "hidden");
+        }
     }
 
     /** Step 3 — the constraints, in the order min/max then width/height. */
@@ -362,9 +400,15 @@ public final class UniversalProps {
             decl(style, "width", cssLength(props.get("width"), "width"));
         }
         // On text-bearing nodes `height` is the line-height multiple and was
-        // consumed by the decoration step (section 2.1 Text group).
+        // consumed by the decoration step (section 2.1 Text group); on
+        // `scroll_fade` it is the fade extent (section 2.6), which the
+        // gradient reads through the --jhin-fade-height custom property.
         if (props.get("height") != null && !(type != null && TEXT_BEARING.contains(type))) {
-            decl(style, "height", cssLength(props.get("height"), "height"));
+            if ("scroll_fade".equals(type)) {
+                decl(style, "--jhin-fade-height", cssLength(props.get("height"), "height"));
+            } else {
+                decl(style, "height", cssLength(props.get("height"), "height"));
+            }
         }
     }
 
@@ -473,6 +517,10 @@ public final class UniversalProps {
         Object tooltip = props.get("tooltip");
         if (tooltip != null) {
             element.attr("title", String.valueOf(tooltip));
+        } else if (Boolean.TRUE.equals(props.get("demo"))) {
+            // Section 2.1 level 3: the demo marker carries the shared
+            // tooltip when the node has none of its own.
+            element.attr("title", DEMO_TOOLTIP);
         }
     }
 
@@ -500,6 +548,33 @@ public final class UniversalProps {
         }
         if (Boolean.FALSE.equals(props.get("enabled"))) {
             element.attr("aria-disabled", "true");
+        }
+    }
+
+    /**
+     * The level-3 universal additions (section 2.1) as inert
+     * {@code data-jhin-*} attributes: {@code demo} marks the decorative
+     * affordance ({@code app.css} paints the corner badge off
+     * {@code data-jhin-demo}), {@code glass}/{@code glassTint} carry the
+     * glass treatment identity for the five glass-capable surfaces and
+     * {@code safeArea} the per-edge inset request. Values the client cannot
+     * honour stay inert (section 2.4).
+     */
+    private static void level3(Map<String, Object> props, HtmlNode element) {
+        if (Boolean.TRUE.equals(props.get("demo"))) {
+            element.attr("data-jhin-demo", "true");
+        }
+        if (Boolean.TRUE.equals(props.get("glass"))) {
+            element.attr("data-jhin-glass", "true");
+        }
+        if (props.get("glassTint") != null) {
+            element.attr("data-jhin-glass-tint", String.valueOf(props.get("glassTint")));
+        }
+        Object safeArea = props.get("safeArea");
+        if (safeArea instanceof Boolean flag) {
+            element.attr("data-jhin-safe-area", flag ? "true" : "false");
+        } else if (safeArea != null) {
+            element.attr("data-jhin-safe-area", HtmlRenderer.actionJson(safeArea));
         }
     }
 

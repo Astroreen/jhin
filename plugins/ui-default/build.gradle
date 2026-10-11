@@ -40,3 +40,10 @@ dependencies {
     testImplementation 'org.xerial:sqlite-jdbc:3.50.1.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
 }
+
+// The documented gallery regen path (HtmlConformanceTest): forward the
+// -Djhin.gallery.regen switch into the test JVM so the fixtures regenerate
+// deliberately and never by accident.
+test {
+    systemProperty 'jhin.gallery.regen', System.getProperty('jhin.gallery.regen', 'false')
+}

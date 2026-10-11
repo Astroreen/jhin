@@ -6,9 +6,11 @@ package com.astroreen.jhin.plugin.uikit.html.renderers;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
+import com.astroreen.jhin.plugin.uikit.html.PropReflection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Surface primitives (docs/sdui.md section 9.1): {@code card, drawer, sheet,
@@ -24,6 +26,14 @@ import java.util.Map;
  * {@code role="status"} when colored.
  */
 public final class SurfaceRenderers {
+
+    /** The titled-surface props the shared renderer reflects itself (T206). */
+    private static final Set<String> SURFACE_HANDLED = Set.of(
+            "title", "body", "content", "children", "actions", "footer");
+
+    /** One {@code toast_stack} item's props with a semantic mapping. */
+    private static final Set<String> TOAST_ITEM_HANDLED = Set.of(
+            "text", "style", "action", "duration");
 
     private SurfaceRenderers() {
     }
@@ -72,6 +82,7 @@ public final class SurfaceRenderers {
                 HtmlRenderer.appendProp(element, node, "actions");
                 HtmlRenderer.appendProp(element, node, "footer");
                 HtmlRenderer.appendChildren(element, node);
+                PropReflection.reflect(node, element, SURFACE_HANDLED);
             }
         };
     }
@@ -101,10 +112,20 @@ public final class SurfaceRenderers {
             public void fill(UiNode node, HtmlNode element) {
                 element.attr("class", "jhin-banner");
                 element.attr("role", "status");
+                if (node.props().get("onDismiss") != null) {
+                    HtmlNode dismiss = new HtmlNode("button")
+                            .attr("type", "button")
+                            .attr("class", "jhin-banner-dismiss")
+                            .attr("aria-label", "Dismiss");
+                    HtmlRenderer.applyActionAttrs(dismiss, node.props().get("onDismiss"), null);
+                    element.child(dismiss);
+                }
                 HtmlRenderer.appendProp(element, node, "content");
                 HtmlRenderer.appendProp(element, node, "actions");
                 HtmlRenderer.appendProp(element, node, "children");
                 HtmlRenderer.appendChildren(element, node);
+                PropReflection.reflect(node, element,
+                        Set.of("content", "actions", "children", "onDismiss"));
             }
         };
     }
@@ -123,6 +144,9 @@ public final class SurfaceRenderers {
                 StringBuilder classes = new StringBuilder("jhin-badge jhin-chip");
                 if (node.props().get("kind") != null) {
                     classes.append(" jhin-chip-").append(node.props().get("kind"));
+                }
+                if (node.props().get("variant") != null) {
+                    classes.append(" jhin-chip-variant-").append(node.props().get("variant"));
                 }
                 if (Boolean.TRUE.equals(node.props().get("selected"))) {
                     classes.append(" jhin-selected");
@@ -147,6 +171,8 @@ public final class SurfaceRenderers {
                     HtmlRenderer.applyActionAttrs(delete, node.props().get("onDeleted"), null);
                     element.child(delete);
                 }
+                PropReflection.reflect(node, element, Set.of(
+                        "kind", "variant", "selected", "avatar", "icon", "label", "onDeleted"));
             }
         };
     }
@@ -180,6 +206,7 @@ public final class SurfaceRenderers {
                 } else if (label != null) {
                     element.textChild(String.valueOf(label));
                 }
+                PropReflection.reflect(node, element, Set.of("label", "count", "dot"));
             }
         };
     }
@@ -206,6 +233,8 @@ public final class SurfaceRenderers {
                     if (node.props().get("initials") != null) {
                         element.attr("alt", String.valueOf(node.props().get("initials")));
                     }
+                    PropReflection.reflect(node, element,
+                            Set.of("image", "initials", "icon", "shape", "size"));
                     return;
                 }
                 if (node.props().get("initials") != null) {
@@ -213,6 +242,8 @@ public final class SurfaceRenderers {
                 } else if (node.props().get("icon") instanceof String name) {
                     element.child(ControlRenderers.iconElement(name, null));
                 }
+                PropReflection.reflect(node, element,
+                        Set.of("image", "initials", "icon", "shape", "size"));
             }
         };
     }
@@ -237,6 +268,7 @@ public final class SurfaceRenderers {
                 if (!Boolean.TRUE.equals(node.props().get("shimmer"))) {
                     element.attr("data-jhin-shimmer", "false");
                 }
+                PropReflection.reflect(node, element, Set.of("variant", "lines", "shimmer"));
             }
         };
     }
@@ -262,6 +294,7 @@ public final class SurfaceRenderers {
                     element.attr("value", String.valueOf(number));
                     element.attr("max", "1");
                 }
+                PropReflection.reflect(node, element, Set.of("kind", "value"));
             }
         };
     }
@@ -286,6 +319,14 @@ public final class SurfaceRenderers {
                     alt = node.props().get("label");
                 }
                 element.attr("alt", alt == null ? "" : String.valueOf(alt));
+                if (node.props().get("fit") != null) {
+                    // BoxFit.scaleDown folds to its CSS spelling; the other
+                    // six literals are their own object-fit values.
+                    String fit = String.valueOf(node.props().get("fit"));
+                    LayoutRenderers.composeStyle(node, element,
+                            "object-fit: " + ("scaleDown".equals(fit) ? "scale-down" : fit));
+                }
+                PropReflection.reflect(node, element, Set.of("src", "dataUri", "fit", "label"));
             }
         };
     }
@@ -321,6 +362,7 @@ public final class SurfaceRenderers {
                 if (extras.length() > 0) {
                     LayoutRenderers.composeStyle(node, element, extras.toString());
                 }
+                PropReflection.reflect(node, element, Set.of("shape"));
             }
         };
     }
@@ -345,6 +387,8 @@ public final class SurfaceRenderers {
                 HtmlRenderer.appendProp(element, node, "trigger");
                 HtmlRenderer.appendProp(element, node, "content");
                 HtmlRenderer.appendChildren(element, node);
+                PropReflection.reflect(node, element,
+                        Set.of("trigger", "content", "delay", "placement"));
             }
         };
     }
@@ -370,6 +414,7 @@ public final class SurfaceRenderers {
                     }
                 }
                 HtmlRenderer.appendChildren(element, node);
+                PropReflection.reflect(node, element, Set.of("items", "direction"));
             }
         };
     }
@@ -397,6 +442,7 @@ public final class SurfaceRenderers {
             HtmlRenderer.applyActionAttrs(button, map.get("action"), map.get("confirm"));
             toast.child(button);
         }
+        PropReflection.reflect(map, toast, TOAST_ITEM_HANDLED);
         parent.child(toast);
     }
 }

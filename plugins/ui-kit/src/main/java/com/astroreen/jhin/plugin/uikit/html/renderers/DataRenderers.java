@@ -6,22 +6,38 @@ package com.astroreen.jhin.plugin.uikit.html.renderers;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
+import com.astroreen.jhin.plugin.uikit.html.PropReflection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Data primitives (docs/sdui.md section 9.1): {@code stream_view} and
- * {@code diff_view}. The three chart primitives are deliberately absent —
- * they are T206 renderers (server-computed inline SVG) and take the
- * {@code jhin-unsupported} placeholder until then.
+ * Data primitives (docs/sdui.md section 9.1): {@code stream_view},
+ * {@code diff_view} and — through {@link ChartRenderers} — the three chart
+ * primitives {@code chart_line}, {@code chart_bar} and {@code chart_pie}.
  *
  * <p>{@code stream_view} is the {@code <div role="log" aria-live="polite">}
  * SSE target; {@code diff_view} is the decorative {@code <div class="jhin-diff">}
  * with {@code <ins>}/{@code <del>} lines — it renders exactly the
- * server-authored hunks and computes nothing (section 2.6).
+ * server-authored hunks and computes nothing (section 2.6). The charts are
+ * server-computed inline SVG (T206, {@link ChartRenderers}).
  */
 public final class DataRenderers {
+
+    /** The {@code stream_view} props with a semantic mapping. */
+    private static final Set<String> STREAM_HANDLED = Set.of(
+            "id", "topic", "mode", "autoScroll", "empty", "items");
+
+    /** The {@code diff_view} props with a semantic mapping. */
+    private static final Set<String> DIFF_HANDLED = Set.of(
+            "file", "language", "hunks", "view", "colorScheme", "stats");
+
+    /** One {@code diff_view} hunk's props with a semantic mapping. */
+    private static final Set<String> HUNK_HANDLED = Set.of("header", "lines");
+
+    /** One diff line's props with a semantic mapping. */
+    private static final Set<String> LINE_HANDLED = Set.of("kind", "oldNo", "newNo", "text");
 
     private DataRenderers() {
     }
@@ -30,6 +46,7 @@ public final class DataRenderers {
         Map<String, NodeRenderer> map = new LinkedHashMap<>();
         map.put("stream_view", streamView());
         map.put("diff_view", diffView());
+        map.putAll(ChartRenderers.renderers());
         return map;
     }
 
@@ -57,6 +74,7 @@ public final class DataRenderers {
                 HtmlRenderer.appendProp(element, node, "empty");
                 HtmlRenderer.appendProp(element, node, "items");
                 HtmlRenderer.appendChildren(element, node);
+                PropReflection.reflect(node, element, STREAM_HANDLED);
             }
         };
     }
@@ -83,6 +101,10 @@ public final class DataRenderers {
                     header.child(new HtmlNode("span").attr("class", "jhin-diff-file")
                             .textChild(String.valueOf(node.props().get("file"))));
                 }
+                if (node.props().get("language") != null) {
+                    header.child(new HtmlNode("span").attr("class", "jhin-diff-language")
+                            .textChild(String.valueOf(node.props().get("language"))));
+                }
                 if (node.props().get("stats") instanceof Map<?, ?> stats) {
                     HtmlNode stat = new HtmlNode("span").attr("class", "jhin-diff-stats");
                     if (stats.get("additions") != null) {
@@ -100,6 +122,7 @@ public final class DataRenderers {
                     }
                 }
                 HtmlRenderer.appendChildren(element, node);
+                PropReflection.reflect(node, element, DIFF_HANDLED);
             }
         };
     }
@@ -120,6 +143,7 @@ public final class DataRenderers {
                 appendLine(element, line);
             }
         }
+        PropReflection.reflect(map, element, HUNK_HANDLED);
         parent.child(element);
     }
 
@@ -146,6 +170,7 @@ public final class DataRenderers {
         };
         body.textChild(map.get("text") == null ? "" : String.valueOf(map.get("text")));
         row.child(body);
+        PropReflection.reflect(map, row, LINE_HANDLED);
         parent.child(row);
     }
 }

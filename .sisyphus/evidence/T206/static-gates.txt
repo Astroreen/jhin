@@ -1,0 +1,12 @@
+T206 static gates — the plan's hard rules on the runtime assets and the gallery.
+
+gate 2a — no '<' in app.css:
+  grep -c '<' plugins/ui-default/src/main/resources/web/app.css -> 0 (must be 0)
+gate 2b — app.js size (frozen; <= 60000 bytes for the T207 budget):
+  wc -c plugins/ui-default/src/main/resources/web/app.js -> 59970 bytes (must be <= 60000)
+gate 2c — app.css size budget (T206 responsive shell, <= 40000 bytes):
+  wc -c plugins/ui-default/src/main/resources/web/app.css -> 35229 bytes (must be <= 40000)
+gate 2d — gallery fixture count:
+  ls plugins/ui-default/src/test/resources/gallery/*.html | wc -l -> 68 (must be 68; plan gate >= 64)
+gate 2e — no jhin-unsupported placeholder in the gallery:
+  grep -rl jhin-unsupported plugins/ui-default/src/test/resources/gallery -> 0 file(s) (must be 0)

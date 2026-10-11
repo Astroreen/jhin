@@ -1,0 +1,17 @@
+JHIN_HOME=/tmp/t206-home.nKWTgT
+JHIN_BUNDLED_PLUGINS=/tmp/t206-bundled.gLBxml
+port=18443
+base=http://localhost:18443
+mode=plain HTTP loopback
+mode-reason=jhin.security is not loaded -> no TlsProvider registered -> the kernel
+            listener speaks plain HTTP (kernel.log: 'no TLS material registered;
+            the listener speaks plain HTTP'). The frozen kernel CLI has no --no-tls
+            flag (KernelBoot parses only --server.address and --server.port);
+            plan section 9 allows the QA-only plain-HTTP mode in scripts.
+port-reason=the kernel default 8443 is occupied by another service on this machine
+plugins=jhin.sessions, jhin.ui-kit, jhin.ui
+plugin-reason=jhin.sessions + jhin.ui-kit + jhin.ui are the non-optional requires
+              of jhin.ui (the t202/t203/t204 QA bundle). T206 renders the catalog
+              and the responsive shell and drives no LLM run, so the t205
+              streaming additions (jhin.llm, jhin.agent, jhin.qa-mock-llm) are
+              deliberately absent and no bearer token is used anywhere.

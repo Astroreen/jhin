@@ -6,9 +6,11 @@ package com.astroreen.jhin.plugin.uikit.html.renderers;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
+import com.astroreen.jhin.plugin.uikit.html.PropReflection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The {@code nav} primitive (docs/sdui.md section 9.1): {@code <nav>} with
@@ -18,6 +20,14 @@ import java.util.Map;
  * to {@code activeIndex} (or {@code 0}) — the section 2.6 rule.
  */
 public final class NavRenderers {
+
+    /** The {@code nav} props with a semantic mapping (T206). */
+    private static final Set<String> NAV_HANDLED = Set.of("kind", "items", "activeIndex", "activeId");
+
+    /** One {@code nav} item's props with a semantic mapping. */
+    private static final Set<String> NAV_ITEM_HANDLED = Set.of(
+            "label", "icon", "screen", "action", "confirm", "badge", "count",
+            "section", "enabled");
 
     private NavRenderers() {
     }
@@ -54,6 +64,7 @@ public final class NavRenderers {
                     }
                 }
                 HtmlRenderer.appendChildren(element, node);
+                PropReflection.reflect(node, element, NAV_HANDLED);
             }
         };
     }
@@ -107,6 +118,7 @@ public final class NavRenderers {
         if (map.get("badge") instanceof UiNode badge) {
             HtmlRenderer.appendNode(button, badge);
         }
+        PropReflection.reflect(map, button, NAV_ITEM_HANDLED);
         return button;
     }
 }

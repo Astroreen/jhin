@@ -6,9 +6,11 @@ package com.astroreen.jhin.plugin.uikit.html.renderers;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
+import com.astroreen.jhin.plugin.uikit.html.PropReflection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Control primitives (docs/sdui.md section 9.1): {@code button, icon_button,
@@ -21,13 +23,45 @@ import java.util.Map;
  * are the {@code <label>&gt;<input>} pair (the label wraps the input, so the
  * node's HTML {@code id} can live on the root without breaking
  * association); {@code icon} is an empty {@code <svg data-jhin-icon="…">} —
- * the inline-SVG registry lands in T206 and an unknown name must never
- * crash. {@code form} and {@code segmented} are semantic {@code <div>}s per
- * the section 9.1 table. The action protocol ({@code data-jhin-action})
- * attaches to the control element itself — these primitives never receive a
- * second handler (section 2.3 step 10).
+ * the inline-SVG registry lands later and an unknown name must never crash.
+ * {@code form} and {@code segmented} are semantic {@code <div>}s per the
+ * section 9.1 table. The action protocol ({@code data-jhin-action}) attaches
+ * to the control element itself — these primitives never receive a second
+ * handler (section 2.3 step 10).
+ *
+ * <p>T206 prop completeness: the text inputs emit the validation surface the
+ * client dispatcher reads off the DOM ({@code required}, {@code min},
+ * {@code max}, {@code pattern}, {@code data-jhin-error-text}); {@code tabs}
+ * splits into a {@code role="tablist"} and {@code role="tabpanel"} regions
+ * (a11y); every remaining documented prop reaches the wire through
+ * {@link PropReflection}.
  */
 public final class ControlRenderers {
+
+    /** The {@code input} props with a semantic mapping (T206). */
+    private static final Set<String> INPUT_HANDLED = Set.of(
+            "value", "label", "placeholder", "multiline", "expands", "obscure",
+            "keyboard", "keyboardType", "required", "min", "max", "pattern",
+            "errorText", "maxLength", "readOnly", "enabled", "textAlign", "autofocus");
+
+    /** The {@code textarea} props with a semantic mapping (it forces its tag). */
+    private static final Set<String> TEXTAREA_HANDLED = Set.of(
+            "value", "label", "placeholder", "required", "min", "max", "pattern",
+            "errorText", "maxLength", "readOnly", "enabled", "textAlign", "autofocus");
+
+    /** One {@code menu} item's props with a semantic mapping. */
+    private static final Set<String> MENU_ITEM_HANDLED = Set.of(
+            "label", "icon", "action", "confirm", "disabled", "divider", "danger",
+            "children", "checked", "separatorBefore");
+
+    /**
+     * One {@code tabs} item's props with a semantic mapping. {@code closable}
+     * and {@code closeAction} are deliberately absent: their rendering is
+     * conditional on {@code hasClose}, so they always travel as reflected
+     * {@code data-jhin-*} attributes and the probe sees them standalone.
+     */
+    private static final Set<String> TAB_ITEM_HANDLED = Set.of(
+            "label", "icon", "badge", "panel");
 
     private ControlRenderers() {
     }
@@ -75,6 +109,8 @@ public final class ControlRenderers {
                 if (label != null) {
                     element.textChild(String.valueOf(label));
                 }
+                PropReflection.reflect(node, element,
+                        Set.of("label", "style", "icon", "confirm"));
             }
         };
     }
@@ -90,16 +126,29 @@ public final class ControlRenderers {
             public void fill(UiNode node, HtmlNode element) {
                 element.attr("type", "button");
                 element.attr("class", "jhin-icon-button");
+                if (node.props().get("alignment") != null) {
+                    LayoutRenderers.composeStyle(node, element,
+                            "display: flex; align-items: center; justify-content: center");
+                }
+                if (Boolean.TRUE.equals(node.props().get("autofocus"))) {
+                    element.attr("autofocus", "autofocus");
+                }
                 Object icon = node.props().get("icon");
+                boolean selected = Boolean.TRUE.equals(node.props().get("isSelected"));
+                if (selected && node.props().get("selectedIcon") instanceof String selectedIcon) {
+                    icon = selectedIcon;
+                }
                 if (icon != null) {
                     element.child(iconElement(String.valueOf(icon), node.props().get("iconSize")));
                     if (node.props().get("semanticsLabel") == null) {
-                        element.attr("aria-label", String.valueOf(icon));
+                        element.attr("aria-label", String.valueOf(node.props().get("icon")));
                     }
                 }
-                if (Boolean.TRUE.equals(node.props().get("isSelected"))) {
+                if (selected) {
                     element.attr("aria-pressed", "true");
                 }
+                PropReflection.reflect(node, element, Set.of(
+                        "icon", "iconSize", "isSelected", "alignment", "autofocus"));
             }
         };
     }
@@ -127,14 +176,19 @@ public final class ControlRenderers {
                     element.attr("aria-hidden", "false");
                     element.attr("aria-label", String.valueOf(node.props().get("semanticLabel")));
                 }
+                if (node.props().get("textDirection") != null) {
+                    element.attr("dir", String.valueOf(node.props().get("textDirection")));
+                }
+                PropReflection.reflect(node, element,
+                        Set.of("icon", "size", "semanticLabel", "textDirection"));
             }
         };
     }
 
     /**
      * The shared {@code <svg data-jhin-icon="…">} placeholder: empty content
-     * until the T206 inline-SVG registry; an unknown name is an empty svg,
-     * never a crash (section 2.4).
+     * until the inline-SVG registry; an unknown name is an empty svg, never a
+     * crash (section 2.4).
      */
     static HtmlNode iconElement(String name, Object size) {
         HtmlNode svg = new HtmlNode("svg")
@@ -164,6 +218,7 @@ public final class ControlRenderers {
                 element.attr("class", "jhin-input");
                 if (isMultiline(node)) {
                     fillTextarea(node, element);
+                    PropReflection.reflect(node, element, INPUT_HANDLED);
                     return;
                 }
                 element.attr("type", inputType(node));
@@ -171,6 +226,7 @@ public final class ControlRenderers {
                     element.attr("value", String.valueOf(node.props().get("value")));
                 }
                 commonInputAttrs(node, element);
+                PropReflection.reflect(node, element, INPUT_HANDLED);
             }
         };
     }
@@ -186,6 +242,7 @@ public final class ControlRenderers {
             public void fill(UiNode node, HtmlNode element) {
                 element.attr("class", "jhin-input jhin-textarea");
                 fillTextarea(node, element);
+                PropReflection.reflect(node, element, TEXTAREA_HANDLED);
             }
         };
     }
@@ -201,7 +258,12 @@ public final class ControlRenderers {
         commonInputAttrs(node, element);
     }
 
-    /** The shared input/textarea attribute surface. */
+    /**
+     * The shared input/textarea attribute surface, including the validation
+     * attributes the client dispatcher reads off the DOM (T204/T206):
+     * {@code required}, {@code min}, {@code max}, {@code pattern} and the
+     * failure text in {@code data-jhin-error-text}.
+     */
     private static void commonInputAttrs(UiNode node, HtmlNode element) {
         if (node.props().get("placeholder") != null) {
             element.attr("placeholder", String.valueOf(node.props().get("placeholder")));
@@ -214,6 +276,25 @@ public final class ControlRenderers {
         }
         if (Boolean.TRUE.equals(node.props().get("required"))) {
             element.attr("required", "required");
+        }
+        if (node.props().get("min") != null) {
+            element.attr("min", String.valueOf(node.props().get("min")));
+        }
+        if (node.props().get("max") != null) {
+            element.attr("max", String.valueOf(node.props().get("max")));
+        }
+        if (node.props().get("pattern") != null) {
+            element.attr("pattern", String.valueOf(node.props().get("pattern")));
+        }
+        if (node.props().get("errorText") != null) {
+            element.attr("data-jhin-error-text", String.valueOf(node.props().get("errorText")));
+        }
+        if (node.props().get("textAlign") != null) {
+            LayoutRenderers.composeStyle(node, element,
+                    "text-align: " + node.props().get("textAlign"));
+        }
+        if (Boolean.TRUE.equals(node.props().get("autofocus"))) {
+            element.attr("autofocus", "autofocus");
         }
         if (Boolean.TRUE.equals(node.props().get("readOnly"))) {
             element.attr("readonly", "readonly");
@@ -259,6 +340,9 @@ public final class ControlRenderers {
                 if (Boolean.FALSE.equals(node.props().get("enabled"))) {
                     element.attr("disabled", "disabled");
                 }
+                if (Boolean.TRUE.equals(node.props().get("isExpanded"))) {
+                    LayoutRenderers.composeStyle(node, element, "width: 100%");
+                }
                 Object value = node.props().get("value");
                 if (node.props().get("hint") != null) {
                     HtmlNode hint = new HtmlNode("option")
@@ -274,6 +358,8 @@ public final class ControlRenderers {
                         element.child(option(item, value));
                     }
                 }
+                PropReflection.reflect(node, element,
+                        Set.of("label", "items", "value", "hint", "isExpanded", "enabled"));
             }
         };
     }
@@ -312,6 +398,10 @@ public final class ControlRenderers {
                 if (Boolean.TRUE.equals(node.props().get("value"))) {
                     input.attr("checked", "checked");
                 }
+                if (node.props().get("tristate") != null) {
+                    input.attr("data-jhin-tristate",
+                            String.valueOf(node.props().get("tristate")));
+                }
                 if (Boolean.FALSE.equals(node.props().get("enabled"))) {
                     input.attr("disabled", "disabled");
                 }
@@ -321,6 +411,7 @@ public final class ControlRenderers {
                             .attr("class", "jhin-control-label")
                             .textChild(String.valueOf(node.props().get("label"))));
                 }
+                PropReflection.reflect(node, element, Set.of("label", "value", "enabled", "tristate"));
             }
         };
     }
@@ -347,9 +438,17 @@ public final class ControlRenderers {
                 if (node.props().get("label") != null && node.props().get("semanticsLabel") == null) {
                     element.attr("aria-label", String.valueOf(node.props().get("label")));
                 }
+                if (node.props().get("semanticFormatterCallback") instanceof String template
+                        && node.props().get("value") != null) {
+                    element.attr("aria-valuetext", template.replace(
+                            "{value}", number(node.props().get("value"))));
+                }
                 if (Boolean.FALSE.equals(node.props().get("enabled"))) {
                     element.attr("disabled", "disabled");
                 }
+                PropReflection.reflect(node, element, Set.of(
+                        "min", "max", "step", "value", "label",
+                        "semanticFormatterCallback", "enabled"));
             }
         };
     }
@@ -382,9 +481,11 @@ public final class ControlRenderers {
                         button.textChild(String.valueOf(label));
                     }
                     HtmlRenderer.applyActionAttrs(button, map.get("action"), map.get("confirm"));
+                    PropReflection.reflect(map, button, Set.of("label", "action", "confirm"));
                     element.child(button);
                 }
                 HtmlRenderer.appendChildren(element, node);
+                PropReflection.reflect(node, element, Set.of("fields", "submit"));
             }
         };
     }
@@ -424,9 +525,13 @@ public final class ControlRenderers {
                         if (map.get("label") != null) {
                             button.textChild(String.valueOf(map.get("label")));
                         }
+                        HtmlRenderer.applyActionAttrs(button, map.get("action"), map.get("confirm"));
+                        PropReflection.reflect(map, button,
+                                Set.of("value", "icon", "label", "action", "confirm"));
                         element.child(button);
                     }
                 }
+                PropReflection.reflect(node, element, Set.of("segments", "value"));
             }
         };
     }
@@ -448,14 +553,15 @@ public final class ControlRenderers {
                         appendMenuItem(element, item);
                     }
                 }
+                PropReflection.reflect(node, element, Set.of("trigger", "items"));
             }
         };
     }
 
     /**
      * One {@code menu} entry ({@code label, icon?, action?, confirm?,
-     * disabled?, divider?, danger?, checked?, children?}): a
-     * {@code <button role="menuitem">} carrying the item action, or an
+     * disabled?, divider?, danger?, checked?, separatorBefore?, children?}):
+     * a {@code <button role="menuitem">} carrying the item action, or an
      * {@code <hr>} for a divider. The submenu renders as nested items.
      */
     private static void appendMenuItem(HtmlNode parent, Object item) {
@@ -489,6 +595,7 @@ public final class ControlRenderers {
         if (map.get("label") != null) {
             button.textChild(String.valueOf(map.get("label")));
         }
+        PropReflection.reflect(map, button, MENU_ITEM_HANDLED);
         parent.child(button);
         if (map.get("children") instanceof List<?> nested) {
             HtmlNode submenu = new HtmlNode("div")
@@ -501,6 +608,18 @@ public final class ControlRenderers {
         }
     }
 
+    /**
+     * {@code tabs} (T206 a11y split): the root {@code <div class="jhin-tabs">}
+     * holds a {@code <div class="jhin-tabs-list" role="tablist">} of
+     * {@code <button role="tab">} entries and one
+     * {@code <div class="jhin-tabpanel" role="tabpanel">} per panel
+     * <em>outside</em> the tablist — never inside it. Tabs carry
+     * {@code aria-selected} (and {@code aria-controls}/{@code aria-labelledby}
+     * when the node {@code id} makes the pairing addressable); with
+     * {@code hasClose} every closable tab gets its close button carrying the
+     * item {@code closeAction}, and {@code closeAction} of the node itself
+     * rides on the root (the last-closable-tab lifecycle).
+     */
     private static NodeRenderer tabs() {
         return new NodeRenderer() {
             @Override
@@ -510,44 +629,98 @@ public final class ControlRenderers {
 
             @Override
             public void fill(UiNode node, HtmlNode element) {
-                element.attr("class", "jhin-tabs");
-                element.attr("role", "tablist");
+                Object variant = node.props().get("variant");
+                element.attr("class", "jhin-tabs"
+                        + (variant != null ? " jhin-tabs-" + variant : " jhin-tabs-underline"));
+                HtmlNode list = new HtmlNode("div")
+                        .attr("class", "jhin-tabs-list")
+                        .attr("role", "tablist");
+                HtmlNode panels = new HtmlNode("div").attr("class", "jhin-tabs-panels");
+                boolean hasPanels = false;
                 int active = node.props().get("activeIndex") instanceof Number number
                         ? number.intValue() : 0;
+                boolean hasClose = Boolean.TRUE.equals(node.props().get("hasClose"));
+                String baseId = node.props().get("id") == null
+                        ? null : String.valueOf(node.props().get("id"));
                 if (node.props().get("items") instanceof List<?> items) {
                     for (int i = 0; i < items.size(); i++) {
                         if (!(items.get(i) instanceof Map<?, ?> map)) {
                             continue;
                         }
-                        HtmlNode tab = new HtmlNode("button")
-                                .attr("type", "button")
-                                .attr("class", "jhin-tab")
-                                .attr("role", "tab")
-                                .attr("aria-selected", i == active ? "true" : "false");
-                        if (map.get("icon") instanceof String icon) {
-                            tab.child(iconElement(icon, null));
-                        }
-                        if (map.get("label") != null) {
-                            tab.textChild(String.valueOf(map.get("label")));
-                        }
-                        HtmlRenderer.applyActionAttrs(tab, map.get("closeAction"), null);
-                        element.child(tab);
-                    }
-                    // Panel nodes stay addressable inside the tablist root:
-                    // one node, one element (section 2.3); T206 refines the
-                    // tablist/tabpanel split.
-                    for (Object item : items) {
-                        if (item instanceof Map<?, ?> map && map.get("panel") instanceof UiNode panel) {
-                            HtmlNode panelElement = new HtmlNode("div")
-                                    .attr("class", "jhin-tabpanel")
-                                    .attr("role", "tabpanel");
-                            HtmlRenderer.appendNode(panelElement, panel);
-                            element.child(panelElement);
+                        String tabId = baseId == null ? null : baseId + "-tab-" + i;
+                        String panelId = baseId == null ? null : baseId + "-panel-" + i;
+                        list.child(tab(map, i == active, hasClose, tabId, panelId));
+                        if (map.get("panel") != null) {
+                            panels.child(panel(map, panelId, tabId, i == active));
+                            hasPanels = true;
                         }
                     }
                 }
+                element.child(list);
+                if (hasPanels) {
+                    element.child(panels);
+                }
+                PropReflection.reflect(node, element,
+                        Set.of("items", "activeIndex", "variant", "hasClose"));
             }
         };
+    }
+
+    /** One {@code role="tab"} button (section 2.6 tabs item). */
+    private static HtmlNode tab(Map<?, ?> map, boolean active, boolean hasClose,
+            String tabId, String panelId) {
+        HtmlNode button = new HtmlNode("button")
+                .attr("type", "button")
+                .attr("class", "jhin-tab")
+                .attr("role", "tab")
+                .attr("aria-selected", active ? "true" : "false");
+        if (tabId != null) {
+            button.attr("id", tabId);
+            if (panelId != null) {
+                button.attr("aria-controls", panelId);
+            }
+        }
+        boolean closable = hasClose && !Boolean.FALSE.equals(map.get("closable"));
+        if (hasClose && !closable) {
+            button.attr("class", "jhin-tab jhin-tab-pinned");
+        }
+        if (map.get("icon") instanceof String icon) {
+            button.child(iconElement(icon, null));
+        }
+        if (map.get("label") != null) {
+            button.textChild(String.valueOf(map.get("label")));
+        }
+        if (map.get("badge") != null) {
+            HtmlRenderer.appendContent(button, map.get("badge"));
+        }
+        if (closable) {
+            HtmlNode close = new HtmlNode("span")
+                    .attr("class", "jhin-tab-close")
+                    .attr("role", "button")
+                    .attr("aria-label", "Close");
+            HtmlRenderer.applyActionAttrs(close, map.get("closeAction"), null);
+            button.child(close);
+        }
+        PropReflection.reflect(map, button, TAB_ITEM_HANDLED);
+        return button;
+    }
+
+    /** One {@code role="tabpanel"} region; the active tab is the visible one. */
+    private static HtmlNode panel(Map<?, ?> map, String panelId, String tabId, boolean active) {
+        HtmlNode panelElement = new HtmlNode("div")
+                .attr("class", "jhin-tabpanel")
+                .attr("role", "tabpanel");
+        if (panelId != null) {
+            panelElement.attr("id", panelId);
+            if (tabId != null) {
+                panelElement.attr("aria-labelledby", tabId);
+            }
+        }
+        if (!active) {
+            panelElement.attr("hidden", "hidden");
+        }
+        HtmlRenderer.appendContent(panelElement, map.get("panel"));
+        return panelElement;
     }
 
     private static NodeRenderer kbd() {
@@ -562,6 +735,7 @@ public final class ControlRenderers {
                 element.attr("class", "jhin-kbd");
                 Object chord = node.props().get("chord");
                 if (chord == null) {
+                    PropReflection.reflect(node, element, Set.of("chord"));
                     return;
                 }
                 String[] tokens = String.valueOf(chord).split("\\+", -1);
@@ -573,6 +747,7 @@ public final class ControlRenderers {
                             .attr("class", "jhin-kbd-key")
                             .textChild(tokens[i]));
                 }
+                PropReflection.reflect(node, element, Set.of("chord"));
             }
         };
     }
@@ -595,6 +770,7 @@ public final class ControlRenderers {
                 }
                 HtmlRenderer.appendProp(element, node, "child");
                 HtmlRenderer.appendChildren(element, node);
+                PropReflection.reflect(node, element, Set.of("child", "edge", "mode"));
             }
         };
     }

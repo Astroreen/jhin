@@ -1,0 +1,56 @@
+T206 QA: PASS — full HTML catalog gallery and the responsive shell
+
+PASS lines:
+  -- OK: build + four test gates green (310/411/64/117; /home/astroreen/Documents/jhin/.sisyphus/evidence/T206/test-gates.txt)
+  -- OK: static gates green (0 '<' in app.css, app.js 59970 B, app.css 35229 B, 68 fixtures, 0 unsupported)
+  -- OK: gallery coverage 68 fixtures, 107 data-jhin-type= occurrences (>= 30)
+  -- OK: prop probe artifact 0 bytes / 0 occurrences (unknown-props.txt + unknown-props-report.txt)
+  -- OK: 3 jars staged for seeding (/home/astroreen/Documents/jhin/.sisyphus/evidence/T206/kernel-env.txt)
+  -- OK: kernel up on http://localhost:18443 (pid 2829753), GET /_jhin/health -> 200 in 3 s
+  -- OK: GET / -> 200 text/html; #jhin-root present (shell.html)
+  -- OK: api=4 bootstrap -> 200; screens[].html starts with <div data-jhin-type= (bootstrap-api4.json)
+  -- OK: responsive hooks present in the served shell (responsive-hooks.txt)
+  -- OK: browser-unavailable.txt written (dual-viewport screenshots substituted)
+
+gates:
+  build (bootJar + 3 plugin jars)                        green (build.log)
+  :jhin-plugin-ui-kit:test      310 tests                  green (test-gates.txt)
+  :jhin-plugin-ui-default:test  411 tests                  green (HtmlConformanceTest)
+  :sdk:test                     64 tests                   green
+  :kernel:test                  117 tests                  green (KernelPurityTest)
+  failures / errors                                          0 / 0
+  '<' in app.css                                          0 (0)
+  app.js bytes                                            59970 (<= 60000)
+  app.css bytes                                           35229 (<= 40000)
+  gallery fixtures                                        68 (68; plan gate >= 64)
+  jhin-unsupported across the gallery                     0 files
+
+gallery (gallery-coverage.txt / node-count.txt):
+  fixture names listed                                    68
+  data-jhin-type= occurrences across all fixtures         107 (>= 30)
+  byte-pinned; regen -Djhin.gallery.regen=true (documented path)
+
+prop probe (unknown-props.txt):
+  section 2.6 pairs with no HTML channel                  0 lines / 0 bytes (0 / 0)
+  source: plugins/ui-default/build/unknown-props.txt (the probe's existing
+  test-only side channel, rewritten by this run's suites)
+
+kernel:
+  mode   plain HTTP on http://localhost:18443 (no jhin.security -> no TlsProvider -> plain HTTP;
+         port 18443 because 8443 is occupied on this machine)
+  plugins jhin.sessions, jhin.ui-kit, jhin.ui (no mock LLM — T206 drives no run)
+
+served shell + bootstrap:
+  GET /_jhin/health                     200
+  GET /                                 200 text/html, #jhin-root (shell.html)
+  GET /_jhin/bootstrap (api=4)          200, screens[].html -> <div data-jhin-type=
+
+responsive hooks (responsive-hooks.txt, in the served shell's inlined CSS):
+  max-width: 768px / safe-area-inset / data-jhin-collapsed   PRESENT (plan asserts)
+  jhin-drawer-open / topbar-compact / data-jhin-safe-area /
+    closed-drawer visibility:hidden                         PRESENT (substitutes)
+
+browser: unavailable — browser-unavailable.txt lists the dual-viewport cases
+         (390x844 drawer open/closed, compact topbar, notched safe-area;
+         1440x900 rail collapsed/wide) and their curl/static substitutes.
+evidence: /home/astroreen/Documents/jhin/.sisyphus/evidence/T206

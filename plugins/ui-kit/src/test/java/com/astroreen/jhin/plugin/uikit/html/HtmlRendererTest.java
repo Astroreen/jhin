@@ -231,34 +231,41 @@ class HtmlRendererTest {
 
     @Test
     void unknownTypeRendersTheUnsupportedPlaceholder() {
-        UiNode unknown = new UiNode("rich_text", Map.of(), List.of());
+        UiNode unknown = new UiNode("mystery", Map.of(), List.of());
         String html = HtmlRenderer.render(unknown);
         assertThat(html).contains("class=\"jhin-unsupported\"");
-        assertThat(html).contains("data-jhin-type=\"rich_text\"");
+        assertThat(html).contains("data-jhin-type=\"mystery\"");
     }
 
     @Test
-    void t206DeferredTypesHitThePlaceholder() {
+    void t206CatalogTypesHaveRealRenderers() {
         for (String type : List.of("rich_text", "chart_line", "chart_bar", "chart_pie")) {
             String html = HtmlRenderer.render(new UiNode(type, Map.of(), List.of()));
-            assertThat(html).contains("jhin-unsupported");
+            assertThat(html)
+                    .as("type %s is a catalog type and must never hit the placeholder", type)
+                    .doesNotContain("jhin-unsupported")
+                    .contains("data-jhin-type=\"" + type + "\"");
         }
     }
 
     @Test
-    void everyT201CatalogTypeHasARealRenderer() {
+    void everyCatalogTypeHasARealRenderer() {
         List<String> types = List.of(
                 "screen", "shell", "container", "box", "row", "column", "flex",
                 "expanded", "flexible", "stack", "positioned", "align", "center",
                 "sized_box", "aspect_ratio", "wrap", "grid", "scroll", "divider",
-                "spacer", "text", "markdown", "code_block", "button", "icon_button",
-                "icon", "input", "textarea", "dropdown", "checkbox", "switch",
-                "slider", "form", "segmented", "menu", "tabs", "kbd", "scroll_fade",
+                "spacer", "list", "list_row", "table", "tree", "split",
+                "text", "rich_text", "markdown", "code_block",
+                "button", "icon_button", "icon", "input", "textarea", "dropdown",
+                "checkbox", "switch", "slider", "form", "segmented", "menu",
+                "tabs", "kbd", "scroll_fade",
                 "card", "drawer", "sheet", "dialog", "banner", "chip", "badge",
                 "avatar", "skeleton", "progress", "image", "figure", "hover_card",
-                "toast_stack", "list", "list_row", "table", "tree", "split",
-                "stream_view", "diff_view", "nav");
-        assertThat(types).hasSize(60);
+                "toast_stack",
+                "stream_view", "chart_line", "chart_bar", "chart_pie", "diff_view",
+                "nav");
+        assertThat(types).as("the docs/sdui.md section 2.5 node types (68 names "
+                        + "minus the four universal prop names)").hasSize(64);
         for (String type : types) {
             String html = HtmlRenderer.render(new UiNode(type, Map.of(), List.of()));
             assertThat(html)
