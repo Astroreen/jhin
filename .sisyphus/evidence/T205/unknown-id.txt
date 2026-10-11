@@ -1,0 +1,19 @@
+T205 unknown-id probes — a bad stream reference must not crash the server.
+
+probe 1 — GET /ui/stream/session/does-not-exist?fromSeq=0
+  status: 404 (expect 404, JSON, never SSE)
+  content-type: Content-Type: application/json;charset=utf-8
+  body: {"error":"unknown_session","message":"no session with id does-not-exist"}
+
+probe 2 — GET /ui/stream/session/f39b5142-b9fb-40ef-a097-14994bbb979f?fromSeq=abc
+  status: 400 (expect 400 invalid_request naming fromSeq)
+  body: {"error":"invalid_request","message":"fromSeq must be a non-negative integer"}
+
+probe 3 — frame target referencing an unknown id (client side): app.js
+  applyFrame drops a patch/replace whose target is absent with
+  'jhin: frame target not found:' and never throws; removed ids stay
+  tombstoned in st.dead so a replay cannot resurrect them
+  (grep: 'frame target not found' / 'st.dead' in app.js).
+  The runtime proof needs a browser — UNAVAILABLE here (browser-unavailable.txt).
+
+after the probes — GET /_jhin/health: 200 (expect 200; kernel alive)

@@ -983,6 +983,9 @@ body {
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  /* T100 anchor offset (24px) reserved as the end inset, so the newest
+     row clears the composer seam. */
+  padding-bottom: 24px;
 }
 
 .jhin-diff-view,

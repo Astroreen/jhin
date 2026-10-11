@@ -1,0 +1,16 @@
+T205 gate 2d — node --check (manual syntax gate).
+
+The QA rules keep node out of scripts/qa/*.sh ("pure curl+gradle there"),
+so this check runs manually and its recorded result is asserted by
+scripts/qa/t205.sh gate 2d.
+
+Command (repository root):
+  node --check plugins/ui-default/src/main/resources/web/app.js && echo SYNTAX_OK
+
+Raw output:
+  SYNTAX_OK
+
+Toolchain:
+  node v24.20.0
+
+Result: SYNTAX_OK — app.js parses clean.

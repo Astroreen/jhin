@@ -1,0 +1,19 @@
+T205 static gates — the plan's hard rules on the runtime assets.
+
+gate 2a — no eval / new Function in app.js:
+  grep -c "eval\|new Function" plugins/ui-default/src/main/resources/web/app.js -> 0 (must be 0)
+gate 2b — no '<' in app.css:
+  grep -c '<' plugins/ui-default/src/main/resources/web/app.css -> 0 (must be 0)
+gate 2c — app.js size budget (T207 <= 60000 bytes):
+  wc -c plugins/ui-default/src/main/resources/web/app.js -> 59970 bytes (must be <= 60000)
+  wc -c plugins/ui-default/src/main/resources/web/app.css -> 27682 bytes (recorded, no budget)
+gate 2d — node --check plugins/ui-default/src/main/resources/web/app.js (manual gate; node is never invoked from scripts/qa/*.sh):
+  recorded verdict in node-check.txt -> PASS (must be PASS / SYNTAX_OK)
+gate 2e — T205 runtime markers (SSE module 8, focus restore, anchoring,
+  turnRunning, jhin.keybindings overrides, T100 end-inset): PRESENT
+  plugins/ui-default/src/main/resources/web/app.js:1197:  function withFocusRestore(el, swap) {
+  plugins/ui-default/src/main/resources/web/app.js:1326:  const ANCHOR_PX = 24;
+  plugins/ui-default/src/main/resources/web/app.js:1334:  function applyFrame(frame, st) {
+  plugins/ui-default/src/main/resources/web/app.js:1596:  function readKeyOverrides() {
+  plugins/ui-default/src/main/resources/web/app.js:1698:    ctx.turnRunning = !!document.querySelector('[data-jhin-id$="-working"]');
+  plugins/ui-default/src/main/resources/web/app.css:988:  padding-bottom: 24px;

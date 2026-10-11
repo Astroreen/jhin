@@ -1,0 +1,19 @@
+T205 mock LLM wiring — the established qa-mock-llm configuration mechanism.
+
+The jhin.qa-mock-llm plugin (plugins/qa-mock-llm/, id jhin.qa-mock-llm,
+"scripted replies, title and failure scripts") publishes ONE service:
+LlmProviderFactory under the qualifier 'mock' (QaMockLlmPlugin.start ->
+services().publish(LlmProviderFactory.class, "mock", ...)). Configuration is
+the provider record itself — POST /providers with a JSON body; the 'model'
+name selects the script (QaMockFactory.create):
+  model=fail   -> QaMockFailingModel (every call fails)
+  model=title  -> QaMockTitleModel (the fixed over-long answer used below)
+  anything else-> QaMockChatModel (one 'write' tool call when that tool is
+                 offered, else the short text 'Done.')
+There are no config keys, no env vars and no files under the Jhin home —
+the same POST /providers mechanism scripts/qa/t75.sh and e2e-bundle.sh use.
+Keep JHIN_LLM_BUILTIN_QA unset (it is): jhin.llm-builtin is not in this bundle,
+so nothing collides on the 'mock' qualifier.
+
+POST /providers {format:mock, model:title} -> 201, provider id 242721dc-e150-49e5-8edc-a8ecf8ffe0f1
+POST /sessions {title,workdir,providerId} -> 201, session f39b5142-b9fb-40ef-a097-14994bbb979f

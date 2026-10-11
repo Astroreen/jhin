@@ -1,8 +1,9 @@
 /**
  * {@code GET /ui/stream/session/{id}}: the SSE endpoint the {@code stream_view}
  * nodes point at. It proxies the sessions topic {@code sessions/<id>},
- * translating every stored event into one SDUI frame (see
- * {@link EventFrames}) and emitting the {@code {node:…}}/{@code {patch:…}}
+ * translating every stored event into SDUI frames (see
+ * {@link EventFrames}; {@code text_delta} events coalesce into batched
+ * {@code patch} frames) and emitting the {@code {node:…}}/{@code {patch:…}}
  * frames of the streams contract.
  *
  * <p><b>Replay and live tail.</b> The endpoint follows the sessions replay
@@ -50,6 +51,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.LongSupplier;
 
 final class StreamRoute {
 
@@ -65,13 +67,24 @@ final class StreamRoute {
     private final SessionStore store;
     private final EventLog events;
     private final StreamRegistry streams;
+    private final LongSupplier clock;
     private final Map<String, Forwarder> forwarders = new ConcurrentHashMap<>();
     private final Map<String, OverviewRelay> relays = new ConcurrentHashMap<>();
 
     StreamRoute(SessionStore store, EventLog events, StreamRegistry streams) {
+        this(store, events, streams, System::currentTimeMillis);
+    }
+
+    /**
+     * Creates the route on the given wall clock (epoch milliseconds); tests
+     * inject a fixed clock so the delta flush window of the translators is
+     * deterministic.
+     */
+    StreamRoute(SessionStore store, EventLog events, StreamRegistry streams, LongSupplier clock) {
         this.store = store;
         this.events = events;
         this.streams = streams;
+        this.clock = clock;
     }
 
     /**
@@ -112,7 +125,7 @@ final class StreamRoute {
         });
         return streams.sse(FRAMES_TOPIC_PREFIX + sessionId, writer -> {
             try {
-                EventFrames.Translator translator = new EventFrames.Translator();
+                EventFrames.Translator translator = new EventFrames.Translator(clock);
                 // Seed the translation state from everything before the
                 // replay window, so a window that starts mid-message still
                 // patches the open message instead of opening a new one.
@@ -120,9 +133,16 @@ final class StreamRoute {
                     if (record.seq() <= fromSeq) {
                         translator.absorb(record.type().wire(), record.payload(), record.seq());
                     } else if (seen.add(record.seq())) {
-                        writer.event(EventFrames.FRAME_EVENT, translator.frame(
-                                record.type().wire(), record.payload(), record.seq()));
+                        for (Map<String, Object> frame : translator.frames(
+                                record.type().wire(), record.payload(), record.seq())) {
+                            writer.event(EventFrames.FRAME_EVENT, frame);
+                        }
                     }
+                }
+                // Close of the replay window: flush the trailing delta batch
+                // so a message still streaming is never lost (T205).
+                for (Map<String, Object> frame : translator.flush()) {
+                    writer.event(EventFrames.FRAME_EVENT, frame);
                 }
             } finally {
                 observed.close();
@@ -210,14 +230,17 @@ final class StreamRoute {
     /**
      * The per-session translator from raw session events to SDUI frames. It
      * seeds its state from the persisted history at creation (so its frames
-     * match a full replay event for event) and then republishes every live
+     * continue a full replay seamlessly) and then republishes every live
      * event on the translated topic. Seeding and delivery are serialized on
      * this object so no event is dropped or reordered around the hand-over.
+     * The delta batch of the open message flushes here — at most one
+     * {@code patch} per {@link EventFrames#DELTA_FLUSH_WINDOW_MILLIS} —
+     * before any other frame so the topic order matches the event order.
      */
     private final class Forwarder {
 
         private final String sessionId;
-        private final EventFrames.Translator translator = new EventFrames.Translator();
+        private final EventFrames.Translator translator = new EventFrames.Translator(clock);
         private final Queue<StreamEvent> pending = new ConcurrentLinkedQueue<>();
         private final Subscription subscription;
         private boolean live;
@@ -253,9 +276,11 @@ final class StreamRoute {
             String type = String.valueOf(body.get("type"));
             Object payload = body.get("payload");
             String payloadJson = (payload instanceof String text) ? text : Json.write(payload);
-            Map<String, Object> frame = translator.frame(type, payloadJson, seq);
-            streams.publish(FRAMES_TOPIC_PREFIX + sessionId,
-                    new StreamEvent(EventFrames.FRAME_EVENT, frame));
+            for (Map<String, Object> frame
+                    : translator.frames(type, payloadJson, seq)) {
+                streams.publish(FRAMES_TOPIC_PREFIX + sessionId,
+                        new StreamEvent(EventFrames.FRAME_EVENT, frame));
+            }
         }
 
         private void close() {

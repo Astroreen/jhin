@@ -1,0 +1,3 @@
+      6 node
+      4 patch
+      2 remove

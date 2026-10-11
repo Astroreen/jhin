@@ -1,8 +1,10 @@
 /**
- * Stream route behaviour: the frame translation of every event kind, the
- * structured tool cards, the live forwarder, the preamble race
- * de-duplication and the {@code unknown_session} / {@code invalid_request}
- * failure codes.
+ * Stream route behaviour: the frame translation of every event kind (the
+ * level-4 {@code {id, html}} envelopes of docs/sdui.md section 5), the
+ * delta batching of {@code text_delta}, the structured tool cards, the live
+ * forwarder, the preamble race de-duplication and the
+ * {@code unknown_session} / {@code invalid_request} failure codes. The route
+ * runs on a fixed clock so the delta flush window is deterministic.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -63,7 +65,9 @@ class StreamRouteTest {
                 .start(new FakePluginContext(tmp, "jhin.sessions", db, streams, services));
         eventLog = services.find(EventLog.class).orElseThrow();
         store = services.find(SessionStore.class).orElseThrow();
-        route = new StreamRoute(store, eventLog, streams);
+        // a fixed clock: the delta flush window never elapses mid-test, so
+        // batching is decided by the event kinds alone
+        route = new StreamRoute(store, eventLog, streams, () -> 1_000L);
         sessionId = store.create("demo", "/tmp/work").id();
     }
 
@@ -108,36 +112,40 @@ class StreamRouteTest {
         open("");
         List<Map<String, Object>> frames = lastPreamble();
 
-        assertThat(frames).hasSize(10);
+        // 10 events -> 8 frames: the two text_deltas coalesce into the single
+        // message_end patch (delta batching, T205)
+        assertThat(frames).hasSize(8);
         // user_message -> the message:user row on the message surface.
-        Map<String, Object> user = nodeOf(frames.get(0));
-        assertThat(user).containsEntry("rowKind", "message").containsEntry("rowKey", "message:user");
-        assertThat(Json.write(user)).contains("$color.message").contains("hi");
+        Map<String, Object> user = payload(frames.get(0), "node");
+        assertThat(user.get("id")).isEqualTo("ev-1");
+        assertThat(String.valueOf(user.get("html")))
+                .contains("data-jhin-id=\"ev-1\"").contains("hi");
         // message_start -> the message:assistant row with the msg patch target.
-        Map<String, Object> assistant = nodeOf(frames.get(1));
-        assertThat(assistant).containsEntry("rowKind", "message").containsEntry("rowKey", "message:assistant");
+        Map<String, Object> assistant = payload(frames.get(1), "node");
         assertThat(assistant.get("id")).isEqualTo("ev-2");
-        assertThat(Json.write(assistant)).contains("\"id\":\"msg-2\"");
-        assertThat(patchOf(frames.get(2)).get("id")).isEqualTo("msg-2");
-        assertThat(castMap(patchOf(frames.get(2)).get("props"))).containsEntry("text", "Hel");
-        assertThat(castMap(patchOf(frames.get(3)).get("props"))).containsEntry("text", "Hello");
-        assertThat(castMap(patchOf(frames.get(4)).get("props"))).containsEntry("text", "Hello");
+        assertThat(String.valueOf(assistant.get("html"))).contains("data-jhin-id=\"msg-2\"");
+        // text_delta x2 + message_end -> one patch of the complete message.
+        Map<String, Object> grown = payload(frames.get(2), "patch");
+        assertThat(grown.get("id")).isEqualTo("msg-2");
+        assertThat(String.valueOf(grown.get("html"))).contains("<p>Hello</p>");
         // run_start -> the working row; run_end -> the remove of that row.
-        Map<String, Object> working = nodeOf(frames.get(5));
-        assertThat(working).containsEntry("rowKind", "working").containsEntry("rowKey", "working:run");
-        assertThat(Json.write(working)).contains("agent is working");
-        assertThat(frames.get(6)).containsEntry("remove", "ev-6");
+        Map<String, Object> working = payload(frames.get(3), "node");
+        assertThat(working.get("id")).isEqualTo("ev-6");
+        assertThat(String.valueOf(working.get("html"))).contains("agent is working");
+        assertThat(frames.get(4)).containsExactly(Map.entry("remove", "ev-6"));
         // tool events -> work:log rows with the collapsible sections.
-        Map<String, Object> toolUse = nodeOf(frames.get(7));
-        assertThat(toolUse).containsEntry("rowKind", "work").containsEntry("rowKey", "work:log");
-        assertThat(Json.write(toolUse)).contains("read").contains("\"collapsed\":true");
-        Map<String, Object> toolResult = nodeOf(frames.get(8));
-        assertThat(toolResult).containsEntry("rowKind", "work").containsEntry("rowKey", "work:log");
-        assertThat(Json.write(toolResult)).contains("done");
+        Map<String, Object> toolUse = payload(frames.get(5), "node");
+        assertThat(toolUse.get("id")).isEqualTo("ev-8");
+        assertThat(String.valueOf(toolUse.get("html"))).contains("read");
+        Map<String, Object> toolResult = payload(frames.get(6), "node");
+        assertThat(toolResult.get("id")).isEqualTo("ev-9");
+        assertThat(String.valueOf(toolResult.get("html"))).contains("done");
         // error -> the event:error row in the danger tone.
-        Map<String, Object> error = nodeOf(frames.get(9));
-        assertThat(error).containsEntry("rowKind", "event").containsEntry("rowKey", "event:error");
-        assertThat(Json.write(error)).contains("$color.error").contains("boom");
+        Map<String, Object> error = payload(frames.get(7), "node");
+        assertThat(error.get("id")).isEqualTo("ev-10");
+        assertThat(String.valueOf(error.get("html"))).contains("boom");
+        // no frame carries a level-3 payload key
+        assertThat(Json.write(frames)).doesNotContain("\"props\"");
     }
 
     @Test
@@ -153,26 +161,25 @@ class StreamRouteTest {
 
         // The structured payload is T102 scope: the T101 work row renders the
         // plain content detail inside the collapsible section.
-        Map<String, Object> first = nodeOf(frames.get(0));
-        assertThat(first).containsEntry("rowKind", "work");
-        String firstJson = Json.write(first);
-        assertThat(firstJson).contains("read result").contains("raw");
-        assertThat(firstJson).doesNotContain("path: /a");
+        Map<String, Object> first = payload(frames.get(0), "node");
+        String firstHtml = String.valueOf(first.get("html"));
+        assertThat(firstHtml).contains("read result").contains("raw");
+        assertThat(firstHtml).doesNotContain("path: /a");
 
-        Map<String, Object> failed = nodeOf(frames.get(1));
-        assertThat(failed).containsEntry("rowKind", "work");
-        assertThat(Json.write(failed))
-                .contains("plain text").contains("$color.error");
+        Map<String, Object> failed = payload(frames.get(1), "node");
+        assertThat(String.valueOf(failed.get("html")))
+                .contains("plain text").contains("bash result");
     }
 
     @Test
-    void unknownWireEventFallsBackToTheUnknownRow() throws Exception {
+    void unknownWireEventFallsBackToTheUnknownRow() {
         EventFrames.Translator translator = new EventFrames.Translator();
-        Map<String, Object> frame = translator.frame("holo", "{\"text\":\"?\"}", 7);
 
-        Map<String, Object> row = nodeOf(frame);
-        assertThat(row).containsEntry("rowKind", "unknown").containsEntry("rowKey", "unknown:unknown");
-        assertThat(Json.write(row)).contains("Unknown row: holo");
+        List<Map<String, Object>> frames = translator.frames("holo", "{\"text\":\"?\"}", 7);
+
+        assertThat(frames).hasSize(1);
+        Map<String, Object> row = payload(frames.get(0), "node");
+        assertThat(String.valueOf(row.get("html"))).contains("Unknown row: holo");
     }
 
     @Test
@@ -182,15 +189,21 @@ class StreamRouteTest {
         eventLog.append(sessionId, EventType.MESSAGE_START, json("role", "assistant"));
         eventLog.append(sessionId, EventType.TEXT_DELTA, json("text", "Hel"));
         eventLog.append(sessionId, EventType.TEXT_DELTA, json("text", "lo"));
+        eventLog.append(sessionId, EventType.MESSAGE_END, json("text", "Hello"));
 
         List<com.astroreen.jhin.sdk.stream.StreamEvent> published =
                 streams.publishedOn("ui/frames/" + sessionId);
-        assertThat(published).hasSize(3);
+        // the open row plus one batched patch — the deltas never each become
+        // a frame
+        assertThat(published).hasSize(2);
         Map<String, Object> first = castMap(published.get(0).payload());
-        assertThat(nodeOf(first).get("id")).isEqualTo("ev-1");
-        assertThat(Json.write(nodeOf(first))).contains("\"id\":\"msg-1\"");
-        Map<String, Object> last = castMap(published.get(2).payload());
-        assertThat(castMap(patchOf(last).get("props"))).containsEntry("text", "Hello");
+        assertThat(payload(first, "node").get("id")).isEqualTo("ev-1");
+        assertThat(String.valueOf(payload(first, "node").get("html")))
+                .contains("data-jhin-id=\"msg-1\"");
+        Map<String, Object> last = castMap(published.get(1).payload());
+        assertThat(payload(last, "patch").get("id")).isEqualTo("msg-1");
+        assertThat(String.valueOf(payload(last, "patch").get("html")))
+                .contains("<p>Hello</p>");
     }
 
     @Test
@@ -200,12 +213,15 @@ class StreamRouteTest {
         open("");
 
         eventLog.append(sessionId, EventType.TEXT_DELTA, json("text", "world"));
+        eventLog.append(sessionId, EventType.MESSAGE_END, json("text", "Hello world"));
 
         List<com.astroreen.jhin.sdk.stream.StreamEvent> published =
                 streams.publishedOn("ui/frames/" + sessionId);
         assertThat(published).hasSize(1);
         Map<String, Object> frame = castMap(published.get(0).payload());
-        assertThat(castMap(patchOf(frame).get("props"))).containsEntry("text", "Hello world");
+        assertThat(payload(frame, "patch").get("id")).isEqualTo("msg-1");
+        assertThat(String.valueOf(payload(frame, "patch").get("html")))
+                .contains("<p>Hello world</p>");
     }
 
     @Test
@@ -218,7 +234,7 @@ class StreamRouteTest {
 
         List<Map<String, Object>> frames = lastPreamble();
         assertThat(frames).hasSize(1);
-        assertThat(childText(frames.get(0))).isEqualTo("one");
+        assertThat(String.valueOf(payload(frames.get(0), "node").get("html"))).contains("one");
         assertThat(streams.publishedOn("ui/frames/" + sessionId)).hasSize(1);
     }
 
@@ -234,8 +250,8 @@ class StreamRouteTest {
 
         List<Map<String, Object>> frames = lastPreamble();
         assertThat(frames).hasSize(2);
-        assertThat(childText(frames.get(0))).isEqualTo("two");
-        assertThat(childText(frames.get(1))).isEqualTo("three");
+        assertThat(String.valueOf(payload(frames.get(0), "node").get("html"))).contains("two");
+        assertThat(String.valueOf(payload(frames.get(1), "node").get("html"))).contains("three");
     }
 
     @Test
@@ -246,11 +262,10 @@ class StreamRouteTest {
         List<Map<String, Object>> frames = lastPreamble();
 
         assertThat(frames).hasSize(1);
-        assertThat(patchOf(frames.get(0)).get("id")).isEqualTo("session-row:" + sessionId);
-        Map<String, Object> props = castMap(patchOf(frames.get(0)).get("props"));
-        assertThat(props).containsEntry("title", "demo");
-        assertThat(props).containsKey("pinned");
-        assertThat(props).containsKey("settledAt");
+        Map<String, Object> patch = payload(frames.get(0), "patch");
+        assertThat(patch).containsOnlyKeys("id", "html");
+        assertThat(patch.get("id")).isEqualTo("session-row:" + sessionId);
+        assertThat(String.valueOf(patch.get("html"))).contains("demo").contains("/tmp/work");
     }
 
     @Test
@@ -263,8 +278,8 @@ class StreamRouteTest {
                 streams.publishedOn("ui/frames/" + sessionId);
         assertThat(published).hasSize(1);
         Map<String, Object> frame = castMap(published.get(0).payload());
-        assertThat(patchOf(frame).get("id")).isEqualTo("session-row:" + sessionId);
-        assertThat(castMap(patchOf(frame).get("props"))).containsEntry("title", "demo");
+        assertThat(payload(frame, "patch").get("id")).isEqualTo("session-row:" + sessionId);
+        assertThat(String.valueOf(payload(frame, "patch").get("html"))).contains("demo");
     }
 
     @Test
@@ -283,8 +298,8 @@ class StreamRouteTest {
         assertThat(published).hasSize(1);
         Map<String, Object> frame = castMap(published.get(0).payload());
         assertThat(published.get(0).type()).isEqualTo(EventFrames.FRAME_EVENT);
-        assertThat(patchOf(frame).get("id")).isEqualTo("session-row:" + sessionId);
-        assertThat(castMap(patchOf(frame).get("props"))).containsEntry("title", "demo");
+        assertThat(payload(frame, "patch").get("id")).isEqualTo("session-row:" + sessionId);
+        assertThat(String.valueOf(payload(frame, "patch").get("html"))).contains("demo");
     }
 
     /** Opens the stream endpoint for the session under test. */
@@ -316,47 +331,14 @@ class StreamRouteTest {
         return Json.write(Map.of(key, value));
     }
 
-    private static Map<String, Object> nodeOf(Map<String, Object> frame) {
-        return castMap(frame.get("node"));
-    }
-
-    private static Map<String, Object> patchOf(Map<String, Object> frame) {
-        return castMap(frame.get("patch"));
-    }
-
-    private static String nodeType(Map<String, Object> frame) {
-        return String.valueOf(nodeOf(frame).get("type"));
-    }
-
-    /** The text of the first text descendant of a node frame (row shorthand). */
-    private static String childText(Map<String, Object> frame) {
-        return deepText(nodeOf(frame));
-    }
-
-    /** The first {@code text} prop found depth-first under the node. */
-    private static String deepText(Map<String, Object> node) {
-        Object text = node.get("text");
-        if (text instanceof String value) {
-            return value;
-        }
-        for (Object child : castList(node.get("children"))) {
-            if (child instanceof Map<?, ?> map) {
-                String found = deepText(castMap(child));
-                if (found != null) {
-                    return found;
-                }
-            }
-        }
-        return null;
+    /** The payload object of one frame shape. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> payload(Map<String, Object> frame, String shape) {
+        return (Map<String, Object>) frame.get(shape);
     }
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> castMap(Object value) {
         return (Map<String, Object>) value;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<Object> castList(Object value) {
-        return (List<Object>) value;
     }
 }

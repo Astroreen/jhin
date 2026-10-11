@@ -1,0 +1,21 @@
+T205 delta batching — per message id: patch frames vs absorbed text_delta events.
+The mock script (model=title) answers each turn with ONE text_delta carrying the
+whole scripted text and one message_end; EventFrames.DeltaBatcher coalesces
+deltas inside one 60 ms window (DELTA_FLUSH_WINDOW_MILLIS) and message_end
+emits the one final cumulative patch. Asserted per msg-<seq>:
+  patch frames <= text_delta events absorbed (here 1 <= 1),
+  exactly ONE patch carrying the full scripted text, appearing last.
+
+  full scripted text: Fix the authentication flow across the gateway, the proxy and every dependent microservice
+
+  msg id       deltas  patches  full-text verdict
+  msg-3             1        1        yes ok
+  msg-9             1        1        yes ok
+
+  session-row patches (session_updated -> sidebar row, not message text):
+          2 session-row:f39b5142-b9fb-40ef-a097-14994bbb979f
+
+  message_end final patches: one per message id, each the last patch of its id
+  and the only one carrying the full scripted text (the flush rules: window
+  expiry / before any non-delta frame / message_end / close — EventFramesTest
+  covers the multi-delta windows that this instant mock cannot produce).

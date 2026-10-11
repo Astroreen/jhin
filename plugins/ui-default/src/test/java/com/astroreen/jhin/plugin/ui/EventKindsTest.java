@@ -379,7 +379,7 @@ class EventKindsTest {
     @Test
     void theStructuredToolResultRendersTheEventCardOverTheFramePath() {
         EventFrames.Translator translator = new EventFrames.Translator();
-        Map<String, Object> frame = translator.frame("tool_result", Json.write(Map.of(
+        List<Map<String, Object>> frames = translator.frames("tool_result", Json.write(Map.of(
                 "id", "c1",
                 "name", "diff",
                 "content", "ignored",
@@ -390,32 +390,35 @@ class EventKindsTest {
                         "deletions", 3,
                         "hunks", List.of(Map.of("header", "@@ -1 +1 @@", "lines", List.of())))))),
                 30);
+        assertThat(frames).hasSize(1);
         @SuppressWarnings("unchecked")
-        Map<String, Object> node = (Map<String, Object>) frame.get("node");
+        Map<String, Object> node = (Map<String, Object>) frames.get(0).get("node");
         assertThat(node).isNotNull();
-        String wire = Json.write(node);
-        assertThat(wire)
-                .contains("\"rowKey\":\"event:diff\"")
-                .contains("\"type\":\"diff_view\"")
+        String html = String.valueOf(node.get("html"));
+        assertThat(html)
+                .contains("data-jhin-type=\"diff_view\"")
                 .contains("src/auth.java");
     }
 
     @Test
     void thePlainToolResultStillRendersTheWorkRow() {
         EventFrames.Translator translator = new EventFrames.Translator();
-        Map<String, Object> frame = translator.frame("tool_result", Json.write(Map.of(
+        List<Map<String, Object>> frames = translator.frames("tool_result", Json.write(Map.of(
                 "id", "c1", "name", "read", "content", "ok", "error", false)), 31);
         @SuppressWarnings("unchecked")
-        Map<String, Object> node = (Map<String, Object>) frame.get("node");
+        Map<String, Object> node = (Map<String, Object>) frames.get(0).get("node");
         assertThat(node).isNotNull();
-        assertThat(Json.write(node)).contains("\"rowKey\":\"work:log\"");
+        assertThat(String.valueOf(node.get("html")))
+                .contains("data-jhin-type=\"list\"").contains("ok");
         // A malformed structured payload degrades to the work row too.
-        Map<String, Object> malformed = translator.frame("tool_result", Json.write(Map.of(
+        List<Map<String, Object>> malformedFrames = translator.frames("tool_result", Json.write(Map.of(
                 "id", "c2", "name", "read", "content", "ok",
                 "structured", "{\"type\":\"holo\"}")), 32);
         @SuppressWarnings("unchecked")
-        Map<String, Object> malformedNode = (Map<String, Object>) malformed.get("node");
-        assertThat(Json.write(malformedNode)).contains("\"rowKey\":\"work:log\"");
+        Map<String, Object> malformedNode =
+                (Map<String, Object>) malformedFrames.get(0).get("node");
+        assertThat(String.valueOf(malformedNode.get("html")))
+                .contains("data-jhin-type=\"list\"").contains("ok");
     }
 
     // --- helpers ---

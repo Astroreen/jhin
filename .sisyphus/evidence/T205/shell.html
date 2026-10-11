@@ -1,0 +1,3595 @@
+<!doctype html>
+<html lang="en" data-appearance="system" data-density="comfortable">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jhin</title>
+<style id="jhin-token-css">/* palette */
+:root {
+  --accent: #ffd0dd;
+  --accent-foreground: #230f15;
+  --background: #fdf7fd;
+  --border: #fabfcf;
+  --canvas: #fdf7fd;
+  --card: #fff0f4;
+  --card-foreground: #230f15;
+  --code: #ffe6ec;
+  --code-foreground: #230f15;
+  --destructive: #fb2c36;
+  --destructive-foreground: #c10007;
+  --diff-addition: #00b981;
+  --diff-addition-foreground: #009669;
+  --diff-deletion: #fb2c36;
+  --diff-deletion-foreground: #e40016;
+  --error: #fb2c36;
+  --error-foreground: #c10007;
+  --error-surface: #fde7ed;
+  --foreground: #230f15;
+  --icon-muted: #7a6c72;
+  --info: #3280ff;
+  --info-foreground: #1447e6;
+  --input: #f1b0c2;
+  --message: #ffc7d6;
+  --message-action: #bb5700;
+  --message-action-foreground: #fffaff;
+  --message-action-hover: #a14a00;
+  --message-foreground: #230f15;
+  --muted: #ffe4eb;
+  --muted-foreground: #7a6369;
+  --on-accent: #ffffff;
+  --on-canvas: #000000;
+  --placeholder: #796067;
+  --popover: #fbd5df;
+  --popover-foreground: #230f15;
+  --primary: #bb5700;
+  --primary-foreground: #fffaff;
+  --ring: #db2777;
+  --secondary: #ffdae4;
+  --secondary-foreground: #230f15;
+  --secondary-label: #7a6c72;
+  --sidebar: #ffe1e9;
+  --sidebar-border: #ffbccf;
+  --sidebar-control-surface: #ffd5e0;
+  --sidebar-foreground: #230f15;
+  --sidebar-muted-foreground: #786067;
+  --sidebar-row-active: #ffccd9;
+  --sidebar-row-hover: #ffdae4;
+  --sidebar-row-selected: #ffc7d6;
+  --success: #00b981;
+  --success-foreground: #007857;
+  --surface-raised: #ffdfe7;
+  --tool-error-icon: #c10007;
+  --update: #db2777;
+  --update-foreground: #230f15;
+  --update-surface: #ffccd9;
+  --warning: #fe9a00;
+  --warning-foreground: #b84c00;
+  --warning-surface: #fdf0e9;
+  --contrast-accent-foreground: color-mix(in oklab, color-mix(in oklab, var(--accent-foreground) var(--appearance-contrast-base), var(--accent)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --contrast-border: color-mix(in srgb, color-mix(in srgb, var(--border) var(--appearance-contrast-base), transparent), var(--foreground) var(--appearance-contrast-border-boost));
+  --contrast-card-foreground: color-mix(in oklab, color-mix(in oklab, var(--card-foreground) var(--appearance-contrast-base), var(--card)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --contrast-foreground: color-mix(in oklab, color-mix(in oklab, var(--foreground) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --contrast-icon-muted: color-mix(in oklab, color-mix(in oklab, var(--icon-muted) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --contrast-input: color-mix(in srgb, color-mix(in srgb, var(--input) var(--appearance-contrast-base), transparent), var(--foreground) var(--appearance-contrast-border-boost));
+  --contrast-message-foreground: color-mix(in oklab, color-mix(in oklab, var(--message-foreground) var(--appearance-contrast-base), var(--message-surface)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --contrast-muted-foreground: color-mix(in oklab, color-mix(in oklab, var(--muted-foreground) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --contrast-placeholder: color-mix(in oklab, color-mix(in oklab, var(--placeholder) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --contrast-popover-foreground: color-mix(in oklab, color-mix(in oklab, var(--popover-foreground) var(--appearance-contrast-base), var(--popover)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --contrast-secondary-foreground: color-mix(in oklab, color-mix(in oklab, var(--secondary-foreground) var(--appearance-contrast-base), var(--secondary)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --contrast-secondary-label: color-mix(in oklab, color-mix(in oklab, var(--secondary-label) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --contrast-sidebar-border: color-mix(in srgb, color-mix(in srgb, var(--sidebar-border) var(--appearance-contrast-base), transparent), var(--sidebar-foreground) var(--appearance-contrast-border-boost));
+  --contrast-sidebar-foreground: color-mix(in oklab, color-mix(in oklab, var(--sidebar-foreground) var(--appearance-contrast-base), var(--sidebar)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --contrast-sidebar-muted-foreground: color-mix(in oklab, color-mix(in oklab, var(--sidebar-muted-foreground) var(--appearance-contrast-base), var(--sidebar)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+}
+/* alias */
+:root {
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--contrast-accent-foreground);
+  --color-background: var(--background);
+  --color-border: var(--contrast-border);
+  --color-card: var(--card);
+  --color-card-foreground: var(--contrast-card-foreground);
+  --color-code: var(--code-background);
+  --color-code-foreground: var(--code-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-diff-addition: var(--diff-addition);
+  --color-diff-addition-foreground: var(--diff-addition-foreground);
+  --color-diff-deletion: var(--diff-deletion);
+  --color-diff-deletion-foreground: var(--diff-deletion-foreground);
+  --color-error: var(--error);
+  --color-error-foreground: var(--error-foreground);
+  --color-error-surface: var(--error-surface);
+  --color-foreground: var(--contrast-foreground);
+  --color-icon-muted: var(--contrast-icon-muted);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-input: var(--contrast-input);
+  --color-message: var(--message-surface);
+  --color-message-action: var(--message-action);
+  --color-message-action-foreground: var(--message-action-foreground);
+  --color-message-action-hover: var(--message-action-hover);
+  --color-message-foreground: var(--contrast-message-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--contrast-muted-foreground);
+  --color-placeholder: var(--contrast-placeholder);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--contrast-popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--contrast-secondary-foreground);
+  --color-secondary-label: var(--contrast-secondary-label);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-border: var(--contrast-sidebar-border);
+  --color-sidebar-control-surface: var(--sidebar-control-surface);
+  --color-sidebar-foreground: var(--contrast-sidebar-foreground);
+  --color-sidebar-muted-foreground: var(--contrast-sidebar-muted-foreground);
+  --color-sidebar-row-active: var(--sidebar-row-active);
+  --color-sidebar-row-hover: var(--sidebar-row-hover);
+  --color-sidebar-row-selected: var(--sidebar-row-selected);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-surface-raised: var(--surface-raised);
+  --color-tool-error-icon: var(--tool-error-icon);
+  --color-update: var(--update);
+  --color-update-foreground: var(--update-foreground);
+  --color-update-surface: var(--update-surface);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-surface: var(--warning-surface);
+  --color-contrast-accent-foreground: color-mix(in oklab, color-mix(in oklab, var(--accent-foreground) var(--appearance-contrast-base), var(--accent)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --color-contrast-border: color-mix(in srgb, color-mix(in srgb, var(--border) var(--appearance-contrast-base), transparent), var(--foreground) var(--appearance-contrast-border-boost));
+  --color-contrast-card-foreground: color-mix(in oklab, color-mix(in oklab, var(--card-foreground) var(--appearance-contrast-base), var(--card)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --color-contrast-foreground: color-mix(in oklab, color-mix(in oklab, var(--foreground) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --color-contrast-icon-muted: color-mix(in oklab, color-mix(in oklab, var(--icon-muted) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --color-contrast-input: color-mix(in srgb, color-mix(in srgb, var(--input) var(--appearance-contrast-base), transparent), var(--foreground) var(--appearance-contrast-border-boost));
+  --color-contrast-message-foreground: color-mix(in oklab, color-mix(in oklab, var(--message-foreground) var(--appearance-contrast-base), var(--message-surface)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --color-contrast-muted-foreground: color-mix(in oklab, color-mix(in oklab, var(--muted-foreground) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --color-contrast-placeholder: color-mix(in oklab, color-mix(in oklab, var(--placeholder) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --color-contrast-popover-foreground: color-mix(in oklab, color-mix(in oklab, var(--popover-foreground) var(--appearance-contrast-base), var(--popover)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --color-contrast-secondary-foreground: color-mix(in oklab, color-mix(in oklab, var(--secondary-foreground) var(--appearance-contrast-base), var(--secondary)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --color-contrast-secondary-label: color-mix(in oklab, color-mix(in oklab, var(--secondary-label) var(--appearance-contrast-base), var(--background)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --color-contrast-sidebar-border: color-mix(in srgb, color-mix(in srgb, var(--sidebar-border) var(--appearance-contrast-base), transparent), var(--sidebar-foreground) var(--appearance-contrast-border-boost));
+  --color-contrast-sidebar-foreground: color-mix(in oklab, color-mix(in oklab, var(--sidebar-foreground) var(--appearance-contrast-base), var(--sidebar)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --color-contrast-sidebar-muted-foreground: color-mix(in oklab, color-mix(in oklab, var(--sidebar-muted-foreground) var(--appearance-contrast-base), var(--sidebar)), var(--appearance-contrast-target) var(--appearance-contrast-boost));
+  --radius-base: 0.625rem;
+  --radius-sm: calc(0.625rem - 4px);
+  --radius-md: calc(0.625rem - 2px);
+  --radius-lg: 0.625rem;
+  --radius-xl: calc(0.625rem + 4px);
+  --radius-xl2: calc(0.625rem + 8px);
+  --radius-xl3: calc(0.625rem + 12px);
+  --text-xs5-size: 0.4375rem;
+  --text-xs5-line-height: 1;
+  --text-xs4-size: 0.5rem;
+  --text-xs4-line-height: 1;
+  --text-xs3-size: 0.625rem;
+  --text-xs3-line-height: calc(0.875 / 0.625);
+  --text-xs2-size: 0.6875rem;
+  --text-xs2-line-height: calc(1 / 0.6875);
+  --text-xs-size: 0.75rem;
+  --text-xs-line-height: calc(1 / 0.75);
+  --text-sm-size: 0.875rem;
+  --text-sm-line-height: calc(1.25 / 0.875);
+  --text-base-size: 1rem;
+  --text-base-line-height: calc(1.5 / 1);
+  --text-lg-size: 1.125rem;
+  --text-lg-line-height: calc(1.75 / 1.125);
+  --text-xl-size: 1.25rem;
+  --text-xl-line-height: calc(1.75 / 1.25);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-composer: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-size-interface: 16px;
+  --font-size-prompt: 14px;
+  --font-size-code: 13px;
+  --space-control: calc(0.5rem * 1);
+  --space-sidebar-content: calc(0.5rem * 1);
+  --space-sidebar-control-gap: calc(0.5rem * 1);
+  --space-sidebar-row-content: calc(0.625rem * 1);
+  --space-command-shell: calc(0.5rem * 1);
+  --space-command-content: calc(1rem * 1);
+  --space-floating-content: calc(0.75rem * 1);
+  --space-workspace-gutter-base: calc(0.75rem * 1);
+  --space-workspace-gutter-sm: calc(1.25rem * 1);
+  --layout-topbar-height: 52px;
+  --layout-chat-content-max-width: 46rem;
+  --layout-thread-details-panel-width: 17.5rem;
+  --layout-sidebar-width: 256px;
+  --layout-sidebar-min-width: 208px;
+  --layout-main-min-width: 640px;
+  --glass-opacity: 80%;
+  --motion-ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --motion-skeleton: 2.4s;
+  --motion-status-pulse: 2s;
+  --motion-status-ping: 2s;
+  --motion-reduced: 0;
+  --motion-panel: 0ms;
+  --shadow-control-highlight: 0 1px rgb(255 255 255 / 16%);
+  --shadow-control-pressed: 0 1px rgb(0 0 0 / 8%);
+  --scroll-width: 6px;
+  --z-sheet: 46;
+  --spacing-lg: calc(16px * 1);
+  --spacing-md: calc(12px * 1);
+  --spacing-sm: calc(8px * 1);
+  --spacing-xl: calc(24px * 1);
+  --spacing-xs: calc(4px * 1);
+  --spacing-xxl: calc(32px * 1);
+  --elevation-lg: 8px;
+  --elevation-md: 4px;
+  --elevation-none: 0px;
+  --elevation-sm: 1px;
+  --size-chart: 160px;
+  --size-sidebar: 280px;
+  --size-stream-list: 240px;
+  --radius-full: 9999px;
+  --motion-fast: 120ms;
+  --motion-instant: 0ms;
+  --motion-normal: 200ms;
+  --motion-slow: 320ms;
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-muted: var(--accent-muted);
+  --color-canvas: var(--canvas);
+  --color-on-accent: var(--on-accent);
+  --color-on-canvas: var(--on-canvas);
+  --color-outline: var(--outline);
+  --color-shadow: var(--shadow);
+  --color-surface: var(--surface);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --glass-blur: 12px;
+    --glass-saturation: 1.14;
+    --shadow-composer: 0 12px 28px -18px rgb(0 0 0 / 40%);
+    --scroll-thumb: rgb(217 217 217);
+    --scroll-thumb-hover: rgb(191 191 191);
+  }
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --glass-blur: 16px;
+    --glass-saturation: 1.08;
+    --shadow-composer: 0 14px 32px -18px rgb(0 0 0 / 75%);
+    --scroll-thumb: rgb(255 255 255 / 8%);
+    --scroll-thumb-hover: rgb(255 255 255 / 12%);
+  }
+}
+[data-appearance="light"] {
+  --glass-blur: 12px;
+  --glass-saturation: 1.14;
+  --shadow-composer: 0 12px 28px -18px rgb(0 0 0 / 40%);
+  --scroll-thumb: rgb(217 217 217);
+  --scroll-thumb-hover: rgb(191 191 191);
+}
+[data-appearance="dark"] {
+  --glass-blur: 16px;
+  --glass-saturation: 1.08;
+  --shadow-composer: 0 14px 32px -18px rgb(0 0 0 / 75%);
+  --scroll-thumb: rgb(255 255 255 / 8%);
+  --scroll-thumb-hover: rgb(255 255 255 / 12%);
+}
+[data-density="compact"] {
+  --space-control: calc(0.5rem * 0.75);
+  --space-sidebar-content: calc(0.5rem * 0.75);
+  --space-sidebar-control-gap: calc(0.5rem * 0.75);
+  --space-sidebar-row-content: calc(0.625rem * 0.75);
+  --space-command-shell: calc(0.5rem * 0.75);
+  --space-command-content: calc(1rem * 0.75);
+  --space-floating-content: calc(0.75rem * 0.75);
+  --space-workspace-gutter-base: calc(0.75rem * 0.75);
+  --space-workspace-gutter-sm: calc(1.25rem * 0.75);
+  --spacing-lg: calc(16px * 0.75);
+  --spacing-md: calc(12px * 0.75);
+  --spacing-sm: calc(8px * 0.75);
+  --spacing-xl: calc(24px * 0.75);
+  --spacing-xs: calc(4px * 0.75);
+  --spacing-xxl: calc(32px * 0.75);
+}
+[data-density="comfortable"] {
+  --space-control: calc(0.5rem * 1);
+  --space-sidebar-content: calc(0.5rem * 1);
+  --space-sidebar-control-gap: calc(0.5rem * 1);
+  --space-sidebar-row-content: calc(0.625rem * 1);
+  --space-command-shell: calc(0.5rem * 1);
+  --space-command-content: calc(1rem * 1);
+  --space-floating-content: calc(0.75rem * 1);
+  --space-workspace-gutter-base: calc(0.75rem * 1);
+  --space-workspace-gutter-sm: calc(1.25rem * 1);
+  --spacing-lg: calc(16px * 1);
+  --spacing-md: calc(12px * 1);
+  --spacing-sm: calc(8px * 1);
+  --spacing-xl: calc(24px * 1);
+  --spacing-xs: calc(4px * 1);
+  --spacing-xxl: calc(32px * 1);
+}
+[data-density="spacious"] {
+  --space-control: calc(0.5rem * 1.25);
+  --space-sidebar-content: calc(0.5rem * 1.25);
+  --space-sidebar-control-gap: calc(0.5rem * 1.25);
+  --space-sidebar-row-content: calc(0.625rem * 1.25);
+  --space-command-shell: calc(0.5rem * 1.25);
+  --space-command-content: calc(1rem * 1.25);
+  --space-floating-content: calc(0.75rem * 1.25);
+  --space-workspace-gutter-base: calc(0.75rem * 1.25);
+  --space-workspace-gutter-sm: calc(1.25rem * 1.25);
+  --spacing-lg: calc(16px * 1.25);
+  --spacing-md: calc(12px * 1.25);
+  --spacing-sm: calc(8px * 1.25);
+  --spacing-xl: calc(24px * 1.25);
+  --spacing-xs: calc(4px * 1.25);
+  --spacing-xxl: calc(32px * 1.25);
+}
+</style>
+<style id="jhin-app-css">/*
+ * Jhin runtime stylesheet (HTML wire, contract level 4).
+ *
+ * The token CSS is inlined by the server into style#jhin-token-css and
+ * defines every custom property consumed here. This file never redefines
+ * palette or token variables; it only applies them through var().
+ */
+
+/* --- base ------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-base-size);
+  line-height: var(--text-base-line-height);
+  color: var(--color-on-canvas);
+  background: var(--color-canvas);
+}
+
+#jhin-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+#jhin-overlays {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  pointer-events: none;
+}
+
+#jhin-overlays>* {
+  pointer-events: auto;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+
+/* --- layout primitives ------------------------------------------------ */
+
+.jhin-screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 100dvh;
+}
+
+.jhin-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 100dvh;
+  background: var(--color-canvas);
+  color: var(--color-on-canvas);
+}
+
+.jhin-container,
+.jhin-box {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.jhin-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+}
+
+.jhin-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.jhin-flex {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.jhin-expanded,
+.jhin-flexible {
+  min-width: 0;
+  min-height: 0;
+}
+
+.jhin-stack {
+  display: grid;
+  min-width: 0;
+}
+
+.jhin-stack>* {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.jhin-positioned {
+  position: absolute;
+}
+
+.jhin-align {
+  display: flex;
+  min-width: 0;
+}
+
+.jhin-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.jhin-sized-box {
+  flex-shrink: 0;
+}
+
+.jhin-aspect-ratio {
+  width: 100%;
+}
+
+.jhin-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.jhin-grid {
+  display: grid;
+  min-width: 0;
+}
+
+.jhin-scroll {
+  overflow: auto;
+  min-width: 0;
+  min-height: 0;
+  overscroll-behavior: contain;
+}
+
+.jhin-divider {
+  border: 0;
+  border-top: 1px solid var(--color-outline);
+  margin: var(--spacing-sm) 0;
+  width: 100%;
+  align-self: stretch;
+}
+
+.jhin-spacer:not([style]) {
+  flex: 1 1 auto;
+}
+
+.jhin-split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.jhin-split>* {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.jhin-split-handle {
+  flex: 0 0 auto;
+  width: var(--spacing-xs);
+  cursor: col-resize;
+  background: var(--color-outline);
+  overflow: hidden;
+}
+
+/* --- shell sidebar and drawer ----------------------------------------- */
+
+.jhin-nav-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: var(--size-sidebar);
+  min-width: 0;
+  overflow: auto;
+  background: var(--color-sidebar);
+  color: var(--color-sidebar-foreground);
+  border-right: 1px solid var(--color-sidebar-border);
+}
+
+.jhin-shell:has(> .jhin-nav-sidebar) {
+  padding-left: var(--size-sidebar);
+}
+
+.jhin-shell>.jhin-nav-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  height: 100dvh;
+}
+
+@media (max-width: 768px) {
+  .jhin-shell:has(> .jhin-nav-sidebar) {
+    padding-left: 0;
+  }
+
+  .jhin-shell>.jhin-nav-sidebar {
+    max-width: 86vw;
+    transform: translateX(-100%);
+    transition: transform var(--motion-panel) var(--motion-ease-drawer);
+    box-shadow: var(--shadow-composer);
+  }
+
+  #jhin-root.jhin-drawer-open .jhin-nav-sidebar {
+    transform: translateX(0);
+    z-index: var(--z-sheet);
+  }
+
+  #jhin-root.jhin-drawer-open::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-sheet) - 1);
+    background: color-mix(in oklab, var(--color-canvas) 55%, transparent);
+  }
+}
+
+/* --- text primitives -------------------------------------------------- */
+
+.jhin-text {
+  font-family: var(--font-sans);
+  font-size: var(--text-base-size);
+  line-height: var(--text-base-line-height);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.jhin-text-h1 {
+  font-size: var(--text-xl-size);
+  line-height: var(--text-xl-line-height);
+  font-weight: 700;
+}
+
+.jhin-text-h2 {
+  font-size: var(--text-lg-size);
+  line-height: var(--text-lg-line-height);
+  font-weight: 700;
+}
+
+.jhin-text-h3 {
+  font-weight: 700;
+}
+
+.jhin-text-small {
+  font-size: var(--text-sm-size);
+  line-height: var(--text-sm-line-height);
+}
+
+.jhin-text-caption {
+  font-size: var(--text-xs-size);
+  line-height: var(--text-xs-line-height);
+  color: var(--color-muted-foreground);
+}
+
+.jhin-text-mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code);
+}
+
+.jhin-markdown {
+  font-family: var(--font-sans);
+  font-size: var(--text-base-size);
+  line-height: var(--text-base-line-height);
+  overflow-wrap: anywhere;
+}
+
+.jhin-markdown p,
+.jhin-markdown ul,
+.jhin-markdown ol,
+.jhin-markdown pre,
+.jhin-markdown table,
+.jhin-markdown blockquote {
+  margin: 0 0 var(--spacing-md);
+}
+
+.jhin-markdown h1 {
+  font-size: var(--text-xl-size);
+  line-height: var(--text-xl-line-height);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.jhin-markdown h2 {
+  font-size: var(--text-lg-size);
+  line-height: var(--text-lg-line-height);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.jhin-markdown h3 {
+  font-size: var(--text-base-size);
+  line-height: var(--text-base-line-height);
+  margin: 0 0 var(--spacing-sm);
+}
+
+.jhin-ul,
+.jhin-ol {
+  padding-left: var(--spacing-xl);
+  margin: 0 0 var(--spacing-md);
+}
+
+.jhin-blockquote {
+  margin: 0 0 var(--spacing-md);
+  padding-left: var(--spacing-md);
+  border-left: 3px solid var(--color-outline);
+  color: var(--color-muted-foreground);
+}
+
+.jhin-link {
+  color: var(--color-accent);
+}
+
+.jhin-code-block {
+  margin: 0;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-md);
+  background: var(--color-code);
+  color: var(--color-code-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code);
+  line-height: var(--text-sm-line-height);
+  overflow: auto;
+  tab-size: 2;
+}
+
+.jhin-code-block code {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.jhin-code-inline {
+  padding: 0 var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  background: var(--color-code);
+  color: var(--color-code-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code);
+}
+
+.jhin-kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.jhin-kbd-key {
+  padding: 0 var(--spacing-xs);
+  border: 1px solid var(--color-outline);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-size);
+  line-height: var(--text-lg-line-height);
+}
+
+/* --- controls --------------------------------------------------------- */
+
+.jhin-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  min-height: 36px;
+  padding: 0 var(--space-control);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+  line-height: var(--text-sm-line-height);
+  cursor: pointer;
+  transition: filter var(--motion-fast) var(--motion-ease-drawer);
+}
+
+.jhin-button-primary {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+
+.jhin-button-secondary {
+  background: var(--color-secondary);
+  color: var(--color-secondary-foreground);
+  border-color: var(--color-outline);
+}
+
+.jhin-button-danger {
+  background: var(--color-destructive);
+  color: var(--color-destructive-foreground);
+}
+
+.jhin-button-text {
+  background: transparent;
+  color: var(--color-accent);
+}
+
+.jhin-button:hover,
+.jhin-icon-button:hover {
+  filter: brightness(1.08);
+}
+
+.jhin-button[aria-disabled="true"],
+.jhin-icon-button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.jhin-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.jhin-icon {
+  display: inline-flex;
+  width: 1.25em;
+  height: 1.25em;
+  flex: 0 0 auto;
+}
+
+.jhin-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.jhin-input,
+.jhin-textarea,
+.jhin-dropdown {
+  width: 100%;
+  min-height: 36px;
+  padding: var(--spacing-xs) var(--space-control);
+  border: 1px solid var(--color-input);
+  border-radius: var(--radius-md);
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+  line-height: var(--text-sm-line-height);
+}
+
+.jhin-textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.jhin-input::placeholder,
+.jhin-textarea::placeholder {
+  color: var(--color-placeholder);
+}
+
+.jhin-input[aria-disabled="true"],
+.jhin-textarea[aria-disabled="true"],
+.jhin-dropdown[disabled] {
+  opacity: 0.5;
+}
+
+.jhin-checkbox,
+.jhin-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-height: 36px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+  cursor: pointer;
+}
+
+.jhin-checkbox input,
+.jhin-switch input,
+.jhin-slider {
+  accent-color: var(--color-accent);
+}
+
+.jhin-switch input {
+  width: 2.25em;
+  min-height: 1.25em;
+}
+
+.jhin-control-label {
+  color: var(--color-foreground);
+}
+
+.jhin-slider {
+  width: 100%;
+  min-height: 24px;
+  cursor: pointer;
+}
+
+.jhin-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  min-width: 0;
+}
+
+.jhin-segmented {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-md);
+  background: var(--color-secondary);
+}
+
+.jhin-segment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  min-height: 32px;
+  padding: 0 var(--space-control);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-secondary-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+  cursor: pointer;
+}
+
+.jhin-segment[aria-checked="true"] {
+  background: var(--color-surface);
+  color: var(--color-foreground);
+}
+
+.jhin-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  padding: var(--spacing-xs);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-md);
+  background: var(--color-popover);
+  color: var(--color-popover-foreground);
+  box-shadow: var(--shadow-composer);
+}
+
+.jhin-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-height: 36px;
+  padding: 0 var(--space-control);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+  text-align: left;
+  cursor: pointer;
+}
+
+.jhin-menu-item:hover {
+  background: var(--color-secondary);
+}
+
+.jhin-menu-divider {
+  border: 0;
+  border-top: 1px solid var(--color-outline);
+  margin: var(--spacing-xs) 0;
+}
+
+.jhin-menu-submenu {
+  display: flex;
+  flex-direction: column;
+}
+
+.jhin-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  border-bottom: 1px solid var(--color-outline);
+}
+
+.jhin-tab {
+  min-height: 36px;
+  padding: 0 var(--space-control);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-muted-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+  cursor: pointer;
+}
+
+.jhin-tab[aria-selected="true"] {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.jhin-tabpanel {
+  min-width: 0;
+  padding: var(--spacing-md) 0;
+}
+
+.jhin-scroll-fade {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  position: relative;
+}
+
+.jhin-scroll-fade[data-jhin-edge="top"]::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--spacing-lg);
+  background: linear-gradient(to bottom, var(--color-canvas), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.jhin-scroll-fade[data-jhin-edge="bottom"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: var(--spacing-lg);
+  background: linear-gradient(to top, var(--color-canvas), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* --- surfaces --------------------------------------------------------- */
+
+.jhin-card,
+.jhin-drawer,
+.jhin-sheet,
+.jhin-dialog,
+.jhin-hover-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--space-floating-content);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-lg);
+  background: var(--color-card);
+  color: var(--color-card-foreground);
+}
+
+.jhin-dialog,
+.jhin-sheet {
+  box-shadow: var(--shadow-composer);
+}
+
+.jhin-surface-title {
+  margin: 0 0 var(--spacing-sm);
+  font-family: var(--font-sans);
+  font-size: var(--text-base-size);
+  line-height: var(--text-base-line-height);
+  font-weight: 700;
+}
+
+.jhin-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--space-floating-content);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-foreground);
+}
+
+.jhin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 0 var(--spacing-sm);
+  border-radius: var(--radius-full);
+  background: var(--color-secondary);
+  color: var(--color-secondary-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs-size);
+  line-height: var(--text-lg-line-height);
+  white-space: nowrap;
+}
+
+.jhin-badge-dot {
+  min-width: 0.5em;
+  min-height: 0.5em;
+  padding: 0;
+  background: var(--color-accent);
+}
+
+.jhin-chip {
+  padding-right: var(--spacing-xs);
+  border: 1px solid var(--color-outline);
+  background: var(--color-surface);
+  color: var(--color-foreground);
+}
+
+.jhin-chip-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  min-height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.jhin-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25em;
+  height: 2.25em;
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: var(--color-accent-muted);
+  color: var(--color-on-accent);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+}
+
+.jhin-avatar-circle {
+  border-radius: var(--radius-full);
+}
+
+.jhin-avatar-square {
+  border-radius: var(--radius-md);
+}
+
+.jhin-skeleton {
+  display: block;
+  min-height: var(--text-base-size);
+  border-radius: var(--radius-sm);
+  background: var(--color-secondary);
+}
+
+.jhin-skeleton[data-jhin-shimmer="true"] {
+  background: linear-gradient(
+    100deg,
+    var(--color-secondary) 30%,
+    var(--color-surface-raised) 50%,
+    var(--color-secondary) 70%);
+  background-size: 200% 100%;
+  animation: jhin-shimmer var(--motion-skeleton) linear infinite;
+}
+
+@keyframes jhin-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.jhin-progress {
+  width: 100%;
+  min-height: 6px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.jhin-image {
+  max-width: 100%;
+  height: auto;
+}
+
+.jhin-figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin: 0;
+  min-width: 0;
+}
+
+.jhin-toast-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  min-width: 16rem;
+}
+
+.jhin-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-md);
+  background: var(--color-popover);
+  color: var(--color-popover-foreground);
+  box-shadow: var(--shadow-composer);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+}
+
+.jhin-toast-action {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+  cursor: pointer;
+}
+
+/* --- lists, tables, trees --------------------------------------------- */
+
+.jhin-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: auto;
+}
+
+.jhin-list-section {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.jhin-list-section-label {
+  margin: var(--spacing-md) 0 var(--spacing-xs);
+  padding: 0 var(--space-sidebar-content);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs-size);
+  line-height: var(--text-xs-line-height);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-sidebar-muted-foreground);
+}
+
+.jhin-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-height: 36px;
+  padding: var(--spacing-xs) var(--space-sidebar-row-content);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+  text-align: left;
+  cursor: pointer;
+}
+
+.jhin-list-row:hover {
+  background: var(--color-sidebar-row-hover);
+}
+
+.jhin-list-row.jhin-selected {
+  background: var(--color-sidebar-row-selected);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.jhin-list-row-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.jhin-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+  line-height: var(--text-sm-line-height);
+}
+
+.jhin-table th,
+.jhin-table td {
+  padding: var(--spacing-sm);
+  border-bottom: 1px solid var(--color-outline);
+  text-align: left;
+  vertical-align: top;
+}
+
+.jhin-table th {
+  color: var(--color-muted-foreground);
+  font-weight: 700;
+}
+
+.jhin-table.jhin-zebra tbody tr:nth-child(2n) {
+  background: var(--color-secondary);
+}
+
+.jhin-table.jhin-hoverable tbody tr:hover {
+  background: var(--color-sidebar-row-hover);
+}
+
+.jhin-tree {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-left: var(--spacing-md);
+  list-style: none;
+  margin: 0;
+}
+
+.jhin-tree-children {
+  display: flex;
+  flex-direction: column;
+  padding-left: var(--spacing-md);
+  list-style: none;
+  margin: 0;
+}
+
+.jhin-tree-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.jhin-tree-label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-height: 28px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+}
+
+.jhin-tree-stat {
+  margin-left: auto;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-xs-size);
+}
+
+/* --- stream and diff views -------------------------------------------- */
+
+.jhin-stream-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  /* T100 anchor offset (24px) reserved as the end inset, so the newest
+     row clears the composer seam. */
+  padding-bottom: 24px;
+}
+
+.jhin-diff-view,
+.jhin-diff {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code);
+  line-height: var(--text-sm-line-height);
+}
+
+.jhin-diff-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--color-outline);
+  background: var(--color-surface);
+  color: var(--color-muted-foreground);
+}
+
+.jhin-diff-file {
+  font-weight: 700;
+}
+
+.jhin-diff-stats {
+  margin-left: auto;
+}
+
+.jhin-diff-hunk-header {
+  padding: 0 var(--spacing-sm);
+  background: var(--color-secondary);
+  color: var(--color-muted-foreground);
+}
+
+.jhin-diff-line {
+  display: flex;
+  min-width: 0;
+  padding: 0 var(--spacing-sm);
+  white-space: pre;
+}
+
+.jhin-diff-no {
+  flex: 0 0 3.5em;
+  text-align: right;
+  padding-right: var(--spacing-sm);
+  color: var(--color-icon-muted);
+  user-select: none;
+}
+
+.jhin-diff-add {
+  background: var(--color-diff-addition);
+  color: var(--color-diff-addition-foreground);
+  text-decoration: none;
+}
+
+.jhin-diff-del {
+  background: var(--color-diff-deletion);
+  color: var(--color-diff-deletion-foreground);
+  text-decoration: none;
+}
+
+.jhin-diff-ctx {
+  background: transparent;
+}
+
+/* --- navigation ------------------------------------------------------- */
+
+.jhin-nav {
+  display: flex;
+  min-width: 0;
+}
+
+.jhin-nav-tabs {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.jhin-nav-sidebar {
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--space-sidebar-content);
+}
+
+.jhin-nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.jhin-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-height: 36px;
+  padding: 0 var(--space-sidebar-control-gap);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+  text-align: left;
+  cursor: pointer;
+}
+
+.jhin-nav-item:hover {
+  background: var(--color-sidebar-row-hover);
+}
+
+.jhin-nav-item-active {
+  background: var(--color-sidebar-row-active);
+  color: var(--color-on-canvas);
+}
+
+.jhin-nav-count {
+  margin-left: auto;
+  color: var(--color-sidebar-muted-foreground);
+  font-size: var(--text-xs-size);
+}
+
+.jhin-appbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-height: var(--layout-topbar-height);
+  padding: var(--spacing-sm) var(--space-workspace-gutter-base);
+}
+
+/* --- inline validation errors (module 6) ------------------------------ */
+
+.jhin-input.jhin-invalid,
+.jhin-textarea.jhin-invalid {
+  border-color: var(--color-destructive);
+}
+
+.jhin-field-error {
+  display: block;
+  margin-top: var(--spacing-xs);
+  color: var(--color-destructive);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs-size);
+  line-height: var(--text-xs-line-height);
+}
+
+/* --- runtime overlays (owned by the runtime, never server-driven) ------ */
+
+#jhin-overlays .jhin-toast-stack {
+  position: fixed;
+  right: var(--spacing-lg);
+  bottom: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-width: 24rem;
+  pointer-events: none;
+}
+
+#jhin-overlays .jhin-toast-stack .jhin-toast {
+  position: static;
+  pointer-events: auto;
+}
+
+.jhin-toast-error {
+  border-color: var(--color-destructive);
+  border-left-width: 3px;
+}
+
+#jhin-overlays .jhin-confirm {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  min-width: 18rem;
+  max-width: 32rem;
+  padding: var(--space-floating-content);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-lg);
+  background: var(--color-card);
+  color: var(--color-card-foreground);
+  box-shadow: var(--shadow-composer);
+}
+
+#jhin-overlays .jhin-confirm::backdrop {
+  background: color-mix(in oklab, var(--color-on-canvas) 40%, transparent);
+}
+
+#jhin-overlays .jhin-confirm-message {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-base-size);
+  line-height: var(--text-base-line-height);
+}
+
+#jhin-overlays .jhin-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+#jhin-overlays .jhin-undo {
+  position: fixed;
+  left: 50%;
+  bottom: var(--spacing-lg);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-md);
+  background: var(--color-popover);
+  color: var(--color-popover-foreground);
+  box-shadow: var(--shadow-composer);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+}
+
+#jhin-overlays .jhin-undo-label {
+  min-width: 0;
+}
+
+#jhin-overlays .jhin-undo-close {
+  color: var(--color-muted-foreground);
+}
+
+#jhin-overlays .jhin-dialog-layer {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  background: color-mix(in oklab, var(--color-on-canvas) 40%, transparent);
+  overflow: auto;
+}
+
+#jhin-overlays .jhin-dialog-layer-sheet {
+  align-items: flex-end;
+  padding: 0;
+}
+
+.jhin-pair-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-md);
+  margin: auto;
+  width: min(22rem, 90vw);
+  padding: var(--space-floating-content);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-lg);
+  background: var(--color-card);
+  color: var(--color-card-foreground);
+}
+
+.jhin-pair-error {
+  width: 100%;
+}
+
+.jhin-pair-form label {
+  font-family: var(--font-sans);
+  font-size: var(--text-sm-size);
+  line-height: var(--text-sm-line-height);
+  color: var(--color-muted-foreground);
+}
+
+.jhin-pair-form .jhin-input {
+  width: 100%;
+}
+
+/* --- command palette overlay ----------------------------------------- */
+
+#jhin-overlays .jhin-palette-layer {
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+
+.jhin-palette {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  width: min(30rem, 92vw);
+  max-height: 60vh;
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-lg);
+  background: var(--color-card);
+  color: var(--color-card-foreground);
+}
+
+.jhin-palette-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+}
+
+.jhin-palette-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font-family: var(--font-sans);
+  font-size: var(--text-base-size);
+  text-align: left;
+  cursor: pointer;
+}
+
+.jhin-palette-row:hover,
+.jhin-palette-row:focus-visible {
+  background: var(--color-surface-raised);
+}
+
+.jhin-palette-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jhin-palette-chord {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs-size);
+  color: var(--color-muted-foreground);
+}
+
+/* --- hidden gate: class display rules must not beat [hidden] ---------- */
+
+[hidden] {
+  display: none !important;
+}
+
+.jhin-notice {
+  margin: auto;
+  max-width: 32rem;
+  padding: var(--space-floating-content);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-lg);
+  background: var(--color-card);
+  color: var(--color-card-foreground);
+  font-family: var(--font-sans);
+  font-size: var(--text-base-size);
+  line-height: var(--text-base-line-height);
+  text-align: center;
+}
+
+/* --- reduced motion --------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+</style>
+</head>
+<body>
+<div id="jhin-root"></div>
+<div id="jhin-overlays"></div>
+<script id="jhin-app-js">/* Jhin web client runtime (HTML wire, contract level 4): one ES2022 file,
+   zero dependencies, no dynamic code loading, no WebSocket; every
+   runtime-owned class or id is jhin- prefixed. */
+(() => {
+  "use strict";
+
+  /* module 1: transport */
+
+  function clientHeaderValue() {
+    return "api=4; version="
+      + (typeof window.JHIN_VERSION === "string" && window.JHIN_VERSION !== ""
+        ? window.JHIN_VERSION : "0.0.0-web")
+      + "; schema=5; caps=sse,open_url,secure_storage";
+  }
+
+  function readToken() {
+    try {
+      return window.localStorage.getItem("jhin.token");
+    } catch {
+      return null;
+    }
+  }
+
+  function writeToken(value) {
+    try {
+      if (value === "") {
+        window.localStorage.removeItem("jhin.token");
+      } else {
+        window.localStorage.setItem("jhin.token", value);
+      }
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
+  function jhinFetch(path, options) {
+    const init = Object.assign({}, options || {});
+    const headers = new Headers(init.headers || {});
+    headers.set("X-Jhin-Client", clientHeaderValue());
+    const token = readToken();
+    if (token) {
+      headers.set("Authorization", "Bearer " + token);
+    }
+    init.headers = headers;
+    return fetch(path, init);
+  }
+
+  /* module 2: state */
+
+  const UiState = {
+    values: Object.create(null),
+    errors: Object.create(null)
+  };
+
+  function stateKeyFor(el) {
+    const own = el.getAttribute("data-jhin-id");
+    if (own) { return own; }
+    const name = el.getAttribute("name");
+    if (name) { return name; }
+    if (el.id) { return el.id; }
+    const host = el.closest("[data-jhin-id]");
+    return host ? host.getAttribute("data-jhin-id") : null;
+  }
+
+  function readControlValue(el) {
+    const tag = el.tagName;
+    if (tag === "TEXTAREA") { return el.value; }
+    if (tag === "SELECT") { return el.value === "" ? undefined : el.value; }
+    if (tag === "INPUT") {
+      const type = (el.getAttribute("type") || "text").toLowerCase();
+      if (type === "checkbox") { return el.checked; }
+      if (type === "range") { return el.value === "" ? null : Number(el.value); }
+      return el.value;
+    }
+    return undefined;
+  }
+
+  function seedState() {
+    document.querySelectorAll("input, textarea, select").forEach((el) => {
+      const key = stateKeyFor(el);
+      if (!key) { return; }
+      writeValue(key, readControlValue(el), false);
+    });
+    document.querySelectorAll(".jhin-segmented").forEach((group) => {
+      const key = stateKeyFor(group);
+      const active = group.querySelector('.jhin-segment[aria-checked="true"]');
+      if (!key || !active) { return; }
+      const value = active.getAttribute("data-jhin-value");
+      if (value !== null) { writeValue(key, value, false); }
+    });
+  }
+
+  function writeValue(key, value, sync) {
+    if (value === undefined) {
+      delete UiState.values[key];
+    } else {
+      UiState.values[key] = value;
+    }
+    if (sync) { syncDom(key, value); }
+  }
+
+  function syncDom(key, value) {
+    document.querySelectorAll("input, textarea, select").forEach((el) => {
+      if (stateKeyFor(el) !== key) { return; }
+      const type = (el.getAttribute("type") || "").toLowerCase();
+      if (el.tagName === "INPUT" && type === "checkbox") {
+        el.checked = value === true || value === "true";
+      } else {
+        el.value = value === undefined || value === null ? "" : String(value);
+      }
+    });
+    document.querySelectorAll(".jhin-segmented").forEach((group) => {
+      if (stateKeyFor(group) !== key) { return; }
+      group.querySelectorAll(".jhin-segment").forEach((seg) => {
+        const mine = seg.getAttribute("data-jhin-value");
+        const on = value !== undefined && value !== null && mine === String(value);
+        seg.setAttribute("aria-checked", on ? "true" : "false");
+      });
+    });
+  }
+
+  function setState(key, value) {
+    writeValue(key, value, true);
+    delete UiState.errors[key];
+    clearFieldErrorByKey(key);
+    applyTemplates(UiState.values);
+    applyWhen(UiState.values);
+  }
+
+  function onControlEvent(event) {
+    const el = event.target;
+    if (!el || !el.tagName) { return; }
+    const tag = el.tagName;
+    if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") { return; }
+    const key = stateKeyFor(el);
+    if (!key) { return; }
+    setState(key, readControlValue(el));
+  }
+
+  function onSegmentClick(event) {
+    const target = event.target;
+    if (!target || typeof target.closest !== "function") { return; }
+    const seg = target.closest(".jhin-segment");
+    if (!seg) { return; }
+    const group = seg.closest(".jhin-segmented");
+    if (!group) { return; }
+    const key = stateKeyFor(group);
+    const value = seg.getAttribute("data-jhin-value");
+    if (!key || value === null) { return; }
+    setState(key, value);
+  }
+
+  function initState(root) {
+    root.addEventListener("input", onControlEvent);
+    root.addEventListener("change", onControlEvent);
+    root.addEventListener("click", onSegmentClick);
+    seedState();
+  }
+
+  /* module 3: expr */
+
+
+  function isIdentStart(ch) {
+    return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_";
+  }
+
+  function isIdentPart(ch) {
+    return isIdentStart(ch) || (ch >= "0" && ch <= "9");
+  }
+
+  function isDigit(ch) {
+    return ch >= "0" && ch <= "9";
+  }
+
+  function tokenize(src) {
+    const tokens = [];
+    let i = 0;
+    const n = src.length;
+    while (i < n) {
+      const ch = src[i];
+      if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+        i += 1;
+        continue;
+      }
+      if (ch === "(" || ch === ")") {
+        tokens.push({ t: ch });
+        i += 1;
+        continue;
+      }
+      const two = src.slice(i, i + 2);
+      if (two === "==" || two === "!=" || two === ">=" || two === "<=" || two === "&&" || two === "||") {
+        tokens.push({ t: two });
+        i += 2;
+        continue;
+      }
+      if (ch === "!" || ch === ">" || ch === "<") {
+        tokens.push({ t: ch });
+        i += 1;
+        continue;
+      }
+      if (ch === "=" || ch === "&" || ch === "|") {
+        return null;
+      }
+      if (ch === '"' || ch === "'") {
+        let out = "";
+        let j = i + 1;
+        let closed = false;
+        while (j < n) {
+          const c = src[j];
+          if (c === "\\") {
+            const nx = src[j + 1];
+            if (nx === undefined) { return null; }
+            out += nx === "n" ? "\n" : nx === "t" ? "\t" : nx;
+            j += 2;
+            continue;
+          }
+          if (c === ch) {
+            closed = true;
+            j += 1;
+            break;
+          }
+          out += c;
+          j += 1;
+        }
+        if (!closed) { return null; }
+        tokens.push({ t: "str", v: out });
+        i = j;
+        continue;
+      }
+      if (isDigit(ch) || (ch === "-" && isDigit(src[i + 1]))) {
+        let j = ch === "-" ? i + 1 : i;
+        while (j < n && isDigit(src[j])) {
+          j += 1;
+        }
+        if (j < n && src[j] === ".") {
+          j += 1;
+          while (j < n && isDigit(src[j])) {
+            j += 1;
+          }
+        }
+        tokens.push({ t: "num", v: Number(src.slice(i, j)) });
+        i = j;
+        continue;
+      }
+      if (isIdentStart(ch)) {
+        let j = i + 1;
+        while (j < n && isIdentPart(src[j])) {
+          j += 1;
+        }
+        while (j + 1 < n && src[j] === "." && isIdentStart(src[j + 1])) {
+          j += 2;
+          while (j < n && isIdentPart(src[j])) {
+            j += 1;
+          }
+        }
+        const word = src.slice(i, j);
+        if (word === "true") {
+          tokens.push({ t: "bool", v: true });
+        } else if (word === "false") {
+          tokens.push({ t: "bool", v: false });
+        } else {
+          tokens.push({ t: "field", v: word });
+        }
+        i = j;
+        continue;
+      }
+      return null;
+    }
+    return tokens;
+  }
+
+  function parseTokens(tokens) {
+    let pos = 0;
+
+    function peek() {
+      return tokens[pos];
+    }
+
+    function accept(type) {
+      const tok = tokens[pos];
+      if (tok && tok.t === type) {
+        pos += 1;
+        return true;
+      }
+      return false;
+    }
+
+    function parseOr() {
+      let left = parseAnd();
+      if (!left) { return null; }
+      while (peek() && peek().t === "||") {
+        pos += 1;
+        const right = parseAnd();
+        if (!right) { return null; }
+        left = { k: "or", a: left, b: right };
+      }
+      return left;
+    }
+
+    function parseAnd() {
+      let left = parseEquality();
+      if (!left) { return null; }
+      while (peek() && peek().t === "&&") {
+        pos += 1;
+        const right = parseEquality();
+        if (!right) { return null; }
+        left = { k: "and", a: left, b: right };
+      }
+      return left;
+    }
+
+    function parseEquality() {
+      let left = parseComparison();
+      if (!left) { return null; }
+      while (peek() && (peek().t === "==" || peek().t === "!=")) {
+        const op = peek().t;
+        pos += 1;
+        const right = parseComparison();
+        if (!right) { return null; }
+        left = { k: op === "==" ? "eq" : "ne", a: left, b: right };
+      }
+      return left;
+    }
+
+    function parseComparison() {
+      let left = parseUnary();
+      if (!left) { return null; }
+      while (peek() && (peek().t === ">" || peek().t === ">=" || peek().t === "<" || peek().t === "<=")) {
+        const op = peek().t;
+        pos += 1;
+        const right = parseUnary();
+        if (!right) { return null; }
+        const kind = op === ">" ? "gt" : op === ">=" ? "ge" : op === "<" ? "lt" : "le";
+        left = { k: kind, a: left, b: right };
+      }
+      return left;
+    }
+
+    function parseUnary() {
+      if (peek() && peek().t === "!") {
+        pos += 1;
+        const operand = parseUnary();
+        if (!operand) { return null; }
+        return { k: "not", a: operand };
+      }
+      return parsePrimary();
+    }
+
+    function parsePrimary() {
+      const tok = tokens[pos];
+      if (!tok) { return null; }
+      pos += 1;
+      if (tok.t === "(") {
+        const inner = parseOr();
+        if (!inner) { return null; }
+        return accept(")") ? inner : null;
+      }
+      if (tok.t === "str" || tok.t === "num" || tok.t === "bool") {
+        return { k: "lit", v: tok.v };
+      }
+      if (tok.t === "field") { return { k: "field", v: tok.v }; }
+      return null;
+    }
+
+    const ast = parseOr();
+    if (!ast || pos !== tokens.length) { return null; }
+    return ast;
+  }
+
+  function resolveField(name, state) {
+    let path = name;
+    if (path.indexOf("state.") === 0) { path = path.slice(6); }
+    const parts = path.split(".");
+    let cur = state;
+    for (let i = 0; i < parts.length; i += 1) {
+      if (cur === null || cur === undefined || typeof cur !== "object") {
+        return undefined;
+      }
+      cur = cur[parts[i]];
+    }
+    return cur;
+  }
+
+  function runNode(node, state) {
+    if (node.k === "lit") { return node.v; }
+    if (node.k === "field") { return resolveField(node.v, state); }
+    if (node.k === "not") {
+      const v = runNode(node.a, state);
+      return typeof v === "boolean" ? !v : null;
+    }
+    if (node.k === "and" || node.k === "or") {
+      const a = runNode(node.a, state);
+      if (typeof a !== "boolean") { return null; }
+      if (node.k === "and" && a === false) { return false; }
+      if (node.k === "or" && a === true) { return true; }
+      const b = runNode(node.b, state);
+      return typeof b === "boolean" ? b : null;
+    }
+    if (node.k === "eq" || node.k === "ne") {
+      const a = runNode(node.a, state);
+      const b = runNode(node.b, state);
+      if (a === null || b === null) { return null; }
+      if (a === b) { return node.k === "eq"; }
+      if (typeof a !== typeof b) { return null; }
+      return node.k === "ne";
+    }
+    const a = runNode(node.a, state);
+    const b = runNode(node.b, state);
+    const bothNum = typeof a === "number" && typeof b === "number";
+    const bothStr = typeof a === "string" && typeof b === "string";
+    if (!bothNum && !bothStr) { return null; }
+    if (node.k === "gt") { return a > b; }
+    if (node.k === "ge") { return a >= b; }
+    if (node.k === "lt") { return a < b; }
+    return a <= b;
+  }
+
+  function runExpr(exprString, state) {
+    const tokens = tokenize(String(exprString));
+    if (tokens === null) { return null; }
+    const ast = parseTokens(tokens);
+    if (ast === null) { return null; }
+    return runNode(ast, state || {});
+  }
+
+  /* module 4: interpolate */
+
+  function templateParts(raw) {
+    const parts = [];
+    let buf = "";
+    let i = 0;
+    const n = raw.length;
+    while (i < n) {
+      const ch = raw[i];
+      if (ch === "$" && raw[i + 1] === "{") {
+        let j = i + 2;
+        let quote = null;
+        let closed = false;
+        while (j < n) {
+          const c = raw[j];
+          if (quote) {
+            if (c === "\\") {
+              j += 2;
+              continue;
+            }
+            if (c === quote) {
+              quote = null;
+            }
+            j += 1;
+            continue;
+          }
+          if (c === '"' || c === "'") {
+            quote = c;
+            j += 1;
+            continue;
+          }
+          if (c === "}") {
+            closed = true;
+            break;
+          }
+          j += 1;
+        }
+        if (!closed) {
+          buf += raw.slice(i);
+          i = n;
+          break;
+        }
+        if (buf !== "") {
+          parts.push({ lit: buf });
+          buf = "";
+        }
+        parts.push({ expr: raw.slice(i + 2, j) });
+        i = j + 1;
+        continue;
+      }
+      buf += ch;
+      i += 1;
+    }
+    if (buf !== "") { parts.push({ lit: buf }); }
+    return parts;
+  }
+
+  function applyTemplates(state) {
+    document.querySelectorAll("[data-jhin-template]").forEach((el) => {
+      const raw = el.getAttribute("data-jhin-template");
+      if (raw === null) { return; }
+      let out = "";
+      templateParts(raw).forEach((part) => {
+        if (part.lit !== undefined) {
+          out += part.lit;
+          return;
+        }
+        const value = runExpr(part.expr, state);
+        if (value === null || value === undefined) {
+          out += "${" + part.expr + "}";
+        } else {
+          out += String(value);
+        }
+      });
+      el.textContent = out;
+    });
+  }
+
+  function applyWhen(state) {
+    document.querySelectorAll("[data-jhin-when]").forEach((el) => {
+      const result = runExpr(el.getAttribute("data-jhin-when"), state);
+      if (result === false) {
+        el.setAttribute("hidden", "hidden");
+      } else {
+        el.removeAttribute("hidden");
+      }
+    });
+  }
+
+  /* module 5: screens + shell */
+
+  const SCREEN_CACHE_MAX = 50;
+  const NAV_STACK_MAX = 50;
+  const screenCache = new Map();
+  const inlineIds = new Set();
+  const navStack = [];
+  let currentScreenId = null;
+
+  const bootData = {
+    fallbacks: { offline: null, error: null },
+    entry: null,
+    theme: null,
+    density: null,
+    keymap: [],
+    palette: [],
+    screenEndpoint: "/ui/screen/{id}"
+  };
+
+  function cachePut(id, html) {
+    if (screenCache.has(id)) {
+      screenCache.delete(id);
+    }
+    screenCache.set(id, html);
+    while (screenCache.size > SCREEN_CACHE_MAX) {
+      let victim = null;
+      for (const key of screenCache.keys()) {
+        if (key !== currentScreenId && !inlineIds.has(key)) {
+          victim = key;
+          break;
+        }
+      }
+      if (victim === null) { return; }
+      screenCache.delete(victim);
+    }
+  }
+
+  function navPushCurrent() {
+    if (currentScreenId === null) { return; }
+    navStack.push(currentScreenId);
+    while (navStack.length > NAV_STACK_MAX) {
+      navStack.shift();
+    }
+  }
+
+  async function navGoBack() {
+    if (navStack.length === 0) { return; }
+    await showScreen(navStack.pop());
+  }
+
+  function screenPath(id) {
+    const template = bootData.screenEndpoint || "/ui/screen/{id}";
+    return template.replace("{id}", encodeURIComponent(id));
+  }
+
+  function renderScreen(id, html) {
+    const root = document.getElementById("jhin-root");
+    if (!root) { return; }
+    root.innerHTML = html;
+    currentScreenId = id;
+    seedState();
+    applyTemplates(UiState.values);
+    applyWhen(UiState.values);
+    syncStreams();
+  }
+
+  function refreshScreen(id) {
+    jhinFetch(screenPath(id), { method: "GET" })
+      .then((res) => {
+        if (res.status === 401 || res.status === 403) {
+          renderPairing();
+          return null;
+        }
+        return res.ok ? res.json() : null;
+      })
+      .then((payload) => {
+        if (!payload || typeof payload.html !== "string") { return; }
+        cachePut(id, payload.html);
+        if (currentScreenId === id) { renderScreen(id, payload.html); }
+      })
+      .catch(() => {
+        /* the stale copy stays on screen */
+      });
+  }
+
+  async function showScreen(id) {
+    const cached = screenCache.get(id);
+    if (typeof cached === "string") {
+      renderScreen(id, cached);
+      if (!inlineIds.has(id)) { refreshScreen(id); }
+      return;
+    }
+    try {
+      const res = await jhinFetch(screenPath(id), { method: "GET" });
+      if (res.status === 401 || res.status === 403) {
+        renderPairing();
+        return;
+      }
+      const payload = res.ok ? await res.json() : null;
+      if (!payload || typeof payload.html !== "string") {
+        renderUnavailable();
+        return;
+      }
+      cachePut(id, payload.html);
+      renderScreen(id, payload.html);
+    } catch {
+      renderUnavailable();
+    }
+  }
+
+  function applyTheme(theme, density) {
+    const doc = document.documentElement;
+    if (theme && typeof theme.appearance === "string") {
+      doc.dataset.appearance = theme.appearance;
+    }
+    if (typeof density === "string" && density !== "") {
+      doc.dataset.density = density;
+    }
+  }
+
+  function ingest(payload) {
+    screenCache.clear();
+    inlineIds.clear();
+    const list = Array.isArray(payload.screens) ? payload.screens : [];
+    list.forEach((entry) => {
+      if (!entry || typeof entry.id !== "string" || typeof entry.html !== "string") {
+        return;
+      }
+      cachePut(entry.id, entry.html);
+      inlineIds.add(entry.id);
+    });
+    const fallbacks = payload.fallbacks && typeof payload.fallbacks === "object" ? payload.fallbacks : {};
+    bootData.fallbacks.offline = typeof fallbacks.offline === "string" ? fallbacks.offline : null;
+    bootData.fallbacks.error = typeof fallbacks.error === "string" ? fallbacks.error : null;
+    bootData.entry = typeof payload.entry === "string" ? payload.entry : null;
+    bootData.theme = payload.theme && typeof payload.theme === "object" ? payload.theme : null;
+    bootData.density = typeof payload.density === "string" ? payload.density : null;
+    bootData.keymap = Array.isArray(payload.keymap) ? payload.keymap : [];
+    bootData.palette = Array.isArray(payload.palette) ? payload.palette : [];
+    keymapCache = null;
+    bootData.screenEndpoint = typeof payload.screenEndpoint === "string"
+      ? payload.screenEndpoint : "/ui/screen/{id}";
+
+    applyTheme(bootData.theme, bootData.density);
+    openOverview();
+
+    if (payload.empty === true) {
+      renderNotice(typeof payload.message === "string" ? payload.message
+        : "This server has no UI plugin installed.");
+      return;
+    }
+    if (bootData.entry !== null && bootData.entry !== "") {
+      showScreen(bootData.entry);
+      return;
+    }
+    if (list.length > 0 && typeof list[0].id === "string") {
+      showScreen(list[0].id);
+      return;
+    }
+    renderUnavailable();
+  }
+
+  async function bootstrap() {
+    let res;
+    try {
+      res = await jhinFetch("/_jhin/bootstrap", { method: "GET" });
+    } catch {
+      renderOffline();
+      return;
+    }
+    if (res.status === 401 || res.status === 403) {
+      renderPairing();
+      return;
+    }
+    if (res.status === 426) {
+      renderNotice("This server speaks the HTML UI contract (api=4). Upgrade your client.");
+      return;
+    }
+    if (!res.ok) {
+      renderUnavailable();
+      return;
+    }
+    let payload;
+    try {
+      payload = await res.json();
+    } catch {
+      renderUnavailable();
+      return;
+    }
+    ingest(payload);
+  }
+
+  function renderNotice(text) {
+    const root = document.getElementById("jhin-root");
+    if (!root) { return; }
+    root.textContent = "";
+    const note = document.createElement("p");
+    note.className = "jhin-notice";
+    note.setAttribute("role", "status");
+    note.textContent = text;
+    root.appendChild(note);
+    currentScreenId = null;
+  }
+
+  function renderHtmlOr(fallbackHtml, noticeText) {
+    const root = document.getElementById("jhin-root");
+    if (!root) { return; }
+    if (typeof fallbackHtml === "string" && fallbackHtml !== "") {
+      root.innerHTML = fallbackHtml;
+      currentScreenId = null;
+      seedState();
+      applyTemplates(UiState.values);
+      applyWhen(UiState.values);
+      return;
+    }
+    renderNotice(noticeText);
+  }
+
+  function renderOffline() {
+    renderHtmlOr(bootData.fallbacks.offline,
+      "The server is unreachable. Check the connection and reload the page.");
+  }
+
+  function renderUnavailable() {
+    renderHtmlOr(bootData.fallbacks.error,
+      "This server cannot render a screen right now. Reload the page to retry.");
+  }
+
+  function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) { node.className = cls; }
+    if (text !== undefined) { node.textContent = text; }
+    return node;
+  }
+
+  function renderPairing() {
+    const root = document.getElementById("jhin-root");
+    if (!root) { return; }
+    root.textContent = "";
+    currentScreenId = null;
+    const form = el("form", "jhin-pair-form");
+    form.appendChild(el("p", "jhin-surface-title", "Pair this device"));
+    const error = el("div", "jhin-banner jhin-pair-error");
+    error.id = "jhin-pair-error";
+    error.setAttribute("role", "alert");
+    error.hidden = true;
+    form.appendChild(error);
+    const codeInput = pairField(form, "jhin-pair-code", "code", "Enrollment code");
+    pairField(form, "jhin-pair-name", "deviceName", "Device name");
+    const submit = el("button", "jhin-button jhin-button-primary", "Pair");
+    submit.type = "submit";
+    form.appendChild(submit);
+    form.addEventListener("submit", submitPairing);
+    root.appendChild(form);
+    syncStreams();
+    codeInput.focus();
+  }
+
+  function pairField(form, id, name, label) {
+    const lab = el("label", null, label);
+    lab.setAttribute("for", id);
+    const input = el("input", "jhin-input");
+    input.id = id;
+    input.type = "text";
+    input.name = name;
+    input.autocomplete = "off";
+    form.appendChild(lab);
+    form.appendChild(input);
+    return input;
+  }
+
+  function showPairError(message) {
+    const box = document.getElementById("jhin-pair-error");
+    if (!box) { return; }
+    box.hidden = !message;
+    box.textContent = message || "";
+  }
+
+  function htmlFragmentText(html) {
+    return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function pairFailureMessage(body) {
+    if (body && typeof body.message === "string" && body.message !== "") {
+      return body.message;
+    }
+    const client = body && Array.isArray(body.client) ? body.client : [];
+    for (const item of client) {
+      if (item && item.op === "patch" && typeof item.html === "string") {
+        const text = htmlFragmentText(item.html);
+        if (text !== "") { return text; }
+      }
+    }
+    return "Enrollment failed. Check the code and try again.";
+  }
+
+  async function submitPairing(event) {
+    event.preventDefault();
+    const code = (document.getElementById("jhin-pair-code") || { value: "" }).value.trim();
+    const deviceName = (document.getElementById("jhin-pair-name") || { value: "" }).value.trim();
+    if (code === "" || deviceName === "") {
+      showPairError("The enrollment code and a device name are required.");
+      return;
+    }
+    let res;
+    try {
+      res = await jhinFetch("/ui/action/enroll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "enroll", payload: { code: code, deviceName: deviceName } })
+      });
+    } catch {
+      showPairError("The server is unreachable. Try again.");
+      return;
+    }
+    let body = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+    const client = body && Array.isArray(body.client) ? body.client : [];
+    const tokenOp = client.find((d) => d && d.op === "setToken" && typeof d.value === "string");
+    if (res.ok && tokenOp) {
+      writeToken(tokenOp.value);
+      showPairError(null);
+      bootstrap();
+      return;
+    }
+    showPairError(pairFailureMessage(body));
+  }
+
+  /* module 6: actions */
+
+
+  const OMIT = {};
+
+  function decodeAttrEntities(text) {
+    return text
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&");
+  }
+
+  function readActionJson(raw) {
+    if (typeof raw !== "string" || raw === "") { return null; }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      /* entity-laden source */
+    }
+    try {
+      return JSON.parse(decodeAttrEntities(raw));
+    } catch {
+      return null;
+    }
+  }
+
+  function nodeById(id) {
+    if (typeof id !== "string" || id === "") { return null; }
+    return document.getElementById(id)
+      || document.querySelector('[data-jhin-id="' + id.replace(/(["\\])/g, "\\$1") + '"]');
+  }
+
+  function boundNumber(raw) {
+    if (raw === null || raw === "") { return null; }
+    const n = Number(raw);
+    return Number.isNaN(n) ? null : n;
+  }
+
+  function fieldProblem(field, value) {
+    if (!field) { return null; }
+    const type = field.getAttribute("data-jhin-type");
+    if (type !== "input" && type !== "textarea") { return null; }
+    const text = value === undefined || value === null ? "" : String(value);
+    const errorText = field.getAttribute("data-jhin-error-text") || "Invalid value";
+    if (field.hasAttribute("required") && text === "") { return errorText; }
+    if (text === "") { return null; }
+    const pattern = field.getAttribute("pattern");
+    if (pattern !== null && pattern !== "") {
+      let regex = null;
+      try {
+        regex = new RegExp(pattern);
+      } catch {
+        regex = null;
+      }
+      if (regex !== null && !regex.test(text)) { return errorText; }
+    }
+    const min = boundNumber(field.getAttribute("min"));
+    const max = boundNumber(field.getAttribute("max"));
+    if (min !== null || max !== null) {
+      const asNumber = Number(text);
+      const numeric = text.trim() !== "" && !Number.isNaN(asNumber);
+      if (numeric) {
+        if ((min !== null && asNumber < min) || (max !== null && asNumber > max)) {
+          return errorText;
+        }
+      } else if ((min !== null && text.length < min) || (max !== null && text.length > max)) {
+        return errorText;
+      }
+    }
+    return null;
+  }
+
+  function setFieldError(field, message) {
+    if (!field) { return; }
+    field.removeAttribute("aria-invalid");
+    field.classList.remove("jhin-invalid");
+    const next = field.nextElementSibling;
+    if (next && next.classList.contains("jhin-field-error")) { next.remove(); }
+    if (message === null) { return; }
+    field.setAttribute("aria-invalid", "true");
+    field.classList.add("jhin-invalid");
+    const note = document.createElement("span");
+    note.className = "jhin-field-error";
+    note.setAttribute("role", "alert");
+    note.textContent = message;
+    if (field.parentNode) {
+      field.parentNode.insertBefore(note, field.nextSibling);
+    }
+  }
+
+  function clearFieldErrorByKey(key) {
+    document.querySelectorAll(".jhin-invalid").forEach((el) => {
+      if (stateKeyFor(el) === key) { setFieldError(el, null); }
+    });
+  }
+
+  function includeValue(type, value) {
+    const missing = value === undefined || value === null;
+    if (type === "input" || type === "textarea") { return missing ? "" : String(value); }
+    if (type === "checkbox" || type === "switch") { return value === true; }
+    if (type === "slider") {
+      if (typeof value === "number" && Number.isFinite(value)) { return value; }
+      const n = Number(value);
+      return missing || Number.isNaN(n) ? 0 : n;
+    }
+    return missing ? OMIT : value;
+  }
+
+  async function serverAction(action, payload) {
+    const name = typeof action.name === "string" ? action.name : "";
+    let body;
+    try {
+      const res = await jhinFetch(action.path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: name, payload: payload || {} })
+      });
+      if (res.status === 401 || res.status === 403) {
+        renderPairing();
+        return;
+      }
+      if (!res.ok) {
+        console.warn("jhin: action post failed:", action.path, res.status);
+        showToast("The action failed. Try again.", "error");
+        return;
+      }
+      body = await res.json();
+    } catch (failure) {
+      console.warn("jhin: action post failed:", failure);
+      showToast("The server is unreachable.", "error");
+      return;
+    }
+    if (body && Array.isArray(body.client)) {
+      await runDirectiveList(body.client);
+    }
+  }
+
+  async function dispatchAction(action, host) {
+    if (!action || typeof action !== "object") { return; }
+    const path = action.path;
+    if (typeof path !== "string" || path === "") {
+      const inline = action.client;
+      if (Array.isArray(inline) && inline.length > 0) {
+        await runDirectiveList(inline);
+        return;
+      }
+      if (typeof action.op === "string" && action.op !== "") {
+        await runDirectiveList([action]);
+        return;
+      }
+      console.warn("jhin: ignoring action without a path:", action);
+      return;
+    }
+    const include = Array.isArray(action.include) ? action.include.filter((id) => typeof id === "string") : [];
+    let failed = false;
+    for (const id of include) {
+      const field = nodeById(id);
+      const problem = fieldProblem(field, UiState.values[id]);
+      setFieldError(field, problem);
+      if (problem === null) {
+        delete UiState.errors[id];
+      } else {
+        UiState.errors[id] = problem;
+        failed = true;
+      }
+    }
+    if (failed) { return; }
+    const payload = {};
+    const staticPayload = action.payload;
+    if (staticPayload && typeof staticPayload === "object") {
+      Object.assign(payload, staticPayload);
+    }
+    for (const id of include) {
+      const field = nodeById(id);
+      const value = includeValue(field ? field.getAttribute("data-jhin-type") : null, UiState.values[id]);
+      if (value !== OMIT) { payload[id] = value; }
+    }
+    const message = host ? host.getAttribute("data-jhin-confirm") : null;
+    if (message && !(await confirmPrompt(message))) { return; }
+    await serverAction(action, payload);
+  }
+
+  function actionHostFrom(target) {
+    if (!target || typeof target.closest !== "function") { return null; }
+    return target.closest("[data-jhin-action]");
+  }
+
+  function onActionEvent(event) {
+    const host = actionHostFrom(event.target);
+    if (!host) { return; }
+    event.preventDefault();
+    const action = readActionJson(host.getAttribute("data-jhin-action"));
+    if (!action) {
+      console.warn("jhin: ignoring unparseable action:",
+        host.getAttribute("data-jhin-action"));
+      return;
+    }
+    dispatchAction(action, host);
+  }
+
+  function initActions(root, overlays) {
+    root.addEventListener("click", onActionEvent);
+    root.addEventListener("submit", onActionEvent);
+    if (overlays) {
+      overlays.addEventListener("click", onActionEvent);
+      overlays.addEventListener("submit", onActionEvent);
+    }
+  }
+
+  /* module 7: directives */
+
+
+  let dialogLayer = null;
+
+  function malformedDirective(op, directive) {
+    console.warn("jhin: ignoring malformed directive:", op, directive);
+  }
+
+  async function runDirectiveList(list) {
+    for (const item of list) {
+      if (!item || typeof item !== "object") {
+        console.warn("jhin: ignoring malformed directive:", item);
+        continue;
+      }
+      try {
+        await runDirective(item);
+      } catch (failure) {
+        console.warn("jhin: directive failed:", item, failure);
+      }
+    }
+  }
+
+  async function runDirective(directive) {
+    const op = directive.op;
+    if (typeof op !== "string" || op === "") {
+      console.warn("jhin: ignoring directive without an op:", directive);
+      return;
+    }
+    switch (op) {
+      case "navigate": {
+        const screen = directive.screen;
+        if (typeof screen !== "string" || screen === "") { return malformedDirective(op, directive); }
+        navPushCurrent();
+        await showScreen(screen);
+        break;
+      }
+      case "back":
+        await navGoBack();
+        break;
+      case "replace": {
+        const screen = directive.screen;
+        if (typeof screen !== "string" || screen === "") { return malformedDirective(op, directive); }
+        await showScreen(screen);
+        break;
+      }
+      case "refresh":
+        if (currentScreenId !== null) {
+          refreshScreen(currentScreenId);
+        }
+        break;
+      case "reloadBootstrap":
+        await bootstrap();
+        break;
+      case "setToken": {
+        const value = directive.value;
+        if (typeof value !== "string") { return malformedDirective(op, directive); }
+        writeToken(value);
+        break;
+      }
+      case "clearToken":
+        writeToken("");
+        break;
+      case "setServerUrl":
+        console.warn("jhin: setServerUrl is not available in the web runtime");
+        break;
+      case "openProfiles":
+        console.warn("jhin: openProfiles is not available in the web runtime");
+        break;
+      case "toast": {
+        const text = directive.text;
+        if (typeof text !== "string") { return malformedDirective(op, directive); }
+        if (directive.action && typeof directive.action === "object") {
+          showUndoNotice(text, directive.action,
+            typeof directive.duration === "number" ? directive.duration : 5000);
+        } else {
+          showToast(text, typeof directive.style === "string" ? directive.style : null);
+        }
+        break;
+      }
+      case "dialog": {
+        const html = directive.html;
+        if (typeof html !== "string") {
+          return malformedDirective(op, directive);
+        }
+        openDialogOverlay(html, typeof directive.kind === "string" ? directive.kind : null);
+        break;
+      }
+      case "dismissDialog":
+        closeDialogOverlay();
+        break;
+      case "setState": {
+        const id = directive.id;
+        if (typeof id !== "string" || id === "") { return malformedDirective(op, directive); }
+        setState(id, directive.value);
+        break;
+      }
+      case "patch": {
+        const id = directive.id;
+        const html = directive.html;
+        if (typeof id !== "string" || typeof html !== "string") { return malformedDirective(op, directive); }
+        applyPatch(id, html);
+        break;
+      }
+      case "setScreen": {
+        const id = directive.id;
+        const html = directive.html;
+        if (typeof id !== "string" || typeof html !== "string") { return malformedDirective(op, directive); }
+        cachePut(id, html);
+        inlineIds.add(id);
+        if (currentScreenId === id) {
+          renderScreen(id, html);
+        }
+        break;
+      }
+      case "openUrl": {
+        const value = directive.value;
+        if (typeof value !== "string") { return malformedDirective(op, directive); }
+        window.open(value, "_blank", "noopener");
+        break;
+      }
+      case "undo":
+        await serverAction({ path: "/ui/action/undo", name: "undo" }, {});
+        break;
+      default:
+        console.warn("jhin: ignoring unknown directive op:", op);
+    }
+  }
+
+  function applyPatch(id, html) {
+    const target = nodeById(id);
+    if (!target) {
+      console.warn("jhin: patch target not found:", id);
+      return;
+    }
+    swapInner(target, html);
+    seedState();
+  }
+
+  function withFocusRestore(el, swap) {
+    const active = document.activeElement;
+    let key = null;
+    let start = null;
+    let end = null;
+    if (active && el.contains(active)) {
+      key = active.getAttribute("data-jhin-id") || active.id || null;
+      try {
+        start = active.selectionStart;
+        end = active.selectionEnd;
+      } catch {
+        /* not a text control */
+      }
+    }
+    swap();
+    if (key === null) { return; }
+    const back = nodeById(key);
+    if (!back || typeof back.focus !== "function") { return; }
+    back.focus();
+    if (start !== null && typeof back.setSelectionRange === "function") {
+      try {
+        back.setSelectionRange(start, end);
+      } catch {
+        /* selection not restorable */
+      }
+    }
+  }
+
+  function swapInner(el, html) {
+    withFocusRestore(el, () => { el.innerHTML = html; });
+  }
+
+  function swapOuter(el, html) {
+    withFocusRestore(el, () => { el.outerHTML = html; });
+  }
+
+  function overlaysRoot() {
+    let overlays = document.getElementById("jhin-overlays");
+    if (!overlays) {
+      overlays = document.createElement("div");
+      overlays.id = "jhin-overlays";
+      document.body.appendChild(overlays);
+    }
+    return overlays;
+  }
+
+  function confirmPrompt(message) {
+    return new Promise((resolve) => {
+      const dialog = el("dialog", "jhin-confirm");
+      dialog.appendChild(el("p", "jhin-confirm-message", message));
+      const actions = el("div", "jhin-confirm-actions");
+      const cancel = el("button", "jhin-button jhin-button-text", "Cancel");
+      cancel.type = "button";
+      cancel.addEventListener("click", () => dialog.close("cancel"));
+      const accept = el("button", "jhin-button jhin-button-primary", "Accept");
+      accept.type = "button";
+      accept.addEventListener("click", () => dialog.close("accept"));
+      actions.appendChild(cancel);
+      actions.appendChild(accept);
+      dialog.appendChild(actions);
+      dialog.addEventListener("close", () => {
+        dialog.remove();
+        resolve(dialog.returnValue === "accept");
+      });
+      overlaysRoot().appendChild(dialog);
+      dialog.showModal();
+      accept.focus();
+    });
+  }
+
+  function showToast(text, style) {
+    let stack = document.querySelector("#jhin-overlays .jhin-toast-stack");
+    if (!stack) {
+      stack = document.createElement("div");
+      stack.className = "jhin-toast-stack";
+      overlaysRoot().appendChild(stack);
+    }
+    const toast = document.createElement("div");
+    toast.className = "jhin-toast" + (style === "error" ? " jhin-toast-error" : "");
+    toast.setAttribute("role", "status");
+    toast.textContent = text;
+    stack.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+  }
+
+  function showUndoNotice(text, action, duration) {
+    const notice = el("div", "jhin-undo");
+    notice.setAttribute("role", "status");
+    notice.appendChild(el("span", "jhin-undo-label", text));
+    const undo = el("button", "jhin-toast-action jhin-undo-action", "Undo");
+    undo.type = "button";
+    undo.addEventListener("click", () => {
+      notice.remove();
+      dispatchAction(action, null);
+    });
+    const close = el("button", "jhin-toast-action jhin-undo-close", "Close");
+    close.type = "button";
+    close.addEventListener("click", () => notice.remove());
+    notice.appendChild(undo);
+    notice.appendChild(close);
+    overlaysRoot().appendChild(notice);
+    setTimeout(() => notice.remove(), duration);
+  }
+
+  function openDialogOverlay(html, kind) {
+    closeDialogOverlay();
+    const layer = document.createElement("div");
+    layer.className = "jhin-dialog-layer" + (kind === "sheet" ? " jhin-dialog-layer-sheet" : "");
+    layer.innerHTML = html;
+    overlaysRoot().appendChild(layer);
+    dialogLayer = layer;
+    seedState();
+    applyTemplates(UiState.values);
+    applyWhen(UiState.values);
+  }
+
+  function closeDialogOverlay() {
+    if (dialogLayer !== null) {
+      dialogLayer.remove();
+      dialogLayer = null;
+    }
+  }
+
+  /* module 8: sse */
+
+  /* Frame transport (sdui.md sec. 5): fetch-stream primary (the bearer
+     filter guards /ui/stream/*); EventSource only without a token; our
+     reconnect, backoff 0.5s..30s; replay from frame ids, idempotent. */
+
+  const ANCHOR_PX = 24;
+  const streams = new Map();
+  let overviewStream = null;
+
+  function streamPathOf(topic) {
+    return topic.split("?")[0];
+  }
+
+  function applyFrame(frame, st) {
+    if (!frame || typeof frame !== "object") { return; }
+    const view = st.view;
+    const item = frame.node || frame.patch || frame.replace;
+    const id = typeof frame.remove === "string" ? frame.remove
+      : (item && typeof item.id === "string" ? item.id : null);
+    if (id !== null) {
+      st.lastId = id;
+      const match = /^(?:ev|msg)-(\d+)/.exec(id);
+      if (match && Number(match[1]) > st.lastSeq) {
+        st.lastSeq = Number(match[1]);
+      }
+    }
+    if (Array.isArray(frame.client)) {
+      runDirectiveList(frame.client);
+      return;
+    }
+    const follow = view && view.getAttribute("data-jhin-auto-scroll") === "true"
+      && view.scrollHeight - view.scrollTop - view.clientHeight <= ANCHOR_PX;
+    if (typeof frame.remove === "string") {
+      st.dead.add(frame.remove);
+      const gone = nodeById(frame.remove);
+      if (gone) { gone.remove(); }
+      if (follow) { view.scrollTop = view.scrollHeight; }
+      return;
+    }
+    if (!item || typeof item.html !== "string") {
+      console.warn("jhin: ignoring unknown frame:", frame);
+      return;
+    }
+    if (frame.patch) {
+      applyPatch(item.id, item.html);
+      return;
+    }
+    if (frame.node) {
+      if (id !== null && st.dead.has(id)) { return; }
+      const existing = id === null ? null : nodeById(id);
+      if (view && view.getAttribute("data-jhin-mode") === "replace") {
+        swapInner(view, item.html);
+      } else if (existing) {
+        swapOuter(existing, item.html);
+      } else if (view) {
+        view.insertAdjacentHTML("beforeend", item.html);
+      } else {
+        console.warn("jhin: node frame without a stream view:", id);
+        return;
+      }
+    } else {
+      const target = nodeById(id);
+      if (!target) {
+        console.warn("jhin: frame target not found:", id);
+        return;
+      }
+      swapOuter(target, item.html);
+      seedState();
+    }
+    if (follow) { view.scrollTop = view.scrollHeight; }
+  }
+
+  function streamUrl(st) {
+    return st.lastSeq > 0 ? st.path + "?fromSeq=" + st.lastSeq : st.topic;
+  }
+
+  function openStream(topic, view) {
+    const st = {
+      topic: topic, path: streamPathOf(topic), view: view,
+      dead: new Set(), lastId: null, lastSeq: 0,
+      wait: 500, timer: null, cancel: null, closed: false
+    };
+    connect(st);
+    return st;
+  }
+
+  function closeStream(st) {
+    st.closed = true;
+    clearTimeout(st.timer);
+    if (st.cancel) { st.cancel(); st.cancel = null; }
+  }
+
+  function scheduleReconnect(st) {
+    if (st.closed) { return; }
+    const delay = st.wait;
+    st.wait = Math.min(st.wait * 2, 30000);
+    st.timer = setTimeout(() => connect(st), delay);
+  }
+
+  function connect(st) {
+    if (st.closed) { return; }
+    if (st.view && !st.view.isConnected) {
+      closeStream(st);
+      streams.delete(st.path);
+      return;
+    }
+    if (readToken() || typeof EventSource === "undefined") {
+      fetchLoop(st);
+    } else {
+      esLoop(st);
+    }
+  }
+
+  async function fetchLoop(st) {
+    const controller = new AbortController();
+    st.cancel = () => controller.abort();
+    try {
+      const headers = { Accept: "text/event-stream" };
+      if (st.lastId) { headers["Last-Event-ID"] = st.lastId; }
+      const res = await jhinFetch(streamUrl(st), {
+        headers: headers,
+        signal: controller.signal
+      });
+      if (!res.ok || !res.body) { throw new Error("stream status " + res.status); }
+      st.wait = 500;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const step = await reader.read();
+        if (step.done) { break; }
+        buffer += decoder.decode(step.value, { stream: true });
+        let cut = buffer.indexOf("\n\n");
+        while (cut >= 0) {
+          onSseBlock(st, buffer.slice(0, cut));
+          buffer = buffer.slice(cut + 2);
+          cut = buffer.indexOf("\n\n");
+        }
+      }
+    } catch (failure) {
+      if (st.closed || controller.signal.aborted) { return; }
+      console.warn("jhin: stream reconnecting:", st.path, failure);
+    }
+    if (!st.closed) { scheduleReconnect(st); }
+  }
+
+  function onFrameData(st, raw) {
+    try {
+      applyFrame(JSON.parse(raw), st);
+    } catch (failure) {
+      console.warn("jhin: ignoring undecodable frame:", failure);
+    }
+  }
+
+  function onSseBlock(st, block) {
+    let data = "";
+    block.split("\n").forEach((line) => {
+      if (line.startsWith("data:")) {
+        data += (data ? "\n" : "") + line.slice(5).replace(/^ /, "");
+      }
+    });
+    if (data) { onFrameData(st, data); }
+  }
+
+  function esLoop(st) {
+    let es;
+    try {
+      es = new EventSource(streamUrl(st));
+    } catch {
+      scheduleReconnect(st);
+      return;
+    }
+    st.cancel = () => es.close();
+    const onEvent = (event) => onFrameData(st, event.data);
+    es.addEventListener("frame", onEvent);
+    es.addEventListener("message", onEvent);
+    es.onopen = () => { st.wait = 500; };
+    es.onerror = () => {
+      es.close();
+      if (!st.closed) { scheduleReconnect(st); }
+    };
+  }
+
+  function syncStreams() {
+    const seen = new Set();
+    document.querySelectorAll("[data-jhin-type='stream_view'][data-jhin-topic]")
+      .forEach((view) => {
+        const topic = view.getAttribute("data-jhin-topic");
+        if (!topic) { return; }
+        const path = streamPathOf(topic);
+        seen.add(path);
+        const live = streams.get(path);
+        if (live) {
+          live.view = view;
+        } else {
+          streams.set(path, openStream(topic, view));
+        }
+      });
+    streams.forEach((st, path) => {
+      if (!seen.has(path)) {
+        closeStream(st);
+        streams.delete(path);
+      }
+    });
+  }
+
+  function openOverview() {
+    if (overviewStream === null) {
+      overviewStream = openStream("/ui/stream/sessions-overview", null);
+    }
+  }
+
+  /* module 9: keymap */
+
+  /* Section 4.1 keybinding runtime: chords (mod = Cmd on macOS), live
+     contexts, last-match-wins, a command table. */
+
+  const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+
+  const KEY_ALIASES = {
+    arrowup: "up", arrowdown: "down", arrowleft: "left", arrowright: "right",
+    esc: "escape", " ": "space", spacebar: "space", del: "delete"
+  };
+
+  const KEY_TOKENS = new Set();
+  "enter escape tab space backspace delete up down left right home end pageup pagedown"
+    .split(" ").forEach((token) => KEY_TOKENS.add(token));
+  for (let i = 0; i < 36; i += 1) {
+    KEY_TOKENS.add(i < 26 ? String.fromCharCode(97 + i) : String(i - 26));
+  }
+  for (let i = 1; i <= 12; i += 1) {
+    KEY_TOKENS.add("f" + i);
+  }
+  KEY_TOKENS.add("[");
+  KEY_TOKENS.add("]");
+
+  function chordId(mods, key) {
+    return (mods.ctrl ? "ctrl+" : "") + (mods.alt ? "alt+" : "")
+      + (mods.shift ? "shift+" : "") + (mods.meta ? "meta+" : "") + key;
+  }
+
+  function parseChord(spec) {
+    if (typeof spec !== "string") { return null; }
+    const parts = spec.split("+").map((part) => part.trim().toLowerCase());
+    const key = KEY_ALIASES[parts[parts.length - 1]] || parts[parts.length - 1];
+    if (!KEY_TOKENS.has(key)) { return null; }
+    const mods = { ctrl: false, alt: false, shift: false, meta: false };
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      const mod = parts[i];
+      if (mod === "mod") {
+        mods[IS_MAC ? "meta" : "ctrl"] = true;
+      } else if (mod === "ctrl" || mod === "control") {
+        mods.ctrl = true;
+      } else if (mod === "alt" || mod === "shift" || mod === "meta") {
+        mods[mod] = true;
+      } else {
+        return null;
+      }
+    }
+    return chordId(mods, key);
+  }
+
+  function chordFromEvent(event) {
+    const raw = event.key;
+    if (!raw || raw === "Shift" || raw === "Control" || raw === "Alt" || raw === "Meta") { return null; }
+    const key = KEY_ALIASES[raw.toLowerCase()] || raw.toLowerCase();
+    return KEY_TOKENS.has(key) ? chordId({
+      ctrl: event.ctrlKey === true, alt: event.altKey === true,
+      shift: event.shiftKey === true, meta: event.metaKey === true
+    }, key) : null;
+  }
+
+  let keymapCache = null;
+
+  /* User keymap overrides: the jhin.keybindings store (sdui.md sec. 8). */
+  function readKeyOverrides() {
+    let raw = null;
+    try { raw = window.localStorage.getItem("jhin.keybindings"); }
+    catch { return []; }
+    if (!raw) { return []; }
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch {
+      console.warn("jhin: unparseable jhin.keybindings");
+      return [];
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      console.warn("jhin: jhin.keybindings is not a map");
+      return [];
+    }
+    const out = [];
+    Object.keys(parsed).forEach((spec) => {
+      const value = parsed[spec];
+      if (parseChord(spec) === null) {
+        console.warn("jhin: bad keybinding chord:", spec);
+        return;
+      }
+      const isStr = typeof value === "string" && value !== "";
+      const isObj = !!value && typeof value === "object";
+      const command = isStr ? value
+        : isObj && typeof value.command === "string" && value.command !== "" ? value.command : null;
+      const action = isObj
+        ? (value.action && typeof value.action === "object" ? value.action
+          : (Array.isArray(value.client) || typeof value.path === "string"
+            || typeof value.op === "string") ? value : null)
+        : null;
+      if (command === null && action === null) {
+        console.warn("jhin: bad keybinding entry:", spec);
+        return;
+      }
+      out.push({
+        key: spec, command: command, when: value.when, action: action
+      });
+    });
+    return out;
+  }
+
+  function normalizeRule(raw) {
+    if (!raw || typeof raw !== "object") { return null; }
+    const chord = parseChord(raw.key);
+    if (chord === null) { return null; }
+    return {
+      chord: chord,
+      command: typeof raw.command === "string" && raw.command !== "" ? raw.command : null,
+      when: typeof raw.when === "string" && raw.when !== "" ? raw.when : null,
+      action: raw.action && typeof raw.action === "object" ? raw.action : null
+    };
+  }
+
+  /* Effective keymap: overrides replace per-command defaults, inherit when. */
+  function effectiveKeymap() {
+    if (keymapCache !== null) { return keymapCache; }
+    const defaults = (Array.isArray(bootData.keymap) ? bootData.keymap : [])
+      .map(normalizeRule).filter((rule) => rule !== null);
+    const overrides = readKeyOverrides()
+      .map(normalizeRule).filter((rule) => rule !== null);
+    const replaced = new Map();
+    overrides.forEach((rule) => {
+      if (rule.command !== null) { replaced.set(rule.command, null); }
+    });
+    defaults.forEach((rule) => {
+      if (rule.command !== null && rule.when && replaced.has(rule.command) && !replaced.get(rule.command)) {
+        replaced.set(rule.command, rule.when);
+      }
+    });
+    keymapCache = defaults.filter(
+      (rule) => rule.command === null || !replaced.has(rule.command));
+    overrides.forEach((rule) => {
+      keymapCache.push({
+        chord: rule.chord, command: rule.command,
+        when: rule.when || replaced.get(rule.command) || null,
+        action: rule.action
+      });
+    });
+    return keymapCache;
+  }
+
+  const NON_TEXT_TYPES = /checkbox|radio|range|button|submit|reset|file|color|image/;
+
+  function keyContexts() {
+    const active = document.activeElement;
+    const tag = active ? active.tagName : "";
+    const type = active && active.getAttribute ? (active.getAttribute("type") || "text").toLowerCase() : "";
+    const editable = !!active && (tag === "TEXTAREA" || tag === "SELECT"
+      || (tag === "INPUT" && !NON_TEXT_TYPES.test(type))
+      || active.isContentEditable === true);
+    const inside = (sel) => !!active && typeof active.closest === "function" && !!active.closest(sel);
+    const dialogOpen = dialogLayer !== null || !!document.querySelector("#jhin-overlays dialog[open]");
+    const ctx = Object.create(null);
+    ctx.terminalFocus = inside('[data-jhin-id*="terminal"], [data-jhin-type*="terminal"]');
+    ctx.terminalOpen = UiState.values.chat_terminal === true || UiState.values.chat_terminal === "true";
+    ctx.previewFocus = inside('[data-jhin-id*="preview"]');
+    ctx.previewOpen = !!document.querySelector('[data-jhin-id*="preview"]');
+    ctx.modelPickerOpen = dialogLayer !== null && !!dialogLayer.querySelector('[data-jhin-id*="model"]');
+    ctx.usagePageOpen = currentScreenId === "usage";
+    ctx.composerFocus = editable && inside('[data-jhin-id="composer"], [data-jhin-id="messageInput"]');
+    ctx.composerDraft = typeof UiState.values.messageInput === "string"
+      && UiState.values.messageInput.trim() !== "";
+    ctx.turnRunning = !!document.querySelector('[data-jhin-id$="-working"]');
+    ctx.editableFocus = editable;
+    ctx.isWeb = true;
+    ctx.isDesktop = false;
+    ctx.sidebarFocus = inside('[data-jhin-type="nav"], [data-jhin-id*="sidebar"], [role="navigation"]');
+    ctx.paletteOpen = dialogLayer !== null && dialogLayer.classList.contains("jhin-palette-layer");
+    ctx.modalOpen = dialogOpen;
+    ctx.inputFocus = editable;
+    ctx.dialogOpen = dialogOpen;
+    ctx.listFocus = inside('[data-jhin-type="list"], [role="list"], [role="listbox"], [role="menu"]');
+    return ctx;
+  }
+
+  function whenHolds(exprString, contexts) {
+    const proxy = new Proxy(contexts, {
+      get(target, name) {
+        return typeof name === "string" && name in target ? target[name] : false;
+      }
+    });
+    return runExpr(exprString, proxy);
+  }
+
+  function matchKeyRule(chord, contexts) {
+    const rules = effectiveKeymap();
+    const typing = contexts.composerFocus || contexts.editableFocus;
+    for (let i = rules.length - 1; i >= 0; i -= 1) {
+      const rule = rules[i];
+      if (rule.chord !== chord) { continue; }
+      if (!rule.when) {
+        if (typing) { continue; }
+        return rule;
+      }
+      if (whenHolds(rule.when, contexts) === true) { return rule; }
+    }
+    return null;
+  }
+
+  const PICKER_HOOKS = {
+    "modelPicker.toggle": "composer-model-picker",
+    "composer.host": "composer-host-picker",
+    "composer.effort": "composer-effort-picker",
+    "composer.mode": "composer-mode-picker",
+    "composer.workspace": "composer-workspace-picker",
+    "composer.branch": "composer-branch-picker",
+    "composer.previousWorktree": "composer-worktree-picker"
+  };
+
+  function clickHook(id) {
+    const el = nodeById(id);
+    if (el && typeof el.click === "function") {
+      el.click();
+      return true;
+    }
+    return false;
+  }
+
+  function actionByActionName(name) {
+    const nodes = document.querySelectorAll("[data-jhin-action]");
+    for (let i = 0; i < nodes.length; i += 1) {
+      const parsed = readActionJson(nodes[i].getAttribute("data-jhin-action"));
+      if (parsed && parsed.name === name) { return { el: nodes[i], action: parsed }; }
+    }
+    return null;
+  }
+
+  function dispatchCommand(command) {
+    if (command === "composer.send" || command === "composer.sendAndNew") {
+      const send = actionByActionName("send");
+      if (!send) { return false; }
+      dispatchAction(send.action, send.el);
+      if (command === "composer.sendAndNew") {
+        const create = actionByActionName("create-session");
+        if (create) { dispatchAction(create.action, create.el); }
+      }
+      return true;
+    }
+    if (command === "nav.back" || command === "navigation.back") {
+      navGoBack();
+      return true;
+    }
+    if (command === "thread.undo") {
+      dispatchAction({ path: "/ui/action/undo", name: "undo" }, null);
+      return true;
+    }
+    if (command === "thread.new" || command === "chat.newWithoutProject") {
+      if (clickHook("new-thread") || clickHook("new-session")) { return true; }
+      const create = actionByActionName("create-session");
+      if (!create) { return false; }
+      dispatchAction(create.action, create.el);
+      return true;
+    }
+    if (command === "palette.open") {
+      openPalette();
+      return true;
+    }
+    if (PICKER_HOOKS[command]) { return clickHook(PICKER_HOOKS[command]); }
+    return false;
+  }
+
+  function openPalette() {
+    closeDialogOverlay();
+    const layer = el("div", "jhin-dialog-layer jhin-palette-layer");
+    const box = el("div", "jhin-palette");
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", "Command palette");
+    const list = el("div", "jhin-palette-list");
+    (Array.isArray(bootData.palette) ? bootData.palette : []).forEach((group) => {
+      (group && Array.isArray(group.items) ? group.items : []).forEach((item) => {
+        if (!item || typeof item.id !== "string" || item.id === "") { return; }
+        const row = el("button", "jhin-palette-row");
+        row.type = "button";
+        row.appendChild(el("span", "jhin-palette-label",
+          typeof item.label === "string" ? item.label : item.id));
+        if (typeof item.chord === "string" && item.chord !== "") {
+          row.appendChild(el("kbd", "jhin-palette-chord", item.chord));
+        }
+        row.addEventListener("click", () => {
+          if (item.demo === true) {
+            showToast("Preview only — not available in this build");
+            return;
+          }
+          closeDialogOverlay();
+          dispatchCommand(item.id);
+        });
+        list.appendChild(row);
+      });
+    });
+    box.appendChild(list);
+    layer.appendChild(box);
+    overlaysRoot().appendChild(layer);
+    dialogLayer = layer;
+    const first = list.querySelector(".jhin-palette-row");
+    if (first) { first.focus(); }
+  }
+
+  function onKeydown(event) {
+    if (event.defaultPrevented) { return; }
+    const chord = chordFromEvent(event);
+    if (chord === null) { return; }
+    const contexts = keyContexts();
+    const key = chord.slice(chord.lastIndexOf("+") + 1);
+    if (key === "f5" || chord === (IS_MAC ? "meta+r" : "ctrl+r")) { return; }
+    if (contexts.editableFocus && (chord === "ctrl+c" || chord === "ctrl+v"
+        || chord === "ctrl+x" || chord === "ctrl+a" || chord === "meta+c"
+        || chord === "meta+v" || chord === "meta+x" || chord === "meta+a")) {
+      return;
+    }
+    if (document.querySelector("#jhin-overlays dialog[open]")) { return; }
+    const rule = matchKeyRule(chord, contexts);
+    if (!rule) {
+      if (chord === "escape" && dialogLayer !== null) {
+        closeDialogOverlay();
+        event.preventDefault();
+      }
+      return;
+    }
+    let handled = false;
+    if (rule.action) {
+      dispatchAction(rule.action, null);
+      handled = true;
+    } else if (rule.command) {
+      handled = dispatchCommand(rule.command);
+    }
+    if (handled) { event.preventDefault(); }
+  }
+
+  function initKeymap() {
+    document.addEventListener("keydown", onKeydown, true);
+    window.addEventListener("storage", (event) => {
+      if (!event || event.key === null || event.key === "jhin.keybindings") {
+        keymapCache = null;
+      }
+    });
+  }
+
+  function shell() {
+    let root = document.getElementById("jhin-root");
+    if (!root) {
+      root = document.createElement("div");
+      root.id = "jhin-root";
+      document.body.appendChild(root);
+    }
+    let overlays = document.getElementById("jhin-overlays");
+    if (!overlays) {
+      overlays = document.createElement("div");
+      overlays.id = "jhin-overlays";
+      document.body.appendChild(overlays);
+    }
+    initState(root);
+    initActions(root, overlays);
+    initKeymap();
+  }
+
+  function boot() {
+    shell();
+    bootstrap();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+</body>
+</html>

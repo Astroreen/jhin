@@ -1,0 +1,15 @@
+event: frame
+data: {"node":{"id":"ev-1","html":"<div data-jhin-type=\"container\" id=\"ev-1\" data-jhin-id=\"ev-1\" style=\"justify-self: end; align-self: center\" class=\"jhin-container\"><section data-jhin-type=\"card\" id=\"ev-1-bubble\" data-jhin-id=\"ev-1-bubble\" style=\"background-color: var(--color-message); border-radius: var(--radius-xl2); padding: 12px; max-width: 560px\" class=\"jhin-card\"><p data-jhin-type=\"text\" style=\"color: var(--color-message-foreground)\" class=\"jhin-text jhin-text-body\">Fix the login bug in the auth module</p></section><div data-jhin-type=\"row\" id=\"ev-1-actions\" data-jhin-id=\"ev-1-actions\" style=\"justify-self: center; align-self: center\" class=\"jhin-row\"><button data-jhin-type=\"button\" type=\"button\" class=\"jhin-button jhin-button-primary\" data-jhin-action='{&quot;op&quot;:&quot;setState&quot;,&quot;id&quot;:&quot;ev-1-actions-Copy&quot;,&quot;value&quot;:true}'>Copy</button><button data-jhin-type=\"button\" type=\"button\" class=\"jhin-button jhin-button-primary\" data-jhin-action='{&quot;op&quot;:&quot;setState&quot;,&quot;id&quot;:&quot;ev-1-actions-Edit&quot;,&quot;value&quot;:true}'>Edit</button><button data-jhin-type=\"button\" type=\"button\" class=\"jhin-button jhin-button-primary\" data-jhin-action='{&quot;op&quot;:&quot;setState&quot;,&quot;id&quot;:&quot;ev-1-actions-Retry&quot;,&quot;value&quot;:true}'>Retry</button></div></div>"}}
+
+event: frame
+data: {"node":{"id":"ev-2","html":"<div data-jhin-type=\"container\" id=\"ev-2\" data-jhin-id=\"ev-2\" class=\"jhin-container\"><div data-jhin-type=\"row\" id=\"ev-2-working\" data-jhin-id=\"ev-2-working\" style=\"justify-self: center; align-self: center\" class=\"jhin-row\"><div data-jhin-type=\"progress\" style=\"width: 14px; height: 14px\" class=\"jhin-progress\" role=\"progressbar\"></div><span data-jhin-type=\"text\" style=\"color: var(--color-muted-foreground)\" class=\"jhin-text jhin-text-small\">agent is working…</span></div></div>"}}
+
+event: frame
+data: {"node":{"id":"ev-3","html":"<div data-jhin-type=\"container\" id=\"ev-3\" data-jhin-id=\"ev-3\" style=\"justify-self: start; align-self: center\" class=\"jhin-container\"><section data-jhin-type=\"card\" id=\"ev-3-bubble\" data-jhin-id=\"ev-3-bubble\" style=\"border: 1px solid var(--color-border); border-radius: var(--radius-xl2); padding: 12px; max-width: 560px\" class=\"jhin-card\"><div data-jhin-type=\"markdown\" id=\"msg-3\" data-jhin-id=\"msg-3\" class=\"jhin-markdown\"></div></section></div>"}}
+
+event: frame
+data: {"patch":{"id":"msg-3","html":"<p>Fix the authentication flow across the gateway, the proxy and every dependent microservice</p>"}}
+
+event: frame
+data: {"remove":"ev-2"}
+

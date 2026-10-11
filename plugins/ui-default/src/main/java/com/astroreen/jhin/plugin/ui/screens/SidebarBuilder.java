@@ -437,6 +437,44 @@ public final class SidebarBuilder {
     }
 
     /**
+     * The {@code session-row:<id>} row of one session, rebuilt for a live
+     * {@code session_updated} patch ({@code EventFrames}): the very row the
+     * sections list renders, with the neutral live context — no arrange
+     * mode (so no Move entries) and the row's own section as the drag
+     * source, resolved with the same rules {@link #partition} applies.
+     *
+     * @param session the updated session record
+     * @param now     the wall clock, epoch milliseconds (snooze expiry)
+     * @return the row node
+     */
+    public static UiNode sessionRow(Session session, long now) {
+        String section = sectionOf(session, now);
+        return row(session, List.of(session.id()), 0, false, now,
+                List.of(session.title()), section);
+    }
+
+    /**
+     * The section one session belongs to, in the {@link #partition} rule
+     * order: pinned, settled, snoozed (while the snooze is still the
+     * future), working and active.
+     */
+    private static String sectionOf(Session session, long now) {
+        if (session.pinned()) {
+            return PINNED;
+        }
+        if (session.settledAt() != null) {
+            return SETTLED;
+        }
+        if (session.snoozedUntil() != null && session.snoozedUntil() > now) {
+            return SNOOZED;
+        }
+        if (WORKING_STATUSES.contains(session.status())) {
+            return WORKING;
+        }
+        return ACTIVE;
+    }
+
+    /**
      * The first pane: the grouped {@code list} of the five thread sections
      * with the T97 header and footer blocks and the client-side search spec.
      */
@@ -750,8 +788,9 @@ public final class SidebarBuilder {
                     .dragLabel(dragLabelChip(targets.get(0).verb()))
                     .dropTargets(wireTargets(session.id(), targets));
         }
-        // The session_updated frame props (EventFrames.ROW_PROPS): the row
-        // carries them under the same names so a patch lands on matching keys.
+        // The session lifecycle fields, carried under stable names: the
+        // session_updated patch re-renders this row live from the same
+        // record (see sessionRow).
         row.set("workdir", session.workdir());
         row.set("status", session.status());
         row.set("pinned", session.pinned());

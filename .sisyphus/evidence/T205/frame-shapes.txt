@@ -1,0 +1,17 @@
+T205 frame-shape asserts — frames.jsonl (12 frames from the live capture):
+
+  shape counts (one key per frame, the 5 shapes of docs/sdui.md section 5):
+          6 node
+          4 patch
+          2 remove
+
+  patch frames on the wire: 4 (asserted >= 3)
+  distinct patch target ids: 3 (msg-3 msg-9 session-row:f39b5142-b9fb-40ef-a097-14994bbb979f )
+  node/patch/replace envelopes: exactly {id, html}, html is a string (jq)
+  "props" occurrences: 0 (asserted 0)
+  "children" occurrences: 0 (asserted 0)
+
+  NOTE: the naive grep for the node-tree key pattern '"node":{' is NOT used as
+  a negative here — '"node":' IS the frame discriminator of the {node:{id,html}}
+  shape, so that pattern counts legal frames. The tree regression is excluded by
+  the jq envelope assert above (keys == [html, id]) and the props/children greps.

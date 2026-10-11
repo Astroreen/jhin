@@ -1,40 +1,26 @@
-/*
- * Jhin web client runtime (HTML wire, contract level 4): one plain ES2022
- * file, zero dependencies. No dynamic code loading (the expression surface
- * is a tokenizer plus a recursive-descent parser), no client-side markdown,
- * no WebSocket; every runtime-owned class or id is jhin- prefixed.
- */
+/* Jhin web client runtime (HTML wire, contract level 4): one ES2022 file,
+   zero dependencies, no dynamic code loading, no WebSocket; every
+   runtime-owned class or id is jhin- prefixed. */
 (() => {
   "use strict";
 
-  /* === module 1: transport ============================================ */
-
-  const CLIENT_API = "4";
-  const CLIENT_SCHEMA = "5";
-  const CLIENT_CAPS = "sse,open_url,secure_storage";
-
-  function clientVersion() {
-    return typeof window.JHIN_VERSION === "string" && window.JHIN_VERSION !== ""
-      ? window.JHIN_VERSION
-      : "0.0.0-web";
-  }
+  /* module 1: transport */
 
   function clientHeaderValue() {
-    return "api=" + CLIENT_API
-      + "; version=" + clientVersion()
-      + "; schema=" + CLIENT_SCHEMA
-      + "; caps=" + CLIENT_CAPS;
+    return "api=4; version="
+      + (typeof window.JHIN_VERSION === "string" && window.JHIN_VERSION !== ""
+        ? window.JHIN_VERSION : "0.0.0-web")
+      + "; schema=5; caps=sse,open_url,secure_storage";
   }
 
   function readToken() {
     try {
       return window.localStorage.getItem("jhin.token");
-    } catch (failure) {
+    } catch {
       return null;
     }
   }
 
-  /** setToken/clearToken storage: an empty value clears the bearer token. */
   function writeToken(value) {
     try {
       if (value === "") {
@@ -42,12 +28,11 @@
       } else {
         window.localStorage.setItem("jhin.token", value);
       }
-    } catch (failure) {
+    } catch {
       /* storage unavailable */
     }
   }
 
-  /** fetch wrapper: every request carries X-Jhin-Client and the bearer token. */
   function jhinFetch(path, options) {
     const init = Object.assign({}, options || {});
     const headers = new Headers(init.headers || {});
@@ -60,33 +45,13 @@
     return fetch(path, init);
   }
 
-  function request(path, options) {
-    return jhinFetch(path, options);
-  }
+  /* module 2: state */
 
-  async function get(path) {
-    const res = await jhinFetch(path, { method: "GET" });
-    return res.json();
-  }
-
-  async function post(path, body) {
-    const res = await jhinFetch(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    return res.json();
-  }
-
-  /* === module 2: state ================================================ */
-
-  /** The UiState mirror: values plus the inline error map. */
   const UiState = {
     values: Object.create(null),
     errors: Object.create(null)
   };
 
-  /** The binding key of a control: data-jhin-id, else name, else id. */
   function stateKeyFor(el) {
     const own = el.getAttribute("data-jhin-id");
     if (own) { return own; }
@@ -97,7 +62,6 @@
     return host ? host.getAttribute("data-jhin-id") : null;
   }
 
-  /** One control's wire value: string, bool for checkboxes, number for sliders. */
   function readControlValue(el) {
     const tag = el.tagName;
     if (tag === "TEXTAREA") { return el.value; }
@@ -111,7 +75,6 @@
     return undefined;
   }
 
-  /** Writes the mirror from every rendered control (boot and screen swaps). */
   function seedState() {
     document.querySelectorAll("input, textarea, select").forEach((el) => {
       const key = stateKeyFor(el);
@@ -136,7 +99,6 @@
     if (sync) { syncDom(key, value); }
   }
 
-  /** Pushes one mirror value back into every control bound to that key. */
   function syncDom(key, value) {
     document.querySelectorAll("input, textarea, select").forEach((el) => {
       if (stateKeyFor(el) !== key) { return; }
@@ -157,7 +119,6 @@
     });
   }
 
-  /** setState: mirror plus DOM, then the module 4 re-pass. */
   function setState(key, value) {
     writeValue(key, value, true);
     delete UiState.errors[key];
@@ -176,7 +137,6 @@
     setState(key, readControlValue(el));
   }
 
-  /** Segmented buttons carry their value in data-jhin-value; only a click selects. */
   function onSegmentClick(event) {
     const target = event.target;
     if (!target || typeof target.closest !== "function") { return; }
@@ -197,13 +157,8 @@
     seedState();
   }
 
-  /* === module 3: expr ================================================= */
+  /* module 3: expr */
 
-  /*
-   * The section 7 subset: tokenizer plus recursive-descent parser over
-   * field refs, !, comparisons, and/or, parens and literals; a parse
-   * failure yields null so callers keep their degradation semantics.
-   */
 
   function isIdentStart(ch) {
     return (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || ch === "_";
@@ -233,8 +188,7 @@
         continue;
       }
       const two = src.slice(i, i + 2);
-      if (two === "==" || two === "!=" || two === ">=" || two === "<="
-          || two === "&&" || two === "||") {
+      if (two === "==" || two === "!=" || two === ">=" || two === "<=" || two === "&&" || two === "||") {
         tokens.push({ t: two });
         i += 2;
         continue;
@@ -315,7 +269,6 @@
     return tokens;
   }
 
-  /** or -> and -> equality -> comparison -> unary -> primary. */
   function parseTokens(tokens) {
     let pos = 0;
 
@@ -372,9 +325,7 @@
     function parseComparison() {
       let left = parseUnary();
       if (!left) { return null; }
-      while (peek()
-          && (peek().t === ">" || peek().t === ">="
-              || peek().t === "<" || peek().t === "<=")) {
+      while (peek() && (peek().t === ">" || peek().t === ">=" || peek().t === "<" || peek().t === "<=")) {
         const op = peek().t;
         pos += 1;
         const right = parseUnary();
@@ -416,7 +367,6 @@
     return ast;
   }
 
-  /** Field refs: state.foo and bare foo both read the state values map. */
   function resolveField(name, state) {
     let path = name;
     if (path.indexOf("state.") === 0) { path = path.slice(6); }
@@ -465,7 +415,6 @@
     return a <= b;
   }
 
-  /** The expression surface: value out, or null on any parse failure. */
   function runExpr(exprString, state) {
     const tokens = tokenize(String(exprString));
     if (tokens === null) { return null; }
@@ -474,7 +423,7 @@
     return runNode(ast, state || {});
   }
 
-  /* === module 4: interpolate ========================================== */
+  /* module 4: interpolate */
 
   function templateParts(raw) {
     const parts = [];
@@ -531,7 +480,6 @@
     return parts;
   }
 
-  /** Rewrites every [data-jhin-template] textContent from the state mirror. */
   function applyTemplates(state) {
     document.querySelectorAll("[data-jhin-template]").forEach((el) => {
       const raw = el.getAttribute("data-jhin-template");
@@ -553,7 +501,6 @@
     });
   }
 
-  /** Toggles [hidden] from [data-jhin-when]; only an explicit false hides. */
   function applyWhen(state) {
     document.querySelectorAll("[data-jhin-when]").forEach((el) => {
       const result = runExpr(el.getAttribute("data-jhin-when"), state);
@@ -565,7 +512,7 @@
     });
   }
 
-  /* === module 5: screens + shell ====================================== */
+  /* module 5: screens + shell */
 
   const SCREEN_CACHE_MAX = 50;
   const NAV_STACK_MAX = 50;
@@ -575,16 +522,13 @@
   let currentScreenId = null;
 
   const bootData = {
-    screens: [],
     fallbacks: { offline: null, error: null },
     entry: null,
     theme: null,
-    tokens: null,
     density: null,
     keymap: [],
     palette: [],
-    screenEndpoint: "/ui/screen/{id}",
-    shell: null
+    screenEndpoint: "/ui/screen/{id}"
   };
 
   function cachePut(id, html) {
@@ -613,7 +557,6 @@
     }
   }
 
-  /** back: an empty stack is a no-op. */
   async function navGoBack() {
     if (navStack.length === 0) { return; }
     await showScreen(navStack.pop());
@@ -624,7 +567,6 @@
     return template.replace("{id}", encodeURIComponent(id));
   }
 
-  /** Paints one screen: server HTML is final, so innerHTML with no hydration. */
   function renderScreen(id, html) {
     const root = document.getElementById("jhin-root");
     if (!root) { return; }
@@ -633,11 +575,11 @@
     seedState();
     applyTemplates(UiState.values);
     applyWhen(UiState.values);
+    syncStreams();
   }
 
-  /** Background refresh: fresh HTML replaces the cache and the display. */
   function refreshScreen(id) {
-    request(screenPath(id), { method: "GET" })
+    jhinFetch(screenPath(id), { method: "GET" })
       .then((res) => {
         if (res.status === 401 || res.status === 403) {
           renderPairing();
@@ -655,7 +597,6 @@
       });
   }
 
-  /** Cached screens paint immediately; inline ids are never re-fetched. */
   async function showScreen(id) {
     const cached = screenCache.get(id);
     if (typeof cached === "string") {
@@ -664,7 +605,7 @@
       return;
     }
     try {
-      const res = await request(screenPath(id), { method: "GET" });
+      const res = await jhinFetch(screenPath(id), { method: "GET" });
       if (res.status === 401 || res.status === 403) {
         renderPairing();
         return;
@@ -676,7 +617,7 @@
       }
       cachePut(id, payload.html);
       renderScreen(id, payload.html);
-    } catch (failure) {
+    } catch {
       renderUnavailable();
     }
   }
@@ -695,7 +636,6 @@
     screenCache.clear();
     inlineIds.clear();
     const list = Array.isArray(payload.screens) ? payload.screens : [];
-    bootData.screens = list;
     list.forEach((entry) => {
       if (!entry || typeof entry.id !== "string" || typeof entry.html !== "string") {
         return;
@@ -703,32 +643,23 @@
       cachePut(entry.id, entry.html);
       inlineIds.add(entry.id);
     });
-    const fallbacks = payload.fallbacks && typeof payload.fallbacks === "object"
-      ? payload.fallbacks : {};
-    bootData.fallbacks.offline = typeof fallbacks.offline === "string"
-      ? fallbacks.offline : null;
-    bootData.fallbacks.error = typeof fallbacks.error === "string"
-      ? fallbacks.error : null;
+    const fallbacks = payload.fallbacks && typeof payload.fallbacks === "object" ? payload.fallbacks : {};
+    bootData.fallbacks.offline = typeof fallbacks.offline === "string" ? fallbacks.offline : null;
+    bootData.fallbacks.error = typeof fallbacks.error === "string" ? fallbacks.error : null;
     bootData.entry = typeof payload.entry === "string" ? payload.entry : null;
-    bootData.theme = payload.theme && typeof payload.theme === "object"
-      ? payload.theme : null;
-    // Recorded only: the token CSS is already inlined in the document.
-    bootData.tokens = payload.tokens && typeof payload.tokens === "object"
-      ? payload.tokens : null;
+    bootData.theme = payload.theme && typeof payload.theme === "object" ? payload.theme : null;
     bootData.density = typeof payload.density === "string" ? payload.density : null;
     bootData.keymap = Array.isArray(payload.keymap) ? payload.keymap : [];
     bootData.palette = Array.isArray(payload.palette) ? payload.palette : [];
     keymapCache = null;
     bootData.screenEndpoint = typeof payload.screenEndpoint === "string"
       ? payload.screenEndpoint : "/ui/screen/{id}";
-    bootData.shell = payload.shell && typeof payload.shell === "object"
-      ? payload.shell : null;
 
     applyTheme(bootData.theme, bootData.density);
+    openOverview();
 
     if (payload.empty === true) {
-      renderNotice(typeof payload.message === "string"
-        ? payload.message
+      renderNotice(typeof payload.message === "string" ? payload.message
         : "This server has no UI plugin installed.");
       return;
     }
@@ -746,8 +677,8 @@
   async function bootstrap() {
     let res;
     try {
-      res = await request("/_jhin/bootstrap", { method: "GET" });
-    } catch (failure) {
+      res = await jhinFetch("/_jhin/bootstrap", { method: "GET" });
+    } catch {
       renderOffline();
       return;
     }
@@ -766,7 +697,7 @@
     let payload;
     try {
       payload = await res.json();
-    } catch (failure) {
+    } catch {
       renderUnavailable();
       return;
     }
@@ -816,12 +747,6 @@
     return node;
   }
 
-  /*
-   * The pairing fallback: the one client-owned surface (docs/web-client.md
-   * section 7). Submit posts the enroll action (payload `code` +
-   * `deviceName`); success stores the setToken value and re-runs
-   * bootstrap, a refusal keeps the form and shows the message inline.
-   */
   function renderPairing() {
     const root = document.getElementById("jhin-root");
     if (!root) { return; }
@@ -841,6 +766,7 @@
     form.appendChild(submit);
     form.addEventListener("submit", submitPairing);
     root.appendChild(form);
+    syncStreams();
     codeInput.focus();
   }
 
@@ -864,7 +790,6 @@
     box.textContent = message || "";
   }
 
-  /** Text of one HTML fragment: tags stripped, rendered as plain text. */
   function htmlFragmentText(html) {
     return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   }
@@ -898,14 +823,14 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "enroll", payload: { code: code, deviceName: deviceName } })
       });
-    } catch (failure) {
+    } catch {
       showPairError("The server is unreachable. Try again.");
       return;
     }
     let body = null;
     try {
       body = await res.json();
-    } catch (failure) {
+    } catch {
       body = null;
     }
     const client = body && Array.isArray(body.client) ? body.client : [];
@@ -919,14 +844,8 @@
     showPairError(pairFailureMessage(body));
   }
 
-  /* === module 6: actions =============================================== */
+  /* module 6: actions */
 
-  /*
-   * The section 3 dispatch order: validate the included inputs (zero
-   * round-trips on failure), merge the payload (include wins, typed per
-   * field kind), run confirm, post {action, payload}, run the response's
-   * client directives.
-   */
 
   const OMIT = {};
 
@@ -939,22 +858,20 @@
       .replace(/&amp;/g, "&");
   }
 
-  /** Parses one data-jhin-action value (entity pass for double-encoded text). */
   function readActionJson(raw) {
     if (typeof raw !== "string" || raw === "") { return null; }
     try {
       return JSON.parse(raw);
-    } catch (first) {
+    } catch {
       /* entity-laden source */
     }
     try {
       return JSON.parse(decodeAttrEntities(raw));
-    } catch (second) {
+    } catch {
       return null;
     }
   }
 
-  /** The addressed node: the id attribute, else the data-jhin-id protocol. */
   function nodeById(id) {
     if (typeof id !== "string" || id === "") { return null; }
     return document.getElementById(id)
@@ -967,7 +884,6 @@
     return Number.isNaN(n) ? null : n;
   }
 
-  /** One field's inline error, or null when valid (section 3). */
   function fieldProblem(field, value) {
     if (!field) { return null; }
     const type = field.getAttribute("data-jhin-type");
@@ -981,7 +897,7 @@
       let regex = null;
       try {
         regex = new RegExp(pattern);
-      } catch (failure) {
+      } catch {
         regex = null;
       }
       if (regex !== null && !regex.test(text)) { return errorText; }
@@ -1002,7 +918,6 @@
     return null;
   }
 
-  /** Sets (or with null clears) the inline error of one control. */
   function setFieldError(field, message) {
     if (!field) { return; }
     field.removeAttribute("aria-invalid");
@@ -1021,17 +936,12 @@
     }
   }
 
-  /** Drops the inline error of every control bound to one state key. */
   function clearFieldErrorByKey(key) {
     document.querySelectorAll(".jhin-invalid").forEach((el) => {
       if (stateKeyFor(el) === key) { setFieldError(el, null); }
     });
   }
 
-  /**
-   * The typed include value (section 3): input/textarea -> string,
-   * checkbox/switch -> bool, slider -> double; OMIT drops the key.
-   */
   function includeValue(type, value) {
     const missing = value === undefined || value === null;
     if (type === "input" || type === "textarea") { return missing ? "" : String(value); }
@@ -1044,7 +954,6 @@
     return missing ? OMIT : value;
   }
 
-  /** Posts {action, payload} and runs the response's client directives. */
   async function serverAction(action, payload) {
     const name = typeof action.name === "string" ? action.name : "";
     let body;
@@ -1090,9 +999,7 @@
       console.warn("jhin: ignoring action without a path:", action);
       return;
     }
-    const include = Array.isArray(action.include)
-      ? action.include.filter((id) => typeof id === "string")
-      : [];
+    const include = Array.isArray(action.include) ? action.include.filter((id) => typeof id === "string") : [];
     let failed = false;
     for (const id of include) {
       const field = nodeById(id);
@@ -1113,9 +1020,7 @@
     }
     for (const id of include) {
       const field = nodeById(id);
-      const value = includeValue(
-        field ? field.getAttribute("data-jhin-type") : null,
-        UiState.values[id]);
+      const value = includeValue(field ? field.getAttribute("data-jhin-type") : null, UiState.values[id]);
       if (value !== OMIT) { payload[id] = value; }
     }
     const message = host ? host.getAttribute("data-jhin-confirm") : null;
@@ -1128,20 +1033,7 @@
     return target.closest("[data-jhin-action]");
   }
 
-  function onActionClick(event) {
-    const host = actionHostFrom(event.target);
-    if (!host) { return; }
-    event.preventDefault();
-    const action = readActionJson(host.getAttribute("data-jhin-action"));
-    if (!action) {
-      console.warn("jhin: ignoring unparseable action:",
-        host.getAttribute("data-jhin-action"));
-      return;
-    }
-    dispatchAction(action, host);
-  }
-
-  function onActionSubmit(event) {
+  function onActionEvent(event) {
     const host = actionHostFrom(event.target);
     if (!host) { return; }
     event.preventDefault();
@@ -1155,21 +1047,16 @@
   }
 
   function initActions(root, overlays) {
-    root.addEventListener("click", onActionClick);
-    root.addEventListener("submit", onActionSubmit);
+    root.addEventListener("click", onActionEvent);
+    root.addEventListener("submit", onActionEvent);
     if (overlays) {
-      overlays.addEventListener("click", onActionClick);
-      overlays.addEventListener("submit", onActionSubmit);
+      overlays.addEventListener("click", onActionEvent);
+      overlays.addEventListener("submit", onActionEvent);
     }
   }
 
-  /* === module 7: directives ============================================ */
+  /* module 7: directives */
 
-  /*
-   * The seventeen ops of section 4; the three level-4 shapes (patch,
-   * setScreen, dialog) carry an html fragment. An unknown op is ignored
-   * with a console warning, never thrown.
-   */
 
   let dialogLayer = null;
 
@@ -1297,7 +1184,6 @@
     }
   }
 
-  /** patch(id, html): the innerHTML swap of section 9.5. */
   function applyPatch(id, html) {
     const target = nodeById(id);
     if (!target) {
@@ -1308,8 +1194,7 @@
     seedState();
   }
 
-  /** Section 9.5: innerHTML swap keeping focus and the text selection. */
-  function swapInner(el, html) {
+  function withFocusRestore(el, swap) {
     const active = document.activeElement;
     let key = null;
     let start = null;
@@ -1319,11 +1204,11 @@
       try {
         start = active.selectionStart;
         end = active.selectionEnd;
-      } catch (failure) {
+      } catch {
         /* not a text control */
       }
     }
-    el.innerHTML = html;
+    swap();
     if (key === null) { return; }
     const back = nodeById(key);
     if (!back || typeof back.focus !== "function") { return; }
@@ -1331,10 +1216,18 @@
     if (start !== null && typeof back.setSelectionRange === "function") {
       try {
         back.setSelectionRange(start, end);
-      } catch (failure) {
+      } catch {
         /* selection not restorable */
       }
     }
+  }
+
+  function swapInner(el, html) {
+    withFocusRestore(el, () => { el.innerHTML = html; });
+  }
+
+  function swapOuter(el, html) {
+    withFocusRestore(el, () => { el.outerHTML = html; });
   }
 
   function overlaysRoot() {
@@ -1347,7 +1240,6 @@
     return overlays;
   }
 
-  /** The runtime confirm dialog: Escape cancels, Accept accepts. */
   function confirmPrompt(message) {
     return new Promise((resolve) => {
       const dialog = el("dialog", "jhin-confirm");
@@ -1387,7 +1279,6 @@
     setTimeout(() => toast.remove(), 4000);
   }
 
-  /** The undo notice (T98): label + Undo + close card for its window. */
   function showUndoNotice(text, action, duration) {
     const notice = el("div", "jhin-undo");
     notice.setAttribute("role", "status");
@@ -1410,8 +1301,7 @@
   function openDialogOverlay(html, kind) {
     closeDialogOverlay();
     const layer = document.createElement("div");
-    layer.className = "jhin-dialog-layer"
-      + (kind === "sheet" ? " jhin-dialog-layer-sheet" : "");
+    layer.className = "jhin-dialog-layer" + (kind === "sheet" ? " jhin-dialog-layer-sheet" : "");
     layer.innerHTML = html;
     overlaysRoot().appendChild(layer);
     dialogLayer = layer;
@@ -1427,14 +1317,223 @@
     }
   }
 
-  /* === module 9: keymap ================================================ */
+  /* module 8: sse */
 
-  /*
-   * Section 4.1 keybinding runtime: chord vocabulary (mod = Cmd on macOS,
-   * Ctrl elsewhere), live command contexts, last-match-wins over the
-   * bootstrap keymap merged with the localStorage overrides, and a command
-   * table. Only handled chords are preventDefault-ed.
-   */
+  /* Frame transport (sdui.md sec. 5): fetch-stream primary (the bearer
+     filter guards /ui/stream/*); EventSource only without a token; our
+     reconnect, backoff 0.5s..30s; replay from frame ids, idempotent. */
+
+  const ANCHOR_PX = 24;
+  const streams = new Map();
+  let overviewStream = null;
+
+  function streamPathOf(topic) {
+    return topic.split("?")[0];
+  }
+
+  function applyFrame(frame, st) {
+    if (!frame || typeof frame !== "object") { return; }
+    const view = st.view;
+    const item = frame.node || frame.patch || frame.replace;
+    const id = typeof frame.remove === "string" ? frame.remove
+      : (item && typeof item.id === "string" ? item.id : null);
+    if (id !== null) {
+      st.lastId = id;
+      const match = /^(?:ev|msg)-(\d+)/.exec(id);
+      if (match && Number(match[1]) > st.lastSeq) {
+        st.lastSeq = Number(match[1]);
+      }
+    }
+    if (Array.isArray(frame.client)) {
+      runDirectiveList(frame.client);
+      return;
+    }
+    const follow = view && view.getAttribute("data-jhin-auto-scroll") === "true"
+      && view.scrollHeight - view.scrollTop - view.clientHeight <= ANCHOR_PX;
+    if (typeof frame.remove === "string") {
+      st.dead.add(frame.remove);
+      const gone = nodeById(frame.remove);
+      if (gone) { gone.remove(); }
+      if (follow) { view.scrollTop = view.scrollHeight; }
+      return;
+    }
+    if (!item || typeof item.html !== "string") {
+      console.warn("jhin: ignoring unknown frame:", frame);
+      return;
+    }
+    if (frame.patch) {
+      applyPatch(item.id, item.html);
+      return;
+    }
+    if (frame.node) {
+      if (id !== null && st.dead.has(id)) { return; }
+      const existing = id === null ? null : nodeById(id);
+      if (view && view.getAttribute("data-jhin-mode") === "replace") {
+        swapInner(view, item.html);
+      } else if (existing) {
+        swapOuter(existing, item.html);
+      } else if (view) {
+        view.insertAdjacentHTML("beforeend", item.html);
+      } else {
+        console.warn("jhin: node frame without a stream view:", id);
+        return;
+      }
+    } else {
+      const target = nodeById(id);
+      if (!target) {
+        console.warn("jhin: frame target not found:", id);
+        return;
+      }
+      swapOuter(target, item.html);
+      seedState();
+    }
+    if (follow) { view.scrollTop = view.scrollHeight; }
+  }
+
+  function streamUrl(st) {
+    return st.lastSeq > 0 ? st.path + "?fromSeq=" + st.lastSeq : st.topic;
+  }
+
+  function openStream(topic, view) {
+    const st = {
+      topic: topic, path: streamPathOf(topic), view: view,
+      dead: new Set(), lastId: null, lastSeq: 0,
+      wait: 500, timer: null, cancel: null, closed: false
+    };
+    connect(st);
+    return st;
+  }
+
+  function closeStream(st) {
+    st.closed = true;
+    clearTimeout(st.timer);
+    if (st.cancel) { st.cancel(); st.cancel = null; }
+  }
+
+  function scheduleReconnect(st) {
+    if (st.closed) { return; }
+    const delay = st.wait;
+    st.wait = Math.min(st.wait * 2, 30000);
+    st.timer = setTimeout(() => connect(st), delay);
+  }
+
+  function connect(st) {
+    if (st.closed) { return; }
+    if (st.view && !st.view.isConnected) {
+      closeStream(st);
+      streams.delete(st.path);
+      return;
+    }
+    if (readToken() || typeof EventSource === "undefined") {
+      fetchLoop(st);
+    } else {
+      esLoop(st);
+    }
+  }
+
+  async function fetchLoop(st) {
+    const controller = new AbortController();
+    st.cancel = () => controller.abort();
+    try {
+      const headers = { Accept: "text/event-stream" };
+      if (st.lastId) { headers["Last-Event-ID"] = st.lastId; }
+      const res = await jhinFetch(streamUrl(st), {
+        headers: headers,
+        signal: controller.signal
+      });
+      if (!res.ok || !res.body) { throw new Error("stream status " + res.status); }
+      st.wait = 500;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const step = await reader.read();
+        if (step.done) { break; }
+        buffer += decoder.decode(step.value, { stream: true });
+        let cut = buffer.indexOf("\n\n");
+        while (cut >= 0) {
+          onSseBlock(st, buffer.slice(0, cut));
+          buffer = buffer.slice(cut + 2);
+          cut = buffer.indexOf("\n\n");
+        }
+      }
+    } catch (failure) {
+      if (st.closed || controller.signal.aborted) { return; }
+      console.warn("jhin: stream reconnecting:", st.path, failure);
+    }
+    if (!st.closed) { scheduleReconnect(st); }
+  }
+
+  function onFrameData(st, raw) {
+    try {
+      applyFrame(JSON.parse(raw), st);
+    } catch (failure) {
+      console.warn("jhin: ignoring undecodable frame:", failure);
+    }
+  }
+
+  function onSseBlock(st, block) {
+    let data = "";
+    block.split("\n").forEach((line) => {
+      if (line.startsWith("data:")) {
+        data += (data ? "\n" : "") + line.slice(5).replace(/^ /, "");
+      }
+    });
+    if (data) { onFrameData(st, data); }
+  }
+
+  function esLoop(st) {
+    let es;
+    try {
+      es = new EventSource(streamUrl(st));
+    } catch {
+      scheduleReconnect(st);
+      return;
+    }
+    st.cancel = () => es.close();
+    const onEvent = (event) => onFrameData(st, event.data);
+    es.addEventListener("frame", onEvent);
+    es.addEventListener("message", onEvent);
+    es.onopen = () => { st.wait = 500; };
+    es.onerror = () => {
+      es.close();
+      if (!st.closed) { scheduleReconnect(st); }
+    };
+  }
+
+  function syncStreams() {
+    const seen = new Set();
+    document.querySelectorAll("[data-jhin-type='stream_view'][data-jhin-topic]")
+      .forEach((view) => {
+        const topic = view.getAttribute("data-jhin-topic");
+        if (!topic) { return; }
+        const path = streamPathOf(topic);
+        seen.add(path);
+        const live = streams.get(path);
+        if (live) {
+          live.view = view;
+        } else {
+          streams.set(path, openStream(topic, view));
+        }
+      });
+    streams.forEach((st, path) => {
+      if (!seen.has(path)) {
+        closeStream(st);
+        streams.delete(path);
+      }
+    });
+  }
+
+  function openOverview() {
+    if (overviewStream === null) {
+      overviewStream = openStream("/ui/stream/sessions-overview", null);
+    }
+  }
+
+  /* module 9: keymap */
+
+  /* Section 4.1 keybinding runtime: chords (mod = Cmd on macOS), live
+     contexts, last-match-wins, a command table. */
 
   const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
@@ -1460,7 +1559,6 @@
       + (mods.shift ? "shift+" : "") + (mods.meta ? "meta+" : "") + key;
   }
 
-  /** Chord spec to canonical id; null (never throws) for malformed specs. */
   function parseChord(spec) {
     if (typeof spec !== "string") { return null; }
     const parts = spec.split("+").map((part) => part.trim().toLowerCase());
@@ -1484,8 +1582,7 @@
 
   function chordFromEvent(event) {
     const raw = event.key;
-    if (!raw || raw === "Shift" || raw === "Control" || raw === "Alt"
-        || raw === "Meta") { return null; }
+    if (!raw || raw === "Shift" || raw === "Control" || raw === "Alt" || raw === "Meta") { return null; }
     const key = KEY_ALIASES[raw.toLowerCase()] || raw.toLowerCase();
     return KEY_TOKENS.has(key) ? chordId({
       ctrl: event.ctrlKey === true, alt: event.altKey === true,
@@ -1495,42 +1592,43 @@
 
   let keymapCache = null;
 
-  /** Override rules from the chord->action map [{key, command, when, action}]. */
+  /* User keymap overrides: the jhin.keybindings store (sdui.md sec. 8). */
   function readKeyOverrides() {
     let raw = null;
-    try {
-      raw = window.localStorage.getItem("jhin.keybindings");
-    } catch (failure) {
-      return [];
-    }
+    try { raw = window.localStorage.getItem("jhin.keybindings"); }
+    catch { return []; }
     if (!raw) { return []; }
     let parsed = null;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (failure) {
-      console.warn("jhin: ignoring unparseable jhin.keybindings");
+    try { parsed = JSON.parse(raw); } catch {
+      console.warn("jhin: unparseable jhin.keybindings");
       return [];
     }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      console.warn("jhin: ignoring jhin.keybindings of unknown shape");
+      console.warn("jhin: jhin.keybindings is not a map");
       return [];
     }
     const out = [];
-    Object.keys(parsed).forEach((chord) => {
-      const value = parsed[chord];
-      if (!value || typeof value !== "object") {
-        if (typeof value === "string") { out.push({ key: chord, command: value }); }
+    Object.keys(parsed).forEach((spec) => {
+      const value = parsed[spec];
+      if (parseChord(spec) === null) {
+        console.warn("jhin: bad keybinding chord:", spec);
+        return;
+      }
+      const isStr = typeof value === "string" && value !== "";
+      const isObj = !!value && typeof value === "object";
+      const command = isStr ? value
+        : isObj && typeof value.command === "string" && value.command !== "" ? value.command : null;
+      const action = isObj
+        ? (value.action && typeof value.action === "object" ? value.action
+          : (Array.isArray(value.client) || typeof value.path === "string"
+            || typeof value.op === "string") ? value : null)
+        : null;
+      if (command === null && action === null) {
+        console.warn("jhin: bad keybinding entry:", spec);
         return;
       }
       out.push({
-        key: chord,
-        command: typeof value.command === "string" && value.command !== ""
-          ? value.command : null,
-        when: typeof value.when === "string" && value.when !== ""
-          ? value.when : null,
-        action: value.action && typeof value.action === "object" ? value.action
-          : (Array.isArray(value.client) || typeof value.path === "string"
-            || typeof value.op === "string") ? value : null
+        key: spec, command: command, when: value.when, action: action
       });
     });
     return out;
@@ -1542,85 +1640,67 @@
     if (chord === null) { return null; }
     return {
       chord: chord,
-      command: typeof raw.command === "string" && raw.command !== ""
-        ? raw.command : null,
+      command: typeof raw.command === "string" && raw.command !== "" ? raw.command : null,
       when: typeof raw.when === "string" && raw.when !== "" ? raw.when : null,
       action: raw.action && typeof raw.action === "object" ? raw.action : null
     };
   }
 
-  /**
-   * The effective keymap: defaults with overrides merged; a command-keyed
-   * override replaces every default rule of that command (inheriting its
-   * `when`) and sits last.
-   */
+  /* Effective keymap: overrides replace per-command defaults, inherit when. */
   function effectiveKeymap() {
     if (keymapCache !== null) { return keymapCache; }
     const defaults = (Array.isArray(bootData.keymap) ? bootData.keymap : [])
       .map(normalizeRule).filter((rule) => rule !== null);
     const overrides = readKeyOverrides()
       .map(normalizeRule).filter((rule) => rule !== null);
-    const replaced = new Set();
+    const replaced = new Map();
     overrides.forEach((rule) => {
-      if (rule.command !== null) { replaced.add(rule.command); }
+      if (rule.command !== null) { replaced.set(rule.command, null); }
     });
-    const inheritedWhen = new Map();
     defaults.forEach((rule) => {
-      if (rule.command !== null && replaced.has(rule.command) && rule.when
-          && !inheritedWhen.has(rule.command)) {
-        inheritedWhen.set(rule.command, rule.when);
+      if (rule.command !== null && rule.when && replaced.has(rule.command) && !replaced.get(rule.command)) {
+        replaced.set(rule.command, rule.when);
       }
     });
-    const merged = defaults.filter(
-      (rule) => !(rule.command !== null && replaced.has(rule.command)));
+    keymapCache = defaults.filter(
+      (rule) => rule.command === null || !replaced.has(rule.command));
     overrides.forEach((rule) => {
-      const inherit = rule.command !== null && !rule.when
-        ? inheritedWhen.get(rule.command) : undefined;
-      merged.push(inherit !== undefined ? {
+      keymapCache.push({
         chord: rule.chord, command: rule.command,
-        when: inherit, action: rule.action
-      } : rule);
+        when: rule.when || replaced.get(rule.command) || null,
+        action: rule.action
+      });
     });
-    keymapCache = merged;
-    return merged;
+    return keymapCache;
   }
-
-  /* --- section 4.1 command contexts, computed live per keystroke ------- */
 
   const NON_TEXT_TYPES = /checkbox|radio|range|button|submit|reset|file|color|image/;
 
   function keyContexts() {
     const active = document.activeElement;
     const tag = active ? active.tagName : "";
-    const type = active && active.getAttribute
-      ? (active.getAttribute("type") || "text").toLowerCase() : "";
+    const type = active && active.getAttribute ? (active.getAttribute("type") || "text").toLowerCase() : "";
     const editable = !!active && (tag === "TEXTAREA" || tag === "SELECT"
       || (tag === "INPUT" && !NON_TEXT_TYPES.test(type))
       || active.isContentEditable === true);
-    const inside = (sel) => !!active && typeof active.closest === "function"
-      && !!active.closest(sel);
-    const dialogOpen = dialogLayer !== null
-      || !!document.querySelector("#jhin-overlays dialog[open]");
+    const inside = (sel) => !!active && typeof active.closest === "function" && !!active.closest(sel);
+    const dialogOpen = dialogLayer !== null || !!document.querySelector("#jhin-overlays dialog[open]");
     const ctx = Object.create(null);
     ctx.terminalFocus = inside('[data-jhin-id*="terminal"], [data-jhin-type*="terminal"]');
-    ctx.terminalOpen = UiState.values.chat_terminal === true
-      || UiState.values.chat_terminal === "true";
+    ctx.terminalOpen = UiState.values.chat_terminal === true || UiState.values.chat_terminal === "true";
     ctx.previewFocus = inside('[data-jhin-id*="preview"]');
     ctx.previewOpen = !!document.querySelector('[data-jhin-id*="preview"]');
-    ctx.modelPickerOpen = dialogLayer !== null
-      && !!dialogLayer.querySelector('[data-jhin-id*="model"]');
+    ctx.modelPickerOpen = dialogLayer !== null && !!dialogLayer.querySelector('[data-jhin-id*="model"]');
     ctx.usagePageOpen = currentScreenId === "usage";
-    ctx.composerFocus = editable
-      && inside('[data-jhin-id="composer"], [data-jhin-id="messageInput"]');
+    ctx.composerFocus = editable && inside('[data-jhin-id="composer"], [data-jhin-id="messageInput"]');
     ctx.composerDraft = typeof UiState.values.messageInput === "string"
       && UiState.values.messageInput.trim() !== "";
-    ctx.turnRunning = false;
+    ctx.turnRunning = !!document.querySelector('[data-jhin-id$="-working"]');
     ctx.editableFocus = editable;
     ctx.isWeb = true;
     ctx.isDesktop = false;
     ctx.sidebarFocus = inside('[data-jhin-type="nav"], [data-jhin-id*="sidebar"], [role="navigation"]');
-    ctx.paletteOpen = dialogLayer !== null
-      && dialogLayer.classList.contains("jhin-palette-layer");
+    ctx.paletteOpen = dialogLayer !== null && dialogLayer.classList.contains("jhin-palette-layer");
     ctx.modalOpen = dialogOpen;
     ctx.inputFocus = editable;
     ctx.dialogOpen = dialogOpen;
@@ -1628,7 +1708,6 @@
     return ctx;
   }
 
-  /** Section 4.1 when: unknown names read false; failure degrades to false. */
   function whenHolds(exprString, contexts) {
     const proxy = new Proxy(contexts, {
       get(target, name) {
@@ -1638,7 +1717,6 @@
     return runExpr(exprString, proxy);
   }
 
-  /** Last match wins: the first rule from the end whose chord + when hold. */
   function matchKeyRule(chord, contexts) {
     const rules = effectiveKeymap();
     const typing = contexts.composerFocus || contexts.editableFocus;
@@ -1653,8 +1731,6 @@
     }
     return null;
   }
-
-  /* --- the client command table --------------------------------------- */
 
   const PICKER_HOOKS = {
     "modelPicker.toggle": "composer-model-picker",
@@ -1675,7 +1751,6 @@
     return false;
   }
 
-  /** The action host whose action JSON carries this name (the send button). */
   function actionByActionName(name) {
     const nodes = document.querySelectorAll("[data-jhin-action]");
     for (let i = 0; i < nodes.length; i += 1) {
@@ -1685,7 +1760,6 @@
     return null;
   }
 
-  /** One command id to runtime behaviour; false = not handled (no swallow). */
   function dispatchCommand(command) {
     if (command === "composer.send" || command === "composer.sendAndNew") {
       const send = actionByActionName("send");
@@ -1720,7 +1794,6 @@
     return false;
   }
 
-  /** The command palette overlay: the bootstrap palette metadata as chrome. */
   function openPalette() {
     closeDialogOverlay();
     const layer = el("div", "jhin-dialog-layer jhin-palette-layer");
@@ -1757,7 +1830,6 @@
     if (first) { first.focus(); }
   }
 
-  /** The keydown capture: rule dispatch, then the dialog-layer Escape. */
   function onKeydown(event) {
     if (event.defaultPrevented) { return; }
     const chord = chordFromEvent(event);
@@ -1798,7 +1870,6 @@
     });
   }
 
-  /** The runtime-owned chrome: the two mount points and the state listeners. */
   function shell() {
     let root = document.getElementById("jhin-root");
     if (!root) {

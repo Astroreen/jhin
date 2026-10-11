@@ -177,9 +177,10 @@ class ChatScreenTest {
         EventFrames.Translator translator = new EventFrames.Translator();
         List<String> frameIds = new ArrayList<>();
         for (EventRecord record : history) {
-            Map<String, Object> frame = translator.frame(
-                    record.type().wire(), record.payload(), record.seq());
-            collectIds(frame, frameIds);
+            for (Map<String, Object> frame : translator.frames(
+                    record.type().wire(), record.payload(), record.seq())) {
+                collectFrameIds(frame, frameIds);
+            }
         }
 
         List<String> treeIds = new ArrayList<>();
@@ -409,6 +410,30 @@ class ChatScreenTest {
                 ids.add(text);
             }
         });
+    }
+
+    /**
+     * The ids one level-4 frame can name: the envelope {@code id} of a
+     * {@code node}/{@code patch}/{@code replace} frame plus every
+     * {@code id="…"} / {@code data-jhin-id="…"} attribute of its html.
+     */
+    private static void collectFrameIds(Map<String, Object> frame, List<String> ids) {
+        for (String shape : List.of("node", "patch", "replace")) {
+            if (frame.get(shape) instanceof Map<?, ?> item) {
+                Object id = item.get("id");
+                if (id instanceof String text) {
+                    ids.add(text);
+                }
+                Object html = item.get("html");
+                if (html instanceof String markup) {
+                    java.util.regex.Matcher matcher =
+                            java.util.regex.Pattern.compile("id=\"([^\"]*)\"").matcher(markup);
+                    while (matcher.find()) {
+                        ids.add(matcher.group(1));
+                    }
+                }
+            }
+        }
     }
 
     private static List<Map<String, Object>> nodesOfType(Object fragment, String type) {

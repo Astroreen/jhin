@@ -461,9 +461,64 @@ public final class MessageCardBuilder {
                 .borderRadius(BUBBLE_RADIUS)
                 .padding(12)
                 .maxWidth(560)
-                .child(Ui.markdown(text == null ? "" : text).id(messageId(seq)).build())
+                .child(streamedText(seq, text))
                 .build();
         return rowContainer(KIND_MESSAGE, "assistant", seq, "centerLeft", 4, card);
+    }
+
+    /**
+     * The streamed-text element of one assistant message: the {@code
+     * markdown} node whose stable {@code msg-<seq>} id the {@code patch}
+     * frames grow in place. Built by the row above and rebuilt per flush by
+     * {@link #streamedTextHtml(String)} — one element definition, one id.
+     *
+     * @param seq  the {@code message_start} sequence number (drives the id)
+     * @param text the message text so far
+     * @return the {@code msg-<seq>} markdown element
+     */
+    public static UiNode streamedText(long seq, String text) {
+        return Ui.markdown(text == null ? "" : text).id(messageId(seq)).build();
+    }
+
+    /**
+     * The rendered streamed-text content of one assistant message: the
+     * markdown blocks of {@code text} <em>without</em> the wrapping element
+     * — the level-4 {@code patch} {@code html} that swaps into the
+     * {@code msg-<seq>} text element (docs/sdui.md section 5: a patch
+     * replaces the inner HTML of its target; the plan words it "innerHTML of
+     * the markdown block").
+     *
+     * @param text the accumulated message text
+     * @return the inner HTML of the text element
+     */
+    public static String streamedTextHtml(String text) {
+        return innerHtmlOf(Ui.markdown(text == null ? "" : text).build());
+    }
+
+    /**
+     * The rendered inner content of one node: the HTML of its children
+     * without the root element's open/close tags — the {@code patch}
+     * {@code html} shape of docs/sdui.md section 5 (the patch swaps the
+     * inner HTML of {@code #<id>}, so the payload must not re-emit the
+     * target element itself).
+     *
+     * <p>The extraction is exact, not a heuristic: {@code HtmlEsc} escapes
+     * {@code <} and {@code >} in every attribute value and text child, so
+     * the first {@code >} of a rendered fragment ends the root open tag and
+     * the last {@code <} starts the root close tag. A void or empty root
+     * renders as the empty content.
+     *
+     * @param node the node whose content to render
+     * @return the inner HTML of the node's element
+     */
+    public static String innerHtmlOf(UiNode node) {
+        String fragment = HtmlRenderer.renderFragment(node);
+        int openEnd = fragment.indexOf('>');
+        int closeStart = fragment.lastIndexOf('<');
+        if (openEnd < 0 || closeStart <= openEnd) {
+            return "";
+        }
+        return fragment.substring(openEnd + 1, closeStart);
     }
 
     /**

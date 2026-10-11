@@ -1,0 +1,38 @@
+T205 browser steps — UNAVAILABLE in this environment.
+
+Browser tooling (the agent browser / screenshots / evaluate) cannot run on
+this QA machine; the T202/T203/T204 precedent applies: every browser step is
+recorded here and substituted with curl + static asserts.
+
+Not executed (the plan's stream-01..02/03.png set):
+  - stream-01.png: a live streaming screenshot — tokens appearing in the open
+    chat incrementally while the scripted reply streams.
+  - stream-02.png: visual scroll anchoring — auto-scroll follows the end and
+    releases when the user scrolls up 40 px (T100 / CHAT_TIMELINE_ANCHOR).
+  - stream-03.png: the focus restore rule — caret and selection survive the
+    patch/replace swaps (sdui.md section 9.5 / section 4.4).
+
+Substituted (evidence of this run):
+  - live streaming  -> the SSE capture (frames-raw.sse) is opened BEFORE the
+    runs and the mid-run snapshot (frames-live-mid.txt / -report.txt) proves
+    run 1's frames arrived on the wire before run 2 was sent; frames.jsonl
+    carries the full frame sequence of both runs;
+  - >= 3 incremental patches -> asserted on the wire in frame-shapes.txt
+    (plan T205.4's frame counter becomes the patch count of frames.jsonl);
+  - scroll anchoring -> static: ANCHOR_PX = 24 and the follow check
+    (view.scrollHeight - view.scrollTop - view.clientHeight <= ANCHOR_PX) in
+    app.js, and the T100 end-inset (padding-bottom: 24px) in app.css
+    (static-gates.txt gate 2e);
+  - focus restore -> static: withFocusRestore shared by swapInner/swapOuter in
+    app.js (static-gates.txt gate 2e); the DOM-level restore proof needs a
+    browser;
+  - the working spinner appearing/disappearing -> the wire frames: run_start
+    emits the working row (node) and run_end removes it (remove) — recorded in
+    frames.jsonl / shape-counts.txt (turnRunning's
+    [data-jhin-id$="-working"] selector asserted in gate 2e).
+
+Uncovered without a browser (accepted for this environment):
+  - the visual result of the html fragments (rendering, layout, colours);
+  - EventSource fallback behaviour in a real browser (the fetch-stream primary
+    path is the one curl exercises; the fallback is static-only);
+  - real keystroke focus/selection restoration.
