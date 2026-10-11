@@ -58,6 +58,9 @@ class UiPluginTest {
                 .containsExactlyInAnyOrder(
                         org.assertj.core.groups.Tuple.tuple("GET", "/"),
                         org.assertj.core.groups.Tuple.tuple("GET", "/ui/assets/{name}"),
+                        org.assertj.core.groups.Tuple.tuple("GET", "/manifest.json"),
+                        org.assertj.core.groups.Tuple.tuple("GET", "/ui/icons/{name}"),
+                        org.assertj.core.groups.Tuple.tuple("GET", "/sw.js"),
                         org.assertj.core.groups.Tuple.tuple("GET", "/_jhin/bootstrap"),
                         org.assertj.core.groups.Tuple.tuple("GET", "/ui/screen/{id}"),
                         org.assertj.core.groups.Tuple.tuple("POST", "/ui/action/search"),

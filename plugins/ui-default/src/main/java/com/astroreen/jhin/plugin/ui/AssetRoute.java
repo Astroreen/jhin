@@ -145,7 +145,7 @@ final class AssetRoute {
     }
 
     /** The strong entity-tag {@code "sha256-<hex>"} of exact payload bytes. */
-    private static String etagOf(byte[] body) {
+    static String etagOf(byte[] body) {
         byte[] digest;
         try {
             digest = MessageDigest.getInstance("SHA-256").digest(body);

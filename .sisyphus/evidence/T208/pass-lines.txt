@@ -1,0 +1,11 @@
+-- OK: build + four test gates green (457/310/64/117; /home/astroreen/Documents/jhin/.sisyphus/evidence/T208/test-gates.txt)
+-- OK: static gates green (0 '<' in app.css, app.js 59970 B == 59970 <= 60000, app.css 35229 B == 35229 <= 40000, 0 eval)
+-- OK: 3 jars staged for seeding (/home/astroreen/Documents/jhin/.sisyphus/evidence/T208/kernel-env.txt)
+-- OK: kernel up on http://localhost:18443 (pid 2978806), GET /_jhin/health -> 200 in 3 s
+-- OK: manifest green (application/manifest+json, Jhin/standalone, theme #ffd0dd, background #fdf7fd, 2 icons at /ui/icons/{icon-192,icon-512}.png)
+-- OK: icons green (2 PNGs served with magic + IHDR sizes + sha256 ETag, If-None-Match -> 304, unknown -> 404 not_found, traversal -> 404)
+-- OK: sw.js green (2346 B, application/javascript, no-cache, NO CSP; jhin-shell-v1 + precache + cleanup + skipWaiting/claim; cache-first assets / network-first / + 4 never-cache prefixes; 0 eval)
+-- OK: registration snippet green (guarded by window.isSecureContext, nonce UPTM0mPhF9yMj0gte-fT_tDd == CSP nonce, silent-skip contract recorded in insecure-skip.txt)
+-- OK: offline-strategy.txt written (fetch-handler excerpts + the renderOffline cross-references)
+-- OK: browser-unavailable.txt written (sw-registration-state.txt + offline.png honestly absent, substitutes listed)
+-- OK: beforeinstallprompt.txt written (availability: not observable; no listener by design; plan acceptance = affordance unavailable, manifest valid)

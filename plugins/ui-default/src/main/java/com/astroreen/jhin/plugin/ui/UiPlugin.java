@@ -59,8 +59,9 @@ public final class UiPlugin implements JhinPlugin {
     }
 
     /**
-     * Publishes nothing and registers the web shell, asset, bootstrap, screen,
-     * action, search and stream routes. Optional integrations degrade: without
+     * Publishes nothing and registers the web shell, asset, manifest, icon,
+     * service worker, bootstrap, screen, action, search and stream routes.
+     * Optional integrations degrade: without
      * the security
      * plugin there
      * is no enroll screen, without the LLM plugin no providers screen, without
@@ -92,6 +93,8 @@ public final class UiPlugin implements JhinPlugin {
         BootstrapRoute bootstrap = new BootstrapRoute(screens, features.security(), tailor, settings);
         WebShellRoute webShell = new WebShellRoute(settings, false);
         AssetRoute assets = new AssetRoute();
+        ManifestRoute manifest = new ManifestRoute(settings);
+        ServiceWorkerRoute serviceWorker = new ServiceWorkerRoute();
         ScreenRoute screen = new ScreenRoute(screens, tailor);
         ActionRoute action = new ActionRoute(handlers);
         SearchRoute search = new SearchRoute(store, events);
@@ -102,6 +105,11 @@ public final class UiPlugin implements JhinPlugin {
         // The shell document links its two static payloads here (T207.1);
         // the exact-name allowlist lives in the route, not in the template.
         ctx.http().route(new RouteSpec("GET", "/ui/assets/{name}", assets::handle));
+        // The PWA manifest and its icon payloads (T208.1); the service
+        // worker the shell registers (T208.2).
+        ctx.http().route(new RouteSpec("GET", "/manifest.json", manifest::handle));
+        ctx.http().route(new RouteSpec("GET", "/ui/icons/{name}", manifest::handleIcon));
+        ctx.http().route(new RouteSpec("GET", "/sw.js", serviceWorker::handle));
         ctx.http().route(new RouteSpec("GET", "/_jhin/bootstrap", bootstrap::handle));
         ctx.http().route(new RouteSpec("GET", "/ui/screen/{id}", screen::handle));
         // The literal `search` segment wins over the `{name}` capture of the
@@ -111,7 +119,7 @@ public final class UiPlugin implements JhinPlugin {
         ctx.http().route(new RouteSpec("POST", "/ui/action/{name}", action::handle));
         ctx.http().route(new RouteSpec("GET", "/ui/stream/session/{id}", streamRoute::handle));
         ctx.http().route(new RouteSpec("GET", "/ui/stream/sessions-overview", streamRoute::handleOverview));
-        ctx.log().info("ui plugin started: web shell, asset, bootstrap, screen, action, search and stream routes registered");
+        ctx.log().info("ui plugin started: web shell, asset, manifest, icon, service worker, bootstrap, screen, action, search and stream routes registered");
     }
 
     /**

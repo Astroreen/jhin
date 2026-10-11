@@ -1,10 +1,13 @@
 /**
- * {@code GET /} web-shell behaviour (T202, T207.2): the served document is
+ * {@code GET /} web-shell behaviour (T202, T207.2, T208.3): the served
+ * document is
  * the {@code /web/index.html} template — in the production linked branch the
  * token CSS is inlined under a per-response nonce and the two static payloads
  * are linked through {@code /ui/assets/*}, in the inline fallback branch all
  * three payloads are inlined exactly like T202 did. Both branches carry the
- * content-security policy with the nonce the document uses, and no template
+ * content-security policy with the nonce the document uses, the
+ * service-worker registration snippet under the same nonce guarded by
+ * {@code window.isSecureContext}, and no template
  * placeholder survives either one.
  */
 package com.astroreen.jhin.plugin.ui;
@@ -124,6 +127,30 @@ class WebShellRouteTest {
         assertThat(nonceOf(inline())).isNotEqualTo(nonceOf(first));
         assertThat(bodyOf(first)).contains("nonce=\"" + nonceOf(first) + "\"");
         assertThat(bodyOf(second)).contains("nonce=\"" + nonceOf(second) + "\"");
+    }
+
+    @Test
+    void carriesTheClientRootInTheProductionBranch() {
+        // The offline art of module 5 (renderOffline) paints into this root.
+        assertThat(bodyOf(linked())).contains("id=\"jhin-root\"");
+    }
+
+    @Test
+    void registersTheServiceWorkerWithASecureContextGuard() {
+        for (HttpResponse response : new HttpResponse[] {linked(), inline()}) {
+            assertThat(bodyOf(response))
+                    .contains("navigator.serviceWorker.register(\"/sw.js\")")
+                    .contains("window.isSecureContext");
+        }
+    }
+
+    @Test
+    void theServiceWorkerSnippetCarriesTheResponseNonce() {
+        HttpResponse response = linked();
+        String nonce = nonceOf(response);
+
+        assertThat(bodyOf(response))
+                .contains("<script nonce=\"" + nonce + "\">if (window.isSecureContext");
     }
 
     private static String nonceOf(HttpResponse response) {

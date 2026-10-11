@@ -18,9 +18,10 @@
  *
  * <p>Every response carries the content-security policy of
  * {@link #csp(String)} with a fresh per-response nonce (≥ 128 bits,
- * {@code SecureRandom}, base64url) and the nonce lands in three places under
+ * {@code SecureRandom}, base64url) and the nonce lands in four places under
  * the policy's control: the {@code script-src 'nonce-…'} source, the app
- * {@code <script>} element (both the linked and the inline form) and the
+ * {@code <script>} element (both the linked and the inline form), the
+ * service-worker registration snippet (T208.3) and the
  * token-CSS {@code <style>} element (plus the inline app-CSS {@code <style>}
  * in the fallback branch).
  *
@@ -40,6 +41,15 @@
  * No further directives are invented; {@code default-src 'self'} is the
  * fallback for {@code fetch}/{@code EventSource} of {@code /_jhin/bootstrap},
  * {@code /ui/screen/*}, {@code /ui/action/*} and {@code /ui/stream*}.
+ *
+ * <p>The document also carries the service-worker registration snippet
+ * (T208.3) as a second inline {@code <script nonce="…">} after the app
+ * payload: it registers {@code /sw.js} only under
+ * {@code window.isSecureContext} with a silent failure catch, so a plain-HTTP
+ * origin (the QA loopback) skips registration without an error and the app
+ * keeps working exactly as before. No {@code beforeinstallprompt} listener
+ * ships — the plan only asks the QA report which browsers expose it, and
+ * nothing observable can be collected without a browser (see T208 chunk 2).
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -79,6 +89,9 @@ final class WebShellRoute {
 
     /** Where {@link AssetRoute} serves the static script from. */
     private static final String APP_JS_URL = "/ui/assets/app.js";
+
+    /** Where {@link ServiceWorkerRoute} serves the worker script from. */
+    private static final String SW_URL = "/sw.js";
 
     /** Nonce source: 18 bytes = 144 bits, above the 128-bit floor. */
     private static final int NONCE_BYTES = 18;
@@ -167,7 +180,7 @@ final class WebShellRoute {
                 .replace(APP_STYLE_ELEMENT,
                         "<link rel=\"stylesheet\" href=\"" + APP_CSS_URL + "\">")
                 .replace(APP_SCRIPT_ELEMENT, "<script src=\"" + APP_JS_URL
-                        + "\" defer nonce=\"" + nonce + "\"></script>");
+                        + "\" defer nonce=\"" + nonce + "\"></script>" + swSnippet(nonce));
     }
 
     /** The fallback document: token CSS and both payloads inline. */
@@ -178,9 +191,26 @@ final class WebShellRoute {
                 .replace("<style id=\"jhin-app-css\">",
                         "<style id=\"jhin-app-css\" nonce=\"" + nonce + "\">")
                 .replace(APP_CSS_PLACEHOLDER, appCss)
-                .replace("<script id=\"jhin-app-js\">",
-                        "<script id=\"jhin-app-js\" nonce=\"" + nonce + "\">")
-                .replace(APP_JS_PLACEHOLDER, appJs);
+                .replace(APP_SCRIPT_ELEMENT, "<script id=\"jhin-app-js\" nonce=\"" + nonce
+                        + "\">" + appJs + "</script>" + swSnippet(nonce));
+    }
+
+    /**
+     * The service-worker registration snippet (T208.3): one inline
+     * {@code <script>} under the response nonce, appended after the app
+     * payload. {@code window.isSecureContext} guards the registration so a
+     * plain-HTTP origin skips it silently (no error, app keeps working) and
+     * the catch keeps any registration failure silent the same way.
+     *
+     * @param nonce the per-response nonce of this document
+     * @return the registration script element
+     */
+    private static String swSnippet(String nonce) {
+        return "<script nonce=\"" + nonce + "\">"
+                + "if (window.isSecureContext && \"serviceWorker\" in navigator) {"
+                + " navigator.serviceWorker.register(\"" + SW_URL + "\")"
+                + ".catch(function () {});"
+                + "}</script>";
     }
 
     /** Reads one class-path resource of this plugin as UTF-8 text. */

@@ -1,0 +1,91 @@
+T208 QA: PASS — PWA manifest, service worker and offline shell
+
+PASS lines:
+  -- OK: build + four test gates green (457/310/64/117; /home/astroreen/Documents/jhin/.sisyphus/evidence/T208/test-gates.txt)
+  -- OK: static gates green (0 '<' in app.css, app.js 59970 B == 59970 <= 60000, app.css 35229 B == 35229 <= 40000, 0 eval)
+  -- OK: 3 jars staged for seeding (/home/astroreen/Documents/jhin/.sisyphus/evidence/T208/kernel-env.txt)
+  -- OK: kernel up on http://localhost:18443 (pid 2978806), GET /_jhin/health -> 200 in 3 s
+  -- OK: manifest green (application/manifest+json, Jhin/standalone, theme #ffd0dd, background #fdf7fd, 2 icons at /ui/icons/{icon-192,icon-512}.png)
+  -- OK: icons green (2 PNGs served with magic + IHDR sizes + sha256 ETag, If-None-Match -> 304, unknown -> 404 not_found, traversal -> 404)
+  -- OK: sw.js green (2346 B, application/javascript, no-cache, NO CSP; jhin-shell-v1 + precache + cleanup + skipWaiting/claim; cache-first assets / network-first / + 4 never-cache prefixes; 0 eval)
+  -- OK: registration snippet green (guarded by window.isSecureContext, nonce UPTM0mPhF9yMj0gte-fT_tDd == CSP nonce, silent-skip contract recorded in insecure-skip.txt)
+  -- OK: offline-strategy.txt written (fetch-handler excerpts + the renderOffline cross-references)
+  -- OK: browser-unavailable.txt written (sw-registration-state.txt + offline.png honestly absent, substitutes listed)
+  -- OK: beforeinstallprompt.txt written (availability: not observable; no listener by design; plan acceptance = affordance unavailable, manifest valid)
+
+gates:
+  build (bootJar + 3 plugin jars)                        green (build.log)
+  :jhin-plugin-ui-default:test  457 tests                  green (ManifestRouteTest, ServiceWorkerRouteTest)
+  :jhin-plugin-ui-kit:test      310 tests                  green
+  :sdk:test                     64 tests                   green
+  :kernel:test                  117 tests                  green (KernelPurityTest)
+  failures / errors                                          0 / 0
+  '<' in app.css                                          0 (0)
+  app.js bytes                                            59970 (== 59970 unchanged, <= 60000)
+  app.css bytes                                           35229 (== 35229 unchanged, <= 40000)
+  eval/new Function in app.js                             0 (0)
+
+kernel:
+  mode   plain HTTP on http://localhost:18443 (no jhin.security -> no TlsProvider -> plain HTTP;
+         port 18443 because 8443 is occupied on this machine)
+  plugins jhin.sessions, jhin.ui-kit, jhin.ui (no mock LLM — T208 drives no run)
+  client  no X-Jhin-Client sent (fresh-browser first-load path)
+
+manifest (manifest.json + manifest-checks.txt):
+  GET /manifest.json   200  application/manifest+json; charset=utf-8, cache-control no-cache
+  name/short_name      'Jhin' / 'Jhin' (Jhin)
+  display              standalone
+  theme_color          #ffd0dd  (#[0-9a-f]{6}, colors.accent via the BootstrapRoute theme pipeline)
+  background_color     #fdf7fd  (#[0-9a-f]{6}, colors.background, same pipeline)
+  id/start_url/scope   '/' / '/' / '/' (fixed identity fields)
+  icons                2 entries: /ui/icons/icon-192.png 192x192 image/png,
+                       /ui/icons/icon-512.png 512x512 image/png
+
+icons (icons.txt):
+  icon-192.png  200 image/png, etag "sha256-…", PNG magic 89504e470d0a1a0a, IHDR 192x192
+  icon-512.png  200 image/png, etag "sha256-…", PNG magic 89504e470d0a1a0a, IHDR 512x512
+  If-None-Match: "sha256-d2b6a68881b93882f91f506d58dd22bc9cc34b133fa669dc259b1008b6e8ca3b" -> 304 (empty body, tag echoed)
+  /ui/icons/icon-384.png            -> 404 (not_found envelope)
+  /ui/icons/../app.js (path-as-is)  -> 404 (non-200)
+
+service worker (sw.js.txt + sw-checks.txt):
+  GET /sw.js  200  application/javascript; charset=utf-8, cache-control no-cache
+  no Content-Security-Policy on /sw.js                 yes
+  cache name jhin-shell-v1 + stale jhin-shell- cleanup  yes
+  install precache: / + /ui/assets/app.js + /ui/assets/app.css  yes
+  activate: caches.delete(stale) + self.skipWaiting() + self.clients.claim()  yes
+  cache-first  /ui/assets/*        (cacheFirst dispatch)  yes
+  network-first /                  (networkFirst + caches.match fallback)  yes
+  never-cache  /_jhin/bootstrap /ui/screen/ /ui/action/ /ui/stream (fetch passthrough)  yes
+  GET-only + same-origin gates                        yes
+  eval( / new Function( in sw.js                     0 (0)
+
+registration snippet (insecure-skip.txt):
+  snippet occurrences in the served shell             1
+  navigator.serviceWorker.register("/sw.js")          present
+  window.isSecureContext guard                        present
+  snippet nonce == CSP nonce of the same response     yes (nonce UPTM0mPhF9yMj0gte-fT_tDd)
+  insecure-origin behaviour                           silent skip by design (guard +
+                                                      empty catch; plan clause recorded
+                                                      in insecure-skip.txt, incl. the
+                                                      http://localhost secure-context nuance)
+
+browser runtime gap (browser-unavailable.txt):
+  sw-registration-state.txt   NOT produced (needs a real engine) — substitutes:
+                              sw.js.txt/sw-checks.txt strategy contract
+  offline.png                 NOT produced (needs a real browser offline) — substitutes:
+                              offline-strategy.txt fetch-handler excerpts + the
+                              renderOffline/#jhin-root unit cites (T204 scope)
+  beforeinstallprompt         not observable here; client adds no listener by design;
+                              plan acceptance = "affordance unavailable, manifest valid"
+                              (beforeinstallprompt.txt; manifest link observation noted there)
+
+extra asserts beyond the brief's list (recorded, no plan asserts changed):
+  manifest id/start_url/scope == "/" (route javadoc identity fields)
+  manifest cache-control == no-cache
+  icon If-None-Match -> 304 revalidation probe (the AssetRoute discipline)
+  sw.js carries NO Content-Security-Policy header (the documented deviation)
+  static gates also assert the exact unchanged sizes 59970/35229 (the brief's
+  "unchanged since chunk 1" claim) in addition to the <= ceilings
+
+evidence: /home/astroreen/Documents/jhin/.sisyphus/evidence/T208
