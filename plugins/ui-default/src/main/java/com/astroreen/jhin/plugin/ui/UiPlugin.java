@@ -1,8 +1,9 @@
 /**
  * Entry point of the default SDUI plugin: resolves the session services of
  * {@code jhin.sessions}, detects which optional integrations are loaded,
- * assembles the default screens, the action table and the six routes and
- * registers them. {@code GET /_jhin/bootstrap} replaces the kernel fallback on
+ * assembles the default screens, the action table and the seven routes and
+ * registers them. {@code GET /} serves the web-client shell document and
+ * {@code GET /_jhin/bootstrap} replaces the kernel fallback on
  * the same path silently (a plugin route always supersedes a fallback).
  *
  * <p>The optional integrations (jhin.security, jhin.llm, jhin.agent,
@@ -58,8 +59,9 @@ public final class UiPlugin implements JhinPlugin {
     }
 
     /**
-     * Publishes nothing and registers the bootstrap, screen, action, search
-     * and stream routes. Optional integrations degrade: without the security
+     * Publishes nothing and registers the web shell, bootstrap, screen,
+     * action, search and stream routes. Optional integrations degrade: without
+     * the security
      * plugin there
      * is no enroll screen, without the LLM plugin no providers screen, without
      * the agent plugin the run actions answer with a toast.
@@ -88,9 +90,14 @@ public final class UiPlugin implements JhinPlugin {
                 Actions.build(store, ctx.services(), features, settings);
 
         BootstrapRoute bootstrap = new BootstrapRoute(screens, features.security(), tailor, settings);
+        WebShellRoute webShell = new WebShellRoute(settings);
         ScreenRoute screen = new ScreenRoute(screens, tailor);
         ActionRoute action = new ActionRoute(handlers);
         SearchRoute search = new SearchRoute(store, events);
+        // The literal root template is expected to match an exact `/` request
+        // (RouteMatcher prefers literal segments over the `/*` dispatch); the
+        // T202 QA script proves the runtime dispatch.
+        ctx.http().route(new RouteSpec("GET", "/", webShell::handle));
         ctx.http().route(new RouteSpec("GET", "/_jhin/bootstrap", bootstrap::handle));
         ctx.http().route(new RouteSpec("GET", "/ui/screen/{id}", screen::handle));
         // The literal `search` segment wins over the `{name}` capture of the
@@ -100,7 +107,7 @@ public final class UiPlugin implements JhinPlugin {
         ctx.http().route(new RouteSpec("POST", "/ui/action/{name}", action::handle));
         ctx.http().route(new RouteSpec("GET", "/ui/stream/session/{id}", streamRoute::handle));
         ctx.http().route(new RouteSpec("GET", "/ui/stream/sessions-overview", streamRoute::handleOverview));
-        ctx.log().info("ui plugin started: bootstrap, screen, action, search and stream routes registered");
+        ctx.log().info("ui plugin started: web shell, bootstrap, screen, action, search and stream routes registered");
     }
 
     /**

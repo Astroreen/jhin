@@ -10,12 +10,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
+import com.astroreen.jhin.sdk.http.ClientInfo;
 import com.astroreen.jhin.sdk.http.HttpResponse;
 import com.astroreen.jhin.sdk.http.RouteSpec;
 import com.astroreen.jhin.sdk.json.Json;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -54,6 +56,7 @@ class UiPluginTest {
 
         assertThat(routes).extracting(RouteSpec::method, RouteSpec::path)
                 .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple("GET", "/"),
                         org.assertj.core.groups.Tuple.tuple("GET", "/_jhin/bootstrap"),
                         org.assertj.core.groups.Tuple.tuple("GET", "/ui/screen/{id}"),
                         org.assertj.core.groups.Tuple.tuple("POST", "/ui/action/search"),
@@ -118,7 +121,8 @@ class UiPluginTest {
         RouteSpec bootstrap = context.routes().stream()
                 .filter(route -> route.path().equals("/_jhin/bootstrap"))
                 .findFirst().orElseThrow();
-        FakeHttpRequest req = new FakeHttpRequest("GET", "/_jhin/bootstrap", Map.of(), Map.of(), "");
+        FakeHttpRequest req = new FakeHttpRequest("GET", "/_jhin/bootstrap", Map.of(), Map.of(), "",
+                new ClientInfo(4, "0.4.0", 5, Set.of()), Map.of());
         HttpResponse response = bootstrap.handler().handle(req);
         assertThat(response.status()).isEqualTo(200);
         return response;

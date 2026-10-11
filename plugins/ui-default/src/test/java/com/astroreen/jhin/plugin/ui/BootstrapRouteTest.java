@@ -23,6 +23,8 @@ import java.util.Map;
 
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,14 +34,15 @@ class BootstrapRouteTest {
 
     /** Client declaring every capability the tailoring looks at. */
     private static final ClientInfo FULL_CAPS =
-            new ClientInfo(1, "0.2.0", Set.of("sse", "open_url", "secure_storage", "multi_profile"));
+            new ClientInfo(4, "0.4.0", 5, Set.of("sse", "open_url", "secure_storage", "multi_profile"));
 
     /** Client declaring nothing. */
-    private static final ClientInfo NO_CAPS = new ClientInfo(1, "0.2.0", Set.of());
+    private static final ClientInfo NO_CAPS = new ClientInfo(4, "0.4.0", 5, Set.of());
 
-    /** A contract level 2 client with every capability and the current schema. */
+    /** A capability-rich client at the current contract level (the token-driven
+     * fallback art needs a negotiated level of at least 2). */
     private static final ClientInfo LEVEL2_CAPS =
-            new ClientInfo(2, "0.3.0", 3, Set.of("sse", "open_url", "secure_storage", "multi_profile"));
+            new ClientInfo(4, "0.4.0", 5, Set.of("sse", "open_url", "secure_storage", "multi_profile"));
 
     @TempDir
     Path tmp;
@@ -104,11 +107,12 @@ class BootstrapRouteTest {
     void payloadCarriesTheContractKeys() {
         Map<String, Object> payload = bootstrap(false, request(FULL_CAPS), screens());
 
-        assertThat(payload).containsEntry("api", 1);
+        assertThat(payload).containsEntry("api", 4);
         assertThat(payload).containsEntry("empty", false);
         assertThat(payload).containsEntry("title", "Jhin");
         assertThat(payload).containsEntry("screenEndpoint", "/ui/screen/{id}");
-        assertThat(castMap(payload.get("theme"))).containsOnlyKeys("seedColor", "mode");
+        assertThat(castMap(payload.get("theme")))
+                .containsKeys("id", "appearance", "canvas", "accent", "colors", "mode");
         List<Object> screens = castList(payload.get("screens"));
         assertThat(screens).isNotEmpty();
         Set<Object> ids = new java.util.HashSet<>();
@@ -124,21 +128,28 @@ class BootstrapRouteTest {
 
         Map<String, Object> fallbacks = castMap(payload.get("fallbacks"));
         assertThat(fallbacks.keySet()).containsExactlyInAnyOrder("offline", "error");
-        assertThat(castMap(fallbacks.get("offline"))).containsEntry("type", "card");
-        assertThat(castMap(fallbacks.get("error"))).containsEntry("type", "card");
+        assertThat(String.valueOf(fallbacks.get("offline")))
+                .startsWith("<").contains("data-jhin-type=\"card\"");
+        assertThat(String.valueOf(fallbacks.get("error")))
+                .startsWith("<").contains("data-jhin-type=\"card\"");
     }
 
     @Test
-    void level1FallbacksKeepTheClassicCardArt() {
-        Map<String, Object> payload = bootstrap(false, request(FULL_CAPS), screens());
+    void level1ClientsGetTheContractUpgradeRefusal() {
+        // The level-1 wire shape (classic card art, reduced theme) is gone
+        // behind the contract-level-4 gate: an api=1 caller is refused before
+        // any payload is built (docs/sdui.md section 1).
+        CapabilityTailor tailor = new CapabilityTailor(eventLog);
+        BootstrapRoute route = new BootstrapRoute(screens(), false, tailor, UiSettings.open(tmp));
+        FakeHttpRequest req = new FakeHttpRequest("GET", "/_jhin/bootstrap", Map.of(), Map.of(), "",
+                new ClientInfo(1, "0.2.0", 1, Set.of()), Map.of());
 
-        Map<String, Object> fallbacks = castMap(payload.get("fallbacks"));
-        String offline = String.valueOf(fallbacks.get("offline"));
-        String error = String.valueOf(fallbacks.get("error"));
-        // Level 1 is exactly the Appendix A art: no skeleton, no token refs.
-        assertThat(offline).doesNotContain("skeleton").doesNotContain("$");
-        assertThat(error).doesNotContain("skeleton").doesNotContain("$");
-        assertThat(typesIn(fallbacks)).containsExactlyInAnyOrder("card", "text", "button");
+        HttpResponse response = route.handle(req);
+
+        assertThat(response.status()).isEqualTo(426);
+        assertThat(Json.readMap(new String(response.body())))
+                .containsEntry("error", "contract_upgrade")
+                .containsEntry("minApi", 4);
     }
 
     @Test
@@ -147,18 +158,20 @@ class BootstrapRouteTest {
 
         Map<String, Object> fallbacks = castMap(payload.get("fallbacks"));
         for (String key : new String[] {"offline", "error"}) {
-            Map<String, Object> art = castMap(fallbacks.get(key));
-            assertThat(art).containsEntry("type", "card");
+            String art = String.valueOf(fallbacks.get(key));
+            assertThat(art).startsWith("<").contains("data-jhin-type=\"card\"");
             // card + skeleton + button composition.
             assertThat(typesIn(art)).contains("card", "skeleton", "button");
         }
-        assertThat(opsIn(castMap(fallbacks.get("offline")))).contains("refresh");
-        // Token-driven layout and colors, resolved client-side (§2.2).
+        assertThat(opsIn(String.valueOf(fallbacks.get("offline")))).contains("refresh");
+        // Token-driven layout and colors, resolved into CSS variables (§2.2).
         String offline = String.valueOf(fallbacks.get("offline"));
         String error = String.valueOf(fallbacks.get("error"));
-        assertThat(offline).contains("$spacing.lg", "$spacing.md", "$color.accent", "$radius.md");
-        assertThat(error).contains("$spacing.lg", "$spacing.md", "$color.error", "$radius.md");
-        assertThat(opsIn(castMap(fallbacks.get("error"))))
+        assertThat(offline).contains("var(--spacing-lg)", "var(--spacing-md)",
+                "var(--color-accent)", "var(--radius-md)");
+        assertThat(error).contains("var(--spacing-lg)", "var(--spacing-md)",
+                "var(--color-error)", "var(--radius-md)");
+        assertThat(opsIn(String.valueOf(fallbacks.get("error"))))
                 .contains("reloadBootstrap", "openProfiles");
     }
 
@@ -178,18 +191,17 @@ class BootstrapRouteTest {
 
         assertThat(typesIn(payload)).doesNotContain("stream_view");
         assertThat(typesIn(payload)).contains("list");
-        UiNode list = findList(payload);
-        assertThat(list.props()).containsEntry("id", "activity");
-        List<Object> items = castList(list.props().get("items"));
-        assertThat(items).contains("You: hello", "Assistant: hi");
+        String html = screensHtml(payload);
+        assertThat(html).contains("data-jhin-type=\"list\"", "id=\"activity\"",
+                "You: hello", "Assistant: hi");
     }
 
     @Test
     void snapshotShowsTheEmptyTextWhenTheStreamIsEmpty() {
         Map<String, Object> payload = bootstrap(false, request(NO_CAPS), screens());
 
-        UiNode list = findList(payload);
-        assertThat(castList(list.props().get("items"))).containsExactly("No activity yet.");
+        String html = screensHtml(payload);
+        assertThat(html).contains("No activity yet.").doesNotContain("You:");
     }
 
     @Test
@@ -263,6 +275,13 @@ class BootstrapRouteTest {
         return ops;
     }
 
+    /** The wire vocabulary of an HTML fragment: {@code data-jhin-type="…"} attributes. */
+    private static final Pattern TYPE_ATTR = Pattern.compile("data-jhin-type=\"([^\"]+)\"");
+
+    /** The wire vocabulary of an HTML fragment: the {@code op} field of the
+     * action JSON inside {@code data-jhin-action}. */
+    private static final Pattern OP_ATTR = Pattern.compile("\"op\":\"([\\w]+)\"");
+
     private static void collect(Object fragment, Set<String> out, String key, Set<Object> seen) {
         if (fragment instanceof Map<?, ?> map) {
             if (!seen.add(map)) {
@@ -279,39 +298,29 @@ class BootstrapRouteTest {
             for (Object nested : list) {
                 collect(nested, out, key, seen);
             }
+        } else if (fragment instanceof String text) {
+            // Contract level 4: screens and fallbacks are HTML strings, so the
+            // wire vocabulary lives in the attributes instead of node maps.
+            // The action JSON arrives with HTML-escaped quotes — decode the
+            // quote entities first (HtmlEsc escapes all five).
+            String amp = String.valueOf((char) 38);
+            String decoded = text
+                    .replace(amp + "quot;", "\"")
+                    .replace(amp + "#39;", "'");
+            Matcher matcher = ("type".equals(key) ? TYPE_ATTR : OP_ATTR).matcher(decoded);
+            while (matcher.find()) {
+                out.add(matcher.group(1));
+            }
         }
     }
 
-    /** The degraded snapshot list of a payload; fails when there is none. */
-    private static UiNode findList(Map<String, Object> payload) {
-        List<Map<String, Object>> screens = castList(payload.get("screens")).stream()
-                .map(BootstrapRouteTest::castMap)
-                .toList();
-        UiNode found = findListNode(screens.get(0).get("node"));
-        assertThat(found).as("a list node in the payload").isNotNull();
-        return found;
-    }
-
-    private static UiNode findListNode(Object fragment) {
-        if (fragment instanceof Map<?, ?> map) {
-            if ("list".equals(map.get("type")) && map.containsKey("items")) {
-                return new UiNode("list", castMap(map), List.of());
-            }
-            for (Object nested : map.values()) {
-                UiNode found = findListNode(nested);
-                if (found != null) {
-                    return found;
-                }
-            }
-        } else if (fragment instanceof List<?> list) {
-            for (Object nested : list) {
-                UiNode found = findListNode(nested);
-                if (found != null) {
-                    return found;
-                }
-            }
+    /** The concatenated HTML of every inline screen. */
+    private static String screensHtml(Map<String, Object> payload) {
+        StringBuilder html = new StringBuilder();
+        for (Object entry : castList(payload.get("screens"))) {
+            html.append(castMap(entry).get("html"));
         }
-        return null;
+        return html.toString();
     }
 
     @SuppressWarnings("unchecked")

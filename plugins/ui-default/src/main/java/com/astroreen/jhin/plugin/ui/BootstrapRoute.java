@@ -2,15 +2,26 @@
  * {@code GET /_jhin/bootstrap}: the bootstrap payload of the SDUI contract.
  *
  * <p>This route silently replaces the kernel fallback on the same path, so the
- * payload below is what a client sees whenever this plugin is loaded. The
- * negotiated contract level ({@code min(client api, server api)},
+ * payload below is what a client sees whenever this plugin is loaded. Since
+ * contract level 4 (docs/sdui.md section 1) the payload is HTML-first: every
+ * inline screen is a {@code {id, html}} entry whose {@code html} is the
+ * {@link com.astroreen.jhin.plugin.uikit.html.HtmlRenderer} fragment of the
+ * tailored node tree, and the server-authored {@code fallbacks} are HTML
+ * strings — the {@code node} tree shape is gone from the wire (it survives
+ * only in {@code UiNode.toJson()} for the control plane). A request whose
+ * {@code X-Jhin-Client} declares {@code api} below
+ * {@link ApiVersion#SDUI_CONTRACT_MIN} — including the absent header, which
+ * parses as api=1 — is refused with {@code 426 Upgrade Required} and the
+ * {@code contract_upgrade} body instead of any payload.
+ *
+ * <p>The negotiated contract level ({@code min(client api, server api)},
  * docs/sdui.md section 6) decides the shape: at level 2 or higher the payload
  * carries
  * the full set — {@code api}, {@code empty:false}, {@code title},
  * {@code contract}, {@code theme}, {@code tokens}, {@code density},
- * {@code keymap}, the {@code entry} screen id, the inline {@code screens},
- * the {@code screenEndpoint} template and the server-authored
- * {@code fallbacks}; at level 1 it is exactly the Appendix A shape —
+ * {@code keymap}, the {@code entry} screen id, the inline {@code {id, html}}
+ * screens, the {@code screenEndpoint} template and the server-authored
+ * HTML {@code fallbacks}; at level 1 it is exactly the Appendix A shape —
  * {@code contract}/{@code tokens}/{@code density}/{@code keymap} are absent
  * and {@code theme} is reduced to {@code seedColor}+{@code mode}. The whole
  * payload is tailored to {@code X-Jhin-Client} (D-22) before it is written:
@@ -37,6 +48,7 @@ import com.astroreen.jhin.plugin.uikit.ThemeCatalog;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.UiTokens;
+import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
 import com.astroreen.jhin.sdk.ApiVersion;
 import com.astroreen.jhin.sdk.http.ClientInfo;
 import com.astroreen.jhin.sdk.http.HttpRequest;
@@ -80,10 +92,19 @@ final class BootstrapRoute {
      *
      * @param req the request carrying the client capabilities and, when a
      *            security plugin is loaded, the principal attribute
-     * @return the payload tailored to the caller
+     * @return the payload tailored to the caller, or the {@code 426 Upgrade
+     *         Required} refusal when the client speaks below contract level
+     *         {@link ApiVersion#SDUI_CONTRACT_MIN}
      */
     HttpResponse handle(HttpRequest req) {
         ClientInfo client = req.client();
+        if (client.api() < ApiVersion.SDUI_CONTRACT_MIN) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("error", "contract_upgrade");
+            body.put("message", "This server speaks the HTML UI contract (api=4). Upgrade your client.");
+            body.put("minApi", ApiVersion.SDUI_CONTRACT_MIN);
+            return HttpResponse.json(426, body);
+        }
         boolean level2 = tailor.isLevel2(client);
         UiSettings.Snapshot snapshot = settings.current();
 
@@ -131,7 +152,11 @@ final class BootstrapRoute {
         return signIn ? "pair" : "sessions";
     }
 
-    /** The inline screens, in registration order and tailored per node. */
+    /**
+     * The inline screens as {@code {id, html}} entries, in registration
+     * order: each authored tree is tailored to the caller and rendered to its
+     * HTML fragment (contract level 4, docs/sdui.md section 1).
+     */
     private List<Map<String, Object>> screens(HttpRequest req) {
         Map<String, Supplier<UiNode>> screens =
                 registry.screens(principalAccount(req), ClientKeybindings.of(req), req.client());
@@ -139,30 +164,32 @@ final class BootstrapRoute {
         for (Map.Entry<String, Supplier<UiNode>> entry : screens.entrySet()) {
             Map<String, Object> screen = new LinkedHashMap<>();
             screen.put("id", entry.getKey());
-            screen.put("node", tailor.tailor(entry.getValue().get(), req.client()).toJson());
+            screen.put("html", HtmlRenderer.renderFragment(
+                    tailor.tailor(entry.getValue().get(), req.client())));
             out.add(screen);
         }
         return out;
     }
 
     /**
-     * The server-authored offline and error art, tailored like any node.
+     * The server-authored offline and error art as HTML strings, tailored
+     * like any node before it is rendered.
      *
      * <p>At contract level 2 the art is the token-driven composition of
      * {@link #offlineArt()} / {@link #errorArt()} — a {@code card} carrying a
      * {@code skeleton} placeholder frame and the retry {@code button}, with
      * every layout and color value a {@code $token} reference (docs/sdui.md
-     * section 2.2) resolved client-side. Below level 2 the classic
+     * section 2.2) resolved into CSS variables. Below level 2 the classic
      * card+text+button art is emitted instead, so a level-1 payload keeps
      * exactly its level-1 behaviour (no skeleton, no token references).
      */
     private Map<String, Object> fallbacks(HttpRequest req) {
         boolean level2 = tailor.isLevel2(req.client());
         Map<String, Object> fallbacks = new LinkedHashMap<>();
-        fallbacks.put("offline",
-                tailor.tailor(level2 ? offlineArt() : classicOfflineNode(), req.client()).toJson());
-        fallbacks.put("error",
-                tailor.tailor(level2 ? errorArt() : classicErrorNode(), req.client()).toJson());
+        fallbacks.put("offline", HtmlRenderer.renderFragment(
+                tailor.tailor(level2 ? offlineArt() : classicOfflineNode(), req.client())));
+        fallbacks.put("error", HtmlRenderer.renderFragment(
+                tailor.tailor(level2 ? errorArt() : classicErrorNode(), req.client())));
         return fallbacks;
     }
 
@@ -233,13 +260,14 @@ final class BootstrapRoute {
      * reduction ({@code seedColor}+{@code mode}) at level 1. The seed values
      * come from the persisted {@code jhin.ui} settings (T78), so a
      * {@code save-appearance} shows up in the next bootstrap; {@code id} is
-     * the selected catalogue theme (T85).
+     * the selected catalogue theme (T85). Package-visible so the web shell
+     * document (T202) can inline the same map into its token CSS.
      *
      * @param level2   whether the negotiated contract level is 2
      * @param snapshot the effective settings
      * @return the theme block for that level
      */
-    private Map<String, Object> theme(boolean level2, UiSettings.Snapshot snapshot) {
+    static Map<String, Object> theme(boolean level2, UiSettings.Snapshot snapshot) {
         if (!level2) {
             Map<String, Object> reduced = new LinkedHashMap<>();
             reduced.put("seedColor", snapshot.accent());
@@ -279,7 +307,7 @@ final class BootstrapRoute {
      * pinning the full generated map makes the bootstrap reflect the
      * server-side palette exactly (T84).
      */
-    private Map<String, Object> colors(UiSettings.Snapshot snapshot) {
+    private static Map<String, Object> colors(UiSettings.Snapshot snapshot) {
         return new LinkedHashMap<>(PaletteGen.generate(
                 snapshot.appearance(), snapshot.canvas(), snapshot.accent()));
     }

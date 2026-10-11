@@ -1,0 +1,2 @@
+<div id="jhin-root"></div>
+<div id="jhin-overlays"></div>

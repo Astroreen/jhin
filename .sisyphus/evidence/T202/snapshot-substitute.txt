@@ -1,0 +1,12 @@
+T202 snapshot substitute — the browser step cannot run here (see browser-unavailable.txt).
+These curl-level checks stand in for the ARIA snapshot + screenshot:
+  shell.html is an HTML document (doctype): ok
+  app title <title>Jhin</title> present: ok
+  #jhin-root element present, region non-empty (shell-root.txt): ok
+  inlined runtime that fills #jhin-root (getElementById("jhin-root")): ok
+  at least one <button> in the served screens/fallbacks html: ok
+  content-type text/html (the text/plain failure case): ok
+  api=4 payload carries html fragments (the no-html failure case): ok
+Unproven without a browser (recorded, not fabricated): the runtime DOM fill of
+#jhin-root — the static shell ships the empty root element and app.js populates it
+from the bootstrap payload at load time.

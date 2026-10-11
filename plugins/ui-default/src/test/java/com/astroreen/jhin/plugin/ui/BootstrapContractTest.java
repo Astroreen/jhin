@@ -1,7 +1,9 @@
 /**
- * T56/T88: the level-2 bootstrap payload (contract/theme/tokens/density/keymap),
- * its api/schema negotiation, the level-3 -> level-2 primitive downgrade
- * table and the level-2 -> level-1 table — docs/sdui.md sections 1 and 6.
+ * T56/T88: the level-4 bootstrap payload (contract/theme/tokens/density/keymap),
+ * the {@code 426 contract_upgrade} gate for clients below
+ * {@code ApiVersion.SDUI_CONTRACT_MIN}, its api/schema negotiation, the
+ * level-3 -> level-2 primitive downgrade table and the level-2 -> level-1
+ * table — docs/sdui.md sections 1 and 6.
  *
  * <p>Uses a no-op {@link EventLog} since none of these cases touch a
  * {@code stream_view}; that degrade path (independent of the contract level)
@@ -17,6 +19,7 @@ import com.astroreen.jhin.plugin.sessions.api.EventType;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.UiTokens;
+import com.astroreen.jhin.sdk.ApiVersion;
 import com.astroreen.jhin.sdk.http.ClientInfo;
 import com.astroreen.jhin.sdk.http.HttpResponse;
 import com.astroreen.jhin.sdk.json.Json;
@@ -50,14 +53,28 @@ class BootstrapContractTest {
 
     // ---- top-level payload shape (docs/sdui.md section 1) ----
 
-    @Test
-    void api3PayloadCarriesTheFullLevel2Shape() {
-        Map<String, Object> payload = bootstrap(new ClientInfo(3, "0.3.0", 4, Set.of()));
+    /** The exact {@code 426} body of the contract-upgrade refusal. */
+    private static final String CONTRACT_UPGRADE_BODY =
+            "{\"error\":\"contract_upgrade\","
+                    + "\"message\":\"This server speaks the HTML UI contract (api=4). Upgrade your client.\","
+                    + "\"minApi\":4}";
 
-        assertThat(payload).containsEntry("api", 3);
+    @Test
+    void api3ClientGetsTheContractUpgradeRefusal() {
+        HttpResponse response = response(new ClientInfo(3, "0.3.0", 4, Set.of()));
+
+        assertThat(response.status()).isEqualTo(426);
+        assertThat(new String(response.body())).isEqualTo(CONTRACT_UPGRADE_BODY);
+    }
+
+    @Test
+    void api4PayloadCarriesTheFullLevel4Shape() {
+        Map<String, Object> payload = bootstrap(new ClientInfo(4, "0.4.0", 5, Set.of()));
+
+        assertThat(payload).containsEntry("api", 4);
         Map<String, Object> contract = castMap(payload.get("contract"));
-        assertThat(contract).containsEntry("api", 3).containsEntry("minApi", 2)
-                .containsEntry("schema", 4).containsEntry("minSchema", 3);
+        assertThat(contract).containsEntry("api", 4).containsEntry("minApi", 4)
+                .containsEntry("schema", 5).containsEntry("minSchema", 5);
         Map<String, Object> tokens = castMap(payload.get("tokens"));
         assertThat(castMap(tokens.get("motion"))).containsEntry("panel", 0);
         assertThat(payload).containsEntry("density", "comfortable");
@@ -73,10 +90,28 @@ class BootstrapContractTest {
         assertThat(theme.get("mode")).isEqualTo(theme.get("appearance"));
     }
 
+    /** Contract level 4: screens are {@code {id, html}} and fallbacks are HTML strings. */
+    @Test
+    void screensAndFallbacksAreHtmlFragments() {
+        Map<String, Object> payload = bootstrap(new ClientInfo(4, "0.4.0", 5, Set.of()));
+
+        List<Object> screens = castList(payload.get("screens"));
+        assertThat(screens).isNotEmpty();
+        Map<String, Object> first = castMap(screens.get(0));
+        assertThat(first).containsEntry("id", "sessions").doesNotContainKey("node");
+        String html = String.valueOf(first.get("html"));
+        assertThat(html).isNotEmpty().startsWith("<").contains("data-jhin-type=");
+        Map<String, Object> fallbacks = castMap(payload.get("fallbacks"));
+        assertThat(String.valueOf(fallbacks.get("offline")))
+                .isNotEmpty().startsWith("<").contains("data-jhin-type=");
+        assertThat(String.valueOf(fallbacks.get("error")))
+                .isNotEmpty().startsWith("<").contains("data-jhin-type=");
+    }
+
     /** T83: the tokens block carries every family of the token surface. */
     @Test
     void tokensCarryTheFullTokenSurface() {
-        Map<String, Object> payload = bootstrap(new ClientInfo(2, "0.3.0", 3, Set.of()));
+        Map<String, Object> payload = bootstrap(new ClientInfo(4, "0.4.0", 5, Set.of()));
         Map<String, Object> tokens = castMap(payload.get("tokens"));
 
         assertThat(tokens.keySet()).containsExactlyInAnyOrder(
@@ -129,81 +164,69 @@ class BootstrapContractTest {
     void tokensMotionPanelFollowsTheSavedDuration() {
         UiSettings settings = UiSettings.open(tmp);
         settings.saveAppearance("system", "jhin", "#16161e", "#7E57C2", "comfortable", 200);
-        Map<String, Object> payload = bootstrap(settings, new ClientInfo(2, "0.3.0", 3, Set.of()));
+        Map<String, Object> payload = bootstrap(settings, new ClientInfo(4, "0.4.0", 5, Set.of()));
 
         assertThat(castMap(castMap(payload.get("tokens")).get("motion")))
                 .containsEntry("panel", 200);
     }
 
     @Test
-    void api1PayloadHasNoLevel2Fields() {
-        Map<String, Object> payload = bootstrap(new ClientInfo(1, "0.3.0", 1, Set.of()));
-
-        assertThat(payload).containsEntry("api", 1);
-        assertThat(payload).doesNotContainKeys("contract", "tokens", "density", "keymap");
-        assertThat(castMap(payload.get("theme"))).containsOnlyKeys("seedColor", "mode");
+    void api1ClientGetsTheContractUpgradeRefusal() {
+        assertContractUpgrade(refusal(new ClientInfo(1, "0.3.0", 1, Set.of())));
     }
 
     @Test
-    void absentHeaderBehavesAsApi1() {
-        Map<String, Object> payload = bootstrap(ClientInfo.UNKNOWN);
-
-        assertThat(payload).containsEntry("api", 1);
-        assertThat(payload).doesNotContainKeys("contract", "tokens", "density", "keymap");
-        assertThat(castMap(payload.get("theme"))).containsOnlyKeys("seedColor", "mode");
+    void absentHeaderGetsTheContractUpgradeRefusal() {
+        assertContractUpgrade(refusal(ClientInfo.UNKNOWN));
     }
 
     @Test
-    void garbageHeaderDegradesToLevel1WithoutThrowing() {
+    void garbageHeaderGetsTheContractUpgradeRefusalWithoutThrowing() {
         ClientInfo garbage = ClientInfo.parse("api=0;schema=99");
 
-        Map<String, Object> payload = bootstrap(garbage);
-
-        assertThat(payload).containsEntry("api", 1);
-        assertThat(payload).doesNotContainKeys("contract", "tokens", "density", "keymap");
+        assertContractUpgrade(refusal(garbage));
     }
 
     @Test
-    void apiAboveThreeNegotiatesDownToThree() {
-        Map<String, Object> payload = bootstrap(new ClientInfo(5, "9.9.9", 4, Set.of()));
+    void apiAboveFourNegotiatesDownToFour() {
+        Map<String, Object> payload = bootstrap(new ClientInfo(5, "9.9.9", 5, Set.of()));
 
-        assertThat(payload).containsEntry("api", 3);
-        assertThat(castMap(payload.get("contract"))).containsEntry("api", 3);
+        assertThat(payload).containsEntry("api", 4);
+        assertThat(castMap(payload.get("contract"))).containsEntry("api", 4);
     }
 
     // ---- entry / version gate (docs/sdui.md section 6, docs/updates.md rule 6) ----
 
     @Test
-    void schemaBelowMinSchemaSetsTheVersionGateEntryForALevel2Client() {
-        Map<String, Object> payload = bootstrap(new ClientInfo(2, "0.3.0", 1, Set.of()));
+    void schemaBelowMinSchemaSetsTheVersionGateEntry() {
+        Map<String, Object> payload = bootstrap(new ClientInfo(4, "0.4.0", 1, Set.of()));
 
         assertThat(payload.get("entry")).isEqualTo("version_gate");
     }
 
-    /** T88: schema 2 is below minSchema 3 — gated with HTTP 200, never a crash. */
+    /** T88: schema 2 is below minSchema 5 — gated with HTTP 200, never a crash. */
     @Test
-    void schema2ClientBelowMinSchema3GetsTheVersionGateEntry() {
-        Map<String, Object> payload = bootstrap(new ClientInfo(3, "0.3.0", 2, Set.of()));
+    void schema2ClientBelowMinSchema5GetsTheVersionGateEntry() {
+        Map<String, Object> payload = bootstrap(new ClientInfo(4, "0.4.0", 2, Set.of()));
 
         assertThat(payload.get("entry")).isEqualTo("version_gate");
-        assertThat(castMap(payload.get("contract"))).containsEntry("minSchema", 3);
+        assertThat(castMap(payload.get("contract"))).containsEntry("minSchema", 5);
     }
 
-    /** T88: schema 3 equals minSchema 3 — accepted, product screens follow. */
+    /** T88: schema 5 equals minSchema 5 — accepted, product screens follow. */
     @Test
-    void schema3ClientAtMinSchemaKeepsTheProductEntry() {
-        Map<String, Object> payload = bootstrap(new ClientInfo(3, "0.3.0", 3, Set.of()));
+    void schema5ClientAtMinSchemaKeepsTheProductEntry() {
+        Map<String, Object> payload = bootstrap(new ClientInfo(4, "0.4.0", 5, Set.of()));
 
         assertThat(payload.get("entry")).isEqualTo("sessions");
     }
 
     @Test
-    void schemaBelowMinSchemaIsIgnoredForALevel1Client() {
+    void api1ClientWithALowSchemaIsRefusedBeforeEntrySelection() {
         // An api=1 client predates the schema header and the version-gate
-        // screen; it must keep receiving its ordinary entry.
-        Map<String, Object> payload = bootstrap(new ClientInfo(1, "0.1.0", 1, Set.of()));
-
-        assertThat(payload.get("entry")).isEqualTo("sessions");
+        // screen; since contract level 4 it never reaches entry selection at
+        // all — the 426 gate answers first.
+        assertContractUpgrade(refusal(new ClientInfo(1, "0.1.0", 1, Set.of())));
     }
 
     // ---- downgrade table (docs/sdui.md section 6) ----
@@ -610,10 +633,33 @@ class BootstrapContractTest {
     }
 
     private Map<String, Object> bootstrap(UiSettings settings, ClientInfo client) {
-        BootstrapRoute route = new BootstrapRoute(screens(), false, tailor, settings);
-        HttpResponse response = route.handle(request(client));
+        HttpResponse response = response(settings, client);
         assertThat(response.status()).isEqualTo(200);
         return Json.readMap(new String(response.body()));
+    }
+
+    private HttpResponse response(ClientInfo client) {
+        return response(UiSettings.open(tmp), client);
+    }
+
+    private HttpResponse response(UiSettings settings, ClientInfo client) {
+        BootstrapRoute route = new BootstrapRoute(screens(), false, tailor, settings);
+        return route.handle(request(client));
+    }
+
+    /** Runs the route and returns the {@code 426} refusal body. */
+    private Map<String, Object> refusal(ClientInfo client) {
+        HttpResponse response = response(client);
+        assertThat(response.status()).isEqualTo(426);
+        return Json.readMap(new String(response.body()));
+    }
+
+    /** The {@code contract_upgrade} body shape (docs/sdui.md section 1). */
+    private static void assertContractUpgrade(Map<String, Object> body) {
+        assertThat(body).containsEntry("error", "contract_upgrade")
+                .containsEntry("message",
+                        "This server speaks the HTML UI contract (api=4). Upgrade your client.")
+                .containsEntry("minApi", ApiVersion.SDUI_CONTRACT_MIN);
     }
 
     private static FakeHttpRequest request(ClientInfo client) {

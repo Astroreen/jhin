@@ -1,0 +1,21 @@
+T202 QA: PASS
+
+mode: plain HTTP loopback — jhin.security is not loaded, so no TlsProvider is
+      registered and the kernel listener speaks plain HTTP (kernel.log: "no
+      TLS material registered; the listener speaks plain HTTP"). The frozen
+      kernel CLI has no --no-tls flag (KernelBoot parses only --server.address
+      and --server.port); plan section 9 allows the QA-only plain-HTTP mode.
+port: 18443 (the kernel default 8443 is occupied by another service on this machine)
+plugins seeded into the temp JHIN_HOME: jhin.sessions, jhin.ui-kit, jhin.ui
+
+curl status codes:
+  GET /                                        200  text/html (shell.html)
+  GET /_jhin/bootstrap  X-Jhin-Client: api=3   426  contract_upgrade, minApi 4
+  GET /_jhin/bootstrap  (header absent)        426  contract_upgrade, minApi 4
+  GET /_jhin/bootstrap  X-Jhin-Client: api=4   200  {id,html} screens, html fallbacks
+  GET /_jhin/health                            200  not covered by the 426 gate
+
+web shell: #jhin-root present, app.css + app.js + token CSS inlined,
+           all three __JHIN_*__ placeholders replaced
+snapshot substitute: snapshot-substitute.txt (browser step unavailable —
+           see browser-unavailable.txt)

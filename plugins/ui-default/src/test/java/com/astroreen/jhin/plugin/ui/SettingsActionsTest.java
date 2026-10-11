@@ -36,7 +36,7 @@ class SettingsActionsTest {
 
     /** Client declaring every capability the tailoring looks at. */
     private static final ClientInfo FULL_CAPS =
-            new ClientInfo(2, "0.3.0", 3, Set.of("sse", "open_url", "secure_storage", "multi_profile"));
+            new ClientInfo(4, "0.4.0", 5, Set.of("sse", "open_url", "secure_storage", "multi_profile"));
 
     private static final EventLog NO_EVENTS = new EventLog() {
         @Override
