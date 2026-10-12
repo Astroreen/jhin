@@ -403,16 +403,38 @@ class SidebarBuilderTest {
         assertThat(castMap(children.get(0))).containsEntry("text", "demo")
                 .containsEntry("fontSize", 12)
                 .containsEntry("fontWeight", 500);
-        Map<String, Object> workdirRow = castMap(children.get(1));
-        assertThat(castMap(castList(workdirRow.get("children")).get(0)))
+        // The project row: the folder icon plus the workdir basename.
+        Map<String, Object> projectRow = castMap(children.get(1));
+        assertThat(castMap(castList(projectRow.get("children")).get(0)))
                 .containsEntry("icon", "folder");
+        assertThat(castMap(castList(projectRow.get("children")).get(1)))
+                .containsEntry("text", "demo")
+                .containsEntry("fontSize", 12);
         // T302: the hover-card workdir is the path chip (full path tooltip).
-        Map<String, Object> hoverWorkdir = castMap(castList(workdirRow.get("children")).get(1));
+        Map<String, Object> hoverWorkdir = castMap(children.get(2));
         assertThat(hoverWorkdir)
                 .containsEntry("type", "chip")
                 .containsEntry("kind", "file")
                 .containsEntry("label", "/tmp/demo")
                 .containsEntry("tooltip", "/tmp/demo");
+        // The metadata tail: model, timing, status and the last-event line.
+        assertThat(castMap(children.get(3))).containsEntry("text", "\u2014");
+        assertThat(String.valueOf(castMap(children.get(4)).get("text")))
+                .startsWith("Created ").contains(" \u00b7 Updated ");
+        assertThat(castMap(children.get(5))).containsEntry("text", "active");
+        assertThat(String.valueOf(castMap(children.get(6)).get("text")))
+                .startsWith("Updated ");
+
+        // A session without a workdir: no project and no path chip.
+        Map<String, Object> orphan = rowsOf(SidebarBuilder.build(
+                List.of(sessionIn("orphan", NOW - 10, null)), NOW, false)).get(0);
+        List<Object> orphanChildren = castList(castMap(
+                castMap(orphan.get("title")).get("content")).get("children"));
+        assertThat(castMap(castList(castMap(orphanChildren.get(1))
+                .get("children")).get(1))).containsEntry("text", "No project");
+        assertThat(castMap(orphanChildren.get(2)))
+                .containsEntry("type", "text")
+                .containsEntry("text", "\u2014");
     }
 
     @Test
@@ -512,14 +534,14 @@ class SidebarBuilderTest {
     @Test
     void menuCarriesTheUpstreamItemSetInOrder() {
         assertThat(labelsOfItems(menuItemsOf("demo"))).containsExactly(
-                "Pin thread", "Settle thread", "Snooze", "Regenerate title",
-                "Auto-settle behavior", "Arrange threads", "Archive thread",
-                "Delete");
+                "Open thread", "Pin thread", "Snooze", "Settle thread",
+                "Archive thread", "Regenerate title", "Auto-settle behavior",
+                "Arrange threads", "Delete");
     }
 
     @Test
     void pinAndUnpinAreConditionalWithTheUpstreamLabelsAndIcons() {
-        Map<String, Object> pin = menuItemsOf("demo").get(0);
+        Map<String, Object> pin = menuItemsOf("demo").get(1);
         assertThat(pin).containsEntry("label", "Pin thread")
                 .containsEntry("icon", "keep");
         assertThat(castMap(pin.get("action")))
@@ -529,7 +551,7 @@ class SidebarBuilderTest {
                 .isEqualTo(Map.of("id", "demo"));
 
         Map<String, Object> unpin = menuItemsOf("pinned", patch().pinned(true).pinnedOrder(1))
-                .get(0);
+                .get(1);
         assertThat(unpin).containsEntry("label", "Unpin thread")
                 .containsEntry("icon", "keep_off");
         assertThat(castMap(unpin.get("action"))).containsEntry("name", "unpin");
@@ -537,13 +559,24 @@ class SidebarBuilderTest {
 
     @Test
     void settleAndUnsettleAreConditionalWithTheUpstreamLabels() {
-        Map<String, Object> settle = menuItemsOf("demo").get(1);
+        Map<String, Object> settle = menuItemsOf("demo").get(3);
         assertThat(settle).containsEntry("label", "Settle thread")
                 .containsEntry("icon", "check_circle");
-        assertThat(castMap(settle.get("action"))).containsEntry("name", "settle");
+        List<Map<String, Object>> children = castList(settle.get("children")).stream()
+                .map(SidebarBuilderTest::castMap)
+                .toList();
+        assertThat(labelsOfItems(children)).containsExactly(
+                "Manually", "By inactivity", "When closed", "PR merged", "Other");
+        List<String> reasons = List.of("manual", "inactive", "closed", "pr_merged", "other");
+        for (int i = 0; i < children.size(); i++) {
+            Map<String, Object> action = castMap(children.get(i).get("action"));
+            assertThat(action).containsEntry("name", "settle");
+            assertThat(action.get("payload"))
+                    .isEqualTo(Map.of("id", "demo", "reason", reasons.get(i)));
+        }
 
         Map<String, Object> unsettled = menuItemsOf("settled", patch().settledAt(NOW - 5))
-                .get(1);
+                .get(3);
         assertThat(unsettled).containsEntry("label", "Un-settle thread")
                 .containsEntry("icon", "check_circle");
         assertThat(castMap(unsettled.get("action"))).containsEntry("name", "unsettle");
@@ -557,25 +590,20 @@ class SidebarBuilderTest {
         List<Map<String, Object>> children = castList(snooze.get("children")).stream()
                 .map(SidebarBuilderTest::castMap)
                 .toList();
-        // The upstream preset labels carry the whenLabel time column
-        // (threadActionMenu.logic.ts:148-151); the exact clock depends on
-        // the host zone, so only the shape is asserted here.
-        assertThat(children.size()).isGreaterThanOrEqualTo(4);
-        assertThat(String.valueOf(children.get(0).get("label")))
-                .startsWith("In 1 hour (").endsWith(")");
-        assertThat(String.valueOf(children.get(1).get("label")))
-                .startsWith("In 3 hours (").endsWith(")");
+        assertThat(labelsOfItems(children)).containsExactly(
+                "15 min", "1 h", "4 h", "Until tomorrow 09:00", "Custom\u2026");
         // Every preset dispatches the real snooze action with a future
         // `until`.
-        for (int i = 0; i < children.size() - 1; i++) {
+        for (int i = 0; i < 4; i++) {
             Map<String, Object> action = castMap(children.get(i).get("action"));
             assertThat(action).containsEntry("name", "snooze");
+            assertThat(castMap(action.get("payload"))).containsEntry("id", "demo");
             assertThat(((Number) castMap(action.get("payload")).get("until")).longValue())
                     .isGreaterThan(NOW);
         }
-        // Custom… opens the decorative picker dialog.
-        Map<String, Object> custom = children.get(children.size() - 1);
-        assertThat(custom).containsEntry("label", "Custom…")
+        // Custom\u2026 opens the custom-snooze dialog behind a separator.
+        Map<String, Object> custom = children.get(4);
+        assertThat(custom).containsEntry("label", "Custom\u2026")
                 .containsEntry("separatorBefore", true);
         assertThat(castMap(custom.get("action"))).containsEntry("op", "dialog");
     }
@@ -593,50 +621,48 @@ class SidebarBuilderTest {
     @Test
     void snoozePresetsFollowTheUpstreamCalendarRules() {
         ZoneId utc = ZoneId.of("UTC");
-        // 1970-01-12T00:16:40Z is a Monday 00:16: This evening (18:00) is
-        // offered, Next week lands on next Monday 09:00, distinct from
-        // Tomorrow.
+        // 1970-01-01T00:16:40Z: the fixed offsets land on their clock labels
+        // and Until tomorrow 09:00 is the next-day 09:00 wall-clock time.
         List<SidebarBuilder.SnoozePreset> presets =
                 SidebarBuilder.snoozePresets(NOW, utc);
+        assertThat(presets.stream().map(SidebarBuilder.SnoozePreset::id))
+                .containsExactly("quarter-hour", "hour", "four-hours", "tomorrow");
         assertThat(presets.stream().map(SidebarBuilder.SnoozePreset::label))
-                .containsExactly("In 1 hour", "In 3 hours", "This evening",
-                        "Tomorrow", "Next week");
-        assertThat(presets.get(0).whenLabel()).isEqualTo("1:16 AM");
-        assertThat(presets.get(2).whenLabel()).isEqualTo("6:00 PM");
-        assertThat(presets.get(3).whenLabel()).isEqualTo("9:00 AM");
-        assertThat(presets.get(4).whenLabel()).isEqualTo("Mon 9:00 AM");
+                .containsExactly("15 min", "1 h", "4 h", "Until tomorrow 09:00");
+        assertThat(presets.stream().map(SidebarBuilder.SnoozePreset::whenLabel))
+                .containsExactly("12:31 AM", "1:16 AM", "4:16 AM", "9:00 AM");
+        assertThat(presets.stream().map(SidebarBuilder.SnoozePreset::until))
+                .containsExactly(1_900_000L, 4_600_000L, 15_400_000L, 118_800_000L);
 
-        // A Sunday 09:30 (1970-01-04): This evening is offered, and Next
-        // week collapses onto Tomorrow (both Monday 09:00).
-        long sundayMorning = 3 * 86_400_000L + 9 * 3_600_000L + 1_800_000L;
-        List<SidebarBuilder.SnoozePreset> sunday =
-                SidebarBuilder.snoozePresets(sundayMorning, utc);
-        assertThat(sunday.stream().map(SidebarBuilder.SnoozePreset::label))
-                .containsExactly("In 1 hour", "In 3 hours", "This evening",
-                        "Tomorrow");
-
-        // A Tuesday 19:30 (1970-01-06): This evening is within the past —
-        // dropped; Next week (Monday 09:00) is distinct from Tomorrow.
+        // A Tuesday 19:30 (1970-01-06): Until tomorrow 09:00 lands on the
+        // next day 09:00 and every deadline stays future.
         long tuesdayEvening = 5 * 86_400_000L + 19 * 3_600_000L + 1_800_000L;
-        assertThat(SidebarBuilder.snoozePresets(tuesdayEvening, utc)
-                .stream().map(SidebarBuilder.SnoozePreset::label))
-                .containsExactly("In 1 hour", "In 3 hours", "Tomorrow",
-                        "Next week");
+        List<SidebarBuilder.SnoozePreset> evening =
+                SidebarBuilder.snoozePresets(tuesdayEvening, utc);
+        assertThat(evening.get(3).until()).isEqualTo(550_800_000L);
+        assertThat(evening.get(3).whenLabel()).isEqualTo("9:00 AM");
+        for (SidebarBuilder.SnoozePreset preset : evening) {
+            assertThat(preset.until()).isGreaterThan(tuesdayEvening);
+        }
     }
 
     @Test
     void regenerateTitleCarriesTheGroupSeparator() {
-        Map<String, Object> regenerate = menuItemsOf("demo").get(3);
+        List<Map<String, Object>> items = menuItemsOf("demo");
+        // T304: the group boundary sits on the Archive entry above.
+        assertThat(items.get(4)).containsEntry("label", "Archive thread")
+                .containsEntry("separatorBefore", true);
+        Map<String, Object> regenerate = items.get(5);
         assertThat(regenerate).containsEntry("label", "Regenerate title")
                 .containsEntry("icon", "refresh")
-                .containsEntry("separatorBefore", true);
+                .doesNotContainKey("separatorBefore");
         assertThat(castMap(regenerate.get("action")))
                 .containsEntry("name", "regenerate-title");
     }
 
     @Test
     void autoSettleSubmenuCarriesTheCheckedRadioEntries() {
-        Map<String, Object> autoSettle = menuItemsOf("demo").get(4);
+        Map<String, Object> autoSettle = menuItemsOf("demo").get(6);
         assertThat(autoSettle).containsEntry("label", "Auto-settle behavior")
                 .containsEntry("icon", "timer");
         List<Map<String, Object>> children = castList(autoSettle.get("children")).stream()
@@ -656,16 +682,17 @@ class SidebarBuilderTest {
     @Test
     void archiveSitsAboveTheSeparatorAndDeleteIsDestructive() {
         List<Map<String, Object>> items = menuItemsOf("demo");
-        Map<String, Object> archive = items.get(6);
+        Map<String, Object> archive = items.get(4);
         assertThat(archive).containsEntry("label", "Archive thread")
                 .containsEntry("icon", "archive")
                 .containsEntry("separatorBefore", true)
                 .containsEntry("confirm", "Archive this thread?");
         assertThat(castMap(archive.get("action"))).containsEntry("name", "archive");
 
-        Map<String, Object> delete = items.get(7);
+        Map<String, Object> delete = items.get(8);
         assertThat(delete).containsEntry("label", "Delete")
                 .containsEntry("icon", "delete")
+                .containsEntry("separatorBefore", true)
                 .containsEntry("danger", true)
                 .containsEntry("confirm", "Delete this thread? This cannot be undone.");
         assertThat(castMap(delete.get("action"))).containsEntry("name", "delete-session");
@@ -683,15 +710,15 @@ class SidebarBuilderTest {
                 .map(SidebarBuilderTest::castMap)
                 .toList();
         assertThat(labelsOfItems(items)).containsExactly(
-                "Pin thread", "Settle thread", "Snooze", "Regenerate title",
-                "Auto-settle behavior", "Arrange threads", "Move up", "Move down",
-                "Archive thread", "Delete");
-        Map<String, Object> up = items.get(6);
+                "Open thread", "Pin thread", "Snooze", "Settle thread",
+                "Archive thread", "Regenerate title", "Auto-settle behavior",
+                "Arrange threads", "Move up", "Move down", "Delete");
+        Map<String, Object> up = items.get(8);
         assertThat(castMap(up.get("action"))).containsEntry("name", "reorder");
         // The demo row sorts first in the section (updatedAt DESC), so the
         // move-up entry is disabled and the move-down one is not.
         assertThat(up).containsEntry("disabled", true);
-        Map<String, Object> down = items.get(7);
+        Map<String, Object> down = items.get(9);
         assertThat(castMap(down.get("action"))).containsEntry("name", "reorder");
         assertThat(down).containsEntry("disabled", false);
     }
@@ -870,11 +897,23 @@ class SidebarBuilderTest {
         UiNode dialog = SidebarBuilder.customSnoozeDialog("demo");
         Map<String, Object> json = dialog.toJson();
         assertThat(json).containsEntry("id", "custom-snooze-dialog")
-                .containsEntry("demo", true);
-        Map<String, Object> form = castMap(castList(json.get("children")).get(1));
+                .doesNotContainKey("demo");
+        List<Object> children = castList(json.get("children"));
+        assertThat(castMap(children.get(0))).containsEntry("text", "Custom snooze");
+        Map<String, Object> form = castMap(children.get(1));
+        Map<String, Object> field = castMap(castList(form.get("fields")).get(0));
+        assertThat(field).containsEntry("id", "until")
+                .containsEntry("keyboard", "datetime")
+                .containsEntry("required", true)
+                .containsEntry("errorText", "Choose a valid date and time in the future.");
         Map<String, Object> submit = castMap(form.get("submit"));
         assertThat(submit).containsEntry("label", "Confirm");
-        assertThat(castMap(submit.get("action"))).containsEntry("name", "demo-snooze");
+        Map<String, Object> action = castMap(submit.get("action"));
+        assertThat(action).containsEntry("name", "snooze");
+        assertThat(action.get("payload")).isEqualTo(Map.of("id", "demo"));
+        assertThat(action.get("include")).isEqualTo(List.of("until"));
+        assertThat(castMap(castMap(children.get(2)).get("action")))
+                .containsEntry("op", "dismissDialog");
     }
 
     // --- fixtures ---

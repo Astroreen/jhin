@@ -718,7 +718,7 @@ Control primitives:
 | `input` | `max` | num | — | validation bound |
 | `input` | `pattern` | string | — | validation pattern |
 | `input` | `errorText` | string | `Invalid value` | validation failure text |
-| `input` | `keyboardType` | keyboard type | — | `text/number/phone/email/url/visiblePassword/multiline` |
+| `input` | `keyboardType` | keyboard type | — | `text/number/phone/email/url/visiblePassword/multiline/datetime` |
 | `input` | `textInputAction` | ime action | — | `done/go/next/previous/search/send/newline/…` |
 | `input` | `textCapitalization` | `none`/`words`/`sentences`/`characters` | — | capitalization |
 | `input` | `maxLength` | int | — | length limit |

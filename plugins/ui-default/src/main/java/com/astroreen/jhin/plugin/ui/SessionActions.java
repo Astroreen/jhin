@@ -8,11 +8,21 @@
  * <p>Names, exhaustively (13):
  * <ul>
  *   <li>{@code pin} / {@code unpin} — the pin setting;</li>
- *   <li>{@code settle} / {@code unsettle} — the settle transition
- *       ({@code settle} records the {@code manual} reason);</li>
- *   <li>{@code snooze} — with a {@code durationMs} (or {@code until}) payload
- *       field it snoozes; without one it answers the duration-choice
- *       {@code sheet} whose buttons dispatch this same action;</li>
+ *   <li>{@code settle} / {@code unsettle} — the settle transition; {@code settle}
+ *       takes the {@code reason} payload field ({@code manual},
+ *       {@code inactive}, {@code closed}, {@code pr_merged}, {@code other} —
+ *       the {@link SettleReason#wire() wire names}) and defaults to
+ *       {@code manual} when the field is absent; an unknown wire value is
+ *       refused with an error toast;</li>
+ *   <li>{@code snooze} — computes the absolute {@code snoozed_until} deadline
+ *       from the payload: {@code durationMs} (a duration, resolved as
+ *       {@code now + durationMs}) or {@code until} (epoch-millis number,
+ *       numeric string, or local {@code yyyy-MM-dd[ ]HH:mm[:ss]} datetime in
+ *       the host zone). A past or unparseable deadline answers the
+ *       {@code Choose a valid date and time in the future.} error toast and
+ *       mutates nothing; with no choice present at all it answers the
+ *       duration-choice {@code sheet} whose buttons dispatch this same action
+ *       (the shared {@code SidebarBuilder.snoozePresets} presets);</li>
  *   <li>{@code wake} — clears the snooze;</li>
  *   <li>{@code archive} / {@code restore} — the archive transition;</li>
  *   <li>{@code auto-settle} — the {@code Auto-settle behavior} submenu
@@ -25,15 +35,18 @@
  *       client-side).</li>
  * </ul>
  *
- * <p>Since T98 the undoable transitions answer the upstream undo notice —
- * the {@code toast} directive carrying the {@code undo} action and the
- * 5&nbsp;s window ({@code Unpinned}/{@code Settled}/{@code Snoozed}/
- * {@code Archived} 1 thread,) before the refresh, the wording of
- * {@code SidebarThreadUndoNotice.tsx:15,20}; pinning, waking, unsetting and
- * restoring show no notice (upstream parity — only the four labels of
- * {@code showThreadUndoNotice.ts:12} exist). Every failure degrades to one
- * error toast: an unknown id, an invalid transition, a missing title service
- * or a malformed payload.
+ * <p>Every lifecycle mutation answers an undo notice: the {@code toast}
+ * directive whose text is {@code <Verb> <n> thread(s),} — {@code Pinned},
+ * {@code Unpinned}, {@code Settled}, {@code Reopened}, {@code Snoozed},
+ * {@code Woken}, {@code Archived}, {@code Restored}, {@code Updated} and
+ * {@code Reordered} for pin, unpin, settle, unsettle, snooze, wake, archive,
+ * restore, auto-settle and reorder respectively ({@code n} is the number of
+ * threads the mutation touched — the posted order size for {@code reorder},
+ * {@code 1} elsewhere) — carrying the {@code undo} action and the 5&nbsp;s
+ * window, before the refresh. {@code delete-session}, {@code regenerate-title}
+ * and {@code arrange-toggle} answer no undo notice (they are not undoable).
+ * Every failure degrades to one error toast: an unknown id, an invalid
+ * transition, a missing title service or a malformed payload.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -44,8 +57,13 @@ import com.astroreen.jhin.plugin.sessions.api.SessionStore;
 import com.astroreen.jhin.plugin.sessions.api.SettleReason;
 import com.astroreen.jhin.plugin.ui.screens.ActionDescriptors;
 import com.astroreen.jhin.plugin.ui.screens.SessionsScreen;
+import com.astroreen.jhin.plugin.ui.screens.SidebarBuilder;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -63,21 +81,25 @@ final class SessionActions {
      */
     static final long UNDO_WINDOW_MS = 5_000L;
 
-    /** The snooze duration choices of the {@code Snooze\u2026} sheet. */
-    private static final List<Map<String, Object>> SNOOZE_DURATIONS = List.of(
-            Map.of("label", "15 minutes", "durationMs", 900_000L),
-            Map.of("label", "1 hour", "durationMs", 3_600_000L),
-            Map.of("label", "4 hours", "durationMs", 14_400_000L),
-            Map.of("label", "Tomorrow", "durationMs", 86_400_000L),
-            Map.of("label", "Next week", "durationMs", 604_800_000L));
+    /** The error text of an unparsable or past {@code snoozed_until} choice. */
+    private static final String SNOOZE_DEADLINE_HINT =
+            "Choose a valid date and time in the future.";
+
+    /**
+     * The accepted {@code until} datetime spelling: {@code yyyy-MM-dd[ ]HH:mm[:ss]}
+     * in the host zone. A {@code T} date/time separator is normalized to a
+     * space before parsing.
+     */
+    private static final DateTimeFormatter SNOOZE_UNTIL =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd[ ]HH:mm[:ss]");
 
     private SessionActions() {
     }
 
-    /** {@code pin}: pins the session. Upstream shows no undo notice for pinning. */
+    /** {@code pin}: pins the session, answering the {@code Pinned} undo notice. */
     static ActionRoute.ActionHandler pin(SessionLifecycleService lifecycle) {
         return (req, payload) -> lifecycleOp(payload,
-                id -> lifecycle.pin(id, null), null);
+                id -> lifecycle.pin(id, null), "Pinned");
     }
 
     /** {@code unpin}: unpins the session, answering the {@code Unpinned} undo notice. */
@@ -85,42 +107,72 @@ final class SessionActions {
         return (req, payload) -> lifecycleOp(payload, lifecycle::unpin, "Unpinned");
     }
 
-    /** {@code settle}: settles the session by hand, answering the {@code Settled} notice. */
+    /**
+     * {@code settle}: settles the session with the {@code reason} payload
+     * field — the {@link SettleReason#wire() wire name}, {@code manual} when
+     * absent — answering the {@code Settled} undo notice. An unknown wire
+     * value answers an error toast and settles nothing.
+     */
     static ActionRoute.ActionHandler settle(SessionLifecycleService lifecycle) {
-        return (req, payload) -> lifecycleOp(payload,
-                id -> lifecycle.settle(id, SettleReason.MANUAL), "Settled");
+        return (req, payload) -> {
+            String wire = ActionSupport.text(payload, "reason");
+            if (wire == null) {
+                return lifecycleOp(payload,
+                        id -> lifecycle.settle(id, SettleReason.MANUAL), "Settled");
+            }
+            SettleReason reason = SettleReason.fromWire(wire);
+            if (reason == null) {
+                return ActionSupport.error("Unknown settle reason.");
+            }
+            return lifecycleOp(payload, id -> lifecycle.settle(id, reason), "Settled");
+        };
     }
 
-    /** {@code unsettle}: reopens the session. Upstream shows no undo notice. */
+    /** {@code unsettle}: reopens the session, answering the {@code Reopened} undo notice. */
     static ActionRoute.ActionHandler unsettle(SessionLifecycleService lifecycle) {
-        return (req, payload) -> lifecycleOp(payload, lifecycle::unsettle, null);
+        return (req, payload) -> lifecycleOp(payload, lifecycle::unsettle, "Reopened");
     }
 
-    /** {@code wake}: clears the snooze. Upstream shows no undo notice. */
+    /** {@code wake}: clears the snooze, answering the {@code Woken} undo notice. */
     static ActionRoute.ActionHandler wake(SessionLifecycleService lifecycle) {
-        return (req, payload) -> lifecycleOp(payload, lifecycle::wake, null);
+        return (req, payload) -> lifecycleOp(payload, lifecycle::wake, "Woken");
     }
 
-    /** {@code archive}: archives the session, answering the {@code Archived} notice. */
+    /** {@code archive}: archives the session, answering the {@code Archived} undo notice. */
     static ActionRoute.ActionHandler archive(SessionLifecycleService lifecycle) {
         return (req, payload) -> lifecycleOp(payload, lifecycle::archive, "Archived");
     }
 
-    /** {@code restore}: restores the session from the archive. */
+    /** {@code restore}: restores the session from the archive, answering the {@code Restored} undo notice. */
     static ActionRoute.ActionHandler restore(SessionLifecycleService lifecycle) {
-        return (req, payload) -> lifecycleOp(payload, lifecycle::restore, null);
+        return (req, payload) -> lifecycleOp(payload, lifecycle::restore, "Restored");
     }
 
-    /** {@code regenerate-title}: regenerates the session title (not undoable). */
+    /**
+     * {@code regenerate-title}: regenerates the session title. Not undoable —
+     * it answers the bare refresh, no undo notice.
+     */
     static ActionRoute.ActionHandler regenerateTitle(SessionLifecycleService lifecycle) {
-        return (req, payload) -> lifecycleOp(payload, lifecycle::regenerateTitle, null);
+        return (req, payload) -> {
+            String id = ActionSupport.text(payload, "id");
+            if (id == null) {
+                return ActionSupport.error("A session id is required.");
+            }
+            try {
+                lifecycle.regenerateTitle(id);
+                return List.of(Directives.refresh());
+            } catch (LifecycleException e) {
+                return ActionSupport.error(messageOf(e));
+            } catch (IllegalArgumentException e) {
+                return ActionSupport.error(messageOf(e));
+            }
+        };
     }
 
     /**
      * {@code auto-settle}: the {@code Auto-settle behavior} submenu entries
      * (T98) — sets the {@code auto_settle} flag through the lifecycle
-     * service. A setting, not a transition: no undo notice (the upstream
-     * opt-out is a checked submenu, {@code threadActionMenu.logic.ts:184-204}).
+     * service, answering the {@code Updated} undo notice.
      */
     static ActionRoute.ActionHandler autoSettle(SessionLifecycleService lifecycle) {
         return (req, payload) -> {
@@ -132,21 +184,19 @@ final class SessionActions {
             if (!(raw instanceof Boolean enabled)) {
                 return ActionSupport.error("An enabled boolean is required.");
             }
-            try {
-                lifecycle.setAutoSettle(id, enabled);
-                return List.of(Directives.refresh());
-            } catch (LifecycleException e) {
-                return ActionSupport.error(messageOf(e));
-            } catch (IllegalArgumentException e) {
-                return ActionSupport.error(messageOf(e));
-            }
+            return lifecycleOp(payload,
+                    key -> lifecycle.setAutoSettle(key, enabled), "Updated");
         };
     }
 
     /**
-     * {@code snooze}: with a {@code durationMs} or {@code until} payload field
-     * it snoozes the session; without one it answers the duration-choice
-     * sheet (the {@code Snooze\u2026} menu entry).
+     * {@code snooze}: resolves the absolute {@code snoozed_until} deadline
+     * from the payload — {@code durationMs} (now + duration) or {@code until}
+     * (epoch-millis number, numeric string, or local
+     * {@code yyyy-MM-dd[ ]HH:mm[:ss]} datetime) — and snoozes the session,
+     * answering the {@code Snoozed} undo notice. A past or unparseable
+     * deadline answers the error toast without mutating; with no choice
+     * present it answers the duration-choice sheet instead.
      */
     static ActionRoute.ActionHandler snooze(SessionLifecycleService lifecycle) {
         return (req, payload) -> {
@@ -154,20 +204,24 @@ final class SessionActions {
             if (id == null) {
                 return ActionSupport.error("A session id is required.");
             }
-            Long durationMs = longField(payload, "durationMs");
-            Long until = longField(payload, "until");
-            if (durationMs == null && until == null) {
+            if (payload.get("durationMs") == null && payload.get("until") == null) {
                 return List.of(Directives.dialog(snoozeSheet(id), "sheet"));
             }
-            return lifecycleOp(payload, key -> until != null
-                    ? lifecycle.snooze(key, until)
-                    : lifecycle.snoozeFor(key, durationMs), "Snoozed");
+            long now = System.currentTimeMillis();
+            Long deadline = snoozedUntil(payload, now);
+            if (deadline == null || deadline <= now) {
+                return ActionSupport.error(SNOOZE_DEADLINE_HINT);
+            }
+            long untilTs = deadline;
+            return lifecycleOp(payload,
+                    key -> lifecycle.snooze(key, untilTs), "Snoozed");
         };
     }
 
     /**
      * {@code reorder}: persists the posted full id order of one section (the
-     * Move up / Move down entries post the post-move order).
+     * Move up / Move down entries post the post-move order), answering the
+     * {@code Reordered} undo notice over the posted threads.
      */
     static ActionRoute.ActionHandler reorder(SessionLifecycleService lifecycle) {
         return (req, payload) -> {
@@ -176,14 +230,7 @@ final class SessionActions {
                 return ActionSupport.error("An ordered id list is required.");
             }
             List<String> order = ids.stream().map(String::valueOf).toList();
-            try {
-                lifecycle.reorder(order);
-                return List.of(Directives.refresh());
-            } catch (LifecycleException e) {
-                return ActionSupport.error(messageOf(e));
-            } catch (IllegalArgumentException e) {
-                return ActionSupport.error(messageOf(e));
-            }
+            return mutation(() -> lifecycle.reorder(order), "Reordered", order.size());
         };
     }
 
@@ -219,18 +266,18 @@ final class SessionActions {
     }
 
     /**
-     * The duration-choice sheet of {@code Snooze\u2026}: one button per
-     * duration, each dispatching {@code snooze} with its {@code durationMs}.
+     * The duration-choice sheet of {@code Snooze\u2026}: one button per shared
+     * preset, each dispatching {@code snooze} with the preset's absolute
+     * {@code until} deadline.
      */
     static UiNode snoozeSheet(String sessionId) {
         List<Object> buttons = new ArrayList<>();
-        for (Map<String, Object> choice : SNOOZE_DURATIONS) {
-            String label = String.valueOf(choice.get("label"));
-            long durationMs = (Long) choice.get("durationMs");
-            buttons.add(Ui.button(label)
+        for (SidebarBuilder.SnoozePreset preset : SidebarBuilder.snoozePresets(
+                System.currentTimeMillis(), ZoneId.systemDefault())) {
+            buttons.add(Ui.button(preset.label())
                     .style("secondary")
                     .action(ActionDescriptors.of("snooze",
-                            Map.of("id", sessionId, "durationMs", durationMs), null))
+                            Map.of("id", sessionId, "until", preset.until()), null))
                     .build());
         }
         return Ui.sheet()
@@ -248,32 +295,86 @@ final class SessionActions {
     }
 
     /**
-     * Runs one lifecycle operation and answers a refresh or an error toast.
-     * With a non-null {@code notice} label the success answer leads with the
-     * T98 undo notice — the upstream wording {@code <label> 1 thread,}
-     * ({@code SidebarThreadUndoNotice.tsx:15,20}) carrying the {@code undo}
-     * action and the 5&nbsp;s window — before the refresh.
+     * Runs one single-session lifecycle operation and answers its undo notice
+     * and refresh: the T98 wording {@code <verb> 1 thread,} carrying the
+     * {@code undo} action and the 5&nbsp;s window before the refresh.
      */
     private static List<Map<String, Object>> lifecycleOp(
-            Map<String, Object> payload, Function<String, Session> op, String notice) {
+            Map<String, Object> payload, Function<String, Session> op, String verb) {
         String id = ActionSupport.text(payload, "id");
         if (id == null) {
             return ActionSupport.error("A session id is required.");
         }
+        return mutation(() -> op.apply(id), verb, 1);
+    }
+
+    /**
+     * Runs one undoable lifecycle mutation and answers its undo notice and
+     * refresh: the toast text {@code <verb> <n> thread(s),} — pluralized on
+     * {@code n}, the number of threads the mutation touched — carrying the
+     * {@code undo} action ({@link ActionDescriptors#of(String)}) and the
+     * {@link #UNDO_WINDOW_MS} window. An invalid transition or malformed
+     * payload degrades to one error toast and no mutation is announced.
+     */
+    private static List<Map<String, Object>> mutation(
+            Runnable op, String verb, int threads) {
         try {
-            op.apply(id);
-            if (notice == null) {
-                return List.of(Directives.refresh());
-            }
-            return List.of(
-                    Directives.toast(notice + " 1 thread,",
-                            ActionDescriptors.of("undo"), UNDO_WINDOW_MS),
-                    Directives.refresh());
+            op.run();
         } catch (LifecycleException e) {
             return ActionSupport.error(messageOf(e));
         } catch (IllegalArgumentException e) {
             return ActionSupport.error(messageOf(e));
         }
+        return List.of(
+                Directives.toast(verb + " " + threads + (threads == 1 ? " thread," : " threads,"),
+                        ActionDescriptors.of("undo"), UNDO_WINDOW_MS),
+                Directives.refresh());
+    }
+
+    /**
+     * The absolute {@code snoozed_until} deadline of one payload:
+     * {@code durationMs} resolved as {@code now + durationMs}, otherwise
+     * {@code until} as epoch-millis number, numeric string or local
+     * {@code yyyy-MM-dd[ ]HH:mm[:ss]} datetime. {@code null} when the present
+     * choice is not a valid deadline.
+     */
+    private static Long snoozedUntil(Map<String, Object> payload, long now) {
+        if (payload.get("durationMs") != null) {
+            Long ms = longField(payload, "durationMs");
+            return ms == null ? null : now + ms;
+        }
+        return untilMillis(payload.get("until"));
+    }
+
+    /**
+     * One {@code until} value as epoch milliseconds: a number or numeric
+     * string directly, a local {@code yyyy-MM-dd[ ]HH:mm[:ss]} datetime in the
+     * host zone otherwise ({@code null} when unparseable).
+     */
+    private static Long untilMillis(Object raw) {
+        if (raw instanceof Number number) {
+            return number.longValue();
+        }
+        if (raw instanceof String text) {
+            String trimmed = text.trim();
+            if (trimmed.isEmpty()) {
+                return null;
+            }
+            try {
+                return Long.parseLong(trimmed);
+            } catch (NumberFormatException e) {
+                try {
+                    return LocalDateTime.parse(
+                                    trimmed.replace('T', ' ').replace('t', ' '), SNOOZE_UNTIL)
+                            .atZone(ZoneId.systemDefault())
+                            .toInstant()
+                            .toEpochMilli();
+                } catch (DateTimeParseException ex) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     /** One payload field as a long; {@code null} when absent or malformed. */

@@ -1,0 +1,40 @@
+T304 browser steps — UNAVAILABLE in this environment.
+
+Browser tooling (the agent browser / screenshots / evaluate) cannot run on
+this QA machine; the T202–T208/T301–T303 precedent applies: every browser
+step is recorded here and substituted with curl + static asserts.
+
+Not executed (the plan's interactive/visual cases):
+  - Opening the row overflow menu and flying out the Snooze submenu on
+    hover/click: substituted by the served menu bytes in menu.html — the
+    Snooze submenu block (snooze-submenu.html) with exactly 5 menuitems
+    (15 min, 1 h, 4 h, Until tomorrow 09:00, Custom…), each carrying its
+    data-jhin-action dispatch — plus the SidebarBuilderTest
+    snoozeCarriesTheUpstreamPresetSubmenuPlusCustom unit assert.
+  - The 500 ms hover-card preview reveal (title, project, workdir chip,
+    model, created/updated, status, last event): substituted by the
+    static gate on SidebarBuilder.hoverCard and the SidebarBuilderTest
+    hover-card anatomy asserts.
+  - The undo toast card (label + Undo button + close) living out its 5 s
+    window in the toast stack, and tapping Undo inside it: substituted by
+    the actions.jsonl directive greps (toast + action.name=undo +
+    duration=5000 + refresh) and the undo round trip proven over the wire
+    (POST /ui/action/undo restores the pre-settle state), plus the --fail
+    proof that the toast window is real (undo after 6 s answers
+    "Nothing to undo", undo-expired.txt).
+  - The status indicator glyphs (pinned diamond, snoozed clock, settled
+    check, working pulse): substituted by the components.css static gates
+    (data-jhin-status="pinned"|"snoozed"|"settled", --animate-status-pulse)
+    and the SidebarBuilderTest statusKinds asserts.
+  - The custom-snooze dialog's native datetime picker: substituted by the
+    docs/sdui.md + UiEnums + ControlRenderers static gates (keyboardType
+    datetime -> input type="datetime-local") and the SessionsScreenTest
+    dialog asserts.
+
+What IS proven here: the served row menus carry the Snooze submenu with its
+5 entries, every lifecycle action answer carries the undo toast directive
+(5000 ms window), the undo action really reverts the last mutation over the
+wire, GET /sessions/{id} shows every state change (snoozed_until set, settle
+clearing pin + snooze and writing settledReason, undo restoring), the served
+screen moves rows between the Settled and Snoozed shelves, and the --fail
+mode proves the negative paths (409 invalid_transition, "Nothing to undo").

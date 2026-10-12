@@ -1176,6 +1176,7 @@
 }
 
 .jhin-status-indicator {
+  position: relative;
   display: inline-block;
   width: 8px;
   height: 8px;
@@ -1187,11 +1188,99 @@
 .jhin-status-indicator[data-jhin-status="working"],
 .jhin-status-indicator[data-jhin-status="monitoring"] {
   background: var(--color-accent);
+  animation: var(--animate-status-pulse);
 }
 
 .jhin-status-indicator[data-jhin-status="failed"],
 .jhin-status-indicator[data-jhin-status="needs-approval"] {
   background: var(--color-destructive);
+}
+
+.jhin-status-indicator[data-jhin-status="pinned"] {
+  background: transparent;
+}
+
+.jhin-status-indicator[data-jhin-status="pinned"]::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 2px 2px 2px 0;
+  background: var(--color-muted-foreground);
+  transform: rotate(45deg);
+}
+
+.jhin-status-indicator[data-jhin-status="pinned"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 2px;
+  margin: -1px 0 0 -1px;
+  border-radius: var(--radius-full);
+  background: var(--color-canvas);
+}
+
+.jhin-status-indicator[data-jhin-status="snoozed"] {
+  background: transparent;
+  border: 1.5px solid var(--color-muted-foreground);
+}
+
+.jhin-status-indicator[data-jhin-status="snoozed"]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1px;
+  height: 2.5px;
+  margin: -2.5px 0 0 -0.5px;
+  background: var(--color-muted-foreground);
+}
+
+.jhin-status-indicator[data-jhin-status="snoozed"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2px;
+  height: 1px;
+  margin: -0.5px 0 0 0;
+  background: var(--color-muted-foreground);
+}
+
+.jhin-status-indicator[data-jhin-status="settled"] {
+  background: transparent;
+}
+
+.jhin-status-indicator[data-jhin-status="settled"]::before {
+  content: "";
+  position: absolute;
+  left: 0.5px;
+  top: 3.5px;
+  width: 3px;
+  height: 1.5px;
+  border-radius: 1px;
+  background: var(--color-muted-foreground);
+  transform: rotate(45deg);
+}
+
+.jhin-status-indicator[data-jhin-status="settled"]::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 3px;
+  width: 5px;
+  height: 1.5px;
+  border-radius: 1px;
+  background: var(--color-muted-foreground);
+  transform: rotate(-45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jhin-status-indicator[data-jhin-status="working"],
+  .jhin-status-indicator[data-jhin-status="monitoring"] {
+    animation: none;
+  }
 }
 
 .jhin-drag-handle {

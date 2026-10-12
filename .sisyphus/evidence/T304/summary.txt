@@ -1,0 +1,33 @@
+T304 QA — PASS
+
+  suites:            :jhin-plugin-ui-kit:test 335, :jhin-plugin-ui-default:test 478 (0 failures)
+  actions:           pin/snooze/settle/undo — every response body carries the undo toast
+                     directive (toast + undo action + 5000 ms; undo answers "Undone")
+                     5 bodies in actions.jsonl
+  state:             snooze sets snoozed_until; settle clears pin + snooze and writes
+                     settledReason=manual; undo restores the pre-settle state
+                     (GET /sessions/{id}: state-snoozed/state-settled/state-undone.json)
+  shelves:           settle -> Settled shelf, snooze -> Snoozed shelf (screen-*.html)
+  menu:              GET /ui/screen/sessions — the Snooze submenu with 5 entries
+                     (15 min, 1 h, 4 h, Until tomorrow 09:00, Custom…) (menu.html)
+  negative:          settle on a settled session -> 409 invalid_transition; undo after
+                     5 s -> "Nothing to undo" (proven in --fail mode)
+
+  evidence: /home/astroreen/Documents/jhin/.sisyphus/evidence/T304
+  ok: build + two test gates green (335/478 tests, 0 failures; test-gates.txt)
+  ok: T304 sources carry the new surface (source-gates.txt)
+  ok: 3 jars staged for seeding (kernel-env.txt)
+  ok: kernel up on http://localhost:18443 (pid 1118263), GET /_jhin/health -> 200 in 3 s
+  ok: seeded 2 sessions (1280b201-19f5-4231-bcf5-b10ed1a93c19, 3826563c-f9c7-4295-bc24-6e36ebca2028) via POST /sessions (seeded.txt)
+  ok: the Snooze submenu carries 5 entries (15 min, 1 h, 4 h, Until tomorrow 09:00, Custom…) (menu.html)
+  ok: POST /ui/action/pin -> undo toast directive "Pinned 1 thread," + undo + 5000 ms (actions.jsonl)
+  ok: POST /ui/action/snooze -> undo toast directive "Snoozed 1 thread," + undo + 5000 ms (actions.jsonl)
+  ok: GET /sessions/{id}: snooze sets snoozed_until to a future deadline (state-snoozed.json)
+  ok: POST /ui/action/settle -> undo toast directive "Settled 1 thread," + undo + 5000 ms (actions.jsonl)
+  ok: GET /sessions/{id}: settle clears pin + snoozed_until and writes settledReason=manual (state-settled.json)
+  ok: settle moves the row to the Settled shelf (section-settled of screen-settled.html)
+  ok: POST /ui/action/undo -> undo toast "Undone" + refresh (actions.jsonl)
+  ok: GET /sessions/{id}: undo restores the pre-settle state (pin + snooze back, settle cleared) (state-undone.json)
+  ok: snooze moves the row to the Snoozed shelf (section-snoozed of screen-snoozed.html)
+  ok: every response body carries the undo toast directive — 5 action bodies recorded (actions.jsonl)
+  ok: browser-unavailable.txt records the un-exercised visual cases

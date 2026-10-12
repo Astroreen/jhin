@@ -337,16 +337,9 @@ public final class ChatScreen {
                     .action(ActionDescriptors.of("wake", Map.of("id", id), null))
                     .build());
         } else {
-            List<Map<String, Object>> presets = new ArrayList<>();
-            for (SidebarBuilder.SnoozePreset preset : SidebarBuilder.snoozePresets(now)) {
-                presets.add(Ui.menuItem(preset.label() + " (" + preset.whenLabel() + ")")
-                        .action(ActionDescriptors.of("snooze",
-                                Map.of("id", id, "until", preset.until()), null))
-                        .build());
-            }
             menu.item(Ui.menuItem("Snooze")
                     .icon("schedule")
-                    .children(presets)
+                    .children(SidebarBuilder.snoozeChildren(id, now))
                     .build());
         }
         menu.item(Ui.menuItem("Regenerate title")

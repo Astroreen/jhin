@@ -338,26 +338,34 @@ class ActionsTest {
     }
 
     @Test
-    void pinAnswersRefreshWithoutANotice() {
+    void pinAnswersTheUndoNoticeAndRefresh() {
         Session session = store.create("demo", "/tmp/work");
 
         List<Map<String, Object>> ops = handlers.get("pin")
                 .handle(request(), Map.of("id", session.id()));
 
-        // Upstream parity: pinning shows no undo notice
-        // (useThreadActions.ts has no showThreadUndoNotice call in pinThread).
-        assertThat(ops).extracting(op -> op.get("op")).containsExactly("refresh");
+        assertThat(ops).extracting(op -> op.get("op")).containsExactly("toast", "refresh");
+        assertThat(ops.get(0)).containsEntry("op", "toast")
+                .containsEntry("text", "Pinned 1 thread,")
+                .containsEntry("duration", 5_000L);
+        assertThat(castMap(ops.get(0).get("action"))).containsEntry("name", "undo")
+                .containsEntry("path", "/ui/action/undo");
     }
 
     @Test
-    void autoSettleWritesTheFlagAndAnswersRefresh() {
+    void autoSettleWritesTheFlagAndAnswersTheUndoNoticeAndRefresh() {
         Session session = store.create("demo", "/tmp/work");
         assertThat(store.get(session.id()).orElseThrow().autoSettle()).isTrue();
 
         List<Map<String, Object>> ops = handlers.get("auto-settle")
                 .handle(request(), Map.of("id", session.id(), "enabled", false));
 
-        assertThat(ops).extracting(op -> op.get("op")).containsExactly("refresh");
+        assertThat(ops).extracting(op -> op.get("op")).containsExactly("toast", "refresh");
+        assertThat(ops.get(0)).containsEntry("op", "toast")
+                .containsEntry("text", "Updated 1 thread,")
+                .containsEntry("duration", 5_000L);
+        assertThat(castMap(ops.get(0).get("action"))).containsEntry("name", "undo")
+                .containsEntry("path", "/ui/action/undo");
         assertThat(store.get(session.id()).orElseThrow().autoSettle()).isFalse();
     }
 
@@ -370,17 +378,6 @@ class ActionsTest {
 
         assertThat(ops.get(0)).containsEntry("op", "toast")
                 .containsEntry("style", "error");
-    }
-
-    @Test
-    void demoSnoozeAnswersDismissDialogAndThePreviewToast() {
-        List<Map<String, Object>> ops = handlers.get("demo-snooze")
-                .handle(request(), Map.of());
-
-        assertThat(ops).extracting(op -> op.get("op"))
-                .containsExactly("dismissDialog", "toast");
-        assertThat(ops.get(1)).containsEntry("text",
-                "Custom snooze is a preview in this build.");
     }
 
     @Test
@@ -475,7 +472,7 @@ class ActionsTest {
                 "save-appearance", "save-thread-behavior",
                 "pin", "unpin", "settle", "unsettle", "snooze", "wake",
                 "archive", "restore", "regenerate-title", "reorder",
-                "auto-settle", "delete-session", "arrange-toggle", "demo-snooze",
+                "auto-settle", "delete-session", "arrange-toggle",
                 "preview-reload");
         for (String name : List.of("enroll", "send", "cancel",
                 "create-provider", "delete-provider", "undo",

@@ -1,0 +1,9 @@
+T304 test gates — the two suites green on the snooze/settle/undo surface:
+BUILD SUCCESSFUL in 772ms
+> Task :jhin-plugin-ui-kit:test
+> Task :jhin-plugin-ui-default:test
+BUILD SUCCESSFUL in 27s
+
+  :jhin-plugin-ui-kit:test      335 tests
+  :jhin-plugin-ui-default:test  478 tests (SessionActionsTest, SidebarBuilderTest, SessionsScreenTest, ActionsTest among them)
+  failures=0 errors=0 (expected 0/0)

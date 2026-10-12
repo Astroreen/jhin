@@ -171,12 +171,46 @@ class SessionsScreenTest {
         List<String> pinnedNames = menuActionNamesOf(rowOf(render(false), pinned.id()));
         List<String> settledNames = menuActionNamesOf(rowOf(render(false), settled.id()));
 
-        // The submenu parents (Snooze, Auto-settle behavior) carry no direct
-        // action — their children dispatch.
+        // The submenu parents (Snooze, Settle thread, Auto-settle behavior)
+        // carry no direct action — their children dispatch.
         assertThat(pinnedNames).containsExactly(
-                "unpin", "settle", "regenerate-title", "archive", "delete-session");
+                "unpin", "archive", "regenerate-title", "delete-session");
         assertThat(settledNames).containsExactly(
-                "pin", "unsettle", "regenerate-title", "archive", "delete-session");
+                "pin", "unsettle", "archive", "regenerate-title", "delete-session");
+
+        // The Settle thread children dispatch settle with the reason wire.
+        Map<String, Object> settle = menuItemsOf(rowOf(render(false), pinned.id())).stream()
+                .filter(item -> "Settle thread".equals(item.get("label")))
+                .findFirst().orElseThrow();
+        List<Map<String, Object>> settleChildren = castList(settle.get("children")).stream()
+                .map(SessionsScreenTest::castMap).toList();
+        assertThat(settleChildren).hasSize(5);
+        List<String> reasons = List.of("manual", "inactive", "closed", "pr_merged", "other");
+        for (int i = 0; i < settleChildren.size(); i++) {
+            Map<String, Object> action = castMap(settleChildren.get(i).get("action"));
+            assertThat(action).containsEntry("name", "settle");
+            assertThat(castMap(action.get("payload")))
+                    .containsEntry("id", pinned.id())
+                    .containsEntry("reason", reasons.get(i));
+        }
+
+        // The Snooze preset children dispatch snooze with the deadline;
+        // Custom\u2026 opens the dialog instead.
+        Map<String, Object> snooze = menuItemsOf(rowOf(render(false), pinned.id())).stream()
+                .filter(item -> "Snooze".equals(item.get("label")))
+                .findFirst().orElseThrow();
+        List<Map<String, Object>> snoozeChildren = castList(snooze.get("children")).stream()
+                .map(SessionsScreenTest::castMap).toList();
+        assertThat(snoozeChildren).hasSize(5);
+        for (int i = 0; i < 4; i++) {
+            Map<String, Object> action = castMap(snoozeChildren.get(i).get("action"));
+            assertThat(action).containsEntry("name", "snooze");
+            assertThat(castMap(action.get("payload"))).containsEntry("id", pinned.id());
+            assertThat(castMap(action.get("payload")).get("until"))
+                    .isInstanceOf(Number.class);
+        }
+        assertThat(castMap(snoozeChildren.get(4).get("action")))
+                .containsEntry("op", "dialog");
     }
 
     @Test
@@ -252,10 +286,24 @@ class SessionsScreenTest {
         assertThat(directive).containsEntry("op", "dialog").containsEntry("kind", "sheet");
         assertThat(directive).doesNotContainKey("node");
         String html = String.valueOf(directive.get("html"));
-        assertThat(html).contains("15 minutes", "1 hour", "4 hours",
-                "Tomorrow", "Next week");
-        assertThat(html.split("data-jhin-type=\"button\"", -1)).hasSize(7);
-        assertThat(html).contains("snooze").contains(session.id()).contains("900000");
+        assertThat(html).contains("15 min", "1 h", "4 h", "Until tomorrow 09:00");
+        assertThat(html.split("data-jhin-type=\"button\"", -1)).hasSize(6);
+        assertThat(html).contains("snooze").contains(session.id());
+        String decoded = html.replace("&quot;", "\"");
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("\"until\":(\\d+)").matcher(decoded);
+        List<Long> untils = new ArrayList<>();
+        while (matcher.find()) {
+            untils.add(Long.parseLong(matcher.group(1)));
+        }
+        assertThat(untils).hasSize(4);
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < untils.size(); i++) {
+            assertThat(untils.get(i)).isGreaterThan(now);
+            if (i > 0) {
+                assertThat(untils.get(i)).isGreaterThan(untils.get(i - 1));
+            }
+        }
     }
 
     private static FakeHttpRequest request() {

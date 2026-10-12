@@ -129,15 +129,19 @@
  *
  * <p><b>Thread action menu (T98).</b> The overflow menu is the upstream
  * {@code threadActionMenu.logic.ts} item set (commit {@code 37de6cb}) ported
- * to the real lifecycle actions: the conditional {@code Pin thread} /
- * {@code Unpin thread} and {@code Settle thread} / {@code Un-settle thread},
- * the {@code Snooze} preset submenu ({@code In 1 hour}, {@code In 3 hours},
- * {@code This evening}, {@code Tomorrow}, {@code Next week} — the upstream
- * presets of {@code threadSettled.ts:255-303} with their {@code whenLabel}
- * time column — plus the separator-prefixed {@code Custom\u2026} opening the
- * decorative picker dialog whose confirm only toasts), {@code Regenerate
- * title}, the checked {@code Auto-settle behavior} submenu, the separator +
- * {@code Archive thread} and the destructive {@code Delete}. The undoable
+ * to the real lifecycle actions: {@code Open thread}, the conditional
+ * {@code Pin thread} / {@code Unpin thread}, the {@code Snooze} preset
+ * submenu ({@code 15 min}, {@code 1 h}, {@code 4 h}, {@code Until tomorrow
+ * 09:00} — the fixed-offset and next-morning presets with their
+ * {@code whenLabel} time column — plus the separator-prefixed
+ * {@code Custom\u2026} opening the custom-snooze dialog whose confirm
+ * submits the real {@code snooze} action), the conditional {@code Settle
+ * thread} reason submenu ({@code Manually}, {@code By inactivity},
+ * {@code When closed}, {@code PR merged}, {@code Other}) /
+ * {@code Un-settle thread}, the separator + {@code Archive thread},
+ * {@code Regenerate title}, the checked {@code Auto-settle behavior}
+ * submenu, the T99 {@code Arrange threads} entry and the destructive
+ * {@code Delete}. The undoable
  * transitions answer the upstream undo notice (the {@code toast} directive
  * with the {@code undo} action and the 5&nbsp;s window — {@code Settled 1
  * thread,} / {@code Snoozed 1 thread,} / {@code Unpinned 1 thread,} /
@@ -149,7 +153,8 @@
  *
  * <p><b>Hover preview (T98).</b> The row title is wrapped in the
  * {@code hover_card} primitive (the {@code ThreadHoverCard} port): the
- * title line over the workdir metadata row, opened after the upstream
+ * title line over the project / workdir / model / timing / status /
+ * last-event metadata rows, opened after the upstream
  * 500&nbsp;ms hover delay, anchored to the right of the trigger.
  *
  * <p><b>Arrange mode.</b> With {@code arrange} on, the rows show the visual
@@ -880,10 +885,16 @@ public final class SidebarBuilder {
      * text, the content the {@code ThreadHoverCard} shape — the title line
      * ({@code text-xs font-medium truncate}, {@code ThreadHoverCard.tsx:27})
      * over the metadata rows ({@code text-xs text-muted-foreground},
-     * {@code :30}; Jhin carries the workdir row only) — opened after the
-     * upstream 500&nbsp;ms hover delay.
+     * {@code :30}): the project row (the folder icon over the workdir
+     * basename, {@code No project} without one), the workdir path chip
+     * ({@link PathDisplay#chip}), the model, the {@code Created … · Updated
+     * …} timing line, the status and the last-event line (the archived /
+     * settled / snoozed-until stamps, else the relative {@code Updated}
+     * recency) — opened after the upstream 500&nbsp;ms hover delay.
      */
     private static UiNode hoverCard(Session session) {
+        String workdir = session.workdir();
+        boolean hasProject = workdir != null && !workdir.isBlank();
         return Ui.hoverCard()
                 .trigger(title(session.title()))
                 .content(Ui.column()
@@ -899,12 +910,65 @@ public final class SidebarBuilder {
                                 .align("center")
                                 .gap(8)
                                 .child(Ui.icon().icon("folder").size(12).build())
-                                .child(workdirDisplay(session.workdir()))
+                                .child(Ui.text(hasProject ? basename(workdir) : "No project")
+                                        .fontSize(12)
+                                        .maxLines(1)
+                                        .ellipsis(true)
+                                        .build())
                                 .build())
+                        .child(workdirDisplay(workdir))
+                        .child(metaLine(session.model()))
+                        .child(metaLine("Created " + stamp(session.createdAt())
+                                + " \u00b7 Updated " + stamp(session.updatedAt())))
+                        .child(metaLine(session.status()))
+                        .child(metaLine(lastEvent(session)))
                         .build())
                 .delay(500)
                 .placement("right")
                 .build();
+    }
+
+    /** One hover-card metadata line: the muted 12px single-line text. */
+    private static UiNode metaLine(String text) {
+        return Ui.text(text == null || text.isBlank() ? "\u2014" : text)
+                .fontSize(12)
+                .color("$color.sidebar-muted-foreground")
+                .maxLines(1)
+                .ellipsis(true)
+                .build();
+    }
+
+    /**
+     * The hover-card last-event line: the archived / settled / snoozed-until
+     * stamp of the freshest lifecycle field, else the relative
+     * {@code Updated} recency.
+     */
+    private static String lastEvent(Session session) {
+        if (session.archivedAt() != null) {
+            return "Archived " + relativeTime(session.archivedAt());
+        }
+        if (session.settledAt() != null) {
+            return "Settled " + relativeTime(session.settledAt());
+        }
+        if (session.snoozedUntil() != null) {
+            return "Snoozed until " + stamp(session.snoozedUntil());
+        }
+        return "Updated " + relativeTime(session.updatedAt());
+    }
+
+    /** The compact relative recency of one epoch-millisecond instant. */
+    private static String relativeTime(long epochMillis) {
+        long delta = Math.max(0, System.currentTimeMillis() - epochMillis);
+        if (delta < 60_000L) {
+            return "just now";
+        }
+        if (delta < 3_600_000L) {
+            return (delta / 60_000L) + " min ago";
+        }
+        if (delta < 86_400_000L) {
+            return (delta / 3_600_000L) + " h ago";
+        }
+        return (delta / 86_400_000L) + " d ago";
     }
 
     /**
@@ -1017,28 +1081,29 @@ public final class SidebarBuilder {
      * {@code threadActionMenu.logic.ts} item set (commit {@code 37de6cb}),
      * ported to the lifecycle actions of {@code jhin.sessions} —
      * <ul>
+     *   <li>{@code Open thread} — the row-navigation entry;</li>
      *   <li>{@code Pin thread} / {@code Unpin thread} (conditional, upstream
      *       {@code :121-127});</li>
-     *   <li>{@code Settle thread} / {@code Un-settle thread} (conditional,
-     *       upstream {@code :131-137});</li>
-     *   <li>{@code Snooze} with the preset submenu — the upstream presets of
-     *       {@code threadSettled.ts:255-303} ({@code In 1 hour}, {@code
-     *       In 3 hours}, {@code This evening} while it is meaningfully
-     *       before evening, {@code Tomorrow}, {@code Next week} unless it
-     *       collapses onto {@code Tomorrow}) plus {@code Custom\u2026}
-     *       (upstream {@code :138-156}); while snoozed the entry becomes
-     *       {@code Wake thread} (upstream {@code :140-141});</li>
+     *   <li>{@code Snooze} with the preset submenu ({@code 15 min}, {@code
+     *       1 h}, {@code 4 h}, {@code Until tomorrow 09:00}) plus
+     *       {@code Custom\u2026} (upstream {@code :138-156}); while snoozed
+     *       the entry becomes {@code Wake thread} (upstream {@code :140-141});</li>
+     *   <li>{@code Settle thread} with the reason submenu ({@code Manually},
+     *       {@code By inactivity}, {@code When closed}, {@code PR merged},
+     *       {@code Other}) / {@code Un-settle thread} (conditional, upstream
+     *       {@code :131-137});</li>
+     *   <li>{@code Archive thread} above the separator (upstream
+     *       {@code :224-230});</li>
      *   <li>{@code Regenerate title} (upstream {@code :158-167});</li>
      *   <li>{@code Auto-settle behavior} with the checked {@code Enabled} /
      *       {@code Disabled} submenu (upstream {@code :184-204});</li>
      *   <li>the T99 {@code Arrange threads} entry (the upstream mobile
      *       affordance, {@code docs/user/thread-sidebar.md:85-88}) opening
      *       the decorative arrange sheet;</li>
-     *   <li>{@code Archive thread} above the separator (upstream
-     *       {@code :224-230}) and the destructive {@code Delete} (upstream
-     *       {@code :231-236});</li>
      *   <li>in arrange mode the {@code Move up} / {@code Move down} reorder
-     *       entries (the T76 port of the upstream drag choreography).</li>
+     *       entries (the T76 port of the upstream drag choreography);</li>
+     *   <li>the destructive {@code Delete} above the separator (upstream
+     *       {@code :231-236}).</li>
      * </ul>
      *
      * <p>Upstream items with no Jhin backend are dropped, not faked: the
@@ -1047,9 +1112,10 @@ public final class SidebarBuilder {
      * ({@code :168} — no unread state), the project filter ({@code :169-179}
      * — no projects), the {@code Copy} submenu ({@code :205-217}) and
      * {@code Project settings} ({@code :218}). The upstream {@code rename}
-     * separator moves onto {@code Regenerate title} so the visual group
-     * boundary survives. Archive's upstream {@code disabled: isRunning}
-     * ({@code :228}) is dropped — Jhin sessions carry no running flag.
+     * separator sits above {@code Archive thread} and {@code Delete} so the
+     * visual group boundaries survive. Archive's upstream
+     * {@code disabled: isRunning} ({@code :228}) is dropped — Jhin sessions
+     * carry no running flag.
      */
     private static UiNode menu(Session session, List<String> sectionIds,
                                int index, boolean arrange, long now,
@@ -1060,6 +1126,10 @@ public final class SidebarBuilder {
                 .trigger(Ui.iconButton().icon("more_vert")
                         .action(ActionDescriptors.of("noop"))
                         .build());
+        menu.item(Ui.menuItem("Open thread")
+                .icon("open_in_new")
+                .action(Directives.navigate("chat:" + id))
+                .build());
         if (session.pinned()) {
             menu.item(Ui.menuItem("Unpin thread")
                     .icon("keep_off")
@@ -1069,17 +1139,6 @@ public final class SidebarBuilder {
             menu.item(Ui.menuItem("Pin thread")
                     .icon("keep")
                     .action(ActionDescriptors.of("pin", Map.of("id", id), null))
-                    .build());
-        }
-        if (session.settledAt() != null) {
-            menu.item(Ui.menuItem("Un-settle thread")
-                    .icon("check_circle")
-                    .action(ActionDescriptors.of("unsettle", Map.of("id", id), null))
-                    .build());
-        } else {
-            menu.item(Ui.menuItem("Settle thread")
-                    .icon("check_circle")
-                    .action(ActionDescriptors.of("settle", Map.of("id", id), null))
                     .build());
         }
         if (snoozed) {
@@ -1093,9 +1152,25 @@ public final class SidebarBuilder {
                     .children(snoozeChildren(id, now))
                     .build());
         }
+        if (session.settledAt() != null) {
+            menu.item(Ui.menuItem("Un-settle thread")
+                    .icon("check_circle")
+                    .action(ActionDescriptors.of("unsettle", Map.of("id", id), null))
+                    .build());
+        } else {
+            menu.item(Ui.menuItem("Settle thread")
+                    .icon("check_circle")
+                    .children(settleChildren(id))
+                    .build());
+        }
+        menu.item(Ui.menuItem("Archive thread")
+                .icon("archive")
+                .separatorBefore(true)
+                .action(ActionDescriptors.of("archive", Map.of("id", id), null))
+                .confirm("Archive this thread?")
+                .build());
         menu.item(Ui.menuItem("Regenerate title")
                 .icon("refresh")
-                .separatorBefore(true)
                 .action(ActionDescriptors.of("regenerate-title", Map.of("id", id), null))
                 .build());
         menu.item(Ui.menuItem("Auto-settle behavior")
@@ -1123,14 +1198,9 @@ public final class SidebarBuilder {
                     .disabled(index >= sectionIds.size() - 1)
                     .build());
         }
-        menu.item(Ui.menuItem("Archive thread")
-                .icon("archive")
-                .separatorBefore(true)
-                .action(ActionDescriptors.of("archive", Map.of("id", id), null))
-                .confirm("Archive this thread?")
-                .build());
         menu.item(Ui.menuItem("Delete")
                 .icon("delete")
+                .separatorBefore(true)
                 .action(ActionDescriptors.of("delete-session", Map.of("id", id), null))
                 .confirm("Delete this thread? This cannot be undone.")
                 .danger(true)
@@ -1139,16 +1209,16 @@ public final class SidebarBuilder {
     }
 
     /**
-     * The {@code Snooze} submenu children: one entry per upstream preset —
-     * the label {@code <preset> (<when>)} of {@code threadActionMenu.logic.ts:
-     * 148-151} dispatching {@code snooze} with the preset's {@code until} —
-     * plus the separator-prefixed {@code Custom\u2026} (upstream
-     * {@code :152}) opening the decorative picker dialog.
+     * The {@code Snooze} submenu children: one entry per preset ({@code 15
+     * min}, {@code 1 h}, {@code 4 h}, {@code Until tomorrow 09:00})
+     * dispatching {@code snooze} with the preset's {@code until} deadline,
+     * plus the separator-prefixed {@code Custom\u2026} opening the
+     * custom-snooze dialog.
      */
-    private static List<Map<String, Object>> snoozeChildren(String id, long now) {
+    static List<Map<String, Object>> snoozeChildren(String id, long now) {
         List<Map<String, Object>> children = new ArrayList<>();
         for (SnoozePreset preset : snoozePresets(now)) {
-            children.add(Ui.menuItem(preset.label() + " (" + preset.whenLabel() + ")")
+            children.add(Ui.menuItem(preset.label())
                     .action(ActionDescriptors.of("snooze",
                             Map.of("id", id, "until", preset.until()), null))
                     .build());
@@ -1158,6 +1228,36 @@ public final class SidebarBuilder {
                 .action(Directives.dialog(customSnoozeDialog(id)))
                 .build());
         return children;
+    }
+
+    /**
+     * The {@code Settle thread} submenu children: one entry per settlement
+     * reason ({@code Manually}, {@code By inactivity}, {@code When closed},
+     * {@code PR merged}, {@code Other}) dispatching {@code settle} with that
+     * {@code reason}.
+     */
+    private static List<Map<String, Object>> settleChildren(String id) {
+        return List.of(
+                Ui.menuItem("Manually")
+                        .action(ActionDescriptors.of("settle",
+                                Map.of("id", id, "reason", "manual"), null))
+                        .build(),
+                Ui.menuItem("By inactivity")
+                        .action(ActionDescriptors.of("settle",
+                                Map.of("id", id, "reason", "inactive"), null))
+                        .build(),
+                Ui.menuItem("When closed")
+                        .action(ActionDescriptors.of("settle",
+                                Map.of("id", id, "reason", "closed"), null))
+                        .build(),
+                Ui.menuItem("PR merged")
+                        .action(ActionDescriptors.of("settle",
+                                Map.of("id", id, "reason", "pr_merged"), null))
+                        .build(),
+                Ui.menuItem("Other")
+                        .action(ActionDescriptors.of("settle",
+                                Map.of("id", id, "reason", "other"), null))
+                        .build());
     }
 
     /**
@@ -1251,24 +1351,23 @@ public final class SidebarBuilder {
     }
 
     /**
-     * The decorative custom-snooze dialog (the plan's T98 step 2): a
-     * duration input and a confirm whose {@code demo-snooze} action only
-     * closes the dialog and toasts — nothing persists. The whole shell
-     * carries the {@code demo} marker.
+     * The custom-snooze dialog: a required date-time input and a confirm
+     * submitting the real {@code snooze} action with the entered
+     * {@code until} value; the Cancel button dismisses the dialog.
      */
     public static UiNode customSnoozeDialog(String sessionId) {
         return Ui.column()
                 .id("custom-snooze-dialog")
                 .gap(12)
-                .set("demo", true)
                 .child(Ui.text("Custom snooze").style("h3").build())
                 .child(Ui.form()
-                        .field(Ui.input("customSnoozeHours")
-                                .label("Hours from now")
+                        .field(Ui.input("until")
+                                .keyboard("datetime")
                                 .required(true)
-                                .errorText("A number of hours is required")
+                                .errorText("Choose a valid date and time in the future.")
                                 .build())
-                        .submit("Confirm", ActionDescriptors.of("demo-snooze", null, null))
+                        .submit("Confirm", ActionDescriptors.of("snooze",
+                                Map.of("id", sessionId), List.of("until")))
                         .build())
                 .child(Ui.button("Cancel")
                         .style("text")
@@ -1277,66 +1376,59 @@ public final class SidebarBuilder {
                 .build();
     }
 
-    /** One upstream snooze preset ({@code threadSettled.ts:219-225}). */
+    /**
+     * One snooze preset: the stable {@code id}, the menu {@code label}, the
+     * {@code whenLabel} clock text of the deadline and the {@code until}
+     * epoch-millisecond deadline itself.
+     */
     public record SnoozePreset(String id, String label, String whenLabel, long until) {
     }
 
     /**
-     * The upstream snooze presets of one instant in the host's default zone
-     * (the upstream presets read the browser's local calendar,
-     * {@code threadSettled.ts:255-303}).
+     * The snooze presets of one instant in the host's default zone.
      */
     static List<SnoozePreset> snoozePresets(long now) {
         return snoozePresets(now, ZoneId.systemDefault());
     }
 
     /**
-     * The upstream snooze presets of one instant in one zone ({@code
-     * threadSettled.ts:255-303}): the two fixed offsets, {@code This
-     * evening} while it is meaningfully before 18:00, {@code Tomorrow} at
-     * 09:00 and {@code Next week} on Monday 09:00 unless it collapses onto
-     * the {@code Tomorrow} instant (a Sunday).
+     * The snooze presets of one instant in one zone: {@code 15 min},
+     * {@code 1 h} and {@code 4 h} fixed offsets from {@code now} plus
+     * {@code Until tomorrow 09:00} at the next-day 09:00 wall-clock time;
+     * every {@code until} is the future epoch-millisecond deadline.
      */
     public static List<SnoozePreset> snoozePresets(long now, ZoneId zone) {
         ZonedDateTime base = Instant.ofEpochMilli(now).atZone(zone);
-        List<SnoozePreset> presets = new ArrayList<>();
-        presets.add(new SnoozePreset("hour", "In 1 hour",
-                timeLabel(base.plusHours(1)), now + 3_600_000L));
-        presets.add(new SnoozePreset("three-hours", "In 3 hours",
-                timeLabel(base.plusHours(3)), now + 3 * 3_600_000L));
-        ZonedDateTime evening = base.withHour(18).withMinute(0).withSecond(0).withNano(0);
-        if (evening.toInstant().toEpochMilli() - now > 3_600_000L) {
-            presets.add(new SnoozePreset("evening", "This evening",
-                    timeLabel(evening), evening.toInstant().toEpochMilli()));
-        }
         ZonedDateTime tomorrow = base.plusDays(1).withHour(9).withMinute(0)
                 .withSecond(0).withNano(0);
-        presets.add(new SnoozePreset("tomorrow", "Tomorrow",
-                timeLabel(tomorrow), tomorrow.toInstant().toEpochMilli()));
-        int daysUntilMonday = (1 - base.getDayOfWeek().getValue() + 7) % 7;
-        if (daysUntilMonday == 0) {
-            daysUntilMonday = 7;
-        }
-        ZonedDateTime nextWeek = base.plusDays(daysUntilMonday).withHour(9).withMinute(0)
-                .withSecond(0).withNano(0);
-        if (!nextWeek.toInstant().equals(tomorrow.toInstant())) {
-            presets.add(new SnoozePreset("next-week", "Next week",
-                    WEEKDAY_TIME.format(nextWeek), nextWeek.toInstant().toEpochMilli()));
-        }
-        return List.copyOf(presets);
+        return List.of(
+                new SnoozePreset("quarter-hour", "15 min",
+                        timeLabel(base.plusMinutes(15)), now + 15 * 60_000L),
+                new SnoozePreset("hour", "1 h",
+                        timeLabel(base.plusHours(1)), now + 3_600_000L),
+                new SnoozePreset("four-hours", "4 h",
+                        timeLabel(base.plusHours(4)), now + 4 * 3_600_000L),
+                new SnoozePreset("tomorrow", "Until tomorrow 09:00",
+                        timeLabel(tomorrow), tomorrow.toInstant().toEpochMilli()));
     }
 
     /** The clock format of the preset {@code whenLabel} (upstream {@code h:mm a}). */
     private static final DateTimeFormatter TIME_LABEL =
             DateTimeFormatter.ofPattern("h:mm a", Locale.ROOT);
 
-    /** The {@code Next week} label: the short weekday over the clock time. */
-    private static final DateTimeFormatter WEEKDAY_TIME =
-            DateTimeFormatter.ofPattern("EEE h:mm a", Locale.ROOT);
+    /** The hover-card timing stamp ({@code MMM d, h:mm a}). */
+    private static final DateTimeFormatter STAMP =
+            DateTimeFormatter.ofPattern("MMM d, h:mm a", Locale.ROOT);
 
     /** The {@code h:mm a} label of one zoned instant. */
     private static String timeLabel(ZonedDateTime at) {
         return TIME_LABEL.format(at);
+    }
+
+    /** One epoch-millisecond instant as the hover-card timing stamp. */
+    private static String stamp(long epochMillis) {
+        return STAMP.format(Instant.ofEpochMilli(epochMillis)
+                .atZone(ZoneId.systemDefault()));
     }
 
     /**

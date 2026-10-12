@@ -318,6 +318,7 @@ public final class ControlRenderers {
             case "phone" -> "tel";
             case "email" -> "email";
             case "url" -> "url";
+            case "datetime" -> "datetime-local";
             default -> "text";
         };
     }

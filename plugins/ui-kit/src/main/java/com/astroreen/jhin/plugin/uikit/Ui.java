@@ -1569,7 +1569,7 @@ public final class Ui {
             return this;
         }
 
-        /** The keyboard kind: {@code text/number/phone/email/url/visiblePassword/multiline}; validated. */
+        /** The keyboard kind: {@code text/number/phone/email/url/visiblePassword/multiline/datetime}; validated. */
         public InputBuilder keyboardType(String value) {
             props.put("keyboardType", UiEnums.require("keyboardType", value, UiEnums.KEYBOARD_TYPE));
             return this;

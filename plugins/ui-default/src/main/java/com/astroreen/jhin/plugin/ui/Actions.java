@@ -3,7 +3,7 @@
  * action, registered always and degrading to an explanatory toast when the
  * plugin that would serve it is not loaded.
  *
- * <p>Names, exhaustively (28):
+ * <p>Names, exhaustively (27):
  * <ul>
  *   <li>{@code enroll} — redeem an enrollment code, answer
  *       {@code [setToken, navigate:sessions]} (jhin.security);</li>
@@ -32,9 +32,6 @@
  *       {@code regenerate-title}, {@code reorder}, {@code auto-settle}
  *       (T98), {@code delete-session} and {@code arrange-toggle}, forwarding
  *       to the lifecycle service of jhin.sessions (always loaded);</li>
- *   <li>{@code demo-snooze} (T98) — the {@code Custom\u2026} snooze dialog's
- *       confirm: answers {@code [dismissDialog, toast]} and persists
- *       nothing — the decorative picker shell of the plan's T98 step 2.</li>
  *   <li>{@code preview-reload} (T108) — the browser-preview reload: answers
  *       {@code [patch progress loading:true, toast]} and persists nothing —
  *       the decorative shell of the plan's T108 step 1.</li>
@@ -132,20 +129,6 @@ final class Actions {
         handlers.put("delete-session", SessionActions.deleteSession(store));
         handlers.put("arrange-toggle", SessionActions.arrangeToggle(store,
                 () -> features.llm() && services.find(ProviderRegistry.class).isPresent()));
-        handlers.put("demo-snooze", Actions::demoSnooze);
-    }
-
-    /**
-     * The {@code Custom\u2026} snooze dialog's confirm (T98): the decorative
-     * picker shell — the answer closes the dialog and toasts the preview
-     * wording, persisting nothing (plan section 14.10: no fake success that
-     * claims real work happened).
-     */
-    private static List<Map<String, Object>> demoSnooze(
-            @SuppressWarnings("unused") HttpRequest req,
-            @SuppressWarnings("unused") Map<String, Object> payload) {
-        return List.of(Directives.dismissDialog(), Directives.toast(
-                "Custom snooze is a preview in this build."));
     }
 
     /**

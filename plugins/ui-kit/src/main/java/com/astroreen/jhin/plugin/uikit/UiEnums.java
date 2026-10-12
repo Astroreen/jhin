@@ -96,7 +96,7 @@ final class UiEnums {
 
     /** docs/sdui.md 2.6 input {@code keyboardType} (and the legacy {@code keyboard} spelling). */
     static final Set<String> KEYBOARD_TYPE =
-            Set.of("text", "number", "phone", "email", "url", "visiblePassword", "multiline");
+            Set.of("text", "number", "phone", "email", "url", "visiblePassword", "multiline", "datetime");
 
     /** docs/sdui.md 2.6 input {@code textInputAction} (the doc lists the common subset; the rest are the IME actions of the upstream input model). */
     static final Set<String> TEXT_INPUT_ACTION = Set.of(

@@ -65,8 +65,8 @@ class DemoMarkerSweepTest {
 
     /**
      * The server action names that are unambiguously real (they write to the
-     * store or drive the run lifecycle). The decorative server actions
-     * ({@code preview-reload}, {@code demo-snooze}) and the per-command
+     * store or drive the run lifecycle). The decorative server action
+     * ({@code preview-reload}) and the per-command
      * {@code keybind-edit} (real for the dispatched commands, decorative for
      * the inert upstream additions) are deliberately absent.
      */
