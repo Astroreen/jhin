@@ -1,0 +1,15 @@
+T302 static source gates — the new surface must exist in the sources
+the wire proofs exercise.
+
+  PathDisplay.middleTruncate                           3 hit(s)  PRESENT
+  PathDisplay budget = 48                              1 hit(s)  PRESENT
+  PathDisplay.looksLikePath                            2 hit(s)  PRESENT
+  code-block header renderer                           1 hit(s)  PRESENT
+  copy affordance renderer                             1 hit(s)  PRESENT
+  GFM strikethrough extension                          2 hit(s)  PRESENT
+  GFM task-list extension                              2 hit(s)  PRESENT
+  autolink extension                                   2 hit(s)  PRESENT
+  unclosed-fence degrade                               2 hit(s)  PRESENT
+  client copy handler                                  1 hit(s)  PRESENT
+  path-chip CSS                                        1 hit(s)  PRESENT
+  callout CSS                                          1 hit(s)  PRESENT

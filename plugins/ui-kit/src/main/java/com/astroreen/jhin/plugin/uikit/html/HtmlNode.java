@@ -69,7 +69,7 @@ public final class HtmlNode {
      */
     public HtmlNode attr(String name, String value) {
         attributes.put(Objects.requireNonNull(name, "name"),
-                new Attr(value, false));
+                new Attr(value, false, false));
         return this;
     }
 
@@ -88,7 +88,25 @@ public final class HtmlNode {
      */
     public HtmlNode attrSingle(String name, String value) {
         attributes.put(Objects.requireNonNull(name, "name"),
-                new Attr(value, true));
+                new Attr(value, true, false));
+        return this;
+    }
+
+    /**
+     * Adds a bare boolean attribute: the name alone, no value and no
+     * quoting ({@code <input disabled>}). Used for the HTML boolean
+     * attributes whose presence is the value ({@code disabled},
+     * {@code checked}) where the exact bare form is part of the rendered
+     * shape; everything else keeps the always-quoted {@link #attr(String,
+     * String)} form. Insertion order and replacement semantics match
+     * {@link #attr(String, String)}.
+     *
+     * @param name the attribute name (not escaped — renderer-owned literal)
+     * @return this node
+     */
+    public HtmlNode attrFlag(String name) {
+        attributes.put(Objects.requireNonNull(name, "name"),
+                new Attr(null, false, true));
         return this;
     }
 
@@ -152,6 +170,9 @@ public final class HtmlNode {
         for (Map.Entry<String, Attr> attribute : attributes.entrySet()) {
             Attr value = attribute.getValue();
             out.append(' ').append(attribute.getKey());
+            if (value.bare()) {
+                continue;
+            }
             if (value.singleQuoted()) {
                 out.append("='").append(HtmlEsc.attrSingle(value.value())).append('\'');
             } else {
@@ -187,7 +208,7 @@ public final class HtmlNode {
     private record Raw(String html) {
     }
 
-    /** One attribute value and its quoting shape. */
-    private record Attr(String value, boolean singleQuoted) {
+    /** One attribute value and its quoting shape ({@code bare} = name only). */
+    private record Attr(String value, boolean singleQuoted, boolean bare) {
     }
 }

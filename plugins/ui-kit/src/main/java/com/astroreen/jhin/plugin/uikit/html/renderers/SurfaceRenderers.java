@@ -144,6 +144,10 @@ public final class SurfaceRenderers {
                 StringBuilder classes = new StringBuilder("jhin-badge jhin-chip");
                 if (node.props().get("kind") != null) {
                     classes.append(" jhin-chip-").append(node.props().get("kind"));
+                    if ("file".equals(String.valueOf(node.props().get("kind")))) {
+                        // T302: the path chip — monospace, LTR, wraps anywhere.
+                        classes.append(" jhin-path-chip");
+                    }
                 }
                 if (node.props().get("variant") != null) {
                     classes.append(" jhin-chip-variant-").append(node.props().get("variant"));

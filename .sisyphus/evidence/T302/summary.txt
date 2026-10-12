@@ -1,0 +1,16 @@
+T302 QA — PASS
+
+  suites:            :jhin-plugin-ui-kit:test 335, :jhin-plugin-ui-default:test 460 (0 failures)
+  GFM parity:        <del>, task checkboxes (bare disabled), autolink <a href=, alert callout served
+  code_block header: language label (java) + copy affordance + aria-label on data-jhin-type="code_block"
+  path chips:        3 labels, all <= 48 chars, file.java preserved, full-path tooltips
+  degrade:           unclosed fence -> plain text (proven in --fail mode, degraded.txt)
+
+  evidence: /home/astroreen/Documents/jhin/.sisyphus/evidence/T302
+  ok: build + two test gates green (335/460 tests, 0 failures; test-gates.txt)
+  ok: T302 sources carry the new surface (source-gates.txt)
+  ok: 3 jars staged for seeding (kernel-env.txt)
+  ok: kernel up on http://localhost:18443 (pid 140726), GET /_jhin/health -> 200 in 3 s
+  ok: GFM parity + code_block header + callout + path chips served (acceptance.txt)
+  ok: path-chip labels <= 48 chars with full-path tooltips (paths.txt)
+  ok: browser-unavailable.txt records the un-exercised visual cases

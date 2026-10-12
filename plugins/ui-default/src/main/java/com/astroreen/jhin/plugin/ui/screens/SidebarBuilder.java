@@ -198,6 +198,7 @@ import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.ui.Directives;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
+import com.astroreen.jhin.plugin.uikit.text.PathDisplay;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -846,14 +847,7 @@ public final class SidebarBuilder {
                                 .align("center")
                                 .gap(8)
                                 .child(Ui.icon().icon("folder").size(12).build())
-                                .child(Ui.text(session.workdir() == null
-                                                || session.workdir().isBlank()
-                                                ? "—" : session.workdir())
-                                        .fontSize(12)
-                                        .color("$color.sidebar-muted-foreground")
-                                        .maxLines(1)
-                                        .ellipsis(true)
-                                        .build())
+                                .child(workdirDisplay(session.workdir()))
                                 .build())
                         .build())
                 .delay(500)
@@ -872,18 +866,30 @@ public final class SidebarBuilder {
         Ui.RowBuilder row = Ui.row()
                 .align("center")
                 .gap(4)
-                .child(Ui.text(workdir == null || workdir.isBlank() ? "—" : workdir)
-                        .style("caption")
-                        .color("$color.sidebar-muted-foreground")
-                        .maxLines(1)
-                        .ellipsis(true)
-                        .flex(1)
-                        .build());
+                .child(workdirDisplay(workdir));
         UiNode chip = contextChip(workdir);
         if (chip != null) {
             row.child(chip);
         }
         return row.build();
+    }
+
+    /**
+     * The workdir display of one row (T302): the path chip — middle-truncated
+     * label with the full path in the tooltip — or the muted {@code —} for a
+     * blank workdir.
+     */
+    private static UiNode workdirDisplay(String workdir) {
+        if (workdir == null || workdir.isBlank()) {
+            return Ui.text("—")
+                    .style("caption")
+                    .color("$color.sidebar-muted-foreground")
+                    .maxLines(1)
+                    .ellipsis(true)
+                    .flex(1)
+                    .build();
+        }
+        return PathDisplay.chip(workdir);
     }
 
     /**
@@ -910,14 +916,7 @@ public final class SidebarBuilder {
 
     /** The last path segment of one workdir (the chip label). */
     static String basename(String workdir) {
-        String trimmed = workdir.trim();
-        while (trimmed.endsWith("/") && trimmed.length() > 1) {
-            trimmed = trimmed.substring(0, trimmed.length() - 1);
-        }
-        int slash = trimmed.lastIndexOf('/');
-        return slash >= 0 && slash < trimmed.length() - 1
-                ? trimmed.substring(slash + 1)
-                : trimmed;
+        return PathDisplay.basename(workdir);
     }
 
     /**

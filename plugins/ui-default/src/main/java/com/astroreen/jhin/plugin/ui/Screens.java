@@ -42,6 +42,7 @@ import com.astroreen.jhin.plugin.ui.screens.PluginsScreen;
 import com.astroreen.jhin.plugin.ui.screens.ProjectScreen;
 import com.astroreen.jhin.plugin.ui.screens.ProvidersScreen;
 import com.astroreen.jhin.plugin.ui.screens.PullRequestsScreen;
+import com.astroreen.jhin.plugin.ui.screens.QaMarkdownScreen;
 import com.astroreen.jhin.plugin.ui.screens.QaProbeScreen;
 import com.astroreen.jhin.plugin.ui.screens.QaTimelineScreen;
 import com.astroreen.jhin.plugin.ui.screens.SessionsScreen;
@@ -133,6 +134,8 @@ final class Screens implements ScreenRegistry {
         if (snapshot.qaProbe()) {
             screens.put("qa-level3", QaProbeScreen::render);
             screens.put("qa-timeline", QaTimelineScreen::render);
+            screens.put("qa-markdown", QaMarkdownScreen::render);
+            screens.put("qa-degraded", QaMarkdownScreen::renderDegraded);
         }
         return screens;
     }

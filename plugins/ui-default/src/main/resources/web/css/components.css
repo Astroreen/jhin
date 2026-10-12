@@ -228,6 +228,35 @@
   color: var(--color-muted-foreground);
 }
 
+.jhin-callout-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: 0 0 var(--spacing-xs);
+  font-weight: 600;
+  color: var(--color-foreground);
+}
+
+.jhin-callout-note {
+  border-left-color: var(--color-info);
+}
+
+.jhin-callout-tip {
+  border-left-color: var(--color-success);
+}
+
+.jhin-callout-important {
+  border-left-color: var(--color-accent);
+}
+
+.jhin-callout-warning {
+  border-left-color: var(--color-warning);
+}
+
+.jhin-callout-caution {
+  border-left-color: var(--color-error);
+}
+
 .jhin-link {
   color: var(--color-accent);
 }
@@ -249,6 +278,42 @@
 .jhin-code-block code {
   font-family: inherit;
   font-size: inherit;
+}
+
+.jhin-code-block-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs-size);
+  line-height: var(--text-xs-line-height);
+}
+
+.jhin-code-block-lang {
+  color: var(--color-icon-muted);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+.jhin-code-block-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-left: auto;
+  padding: 2px var(--spacing-xs);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted-foreground);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.jhin-code-block-copy:hover {
+  color: var(--color-foreground);
+  border-color: var(--color-border);
 }
 
 .jhin-code-inline {
@@ -635,6 +700,13 @@
   border: 1px solid var(--color-outline);
   background: var(--color-surface);
   color: var(--color-foreground);
+}
+
+.jhin-path-chip {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-code);
+  direction: ltr;
+  overflow-wrap: anywhere;
 }
 
 .jhin-chip-delete {

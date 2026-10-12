@@ -244,6 +244,24 @@ public final class TextRenderers {
                 }
                 if (Boolean.TRUE.equals(node.props().get("copyable"))) {
                     element.attr("data-jhin-copyable", "true");
+                    // T302: the copyable header — language label + ghost copy
+                    // button. Span/button children (phrasing content) keep the
+                    // <pre> markup valid.
+                    HtmlNode header = new HtmlNode("span")
+                            .attr("class", "jhin-code-block-header");
+                    if (language != null) {
+                        header.child(new HtmlNode("span")
+                                .attr("class", "jhin-code-block-lang")
+                                .textChild(String.valueOf(language)));
+                    }
+                    HtmlNode copy = new HtmlNode("button")
+                            .attr("type", "button")
+                            .attr("class", "jhin-code-block-copy")
+                            .attr("aria-label", "Copy code");
+                    copy.child(ControlRenderers.iconElement("copy", 14));
+                    copy.textChild("Copy");
+                    header.child(copy);
+                    element.child(header);
                 }
                 if (Boolean.TRUE.equals(node.props().get("lineNumbers"))) {
                     element.attr("data-jhin-line-numbers", "true");

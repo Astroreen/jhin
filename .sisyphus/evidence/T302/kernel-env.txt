@@ -1,0 +1,13 @@
+JHIN_HOME=/tmp/t302-home.2AlN2z
+JHIN_BUNDLED_PLUGINS=/tmp/t302-bundled.a24APr
+JHIN_UI_QAPROBE=true
+port=18443
+base=http://localhost:18443
+mode=plain HTTP loopback
+mode-reason=jhin.security is not loaded -> no TlsProvider registered -> the kernel
+            listener speaks plain HTTP. Plan section 9 allows the QA-only
+            plain-HTTP mode in scripts.
+port-reason=the kernel default 8443 is occupied by another service on this machine
+plugins=jhin.sessions, jhin.ui-kit, jhin.ui
+plugin-reason=the non-optional requires of jhin.ui; T302 renders the qaProbe
+              screens and the static payloads only, no LLM run is needed.

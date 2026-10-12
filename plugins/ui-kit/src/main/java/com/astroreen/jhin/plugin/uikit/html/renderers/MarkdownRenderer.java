@@ -3,18 +3,24 @@
  */
 package com.astroreen.jhin.plugin.uikit.html.renderers;
 
+import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
 import com.astroreen.jhin.plugin.uikit.html.PropReflection;
 import java.util.Set;
 import java.util.regex.Pattern;
+import org.commonmark.ext.autolink.AutolinkExtension;
+import org.commonmark.ext.gfm.strikethrough.Strikethrough;
+import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension;
 import org.commonmark.ext.gfm.tables.TableBlock;
 import org.commonmark.ext.gfm.tables.TableBody;
 import org.commonmark.ext.gfm.tables.TableCell;
 import org.commonmark.ext.gfm.tables.TableHead;
 import org.commonmark.ext.gfm.tables.TableRow;
 import org.commonmark.ext.gfm.tables.TablesExtension;
+import org.commonmark.ext.task.list.items.TaskListItemMarker;
+import org.commonmark.ext.task.list.items.TaskListItemsExtension;
 import org.commonmark.node.Block;
 import org.commonmark.node.BlockQuote;
 import org.commonmark.node.BulletList;
@@ -70,9 +76,10 @@ import org.commonmark.parser.Parser;
  */
 public final class MarkdownRenderer implements NodeRenderer {
 
-    /** The markdown parser: GFM tables on, raw HTML blocks off. */
+    /** The markdown parser: GFM tables/strikethrough/task-lists + autolink on. */
     private static final Parser PARSER = Parser.builder()
-            .extensions(Set.of(TablesExtension.create()))
+            .extensions(Set.of(TablesExtension.create(), StrikethroughExtension.create(),
+                    TaskListItemsExtension.create(), AutolinkExtension.create()))
             .enabledBlockTypes(Set.of(
                     BlockQuote.class, Heading.class, FencedCodeBlock.class,
                     ThematicBreak.class, ListBlock.class, IndentedCodeBlock.class))
@@ -87,6 +94,22 @@ public final class MarkdownRenderer implements NodeRenderer {
     /** Base64 inline images the avatar/image props legitimately carry. */
     private static final Pattern DATA_IMAGE = Pattern.compile(
             "^data:image/(png|jpe?g|gif|webp);base64,", Pattern.CASE_INSENSITIVE);
+
+    /** The alert-callout marker alone on a blockquote's first line (section 2.6). */
+    private static final Pattern CALLOUT_MARKER = Pattern.compile(
+            "^\\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\\]$");
+
+    /** One alert-callout kind: CSS suffix, title word and header icon. */
+    private record Callout(String kind, String title, String icon) {
+    }
+
+    /** The callout vocabulary of {@link #CALLOUT_MARKER}, by marker word. */
+    private static final java.util.Map<String, Callout> CALLOUTS = java.util.Map.of(
+            "NOTE", new Callout("note", "Note", "info"),
+            "TIP", new Callout("tip", "Tip", "lightbulb"),
+            "IMPORTANT", new Callout("important", "Important", "priority_high"),
+            "WARNING", new Callout("warning", "Warning", "warning"),
+            "CAUTION", new Callout("caution", "Caution", "error"));
 
     @Override
     public String tag(UiNode node) {
@@ -117,6 +140,12 @@ public final class MarkdownRenderer implements NodeRenderer {
         if (markdown == null) {
             return;
         }
+        // T302: an unclosed code fence never renders half a code block — the
+        // whole node degrades to one escaped plain-text run (section 2.6).
+        if (hasUnclosedFence(markdown)) {
+            target.textChild(markdown);
+            return;
+        }
         Node document;
         try {
             document = PARSER.parse(markdown);
@@ -142,13 +171,21 @@ public final class MarkdownRenderer implements NodeRenderer {
                 int level = Math.min(6, Math.max(1, heading.getLevel()));
                 appendWrapped(target, "h" + level, heading);
             }
-            case FencedCodeBlock fenced -> target.child(codeBlock(
-                    fenced.getLiteral(), languageOf(fenced.getInfo())));
-            case IndentedCodeBlock indented -> target.child(
-                    codeBlock(indented.getLiteral(), null));
+            case FencedCodeBlock fenced -> appendCodeBlock(
+                    target, fenced.getLiteral(), languageOf(fenced.getInfo()));
+            case IndentedCodeBlock indented -> appendCodeBlock(
+                    target, indented.getLiteral(), null);
             case BlockQuote quote -> {
-                HtmlNode element = new HtmlNode("blockquote")
-                        .attr("class", "jhin-blockquote");
+                Callout callout = calloutOf(quote);
+                HtmlNode element = new HtmlNode("blockquote").attr("class",
+                        callout == null ? "jhin-blockquote"
+                                : "jhin-blockquote jhin-callout jhin-callout-" + callout.kind());
+                if (callout != null) {
+                    HtmlNode title = new HtmlNode("p").attr("class", "jhin-callout-title");
+                    title.child(ControlRenderers.iconElement(callout.icon(), 16));
+                    title.textChild(callout.title());
+                    element.child(title);
+                }
                 appendBlockChildren(element, quote);
                 target.child(element);
             }
@@ -183,14 +220,88 @@ public final class MarkdownRenderer implements NodeRenderer {
         }
     }
 
-    private static HtmlNode codeBlock(String literal, String language) {
-        HtmlNode pre = new HtmlNode("pre").attr("class", "jhin-code-block");
-        HtmlNode code = new HtmlNode("code");
+    /**
+     * A fenced/indented code block as the {@code code_block} primitive
+     * ({@code copyable}, so the rendered markup carries the language label
+     * and the copy affordance — T302), through the full node pipeline so the
+     * fragment keeps {@code data-jhin-type="code_block"}.
+     */
+    private static void appendCodeBlock(HtmlNode target, String literal, String language) {
+        Ui.CodeBlockBuilder block = Ui.codeBlock(literal == null ? "" : literal).copyable(true);
         if (language != null) {
-            code.attr("class", "language-" + language);
+            block.language(language);
         }
-        code.textChild(literal == null ? "" : literal);
-        return pre.child(code);
+        HtmlRenderer.appendNode(target, block.build());
+    }
+
+    /**
+     * The alert callout of a blockquote (section 2.6): {@code [!NOTE]} and
+     * friends alone on the first line select the callout styling, the marker
+     * is stripped from the content and {@code null} is returned for a plain
+     * blockquote. Mutates the freshly-parsed tree.
+     */
+    private static Callout calloutOf(BlockQuote quote) {
+        Node first = quote.getFirstChild();
+        if (!(first instanceof Paragraph paragraph)) {
+            return null;
+        }
+        Node inline = paragraph.getFirstChild();
+        if (!(inline instanceof Text text)) {
+            return null;
+        }
+        var matcher = CALLOUT_MARKER.matcher(text.getLiteral().strip());
+        if (!matcher.matches()) {
+            return null;
+        }
+        Callout callout = CALLOUTS.get(matcher.group(1));
+        Node next = text.getNext();
+        text.unlink();
+        if (next instanceof SoftLineBreak) {
+            next.unlink();
+        }
+        if (paragraph.getFirstChild() == null) {
+            paragraph.unlink();
+        }
+        return callout;
+    }
+
+    /**
+     * Whether the source ends with an open code fence: an unclosed
+     * {@code ```}/{@code ~~~} run makes the parse shape unpredictable, so the
+     * whole markdown node degrades to plain text instead (section 2.6).
+     */
+    static boolean hasUnclosedFence(String markdown) {
+        char openChar = 0;
+        int openLength = 0;
+        for (String line : markdown.split("\n", -1)) {
+            String stripped = line.stripLeading();
+            if (stripped.isEmpty()) {
+                continue;
+            }
+            char c = stripped.charAt(0);
+            if (c != '`' && c != '~') {
+                continue;
+            }
+            int i = 0;
+            while (i < stripped.length() && stripped.charAt(i) == c) {
+                i++;
+            }
+            if (i < 3) {
+                continue;
+            }
+            if (openChar == 0) {
+                if (c == '`' && stripped.indexOf('`', i) >= 0) {
+                    continue;
+                }
+                openChar = c;
+                openLength = i;
+            } else if (c == openChar && i >= openLength
+                    && stripped.substring(i).isBlank()) {
+                openChar = 0;
+                openLength = 0;
+            }
+        }
+        return openChar != 0;
     }
 
     private static void appendListItems(HtmlNode element, ListBlock list) {
@@ -204,6 +315,18 @@ public final class MarkdownRenderer implements NodeRenderer {
     private static void appendListItem(HtmlNode parent, ListItem item) {
         HtmlNode li = new HtmlNode("li").attr("class", "jhin-li");
         Node first = item.getFirstChild();
+        if (first instanceof TaskListItemMarker marker) {
+            // T302: the GFM task-list checkbox, always disabled (rendered
+            // markup, never an editable control).
+            HtmlNode checkbox = new HtmlNode("input")
+                    .attr("type", "checkbox")
+                    .attrFlag("disabled");
+            if (marker.isChecked()) {
+                checkbox.attrFlag("checked");
+            }
+            li.child(checkbox);
+            first = first.getNext();
+        }
         boolean tightParagraph = first instanceof Paragraph
                 && first.getNext() == null
                 && item.getParent() instanceof ListBlock list
@@ -287,6 +410,7 @@ public final class MarkdownRenderer implements NodeRenderer {
                             .textChild(code.getLiteral()));
             case Emphasis ignored -> appendWrapped(target, "em", node);
             case StrongEmphasis ignored -> appendWrapped(target, "strong", node);
+            case Strikethrough ignored -> appendWrapped(target, "del", node);
             case SoftLineBreak ignored -> target.textChild("\n");
             case HardLineBreak ignored -> target.child(new HtmlNode("br"));
             case Link link -> appendLink(target, link);
@@ -306,8 +430,8 @@ public final class MarkdownRenderer implements NodeRenderer {
             appendInlineChildren(target, link);
             return;
         }
-        HtmlNode element = new HtmlNode("a").attr("class", "jhin-link")
-                .attr("href", href);
+        HtmlNode element = new HtmlNode("a").attr("href", href)
+                .attr("class", "jhin-link");
         if (link.getTitle() != null) {
             element.attr("title", link.getTitle());
         }

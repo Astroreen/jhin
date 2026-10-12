@@ -1,0 +1,9 @@
+T302 test gates — the two suites green on the GFM/path-chip surface:
+BUILD SUCCESSFUL in 684ms
+> Task :jhin-plugin-ui-kit:test
+> Task :jhin-plugin-ui-default:test
+BUILD SUCCESSFUL in 25s
+
+  :jhin-plugin-ui-kit:test      335 tests (MarkdownRenderTest, PathDisplayTest among them)
+  :jhin-plugin-ui-default:test  460 tests (SidebarBuilderTest, HtmlConformanceTest among them)
+  failures=0 errors=0 (expected 0/0)

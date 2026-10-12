@@ -330,9 +330,13 @@ class SidebarBuilderTest {
         Map<String, Object> workdirRow = castMap(children.get(1));
         assertThat(castMap(castList(workdirRow.get("children")).get(0)))
                 .containsEntry("icon", "folder");
-        assertThat(castMap(castList(workdirRow.get("children")).get(1)))
-                .containsEntry("text", "/tmp/demo")
-                .containsEntry("color", "$color.sidebar-muted-foreground");
+        // T302: the hover-card workdir is the path chip (full path tooltip).
+        Map<String, Object> hoverWorkdir = castMap(castList(workdirRow.get("children")).get(1));
+        assertThat(hoverWorkdir)
+                .containsEntry("type", "chip")
+                .containsEntry("kind", "file")
+                .containsEntry("label", "/tmp/demo")
+                .containsEntry("tooltip", "/tmp/demo");
     }
 
     @Test
@@ -341,10 +345,13 @@ class SidebarBuilderTest {
 
         Map<String, Object> subtitle = castMap(row.get("subtitle"));
         assertThat(subtitle).containsEntry("type", "row");
+        // T302: the subtitle workdir is the path chip (full path tooltip).
         Map<String, Object> muted = castMap(castList(subtitle.get("children")).get(0));
-        assertThat(muted).containsEntry("type", "text")
-                .containsEntry("text", "/tmp/demo")
-                .containsEntry("color", "$color.sidebar-muted-foreground");
+        assertThat(muted)
+                .containsEntry("type", "chip")
+                .containsEntry("kind", "file")
+                .containsEntry("label", "/tmp/demo")
+                .containsEntry("tooltip", "/tmp/demo");
         Map<String, Object> chip = castMap(castList(subtitle.get("children")).get(1));
         assertThat(chip).containsEntry("id", "thread-context-chip")
                 .containsEntry("tooltip", "Project: /tmp/demo");

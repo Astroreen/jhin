@@ -1,0 +1,9 @@
+T302 path chips — every jhin-path-chip label of the served screen:
+middle-truncated to <= 48 characters, the basename kept whole and the
+full path in the tooltip (title).
+
+   41 chars  ok            /home/astroreen/…/MessageCardBuilder.java
+   42 chars  ok            /home/astroreen/Documents/jhin/…/file.java
+   13 chars  ok            src/auth.java
+  file.java basename preserved; short path unchanged; long basename kept
+  the file.java chip tooltip carries the full path (title=...)

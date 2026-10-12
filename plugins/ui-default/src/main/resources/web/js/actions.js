@@ -206,7 +206,24 @@
   }
 
   function onActionEvent(event) {
-    const host = actionHostFrom(event.target);
+    const target = event.target;
+    const copyBtn = target && typeof target.closest === "function"
+      ? target.closest(".jhin-code-block-copy") : null;
+    if (copyBtn) {
+      event.preventDefault();
+      const pre = copyBtn.closest("pre");
+      const code = pre ? pre.querySelector("code") : null;
+      const text = code ? code.textContent : (pre ? pre.textContent : "");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          () => showToast("Copied"),
+          () => showToast("Copy failed.", "error"));
+      } else {
+        showToast("Copy failed.", "error");
+      }
+      return;
+    }
+    const host = actionHostFrom(target);
     if (!host) { return; }
     event.preventDefault();
     const action = readActionJson(host.getAttribute("data-jhin-action"));

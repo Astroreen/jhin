@@ -71,6 +71,7 @@ import com.astroreen.jhin.plugin.ui.Directives;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
+import com.astroreen.jhin.plugin.uikit.text.PathDisplay;
 import com.astroreen.jhin.sdk.json.Json;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -682,9 +683,9 @@ public final class MessageCardBuilder {
                 .build());
         for (Map<String, Object> file : files) {
             String path = textOf(file, "path", "");
+            // T302: the path chip (middle-truncated label, full path tooltip).
             Ui.RowBuilder row = Ui.row().gap(8).align("center")
-                    .child(Ui.text(path).style("mono").maxLines(1).ellipsis(true)
-                            .flex(1).build())
+                    .child(PathDisplay.chip(path))
                     .child(Ui.text("+" + intOf(file, "additions")).style("mono")
                             .color(DIFF_ADDITION).build())
                     .child(Ui.text("-" + intOf(file, "deletions")).style("mono")
@@ -1094,11 +1095,16 @@ public final class MessageCardBuilder {
                         .tooltip("Show details")
                         .build())
                 .build());
-        // the collapsible argument summary line
+        // the collapsible argument summary line (T302: a bare path summary
+        // displays as the path chip, anything else stays the mono line)
         String summary = textOf(p, "summary", "");
         if (!summary.isBlank()) {
-            card.child(Ui.text(summary).style("mono").color(MUTED)
-                    .maxLines(1).ellipsis(true).build());
+            if (PathDisplay.looksLikePath(summary)) {
+                card.child(PathDisplay.chip(summary));
+            } else {
+                card.child(Ui.text(summary).style("mono").color(MUTED)
+                        .maxLines(1).ellipsis(true).build());
+            }
         }
         card.child(Ui.column().id(id + "-body").visible(false).gap(8)
                 .children(bodyNodes).build());

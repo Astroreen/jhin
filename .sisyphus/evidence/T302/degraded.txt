@@ -1,0 +1,27 @@
+T302 --fail: the unclosed-fence fixture must degrade to plain text.
+
+  fixture: the qa-degraded screen — 'before' then an unclosed
+  ```java fence. The markdown node must degrade to one escaped
+  plain-text run: no code_block node, no <pre>, the fence markers
+  surviving as visible characters only.
+
+  no data-jhin-type="code_block" in the served bytes (PASS)
+  no <pre> in the served bytes (PASS)
+  fence markers survive as plain characters (PASS)
+
+  the happy-path acceptance probe run against the degraded bytes
+  (every pattern must come back MISSING):
+
+  MISSING strikethrough renders <del>
+  MISSING task-list checkbox (bare disabled)
+  MISSING code-block header
+  MISSING header language label (java)
+  MISSING copy affordance
+  MISSING copy aria-label
+  MISSING code_block wire marker
+  MISSING autolink href
+  MISSING autolink <a href=
+  MISSING alert callout (warning)
+  MISSING path chip class
+
+  PRESENT lines reported against the degraded fixture: 0 (expected 0)

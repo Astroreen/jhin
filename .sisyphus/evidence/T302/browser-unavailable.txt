@@ -1,0 +1,24 @@
+T302 browser steps — UNAVAILABLE in this environment.
+
+Browser tooling (the agent browser / screenshots / evaluate) cannot run on
+this QA machine; the T202–T208/T301 precedent applies: every browser step
+is recorded here and substituted with curl + static asserts.
+
+Not executed (the plan's interactive/visual cases):
+  - Clicking the .jhin-code-block-copy affordance and pasting the clipboard:
+    substituted by the served-byte greps in acceptance.txt (the button, the
+    aria-label and the client copy handler bytes) plus the unit asserts —
+    the handler is proven present in web/js/actions.js and the exact button
+    markup in the served HTML.
+  - Hovering a path chip to see the full-path tooltip rendering: substituted
+    by the title= greps in paths.txt — the tooltip payload is proven in the
+    exact bytes the client receives.
+  - Visual GFM rendering (strikethrough line-through, checkbox states,
+    callout borders): substituted by the element greps in acceptance.txt
+    (del/input/blockquote markup) plus the callout CSS gates in
+    source-gates.txt.
+
+What IS proven here: the served qa-markdown screen carries the GFM
+elements (<del>, task checkboxes, autolink, alert callout), the code_block
+header with the language label and the copy affordance, and the path chips
+with <= 48-char labels and full-path tooltips.

@@ -15,6 +15,12 @@ dependencies {
     // semantic <table> HTML; raw HTML stays disabled in the parser.
     implementation 'org.commonmark:commonmark:0.24.0'
     implementation 'org.commonmark:commonmark-ext-gfm-tables:0.24.0'
+    // GFM parity (T302): strikethrough ~~x~~, task-list checkboxes and bare
+    // URL autolinks — the same published MIT library family. Raw HTML stays
+    // disabled in the parser (XSS rule unchanged).
+    implementation 'org.commonmark:commonmark-ext-gfm-strikethrough:0.24.0'
+    implementation 'org.commonmark:commonmark-ext-task-list-items:0.24.0'
+    implementation 'org.commonmark:commonmark-ext-autolink:0.24.0'
 
     // Unit tests need the JUnit platform launcher at runtime. Stays out of the
     // plugin jar (testRuntimeOnly is not part of runtimeClasspath).
