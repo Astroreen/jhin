@@ -533,6 +533,23 @@ public final class MessageCardBuilder {
      * @return the {@code assistant-meta} row
      */
     public static UiNode assistantMetaRow(long seq, List<String> labels) {
+        return assistantMetaRow(seq, labels, null, null, null);
+    }
+
+    /**
+     * The assistant-meta row with the T303 context chip: the model and
+     * provider beside the {@link PathDisplay} workdir path chip.
+     *
+     * @param seq      the sequence number anchoring the row
+     * @param labels   the model/effort/provider labels, may be empty
+     * @param model    the run model label, may be {@code null}
+     * @param provider the run provider label, may be {@code null}
+     * @param workdir  the run workdir rendered as a path chip, may be
+     *                 {@code null}
+     * @return the {@code assistant-meta} row
+     */
+    public static UiNode assistantMetaRow(long seq, List<String> labels,
+                                          String model, String provider, String workdir) {
         Ui.RowBuilder meta = Ui.row().id(eventId(seq) + "-meta")
                 .align("center")
                 .gap(8);
@@ -542,9 +559,46 @@ public final class MessageCardBuilder {
                     .color(MUTED)
                     .build());
         }
+        if (hasContext(model, provider, workdir)) {
+            meta.child(contextChip(eventId(seq) + "-context", model, provider, workdir));
+        }
         meta.child(hoverActions(eventId(seq) + "-actions", List.of("Copy", "Fork")));
         return rowContainer(KIND_ASSISTANT_META, "assistant", seq, "centerLeft", 4,
                 meta.build());
+    }
+
+    /**
+     * The T303 context chip: the model and provider labels beside the
+     * {@link PathDisplay} workdir path chip (the full workdir in the tooltip)
+     * — the run context one row carries.
+     *
+     * @param id       the chip cluster node id
+     * @param model    the run model label, may be {@code null}
+     * @param provider the run provider label, may be {@code null}
+     * @param workdir  the run workdir, may be {@code null}
+     * @return the {@code context-chip} cluster
+     */
+    public static UiNode contextChip(String id, String model, String provider, String workdir) {
+        Ui.RowBuilder context = Ui.row().id(id)
+                .align("center")
+                .gap(6);
+        if (model != null && !model.isBlank()) {
+            context.child(Ui.chip().label(model).build());
+        }
+        if (provider != null && !provider.isBlank()) {
+            context.child(Ui.chip().label(provider).build());
+        }
+        if (workdir != null && !workdir.isBlank()) {
+            context.child(PathDisplay.chip(workdir));
+        }
+        return context.build();
+    }
+
+    /** Whether any part of the context chip is present. */
+    static boolean hasContext(String model, String provider, String workdir) {
+        return (model != null && !model.isBlank())
+                || (provider != null && !provider.isBlank())
+                || (workdir != null && !workdir.isBlank());
     }
 
     // ------------------------------------------------------------------

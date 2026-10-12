@@ -67,7 +67,7 @@ class ShellScreenTest {
     void topbarCarriesWordmarkBreadcrumbAndControlCluster() {
         Map<String, Object> topbar = castMap(shellOf(render(true)).get("topbar"));
 
-        assertThat(stringsIn(topbar)).contains("Jhin", "Workspace", "/", "Threads");
+        assertThat(stringsIn(topbar)).contains("Jhin", "Workspace", "›", "Threads");
         // The control cluster: the app navigation tabs, providers linked.
         Map<String, Object> nav = nodesOfType(topbar, "nav").get(0);
         assertThat(screensOf(nav)).contains("sessions", "settings", "plugins", "providers");

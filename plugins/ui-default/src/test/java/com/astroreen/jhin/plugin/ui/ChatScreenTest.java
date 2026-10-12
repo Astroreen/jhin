@@ -334,6 +334,31 @@ class ChatScreenTest {
         assertThat(castMap(snooze.get(0).get("action"))).containsEntry("name", "snooze");
     }
 
+    @Test
+    void headerCarriesTheContextChipWithTheWorkdirPathChip() {
+        Map<String, Object> json = render(fullRun());
+
+        Map<String, Object> chip = nodesOfType(json, "row").stream()
+                .filter(node -> "context-chip".equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        // The workdir rides the path chip (the full path in the tooltip).
+        assertThat(Json.write(chip)).contains("/tmp/work").contains("\"kind\":\"file\"");
+
+        // The chip inserts before the trailing menu: the asserted header
+        // anchors keep their positions.
+        Map<String, Object> header = nodesOfType(json, "row").stream()
+                .filter(node -> ChatScreen.HEADER_ID.equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        List<Map<String, Object>> children = castList(header.get("children")).stream()
+                .map(ChatScreenTest::castMap)
+                .toList();
+        assertThat(children.get(0)).containsEntry("type", "text");
+        assertThat(children.get(1)).containsEntry("id", "runStatus");
+        assertThat(children.get(children.size() - 1)).containsEntry("type", "menu");
+    }
+
     // --- fixture ---
 
     /** One completed run with a tool call: user -> assistant -> tool -> assistant. */

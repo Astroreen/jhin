@@ -1,0 +1,3 @@
+T303 seeding — the sessions API (POST /sessions) in two workdirs:
+  /tmp/t303/alpha  -> f7f9100c-685d-40d5-9003-1adf59c2244a (alpha-one), abc86680-a005-465a-8fb2-923eaefed8c8 (alpha-two)
+  /tmp/t303/beta   -> f45749b4-12b0-40d7-9bc3-3c75096342e9 (beta-one)

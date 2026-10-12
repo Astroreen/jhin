@@ -196,6 +196,82 @@ class SidebarBuilderTest {
                 .containsKey("snoozedUntil");
     }
 
+    // --- T303: project-grouped sections ---
+
+    @Test
+    void sectionItemsCarryTheProjectGroupsWrapper() {
+        UiNode json = SidebarBuilder.build(List.of(session("demo", NOW - 10)), NOW, false);
+
+        for (Map<String, Object> section : sectionsOf(json)) {
+            List<Object> items = castList(section.get("items"));
+            if (items.isEmpty()) {
+                continue;
+            }
+            Map<String, Object> wrapper = castMap(items.get(0));
+            assertThat(wrapper).containsEntry("type", "list")
+                    .containsEntry("id", "project-groups:" + section.get("id"));
+        }
+        // A section without sessions carries no wrapper at all.
+        assertThat(castList(sectionOf(sectionsOf(json), "Pinned").get("items"))).isEmpty();
+        assertThat(castList(sectionOf(sectionsOf(json), "Snoozed").get("items"))).isEmpty();
+    }
+
+    @Test
+    void projectGroupsNestTheRowsUnderBasenameHeadersWithCounts() {
+        Session alphaOne = sessionIn("alpha-1", NOW - 10, "/work/alpha");
+        Session alphaTwo = sessionIn("alpha-2", NOW - 20, "/work/alpha");
+        Session beta = sessionIn("beta-1", NOW - 30, "/other/beta");
+
+        UiNode json = SidebarBuilder.build(List.of(alphaOne, alphaTwo, beta), NOW, false);
+        List<Map<String, Object>> groups = groupsOf(sectionOf(sectionsOf(json), "Active"));
+
+        // Two group headers — the workdir basenames — with their count badges.
+        assertThat(labelsOf(groups)).containsExactly("alpha", "beta");
+        assertThat(idsOf(groups)).containsExactly(
+                "project-group:alpha", "project-group:beta");
+        assertThat(groups.get(0)).containsEntry("count", 2)
+                .containsEntry("collapsible", true)
+                .containsEntry("collapsed", false);
+        assertThat(groups.get(1)).containsEntry("count", 1)
+                .containsEntry("collapsible", true)
+                .containsEntry("collapsed", false);
+        // The rows nest under their group, keeping the section's row order.
+        assertThat(rowsOfGroup(groups.get(0)).stream().map(row -> row.get("id")))
+                .containsExactly("session-row:alpha-1", "session-row:alpha-2");
+        assertThat(rowsOfGroup(groups.get(1)).stream().map(row -> row.get("id")))
+                .containsExactly("session-row:beta-1");
+    }
+
+    @Test
+    void noProjectBucketIsLastAndKeepsItsOwnLabel() {
+        Session orphan = sessionIn("orphan", NOW - 10, null);
+        Session alpha = sessionIn("alpha-1", NOW - 20, "/work/alpha");
+        Session beta = sessionIn("beta-1", NOW - 30, "/other/beta");
+
+        UiNode json = SidebarBuilder.build(List.of(orphan, alpha, beta), NOW, false);
+        List<Map<String, Object>> groups = groupsOf(sectionOf(sectionsOf(json), "Active"));
+
+        // The blank-workdir bucket sorts last, after every named project.
+        assertThat(labelsOf(groups)).containsExactly("alpha", "beta", "No project");
+        assertThat(idsOf(groups)).containsExactly(
+                "project-group:alpha", "project-group:beta", "project-group:no-project");
+        assertThat(rowsOfGroup(groups.get(2)).stream().map(row -> row.get("id")))
+                .containsExactly("session-row:orphan");
+    }
+
+    @Test
+    void projectGroupsCarryTheCollapseStoreKeys() {
+        Session orphan = sessionIn("orphan", NOW - 10, null);
+        Session alpha = sessionIn("alpha-1", NOW - 20, "/work/alpha");
+
+        UiNode json = SidebarBuilder.build(List.of(orphan, alpha), NOW, false);
+        List<Map<String, Object>> groups = groupsOf(sectionOf(sectionsOf(json), "Active"));
+
+        assertThat(groups.get(0)).containsEntry("storeKey", "sidebar.project.alpha.collapsed");
+        assertThat(groups.get(1)).containsEntry("storeKey",
+                "sidebar.project.no-project.collapsed");
+    }
+
     // --- T97: header + footer blocks ---
 
     @Test
@@ -808,6 +884,12 @@ class SidebarBuilderTest {
                 updatedAt - 1_000, updatedAt);
     }
 
+    /** One fixture session under an explicit workdir (the project group key). */
+    private static Session sessionIn(String id, long updatedAt, String workdir) {
+        return new Session(id, "local", id, workdir, null, null, "active",
+                updatedAt - 1_000, updatedAt);
+    }
+
     private static Session session(String id, long updatedAt, String status) {
         return new Session(id, "local", id, "/tmp/" + id, null, null, status,
                 updatedAt - 1_000, updatedAt);
@@ -919,8 +1001,8 @@ class SidebarBuilderTest {
         Map<String, List<String>> sections = new LinkedHashMap<>();
         for (Map<String, Object> section : sectionsOf(split)) {
             List<String> ids = new ArrayList<>();
-            for (Object item : castList(section.get("items"))) {
-                ids.add(String.valueOf(castMap(item).get("id"))
+            for (Map<String, Object> row : rowsOfSection(section)) {
+                ids.add(String.valueOf(row.get("id"))
                         .substring("session-row:".length()));
             }
             sections.put(String.valueOf(section.get("label")), ids);
@@ -946,11 +1028,44 @@ class SidebarBuilderTest {
     private static List<Map<String, Object>> rowsOf(UiNode split) {
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Map<String, Object> section : sectionsOf(split)) {
-            for (Object item : castList(section.get("items"))) {
-                rows.add(castMap(item));
-            }
+            rows.addAll(rowsOfSection(section));
         }
         return rows;
+    }
+
+    /**
+     * The project group specs of one section: the nested {@code sections} of
+     * the {@code project-groups:<sectionId>} wrapper node (empty for a
+     * section without rows).
+     */
+    private static List<Map<String, Object>> groupsOf(Map<String, Object> section) {
+        List<Map<String, Object>> groups = new ArrayList<>();
+        for (Object item : castList(section.get("items"))) {
+            Map<String, Object> node = castMap(item);
+            if (node.get("sections") instanceof List<?> specs) {
+                for (Object spec : specs) {
+                    groups.add(castMap(spec));
+                }
+            }
+        }
+        return groups;
+    }
+
+    /** The session rows of one section: every project group's rows, in group order. */
+    private static List<Map<String, Object>> rowsOfSection(Map<String, Object> section) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Map<String, Object> group : groupsOf(section)) {
+            rows.addAll(rowsOfGroup(group));
+        }
+        return rows;
+    }
+
+    /** The session rows nested under one project group. */
+    private static List<Map<String, Object>> rowsOfGroup(Map<String, Object> group) {
+        List<Object> items = castList(group.get("items"));
+        return items == null ? List.of() : items.stream()
+                .map(SidebarBuilderTest::castMap)
+                .toList();
     }
 
     private static List<String> stringsIn(Object fragment) {

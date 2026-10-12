@@ -81,6 +81,31 @@ class TimelineRowsTest {
     }
 
     @Test
+    void contextChipCarriesModelProviderAndTheWorkdirPathChip() {
+        UiNode row = MessageCardBuilder.assistantMetaRow(5, List.of("sonnet-4"),
+                "sonnet-4", "anthropic", "/home/astroreen/Documents/jhin/plugins");
+        String wire = Json.write(row.toJson());
+
+        assertThat(wire).contains("\"id\":\"ev-5-context\"")
+                .contains("\"label\":\"sonnet-4\"")
+                .contains("\"label\":\"anthropic\"")
+                .contains("\"kind\":\"file\"")
+                .contains("/home/astroreen/Documents/jhin/plugins");
+    }
+
+    @Test
+    void contextChipRendersOnlyThePresentParts() {
+        Map<String, Object> json = MessageCardBuilder
+                .contextChip("context-chip", null, null, "/tmp/work").toJson();
+
+        assertThat(json).containsEntry("id", "context-chip");
+        String wire = Json.write(json);
+        assertThat(wire).contains("/tmp/work").contains("\"kind\":\"file\"");
+        // No empty model/provider chips on the wire.
+        assertThat(wire).doesNotContain("\"label\":\"\"");
+    }
+
+    @Test
     void eventRowTonesMapToTheTokenColors() {
         assertThat(Json.write(MessageCardBuilder.eventRow(1, "error", "Error", "boom", "danger")
                 .toJson())).contains("$color.error");

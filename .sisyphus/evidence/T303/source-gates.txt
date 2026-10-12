@@ -1,0 +1,14 @@
+T303 static source gates — the new surface must exist in the sources
+the wire proofs exercise.
+
+  SidebarBuilder no-project key                        5 hit(s)  PRESENT
+  SidebarBuilder project-groups wrapper                1 hit(s)  PRESENT
+  SidebarBuilder group store key                       2 hit(s)  PRESENT
+  SidebarBuilder projectKey                            2 hit(s)  PRESENT
+  ShellScreen "›" breadcrumb separator               1 hit(s)  PRESENT
+  MessageCardBuilder context chip                      2 hit(s)  PRESENT
+  MessageCardBuilder workdir path chip                 1 hit(s)  PRESENT
+  ChatScreen header context chip                       1 hit(s)  PRESENT
+  tokens.css topbar height 52px                        1 hit(s)  PRESENT
+  sdui.md absent fields -> null                        1 hit(s)  PRESENT
+  sdui.md row-prop table governs                       1 hit(s)  PRESENT

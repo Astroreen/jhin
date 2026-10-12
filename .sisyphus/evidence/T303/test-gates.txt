@@ -1,0 +1,9 @@
+T303 test gates — the two suites green on the project-group surface:
+BUILD SUCCESSFUL in 761ms
+> Task :jhin-plugin-ui-kit:test
+> Task :jhin-plugin-ui-default:test
+BUILD SUCCESSFUL in 25s
+
+  :jhin-plugin-ui-kit:test      335 tests
+  :jhin-plugin-ui-default:test  467 tests (SidebarBuilderTest, ShellScreenTest, ChatScreenTest, TimelineRowsTest among them)
+  failures=0 errors=0 (expected 0/0)

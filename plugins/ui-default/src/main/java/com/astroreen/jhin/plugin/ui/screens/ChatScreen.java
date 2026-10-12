@@ -251,12 +251,15 @@ public final class ChatScreen {
 
     /**
      * The chat header row (T100): the thread title, the run status badge and
-     * the actions — the two demo-marked panel toggles (inline {@code
+     * the actions — the T303 context chip (model + provider + workdir path
+     * chip) beside the two demo-marked panel toggles (inline {@code
      * setState} shells; the E-phase panels do not exist yet) and the thread
-     * action menu with the real lifecycle actions.
+     * action menu with the real lifecycle actions. The chip inserts before
+     * the trailing menu, so the asserted child anchors (title, status badge,
+     * trailing menu) keep their positions.
      */
     private static UiNode header(Session session, String status) {
-        return Ui.row()
+        Ui.RowBuilder header = Ui.row()
                 .id(HEADER_ID)
                 .align("center")
                 .gap(8)
@@ -269,9 +272,12 @@ public final class ChatScreen {
                 .child(MessageCardBuilder.runBadge(status, statusColor(status)))
                 .child(Ui.spacer().build())
                 .child(panelToggle(STATE_RIGHT_PANEL, "view_sidebar"))
-                .child(panelToggle(STATE_TERMINAL, "dock"))
-                .child(headerMenu(session))
-                .build();
+                .child(panelToggle(STATE_TERMINAL, "dock"));
+        if (MessageCardBuilder.hasContext(session.model(), session.providerId(), session.workdir())) {
+            header.child(MessageCardBuilder.contextChip("context-chip",
+                    session.model(), session.providerId(), session.workdir()));
+        }
+        return header.child(headerMenu(session)).build();
     }
 
     /**

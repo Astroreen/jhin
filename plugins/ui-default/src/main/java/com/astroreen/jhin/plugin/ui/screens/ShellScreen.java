@@ -42,17 +42,17 @@ import java.util.Optional;
 
 public final class ShellScreen {
 
-    /** The workspace crumb: the constant first breadcrumb item. */
+    /** The project crumb of the {@code project › session title} breadcrumb. */
     static final String WORKSPACE_CRUMB = "Workspace";
 
-    /** The current-location crumb and the page header title. */
+    /** The session-title crumb (the current location) and the page header title. */
     static final String CURRENT_CRUMB = "Threads";
 
     /** The wordmark text (the T3Wordmark equivalent: the product name). */
     static final String WORDMARK = "Jhin";
 
-    /** The breadcrumb separator (the upstream "/" crumb). */
-    static final String CRUMB_SEPARATOR = "/";
+    /** The breadcrumb separator (the upstream {@code ›} crumb). */
+    static final String CRUMB_SEPARATOR = "›";
 
     /** The fixed shell breakpoint (plan T95 step 7): the sidebar overlays below it. */
     static final int BREAKPOINT = 768;
@@ -90,8 +90,8 @@ public final class ShellScreen {
     }
 
     /**
-     * The wide top bar: the wordmark, the full breadcrumb (workspace crumb,
-     * separator, current location) and the top-right control cluster.
+     * The wide top bar: the wordmark, the full breadcrumb ({@code project ›
+     * session title}) and the top-right control cluster.
      */
     static UiNode topbar(boolean providersLink) {
         return Ui.row()
@@ -124,8 +124,9 @@ public final class ShellScreen {
     }
 
     /**
-     * The breadcrumb: the muted workspace crumb, the "/" separator and the
-     * current location in the foreground — the WorkspaceBreadcrumb shape.
+     * The breadcrumb: the {@code project › session title} shape — the muted
+     * project crumb, the {@code ›} separator and the session-title crumb in
+     * the foreground (the WorkspaceBreadcrumb shape).
      */
     private static UiNode breadcrumb() {
         return Ui.row()

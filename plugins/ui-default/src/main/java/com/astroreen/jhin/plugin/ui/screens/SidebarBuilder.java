@@ -747,13 +747,65 @@ public final class SidebarBuilder {
         if (WORKING.equals(label)) {
             section.put("when", WORKING_WHEN);
         }
-        List<Object> rows = new ArrayList<>();
-        List<String> ids = sessions.stream().map(Session::id).toList();
-        for (int i = 0; i < sessions.size(); i++) {
-            rows.add(row(sessions.get(i), ids, i, arrange, now, arrangeTitles, label));
-        }
-        section.put("items", rows);
+        section.put("items", projectGroups(sessions, id, arrange, now, arrangeTitles, label));
         return section;
+    }
+
+    /** The project group key of a blank workdir (the {@code No project} bucket). */
+    static final String NO_PROJECT_KEY = "no-project";
+
+    /** The {@code No project} bucket label. */
+    static final String NO_PROJECT_LABEL = "No project";
+
+    /**
+     * The T303 project-grouped items of one section: a single nested
+     * {@code list} whose sections are the project groups — the group key is
+     * the {@link PathDisplay} basename of the workdir, the {@code No project}
+     * bucket last — each group keeping the section's row order and carrying
+     * its count badge and the {@code sidebar.project.<key>.collapsed} group
+     * collapse persistence.
+     */
+    private static List<Object> projectGroups(List<Session> sessions, String sectionId,
+                                              boolean arrange, long now,
+                                              List<String> arrangeTitles, String sectionLabel) {
+        if (sessions.isEmpty()) {
+            return List.of();
+        }
+        List<String> ids = sessions.stream().map(Session::id).toList();
+        Map<String, List<Integer>> groups = new LinkedHashMap<>();
+        for (int i = 0; i < sessions.size(); i++) {
+            groups.computeIfAbsent(projectKey(sessions.get(i)), key -> new ArrayList<>()).add(i);
+        }
+        List<String> keys = new ArrayList<>(groups.keySet());
+        if (keys.remove(NO_PROJECT_KEY)) {
+            keys.add(NO_PROJECT_KEY);
+        }
+        List<Object> groupSections = new ArrayList<>();
+        for (String key : keys) {
+            List<Integer> group = groups.get(key);
+            Map<String, Object> spec = new LinkedHashMap<>();
+            spec.put("label", NO_PROJECT_KEY.equals(key) ? NO_PROJECT_LABEL : key);
+            spec.put("id", "project-group:" + key);
+            spec.put("collapsible", true);
+            spec.put("collapsed", false);
+            spec.put("count", group.size());
+            spec.put("badgeStyle", BADGE_STYLE);
+            spec.put("storeKey", "sidebar.project." + key + ".collapsed");
+            List<Object> rows = new ArrayList<>();
+            for (int index : group) {
+                rows.add(row(sessions.get(index), ids, index, arrange, now,
+                        arrangeTitles, sectionLabel));
+            }
+            spec.put("items", rows);
+            groupSections.add(spec);
+        }
+        return List.of(Ui.list().id("project-groups:" + sectionId).sections(groupSections).build());
+    }
+
+    /** The project group key of one session: the workdir basename, {@code no-project} when blank. */
+    static String projectKey(Session session) {
+        String workdir = session.workdir();
+        return workdir == null || workdir.isBlank() ? NO_PROJECT_KEY : basename(workdir);
     }
 
     /**

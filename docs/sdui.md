@@ -1299,10 +1299,11 @@ collapsed-by-default region, so the patch/`visible` pair carries the
 reveal.)
 
 The `session_updated` patch targets the sidebar row node `session-row:<id>`:
-the event payload's fields map onto the row props below (absent fields become
-`null`, so cleared lifecycle state resets the row), the server re-renders the
-row and the frame carries that html. A sidebar row node carries the same prop
-names, so every update lands on matching keys:
+the event payload's fields map onto the row props below, the full row-prop
+table governs the patch, and absent fields become `null` (so cleared
+lifecycle state resets the row). A sidebar row node carries the same prop
+names, so every update lands on matching keys; the server re-renders the row
+and the frame carries that html:
 
 | Row | Prop | Meaning |
 |-----|------|---------|
