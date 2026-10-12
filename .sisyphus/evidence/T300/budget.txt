@@ -1,0 +1,6 @@
+T300 --fail: the budget gate must fail closed on an oversized chunk.
+
+  synthetic chunk: /tmp/t300-oversized.dQjxfB.js
+  bytes:           60001 (must be > 60000 to be oversized)
+
+  budget_ok 60001 60000 -> rejected (PASS: the gate fails closed)

@@ -144,7 +144,7 @@ class ManifestRouteTest {
 
     @Test
     void refusesUnknownIconsWithTheNotFoundEnvelope() throws Exception {
-        for (String name : new String[] {"", "icon-100.png", "icon-192.PNG", "app.js",
+        for (String name : new String[] {"", "icon-100.png", "icon-192.PNG", "core.js",
                 "icon-192.png.map", "icon"}) {
             HttpResponse response = icon(name, "/ui/icons/" + name, Map.of());
 

@@ -1,14 +1,14 @@
 /**
- * {@code GET /} web-shell behaviour (T202, T207.2, T208.3): the served
- * document is
- * the {@code /web/index.html} template — in the production linked branch the
- * token CSS is inlined under a per-response nonce and the two static payloads
- * are linked through {@code /ui/assets/*}, in the inline fallback branch all
- * three payloads are inlined exactly like T202 did. Both branches carry the
+ * {@code GET /} web-shell behaviour (T202, T207.2, T208.3, T300): the served
+ * document is the {@code /web/index.html} template — in the production linked
+ * branch the token CSS is inlined under a per-response nonce and the nine
+ * static payloads (six runtime chunks, three stylesheets) are linked through
+ * {@code /ui/assets/*} in load order, in the inline fallback branch all ten
+ * payloads are inlined exactly like T202 did. Both branches carry the
  * content-security policy with the nonce the document uses, the
  * service-worker registration snippet under the same nonce guarded by
- * {@code window.isSecureContext}, and no template
- * placeholder survives either one.
+ * {@code window.isSecureContext}, and no template placeholder survives either
+ * one.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -42,11 +42,11 @@ class WebShellRouteTest {
     }
 
     @Test
-    void inlinesTheAppCssAndAppJsPayloads() {
+    void inlinesTheStylesheetAndChunkPayloads() {
         String body = bodyOf(inline());
 
-        // `.jhin-button` is an app.css selector, `jhinFetch` an app.js symbol:
-        // both placeholders were replaced with non-empty payloads.
+        // `.jhin-button` is a components.css selector, `jhinFetch` a core.js
+        // symbol: the placeholders were replaced with non-empty payloads.
         assertThat(body).contains(".jhin-button").contains("jhinFetch");
     }
 
@@ -61,19 +61,45 @@ class WebShellRouteTest {
         String body = bodyOf(inline());
 
         assertThat(body).doesNotContain(
-                "__JHIN_TOKEN_CSS__", "__JHIN_APP_CSS__", "__JHIN_APP_JS__");
+                "__JHIN_NONCE__", "__JHIN_TOKEN_CSS__", "__JHIN_SW__");
     }
 
     @Test
     void linksTheStaticPayloadsInTheProductionBranch() {
         String body = bodyOf(linked());
 
-        assertThat(body)
-                .contains("<link rel=\"stylesheet\" href=\"/ui/assets/app.css\">")
-                .contains("<script src=\"/ui/assets/app.js\" defer");
+        for (String name : WebAssets.CSS) {
+            assertThat(body)
+                    .as("stylesheet %s", name)
+                    .contains("<link rel=\"stylesheet\" href=\"/ui/assets/" + name + "\"");
+        }
+        for (String name : WebAssets.JS) {
+            assertThat(body)
+                    .as("chunk %s", name)
+                    .contains("<script src=\"/ui/assets/" + name + "\" defer");
+        }
         // `.jhin-button` and `jhinFetch` stay out of the document body: the
         // payloads are linked, not inlined.
         assertThat(body).doesNotContain(".jhin-button", "jhinFetch");
+    }
+
+    @Test
+    void loadsTheChunksInDependencyOrder() {
+        String body = bodyOf(linked());
+
+        int core = body.indexOf("/ui/assets/core.js");
+        int render = body.indexOf("/ui/assets/render.js");
+        int actions = body.indexOf("/ui/assets/actions.js");
+        int sse = body.indexOf("/ui/assets/sse.js");
+        int keymap = body.indexOf("/ui/assets/keymap.js");
+        int timeline = body.indexOf("/ui/assets/timeline.js");
+
+        assertThat(core).isGreaterThan(0);
+        assertThat(render).isGreaterThan(core);
+        assertThat(actions).isGreaterThan(render);
+        assertThat(sse).isGreaterThan(actions);
+        assertThat(keymap).isGreaterThan(sse);
+        assertThat(timeline).isGreaterThan(keymap);
     }
 
     @Test
@@ -93,7 +119,7 @@ class WebShellRouteTest {
     @Test
     void replacesEveryPlaceholderInTheProductionBranch() {
         assertThat(bodyOf(linked())).doesNotContain(
-                "__JHIN_TOKEN_CSS__", "__JHIN_APP_CSS__", "__JHIN_APP_JS__");
+                "__JHIN_NONCE__", "__JHIN_TOKEN_CSS__", "__JHIN_SW__");
     }
 
     @Test
@@ -124,7 +150,7 @@ class WebShellRouteTest {
 
         assertThat(body)
                 .contains("<style id=\"jhin-token-css\" nonce=\"")
-                .contains("<script id=\"jhin-app-js\" nonce=\"");
+                .contains("<script id=\"jhin-core-js\" nonce=\"");
     }
 
     @Test

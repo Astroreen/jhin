@@ -1,5 +1,5 @@
 /**
- * {@code GET /ui/assets/{name}} behaviour (T207.1): the two allowlisted
+ * {@code GET /ui/assets/{name}} behaviour (T207.1, T300): the nine allowlisted
  * payloads answer with their media type, a strong SHA-256 {@code ETag} and
  * {@code Cache-Control: no-cache}; a matching {@code If-None-Match} answers
  * {@code 304}; every other name — unknown, wrong case, traversal-shaped or
@@ -30,29 +30,35 @@ class AssetRouteTest {
     private final AssetRoute route = new AssetRoute();
 
     @Test
-    void servesAppJsAsJavascript() {
-        HttpResponse response = handle("/ui/assets/app.js", "app.js", Map.of());
+    void servesEveryJsChunkAsJavascript() {
+        for (String name : WebAssets.JS) {
+            HttpResponse response = handle("/ui/assets/" + name, name, Map.of());
 
-        assertThat(response.status()).isEqualTo(200);
-        assertThat(response.headers())
-                .containsEntry("content-type", "application/javascript; charset=utf-8");
-        assertThat(response.body()).isNotEmpty();
+            assertThat(response.status()).as("name %s", name).isEqualTo(200);
+            assertThat(response.headers())
+                    .as("name %s", name)
+                    .containsEntry("content-type", "application/javascript; charset=utf-8");
+            assertThat(response.body()).as("name %s", name).isNotEmpty();
+        }
     }
 
     @Test
-    void servesAppCssAsStylesheet() {
-        HttpResponse response = handle("/ui/assets/app.css", "app.css", Map.of());
+    void servesEveryStylesheetAsStylesheet() {
+        for (String name : WebAssets.CSS) {
+            HttpResponse response = handle("/ui/assets/" + name, name, Map.of());
 
-        assertThat(response.status()).isEqualTo(200);
-        assertThat(response.headers())
-                .containsEntry("content-type", "text/css; charset=utf-8");
-        assertThat(response.body()).isNotEmpty();
+            assertThat(response.status()).as("name %s", name).isEqualTo(200);
+            assertThat(response.headers())
+                    .as("name %s", name)
+                    .containsEntry("content-type", "text/css; charset=utf-8");
+            assertThat(response.body()).as("name %s", name).isNotEmpty();
+        }
     }
 
     @Test
     void carriesAStableStrongEtagAndNoCache() {
-        HttpResponse first = handle("/ui/assets/app.js", "app.js", Map.of());
-        HttpResponse second = handle("/ui/assets/app.js", "app.js", Map.of());
+        HttpResponse first = handle("/ui/assets/core.js", "core.js", Map.of());
+        HttpResponse second = handle("/ui/assets/core.js", "core.js", Map.of());
 
         assertThat(first.headers())
                 .containsEntry("cache-control", "no-cache")
@@ -64,9 +70,9 @@ class AssetRouteTest {
 
     @Test
     void answersNotModifiedWhenTheClientHasTheCurrentTag() {
-        String etag = handle("/ui/assets/app.js", "app.js", Map.of()).headers().get("etag");
+        String etag = handle("/ui/assets/core.js", "core.js", Map.of()).headers().get("etag");
 
-        HttpResponse response = handle("/ui/assets/app.js", "app.js",
+        HttpResponse response = handle("/ui/assets/core.js", "core.js",
                 Map.of("if-none-match", etag));
 
         assertThat(response.status()).isEqualTo(304);
@@ -76,23 +82,23 @@ class AssetRouteTest {
 
     @Test
     void answersNotModifiedForTheWildcardAndWeakAndListForms() {
-        String etag = handle("/ui/assets/app.css", "app.css", Map.of()).headers().get("etag");
+        String etag = handle("/ui/assets/tokens.css", "tokens.css", Map.of()).headers().get("etag");
 
-        assertThat(handle("/ui/assets/app.css", "app.css",
+        assertThat(handle("/ui/assets/tokens.css", "tokens.css",
                 Map.of("if-none-match", "*")).status()).isEqualTo(304);
-        assertThat(handle("/ui/assets/app.css", "app.css",
+        assertThat(handle("/ui/assets/tokens.css", "tokens.css",
                 Map.of("if-none-match", "W/" + etag)).status()).isEqualTo(304);
-        assertThat(handle("/ui/assets/app.css", "app.css",
+        assertThat(handle("/ui/assets/tokens.css", "tokens.css",
                 Map.of("if-none-match", "\"other\", " + etag)).status()).isEqualTo(304);
-        assertThat(handle("/ui/assets/app.css", "app.css",
+        assertThat(handle("/ui/assets/tokens.css", "tokens.css",
                 Map.of("if-none-match", "\"other\"")).status()).isEqualTo(200);
-        assertThat(handle("/ui/assets/app.css", "app.css",
+        assertThat(handle("/ui/assets/tokens.css", "tokens.css",
                 Map.of("if-none-match", "")).status()).isEqualTo(200);
     }
 
     @Test
     void refusesUnknownNamesWithTheNotFoundEnvelope() throws Exception {
-        for (String name : new String[] {"", "index.html", "app.js.map", "app", "app.js.txt"}) {
+        for (String name : new String[] {"", "index.html", "core.js.map", "core", "core.js.txt"}) {
             HttpResponse response = handle("/ui/assets/" + name, name, Map.of());
 
             assertThat(response.status()).as("name %s", name).isEqualTo(404);
@@ -103,7 +109,7 @@ class AssetRouteTest {
 
     @Test
     void refusesWrongCase() {
-        for (String name : new String[] {"APP.JS", "App.css", "APP.CSS", "App.js"}) {
+        for (String name : new String[] {"CORE.JS", "Tokens.css", "TOKENS.CSS", "Core.js"}) {
             HttpResponse response = handle("/ui/assets/" + name, name, Map.of());
 
             // Documented case policy: exact lowercase names only.
@@ -114,9 +120,9 @@ class AssetRouteTest {
     @Test
     void refusesEveryTraversalShapedName() {
         String[] names = {
-            "../app.js", "..", "..%2fapp.js", "..\\app.js", "app.js%00", "app.js\0",
-            "app.js/", "./app.js", "%2e%2e%2fapp.js", "%2e%2e", "x/app.js", "//app.js",
-            "/app.js", "app.js/x", "sub/app.css", "app.css/.", "app.js#x", "app.js?x"
+            "../core.js", "..", "..%2fcore.js", "..\\core.js", "core.js%00", "core.js\0",
+            "core.js/", "./core.js", "%2e%2e%2fcore.js", "%2e%2e", "x/core.js", "//core.js",
+            "/core.js", "core.js/x", "sub/tokens.css", "tokens.css/.", "core.js#x", "core.js?x"
         };
         for (String name : names) {
             HttpResponse response = handle("/ui/assets/" + name, name, Map.of());
@@ -132,16 +138,16 @@ class AssetRouteTest {
         // The name capture is allowlisted, but the path is not the strict
         // literal /ui/assets/<name>: trailing slash, doubled slash, extra
         // segments. All answer 404 without exception.
-        assertThat(handle("/ui/assets/app.js/", "app.js", Map.of()).status()).isEqualTo(404);
-        assertThat(handle("/ui/assets//app.js", "app.js", Map.of()).status()).isEqualTo(404);
-        assertThat(handle("/ui/assets/x/app.js", "app.js", Map.of()).status()).isEqualTo(404);
-        assertThat(handle("//app.js", "app.js", Map.of()).status()).isEqualTo(404);
-        assertThat(handle("/ui/assets/app.js/..", "app.js", Map.of()).status()).isEqualTo(404);
+        assertThat(handle("/ui/assets/core.js/", "core.js", Map.of()).status()).isEqualTo(404);
+        assertThat(handle("/ui/assets//core.js", "core.js", Map.of()).status()).isEqualTo(404);
+        assertThat(handle("/ui/assets/x/core.js", "core.js", Map.of()).status()).isEqualTo(404);
+        assertThat(handle("//core.js", "core.js", Map.of()).status()).isEqualTo(404);
+        assertThat(handle("/ui/assets/core.js/..", "core.js", Map.of()).status()).isEqualTo(404);
     }
 
     @Test
     void assetResponsesCarryTheShellPolicy() {
-        String policy = handle("/ui/assets/app.js", "app.js", Map.of())
+        String policy = handle("/ui/assets/core.js", "core.js", Map.of())
                 .headers().get("content-security-policy");
 
         assertThat(policy)

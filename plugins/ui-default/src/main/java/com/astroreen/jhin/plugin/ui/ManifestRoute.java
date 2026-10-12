@@ -29,8 +29,8 @@
  * ({@code /web/icons/icon-192.png}, {@code /web/icons/icon-512.png}, real
  * 192×192 and 512×512 images) and are served from {@code /ui/icons/{name}} —
  * a separate, strict exact-name allowlist that deliberately does not touch
- * {@link AssetRoute}'s {@code /ui/assets/*} contract (that route stays
- * app.js/app.css only). The icon branch repeats {@link AssetRoute}'s
+ * {@link AssetRoute}'s {@code /ui/assets/*} contract (that route stays the
+ * nine web payloads only). The icon branch repeats {@link AssetRoute}'s
  * caching discipline: strong {@code "sha256-<hex>"} {@code ETag},
  * {@code Cache-Control: no-cache}, {@code If-None-Match} → {@code 304}, the
  * JSON {@code 404 not_found} envelope for every unknown or traversal-shaped

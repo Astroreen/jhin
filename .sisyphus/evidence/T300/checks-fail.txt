@@ -1,0 +1,5 @@
+04:11:57 -- negative proof a: the old single-file asset URLs 404
+ok: old asset URLs answer 404 not_found (old-name-404.txt)
+04:12:00 -- negative proof b: a synthetic oversized chunk is rejected
+ok: budget gate rejects a synthetic 60001-byte chunk (budget.txt)
+ok: T300 QA --fail: both negative proofs PASS

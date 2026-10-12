@@ -6,16 +6,17 @@
  * serves the offline shell strategy:
  *
  * <ul>
- *   <li>cache name {@code jhin-shell-v1}; <strong>bump procedure</strong>:
+ *   <li>cache name {@code jhin-shell-v2} (T300: the precache set grew from two
+ *       payloads to nine); <strong>bump procedure</strong>:
  *       increment the {@code N} literal in {@link #SCRIPT} whenever the shell
  *       contract or any precached payload changes shape (new asset URL, new
  *       precache entry), so {@code activate} drops the previous generation.
  *       ETag changes of the payload <em>bytes</em> alone need no bump — the
  *       versioned asset URL revalidation and the install-time precache pick
  *       them up on the next worker install;</li>
- *   <li>install: precache {@code /} (the shell document),
- *       {@code /ui/assets/app.js} and {@code /ui/assets/app.css} into that
- *       cache name;</li>
+ *   <li>install: precache {@code /} (the shell document) and the nine
+ *       {@code /ui/assets/*} payloads (the six runtime chunks and the three
+ *       stylesheets) into that cache name;</li>
  *   <li>activate: delete every older cache whose name starts with
  *       {@code jhin-shell-} but is not the current version, then
  *       {@code self.skipWaiting()} and {@code self.clients.claim()};</li>
@@ -62,9 +63,12 @@ final class ServiceWorkerRoute {
      */
     static final String SCRIPT = String.join("\n",
             "/* jhin web-client service worker (T208.2): classic script, no modules. */",
-            "var CACHE = \"jhin-shell-v1\";",
+            "var CACHE = \"jhin-shell-v2\";",
             "var CACHE_PREFIX = \"jhin-shell-\";",
-            "var PRECACHE = [\"/\", \"/ui/assets/app.js\", \"/ui/assets/app.css\"];",
+            "var PRECACHE = [\"/\", \"/ui/assets/tokens.css\", \"/ui/assets/components.css\",\n"
+            + "    \"/ui/assets/screens.css\", \"/ui/assets/core.js\", \"/ui/assets/render.js\",\n"
+            + "    \"/ui/assets/actions.js\", \"/ui/assets/sse.js\", \"/ui/assets/keymap.js\",\n"
+            + "    \"/ui/assets/timeline.js\"];",
             "var NEVER_CACHE = [\"/_jhin/bootstrap\", \"/ui/screen/\", \"/ui/action/\", \"/ui/stream\"];",
             "",
             "self.addEventListener(\"install\", function (event) {",

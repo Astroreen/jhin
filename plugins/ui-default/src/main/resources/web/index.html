@@ -4,12 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Jhin</title>
-<style id="jhin-token-css">/*__JHIN_TOKEN_CSS__*/</style>
-<style id="jhin-app-css">/*__JHIN_APP_CSS__*/</style>
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/ui/assets/tokens.css" nonce="__JHIN_NONCE__">
+<link rel="stylesheet" href="/ui/assets/components.css" nonce="__JHIN_NONCE__">
+<link rel="stylesheet" href="/ui/assets/screens.css" nonce="__JHIN_NONCE__">
+<style id="jhin-token-css" nonce="__JHIN_NONCE__">/*__JHIN_TOKEN_CSS__*/</style>
 </head>
 <body>
 <div id="jhin-root"></div>
 <div id="jhin-overlays"></div>
-<script id="jhin-app-js">/*__JHIN_APP_JS__*/</script>
+<script src="/ui/assets/core.js" defer nonce="__JHIN_NONCE__"></script>
+<script src="/ui/assets/render.js" defer nonce="__JHIN_NONCE__"></script>
+<script src="/ui/assets/actions.js" defer nonce="__JHIN_NONCE__"></script>
+<script src="/ui/assets/sse.js" defer nonce="__JHIN_NONCE__"></script>
+<script src="/ui/assets/keymap.js" defer nonce="__JHIN_NONCE__"></script>
+<script src="/ui/assets/timeline.js" defer nonce="__JHIN_NONCE__"></script>
+/*__JHIN_SW__*/
 </body>
 </html>

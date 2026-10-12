@@ -1,5 +1,5 @@
 /**
- * {@code GET /}: the web-client shell document (T202, T207.2).
+ * {@code GET /}: the web-client shell document (T202, T207.2, T300).
  *
  * <p>Serves the full HTML document of the browser client: the static
  * {@code /web/index.html} template of this plugin with the token CSS
@@ -8,48 +8,50 @@
  * {@link BootstrapRoute} builds, the {@link TokenDefaults} token surface and
  * the saved density). The token CSS is dynamic per client and theme, so it
  * stays inline inside a per-response {@code nonce}-carrying {@code <style>};
- * the two static payloads are served from the asset route as
- * {@code /ui/assets/app.css} and {@code /ui/assets/app.js} links. The
+ * the nine static payloads (T300's six runtime chunks and three stylesheets)
+ * are served from the asset route as {@code /ui/assets/*} links. The
  * {@code inlineAssets} constructor switch exists only as the fallback branch
  * that still renders a complete document when the asset route is unregistered:
- * it inlines the two payloads verbatim, exactly like T202 did. A jar missing
- * one of the resources fails at construction instead of serving a half
- * document.
+ * it inlines the nine payloads verbatim, exactly like T202 did with the two.
+ * A jar missing one of the resources fails at construction instead of serving
+ * a half document.
  *
  * <p>Every response carries the content-security policy of
  * {@link #csp(String)} with a fresh per-response nonce (≥ 128 bits,
- * {@code SecureRandom}, base64url) and the nonce lands in four places under
- * the policy's control: the {@code script-src 'nonce-…'} source, the app
- * {@code <script>} element (both the linked and the inline form), the
- * service-worker registration snippet (T208.3) and the
- * token-CSS {@code <style>} element (plus the inline app-CSS {@code <style>}
- * in the fallback branch).
+ * {@code SecureRandom}, base64url). The template carries the
+ * {@code __JHIN_NONCE__} placeholder in every element under the policy's
+ * control — the three stylesheet links, the token-CSS {@code <style>} and the
+ * six chunk {@code <script>} tags — and the same nonce lands in the
+ * {@code script-src 'nonce-…'} source and the service-worker registration
+ * snippet (T208.3).
  *
  * <p>Policy reconciliation (the ADR of {@code docs/web-client.md} §3 states
  * {@code default-src 'self'; script-src 'self' 'nonce-…'; object-src 'none';
  * base-uri 'none'}; the plan's directive set adds {@code style-src}): the
  * {@code script-src} follows the ADR exactly — {@code 'self'} is what lets
- * the external same-origin {@code /ui/assets/app.js} load under source-list
- * matching, while the nonce additionally satisfies CSP3's nonce rule (an
- * element carrying a valid nonce is allowed regardless of the source list)
- * and covers the inline fallback branch, whose inline {@code <script>} has no
- * URL to match. {@code style-src 'unsafe-inline' 'self'} comes from the plan:
- * the ADR string omits {@code style-src}, and left to the {@code default-src
- * 'self'} fallback the inline token CSS would be blocked — {@code 'self'}
- * covers the linked stylesheet, {@code 'unsafe-inline'} the inline
- * {@code <style>} payloads (the element nonces are belt-and-suspenders).
- * No further directives are invented; {@code default-src 'self'} is the
- * fallback for {@code fetch}/{@code EventSource} of {@code /_jhin/bootstrap},
- * {@code /ui/screen/*}, {@code /ui/action/*} and {@code /ui/stream*}.
+ * the external same-origin {@code /ui/assets/*.js} chunks load under
+ * source-list matching, while the nonce additionally satisfies CSP3's nonce
+ * rule (an element carrying a valid nonce is allowed regardless of the source
+ * list) and covers the inline fallback branch, whose inline {@code <script>}
+ * elements have no URL to match. {@code style-src 'unsafe-inline' 'self'}
+ * comes from the plan: the ADR string omits {@code style-src}, and left to
+ * the {@code default-src 'self'} fallback the inline token CSS would be
+ * blocked — {@code 'self'} covers the linked stylesheets, {@code
+ * 'unsafe-inline'} the inline {@code <style>} payloads (the element nonces
+ * are belt-and-suspenders). No further directives are invented;
+ * {@code default-src 'self'} is the fallback for {@code fetch}/
+ * {@code EventSource} of {@code /_jhin/bootstrap}, {@code /ui/screen/*},
+ * {@code /ui/action/*} and {@code /ui/stream*}.
  *
  * <p>The document also carries the service-worker registration snippet
- * (T208.3) as a second inline {@code <script nonce="…">} after the app
- * payload: it registers {@code /sw.js} only under
- * {@code window.isSecureContext} with a silent failure catch, so a plain-HTTP
- * origin (the QA loopback) skips registration without an error and the app
- * keeps working exactly as before. No {@code beforeinstallprompt} listener
- * ships — the plan only asks the QA report which browsers expose it, and
- * nothing observable can be collected without a browser (see T208 chunk 2).
+ * (T208.3) as an inline {@code <script nonce="…">} where the template's
+ * {@code /*__JHIN_SW__*&#47;} placeholder stands: it registers {@code /sw.js}
+ * only under {@code window.isSecureContext} with a silent failure catch, so a
+ * plain-HTTP origin (the QA loopback) skips registration without an error and
+ * the app keeps working exactly as before. No {@code beforeinstallprompt}
+ * listener ships — the plan only asks the QA report which browsers expose it,
+ * and nothing observable can be collected without a browser (see T208 chunk
+ * 2).
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -61,34 +63,19 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 final class WebShellRoute {
 
-    /** The inline-payload placeholders of the {@code /web/index.html} template. */
+    /** The per-response nonce placeholder of the {@code /web/index.html} template. */
+    private static final String NONCE_PLACEHOLDER = "__JHIN_NONCE__";
+
+    /** The inline token-CSS placeholder of the {@code /web/index.html} template. */
     private static final String TOKEN_CSS_PLACEHOLDER = "/*__JHIN_TOKEN_CSS__*/";
 
-    /** The inline-payload placeholders of the {@code /web/index.html} template. */
-    private static final String APP_CSS_PLACEHOLDER = "/*__JHIN_APP_CSS__*/";
-
-    /** The inline-payload placeholders of the {@code /web/index.html} template. */
-    private static final String APP_JS_PLACEHOLDER = "/*__JHIN_APP_JS__*/";
-
-    /** The token-CSS style element opening tag of the template. */
-    private static final String TOKEN_STYLE_OPEN = "<style id=\"jhin-token-css\">";
-
-    /** The app-CSS style element of the template, placeholder included. */
-    private static final String APP_STYLE_ELEMENT =
-            "<style id=\"jhin-app-css\">" + APP_CSS_PLACEHOLDER + "</style>";
-
-    /** The app-JS script element of the template, placeholder included. */
-    private static final String APP_SCRIPT_ELEMENT =
-            "<script id=\"jhin-app-js\">" + APP_JS_PLACEHOLDER + "</script>";
-
-    /** Where {@link AssetRoute} serves the static styles from. */
-    private static final String APP_CSS_URL = "/ui/assets/app.css";
-
-    /** Where {@link AssetRoute} serves the static script from. */
-    private static final String APP_JS_URL = "/ui/assets/app.js";
+    /** The service-worker snippet placeholder of the {@code /web/index.html} template. */
+    private static final String SW_PLACEHOLDER = "/*__JHIN_SW__*/";
 
     /** Where {@link ServiceWorkerRoute} serves the worker script from. */
     private static final String SW_URL = "/sw.js";
@@ -101,16 +88,15 @@ final class WebShellRoute {
     private final UiSettings settings;
     private final boolean inlineAssets;
     private final String template;
-    private final String appCss;
-    private final String appJs;
+    private final Map<String, String> payloads;
 
     /**
-     * Loads the three static resources of the web client from this plugin's
-     * class path.
+     * Loads the static resources of the web client from this plugin's class
+     * path: the template plus the nine payloads of {@link WebAssets}.
      *
      * @param settings      the {@code jhin.ui} settings store the token CSS is
      *                      derived from per request
-     * @param inlineAssets  {@code false} (the production wiring) links the two
+     * @param inlineAssets  {@code false} (the production wiring) links the
      *                      static payloads through {@link AssetRoute};
      *                      {@code true} is the fallback branch that inlines
      *                      them so the shell still renders when the asset
@@ -121,14 +107,17 @@ final class WebShellRoute {
         this.settings = settings;
         this.inlineAssets = inlineAssets;
         this.template = resource("/web/index.html");
-        this.appCss = resource("/web/app.css");
-        this.appJs = resource("/web/app.js");
+        Map<String, String> loaded = new LinkedHashMap<>();
+        for (String name : WebAssets.NAMES) {
+            loaded.put(name, resource("/web/" + WebAssets.dirOf(name) + name));
+        }
+        this.payloads = Map.copyOf(loaded);
     }
 
     /**
      * Builds the shell document for one request: the template with the token
      * CSS of the effective settings snapshot inlined under a fresh nonce and
-     * the two static payloads either linked (production) or inlined
+     * the nine static payloads either linked (production) or inlined
      * (fallback). The same nonce goes into the CSP header of the response.
      *
      * @param req the request (unused — the document is not caller-dependent)
@@ -172,37 +161,45 @@ final class WebShellRoute {
                 + "'; style-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'none'";
     }
 
-    /** The production document: token CSS inline, the two payloads linked. */
+    /** The production document: token CSS inline, the nine payloads linked. */
     private String linkedDocument(String nonce, String tokenCss) {
         return template
-                .replace(TOKEN_STYLE_OPEN, "<style id=\"jhin-token-css\" nonce=\"" + nonce + "\">")
+                .replace(NONCE_PLACEHOLDER, nonce)
                 .replace(TOKEN_CSS_PLACEHOLDER, tokenCss)
-                .replace(APP_STYLE_ELEMENT,
-                        "<link rel=\"manifest\" href=\"/manifest.json\">"
-                                + "<link rel=\"stylesheet\" href=\"" + APP_CSS_URL + "\">")
-                .replace(APP_SCRIPT_ELEMENT, "<script src=\"" + APP_JS_URL
-                        + "\" defer nonce=\"" + nonce + "\"></script>" + swSnippet(nonce));
+                .replace(SW_PLACEHOLDER, swSnippet(nonce));
     }
 
-    /** The fallback document: token CSS and both payloads inline. */
+    /** The fallback document: token CSS and all nine payloads inline. */
     private String inlineDocument(String nonce, String tokenCss) {
-        return template
-                .replace(TOKEN_STYLE_OPEN, "<style id=\"jhin-token-css\" nonce=\"" + nonce + "\">")
+        String document = template.replace(NONCE_PLACEHOLDER, nonce)
                 .replace(TOKEN_CSS_PLACEHOLDER, tokenCss)
-                .replace("<style id=\"jhin-app-css\">",
-                        "<link rel=\"manifest\" href=\"/manifest.json\">"
-                                + "<style id=\"jhin-app-css\" nonce=\"" + nonce + "\">")
-                .replace(APP_CSS_PLACEHOLDER, appCss)
-                .replace(APP_SCRIPT_ELEMENT, "<script id=\"jhin-app-js\" nonce=\"" + nonce
-                        + "\">" + appJs + "</script>" + swSnippet(nonce));
+                .replace(SW_PLACEHOLDER, swSnippet(nonce));
+        for (String name : WebAssets.NAMES) {
+            String tag = name.endsWith(".css")
+                    ? "<link rel=\"stylesheet\" href=\"" + assetUrl(name) + "\" nonce=\"" + nonce + "\">"
+                    : "<script src=\"" + assetUrl(name) + "\" defer nonce=\"" + nonce + "\"></script>";
+            String element = name.endsWith(".css")
+                    ? "<style id=\"jhin-" + name.replace('.', '-') + "\" nonce=\"" + nonce + "\">"
+                            + payloads.get(name) + "</style>"
+                    : "<script id=\"jhin-" + name.replace('.', '-') + "\" nonce=\"" + nonce + "\">"
+                            + payloads.get(name) + "</script>";
+            document = document.replace(tag, element);
+        }
+        return document;
+    }
+
+    /** Where {@link AssetRoute} serves one payload from. */
+    private static String assetUrl(String name) {
+        return "/ui/assets/" + name;
     }
 
     /**
      * The service-worker registration snippet (T208.3): one inline
-     * {@code <script>} under the response nonce, appended after the app
-     * payload. {@code window.isSecureContext} guards the registration so a
-     * plain-HTTP origin skips it silently (no error, app keeps working) and
-     * the catch keeps any registration failure silent the same way.
+     * {@code <script>} under the response nonce, standing where the
+     * template's {@code /*__JHIN_SW__*&#47;} placeholder is.
+     * {@code window.isSecureContext} guards the registration so a plain-HTTP
+     * origin skips it silently (no error, app keeps working) and the catch
+     * keeps any registration failure silent the same way.
      *
      * @param nonce the per-response nonce of this document
      * @return the registration script element

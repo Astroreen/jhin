@@ -1,8 +1,11 @@
 /**
  * {@code GET /ui/assets/{name}}: the immutable web-client payloads as
- * class-path resources with strong {@code ETag} revalidation (T207.1).
+ * class-path resources with strong {@code ETag} revalidation (T207.1, T300).
  *
- * <p>Exactly two names are served — {@code app.js} and {@code app.css}, both
+ * <p>Exactly nine names are served — the six runtime chunks
+ * ({@code core.js}, {@code render.js}, {@code actions.js}, {@code sse.js},
+ * {@code keymap.js}, {@code timeline.js}) and the three stylesheets
+ * ({@code tokens.css}, {@code components.css}, {@code screens.css}), all
  * matched as exact lowercase literals. Everything else answers the standard
  * JSON {@code 404 not_found} envelope: unknown names, wrong case, nested
  * segments, empty or traversal-shaped captures. The matcher is an in-memory
@@ -43,9 +46,16 @@ final class AssetRoute {
     /** The one request path shape this route serves, before the name. */
     private static final String PATH_PREFIX = "/ui/assets/";
 
+    /** Media type of the {@code .js} runtime chunks. */
+    private static final String JS_CONTENT_TYPE = "application/javascript; charset=utf-8";
+
+    /** Media type of the {@code .css} stylesheets. */
+    private static final String CSS_CONTENT_TYPE = "text/css; charset=utf-8";
+
     /**
      * The exact-name allowlist: lowercase name to its loaded payload. A
-     * request only ever serves through one of these two keys.
+     * request only ever serves through one of these nine keys; the media type
+     * follows the name extension.
      */
     private final Map<String, Asset> assets;
 
@@ -58,15 +68,17 @@ final class AssetRoute {
     }
 
     /**
-     * Loads both payloads from this plugin's class path and derives their
+     * Loads all nine payloads from this plugin's class path and derives their
      * tags once.
      *
      * @throws IllegalStateException when a resource is missing or unreadable
      */
     AssetRoute() {
         Map<String, Asset> loaded = new LinkedHashMap<>();
-        loaded.put("app.js", load("/web/app.js", "application/javascript; charset=utf-8"));
-        loaded.put("app.css", load("/web/app.css", "text/css; charset=utf-8"));
+        for (String name : WebAssets.NAMES) {
+            String contentType = name.endsWith(".css") ? CSS_CONTENT_TYPE : JS_CONTENT_TYPE;
+            loaded.put(name, load("/web/" + WebAssets.dirOf(name) + name, contentType));
+        }
         this.assets = Map.copyOf(loaded);
     }
 

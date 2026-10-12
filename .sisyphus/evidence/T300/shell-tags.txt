@@ -1,0 +1,15 @@
+T300 shell document — the nine static payloads linked in load order,
+the token CSS inline under the per-response nonce.
+
+  link    tokens.css     1 hit(s)
+  link    components.css 1 hit(s)
+  link    screens.css    1 hit(s)
+  script  core.js        1 hit(s)  offset=17579  ok
+  script  render.js      1 hit(s)  offset=17661  ok
+  script  actions.js     1 hit(s)  offset=17745  ok
+  script  sse.js         1 hit(s)  offset=17830  ok
+  script  keymap.js      1 hit(s)  offset=17911  ok
+  script  timeline.js    1 hit(s)  offset=17995  ok
+  per-response nonce: gM-WS4F7YmeKDa3_ftQiwuNM
+  elements carrying that nonce: 11 (must be >= 10: 3 links + token style + 6 scripts + sw)
+  content-security-policy: default-src 'self'; script-src 'self' 'nonce-gM-WS4F7YmeKDa3_ftQiwuNM'; style-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'none'

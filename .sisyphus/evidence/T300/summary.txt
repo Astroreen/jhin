@@ -1,0 +1,22 @@
+T300 QA — PASS
+
+  suites:            :jhin-plugin-ui-kit:test 310, :jhin-plugin-ui-default:test 460 (0 failures)
+  chunks:            6 js + 3 css present; old single-file payloads deleted
+  old-name refs:     0 in plugins/ui-default/src
+  budgets:           js 71783/300000 B, css 35229/120000 B (per-file caps held; budgets.txt)
+  behaviours:        11 plan-gate hits in web/js (focus trap, Escape, jhin-drawer-open)
+  shell:             9 tags in dependency order, nonce=gM-WS4F7YmeKDa3_ftQiwuNM on >= 10 elements
+  assets:            9 x 200 (media type + strong ETag + no-cache), 9 x 304 on If-None-Match
+  service worker:    jhin-shell-v2 precaches the nine payloads
+
+  evidence: /home/astroreen/Documents/jhin/.sisyphus/evidence/T300
+  ok: build + two test gates green (310/460 tests, 0 failures; test-gates.txt)
+  ok: nine chunks present, old payloads deleted, 0 old-name references (split-gates.txt)
+  ok: budgets green (js 71783 B, css 35229 B; budgets.txt)
+  ok: three loose ends closed in timeline.js (11 plan-gate hits; behaviours.txt)
+  ok: 3 jars staged for seeding (kernel-env.txt)
+  ok: kernel up on http://localhost:18443 (pid 4025041), GET /_jhin/health -> 200 in 3 s
+  ok: GET / -> 200; 9 tags in order, nonce=gM-WS4F7YmeKDa3_ftQiwuNM on >= 10 elements (shell-tags.txt)
+  ok: nine assets 200 with media type + strong ETag + no-cache, 304 on revalidation (assets.txt)
+  ok: GET /sw.js -> 200; jhin-shell-v2 precaches the nine payloads (sw-gates.txt)
+  ok: browser-unavailable.txt records the un-exercised interactive cases

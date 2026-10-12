@@ -1,0 +1,15 @@
+T300 budget gates — the WebAssetBudgetTest ceilings, asserted on disk.
+  .js chunk <= 60000 B   .css file <= 40000 B
+  .js total <= 300000 B  .css total <= 120000 B
+
+  core.js         15739 B  <= 60000  PASS
+  render.js       11722 B  <= 60000  PASS
+  actions.js      16627 B  <= 60000  PASS
+  sse.js           7415 B  <= 60000  PASS
+  keymap.js       14306 B  <= 60000  PASS
+  timeline.js      5974 B  <= 60000  PASS
+  tokens.css       1511 B  <= 40000  PASS
+  components.css  23912 B  <= 40000  PASS
+  screens.css      9806 B  <= 40000  PASS
+  js total        71783 B  <= 300000 PASS
+  css total       35229 B  <= 120000 PASS

@@ -1,6 +1,6 @@
 /**
  * {@code GET /sw.js} behaviour (T208.2): the static worker script answers the
- * JavaScript media type with the {@code jhin-shell-v1} cache name, the
+ * JavaScript media type with the {@code jhin-shell-v2} cache name, the
  * install/activate lifecycle ({@code skipWaiting}, {@code clients.claim},
  * old-cache cleanup) and the three fetch strategies — cache-first for
  * {@code /ui/assets/*}, network-first for {@code /}, and the explicit
@@ -44,11 +44,12 @@ class ServiceWorkerRouteTest {
         String body = body();
 
         assertThat(body)
-                .contains("\"jhin-shell-v1\"")
+                .contains("\"jhin-shell-v2\"")
                 .contains("\"jhin-shell-\"")
-                .contains("\"/\"")
-                .contains("\"/ui/assets/app.js\"")
-                .contains("\"/ui/assets/app.css\"");
+                .contains("\"/\"");
+        for (String name : WebAssets.NAMES) {
+            assertThat(body).as("precache %s", name).contains("\"/ui/assets/" + name + "\"");
+        }
     }
 
     @Test

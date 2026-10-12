@@ -1,0 +1,15 @@
+T300 split gates — the six runtime chunks and three stylesheets replace
+the single-file runtime.
+
+  present  web/js/core.js
+  present  web/js/render.js
+  present  web/js/actions.js
+  present  web/js/sse.js
+  present  web/js/keymap.js
+  present  web/js/timeline.js
+  present  web/css/tokens.css
+  present  web/css/components.css
+  present  web/css/screens.css
+  deleted  plugins/ui-default/src/main/resources/web/app.js
+  deleted  plugins/ui-default/src/main/resources/web/app.css
+  grep -rE "app.(js|css)" plugins/ui-default/src -> 0 occurrence(s) (must be 0)
