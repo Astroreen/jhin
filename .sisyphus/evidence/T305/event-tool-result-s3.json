@@ -1,0 +1,1 @@
+{"sessionId":"bf0fb3ce-f036-4fda-b626-6e5f288ee8a3","seq":9,"ts":1791849361006,"type":"tool_result","payload":"{\"id\":\"s3\",\"name\":\"write\",\"structured\":{\"type\":\"tool-call\",\"name\":\"write\",\"status\":\"success\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}"}

@@ -1,0 +1,23 @@
+T305 expansion — the chevron patches ONLY the body, client-side.
+
+screen HTML (timeline.html), the tool-card chevron of row ev-7:
+  <button data-jhin-type="icon_button" id="ev-7-chevron" data-jhin-id="ev-7-chevron" title="Show details" type="button" class="jhin-icon-button" aria-label="expand_more" data-jhin-action='{&quot;op&quot;:&quot;patch&quot;,&quot;id&quot;:&quot;ev-7-body&quot;,&quot;html&quot;:&quot;&lt;span data-jhin-type=\&quot;text\&quot; id=\&quot;ev-7-empty\&quot; data-jhin-id=\&quot;ev-7-empty\&quot; style=\&q
+
+  data-jhin-action unescaped -> one patch directive (jq assert PASS):
+    {"op":"patch","id":"ev-7-body","htmlBytes":1168}
+    keys == ["html","id","op"] and .id == "ev-7-body" — the
+    expansion patches ONLY the body element, never the card or the row;
+    .html carries the rendered body content the patch swaps in.
+
+screen HTML (timeline.html), the body element behind the expansion:
+  <div data-jhin-type="column" id="ev-7-body" data-jhin-id="ev-7-body" hidden class="jhin-column" data-jhin-gap="8">
+    bare hidden attribute (HTML boolean) — the body ships collapsed;
+    no hidden= value form is used.
+
+timeline.js client-side toggle (greps, quoted):
+  226:  function initCollapseFastPath() {
+  240:  initCollapseFastPath();
+  183:    if (body) body.toggleAttribute("hidden");
+    the bubble-phase fast-path flips hidden on the already-rendered
+    ev-<seq>-body before the patch round-trip; the generic action
+    patch stays the source of truth.

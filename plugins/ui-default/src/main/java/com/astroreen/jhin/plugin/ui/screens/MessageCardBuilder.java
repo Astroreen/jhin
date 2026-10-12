@@ -785,14 +785,81 @@ public final class MessageCardBuilder {
                 Ui.text(textOf(payload, "text", "")).style("body").build());
     }
 
-    /** The {@code tool-call} card: the standard card with the arguments. */
+    /**
+     * The {@code tool-call} card over a real {@code tool_use} payload
+     * (docs/sdui.md section 5: {@code id}, {@code name}, {@code arguments} —
+     * the raw JSON text): the arguments become the middle-truncated summary
+     * line. A synthetic-key payload (the dispatcher's demo cards) passes
+     * through untouched; a blank name on the real path renders the
+     * {@code unknown} placeholder card instead of throwing.
+     */
     private static UiNode toolCallEventRow(long seq, Map<String, Object> payload) {
-        return toolCardRow(EVENT_TOOL_CALL, seq, payload);
+        if (!payload.containsKey("arguments")) {
+            return toolCardRow(EVENT_TOOL_CALL, seq, payload);
+        }
+        String name = textOf(payload, "name", "");
+        if (name.isBlank()) {
+            return unknownEventRow(seq, EVENT_TOOL_CALL);
+        }
+        Map<String, Object> card = new LinkedHashMap<>(payload);
+        card.put("summary", PathDisplay.middleTruncate(
+                textOf(payload, "arguments", ""), PathDisplay.DEFAULT_MAX));
+        return toolCardRow(EVENT_TOOL_CALL, seq, card);
     }
 
-    /** The {@code tool-result} card: the standard card with the output. */
+    /**
+     * The {@code tool-result} card over a real {@code tool_result} payload
+     * (docs/sdui.md section 5: {@code id}, {@code name}, {@code content},
+     * {@code error}, {@code structured}): the content becomes the output, a
+     * truthy {@code error} flips the status to {@code error}, and a
+     * {@code structured} map with hunks renders as the diff output. When no
+     * {@code outputKind} is given the shape is detected — hunks mean diff, a
+     * {@code language} or code-looking content means code, anything else
+     * markdown. A synthetic-key payload passes through untouched; a blank
+     * name on the real path renders the {@code unknown} placeholder card
+     * instead of throwing.
+     */
     private static UiNode toolResultEventRow(long seq, Map<String, Object> payload) {
-        return toolCardRow(EVENT_TOOL_RESULT, seq, payload);
+        if (!payload.containsKey("content") && !payload.containsKey("error")
+                && !payload.containsKey("structured")) {
+            return toolCardRow(EVENT_TOOL_RESULT, seq, payload);
+        }
+        String name = textOf(payload, "name", "");
+        if (name.isBlank()) {
+            return unknownEventRow(seq, EVENT_TOOL_RESULT);
+        }
+        Map<String, Object> card = new LinkedHashMap<>(payload);
+        card.put("output", textOf(payload, "content", ""));
+        Object error = payload.get("error");
+        boolean failed = error != null && !Boolean.FALSE.equals(error)
+                && !String.valueOf(error).isBlank()
+                && !"false".equalsIgnoreCase(String.valueOf(error));
+        if (failed) {
+            card.put("status", "error");
+        }
+        if (payload.get("structured") instanceof Map<?, ?> structured
+                && structured.get("hunks") instanceof List<?> hunks) {
+            card.put("hunks", hunks);
+            card.put("outputKind", "diff");
+            for (String key : List.of("file", "additions", "deletions", "language")) {
+                if (structured.get(key) != null) {
+                    card.put(key, structured.get(key));
+                }
+            }
+        }
+        if (card.get("outputKind") == null) {
+            if (card.get("hunks") instanceof List<?>) {
+                card.put("outputKind", "diff");
+            } else {
+                String output = textOf(card, "output", "");
+                boolean code = !textOf(card, "language", "").isBlank()
+                        || (output.contains("\n")
+                                && (output.contains("{") || output.contains(";")))
+                        || output.startsWith("$") || output.startsWith("#!");
+                card.put("outputKind", code ? "code" : "markdown");
+            }
+        }
+        return toolCardRow(EVENT_TOOL_RESULT, seq, card);
     }
 
     /**
@@ -1088,14 +1155,17 @@ public final class MessageCardBuilder {
      * ({@code ComposerTasksBadge.tsx:23-24}).
      *
      * <p><b>Expansion.</b> The expansion state is keyed by the row id: the
-     * header chevron patches the body region ({@code ev-<seq>-body})
-     * {@code visible: true} and the footer's collapse affordance patches it
-     * back to {@code false} — both pure client-side directives, no server
-     * round-trip. (The plan words this as {@code setState} keyed by row id;
-     * the {@code when} degradation rule — an unset field keeps the node
-     * visible, docs/sdui.md section 7 — cannot express a collapsed-by-default
-     * region, so the patch/visible pair carries the same pure client-side
-     * reveal. Recorded in the T102 evidence.)
+     * body region ({@code ev-<seq>-body}) ships in the DOM behind the bare
+     * {@code hidden} attribute — the {@code hidden} universal prop renders
+     * the HTML boolean, {@code tokens.css} gates the display — so the
+     * header chevron can patch its rendered content in and the footer's
+     * collapse affordance can patch it out again, both pure client-side
+     * directives, no server round-trip. (The plan words this as
+     * {@code setState} keyed by row id; the {@code when} degradation rule —
+     * an unset field keeps the node visible, docs/sdui.md section 7 — cannot
+     * express a collapsed-by-default region, so the {@code hidden} channel
+     * plus the content patches carries the same pure client-side reveal.
+     * Recorded in the T102 evidence.)
      *
      * @param kind    the event kind ({@code tool-call}, {@code tool-result}
      *                or {@code shell}) — the {@code rowKey} subtype
@@ -1140,7 +1210,7 @@ public final class MessageCardBuilder {
         // header: tool icon + name + status chip + chevron
         card.child(Ui.row().id(id + "-head").align("center").gap(8)
                 .child(Ui.icon().icon(iconOf(kind)).size(16).color(MUTED).build())
-                .child(Ui.text(textOf(p, "name", "tool")).style("small").build())
+                .child(Ui.text(textOf(p, "name", "tool")).style("mono").build())
                 .child(statusChip(textOf(p, "status", "success")))
                 .child(Ui.spacer().build())
                 .child(Ui.iconButton().id(id + "-chevron").icon("expand_more")
@@ -1160,7 +1230,7 @@ public final class MessageCardBuilder {
                         .maxLines(1).ellipsis(true).build());
             }
         }
-        card.child(Ui.column().id(id + "-body").visible(false).gap(8)
+        card.child(Ui.column().id(id + "-body").hidden(true).gap(8)
                 .children(bodyNodes).build());
         return rowContainer(KIND_EVENT, kind, seq, null, 4, card.build());
     }
@@ -1366,6 +1436,128 @@ public final class MessageCardBuilder {
                 .child(Ui.icon().icon("expand_more").size(16).color(MUTED).build())
                 .build();
         return rowContainer(KIND_WORK_TOGGLE, "log", seq, null, 0, line);
+    }
+
+    /**
+     * The shine overlay class of a running tool card (the upstream
+     * {@code live-tool-shine} keyframe, {@code MessagesTimeline.tsx:3611-3646},
+     * {@code index.css:502-526}).
+     */
+    public static final String LIVE_TOOL_SHINE = "live-tool-shine";
+
+    /**
+     * The shine layer over a running tool card: the overlay element carrying
+     * the {@code live-tool-shine} class of the upstream keyframe
+     * ({@link #LIVE_TOOL_SHINE}). The universal {@code className} prop
+     * (docs/sdui.md section 2.1) appends the class after the primitive's
+     * own classes — never the {@code raw} escape hatch
+     * (docs/web-client.md section 3). Decorative: hidden from assistive
+     * technology.
+     */
+    private static UiNode liveToolShine() {
+        return Ui.row()
+                .set("className", LIVE_TOOL_SHINE)
+                .set("excludeSemantics", true)
+                .build();
+    }
+
+    /**
+     * The work-live tool row: the running state of a tool card — the tool
+     * icon, the mono name, the {@code running} status chip, the one-line
+     * summary and the shine layer over the card.
+     *
+     * @param seq     the event sequence number (drives the node ids)
+     * @param name    the tool name
+     * @param summary the one-line call summary, may be blank
+     * @return the {@code work-live:log} row
+     */
+    public static UiNode workLiveToolRow(long seq, String name, String summary) {
+        Ui.RowBuilder head = Ui.row().id(eventId(seq) + "-head")
+                .align("center")
+                .gap(8)
+                .child(Ui.icon().icon(iconOf(EVENT_TOOL_CALL)).size(16).color(ACCENT).build())
+                .child(Ui.text(name == null || name.isBlank() ? "tool" : name)
+                        .style("mono")
+                        .build())
+                .child(statusChip("running"))
+                .child(Ui.spacer().build());
+        Ui.ColumnBuilder card = Ui.column().id(eventId(seq) + "-card")
+                .gap(4)
+                .child(head.build());
+        if (summary != null && !summary.isBlank()) {
+            card.child(Ui.text(summary).style("mono").color(MUTED)
+                    .id(eventId(seq) + "-summary")
+                    .maxLines(1)
+                    .ellipsis(true)
+                    .build());
+        }
+        card.child(liveToolShine());
+        return rowContainer(KIND_WORK_LIVE, "log", seq, null, 0, card.build());
+    }
+
+    /**
+     * The work done tool row: the settled state of a tool card — the mono
+     * name with the terminal status chip on the header and the plain
+     * content detail (danger-tinted when the tool reported an error).
+     *
+     * @param seq     the event sequence number (drives the node ids)
+     * @param name    the tool name
+     * @param status  the terminal status ({@code success}|{@code error}|
+     *                {@code cancelled})
+     * @param content the plain result content, may be blank
+     * @param error   whether the tool reported a failure
+     * @return the {@code work:log} row
+     */
+    public static UiNode workDoneToolRow(long seq, String name, String status,
+                                         String content, boolean error) {
+        Ui.RowBuilder head = Ui.row().id(eventId(seq) + "-head")
+                .align("center")
+                .gap(8)
+                .child(Ui.icon().icon(iconOf(EVENT_TOOL_RESULT)).size(16).color(MUTED).build())
+                .child(Ui.text(name == null || name.isBlank() ? "tool" : name)
+                        .style("mono")
+                        .build())
+                .child(statusChip(status))
+                .child(Ui.spacer().build());
+        return rowContainer(KIND_WORK, "log", seq, null, 4,
+                head.build(), toolResultNode(content, error, seq));
+    }
+
+    /**
+     * The work group row: the collapsed header of one folded run of
+     * same-named tool calls — the count badge and the chevron on the line,
+     * the shine layer and the {@code running} chip while the group is
+     * still open (upstream {@code WorkGroupToggleTimelineRow},
+     * {@code MessagesTimeline.tsx:3701-3712}).
+     *
+     * @param seq    the sequence number anchoring the row (the first call
+     *               of the group)
+     * @param name   the folded tool name
+     * @param count  how many calls the group folds
+     * @param status {@code running} while calls are open, the aggregate
+     *               terminal status once they all settled
+     * @return the {@code work:group} row
+     */
+    public static UiNode workGroupRow(long seq, String name, int count, String status) {
+        boolean running = "running".equals(status);
+        UiNode line = Ui.row().id(eventId(seq) + "-toggle")
+                .align("center")
+                .gap(8)
+                .child(Ui.icon().icon(iconOf(EVENT_TOOL_CALL)).size(16)
+                        .color(running ? ACCENT : MUTED).build())
+                .child(Ui.text(name == null || name.isBlank() ? "Work" : name)
+                        .style("mono")
+                        .build())
+                .child(Ui.badge().count(count).build())
+                .child(Ui.spacer().build())
+                .child(statusChip(status))
+                .child(Ui.icon().icon("expand_more").size(16).color(MUTED).build())
+                .build();
+        UiNode folded = Ui.column().id(eventId(seq) + "-body").hidden(true).gap(8)
+                .build();
+        return running
+                ? rowContainer(KIND_WORK, "group", seq, null, 0, line, folded, liveToolShine())
+                : rowContainer(KIND_WORK, "group", seq, null, 0, line, folded);
     }
 
     /**

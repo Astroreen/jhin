@@ -244,6 +244,8 @@ tree), the application order (section 2.3) and the direction of degradation
 | Meta | `id` | string | — | node identity; target of `patch`/`setScreen` and of stream item patches |
 | Meta | `when` | expression | — | hide the node when the expression evaluates `false` (section 7) |
 | Meta | `visible` | bool | `true` | static visibility |
+| Meta | `hidden` | bool | `false` | the bare HTML `hidden` attribute — the node is rendered but not displayed (the client `hidden` gate, distinct from `visible: false`, which omits the node entirely) |
+| Meta | `className` | string | — | extra class names appended to the rendered element's `class` attribute after the primitive's own classes (the level-4 "a class" mapping of section 9.5, never reflected as a `data-jhin-*` attribute) |
 
 | Group | Prop | Type | Default | Meaning |
 |-------|------|------|---------|---------|
@@ -1290,13 +1292,15 @@ the output region (`markdown` / `code_block` / `diff_view`) and the footer
 chips). An output-less card renders the muted italic "No output." empty
 state, never a blank card.
 
-**Card expansion.** The expansion state is keyed by the row id: the header
-chevron patches the body region (`ev-<seq>-body`) `visible: true` and the
-footer's collapse affordance patches it back to `false` — both pure
-client-side directives with no server round-trip. (The `when` degradation
-rule — an unset field keeps the node visible, section 7 — cannot express a
-collapsed-by-default region, so the patch/`visible` pair carries the
-reveal.)
+**Card expansion.** The expansion state is keyed by the row id: the body
+region (`ev-<seq>-body`) ships in the DOM behind the bare `hidden`
+attribute (the `hidden` universal prop, section 2.1; `tokens.css` gates the
+display), so the header chevron patches its rendered content in and the
+footer's collapse affordance patches it out again — both pure client-side
+directives with no server round-trip. (The `when` degradation rule — an
+unset field keeps the node visible, section 7 — cannot express a
+collapsed-by-default region, so the `hidden` channel plus the content
+patches carries the reveal.)
 
 The `session_updated` patch targets the sidebar row node `session-row:<id>`:
 the event payload's fields map onto the row props below, the full row-prop

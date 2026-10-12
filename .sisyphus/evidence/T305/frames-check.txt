@@ -1,0 +1,11 @@
+T305 stream replay — GET /ui/stream/session/bf0fb3ce-f036-4fda-b626-6e5f288ee8a3?fromSeq=0 (frames.jsonl):
+  11 frames: 6 node / 5 replace, every
+  node/replace id is ev-<seq>
+  the consecutive tool_use run folds to one workGroupRow group header
+  (row key work:group) carrying the count badge 3 — 5 replace
+  frame(s) of the header, 4 with the settled count badge 3
+  the live tool row carries the live-tool-shine layer (1 node
+  frame(s)) — the LiveActivityRow shine of a running call
+
+  sample group header (the last replace frame):
+    <div data-jhin-type="container" id="ev-1" data-jhin-id="ev-1" class="jhin-container" style="flex-direction: column; gap: 0px" data-jhin-row-kind="work" data-jhin-row-key="work:group"><div data-jhin-type="row" id="ev-1-toggle" data-jhin-id="ev-1-toggle" style="justify-self: center; align-self: center" class="jhin-row" data-jhin-gap="8"><svg data-jhin-type="icon" style="color: var(--color-muted-

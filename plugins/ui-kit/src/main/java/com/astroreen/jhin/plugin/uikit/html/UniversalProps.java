@@ -264,6 +264,9 @@ public final class UniversalProps {
             element.attr("id", value);
             element.attr("data-jhin-id", value);
         }
+        if (Boolean.TRUE.equals(props.get("hidden"))) {
+            element.attrFlag("hidden");
+        }
         Object when = props.get("when");
         if (when != null) {
             element.attr("data-jhin-when", String.valueOf(when));

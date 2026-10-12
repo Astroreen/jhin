@@ -771,6 +771,41 @@
   }
 }
 
+/* The live tool shine: the sweep layer over a running tool card or an
+   open work-group header (MessageCardBuilder.LIVE_TOOL_SHINE). The host
+   column/container becomes the positioning context via :has(); the layer
+   itself is decorative and never intercepts pointer events. */
+
+.jhin-column:has(> .live-tool-shine),
+.jhin-container:has(> .live-tool-shine) {
+  position: relative;
+}
+
+.jhin-row.live-tool-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 35%,
+    var(--color-secondary) 50%,
+    transparent 65%);
+  background-size: 200% 100%;
+  animation: jhin-live-shine 2.2s linear infinite;
+}
+
+@keyframes jhin-live-shine {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
 .jhin-progress {
   width: 100%;
   min-height: 6px;

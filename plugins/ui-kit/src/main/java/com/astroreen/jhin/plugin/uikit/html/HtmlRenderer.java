@@ -283,8 +283,26 @@ public final class HtmlRenderer {
         if (renderer != null) {
             renderer.fill(node, element);
         }
+        appendClass(node, element);
         applyNodeAction(node, element);
         return element;
+    }
+
+    /**
+     * The universal {@code className} prop (docs/sdui.md section 2.1): the
+     * extra class names appended after the renderer's own classes — the
+     * "a class" semantic-mapping tier of {@link PropReflection}, never
+     * reflected as a {@code data-jhin-*} attribute. Values are escaped by
+     * {@link HtmlNode#addClass(String)} like any attribute value.
+     *
+     * @param node    the node
+     * @param element the element the renderer already classified
+     */
+    private static void appendClass(UiNode node, HtmlNode element) {
+        Object value = node.props().get("className");
+        if (value != null) {
+            element.addClass(String.valueOf(value));
+        }
     }
 
     /**

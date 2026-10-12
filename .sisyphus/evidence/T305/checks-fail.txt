@@ -1,0 +1,5 @@
+ok: build + two test gates green (342/489 tests, 0 failures; test-gates.txt)
+ok: kernel up on http://localhost:18443 (pid 2405615), GET /_jhin/health -> 200 in 3 s
+02:56:26 -- negative proof: a blank tool name must render the Unknown event placeholder, never throw
+ok: blank tool name -> "Unknown event: tool-call" placeholder, screen 200 (unknown-tool.txt)
+ok: T305 QA --fail: the negative proof PASS

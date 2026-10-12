@@ -133,13 +133,15 @@ class StreamRouteTest {
         assertThat(working.get("id")).isEqualTo("ev-6");
         assertThat(String.valueOf(working.get("html"))).contains("agent is working");
         assertThat(frames.get(4)).containsExactly(Map.entry("remove", "ev-6"));
-        // tool events -> work:log rows with the collapsible sections.
+        // tool_use -> the live tool card; its matched tool_result replaces
+        // that row with the done card (envelope ev-<useSeq>, row root ev-<resultSeq>).
         Map<String, Object> toolUse = payload(frames.get(5), "node");
         assertThat(toolUse.get("id")).isEqualTo("ev-8");
         assertThat(String.valueOf(toolUse.get("html"))).contains("read");
-        Map<String, Object> toolResult = payload(frames.get(6), "node");
-        assertThat(toolResult.get("id")).isEqualTo("ev-9");
-        assertThat(String.valueOf(toolResult.get("html"))).contains("done");
+        Map<String, Object> toolResult = payload(frames.get(6), "replace");
+        assertThat(toolResult.get("id")).isEqualTo("ev-8");
+        assertThat(String.valueOf(toolResult.get("html")))
+                .contains("data-jhin-id=\"ev-9\"").contains("done");
         // error -> the event:error row in the danger tone.
         Map<String, Object> error = payload(frames.get(7), "node");
         assertThat(error.get("id")).isEqualTo("ev-10");

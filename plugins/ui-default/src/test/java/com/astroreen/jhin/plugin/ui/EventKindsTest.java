@@ -105,7 +105,7 @@ class EventKindsTest {
         // the collapsible argument summary line
         assertThat(wire).contains("src/auth.java");
         // the expansion: the chevron patches the row-id-keyed body visible
-        assertThat(wire).contains("\"id\":\"ev-5-body\"").contains("\"visible\":false");
+        assertThat(wire).contains("\"id\":\"ev-5-body\"").contains("\"hidden\":true");
         assertThat(wire).contains("\"op\":\"patch\"").contains("ev-5-body");
         // the footer: timestamp + copy button (the demo-marked stub)
         assertThat(wire).contains("\"id\":\"ev-5-footer\"").contains("14:03");
@@ -132,7 +132,7 @@ class EventKindsTest {
                 .contains("\"copyable\":true");
         // the collapse affordance patches the body back to hidden
         assertThat(wire).contains("unfold_less");
-        assertThat(wire).contains("\"visible\":false");
+        assertThat(wire).contains("\"hidden\":true");
     }
 
     @Test

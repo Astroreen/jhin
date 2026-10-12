@@ -92,6 +92,35 @@ class HtmlNodeTest {
     }
 
     @Test
+    void addClassAppendsAfterTheExistingClasses() {
+        HtmlNode node = new HtmlNode("div")
+                .attr("id", "a")
+                .attr("class", "jhin-row")
+                .addClass("live-tool-shine")
+                .addClass("extra");
+
+        assertThat(node.render()).isEqualTo(
+                "<div id=\"a\" class=\"jhin-row live-tool-shine extra\"></div>");
+    }
+
+    @Test
+    void addClassCreatesTheClassAttributeAndIgnoresBlanks() {
+        HtmlNode node = new HtmlNode("div").addClass(null).addClass("  ");
+
+        assertThat(node.render()).isEqualTo("<div></div>");
+
+        node.addClass("live-tool-shine");
+        assertThat(node.render()).isEqualTo("<div class=\"live-tool-shine\"></div>");
+    }
+
+    @Test
+    void attrFlagRendersTheBareAttributeName() {
+        HtmlNode node = new HtmlNode("div").attr("id", "a").attrFlag("hidden");
+
+        assertThat(node.render()).isEqualTo("<div id=\"a\" hidden></div>");
+    }
+
+    @Test
     void singleQuotedAttributesRenderSingleQuotedAndEscaped() {
         HtmlNode node = new HtmlNode("button")
                 .attr("data-jhin-type", "button")

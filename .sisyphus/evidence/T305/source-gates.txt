@@ -1,0 +1,13 @@
+T305 static source gates — the new surface must exist in the sources
+the wire proofs exercise.
+
+  MessageCardBuilder live-tool-shine constant          3 hit(s)  PRESENT
+  MessageCardBuilder live tool row                     1 hit(s)  PRESENT
+  MessageCardBuilder done tool row                     1 hit(s)  PRESENT
+  MessageCardBuilder folded group row                  1 hit(s)  PRESENT
+  MessageCardBuilder Unknown event placeholder         1 hit(s)  PRESENT
+  EventFrames tool_use translation                     3 hit(s)  PRESENT
+  EventFrames tool_result translation                  3 hit(s)  PRESENT
+  timeline.js collapse fast-path                       2 hit(s)  PRESENT
+  timeline.js hidden toggle                            1 hit(s)  PRESENT
+  components.css live-tool-shine rule                  3 hit(s)  PRESENT

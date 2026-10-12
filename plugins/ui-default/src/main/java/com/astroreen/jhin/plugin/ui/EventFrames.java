@@ -22,11 +22,18 @@
  *       row; with no tracked row (a mid-stream join) it falls back to a
  *       {@code replace} of the run-status badge (its colour is an attribute,
  *       not expressible as inner content — docs/sdui.md section 5);</li>
- *   <li>{@code tool_use} — the {@code work:log} row with the collapsible
- *       arguments section;</li>
- *   <li>{@code tool_result} — the {@code work:log} row with the collapsible
- *       result section (a malformed or unknown {@code structured} payload
- *       degrades to the plain text detail); a {@code structured} payload
+ *   <li>{@code tool_use} — the {@code work-live:log} running tool card
+ *       ({@code node}); the 2nd+ consecutive same-name call folds the run
+ *       into one {@code work:group} header ({@code replace} of the first
+ *       call's row);</li>
+ *   <li>{@code tool_result} — matched by its {@code id} to the open call:
+ *       the {@code replace} of the live row with the done tool card (the
+ *       envelope id {@code ev-<useSeq>}, the row root {@code ev-<resultSeq>}),
+ *       or of the group header with the settled count (flipping to the
+ *       aggregate status — error &gt; cancelled &gt; success — when the
+ *       last call settles). An unmatched result keeps the {@code work:log}
+ *       fallback row: a malformed or unknown {@code structured} payload
+ *       degrades to the plain text detail, a {@code structured} payload
  *       whose {@code type} names one of the 16 T102 event kinds renders
  *       that event card instead (docs/sdui.md section 5);</li>
  *   <li>{@code session_updated} — the sidebar-row {@code patch} frame
@@ -51,14 +58,19 @@
  * and per open message: {@code message_start}/{@code message_end} reset it.
  *
  * <p><b>State.</b> The growing-message frames need the id and the accumulated
- * text of the open message, and the {@code run_end} remove needs the working
- * row id, so translation is stateful per stream. The forwarder that feeds
- * live frames to every listener seeds its state by absorbing the persisted
- * history first, so its frames continue the replayed ones seamlessly; a
- * replay that starts mid-message ({@code fromSeq}) seeds the same way before
- * emitting its window. Absorbing advances the text state only — it never
- * marks a batch dirty — so a seeded stream flushes live text, never a
- * re-render of what the preamble already wrote.
+ * text of the open message, the {@code run_end} remove needs the working
+ * row id, and the tool rows need the open calls of the run — the call id to
+ * the use sequence/name and whether the call sits inside a folded group,
+ * plus the group state ({@code name}, {@code firstSeq}, {@code count},
+ * {@code pending}) — so translation is stateful per stream. The forwarder
+ * that feeds live frames to every listener seeds its state by absorbing the
+ * persisted history first, so its frames continue the replayed ones
+ * seamlessly; a replay that starts mid-message ({@code fromSeq}) seeds the
+ * same way before emitting its window. Absorbing advances the text state
+ * only — it never marks a batch dirty — so a seeded stream flushes live
+ * text, never a re-render of what the preamble already wrote; the tool
+ * state advances identically on both paths (absorb mirrors the same
+ * matching and folding logic without emitting frames).
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -67,8 +79,10 @@ import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.ui.screens.MessageCardBuilder;
 import com.astroreen.jhin.plugin.ui.screens.SidebarBuilder;
 import com.astroreen.jhin.plugin.uikit.UiNode;
+import com.astroreen.jhin.plugin.uikit.text.PathDisplay;
 import com.astroreen.jhin.sdk.json.Json;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
@@ -85,6 +99,9 @@ final class EventFrames {
      * re-render cost of a token stream).
      */
     static final long DELTA_FLUSH_WINDOW_MILLIS = 60;
+
+    /** The open-call status word of a live tool row or group header. */
+    private static final String RUNNING = "running";
 
     private EventFrames() {
     }
@@ -178,14 +195,51 @@ final class EventFrames {
 
     /**
      * One stream's translation state: the open assistant message, the open
-     * working row and the delta batch, if any.
+     * working row, the open tool calls of the run and the delta batch, if
+     * any.
      */
     static final class Translator {
 
         private final DeltaBatcher batcher;
 
+        /** One open {@code tool_use} awaiting its {@code tool_result}. */
+        private static final class OpenCall {
+            final long useSeq;
+            final String name;
+            boolean folded;
+            Group group;
+
+            OpenCall(long useSeq, String name) {
+                this.useSeq = useSeq;
+                this.name = name;
+            }
+        }
+
+        /**
+         * The state of one folded run of same-named tool calls: {@code count}
+         * calls fold under the row of {@code firstSeq}, {@code pending} of
+         * them still await their result, {@code worst} aggregates the settled
+         * statuses (error &gt; cancelled &gt; success).
+         */
+        private static final class Group {
+            final String name;
+            final long firstSeq;
+            int count;
+            int pending;
+            String worst = "success";
+
+            Group(String name, long firstSeq) {
+                this.name = name;
+                this.firstSeq = firstSeq;
+            }
+        }
+
         private String messageId;
         private String workingRowId;
+        private final Map<String, OpenCall> openCalls = new LinkedHashMap<>();
+        private String chainName;
+        private OpenCall chainFirst;
+        private Group chainGroup;
 
         /** Creates a translator on the system clock. */
         Translator() {
@@ -214,6 +268,9 @@ final class EventFrames {
          * @return the frames, in emission order
          */
         List<Map<String, Object>> frames(String wireType, String payloadJson, long seq) {
+            if (!"tool_use".equals(wireType)) {
+                breakChain();
+            }
             if ("text_delta".equals(wireType)) {
                 return growMessage(parse(payloadJson), seq);
             }
@@ -237,6 +294,9 @@ final class EventFrames {
          * @param seq         the event sequence number
          */
         void absorb(String wireType, String payloadJson, long seq) {
+            if (!"tool_use".equals(wireType)) {
+                breakChain();
+            }
             Map<String, Object> payload = parse(payloadJson);
             switch (wireType) {
                 case "message_start" -> {
@@ -255,7 +315,12 @@ final class EventFrames {
                     batcher.reset();
                 }
                 case "run_start" -> workingRowId = MessageCardBuilder.eventId(seq);
-                case "run_end" -> workingRowId = null;
+                case "run_end" -> {
+                    workingRowId = null;
+                    openCalls.clear();
+                }
+                case "tool_use" -> useTool(payload, seq);
+                case "tool_result" -> settleTool(payload, seq);
                 default -> {
                     // no translation state on the other kinds
                 }
@@ -292,12 +357,8 @@ final class EventFrames {
                     yield List.of(StreamFrames.node(MessageCardBuilder.workingRow(seq)));
                 }
                 case "run_end" -> List.of(endRun(payload, seq));
-                case "tool_use" -> List.of(StreamFrames.node(MessageCardBuilder.workRow(
-                        seq,
-                        toolLabel(payload) + " " + argumentsOf(payload),
-                        List.of(MessageCardBuilder.toolArgumentsNode(
-                                argumentsOf(payload), seq)))));
-                case "tool_result" -> List.of(StreamFrames.node(toolResultFrame(payload, seq)));
+                case "tool_use" -> List.of(useTool(payload, seq));
+                case "tool_result" -> List.of(settleTool(payload, seq));
                 case "session_updated" -> List.of(sessionUpdatedFrame(payload));
                 case "error" -> List.of(StreamFrames.node(MessageCardBuilder.dispatchEventRow(
                         "error", payload, seq)));
@@ -396,6 +457,95 @@ final class EventFrames {
                     List.of(MessageCardBuilder.toolResultNode(
                             contentOf(payload),
                             Boolean.TRUE.equals(payload.get("error")), seq)));
+        }
+
+        /**
+         * The {@code tool_use} translation: the {@code node} of the live
+         * tool card for a new chain, the {@code replace} of the group
+         * header when the call is the 2nd+ adjacent same-name one (the
+         * header stays anchored on {@code ev-<firstSeq>}). Every call is
+         * registered open by its {@code id} for its {@code tool_result};
+         * {@link #absorb} runs the same state and discards the frame.
+         *
+         * @param payload the {@code tool_use} payload
+         * @param seq     the event sequence number (drives the node ids)
+         * @return the frame
+         */
+        private Map<String, Object> useTool(Map<String, Object> payload, long seq) {
+            String name = toolLabel(payload);
+            OpenCall call = new OpenCall(seq, name);
+            String callId = stringOf(payload.get("id"));
+            if (callId != null && !callId.isBlank()) {
+                openCalls.put(callId, call);
+            }
+            if (name.equals(chainName) && chainFirst != null) {
+                if (chainGroup == null) {
+                    chainGroup = new Group(name, chainFirst.useSeq);
+                    chainGroup.count = 1;
+                    chainGroup.pending = 1;
+                    chainFirst.folded = true;
+                    chainFirst.group = chainGroup;
+                }
+                chainGroup.count++;
+                chainGroup.pending++;
+                call.folded = true;
+                call.group = chainGroup;
+                return StreamFrames.replace(MessageCardBuilder.eventId(chainGroup.firstSeq),
+                        MessageCardBuilder.workGroupRow(chainGroup.firstSeq, chainGroup.name,
+                                chainGroup.count, RUNNING));
+            }
+            chainName = name;
+            chainFirst = call;
+            chainGroup = null;
+            return StreamFrames.node(MessageCardBuilder.workLiveToolRow(seq, name,
+                    PathDisplay.middleTruncate(argumentsOf(payload), PathDisplay.DEFAULT_MAX)));
+        }
+
+        /**
+         * The {@code tool_result} translation: the {@code replace} of the
+         * matched live row with the done card (the envelope id
+         * {@code ev-<useSeq>}, the row root {@code ev-<resultSeq>}), or of
+         * the group header with the settled count — the aggregate status
+         * (error &gt; cancelled &gt; success) once the last call settles.
+         * An unmatched result keeps the {@code node} fallback row of
+         * {@link #toolResultFrame}; {@link #absorb} runs the same state and
+         * discards the frame.
+         *
+         * @param payload the {@code tool_result} payload
+         * @param seq     the event sequence number (drives the node ids)
+         * @return the frame
+         */
+        private Map<String, Object> settleTool(Map<String, Object> payload, long seq) {
+            String callId = stringOf(payload.get("id"));
+            OpenCall call = (callId == null || callId.isBlank()) ? null : openCalls.remove(callId);
+            if (call == null) {
+                return StreamFrames.node(toolResultFrame(payload, seq));
+            }
+            String status = resultStatus(payload);
+            if (call.folded && call.group != null) {
+                Group group = call.group;
+                group.pending--;
+                if (statusRank(status) > statusRank(group.worst)) {
+                    group.worst = status;
+                }
+                return StreamFrames.replace(MessageCardBuilder.eventId(group.firstSeq),
+                        MessageCardBuilder.workGroupRow(group.firstSeq, group.name,
+                                group.count, group.pending > 0 ? RUNNING : group.worst));
+            }
+            return StreamFrames.replace(MessageCardBuilder.eventId(call.useSeq),
+                    MessageCardBuilder.workDoneToolRow(seq, call.name, status,
+                            contentOf(payload), isFailure(payload.get("error"))));
+        }
+
+        /**
+         * Breaks the consecutive {@code tool_use} chain: only adjacent
+         * same-name calls fold into one group, so every other event kind
+         * starts a fresh chain on the next call.
+         */
+        private void breakChain() {
+            chainName = null;
+            chainFirst = null;
+            chainGroup = null;
         }
     }
 
@@ -516,6 +666,44 @@ final class EventFrames {
         Object name = payload.get("name");
         return (name == null || String.valueOf(name).isBlank())
                 ? "tool" : String.valueOf(name);
+    }
+
+    /**
+     * The terminal status of a {@code tool_result}: its {@code status}
+     * normalized to the {@code success}|{@code error}|{@code cancelled}
+     * contract (the upstream lifecycle synonyms collapse here), or the
+     * {@code error} flag when no status is given.
+     */
+    private static String resultStatus(Map<String, Object> payload) {
+        String status = stringOf(payload.get("status"));
+        if (status != null && !status.isBlank()) {
+            return switch (status.trim().toLowerCase(java.util.Locale.ROOT)) {
+                case "completed", "done", "success" -> "success";
+                case "failed", "error" -> "error";
+                case "canceled", "stopped", "cancelled" -> "cancelled";
+                default -> status.trim();
+            };
+        }
+        return isFailure(payload.get("error")) ? "error" : "success";
+    }
+
+    /**
+     * The failure flag of a {@code tool_result}: any truthy {@code error}
+     * value (the empty and {@code false} strings are falsey).
+     */
+    private static boolean isFailure(Object error) {
+        return error != null && !Boolean.FALSE.equals(error)
+                && !String.valueOf(error).isBlank()
+                && !"false".equalsIgnoreCase(String.valueOf(error));
+    }
+
+    /** The aggregate severity rank of a settled status: error &gt; cancelled &gt; success. */
+    private static int statusRank(String status) {
+        return switch (status) {
+            case "error" -> 3;
+            case "cancelled" -> 2;
+            default -> 1;
+        };
     }
 
     /** The raw tool arguments of a {@code tool_use} payload. */

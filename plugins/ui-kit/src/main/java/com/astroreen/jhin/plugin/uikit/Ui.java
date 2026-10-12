@@ -613,6 +613,12 @@ public final class Ui {
             return self();
         }
 
+        /** Sets the universal {@code hidden} prop (the bare {@code hidden} attribute). */
+        public B hidden(boolean value) {
+            props.put("hidden", value);
+            return self();
+        }
+
         /** Sets the universal {@code when} prop (a local boolean expression). */
         public B when(String expression) {
             props.put("when", expression);

@@ -66,6 +66,25 @@ class HtmlRendererTest {
     }
 
     @Test
+    void classNamePropAppendsToTheRendererClasses() {
+        String html = HtmlRenderer.render(Ui.row()
+                .set("className", "live-tool-shine")
+                .build());
+
+        assertThat(html).contains("class=\"jhin-row live-tool-shine\"");
+        // the class channel is semantic mapping, never reflection
+        assertThat(html).doesNotContain("data-jhin-class-name");
+    }
+
+    @Test
+    void classNameValuesEscapeTheScriptProbe() {
+        String html = HtmlRenderer.render(Ui.row()
+                .set("className", PROBE)
+                .build());
+        assertEscaped(html);
+    }
+
+    @Test
     void xssMatrixEvidence() {
         List<String> lines = new ArrayList<>();
         lines.add("# T201 XSS matrix — every injectable prop position, input "
@@ -154,6 +173,19 @@ class HtmlRendererTest {
         String html = HtmlRenderer.render(row);
         assertThat(html).contains("kept");
         assertThat(html).doesNotContain("gone");
+    }
+
+    @Test
+    void hiddenTrueRendersTheBareHiddenAttribute() {
+        String html = HtmlRenderer.render(Ui.text("here").hidden(true).build());
+        assertThat(html).contains("hidden");
+        assertThat(html).contains("here");
+    }
+
+    @Test
+    void hiddenFalseOrUnsetRendersNoHiddenAttribute() {
+        assertThat(HtmlRenderer.render(Ui.text("t").hidden(false).build())).doesNotContain("hidden");
+        assertThat(HtmlRenderer.render(Ui.text("t").build())).doesNotContain("hidden");
     }
 
     @Test

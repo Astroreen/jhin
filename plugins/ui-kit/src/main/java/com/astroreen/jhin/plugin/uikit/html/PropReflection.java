@@ -51,10 +51,12 @@ public final class PropReflection {
      * absent — {@link UniversalProps} only consumes it on non-{@code stack}/
      * {@code wrap}/{@code icon_button} types, so those renderers handle it
      * themselves; {@code maxLines}/{@code softWrap} are absent for the same
-     * type-conditional reason (text-bearing only).
+     * type-conditional reason (text-bearing only). {@code className} is the
+     * class channel of {@code HtmlRenderer.appendClass} (the "a class" tier
+     * above), appended after the renderer's own classes.
      */
     public static final Set<String> UNIVERSAL = Set.of(
-            "id", "when", "visible",
+            "id", "when", "visible", "hidden", "className",
             "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight",
             "aspectRatio", "padding", "margin",
             "color", "gradient", "border", "borderWidth", "borderStyle",

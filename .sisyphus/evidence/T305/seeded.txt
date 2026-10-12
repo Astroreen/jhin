@@ -1,0 +1,7 @@
+T305 seeding — the sessions QA helper (POST /sessions/{id}/events):
+  qa-tools -> bf0fb3ce-f036-4fda-b626-6e5f288ee8a3 (workdir /tmp/t305/wd)
+  3 adjacent tool_use (c1..c3, name read, arguments {"path":"README.md"})
+  + 3 matching tool_result (c1..c3, content hello) — the consecutive
+    same-name run that folds into one group of count 3
+  + 5 tool_result (s1..s5, name write) with structured tool-call cards
+    of the five statuses: pending, running, success, error, cancelled

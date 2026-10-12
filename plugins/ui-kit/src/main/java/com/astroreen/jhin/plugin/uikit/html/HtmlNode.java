@@ -111,6 +111,29 @@ public final class HtmlNode {
     }
 
     /**
+     * Appends class names to the {@code class} attribute: the universal
+     * {@code className} prop lands after the renderer's own classes (the
+     * semantic-mapping tier of {@link PropReflection} — "a class"), so a
+     * screen-supplied name never replaces the primitive classes. A missing
+     * {@code class} attribute is created in place; re-appending keeps the
+     * original position (the {@link #attr(String, String)} semantics).
+     *
+     * @param names the class names to append (space-separated); {@code null}
+     *              or blank is a no-op
+     * @return this node
+     */
+    public HtmlNode addClass(String names) {
+        if (names == null || names.isBlank()) {
+            return this;
+        }
+        Attr current = attributes.get("class");
+        String value = (current == null || current.value() == null)
+                ? names
+                : current.value() + " " + names;
+        return attr("class", value);
+    }
+
+    /**
      * Adds a text child, escaped with {@link HtmlEsc#text(String)} at render
      * time.
      *
