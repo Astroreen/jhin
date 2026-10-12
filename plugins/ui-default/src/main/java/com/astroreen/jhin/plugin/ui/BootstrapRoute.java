@@ -315,15 +315,25 @@ final class BootstrapRoute {
     }
 
     /**
-     * The {@code theme.colors} block: the palette {@link PaletteGen}
-     * generates from the saved seeds. docs/sdui.md section 1 lets
-     * {@code colors} overrides win over the client's own generation, so
-     * pinning the full generated map makes the bootstrap reflect the
-     * server-side palette exactly (T84).
+     * The {@code theme.colors} block: the explicit OKLCH map of the selected
+     * catalogue theme (T301, {@link ThemeCatalog.Theme#colors}) whenever the
+     * saved seeds still equal that theme's own seed pair for the saved
+     * appearance — no user override, so upstream truth wins over generation
+     * (decision D-10). A user carrying custom canvas/accent seeds keeps the
+     * palette {@link PaletteGen} derives from them; docs/sdui.md section 1
+     * lets {@code colors} overrides win over the client's own generation, so
+     * pinning the full map makes the bootstrap reflect the server-side
+     * palette exactly (T84).
      */
     private static Map<String, Object> colors(UiSettings.Snapshot snapshot) {
-        return new LinkedHashMap<>(PaletteGen.generate(
-                snapshot.appearance(), snapshot.canvas(), snapshot.accent()));
+        ThemeCatalog.Theme theme = ThemeCatalog.get(snapshot.themeId());
+        ThemeCatalog.Seeds seeds = theme.seeds(snapshot.appearance());
+        boolean unmodified = seeds.canvas().equalsIgnoreCase(snapshot.canvas())
+                && seeds.accent().equalsIgnoreCase(snapshot.accent());
+        Map<String, String> source = unmodified
+                ? theme.colors(snapshot.appearance())
+                : PaletteGen.generate(snapshot.appearance(), snapshot.canvas(), snapshot.accent());
+        return new LinkedHashMap<>(source);
     }
 
     /** The caller's account id for request-scoped screens. */

@@ -1,0 +1,4 @@
+06:05:48 -- negative proof a: the missing-key probe catches deleted keys
+ok: kernel up on http://localhost:18443 (pid 37306), GET /_jhin/health -> 200 in 2 s
+ok: missing-key probe fails closed on both deleted keys (missing-keys.txt)
+ok: T301 QA --fail: the negative proof PASSes

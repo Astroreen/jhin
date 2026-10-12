@@ -106,6 +106,57 @@ class TokenCssTest {
     }
 
     @Test
+    void colorAliasLayerEmitsAtLeastTheSixtyThreeSemanticNames() {
+        String css = root(THEME, "comfortable");
+        java.util.Set<String> names = new java.util.TreeSet<>();
+        java.util.regex.Matcher matcher =
+                java.util.regex.Pattern.compile("--color-([a-z0-9-]+):").matcher(css);
+        while (matcher.find()) {
+            names.add(matcher.group(1));
+        }
+        assertThat(names.size())
+                .as("distinct --color-* names: %s", names)
+                .isGreaterThanOrEqualTo(63);
+        assertThat(names).contains(
+                "app-chrome-background", "toolbar-background", "toolbar-foreground",
+                "toolbar-border", "toolbar-control", "toolbar-control-foreground",
+                "toolbar-control-hover");
+    }
+
+    @Test
+    void paletteLayerUsesTheUpstreamRawNames() {
+        String css = root(THEME, "comfortable");
+
+        // message and code land on their upstream raw names, not bare ones.
+        assertThat(css).contains("\n  --message-surface: ");
+        assertThat(css).contains("\n  --code-background: ");
+        assertThat(css).doesNotContain("\n  --message: ");
+        assertThat(css).doesNotContain("\n  --code: ");
+        // The toolbar and chrome raw names are emitted too.
+        assertThat(css).contains("\n  --app-chrome-background: ");
+        assertThat(css).contains("\n  --toolbar-background: ");
+        assertThat(css).contains("\n  --toolbar-foreground: ");
+        assertThat(css).contains("\n  --toolbar-border: ");
+        assertThat(css).contains("\n  --toolbar-control: ");
+        assertThat(css).contains("\n  --toolbar-control-foreground: ");
+        assertThat(css).contains("\n  --toolbar-control-hover: ");
+        // The three new contrast indirections.
+        assertThat(css).contains("--contrast-toolbar-foreground: color-mix(");
+        assertThat(css).contains("--contrast-toolbar-border: color-mix(");
+        assertThat(css).contains("--contrast-toolbar-control-foreground: color-mix(");
+    }
+
+    @Test
+    void themeColorsOverrideTheUpstreamRawNames() {
+        Map<String, Object> theme = new LinkedHashMap<>(THEME);
+        theme.put("colors", Map.of("message", "#112233", "app-chrome-background", "#445566"));
+        String css = root(theme, "comfortable");
+
+        assertThat(css).contains("\n  --message-surface: #112233");
+        assertThat(css).contains("\n  --app-chrome-background: #445566");
+    }
+
+    @Test
     void angleBracketCannotBreakOutOfTheStyleBlock() {
         Map<String, Object> theme = new LinkedHashMap<>(THEME);
         theme.put("colors", Map.of("card", "#123</style><script>alert(1)</script>"));

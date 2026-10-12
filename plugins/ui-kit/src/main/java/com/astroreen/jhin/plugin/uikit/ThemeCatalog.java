@@ -53,7 +53,9 @@ public final class ThemeCatalog {
             Seeds light,
             Seeds dark,
             Map<String, String> stageArtLight,
-            Map<String, String> stageArtDark) {
+            Map<String, String> stageArtDark,
+            Map<String, String> colorsLight,
+            Map<String, String> colorsDark) {
 
         /**
         * The seed pair of one appearance; {@code system} resolves to the
@@ -64,6 +66,19 @@ public final class ThemeCatalog {
         */
         public Seeds seeds(String appearance) {
             return "dark".equals(appearance) ? dark : light;
+        }
+
+        /**
+        * The explicit colour map of one appearance: every
+        * {@link UiTokens#COLOR_KEYS} name mapped to its upstream colour,
+        * {@code system} resolving to the light map (the same rule as
+        * {@link #seeds(String)}).
+        *
+        * @param appearance {@code light}, {@code dark} or {@code system}
+        * @return the colour map for that appearance
+        */
+        public Map<String, String> colors(String appearance) {
+            return "dark".equals(appearance) ? colorsDark : colorsLight;
         }
 
         /** The stage-art metadata of one appearance; {@code system} is the light map. */
@@ -220,6 +235,93 @@ public final class ThemeCatalog {
             "stage-art-line", "oklch(0.940582 0.032921 299.076)"
     ));
 
+    // --- upstream role binding (index.css html[data-theme-id] block) -------
+
+    /**
+     * The {@link UiTokens#COLOR_KEYS} name to upstream {@code themePalettes.ts}
+     * role binding of the {@code html[data-theme-id]} block of index.css: the
+     * semantic {@code --color-*} name resolves to its {@code --app-theme-*}
+     * role (verbatim, {@code message} &rarr; {@code messageSurface} through
+     * {@code --message-surface}, {@code code} &rarr; {@code codeBackground}
+     * through {@code --code-background}, {@code tool-error-icon} and
+     * {@code destructive*} riding the {@code error} roles exactly as
+     * upstream, {@code diff-deletion} on {@code --destructive}).
+     */
+    private static final Map<String, String> COLOR_ROLE = Map.ofEntries(
+            Map.entry("accent", "accentSurface"),
+            Map.entry("accent-foreground", "accentSurfaceForeground"),
+            Map.entry("app-chrome-background", "chrome"),
+            Map.entry("background", "canvas"),
+            Map.entry("border", "border"),
+            Map.entry("card", "surface"),
+            Map.entry("card-foreground", "text"),
+            Map.entry("code", "codeBackground"),
+            Map.entry("code-foreground", "codeForeground"),
+            Map.entry("destructive", "error"),
+            Map.entry("destructive-foreground", "errorForeground"),
+            Map.entry("diff-deletion", "error"),
+            Map.entry("error", "error"),
+            Map.entry("error-foreground", "errorForeground"),
+            Map.entry("error-surface", "errorSurface"),
+            Map.entry("foreground", "text"),
+            Map.entry("icon-muted", "iconMuted"),
+            Map.entry("input", "input"),
+            Map.entry("message", "messageSurface"),
+            Map.entry("message-action", "messageAction"),
+            Map.entry("message-action-foreground", "messageActionForeground"),
+            Map.entry("message-action-hover", "messageActionHover"),
+            Map.entry("message-foreground", "messageForeground"),
+            Map.entry("muted", "muted"),
+            Map.entry("muted-foreground", "mutedForeground"),
+            Map.entry("placeholder", "placeholder"),
+            Map.entry("popover", "surfaceOverlay"),
+            Map.entry("popover-foreground", "text"),
+            Map.entry("primary", "messageAction"),
+            Map.entry("primary-foreground", "messageActionForeground"),
+            Map.entry("ring", "focus"),
+            Map.entry("secondary", "secondary"),
+            Map.entry("secondary-foreground", "secondaryForeground"),
+            Map.entry("secondary-label", "secondaryLabel"),
+            Map.entry("sidebar", "sidebar"),
+            Map.entry("sidebar-border", "sidebarBorder"),
+            Map.entry("sidebar-control-surface", "sidebarControlSurface"),
+            Map.entry("sidebar-foreground", "sidebarForeground"),
+            Map.entry("sidebar-muted-foreground", "sidebarMutedForeground"),
+            Map.entry("sidebar-row-active", "sidebarRowActive"),
+            Map.entry("sidebar-row-hover", "sidebarRowHover"),
+            Map.entry("sidebar-row-selected", "sidebarRowSelected"),
+            Map.entry("surface-raised", "surfaceRaised"),
+            Map.entry("toolbar-background", "toolbar"),
+            Map.entry("toolbar-border", "toolbarBorder"),
+            Map.entry("toolbar-control", "toolbarControl"),
+            Map.entry("toolbar-control-foreground", "toolbarControlForeground"),
+            Map.entry("toolbar-control-hover", "toolbarControlHover"),
+            Map.entry("toolbar-foreground", "toolbarForeground"),
+            Map.entry("tool-error-icon", "errorForeground"),
+            Map.entry("update", "update"),
+            Map.entry("update-foreground", "updateForeground"),
+            Map.entry("update-surface", "updateSurface"),
+            Map.entry("warning", "warning"),
+            Map.entry("warning-foreground", "warningForeground"),
+            Map.entry("warning-surface", "warningSurface"));
+
+    /**
+     * The theme-independent {@code light-dark()} tokens of the alias block
+     * (index.css:1104-1107 and 2025-2028), verbatim: the emerald/blue/red
+     * palette entries the same values {@link PaletteGen} carries.
+     */
+    private static final String INFO = "#3280ff";
+    private static final String INFO_FOREGROUND_LIGHT = "#1447e6";
+    private static final String INFO_FOREGROUND_DARK = "#56a2ff";
+    private static final String SUCCESS = "#00b981";
+    private static final String SUCCESS_FOREGROUND_LIGHT = "#007857";
+    private static final String SUCCESS_FOREGROUND_DARK = "#00d294";
+    private static final String DIFF_ADDITION = "#00b981";
+    private static final String DIFF_ADDITION_FOREGROUND_LIGHT = "#009669";
+    private static final String DIFF_ADDITION_FOREGROUND_DARK = "#00d294";
+    private static final String DIFF_DELETION_FOREGROUND_LIGHT = "#e40016";
+    private static final String DIFF_DELETION_FOREGROUND_DARK = "#ff6568";
+
     private static final Map<String, Theme> THEMES = build(); // insertion-ordered
 
     private ThemeCatalog() {
@@ -256,31 +358,63 @@ public final class ThemeCatalog {
                 new Seeds(hex(SEED_T3_CHAT_LIGHT_CANVAS), hex(SEED_T3_CHAT_LIGHT_ACCENT)),
                 new Seeds(hex(SEED_T3_CHAT_DARK_CANVAS), hex(SEED_T3_CHAT_DARK_ACCENT)),
                 STAGE_ART_T3_CHAT_LIGHT,
-                STAGE_ART_T3_CHAT_DARK));
+                STAGE_ART_T3_CHAT_DARK,
+                upstreamColors("t3-chat", "light"), upstreamColors("t3-chat", "dark")));
         themes.put("grove", new Theme("grove", "Grove",
                 new Seeds(hex(SEED_GROVE_LIGHT_CANVAS), hex(SEED_GROVE_LIGHT_ACCENT)),
                 new Seeds(hex(SEED_GROVE_DARK_CANVAS), hex(SEED_GROVE_DARK_ACCENT)),
                 STAGE_ART_GROVE_LIGHT,
-                STAGE_ART_GROVE_DARK));
+                STAGE_ART_GROVE_DARK,
+                upstreamColors("grove", "light"), upstreamColors("grove", "dark")));
         themes.put("ocean", new Theme("ocean", "Ocean",
                 new Seeds(hex(SEED_OCEAN_LIGHT_CANVAS), hex(SEED_OCEAN_LIGHT_ACCENT)),
                 new Seeds(hex(SEED_OCEAN_DARK_CANVAS), hex(SEED_OCEAN_DARK_ACCENT)),
                 STAGE_ART_OCEAN_LIGHT,
-                STAGE_ART_OCEAN_DARK));
+                STAGE_ART_OCEAN_DARK,
+                upstreamColors("ocean", "light"), upstreamColors("ocean", "dark")));
         themes.put("ember", new Theme("ember", "Ember",
                 new Seeds(hex(SEED_EMBER_LIGHT_CANVAS), hex(SEED_EMBER_LIGHT_ACCENT)),
                 new Seeds(hex(SEED_EMBER_DARK_CANVAS), hex(SEED_EMBER_DARK_ACCENT)),
                 STAGE_ART_EMBER_LIGHT,
-                STAGE_ART_EMBER_DARK));
+                STAGE_ART_EMBER_DARK,
+                upstreamColors("ember", "light"), upstreamColors("ember", "dark")));
         themes.put("iris", new Theme("iris", "Iris",
                 new Seeds(hex(SEED_IRIS_LIGHT_CANVAS), hex(SEED_IRIS_LIGHT_ACCENT)),
                 new Seeds(hex(SEED_IRIS_DARK_CANVAS), hex(SEED_IRIS_DARK_ACCENT)),
                 STAGE_ART_IRIS_LIGHT,
-                STAGE_ART_IRIS_DARK));
+                STAGE_ART_IRIS_DARK,
+                upstreamColors("iris", "light"), upstreamColors("iris", "dark")));
         themes.put("jhin", new Theme("jhin", "Jhin",
                 new Seeds("#16161e", "#7E57C2"), new Seeds("#16161e", "#7E57C2"),
-                STAGE_ART_ROOT_LIGHT, STAGE_ART_ROOT_DARK));
+                STAGE_ART_ROOT_LIGHT, STAGE_ART_ROOT_DARK,
+                PaletteGen.generate("light", "#16161e", "#7E57C2"),
+                PaletteGen.generate("dark", "#16161e", "#7E57C2")));
         return Collections.unmodifiableMap(themes);
+    }
+
+    /**
+     * The explicit colour map of one built-in theme under one mode: every
+     * {@link UiTokens#COLOR_KEYS} name bound through {@link #COLOR_ROLE} to
+     * the verbatim {@link ThemePalettes} role, plus the seven
+     * theme-independent {@code light-dark()} tokens.
+     */
+    private static Map<String, String> upstreamColors(String id, String mode) {
+        Map<String, String> roles = ThemePalettes.get(id, mode);
+        boolean dark = "dark".equals(mode);
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : COLOR_ROLE.entrySet()) {
+            out.put(entry.getKey(), roles.get(entry.getValue()));
+        }
+        out.put("info", INFO);
+        out.put("info-foreground", dark ? INFO_FOREGROUND_DARK : INFO_FOREGROUND_LIGHT);
+        out.put("success", SUCCESS);
+        out.put("success-foreground", dark ? SUCCESS_FOREGROUND_DARK : SUCCESS_FOREGROUND_LIGHT);
+        out.put("diff-addition", DIFF_ADDITION);
+        out.put("diff-addition-foreground",
+                dark ? DIFF_ADDITION_FOREGROUND_DARK : DIFF_ADDITION_FOREGROUND_LIGHT);
+        out.put("diff-deletion-foreground",
+                dark ? DIFF_DELETION_FOREGROUND_DARK : DIFF_DELETION_FOREGROUND_LIGHT);
+        return Collections.unmodifiableMap(out);
     }
 
     /** Converts one verbatim triple to the 8-bit hex the palette engine consumes. */

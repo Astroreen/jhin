@@ -147,4 +147,97 @@ class ThemeCatalogTest {
                 .containsEntry("stage-art-highlight", "#ffe6f6")
                 .containsEntry("stage-art-line", "#ffe7f8");
     }
+
+    // --- T301: the explicit OKLCH colour maps ---------------------------
+
+    @Test
+    void everyThemeCarriesEveryColorKeyInBothAppearances() {
+        for (String id : ThemeCatalog.ids()) {
+            ThemeCatalog.Theme theme = ThemeCatalog.get(id);
+            for (String appearance : List.of("light", "dark")) {
+                Map<String, String> colors = theme.colors(appearance);
+                assertThat(colors.keySet())
+                        .as("%s %s colour keys", id, appearance)
+                        .isEqualTo(UiTokens.COLOR_KEYS);
+                for (Map.Entry<String, String> entry : colors.entrySet()) {
+                    assertThat(entry.getValue())
+                            .as("%s %s %s", id, appearance, entry.getKey())
+                            .isNotNull()
+                            .isNotEmpty();
+                }
+            }
+            assertThat(theme.colors("system")).isEqualTo(theme.colors("light"));
+        }
+    }
+
+    @Test
+    void colorKeyCountIsTheUpstreamSixtyThree() {
+        assertThat(UiTokens.COLOR_KEYS).hasSize(63);
+        assertThat(UiTokens.COLOR_KEYS).contains(
+                "app-chrome-background", "toolbar-background", "toolbar-foreground",
+                "toolbar-border", "toolbar-control", "toolbar-control-foreground",
+                "toolbar-control-hover");
+    }
+
+    @Test
+    void t3ChatDarkPrimaryIsTheUpstreamSentinel() {
+        // themePalettes.ts: t3-chat dark messageAction (the --primary binding).
+        assertThat(ThemeCatalog.get("t3-chat").colors("dark").get("primary"))
+                .isEqualTo("oklch(0.460685 0.185347 4.099)");
+    }
+
+    @Test
+    void themeColorSentinelsMatchThemePalettesVerbatim() {
+        assertSentinels("t3-chat", "light",
+                "oklch(0.591646 0.217985 0.584)", "oklch(0.982446 0.010114 325.653)",
+                "oklch(0.325698 0.116116 325.037)", "oklch(0.939552 0.024286 321.664)",
+                "oklch(0.923531 0.021247 328.096)");
+        assertSentinels("t3-chat", "dark",
+                "oklch(0.460685 0.185347 4.099)", "oklch(0.22813 0.020366 307.469)",
+                "oklch(0.980735 0.004092 301.426)", "oklch(0.364912 0.050794 308.491)",
+                "oklch(0.266943 0.015262 302.425)");
+        assertSentinels("grove", "light",
+                "oklch(0.535028 0.106403 77.549)", "oklch(0.972369 0.005497 157.15)",
+                "oklch(0.222003 0.03479 328.979)", "oklch(0.909438 0.021521 164.612)",
+                "oklch(0.864831 0.01312 167.255)");
+        assertSentinels("grove", "dark",
+                "oklch(0.791603 0.129713 83.299)", "oklch(0.260865 0.02152 162.75)",
+                "oklch(0.990339 0.008411 325.64)", "oklch(0.437021 0.060312 158.962)",
+                "oklch(0.457475 0.044046 160.971)");
+        assertSentinels("ocean", "light",
+                "oklch(0.493961 0.08175 201.584)", "oklch(0.974199 0.002856 241.597)",
+                "oklch(0.222003 0.03479 328.979)", "oklch(0.91295 0.018827 241.836)",
+                "oklch(0.867646 0.013482 252.362)");
+        assertSentinels("ocean", "dark",
+                "oklch(0.793363 0.105022 199.893)", "oklch(0.242641 0.024125 250.573)",
+                "oklch(0.990339 0.008411 325.64)", "oklch(0.413315 0.051874 243.855)",
+                "oklch(0.438653 0.039496 245.44)");
+        assertSentinels("ember", "light",
+                "oklch(0.516323 0.161628 24.82)", "oklch(0.976527 0.002685 60.725)",
+                "oklch(0.222003 0.03479 328.979)", "oklch(0.916502 0.01832 49.597)",
+                "oklch(0.870631 0.013204 39.431)");
+        assertSentinels("ember", "dark",
+                "oklch(0.747955 0.135578 29.432)", "oklch(0.245899 0.019144 42.044)",
+                "oklch(0.990339 0.008411 325.64)", "oklch(0.416048 0.055354 50.484)",
+                "oklch(0.44099 0.040202 48.807)");
+        assertSentinels("iris", "light",
+                "oklch(0.516084 0.185229 340.776)", "oklch(0.976531 0.003855 303.226)",
+                "oklch(0.222003 0.03479 328.979)", "oklch(0.914882 0.022965 299.986)",
+                "oklch(0.869608 0.018226 303.859)");
+        assertSentinels("iris", "dark",
+                "oklch(0.789904 0.130063 337.621)", "oklch(0.225975 0.031062 293.741)",
+                "oklch(0.990339 0.008411 325.64)", "oklch(0.372436 0.07841 294.204)",
+                "oklch(0.40874 0.058536 295.893)");
+    }
+
+    /** The five per-theme sentinels of themePalettes.ts, exactly. */
+    private static void assertSentinels(String id, String mode,
+            String primary, String background, String foreground, String accent, String border) {
+        Map<String, String> colors = ThemeCatalog.get(id).colors(mode);
+        assertThat(colors.get("primary")).as("%s %s primary", id, mode).isEqualTo(primary);
+        assertThat(colors.get("background")).as("%s %s background", id, mode).isEqualTo(background);
+        assertThat(colors.get("foreground")).as("%s %s foreground", id, mode).isEqualTo(foreground);
+        assertThat(colors.get("accent")).as("%s %s accent", id, mode).isEqualTo(accent);
+        assertThat(colors.get("border")).as("%s %s border", id, mode).isEqualTo(border);
+    }
 }

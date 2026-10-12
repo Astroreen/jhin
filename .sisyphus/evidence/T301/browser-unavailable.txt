@@ -1,0 +1,23 @@
+T301 browser steps — UNAVAILABLE in this environment.
+
+Browser tooling (the agent browser / screenshots / evaluate) cannot run on
+this QA machine; the T202–T208 precedent applies: every browser step is
+recorded here and substituted with curl + static asserts.
+
+Not executed (the plan's interactive/visual token cases):
+  - Computed-style checks that the served tokens resolve (getComputedStyle on
+    --color-*, --z-sheet, --ease-drawer): substituted by the served-byte
+    greps in tokens.txt — the declarations are proven present in the exact
+    bytes the client receives.
+  - Visual theme rendering: switching the appearance grid and eyeballing the
+    t3-chat light/dark palettes: substituted by the sentinel greps in
+    themes.txt — the palette layer carries the verbatim themePalettes.ts
+    OKLCH values the renderer would consume.
+  - Contrast-indirection rendering (--contrast-* mixing under the user
+    contrast boost): substituted by the TokenCssTest / UiTokensTest unit
+    asserts on the color-mix recipes.
+
+What IS proven here: the five upstream raw tokens ship verbatim (source and
+wire), the alias layer serves every one of the 63 colour keys as --color-*,
+and both appearance modes of the default theme carry the exact upstream
+OKLCH sentinels in the served palette layer and the bootstrap payload.

@@ -1,0 +1,9 @@
+T301 test gates — the two suites green on the parity token set:
+BUILD SUCCESSFUL in 793ms
+> Task :jhin-plugin-ui-kit:test
+> Task :jhin-plugin-ui-default:test
+BUILD SUCCESSFUL in 25s
+
+  :jhin-plugin-ui-kit:test      319 tests (ThemeCatalogTest sentinels among them)
+  :jhin-plugin-ui-default:test  460 tests
+  failures=0 errors=0 (expected 0/0)

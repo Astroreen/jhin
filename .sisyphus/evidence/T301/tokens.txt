@@ -1,0 +1,23 @@
+T301 static token gates — the upstream raw token layer of
+web/css/tokens.css (index.css :root vocabulary, verbatim).
+
+  --workspace-topbar-height: 52px                      1 hit(s)  PRESENT
+  --chat-content-max-width: 46rem                      1 hit(s)  PRESENT
+  --thread-details-panel-width: 17.5rem                1 hit(s)  PRESENT
+  --z-sheet: 46                                        1 hit(s)  PRESENT
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1)        1 hit(s)  PRESENT
+
+T301 wire token gates — the same five raw tokens over the asset route,
+then the inline style#jhin-token-css alias layer of GET /.
+
+  served --workspace-topbar-height: 52px                1 hit(s)  PRESENT
+  served --chat-content-max-width: 46rem                1 hit(s)  PRESENT
+  served --thread-details-panel-width: 17.5rem          1 hit(s)  PRESENT
+  served --z-sheet: 46                                  1 hit(s)  PRESENT
+  served --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1)  1 hit(s)  PRESENT
+
+T301 colour alias probe — every one of the 63 UiTokens colour keys must
+be emitted as --color-<key> in the inline alias layer.
+
+  distinct --color-* names served: 89 (must be >= 63)
+  all 63 required colour names PRESENT

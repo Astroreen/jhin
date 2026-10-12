@@ -1,0 +1,51 @@
+--animate-skeleton: skeleton 2.4s infinite
+--animate-status-ping: status-ping 2s infinite
+--animate-status-pulse: status-pulse 2s infinite
+--appearance-contrast-base: 100%
+--appearance-contrast-boost: 0%
+--appearance-contrast-border-boost: 0%
+--appearance-contrast-target: black
+--appearance-contrast-target: white
+--app-scrollbar-thumb-hover: rgb(191 191 191)
+--app-scrollbar-thumb-hover: rgb(255 255 255 / 12%)
+--app-scrollbar-thumb: rgb(217 217 217)
+--app-scrollbar-thumb: rgb(255 255 255 / 8%)
+--app-scrollbar-width: 6px
+--chat-content-max-width: 46rem
+--command-content-inset: 1rem
+--command-shell-inset: 0.5rem
+--control-radius: 0.5rem
+--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1)
+--floating-content-inset: 0.75rem
+--glass-blur: 12px
+--glass-blur: 16px
+--glass-opacity: 80%
+--glass-saturation: 1.08
+--glass-saturation: 1.14
+--inset-shadow-control-highlight: 0 1px rgb(255 255 255 / 16%)
+--inset-shadow-control-pressed: 0 1px rgb(0 0 0 / 8%)
+--radius: 0.625rem
+--radius-2xl: calc(var(--radius) + 8px)
+--radius-3xl: calc(var(--radius) + 12px)
+--radius-lg: var(--radius)
+--radius-md: calc(var(--radius) - 2px)
+--radius-sm: calc(var(--radius) - 4px)
+--radius-xl: calc(var(--radius) + 4px)
+--shadow-composer: 0 12px 28px -18px rgb(0 0 0 / 40%)
+--shadow-composer-dark: 0 14px 32px -18px rgb(0 0 0 / 75%)
+--sidebar-content-inset: 0.5rem
+--sidebar-control-gap: 0.5rem
+--sidebar-icon-color: color-mix(
+--sidebar-row-content-inset: 0.625rem
+--text-2xs: 0.6875rem
+--text-2xs--line-height: calc(1 / 0.6875)
+--text-3xs: 0.625rem
+--text-3xs--line-height: calc(0.875 / 0.625)
+--text-4xs: 0.5rem
+--text-4xs--line-height: 1
+--text-5xs: 0.4375rem
+--text-5xs--line-height: 1
+--thread-details-panel-width: 17.5rem
+--workspace-gutter: 0.75rem
+--workspace-gutter: 1.25rem
+--workspace-topbar-height: 52px

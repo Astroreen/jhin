@@ -85,6 +85,20 @@ class PaletteGenTest {
     }
 
     @Test
+    void toolbarAndChromeFollowTheUpstreamDerivations() {
+        // themePalette.ts:753-759 — chrome/toolbar ride the canvas, the toolbar
+        // foregrounds ride the text, the three control surfaces are surfaceAt derivations.
+        Map<String, String> colors = PaletteGen.generate("dark", "#16161e", "#7E57C2");
+        assertThat(colors.get("app-chrome-background")).isEqualTo(colors.get("background"));
+        assertThat(colors.get("toolbar-background")).isEqualTo(colors.get("background"));
+        assertThat(colors.get("toolbar-foreground")).isEqualTo(colors.get("foreground"));
+        assertThat(colors.get("toolbar-control-foreground")).isEqualTo(colors.get("foreground"));
+        assertThat(colors.get("toolbar-border")).isNotBlank();
+        assertThat(colors.get("toolbar-control")).isNotBlank();
+        assertThat(colors.get("toolbar-control-hover")).isNotBlank();
+    }
+
+    @Test
     void seedsAreHonoredExactly() {
         for (Vector vector : allVectors()) {
             Map<String, String> colors = PaletteGen.generate(

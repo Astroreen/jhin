@@ -38,8 +38,8 @@ public final class UiTokens {
      * {@code zinc-25} is not a semantic name and is not part of the set).
      */
     public static final Set<String> COLOR_KEYS = Set.of(
-            "accent", "accent-foreground", "background", "border", "card", "card-foreground",
-            "code", "code-foreground", "destructive", "destructive-foreground",
+            "accent", "accent-foreground", "app-chrome-background", "background", "border", "card",
+            "card-foreground", "code", "code-foreground", "destructive", "destructive-foreground",
             "diff-addition", "diff-addition-foreground", "diff-deletion", "diff-deletion-foreground",
             "error", "error-foreground", "error-surface", "foreground", "icon-muted", "info",
             "info-foreground", "input", "message", "message-action", "message-action-foreground",
@@ -49,8 +49,10 @@ public final class UiTokens {
             "sidebar-border", "sidebar-control-surface", "sidebar-foreground",
             "sidebar-muted-foreground", "sidebar-row-active", "sidebar-row-hover",
             "sidebar-row-selected", "success", "success-foreground", "surface-raised",
-            "tool-error-icon", "update", "update-foreground", "update-surface", "warning",
-            "warning-foreground", "warning-surface");
+            "toolbar-background", "toolbar-border", "toolbar-control", "toolbar-control-foreground",
+            "toolbar-control-hover", "toolbar-foreground", "tool-error-icon", "update",
+            "update-foreground", "update-surface", "warning", "warning-foreground",
+            "warning-surface");
 
     /**
      * {@code color.contrast} keys: the colour names that resolve through the
@@ -60,7 +62,8 @@ public final class UiTokens {
             "accent-foreground", "border", "card-foreground", "foreground", "icon-muted",
             "input", "message-foreground", "muted-foreground", "placeholder",
             "popover-foreground", "secondary-foreground", "secondary-label", "sidebar-border",
-            "sidebar-foreground", "sidebar-muted-foreground");
+            "sidebar-foreground", "sidebar-muted-foreground", "toolbar-border",
+            "toolbar-control-foreground", "toolbar-foreground");
 
     /** {@code radius} keys: the base step plus the six-step corner scale. */
     public static final Set<String> RADIUS_KEYS =
@@ -107,6 +110,7 @@ public final class UiTokens {
     public static final Map<String, Object> COLOR_VALUES = mapOf(
             "accent", "var(--accent)",
             "accent-foreground", "var(--contrast-accent-foreground)",
+            "app-chrome-background", "var(--app-chrome-background)",
             "background", "var(--background)",
             "border", "var(--contrast-border)",
             "card", "var(--card)",
@@ -154,6 +158,12 @@ public final class UiTokens {
             "success", "var(--success)",
             "success-foreground", "var(--success-foreground)",
             "surface-raised", "var(--surface-raised)",
+            "toolbar-background", "var(--toolbar-background)",
+            "toolbar-border", "var(--contrast-toolbar-border)",
+            "toolbar-control", "var(--toolbar-control)",
+            "toolbar-control-foreground", "var(--contrast-toolbar-control-foreground)",
+            "toolbar-control-hover", "var(--toolbar-control-hover)",
+            "toolbar-foreground", "var(--contrast-toolbar-foreground)",
             "tool-error-icon", "var(--tool-error-icon)",
             "update", "var(--update)",
             "update-foreground", "var(--update-foreground)",
@@ -219,6 +229,17 @@ public final class UiTokens {
             "sidebar-muted-foreground", "color-mix(in oklab, color-mix(in oklab,"
                     + " var(--sidebar-muted-foreground) var(--appearance-contrast-base),"
                     + " var(--sidebar)),"
+                    + " var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+            "toolbar-border", "color-mix(in srgb, color-mix(in srgb,"
+                    + " var(--toolbar-border) var(--appearance-contrast-base), transparent),"
+                    + " var(--toolbar-foreground) var(--appearance-contrast-border-boost))",
+            "toolbar-control-foreground", "color-mix(in oklab, color-mix(in oklab,"
+                    + " var(--toolbar-control-foreground) var(--appearance-contrast-base),"
+                    + " var(--toolbar-control)),"
+                    + " var(--appearance-contrast-target) var(--appearance-contrast-boost))",
+            "toolbar-foreground", "color-mix(in oklab, color-mix(in oklab,"
+                    + " var(--toolbar-foreground) var(--appearance-contrast-base),"
+                    + " var(--toolbar-background)),"
                     + " var(--appearance-contrast-target) var(--appearance-contrast-boost))");
 
     /** {@code radius} values: {@code --radius} 0.625rem and the ±px scale around it. */

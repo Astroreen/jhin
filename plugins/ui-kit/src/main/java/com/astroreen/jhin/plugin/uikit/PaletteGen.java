@@ -182,8 +182,18 @@ public final class PaletteGen {
         Map<String, String> out = new TreeMap<>();
         out.put("accent", Oklch.toHex(accentSurfaceRgb));
         out.put("accent-foreground", foregroundOn(textBase, accentSurfaceRgb, darkCanvas));
+        out.put("app-chrome-background", Oklch.toHex(canvasRgb));
         out.put("background", Oklch.toHex(canvasRgb));
         out.put("border", Oklch.toHex(Oklch.toRgb(border)));
+        out.put("toolbar-background", Oklch.toHex(canvasRgb));
+        out.put("toolbar-foreground", Oklch.toHex(textRgb));
+        out.put("toolbar-border", Oklch.toHex(Oklch.toRgb(surfaceAt(canvas, step,
+                darkCanvas ? 0.14 : 0.1, hue, Math.min(0.08, accent.c() * 0.4)))));
+        out.put("toolbar-control", Oklch.toHex(Oklch.toRgb(surfaceAt(canvas, step,
+                darkCanvas ? 0.09 : 0.05, hue, tintC * 1.3))));
+        out.put("toolbar-control-foreground", Oklch.toHex(textRgb));
+        out.put("toolbar-control-hover", Oklch.toHex(Oklch.toRgb(surfaceAt(canvas, step,
+                darkCanvas ? 0.14 : 0.09, hue, tintC * 1.6))));
         out.put("card", Oklch.toHex(Oklch.toRgb(surface)));
         out.put("card-foreground", Oklch.toHex(textRgb));
         out.put("code", Oklch.toHex(Oklch.toRgb(codeBackground)));

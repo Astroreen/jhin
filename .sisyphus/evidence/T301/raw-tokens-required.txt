@@ -1,0 +1,5 @@
+--workspace-topbar-height: 52px
+--chat-content-max-width: 46rem
+--thread-details-panel-width: 17.5rem
+--z-sheet: 46
+--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1)

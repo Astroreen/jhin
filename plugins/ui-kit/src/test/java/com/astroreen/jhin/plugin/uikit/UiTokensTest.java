@@ -129,6 +129,30 @@ class UiTokensTest {
     }
 
     @Test
+    void t301CarriesTheSixtyThreeColorKeysAndTheToolbarContrastIndirection() {
+        assertThat(UiTokens.COLOR_KEYS).hasSize(63);
+        assertThat(UiTokens.COLOR_KEYS).contains(
+                "app-chrome-background", "toolbar-background", "toolbar-foreground",
+                "toolbar-border", "toolbar-control", "toolbar-control-foreground",
+                "toolbar-control-hover");
+        assertThat(UiTokens.CONTRAST_KEYS).contains(
+                "toolbar-foreground", "toolbar-border", "toolbar-control-foreground");
+        // The two alias targets with a different upstream raw name.
+        assertThat(UiTokens.COLOR_VALUES.get("message")).isEqualTo("var(--message-surface)");
+        assertThat(UiTokens.COLOR_VALUES.get("code")).isEqualTo("var(--code-background)");
+        // The three new keys resolve through the contrast indirection.
+        assertThat(UiTokens.COLOR_VALUES.get("toolbar-foreground"))
+                .isEqualTo("var(--contrast-toolbar-foreground)");
+        assertThat(UiTokens.COLOR_VALUES.get("toolbar-border"))
+                .isEqualTo("var(--contrast-toolbar-border)");
+        assertThat(UiTokens.COLOR_VALUES.get("toolbar-control-foreground"))
+                .isEqualTo("var(--contrast-toolbar-control-foreground)");
+        assertThat(UiTokens.CONTRAST_VALUES.get("toolbar-border").toString())
+                .contains("var(--toolbar-border) var(--appearance-contrast-base), transparent)")
+                .contains("var(--toolbar-foreground) var(--appearance-contrast-border-boost))");
+    }
+
+    @Test
     void fallbackValuesCarryTheUpstreamSurface() {
         assertThat(UiTokens.COLOR_KEYS).contains("sidebar-row-hover");
         assertThat(UiTokens.RADIUS_VALUES).containsEntry("base", "0.625rem");

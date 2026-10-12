@@ -162,7 +162,7 @@ public final class TokenCss {
         // Layer 1 — palette.
         css.append("/* palette */\n:root {\n");
         for (Map.Entry<String, String> entry : palette(appearance, canvas, accent, colors).entrySet()) {
-            css.append("  ").append(varName(entry.getKey())).append(": ")
+            css.append("  ").append(varName(rawName(entry.getKey()))).append(": ")
                     .append(safe(entry.getValue())).append(";\n");
         }
         for (Map.Entry<String, Object> entry : contrastOf(families).entrySet()) {
@@ -493,6 +493,21 @@ public final class TokenCss {
     /** The raw {@code --name} form of a (possibly dashed) variable name. */
     private static String varName(String name) {
         return "--" + name;
+    }
+
+    /**
+     * The raw palette variable name of one palette key: the two semantic
+     * names whose upstream raw variable carries a different name
+     * ({@code message} &rarr; {@code --message-surface}, {@code code} &rarr;
+     * {@code --code-background}; the alias layer of {@link UiTokens} targets
+     * those raw names).
+     */
+    private static String rawName(String name) {
+        return switch (name) {
+            case "message" -> "message-surface";
+            case "code" -> "code-background";
+            default -> name;
+        };
     }
 
     /** Folds camelCase to kebab-case; dashed and digit names pass through. */

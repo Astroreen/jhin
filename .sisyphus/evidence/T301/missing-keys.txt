@@ -1,0 +1,11 @@
+T301 --fail: the missing-key probe must fail closed.
+
+  probe: every line of the required set must be present in the
+  served set; absent lines are reported as MISSING.
+
+  MISSING --color-toolbar-background
+  colour probe: --color-toolbar-background deleted -> reported MISSING (PASS)
+  MISSING --z-sheet: 46
+  raw-token probe: --z-sheet: 46 deleted -> reported MISSING (PASS)
+
+  total MISSING lines reported: 2 (exactly the two deleted keys)
