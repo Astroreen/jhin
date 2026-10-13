@@ -9,8 +9,15 @@
  * output shape detection picks {@code code_block} or {@code markdown}, a
  * blank tool name falls back to the {@code unknown} placeholder card
  * instead of throwing, the work rows carry the shine layer, the terminal
- * chips and the group toggle anatomy, and the card body emits the bare
- * {@code hidden} attribute on {@code ev-<seq>-body}.
+ * chips and the group toggle anatomy, the lifecycle row maps the
+ * {@code queued}/{@code running}/{@code done}/{@code failed} states onto
+ * the chips, the success glyph with the trailing duration and the danger
+ * tone under the {@code ev-<seq>-lifecycle} id, the work log entry with its
+ * trailing muted timestamp, the working strip with the spinner and the
+ * shine layer, the assistant meta {@code model · effort} line and the
+ * {@code ev-<seq>-work-log-entry}, {@code ev-<seq>-working} and
+ * {@code ev-<seq>-assistant-meta} id suffixes, and the card body emits
+ * the bare {@code hidden} attribute on {@code ev-<seq>-body}.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -183,6 +190,122 @@ class MessageCardBuilderTest {
                 .contains("\"id\":\"ev-62-toggle\"")
                 .contains("\"id\":\"ev-62-body\"")
                 .contains("\"hidden\":true");
+    }
+
+    // --- the run lifecycle row ----------------------------------------------
+
+    @Test
+    void theLifecycleQueuedAndRunningStatesMapToThePendingAndRunningChips() {
+        assertThat(Json.write(MessageCardBuilder.lifecycleRow(
+                70, "queued", "Run", "").toJson()))
+                .contains("Pending").contains("$color.warning");
+        assertThat(Json.write(MessageCardBuilder.lifecycleRow(
+                71, "running", "Run", "").toJson()))
+                .contains("Running").contains("$color.info");
+    }
+
+    @Test
+    void theLifecycleDoneStateShowsTheSuccessGlyphAndTheTrailingDuration() {
+        String wire = Json.write(MessageCardBuilder.lifecycleRow(
+                72, "done", "Run", "1.2s").toJson());
+        assertThat(wire)
+                .contains("check_circle")
+                .contains("$color.success")
+                .contains("Done")
+                .contains("1.2s");
+        assertThat(Json.write(MessageCardBuilder.lifecycleRow(
+                72, "done", "Run", "").toJson()))
+                .doesNotContain("\"style\":\"caption\"");
+    }
+
+    @Test
+    void theLifecycleFailedStateCarriesTheDangerToneAndTheErrorChip() {
+        String wire = Json.write(MessageCardBuilder.lifecycleRow(
+                73, "failed", "Run", "").toJson());
+        assertThat(wire)
+                .contains("Error")
+                .contains("$color.error");
+    }
+
+    @Test
+    void theLifecycleRowCarriesTheLifecycleIdSuffixAndTheWorkRowKind() {
+        UiNode row = MessageCardBuilder.lifecycleRow(74, "queued", "Run", "1.2s");
+        assertThat(row.props())
+                .containsEntry("id", "ev-74-lifecycle")
+                .containsEntry(MessageCardBuilder.ROW_KIND_PROP, MessageCardBuilder.KIND_WORK)
+                .containsEntry(MessageCardBuilder.ROW_KEY_PROP, "work:lifecycle");
+        assertThat(Json.write(row.toJson())).contains("\"id\":\"ev-74-lifecycle\"");
+    }
+
+    // --- the work log entry, working strip and assistant meta rows ------------
+
+    @Test
+    void theWorkLogRowRendersTheIconTheLabelAndTheTrailingMutedTimestamp() {
+        String wire = Json.write(MessageCardBuilder.workLogRow(
+                80, "bolt", "Compact", "12:00").toJson());
+        assertThat(wire)
+                .contains("bolt")
+                .contains("Compact")
+                .contains("12:00")
+                .contains("$color.muted");
+    }
+
+    @Test
+    void theWorkLogRowFallsBackToTheWorkGlyphAndTheWorkLabel() {
+        String wire = Json.write(MessageCardBuilder.workLogRow(
+                81, "", "", "").toJson());
+        assertThat(wire).contains("Work");
+        assertThat(Json.write(MessageCardBuilder.workLogRow(
+                81, "", "", "").toJson()))
+                .doesNotContain("12:00");
+    }
+
+    @Test
+    void theWorkLogRowCarriesTheWorkLogEntryIdSuffixAndTheWorkRowKind() {
+        UiNode row = MessageCardBuilder.workLogRow(82, "bolt", "Compact", "12:00");
+        assertThat(row.props())
+                .containsEntry("id", "ev-82-work-log-entry")
+                .containsEntry(MessageCardBuilder.ROW_KIND_PROP, MessageCardBuilder.KIND_WORK)
+                .containsEntry(MessageCardBuilder.ROW_KEY_PROP, "work:work-log-entry");
+    }
+
+    @Test
+    void theWorkingStripRowCarriesTheSpinnerTheShineAndTheWorkingLabel() {
+        String wire = Json.write(MessageCardBuilder.workingStripRow(83, "").toJson());
+        assertThat(wire)
+                .contains("circular")
+                .contains("live-tool-shine")
+                .contains("Working\u2026");
+    }
+
+    @Test
+    void theWorkingStripRowCarriesTheWorkingIdSuffixAndTheWorkRowKind() {
+        UiNode row = MessageCardBuilder.workingStripRow(84, "Compacting\u2026");
+        assertThat(row.props())
+                .containsEntry("id", "ev-84-working")
+                .containsEntry(MessageCardBuilder.ROW_KIND_PROP, MessageCardBuilder.KIND_WORK)
+                .containsEntry(MessageCardBuilder.ROW_KEY_PROP, "work:working");
+    }
+
+    @Test
+    void theAssistantMetaRowRendersTheMiddleTruncatedModelAndTheEffortLabel() {
+        String wire = Json.write(MessageCardBuilder.assistantMetaRow(
+                85, "anthropic/claude-opus-4-5", "high").toJson());
+        assertThat(wire).contains("high").contains("$color.muted");
+        assertThat(Json.write(MessageCardBuilder.assistantMetaRow(
+                85, null, null).toJson()))
+                .doesNotContain("high");
+    }
+
+    @Test
+    void theAssistantMetaRowCarriesTheAssistantMetaIdSuffixAndRowKind() {
+        UiNode row = MessageCardBuilder.assistantMetaRow(
+                86, "anthropic/claude-opus-4-5", "high");
+        assertThat(row.props())
+                .containsEntry("id", "ev-86-assistant-meta")
+                .containsEntry(MessageCardBuilder.ROW_KIND_PROP,
+                        MessageCardBuilder.KIND_ASSISTANT_META)
+                .containsEntry(MessageCardBuilder.ROW_KEY_PROP, "assistant-meta:assistant-meta");
     }
 
     // --- the card body expansion channel -------------------------------------

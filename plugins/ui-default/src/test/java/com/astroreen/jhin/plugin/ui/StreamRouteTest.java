@@ -114,7 +114,7 @@ class StreamRouteTest {
 
         // 10 events -> 8 frames: the two text_deltas coalesce into the single
         // message_end patch (delta batching, T205)
-        assertThat(frames).hasSize(8);
+        assertThat(frames).hasSize(10);
         // user_message -> the message:user row on the message surface.
         Map<String, Object> user = payload(frames.get(0), "node");
         assertThat(user.get("id")).isEqualTo("ev-1");
@@ -128,22 +128,29 @@ class StreamRouteTest {
         Map<String, Object> grown = payload(frames.get(2), "patch");
         assertThat(grown.get("id")).isEqualTo("msg-2");
         assertThat(String.valueOf(grown.get("html"))).contains("<p>Hello</p>");
-        // run_start -> the working row; run_end -> the remove of that row.
+        // run_start -> the working row and the running lifecycle row.
         Map<String, Object> working = payload(frames.get(3), "node");
         assertThat(working.get("id")).isEqualTo("ev-6");
         assertThat(String.valueOf(working.get("html"))).contains("agent is working");
-        assertThat(frames.get(4)).containsExactly(Map.entry("remove", "ev-6"));
+        Map<String, Object> lifecycle = payload(frames.get(4), "node");
+        assertThat(lifecycle.get("id")).isEqualTo("ev-6-lifecycle");
+        assertThat(String.valueOf(lifecycle.get("html"))).contains("Running");
+        // run_end -> the done lifecycle row and the remove of that strip.
+        Map<String, Object> settled = payload(frames.get(5), "replace");
+        assertThat(settled.get("id")).isEqualTo("ev-6-lifecycle");
+        assertThat(String.valueOf(settled.get("html"))).contains("Done");
+        assertThat(frames.get(6)).containsExactly(Map.entry("remove", "ev-6"));
         // tool_use -> the live tool card; its matched tool_result replaces
         // that row with the done card (envelope ev-<useSeq>, row root ev-<resultSeq>).
-        Map<String, Object> toolUse = payload(frames.get(5), "node");
+        Map<String, Object> toolUse = payload(frames.get(7), "node");
         assertThat(toolUse.get("id")).isEqualTo("ev-8");
         assertThat(String.valueOf(toolUse.get("html"))).contains("read");
-        Map<String, Object> toolResult = payload(frames.get(6), "replace");
+        Map<String, Object> toolResult = payload(frames.get(8), "replace");
         assertThat(toolResult.get("id")).isEqualTo("ev-8");
         assertThat(String.valueOf(toolResult.get("html")))
                 .contains("data-jhin-id=\"ev-9\"").contains("done");
         // error -> the event:error row in the danger tone.
-        Map<String, Object> error = payload(frames.get(7), "node");
+        Map<String, Object> error = payload(frames.get(9), "node");
         assertThat(error.get("id")).isEqualTo("ev-10");
         assertThat(String.valueOf(error.get("html"))).contains("boom");
         // no frame carries a level-3 payload key

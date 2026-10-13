@@ -568,6 +568,44 @@ public final class MessageCardBuilder {
     }
 
     /**
+     * The assistant-meta line (T306): the plain muted {@code model ·
+     * effort} run line — the {@link PathDisplay} middle-truncated model
+     * label beside the effort tag (the upstream
+     * {@code AssistantMessageMeta} label set,
+     * {@code MessagesTimeline.tsx:2600-2665}, without the action stubs).
+     * The {@code assistant-meta:assistant-meta} envelope carries the
+     * {@code ev-<seq>-assistant-meta} id the run frames {@code replace}.
+     *
+     * @param seq    the sequence number anchoring the row
+     * @param model  the run model label, may be {@code null}
+     * @param effort the run effort label, may be {@code null}
+     * @return the {@code assistant-meta:assistant-meta} row
+     */
+    public static UiNode assistantMetaRow(long seq, String model, String effort) {
+        String label = PathDisplay.middleTruncate(model, PathDisplay.DEFAULT_MAX);
+        if (effort != null && !effort.isBlank()) {
+            label = label.isEmpty() ? effort : label + " \u00b7 " + effort;
+        }
+        UiNode line = Ui.row().align("center").gap(8)
+                .child(Ui.text(label)
+                        .style("caption")
+                        .color(MUTED)
+                        .maxLines(1)
+                        .ellipsis(true)
+                        .flex(1)
+                        .build())
+                .build();
+        return Ui.container()
+                .id(eventId(seq) + "-assistant-meta")
+                .direction("column")
+                .gap(0)
+                .set(ROW_KIND_PROP, KIND_ASSISTANT_META)
+                .set(ROW_KEY_PROP, rowKey(KIND_ASSISTANT_META, "assistant-meta"))
+                .child(line)
+                .build();
+    }
+
+    /**
      * The T303 context chip: the model and provider labels beside the
      * {@link PathDisplay} workdir path chip (the full workdir in the tooltip)
      * — the run context one row carries.
@@ -1083,6 +1121,47 @@ public final class MessageCardBuilder {
             line.child(Ui.text(time).style("caption").color(MUTED).build());
         }
         return rowContainer(KIND_EVENT, EVENT_WORK_LOG_ENTRY, seq, null, 4, line.build());
+    }
+
+    /**
+     * The work log row (T306): one WorkLog line — the icon, the label and
+     * the trailing muted timestamp on one line (the upstream
+     * {@code WorkLogLine}, {@code WorkLog.tsx:31-45}, the work-family twin
+     * of {@link #workLogEntryEventRow}). The {@code work:work-log-entry}
+     * envelope carries the {@code ev-<seq>-work-log-entry} id the run
+     * frames address.
+     *
+     * @param seq       the sequence number anchoring the row
+     * @param icon      the line icon glyph, blank falls back to the
+     *                  {@code work-log-entry} tool glyph
+     * @param label     the work log label
+     * @param timestamp the trailing timestamp, blank to omit
+     * @return the {@code work:work-log-entry} row
+     */
+    public static UiNode workLogRow(long seq, String icon, String label, String timestamp) {
+        Ui.RowBuilder line = Ui.row().align("center").gap(8)
+                .child(Ui.icon()
+                        .icon(icon == null || icon.isBlank() ? iconOf(EVENT_WORK_LOG_ENTRY) : icon)
+                        .size(16)
+                        .color(MUTED)
+                        .build())
+                .child(Ui.text(label == null || label.isBlank() ? "Work" : label)
+                        .style("small")
+                        .maxLines(1)
+                        .ellipsis(true)
+                        .flex(1)
+                        .build());
+        if (timestamp != null && !timestamp.isBlank()) {
+            line.child(Ui.text(timestamp).style("caption").color(MUTED).build());
+        }
+        return Ui.container()
+                .id(eventId(seq) + "-work-log-entry")
+                .direction("column")
+                .gap(0)
+                .set(ROW_KIND_PROP, KIND_WORK)
+                .set(ROW_KEY_PROP, rowKey(KIND_WORK, EVENT_WORK_LOG_ENTRY))
+                .child(line.build())
+                .build();
     }
 
     /**
@@ -1635,6 +1714,84 @@ public final class MessageCardBuilder {
                 .child(Ui.text(WORKING_LABEL).style("small").color(MUTED).build())
                 .build();
         return rowContainer(KIND_WORKING, "run", seq, null, 0, line);
+    }
+
+    /**
+     * The working strip row (T306): the removable spinner strip of an open
+     * run — the circular indicator, the short label and the shine layer
+     * (upstream {@code WorkingTimelineRow},
+     * {@code MessagesTimeline.tsx:3405-3422}). The {@code work:working}
+     * envelope carries the {@code ev-<seq>-working} id the run frames
+     * {@code remove} at {@code run_end}.
+     *
+     * @param seq   the sequence number anchoring the row
+     * @param label the strip label, blank falls back to {@code "Working…"}
+     * @return the {@code work:working} row
+     */
+    public static UiNode workingStripRow(long seq, String label) {
+        UiNode line = Ui.row().align("center").gap(8)
+                .child(Ui.progress().kind("circular").width(14).height(14).build())
+                .child(Ui.text(label == null || label.isBlank() ? "Working\u2026" : label)
+                        .style("small")
+                        .color(MUTED)
+                        .maxLines(1)
+                        .ellipsis(true)
+                        .flex(1)
+                        .build())
+                .build();
+        return Ui.container()
+                .id(eventId(seq) + "-working")
+                .direction("column")
+                .gap(0)
+                .set(ROW_KIND_PROP, KIND_WORK)
+                .set(ROW_KEY_PROP, rowKey(KIND_WORK, "working"))
+                .child(line)
+                .child(liveToolShine())
+                .build();
+    }
+
+    /**
+     * The lifecycle row (T306): the one-line run lifecycle strip — the
+     * status chip and the muted label, plus the success glyph and the
+     * trailing muted duration once the run settled (the work log trailing
+     * timestamp shape). The {@code work:lifecycle} envelope mirrors the
+     * {@code rowContainer} kind props and carries the
+     * {@code ev-<seq>-lifecycle} id the run frames {@code replace} in place
+     * as the state advances.
+     *
+     * @param seq      the sequence number anchoring the row
+     * @param state    the lifecycle state ({@code queued}|{@code running}|
+     *                 {@code done}|{@code failed})
+     * @param label    the run label (e.g. {@code "Run"})
+     * @param duration the settled duration, blank to omit
+     * @return the {@code work:lifecycle} row
+     */
+    public static UiNode lifecycleRow(long seq, String state, String label, String duration) {
+        String status = state == null ? "" : state.trim();
+        boolean done = "done".equals(status);
+        Ui.RowBuilder line = Ui.row().align("center").gap(8);
+        if (done) {
+            line.child(Ui.icon().icon("check_circle").size(14).color(SUCCESS).build());
+        }
+        line.child(Ui.text(label == null || label.isBlank() ? "Run" : label)
+                .style("small")
+                .color(MUTED)
+                .maxLines(1)
+                .ellipsis(true)
+                .flex(1)
+                .build());
+        line.child(statusChip("queued".equals(status) ? "pending" : status));
+        if (done && duration != null && !duration.isBlank()) {
+            line.child(Ui.text(duration).style("caption").color(MUTED).build());
+        }
+        return Ui.container()
+                .id(eventId(seq) + "-lifecycle")
+                .direction("column")
+                .gap(0)
+                .set(ROW_KIND_PROP, KIND_WORK)
+                .set(ROW_KEY_PROP, rowKey(KIND_WORK, "lifecycle"))
+                .child(line.build())
+                .build();
     }
 
     /**

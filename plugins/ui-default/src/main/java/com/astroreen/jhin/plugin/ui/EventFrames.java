@@ -84,6 +84,7 @@ import com.astroreen.jhin.sdk.json.Json;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.LongSupplier;
 
@@ -240,6 +241,13 @@ final class EventFrames {
         private String chainName;
         private OpenCall chainFirst;
         private Group chainGroup;
+        private final LongSupplier clock;
+        /** The seq of the run whose lifecycle row is open, or -1. */
+        private long lifecycleSeq = -1;
+        /** Whether the open lifecycle row already settled as failed. */
+        private boolean lifecycleFailed;
+        /** The clock reading at the open run's start (done duration). */
+        private long runStartMillis;
 
         /** Creates a translator on the system clock. */
         Translator() {
@@ -253,6 +261,7 @@ final class EventFrames {
          * @param clock the wall clock in epoch milliseconds
          */
         Translator(LongSupplier clock) {
+            this.clock = clock;
             this.batcher = new DeltaBatcher(clock);
         }
 
@@ -314,13 +323,18 @@ final class EventFrames {
                     messageId = null;
                     batcher.reset();
                 }
-                case "run_start" -> workingRowId = MessageCardBuilder.eventId(seq);
+                case "run_start" -> {
+                    workingRowId = MessageCardBuilder.eventId(seq);
+                    openRun(seq);
+                }
                 case "run_end" -> {
                     workingRowId = null;
+                    closeRun();
                     openCalls.clear();
                 }
                 case "tool_use" -> useTool(payload, seq);
                 case "tool_result" -> settleTool(payload, seq);
+                case "error" -> failRun();
                 default -> {
                     // no translation state on the other kinds
                 }
@@ -354,14 +368,29 @@ final class EventFrames {
                 case "message_start" -> List.of(openMessage(seq));
                 case "run_start" -> {
                     workingRowId = MessageCardBuilder.eventId(seq);
-                    yield List.of(StreamFrames.node(MessageCardBuilder.workingRow(seq)));
+                    openRun(seq);
+                    yield List.of(
+                            StreamFrames.node(MessageCardBuilder.workingRow(seq)),
+                            StreamFrames.node(MessageCardBuilder.lifecycleRow(
+                                    seq, "running", "Run", "")));
                 }
-                case "run_end" -> List.of(endRun(payload, seq));
+                case "run_end" -> endRunFrames(payload, seq);
                 case "tool_use" -> List.of(useTool(payload, seq));
                 case "tool_result" -> List.of(settleTool(payload, seq));
                 case "session_updated" -> List.of(sessionUpdatedFrame(payload));
-                case "error" -> List.of(StreamFrames.node(MessageCardBuilder.dispatchEventRow(
-                        "error", payload, seq)));
+                case "error" -> {
+                    List<Map<String, Object>> out = new ArrayList<>();
+                    out.add(StreamFrames.node(MessageCardBuilder.dispatchEventRow(
+                            "error", payload, seq)));
+                    if (lifecycleSeq >= 0 && !lifecycleFailed) {
+                        failRun();
+                        out.add(StreamFrames.replace(
+                                MessageCardBuilder.eventId(lifecycleSeq) + "-lifecycle",
+                                MessageCardBuilder.lifecycleRow(
+                                        lifecycleSeq, "failed", "Run", "")));
+                    }
+                    yield out;
+                }
                 default -> List.of(StreamFrames.node(MessageCardBuilder.unknownRow(seq, wireType)));
             };
         }
@@ -413,20 +442,64 @@ final class EventFrames {
         }
 
         /**
-         * The {@code run_end} frame: the {@code remove} of the open working
-         * row; with no tracked row (a mid-stream join) it falls back to a
+         * The {@code run_end} frames: the {@code replace} of the run's
+         * lifecycle row to its done state (the duration of the run, the
+         * success glyph — a row already settled as failed keeps its danger
+         * tone) and the {@code remove} of the open working row; with no
+         * tracked row (a mid-stream join) the strip removal falls back to a
          * {@code replace} of the run-status badge so the composer status
          * line still settles (the badge colour is an attribute — a patch
          * cannot carry it, docs/sdui.md section 5).
          */
-        private Map<String, Object> endRun(Map<String, Object> payload, long seq) {
-            if (workingRowId == null) {
-                return StreamFrames.replace(MessageCardBuilder.STATUS_ID,
-                        MessageCardBuilder.runBadge(MessageCardBuilder.STATUS_IDLE, null));
+        private List<Map<String, Object>> endRunFrames(Map<String, Object> payload, long seq) {
+            List<Map<String, Object>> out = new ArrayList<>();
+            if (lifecycleSeq >= 0 && !lifecycleFailed) {
+                out.add(StreamFrames.replace(lifecycleId(),
+                        MessageCardBuilder.lifecycleRow(lifecycleSeq, "done", "Run",
+                                formatDuration(clock.getAsLong() - runStartMillis))));
             }
-            Map<String, Object> frame = StreamFrames.remove(workingRowId);
+            closeRun();
+            if (workingRowId == null) {
+                out.add(StreamFrames.replace(MessageCardBuilder.STATUS_ID,
+                        MessageCardBuilder.runBadge(MessageCardBuilder.STATUS_IDLE, null)));
+                return out;
+            }
+            out.add(StreamFrames.remove(workingRowId));
             workingRowId = null;
-            return frame;
+            return out;
+        }
+
+        /** Opens the run lifecycle state at {@code run_start}. */
+        private void openRun(long seq) {
+            lifecycleSeq = seq;
+            lifecycleFailed = false;
+            runStartMillis = clock.getAsLong();
+        }
+
+        /** Marks the open lifecycle row as failed (sticky until the run closes). */
+        private void failRun() {
+            if (lifecycleSeq >= 0) {
+                lifecycleFailed = true;
+            }
+        }
+
+        /** Closes the run lifecycle state at {@code run_end}. */
+        private void closeRun() {
+            lifecycleSeq = -1;
+            lifecycleFailed = false;
+        }
+
+        /** The row id of the open lifecycle row. */
+        private String lifecycleId() {
+            return MessageCardBuilder.eventId(lifecycleSeq) + "-lifecycle";
+        }
+
+        /** The settled run duration label, e.g. {@code "1.4s"}. */
+        private static String formatDuration(long millis) {
+            if (millis < 0) {
+                return "";
+            }
+            return String.format(Locale.ROOT, "%.1fs", millis / 1000.0);
         }
 
         /** Flushes the batch when its window has elapsed. */

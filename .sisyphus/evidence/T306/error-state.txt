@@ -1,0 +1,28 @@
+T306 --fail: an error during an open run flips the lifecycle row to failed.
+One session is seeded with run_start {runId:"r2"} then error
+{message:"boom"} and NO run_end. The history rebuild keeps the
+failed lifecycle row in place (the sticky runFailed flag — a later
+run_end would not overwrite it): lifecycleRow(..., "failed", ...)
+renders the statusChip("failed") Error chip on the danger tone
+($color.error -> var(--color-error)) with no Running chip, and the
+error row ("boom") rides below it (MessageCardBuilder
+.errorEventRow, the event:error card).
+
+  seed: POST /sessions -> 7acda039-630f-4c0a-bd65-9239b2450a6a (fail-run)
+  POST /sessions/7acda039-630f-4c0a-bd65-9239b2450a6a/events run_start {"runId":"r2"} -> 201 (seq 1)
+  POST /sessions/7acda039-630f-4c0a-bd65-9239b2450a6a/events error {"message":"boom"} -> 201 (no run_end)
+
+  GET /ui/screen/chat:7acda039-630f-4c0a-bd65-9239b2450a6a -> 200 (fail-timeline.html)
+
+  lifecycle row region (ev-1-lifecycle, extracted from the screen):
+    data-jhin-id="ev-1-lifecycle" style="margin: 0px 0px 8px 0px; flex-direction: column; gap: 0px" class="jhin-container" data-jhin-row-kind="work" data-jhin-row-key="work:lifecycle"><div data-jhin-type="row" style="justify-self: center; align-self: center" class="jhin-row" data-jhin-gap="8"><span data-jhin-type="text" style="color: var(--color-muted-foreground); text-overflow: ellipsis; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; flex-grow: 1" class="jhin-text jhin-text-small">Run</span><span data-jhin-type="badge" style="background-color: var
+
+  the failed lifecycle row renders the Error chip (1 hit(s)) on
+  the danger tone var(--color-error) (1 hit(s)) and no
+  Running chip (0 hit(s)) (PASS)
+  the error row "boom" is present (1 hit(s), 1
+  event:error row(s)) (PASS)
+
+  The lifecycle row settles as failed in place and the run stays open
+  (no run_end): the screen is the negative proof that an error flips
+  ev-<seq>-lifecycle to the failed state without throwing.

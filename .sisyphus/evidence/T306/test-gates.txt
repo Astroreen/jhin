@@ -1,0 +1,7 @@
+T306 test gates — the two suites green on the run-lifecycle surface:
+BUILD SUCCESSFUL in 888ms
+BUILD SUCCESSFUL in 612ms
+
+  :jhin-plugin-ui-kit:test      342 tests
+  :jhin-plugin-ui-default:test  500 tests (MessageCardBuilderTest, EventFramesTest, StreamRouteTest, ChatScreenTest among them)
+  failures=0 errors=0 (expected 0/0)

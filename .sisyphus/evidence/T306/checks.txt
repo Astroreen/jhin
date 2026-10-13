@@ -1,0 +1,21 @@
+ok: build + two test gates green (342/500 tests, 0 failures; test-gates.txt)
+  MessageCardBuilder run lifecycle row                 1 hit(s)  PRESENT
+  MessageCardBuilder working-strip label               2 hit(s)  PRESENT
+  MessageCardBuilder work:lifecycle row key            2 hit(s)  PRESENT
+  EventFrames run_end settlement frames                2 hit(s)  PRESENT
+  EventFrames lifecycle row id                         2 hit(s)  PRESENT
+  EventFrames run_start open state                     3 hit(s)  PRESENT
+  EventFrames error fail state                         3 hit(s)  PRESENT
+  ChatScreen settled duration label                    2 hit(s)  PRESENT
+  ChatScreen work:lifecycle call sites                 8 hit(s)  PRESENT
+ok: T306 sources carry the new surface (source-gates.txt)
+ok: 8 jars staged for seeding (kernel-env.txt)
+ok: kernel up on http://localhost:18443 (pid 2784448), GET /_jhin/health -> 200 in 3 s
+ok: seeded 6 run events on session e2f0c5ae-ca99-400e-ad1c-40a2faee88c2 via POST /sessions/{id}/events (seeded.txt)
+ok: frames: run_start node pair — working strip ev-1 + running lifecycle ev-1-lifecycle (run.jsonl)
+ok: frames: run_end replace ev-1-lifecycle with Done + remove of the working strip (run.jsonl)
+ok: screen: work:lifecycle row settled with the Done chip (timeline.html)
+ok: screen: duration label matched \d+\.\ds (0.1s) (timeline.html)
+ok: screen: working strip gone — no "agent is working" (timeline.html)
+ok: browser-unavailable.txt records the un-exercised visual cases
+ok: T306 QA PASS (summary.txt)

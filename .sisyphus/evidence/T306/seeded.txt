@@ -1,0 +1,9 @@
+T306 seeding — the sessions QA helper (POST /sessions/{id}/events):
+  qa-run -> e2f0c5ae-ca99-400e-ad1c-40a2faee88c2 (workdir /tmp/t306/wd)
+  run_start {"runId":"r1"}        -> 201 (seq 1)
+  user_message {"text":"hi"}       -> 201
+  message_start {"role":"assistant"} -> 201
+  text_delta {"text":"working"}    -> 201
+  message_end {"text":"working"}   -> 201
+  run_end {"runId":"r1"}          -> 201
+  the lifecycle row anchors at ev-1-lifecycle

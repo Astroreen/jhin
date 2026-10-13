@@ -1,0 +1,50 @@
+T306 QA — PASS
+
+  mode:              happy
+  suites:            :jhin-plugin-ui-kit:test 342, :jhin-plugin-ui-default:test 500 (0 failures)
+  scripted run:      run_start/user_message/message_start/text_delta/message_end/run_end
+                     seeded via POST /sessions/{id}/events (run_start at seq 1)
+  stream replay:     7 frames — the run_start node pair (working strip ev-1
+                     + running lifecycle ev-1-lifecycle), the run_end replace with Done
+                     and the remove of the strip (run.jsonl)
+  screen history:    work:lifecycle settled with the Done chip and the duration label
+                     (0.1s), the working strip gone (timeline.html)
+  negative:          an error on an open run flips the lifecycle row to failed
+                     (Error chip on the danger tone, sticky) — proven in --fail mode
+
+  evidence: /home/astroreen/Documents/jhin/.sisyphus/evidence/T306
+  ok: build + two test gates green (342/500 tests, 0 failures; test-gates.txt)
+    MessageCardBuilder run lifecycle row                 1 hit(s)  PRESENT
+    MessageCardBuilder working-strip label               2 hit(s)  PRESENT
+    MessageCardBuilder work:lifecycle row key            2 hit(s)  PRESENT
+    EventFrames run_end settlement frames                2 hit(s)  PRESENT
+    EventFrames lifecycle row id                         2 hit(s)  PRESENT
+    EventFrames run_start open state                     3 hit(s)  PRESENT
+    EventFrames error fail state                         3 hit(s)  PRESENT
+    ChatScreen settled duration label                    2 hit(s)  PRESENT
+    ChatScreen work:lifecycle call sites                 8 hit(s)  PRESENT
+  ok: T306 sources carry the new surface (source-gates.txt)
+  ok: 8 jars staged for seeding (kernel-env.txt)
+  ok: kernel up on http://localhost:18443 (pid 2784448), GET /_jhin/health -> 200 in 3 s
+  ok: seeded 6 run events on session e2f0c5ae-ca99-400e-ad1c-40a2faee88c2 via POST /sessions/{id}/events (seeded.txt)
+  ok: frames: run_start node pair — working strip ev-1 + running lifecycle ev-1-lifecycle (run.jsonl)
+  ok: frames: run_end replace ev-1-lifecycle with Done + remove of the working strip (run.jsonl)
+  ok: screen: work:lifecycle row settled with the Done chip (timeline.html)
+  ok: screen: duration label matched \d+\.\ds (0.1s) (timeline.html)
+  ok: screen: working strip gone — no "agent is working" (timeline.html)
+  ok: browser-unavailable.txt records the un-exercised visual cases
+
+T306 QA --fail — PASS
+
+  mode:              fail
+  error on open run: run_start {runId:"r2"} then error {message:"boom"}, no run_end
+  lifecycle row:     failed presentation — Error chip in the row region,
+                     no Running label there, error row "boom" present (error-state.txt)
+
+  evidence: /home/astroreen/Documents/jhin/.sisyphus/evidence/T306
+  ok: build + two test gates green (342/500 tests, 0 failures; test-gates.txt)
+  ok: kernel up on http://localhost:18443 (pid 2785826), GET /_jhin/health -> 200 in 3 s
+  06:40:49 -- negative proof: an error on an open run must settle the lifecycle row as failed
+  ok: error on an open run -> failed lifecycle row: Error chip on var(--color-error), no Running (error-state.txt)
+  ok: error row "boom" present on the screen (error-state.txt)
+  ok: T306 QA --fail: the negative proof PASS

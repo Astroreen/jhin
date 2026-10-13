@@ -241,6 +241,15 @@ public final class ChatScreen {
                 : MessageCardBuilder.STATUS_IDLE;
     }
 
+    /** The settled run duration label, e.g. {@code "1.4s"} (locale-free). */
+    private static String durationLabel(long millis) {
+        if (millis < 0) {
+            return "";
+        }
+        long tenths = millis / 100;
+        return (tenths / 10) + "." + (tenths % 10) + "s";
+    }
+
     private static String statusColor(String status) {
         return switch (status) {
             case MessageCardBuilder.STATUS_RUNNING -> "$color.accent";
@@ -446,6 +455,10 @@ public final class ChatScreen {
         long openSeq = -1;
         StringBuilder buffer = new StringBuilder();
         Long workingSeq = null;
+        int lifecycleRow = -1;
+        long lifecycleSeq = -1;
+        long runStartTs = 0;
+        boolean runFailed = false;
         for (EventRecord record : history) {
             long seq = record.seq();
             Map<String, Object> payload = parse(record.payload());
@@ -477,10 +490,32 @@ public final class ChatScreen {
                         List.of(MessageCardBuilder.toolArgumentsNode(
                                 jsonOf(payload.get("arguments")), seq))));
                 case "tool_result" -> rows.add(toolResultRow(payload, seq));
-                case "run_start" -> workingSeq = seq;
-                case "run_end" -> workingSeq = null;
-                case "error" -> rows.add(MessageCardBuilder.dispatchEventRow(
-                        "error", payload, seq));
+                case "run_start" -> {
+                    workingSeq = seq;
+                    lifecycleSeq = seq;
+                    runStartTs = record.ts();
+                    runFailed = false;
+                    lifecycleRow = rows.size();
+                    rows.add(MessageCardBuilder.lifecycleRow(seq, "running", "Run", ""));
+                }
+                case "run_end" -> {
+                    workingSeq = null;
+                    if (lifecycleRow >= 0 && !runFailed) {
+                        rows.set(lifecycleRow, MessageCardBuilder.lifecycleRow(
+                                lifecycleSeq, "done", "Run",
+                                durationLabel(record.ts() - runStartTs)));
+                    }
+                    lifecycleRow = -1;
+                }
+                case "error" -> {
+                    rows.add(MessageCardBuilder.dispatchEventRow(
+                            "error", payload, seq));
+                    if (lifecycleRow >= 0 && !runFailed) {
+                        runFailed = true;
+                        rows.set(lifecycleRow, MessageCardBuilder.lifecycleRow(
+                                lifecycleSeq, "failed", "Run", ""));
+                    }
+                }
                 default -> {
                 }
             }

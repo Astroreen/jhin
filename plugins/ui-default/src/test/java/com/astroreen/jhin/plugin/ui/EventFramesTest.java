@@ -97,9 +97,13 @@ class EventFramesTest {
         List<Map<String, Object>> frames =
                 translator.frames("run_end", json("runId", "r1"), 7);
 
-        assertThat(frames).hasSize(1);
-        assertThat(frames.get(0)).containsExactly(Map.entry("remove", "ev-6"));
-        assertThat(Json.write(frames.get(0))).doesNotContain("\"props\"");
+        // run_end settles the lifecycle row to done, then removes the strip
+        assertThat(frames).hasSize(2);
+        Map<String, Object> settled = payload(frames.get(0), "replace");
+        assertThat(settled.get("id")).isEqualTo("ev-6-lifecycle");
+        assertThat(String.valueOf(settled.get("html"))).contains("Done");
+        assertThat(frames.get(1)).containsExactly(Map.entry("remove", "ev-6"));
+        assertThat(Json.write(frames)).doesNotContain("\"props\"");
     }
 
     @Test

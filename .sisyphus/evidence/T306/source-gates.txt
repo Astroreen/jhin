@@ -1,0 +1,12 @@
+T306 static source gates — the new surface must exist in the sources
+the wire proofs exercise.
+
+  MessageCardBuilder run lifecycle row                 1 hit(s)  PRESENT
+  MessageCardBuilder working-strip label               2 hit(s)  PRESENT
+  MessageCardBuilder work:lifecycle row key            2 hit(s)  PRESENT
+  EventFrames run_end settlement frames                2 hit(s)  PRESENT
+  EventFrames lifecycle row id                         2 hit(s)  PRESENT
+  EventFrames run_start open state                     3 hit(s)  PRESENT
+  EventFrames error fail state                         3 hit(s)  PRESENT
+  ChatScreen settled duration label                    2 hit(s)  PRESENT
+  ChatScreen work:lifecycle call sites                 8 hit(s)  PRESENT

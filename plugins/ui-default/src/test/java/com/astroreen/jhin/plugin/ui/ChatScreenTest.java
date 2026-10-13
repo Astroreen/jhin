@@ -34,9 +34,17 @@ class ChatScreenTest {
         Map<String, Object> json = render(fullRun());
 
         List<Map<String, Object>> items = messageItems(json);
-        assertThat(items).hasSize(5);
+        assertThat(items).hasSize(6);
 
-        Map<String, Object> first = items.get(0);
+        // the run's lifecycle row opens the transcript and settles to done
+        Map<String, Object> lifecycle = items.get(0);
+        assertThat(lifecycle).containsEntry("type", "container")
+                .containsEntry("id", "ev-1-lifecycle")
+                .containsEntry("rowKind", "work")
+                .containsEntry("rowKey", "work:lifecycle");
+        assertThat(Json.write(lifecycle)).contains("Done").contains("11.0s");
+
+        Map<String, Object> first = items.get(1);
         assertThat(first).containsEntry("type", "container")
                 .containsEntry("id", "ev-2")
                 .containsEntry("rowKind", "message")
@@ -44,7 +52,7 @@ class ChatScreenTest {
                 .containsEntry("align", "centerRight");
         assertThat(Json.write(first)).contains("Fix the bug").contains("$color.message");
 
-        Map<String, Object> assistant = items.get(1);
+        Map<String, Object> assistant = items.get(2);
         assertThat(assistant).containsEntry("type", "container")
                 .containsEntry("id", "ev-3")
                 .containsEntry("rowKind", "message")
@@ -52,7 +60,7 @@ class ChatScreenTest {
                 .containsEntry("align", "centerLeft");
         assertThat(Json.write(assistant)).contains("\"id\":\"msg-3\"").contains("Let me look.");
 
-        Map<String, Object> toolUse = items.get(2);
+        Map<String, Object> toolUse = items.get(3);
         assertThat(toolUse).containsEntry("type", "container")
                 .containsEntry("id", "ev-7")
                 .containsEntry("rowKind", "work")
@@ -60,14 +68,14 @@ class ChatScreenTest {
         assertThat(Json.write(toolUse)).contains("/tmp/a.txt").contains("hello world!")
                 .contains("\"collapsed\":true");
 
-        Map<String, Object> toolResult = items.get(3);
+        Map<String, Object> toolResult = items.get(4);
         assertThat(toolResult).containsEntry("type", "container")
                 .containsEntry("id", "ev-8")
                 .containsEntry("rowKind", "work")
                 .containsEntry("rowKey", "work:log");
         assertThat(Json.write(toolResult)).contains("ok");
 
-        Map<String, Object> closing = items.get(4);
+        Map<String, Object> closing = items.get(5);
         assertThat(closing).containsEntry("type", "container")
                 .containsEntry("id", "ev-9")
                 .containsEntry("rowKind", "message")
@@ -149,10 +157,17 @@ class ChatScreenTest {
                 event(2, EventType.RUN_END, "{\"runId\":\"r1\"}")));
 
         List<Map<String, Object>> openItems = messageItems(open);
-        assertThat(openItems).hasSize(1);
-        assertThat(openItems.get(0)).containsEntry("rowKind", "working")
+        assertThat(openItems).hasSize(2);
+        assertThat(openItems.get(0)).containsEntry("rowKind", "work")
+                .containsEntry("rowKey", "work:lifecycle");
+        assertThat(Json.write(openItems.get(0))).contains("Running");
+        assertThat(openItems.get(1)).containsEntry("rowKind", "working")
                 .containsEntry("rowKey", "working:run");
-        assertThat(messageItems(closed)).isEmpty();
+        // a closed run keeps the settled lifecycle row and drops the strip
+        List<Map<String, Object>> closedItems = messageItems(closed);
+        assertThat(closedItems).hasSize(1);
+        assertThat(closedItems.get(0)).containsEntry("rowKey", "work:lifecycle");
+        assertThat(Json.write(closedItems.get(0))).contains("Done");
     }
 
     @Test
@@ -162,11 +177,11 @@ class ChatScreenTest {
         List<Map<String, Object>> items = messageItems(json);
         // ev-7 and ev-8 are both work:log rows — the first closes with no
         // gap, the second (the group end) with the 8px work gap.
-        assertThat(items.get(2)).containsEntry("rowKey", "work:log");
-        assertThat(castMap(items.get(2).get("margin"))).containsEntry("bottom", 0);
-        assertThat(castMap(items.get(3).get("margin"))).containsEntry("bottom", 8);
+        assertThat(items.get(3)).containsEntry("rowKey", "work:log");
+        assertThat(castMap(items.get(3).get("margin"))).containsEntry("bottom", 0);
+        assertThat(castMap(items.get(4).get("margin"))).containsEntry("bottom", 8);
         // The closing assistant message closes with the 16px message gap.
-        assertThat(castMap(items.get(4).get("margin"))).containsEntry("bottom", 16);
+        assertThat(castMap(items.get(5).get("margin"))).containsEntry("bottom", 16);
     }
 
     @Test

@@ -1,0 +1,6 @@
+ok: build + two test gates green (342/500 tests, 0 failures; test-gates.txt)
+ok: kernel up on http://localhost:18443 (pid 2785826), GET /_jhin/health -> 200 in 3 s
+06:40:49 -- negative proof: an error on an open run must settle the lifecycle row as failed
+ok: error on an open run -> failed lifecycle row: Error chip on var(--color-error), no Running (error-state.txt)
+ok: error row "boom" present on the screen (error-state.txt)
+ok: T306 QA --fail: the negative proof PASS
