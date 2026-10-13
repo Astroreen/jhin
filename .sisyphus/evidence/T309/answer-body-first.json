@@ -1,0 +1,8 @@
+{
+  "action": "answer-question",
+  "payload": {
+    "sessionId": "4da13fc3-2ec0-4938-985d-cc791cc1ecaa",
+    "callId": "qa-ask-1",
+    "answer": "Yes"
+  }
+}

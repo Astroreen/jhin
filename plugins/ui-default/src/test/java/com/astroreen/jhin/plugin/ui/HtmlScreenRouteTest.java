@@ -57,7 +57,7 @@ class HtmlScreenRouteTest {
         store = services.find(SessionStore.class).orElseThrow();
         eventLog = services.find(EventLog.class).orElseThrow();
         Screens screens = new Screens(store, eventLog, services, kernel(),
-                new Features(true, false, false, false), UiSettings.open(tmp));
+                new Features(true, false, false, false, false), UiSettings.open(tmp));
         route = new ScreenRoute(screens, new CapabilityTailor(eventLog));
     }
 

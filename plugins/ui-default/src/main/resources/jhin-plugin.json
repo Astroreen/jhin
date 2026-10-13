@@ -12,6 +12,7 @@
     {"id": "jhin.security", "versionRange": ">=0.2.0", "optional": true},
     {"id": "jhin.llm", "versionRange": ">=0.2.0", "optional": true},
     {"id": "jhin.agent", "versionRange": ">=0.2.0", "optional": true},
+    {"id": "jhin.tools-builtin", "versionRange": ">=0.2.0", "optional": true},
     {"id": "jhin.reload", "versionRange": ">=0.2.0", "optional": true}
   ]
 }

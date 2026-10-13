@@ -5,6 +5,6 @@
   "name": "Tools Built-in",
   "description": "The built-in pure-Java tool set (ls, write, read, edit, edit-diff, find, grep, bash, powershell) contributed to jhin.agent.",
   "mainClass": "com.astroreen.jhin.plugin.toolsbuiltin.ToolsPlugin",
-  "exports": [],
+  "exports": ["com.astroreen.jhin.plugin.toolsbuiltin.api"],
   "requires": [{"id": "jhin.agent", "versionRange": ">=0.2.0", "optional": false}]
 }

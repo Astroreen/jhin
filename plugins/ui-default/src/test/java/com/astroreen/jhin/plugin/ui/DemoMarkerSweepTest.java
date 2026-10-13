@@ -97,7 +97,7 @@ class DemoMarkerSweepTest {
             "sessions", "settings", "settings:appearance", "settings:keybindings",
             "settings:providers", "settings:archived", "settings:licenses", "pair");
 
-    private static final Features EVERYTHING = new Features(true, true, true, true);
+    private static final Features EVERYTHING = new Features(true, true, true, true, true);
 
     @TempDir
     Path tmp;

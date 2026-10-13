@@ -1,0 +1,5 @@
+T309 run completion — GET /sessions/ed173e05-e327-414f-be54-e48a725cd38b/events (events.sse / events.jsonl):
+  event types: user_message run_start message_start tool_use tool_result message_start text_delta message_end run_end 
+  tool_result id/content/error: qa-ask-1 / "Yes" / false
+  message_end text: "Done."
+  events.jsonl lines: 9

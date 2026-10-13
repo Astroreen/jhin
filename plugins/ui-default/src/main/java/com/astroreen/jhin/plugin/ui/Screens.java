@@ -36,6 +36,7 @@ import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
 import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
+import com.astroreen.jhin.plugin.toolsbuiltin.api.QuestionBridge;
 import com.astroreen.jhin.plugin.ui.screens.ChatScreen;
 import com.astroreen.jhin.plugin.ui.screens.ConnectScreen;
 import com.astroreen.jhin.plugin.ui.screens.EnrollScreen;
@@ -173,7 +174,8 @@ final class Screens implements ScreenRegistry {
         return session.map(open -> (Supplier<UiNode>) () -> ChatScreen.render(
                 open, events.list(open.id(), 0),
                 providersPresent() ? modelChoices(account) : List.of(),
-                providersPresent() ? settings.favoriteModels() : List.of()));
+                providersPresent() ? settings.favoriteModels() : List.of(),
+                questionsPresent()));
     }
 
     /**
@@ -233,6 +235,20 @@ final class Screens implements ScreenRegistry {
      */
     private Optional<ProviderRegistry> providerRegistry() {
         return features.llm() ? services.find(ProviderRegistry.class) : Optional.empty();
+    }
+
+    /** Whether the pending {@code ask_user} question surface exists. */
+    private boolean questionsPresent() {
+        return features.tools() && questionBridge().isPresent();
+    }
+
+    /**
+     * The published question bridge; empty when the tools plugin is absent or
+     * published nothing. Only called under the {@code tools} feature flag, so
+     * the API class is never loaded without that plugin.
+     */
+    private Optional<QuestionBridge> questionBridge() {
+        return features.tools() ? services.find(QuestionBridge.class) : Optional.empty();
     }
 
     /**

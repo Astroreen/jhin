@@ -91,9 +91,12 @@ import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.sdk.json.Json;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 public final class ChatScreen {
 
@@ -102,6 +105,9 @@ public final class ChatScreen {
 
     /** The input id the send action and the composer commands include. */
     private static final String MESSAGE_INPUT = "messageInput";
+
+    /** The tool name whose unanswered call renders the pending question panel. */
+    private static final String ASK_USER_TOOL = "ask_user";
 
     /** The content lane id and its server-side default width (T100). */
     public static final String LANE_ID = "chat-lane";
@@ -131,6 +137,14 @@ public final class ChatScreen {
 
     /** The composer surface id (the client paints shadow.composer there). */
     public static final String COMPOSER_ID = "composer";
+
+    /**
+     * The composer input region id: the normal {@link #messageInput} textarea,
+     * swapped for the pending {@code ask_user} question panel while one waits
+     * for its answer (the {@code answer-question} action patches this region
+     * back to the normal input).
+     */
+    public static final String INPUT_ID = "composer-input";
 
     /** The composer header control row id. */
     public static final String CONTROLS_ID = "composer-controls";
@@ -229,8 +243,19 @@ public final class ChatScreen {
     }
 
     /**
+     * One pending {@code ask_user} question of the transcript: the id of the
+     * waiting tool call the {@code answer-question} action keys the answer
+     * on, and the {@code question}/{@code options} parsed from the tool
+     * call's {@code arguments}. A screen-level record so this screen stays
+     * free of the {@code jhin.tools-builtin} API types.
+     */
+    public record PendingQuestion(String callId, String question, List<String> options) {
+    }
+
+    /**
      * Builds the chat screen of one session; the model picker starts empty
-     * ({@link #render(Session, List, List, List)} carries the real choices).
+     * ({@link #render(Session, List, List, List)} carries the real choices)
+     * and no pending {@code ask_user} question is shown.
      *
      * @param session the session the screen is opened for
      * @param history the stored events of the session in sequence order
@@ -253,9 +278,32 @@ public final class ChatScreen {
      */
     public static UiNode render(Session session, List<EventRecord> history,
                                 List<ModelChoice> choices, List<String> favoriteEntries) {
+        return render(session, history, choices, favoriteEntries, false);
+    }
+
+    /**
+     * Builds the chat screen of one session, rendering the pending
+     * {@code ask_user} question panel in the composer input region while the
+     * question bridge is present and the latest {@code ask_user} tool call of
+     * the history has no matching {@code tool_result} yet.
+     *
+     * @param session              the session the screen is opened for
+     * @param history              the stored events of the session in sequence order
+     * @param choices              the provider/model entries of the model picker
+     * @param favoriteEntries      the favourite {@code providerId/model} entries
+     * @param questionBridgePresent whether {@code jhin.tools-builtin} published
+     *                             its question bridge; when {@code false} the
+     *                             question panel never renders
+     * @return the screen node
+     */
+    public static UiNode render(Session session, List<EventRecord> history,
+                                List<ModelChoice> choices, List<String> favoriteEntries,
+                                boolean questionBridgePresent) {
         String sessionId = session.id();
         String status = statusOf(history);
         boolean runLive = MessageCardBuilder.STATUS_RUNNING.equals(status);
+        Optional<PendingQuestion> pending =
+                questionBridgePresent ? pendingQuestion(history) : Optional.empty();
         return Ui.screen()
                 .title(session.title())
                 .body(Ui.stack()
@@ -267,7 +315,7 @@ public final class ChatScreen {
                                 .child(header(session, status))
                                 .child(Ui.expanded()
                                         .child(lane(sessionId, history, runLive,
-                                                choices, favoriteEntries))
+                                                choices, favoriteEntries, pending))
                                         .build())
                                 .build())
                         .child(RightPanelBuilder.build(session, status))
@@ -297,6 +345,69 @@ public final class ChatScreen {
         return open ? MessageCardBuilder.STATUS_RUNNING
                 : limited ? MessageCardBuilder.STATUS_LIMITED
                 : MessageCardBuilder.STATUS_IDLE;
+    }
+
+    /**
+     * The pending {@code ask_user} question of one history: the latest
+     * {@code ask_user} {@code tool_use} that has no matching
+     * {@code tool_result} yet, with the {@code question} and the optional
+     * {@code options} parsed from the {@code arguments} JSON of the tool
+     * call. Empty when the latest question is answered, none was asked or the
+     * latest ask carries no readable question.
+     *
+     * @param history the stored events of the session in sequence order
+     * @return the pending question, or empty
+     */
+    public static Optional<PendingQuestion> pendingQuestion(List<EventRecord> history) {
+        String callId = null;
+        String question = null;
+        List<String> options = List.of();
+        Set<String> settled = new HashSet<>();
+        for (EventRecord record : history) {
+            Map<String, Object> payload = parse(record.payload());
+            switch (record.type().wire()) {
+                case "tool_use" -> {
+                    if (ASK_USER_TOOL.equals(textOf(payload, "name"))) {
+                        callId = textOf(payload, "id");
+                        question = null;
+                        options = List.of();
+                        Map<String, Object> arguments = parse(jsonOf(payload.get("arguments")));
+                        String text = textOf(arguments, "question");
+                        if (!text.isBlank()) {
+                            question = text;
+                            options = optionList(arguments.get("options"));
+                        }
+                    }
+                }
+                case "tool_result" -> {
+                    String id = textOf(payload, "id");
+                    if (!id.isBlank()) {
+                        settled.add(id);
+                    }
+                }
+                default -> {
+                }
+            }
+        }
+        if (callId == null || callId.isBlank() || question == null || settled.contains(callId)) {
+            return Optional.empty();
+        }
+        return Optional.of(new PendingQuestion(callId, question, options));
+    }
+
+    /** The {@code options} array of an {@code ask_user} argument object. */
+    private static List<String> optionList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        List<String> options = new ArrayList<>();
+        for (Object raw : list) {
+            String option = (raw == null) ? "" : String.valueOf(raw).trim();
+            if (!option.isEmpty()) {
+                options.add(option);
+            }
+        }
+        return List.copyOf(options);
     }
 
     /** The settled run duration label, e.g. {@code "1.4s"} (locale-free). */
@@ -436,7 +547,8 @@ public final class ChatScreen {
      * {@code chatWidth} switch.
      */
     private static UiNode lane(String sessionId, List<EventRecord> history, boolean runLive,
-                               List<ModelChoice> choices, List<String> favoriteEntries) {
+                               List<ModelChoice> choices, List<String> favoriteEntries,
+                               Optional<PendingQuestion> pending) {
         return Ui.container()
                 .id(LANE_ID)
                 .direction("column")
@@ -454,7 +566,7 @@ public final class ChatScreen {
                                 .build())
                         .build())
                 .child(seam())
-                .child(composer(sessionId, runLive, choices, favoriteEntries))
+                .child(composer(sessionId, runLive, choices, favoriteEntries, pending))
                 .build();
     }
 
@@ -642,12 +754,14 @@ public final class ChatScreen {
 
     /**
      * The composer (T103): the header control row, the context chips, the
-     * context-window meter, the draft textarea and the footer row. The
-     * surface keeps the reserved {@code composer} id the client paints the
-     * composer shadow and the bottom safe-area inset on.
+     * context-window meter, the input region and the footer row. The surface
+     * keeps the reserved {@code composer} id the client paints the composer
+     * shadow and the bottom safe-area inset on; the input region holds the
+     * message textarea or the pending {@code ask_user} question panel.
      */
     private static UiNode composer(String sessionId, boolean runLive,
-                                   List<ModelChoice> choices, List<String> favoriteEntries) {
+                                   List<ModelChoice> choices, List<String> favoriteEntries,
+                                   Optional<PendingQuestion> pending) {
         Map<String, Object> runPayload = Map.of("sessionId", sessionId);
         Ui.ColumnBuilder column = Ui.column()
                 .id(COMPOSER_ID)
@@ -656,19 +770,47 @@ public final class ChatScreen {
                 .child(controlRow(sessionId, choices, favoriteEntries))
                 .child(chipsRow())
                 .child(contextMeter())
-                .child(Ui.textarea(MESSAGE_INPUT)
-                        .label("Message")
-                        .required(true)
-                        .errorText("Write a message first")
-                        .minLines(1)
-                        .maxLines(8)
-                        .autofocus(true)
-                        .flex(1)
-                        .constraints(Map.of("minHeight", COMPOSER_MIN_HEIGHT))
-                        .build())
+                .child(inputRegion(sessionId, pending))
                 .child(footerRow(sessionId, runLive, runPayload))
                 .child(seedState());
         return column.build();
+    }
+
+    /**
+     * The composer input region ({@value #INPUT_ID}): the normal message
+     * textarea, or the pending {@code ask_user} question panel while one
+     * question waits for its answer.
+     */
+    private static UiNode inputRegion(String sessionId, Optional<PendingQuestion> pending) {
+        Ui.ContainerBuilder region = Ui.container()
+                .id(INPUT_ID)
+                .direction("column")
+                .gap(0);
+        if (pending.isEmpty()) {
+            return region.child(messageInput()).build();
+        }
+        PendingQuestion question = pending.orElseThrow();
+        return region.child(MessageCardBuilder.pendingUserInputPanel(
+                sessionId, question.callId(), question.question(), question.options()))
+                .build();
+    }
+
+    /**
+     * The normal composer message input — also the node the
+     * {@code answer-question} action patches the pending question panel back
+     * to.
+     */
+    public static UiNode messageInput() {
+        return Ui.textarea(MESSAGE_INPUT)
+                .label("Message")
+                .required(true)
+                .errorText("Write a message first")
+                .minLines(1)
+                .maxLines(8)
+                .autofocus(true)
+                .flex(1)
+                .constraints(Map.of("minHeight", COMPOSER_MIN_HEIGHT))
+                .build();
     }
 
     /**

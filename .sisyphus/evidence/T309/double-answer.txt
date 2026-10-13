@@ -1,0 +1,29 @@
+T309 --fail proof a: answering twice is idempotent-rejected — a delivered
+answer can never be overwritten by a stale panel.
+
+One session (4da13fc3-2ec0-4938-985d-cc791cc1ecaa) runs a scripted ask_user call (qa-ask-1) and blocks on the
+QuestionBridge future. The first POST /ui/action/answer-question (Yes)
+completes the future and the run reaches run_end with the answer as the
+tool_result content. The second POST (No) finds no pending question any
+more (QuestionBridgeImpl removes the future on the first answer) and is
+refused with the single honest error toast carrying the bridge's own
+message — the AnswerQuestionAction directive contract: HTTP 200 with one
+style=error toast and no composer-input patch (the milestone text names
+409/4xx; the implementation rejects at the directive level, never at the
+transport level — both codes are recorded here).
+
+  seed: POST /sessions -> 4da13fc3-2ec0-4938-985d-cc791cc1ecaa (double), POST /sessions/4da13fc3-2ec0-4938-985d-cc791cc1ecaa/messages -> 202
+  tool_use: call id qa-ask-1 (ask_user)
+  first answer:  POST answer-question {answer:"Yes"} -> HTTP 200
+  run after the first answer: run_end reached (double-events.sse)
+  tool_result content after both answers: "Yes" (error=false)
+    — the FIRST answer, never the rejected second one
+  second answer: POST answer-question {answer:"No"} -> HTTP 200
+    toast directives:     1 (expected 1)
+    toast style:          error (expected error)
+    toast text:           no pending question for 4da13fc3-2ec0-4938-985d-cc791cc1ecaa/qa-ask-1 (already answered, cancelled or never asked)
+    patch directives:     0 (expected 0)
+
+  The second answer is rejected exactly like the bridge contract says:
+  "no pending question for 4da13fc3-2ec0-4938-985d-cc791cc1ecaa/qa-ask-1 (already answered, cancelled or
+  never asked)" — idempotent, state unchanged (double-answer.txt).

@@ -1,0 +1,67 @@
+T309 QA — PASS
+
+  mode:              happy
+  suites:            :jhin-plugin-ui-kit:test 342, :jhin-plugin-ui-default:test 527,
+                     :jhin-plugin-tools-builtin:test 60 (0 failures)
+  provider:          POST /providers {"format":"openai","model":"t309-stub",
+                     "baseUrl":"http://127.0.0.1:18765/v1"} -> 4e2d82c5-c6a0-4468-a7f5-ee3bb9afd975
+                     (GET /providers/formats lists mock + openai; the ask_user turn
+                     is scripted by the one-file stub — qa-mock-llm cannot emit it)
+  blocked run:       session ed173e05-e327-414f-be54-e48a725cd38b, run 87af63b9-b614-4a7c-900e-111c3dd34ae9 — tool_use qa-ask-1 (ask_user),
+                     "Should I proceed with the T309 cleanup?"
+  pending panel:     panel.html — composer-pending-question + options
+                     >Yes< / >No< + the data-jhin-id="answer" reply row
+  answer:            POST /ui/action/answer-question -> patch composer-input
+                     (answer.json, restores the message input)
+  run completion:    events.jsonl — tool_result "Yes" (error=false),
+                     message_end "Done.", run_end reached
+  panel replaced:    panel-after.html — no question panel, message input back
+  negative:          double answer rejected + cancel path — proven in --fail mode
+
+  evidence: /home/astroreen/Documents/jhin/.sisyphus/evidence/T309
+  ok: build + three test gates green (342/527/60 tests, 0 failures; test-gates.txt)
+    AskUserTool ask_user tool name                           4 hit(s)  PRESENT
+    toolsbuiltin/api/QuestionBridge.java exists              PRESENT
+    tools-builtin manifest exports toolsbuiltin.api          1 hit(s)  PRESENT
+    AnswerQuestionAction answer-question handler             1 hit(s)  PRESENT
+    MessageCardBuilder composer-pending-question id          1 hit(s)  PRESENT
+    ChatScreen pendingUserInputPanel wiring                  1 hit(s)  PRESENT
+    QaTimelineScreen decorative approval fixture             5 hit(s)  PRESENT
+  ok: T309 sources carry the new surface (source-gates.txt)
+  ok: 9 jars staged for seeding (kernel-env.txt)
+  ok: kernel up on https://localhost:18443 (pid 3887933), GET /_jhin/health -> 200 in 4 s
+  ok: device enrolled (cli create-account/create-enrollment qa + POST /enroll -> 200, bearer token captured)
+  ok: scripted OpenAI stub up on http://127.0.0.1:18765 (pid 3888469), /_stub/health -> 200
+  ok: provider 4e2d82c5-c6a0-4468-a7f5-ee3bb9afd975 created (openai/t309-stub -> http://127.0.0.1:18765/v1) (seeded.txt)
+  ok: run 87af63b9-b614-4a7c-900e-111c3dd34ae9 accepted on session ed173e05-e327-414f-be54-e48a725cd38b (POST /sessions/ed173e05-e327-414f-be54-e48a725cd38b/messages -> 202)
+  ok: the scripted run blocks in the ask_user tool call qa-ask-1 (events-ask.sse)
+  ok: the composer carries the question + Yes/No chips + the answer reply row (panel.html, panel-check.txt)
+  ok: answer-question answers one composer-input patch that restores the message input (answer.json)
+  ok: event sequence contains in order: run_start tool_use tool_result message_end run_end
+  ok: the answer resumes the run: tool_result content "Yes", run_end reached (events.jsonl)
+  ok: the answered screen carries the message input again and no question panel (panel-after.html)
+  ok: browser-unavailable.txt records the un-exercised visual cases
+
+T309 QA --fail — PASS
+
+  mode:              fail
+  double answer:     the second POST answer-question is refused with the
+                     "no pending question" error toast (error) and no
+                     composer-input patch; the tool_result content stays the
+                     first answer "Yes" (double-answer.txt)
+  cancel path:       POST /ui/action/cancel -> "Run cancelled.", tool_result
+                     "Question cancelled" (error=true), one error event
+                     "cancelled", run_end count 0 (cancel.txt)
+
+  evidence: /home/astroreen/Documents/jhin/.sisyphus/evidence/T309
+  ok: build + three test gates green (342/527/60 tests, 0 failures; test-gates.txt)
+  ok: 9 jars staged for seeding (kernel-env.txt)
+  ok: kernel up on https://localhost:18443 (pid 3890572), GET /_jhin/health -> 200 in 4 s
+  ok: device enrolled (cli create-account/create-enrollment qa + POST /enroll -> 200, bearer token captured)
+  ok: scripted OpenAI stub up on http://127.0.0.1:18765 (pid 3891214), /_stub/health -> 200
+  ok: provider ffcdbeae-bf80-4aa5-ad4c-d1ad37f4c6a1 created (openai/t309-stub -> http://127.0.0.1:18765/v1) (seeded.txt)
+  16:16:02 -- negative proof a: the second answer-question is rejected, the first sticks
+  ok: the second answer-question is rejected with the error toast, the first answer sticks (double-answer.txt)
+  16:16:04 -- negative proof b: cancelling the run fails the pending question
+  ok: the cancel action answers "Run cancelled." and the run ends with error=cancelled (cancel.txt)
+  ok: T309 QA --fail: the negative proofs PASS

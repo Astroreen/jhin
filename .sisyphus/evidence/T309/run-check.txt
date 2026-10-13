@@ -1,0 +1,4 @@
+T309 run start — POST /sessions/ed173e05-e327-414f-be54-e48a725cd38b/messages -> runId 87af63b9-b614-4a7c-900e-111c3dd34ae9
+  tool_use name: ask_user
+  tool_use id:   qa-ask-1
+  tool_use arguments: {"question":"Should I proceed with the T309 cleanup?","options":["Yes","No"]}

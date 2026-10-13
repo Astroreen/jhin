@@ -1,0 +1,14 @@
+T309 provider seed — GET /providers/formats then POST /providers:
+  GET /providers/formats -> ["anthropic","gemini","mock","openai"]
+  (mock and openai both listed: qa-mock-llm and llm-builtin are loaded)
+  POST /providers {"format":"openai","model":"t309-stub","apiKey":"qa",
+    "baseUrl":"http://127.0.0.1:18765/v1"} -> 201
+  provider id: ffcdbeae-bf80-4aa5-ad4c-d1ad37f4c6a1
+
+  Why a stub: the qa-mock-llm factories script exactly one hardcoded
+  write tool call per conversation (QaMockChatModel) and cannot emit a
+  custom ask_user call, so the scripted ask_user turn is driven by the
+  most honest available mechanism — a real jhin.llm openai provider
+  pointed at a one-file scripted OpenAI-compatible endpoint whose only
+  behaviour is: fresh conversation -> one ask_user tool call (qa-ask-1),
+  tool-result turn -> the text "Done.".

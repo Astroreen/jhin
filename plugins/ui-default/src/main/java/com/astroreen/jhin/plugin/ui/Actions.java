@@ -3,7 +3,7 @@
  * action, registered always and degrading to an explanatory toast when the
  * plugin that would serve it is not loaded.
  *
- * <p>Names, exhaustively (30):
+ * <p>Names, exhaustively (31):
  * <ul>
  *   <li>{@code enroll} — redeem an enrollment code, answer
  *       {@code [setToken, navigate:sessions]} (jhin.security);</li>
@@ -11,6 +11,9 @@
  *       {@code [navigate chat:<id>]} (jhin.sessions, always);</li>
  *   <li>{@code send} — post one message and start a run (jhin.agent);</li>
  *   <li>{@code cancel} — cancel the active run (jhin.agent);</li>
+ *   <li>{@code answer-question} — deliver the user's answer to the pending
+ *       {@code ask_user} question of a session and restore the composer
+ *       input (jhin.tools-builtin);</li>
  *   <li>{@code create-provider} — store one LLM provider (jhin.llm);</li>
  *   <li>{@code delete-provider} — remove one LLM provider (jhin.llm);</li>
  *   <li>{@code reload} — answer {@code [toast, reloadBootstrap]}
@@ -51,6 +54,7 @@ import com.astroreen.jhin.plugin.security.api.EnrollmentService;
 import com.astroreen.jhin.plugin.sessions.api.SessionLifecycleService;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
 import com.astroreen.jhin.plugin.sessions.api.UndoJournal;
+import com.astroreen.jhin.plugin.toolsbuiltin.api.QuestionBridge;
 import com.astroreen.jhin.plugin.ui.screens.RightPanelBuilder;
 import com.astroreen.jhin.sdk.ServiceRegistry;
 import com.astroreen.jhin.sdk.http.HttpRequest;
@@ -58,6 +62,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 final class Actions {
 
@@ -81,6 +86,7 @@ final class Actions {
         handlers.put("create-session", new CreateSessionAction(store)::handle);
         handlers.put("send", send(store, services, features));
         handlers.put("cancel", cancel(services, features));
+        handlers.put("answer-question", answerQuestion(services, features));
         handlers.put("create-provider", createProvider(services, features));
         handlers.put("delete-provider", deleteProvider(services, features));
         handlers.put("reload", ReloadAction::handle);
@@ -189,9 +195,40 @@ final class Actions {
         }
         Optional<RunService> runs = services.find(RunService.class);
         return runs
-                .map(service -> (ActionRoute.ActionHandler) new CancelAction(service)::handle)
+                .map(service -> (ActionRoute.ActionHandler) new CancelAction(
+                        service, questionCanceller(services, features))::handle)
                 .orElseGet(() -> (req, payload) -> ActionSupport.error(
                         "The agent run service is unavailable."));
+    }
+
+    /**
+     * The question-cancel seam of a run cancel: {@code QuestionBridge::cancelAll}
+     * for the session, built only while the tools plugin is loaded — the
+     * method reference's target names the API class, so creating it without
+     * that plugin would force the class load (the lambda-isolated pattern).
+     */
+    private static Optional<Consumer<String>> questionCanceller(
+            ServiceRegistry services, Features features) {
+        if (!features.tools()) {
+            return Optional.empty();
+        }
+        Optional<QuestionBridge> bridge = services.find(QuestionBridge.class);
+        return bridge.<Consumer<String>>map(service -> service::cancelAll);
+    }
+
+    /** The answer-question handler, or its absent-plugin stand-in. */
+    private static ActionRoute.ActionHandler answerQuestion(
+            ServiceRegistry services, Features features) {
+        if (!features.tools()) {
+            return (req, payload) -> List.of(Directives.toast(
+                    "This server has no tools plugin installed.", "info"));
+        }
+        Optional<QuestionBridge> bridge = services.find(QuestionBridge.class);
+        return bridge
+                .map(service -> (ActionRoute.ActionHandler)
+                        new AnswerQuestionAction(service)::handle)
+                .orElseGet(() -> (req, payload) -> ActionSupport.error(
+                        "The question bridge is unavailable."));
     }
 
     /** The create-provider handler, or its absent-plugin stand-in. */

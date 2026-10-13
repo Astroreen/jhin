@@ -41,8 +41,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 class ScreensTest {
 
-    private static final Features NO_PLUGINS = new Features(false, false, false, false);
-    private static final Features EVERYTHING = new Features(true, true, true, true);
+    private static final Features NO_PLUGINS = new Features(false, false, false, false, false);
+    private static final Features EVERYTHING = new Features(true, true, true, true, true);
 
     @TempDir
     Path tmp;

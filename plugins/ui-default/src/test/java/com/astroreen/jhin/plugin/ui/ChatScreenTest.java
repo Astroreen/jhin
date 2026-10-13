@@ -24,6 +24,7 @@ import com.astroreen.jhin.plugin.sessions.api.EventRecord;
 import com.astroreen.jhin.plugin.sessions.api.EventType;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.ui.screens.ChatScreen;
+import com.astroreen.jhin.plugin.ui.screens.MessageCardBuilder;
 import com.astroreen.jhin.sdk.json.Json;
 import java.util.ArrayList;
 import java.util.List;
@@ -481,6 +482,73 @@ class ChatScreenTest {
                 .contains("&quot;model&quot;:&quot;gpt-5-codex&quot;");
     }
 
+    @Test
+    void pendingAskUserQuestionRendersTheAnswerPanelWhenTheBridgeIsPresent() {
+        Map<String, Object> json = render(pendingAskUser(), List.of(), List.of(), true);
+
+        List<String> ids = new ArrayList<>();
+        collectIds(json, ids);
+        assertThat(ids).contains(ChatScreen.INPUT_ID,
+                MessageCardBuilder.PENDING_QUESTION_ID,
+                MessageCardBuilder.PENDING_OPTIONS_ID,
+                MessageCardBuilder.PENDING_REPLY_ID);
+        assertThat(String.valueOf(json)).contains("Deploy to prod?");
+        assertThat(nodesOfType(json, "textarea")).isEmpty();
+
+        Map<String, Object> optionsRow = nodesOfType(json, "row").stream()
+                .filter(node -> MessageCardBuilder.PENDING_OPTIONS_ID.equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        List<Map<String, Object>> chips = castList(optionsRow.get("children")).stream()
+                .map(ChatScreenTest::castMap)
+                .toList();
+        assertThat(chips).extracting(chip -> chip.get("label")).containsExactly("Yes", "No");
+        Map<String, Object> action = castMap(chips.get(0).get("action"));
+        assertThat(action).containsEntry("name", "answer-question");
+        assertThat(castMap(action.get("payload")))
+                .containsEntry("sessionId", SESSION_ID)
+                .containsEntry("callId", "c-ask-1")
+                .containsEntry("answer", "Yes");
+
+        List<Map<String, Object>> inputs = nodesOfType(json, "input");
+        assertThat(inputs).extracting(input -> input.get("id"))
+                .contains(MessageCardBuilder.ANSWER_INPUT);
+        Map<String, Object> reply = button(json, "Reply");
+        Map<String, Object> replyAction = castMap(reply.get("action"));
+        assertThat(replyAction).containsEntry("name", "answer-question");
+        assertThat(castList(replyAction.get("include")))
+                .containsExactly(MessageCardBuilder.ANSWER_INPUT);
+    }
+
+    @Test
+    void anAnsweredAskUserQuestionRestoresThePlainMessageInput() {
+        Map<String, Object> json = render(answeredAskUser(), List.of(), List.of(), true);
+
+        List<String> ids = new ArrayList<>();
+        collectIds(json, ids);
+        assertThat(ids).doesNotContain(MessageCardBuilder.PENDING_QUESTION_ID);
+        assertThat(nodesOfType(json, "input")).extracting(input -> input.get("id"))
+                .doesNotContain(MessageCardBuilder.ANSWER_INPUT);
+        assertThat(nodesOfType(json, "textarea")).extracting(input -> input.get("id"))
+                .contains("messageInput");
+    }
+
+    @Test
+    void pendingQuestionNeverRendersWithoutTheQuestionBridge() {
+        Map<String, Object> absent = render(pendingAskUser(), List.of(), List.of(), false);
+
+        List<String> ids = new ArrayList<>();
+        collectIds(absent, ids);
+        assertThat(ids).doesNotContain(MessageCardBuilder.PENDING_QUESTION_ID);
+        assertThat(nodesOfType(absent, "textarea")).extracting(input -> input.get("id"))
+                .contains("messageInput");
+
+        Map<String, Object> defaulted = render(pendingAskUser());
+        List<String> defaultIds = new ArrayList<>();
+        collectIds(defaulted, defaultIds);
+        assertThat(defaultIds).doesNotContain(MessageCardBuilder.PENDING_QUESTION_ID);
+    }
+
     // --- fixture ---
 
     /** One completed run with a tool call: user -> assistant -> tool -> assistant. */
@@ -509,6 +577,25 @@ class ChatScreenTest {
         return new EventRecord(SESSION_ID, seq, seq * 1000L, type, payload);
     }
 
+    /** One open {@code ask_user} tool call with options, no result yet. */
+    private static List<EventRecord> pendingAskUser() {
+        return List.of(
+                event(1, EventType.RUN_START, "{\"runId\":\"r1\"}"),
+                event(2, EventType.USER_MESSAGE, "{\"text\":\"ship it\"}"),
+                event(3, EventType.TOOL_USE, Json.write(Map.of(
+                        "id", "c-ask-1", "name", "ask_user",
+                        "arguments", "{\"question\":\"Deploy to prod?\","
+                                + "\"options\":[\"Yes\",\"No\"]}"))));
+    }
+
+    /** The same call, answered. */
+    private static List<EventRecord> answeredAskUser() {
+        List<EventRecord> events = new ArrayList<>(pendingAskUser());
+        events.add(event(4, EventType.TOOL_RESULT, Json.write(Map.of(
+                "id", "c-ask-1", "name", "ask_user", "content", "Yes", "error", false))));
+        return events;
+    }
+
     private static Map<String, Object> render(List<EventRecord> history) {
         return render(history, List.of(), List.of());
     }
@@ -516,10 +603,18 @@ class ChatScreenTest {
     private static Map<String, Object> render(List<EventRecord> history,
                                               List<ChatScreen.ModelChoice> choices,
                                               List<String> favorites) {
+        return render(history, choices, favorites, false);
+    }
+
+    private static Map<String, Object> render(List<EventRecord> history,
+                                              List<ChatScreen.ModelChoice> choices,
+                                              List<String> favorites,
+                                              boolean questionBridgePresent) {
         Session session = new Session(SESSION_ID, "acc-1", "demo", "/tmp/work",
                 null, null, "active", 0L, 0L, false, null, null, null, null,
                 false, null, null, false);
-        return ChatScreen.render(session, history, choices, favorites).toJson();
+        return ChatScreen.render(session, history, choices, favorites,
+                questionBridgePresent).toJson();
     }
 
     // --- node walking helpers over the JSON wire shape ---

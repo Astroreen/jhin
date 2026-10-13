@@ -21,6 +21,7 @@ dependencies {
     compileOnly 'com.astroreen:jhin-plugin-security:0.2.0'
     compileOnly 'com.astroreen:jhin-plugin-llm:0.2.0'
     compileOnly 'com.astroreen:jhin-plugin-agent:0.2.0'
+    compileOnly 'com.astroreen:jhin-plugin-tools-builtin:0.2.0'
 
     // Tests drive the real ui-kit builder and the real sessions plugin against
     // a SQLite-backed harness, so both modules are on the test classpath; the
@@ -31,6 +32,7 @@ dependencies {
     testImplementation 'com.astroreen:jhin-plugin-security:0.2.0'
     testImplementation 'com.astroreen:jhin-plugin-llm:0.2.0'
     testImplementation 'com.astroreen:jhin-plugin-agent:0.2.0'
+    testImplementation 'com.astroreen:jhin-plugin-tools-builtin:0.2.0'
     // Explicit LangChain4j coordinates for the test fakes: the classes above
     // only arrive packaged into the fat jhin-plugin-llm project jar, and the
     // JDT Gradle build server does not expose classes that come from a

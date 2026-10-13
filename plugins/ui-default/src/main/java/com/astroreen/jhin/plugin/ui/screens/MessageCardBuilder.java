@@ -640,6 +640,79 @@ public final class MessageCardBuilder {
     }
 
     // ------------------------------------------------------------------
+    // pending user input
+    // ------------------------------------------------------------------
+
+    /** The pending {@code ask_user} question panel root id. */
+    public static final String PENDING_QUESTION_ID = "composer-pending-question";
+
+    /** The option-chip row id of the pending question panel. */
+    public static final String PENDING_OPTIONS_ID = "composer-pending-options";
+
+    /** The free-text reply row id of the pending question panel. */
+    public static final String PENDING_REPLY_ID = "composer-pending-reply";
+
+    /** The reply input id the {@code answer-question} action includes. */
+    public static final String ANSWER_INPUT = "answer";
+
+    /**
+     * The pending {@code ask_user} question panel (the upstream
+     * {@code ComposerPendingUserInputPanel}): the question card with one
+     * button chip per predefined option and the free-text reply row. Every
+     * chip and the reply submit dispatch the real {@code answer-question}
+     * action ({@code sessionId}, {@code callId}, {@code answer}); the reply
+     * input carries the reserved {@link #ANSWER_INPUT} id the dispatch
+     * includes, so the payload reaches the handler complete.
+     *
+     * @param sessionId the session the question belongs to
+     * @param callId    the id of the waiting {@code ask_user} tool call
+     * @param question  the question text shown to the user
+     * @param options   the predefined answers, empty for a free-text question
+     * @return the pending-user-input panel
+     */
+    public static UiNode pendingUserInputPanel(String sessionId, String callId,
+                                               String question, List<String> options) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sessionId", sessionId);
+        payload.put("callId", callId);
+        Ui.CardBuilder card = Ui.card()
+                .id(PENDING_QUESTION_ID)
+                .border(BORDER)
+                .borderRadius(EVENT_RADIUS)
+                .padding(12);
+        card.child(Ui.row().id(PENDING_QUESTION_ID + "-head").gap(8).align("center")
+                .child(Ui.icon().icon("help_outline").size(16).color(MUTED).build())
+                .child(Ui.text(question).style("small").build())
+                .build());
+        if (!options.isEmpty()) {
+            Ui.RowBuilder chips = Ui.row().id(PENDING_OPTIONS_ID).gap(8);
+            for (String option : options) {
+                Map<String, Object> answer = new LinkedHashMap<>(payload);
+                answer.put("answer", option);
+                chips.child(Ui.chip().label(option)
+                        .action(ActionDescriptors.of("answer-question", answer, null))
+                        .build());
+            }
+            card.child(chips.build());
+        }
+        card.child(Ui.row().id(PENDING_REPLY_ID).gap(8).align("center")
+                .child(Ui.input(ANSWER_INPUT)
+                        .placeholder("Type your answer")
+                        .required(true)
+                        .errorText("Write an answer first")
+                        .flex(1)
+                        .build())
+                .child(Ui.button("Reply")
+                        .style("primary")
+                        .icon("send")
+                        .action(ActionDescriptors.of("answer-question", payload,
+                                List.of(ANSWER_INPUT)))
+                        .build())
+                .build());
+        return card.build();
+    }
+
+    // ------------------------------------------------------------------
     // event
     // ------------------------------------------------------------------
 

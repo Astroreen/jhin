@@ -50,7 +50,7 @@ class SessionActionsTest {
         new com.astroreen.jhin.plugin.sessions.SessionsPlugin()
                 .start(new FakePluginContext(tmp, "jhin.sessions", db, streams, services));
         store = services.find(SessionStore.class).orElseThrow();
-        handlers = Actions.build(store, services, new Features(true, true, true, true),
+        handlers = Actions.build(store, services, new Features(true, true, true, true, true),
                 UiSettings.open(tmp));
     }
 

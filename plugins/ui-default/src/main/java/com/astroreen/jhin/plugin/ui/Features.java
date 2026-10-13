@@ -10,6 +10,8 @@ package com.astroreen.jhin.plugin.ui;
  * @param llm      {@code jhin.llm} is loaded (providers screen and provider actions)
  * @param agent    {@code jhin.agent} is loaded (send and cancel actions, chat cancel)
  * @param reload   {@code jhin.reload} is loaded (settings reload button)
+ * @param tools    {@code jhin.tools-builtin} is loaded (pending {@code ask_user}
+ *                 question panel and the {@code answer-question} action)
  */
-record Features(boolean security, boolean llm, boolean agent, boolean reload) {
+record Features(boolean security, boolean llm, boolean agent, boolean reload, boolean tools) {
 }

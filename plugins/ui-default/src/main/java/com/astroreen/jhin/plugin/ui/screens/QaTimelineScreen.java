@@ -15,6 +15,7 @@
  */
 package com.astroreen.jhin.plugin.ui.screens;
 
+import com.astroreen.jhin.plugin.ui.Directives;
 import com.astroreen.jhin.plugin.uikit.Ui;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import java.util.ArrayList;
@@ -102,6 +103,10 @@ public final class QaTimelineScreen {
         rows.add(MessageCardBuilder.dispatchEventRow("approval-request", Map.of(
                 "title", "Command approval", "detail", "gradle test",
                 "options", List.of("Allow", "Deny")), seq++));
+        // The decorative ComposerPendingApprovalPanel fixture (T309): the
+        // approval gate is not built — the row only presents the panel shape
+        // with demo-marked Allow/Deny stubs.
+        rows.add(pendingApprovalFixture());
         rows.add(MessageCardBuilder.dispatchEventRow("limit-notice",
                 Map.of("resetAt", "2026-10-06 15:00"), seq++));
         rows.add(MessageCardBuilder.dispatchEventRow("error",
@@ -128,6 +133,41 @@ public final class QaTimelineScreen {
         // placeholder card.
         rows.add(MessageCardBuilder.dispatchEventRow("holo", Map.of(), seq++));
         return rows;
+    }
+
+    /**
+     * The decorative {@code ComposerPendingApprovalPanel} fixture (the T309
+     * plan: the approval gate is NOT built) — the pending-approval card in
+     * the composer style: the warning-tinted title, one muted line about the
+     * waiting tool call and the Allow/Deny buttons as demo-marked inline
+     * stubs, no real handlers.
+     */
+    private static UiNode pendingApprovalFixture() {
+        Ui.CardBuilder card = Ui.card()
+                .id("composer-pending-approval")
+                .border(MessageCardBuilder.BORDER)
+                .borderRadius(MessageCardBuilder.EVENT_RADIUS)
+                .padding(12)
+                .set("demo", true);
+        card.child(Ui.row().id("composer-pending-approval-head").gap(8).align("center")
+                .child(Ui.icon().icon("gpp_maybe").size(16)
+                        .color(MessageCardBuilder.WARNING).build())
+                .child(Ui.text("Approval required").style("small")
+                        .color(MessageCardBuilder.WARNING).build())
+                .build());
+        card.child(Ui.text("A tool call is waiting for your approval.")
+                .style("caption").color(MessageCardBuilder.MUTED).build());
+        card.child(Ui.row().id("composer-pending-approval-actions").gap(8)
+                .child(Ui.button("Allow")
+                        .action(Directives.setState("composer-pending-approval-allow", true))
+                        .set("demo", true)
+                        .build())
+                .child(Ui.button("Deny")
+                        .action(Directives.setState("composer-pending-approval-deny", true))
+                        .set("demo", true)
+                        .build())
+                .build());
+        return card.build();
     }
 
     /**

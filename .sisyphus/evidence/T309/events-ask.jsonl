@@ -1,0 +1,4 @@
+{"seq":1,"ts":1791897320570,"type":"user_message","payload":"{\"text\":\"Ask me the question now.\"}"}
+{"seq":2,"ts":1791897320610,"type":"run_start","payload":"{\"runId\":\"87af63b9-b614-4a7c-900e-111c3dd34ae9\"}"}
+{"seq":3,"ts":1791897320649,"type":"message_start","payload":"{\"role\":\"assistant\"}"}
+{"seq":4,"ts":1791897320766,"type":"tool_use","payload":"{\"id\":\"qa-ask-1\",\"name\":\"ask_user\",\"arguments\":\"{\\\"question\\\":\\\"Should I proceed with the T309 cleanup?\\\",\\\"options\\\":[\\\"Yes\\\",\\\"No\\\"]}\"}"}

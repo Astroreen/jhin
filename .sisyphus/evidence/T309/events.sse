@@ -1,0 +1,27 @@
+event: user_message
+data: {"seq":1,"ts":1791897320570,"type":"user_message","payload":"{\"text\":\"Ask me the question now.\"}"}
+
+event: run_start
+data: {"seq":2,"ts":1791897320610,"type":"run_start","payload":"{\"runId\":\"87af63b9-b614-4a7c-900e-111c3dd34ae9\"}"}
+
+event: message_start
+data: {"seq":3,"ts":1791897320649,"type":"message_start","payload":"{\"role\":\"assistant\"}"}
+
+event: tool_use
+data: {"seq":4,"ts":1791897320766,"type":"tool_use","payload":"{\"id\":\"qa-ask-1\",\"name\":\"ask_user\",\"arguments\":\"{\\\"question\\\":\\\"Should I proceed with the T309 cleanup?\\\",\\\"options\\\":[\\\"Yes\\\",\\\"No\\\"]}\"}"}
+
+event: tool_result
+data: {"seq":5,"ts":1791897322262,"type":"tool_result","payload":"{\"id\":\"qa-ask-1\",\"name\":\"ask_user\",\"content\":\"Yes\",\"error\":false}"}
+
+event: message_start
+data: {"seq":6,"ts":1791897322288,"type":"message_start","payload":"{\"role\":\"assistant\"}"}
+
+event: text_delta
+data: {"seq":7,"ts":1791897322321,"type":"text_delta","payload":"{\"text\":\"Done.\"}"}
+
+event: message_end
+data: {"seq":8,"ts":1791897322340,"type":"message_end","payload":"{\"text\":\"Done.\"}"}
+
+event: run_end
+data: {"seq":9,"ts":1791897322359,"type":"run_end","payload":"{\"runId\":\"87af63b9-b614-4a7c-900e-111c3dd34ae9\"}"}
+

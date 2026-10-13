@@ -12,14 +12,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
+import com.astroreen.jhin.plugin.toolsbuiltin.api.QuestionBridge;
 import com.astroreen.jhin.plugin.ui.screens.ChatScreen;
 import com.astroreen.jhin.plugin.ui.screens.EnrollScreen;
 import com.astroreen.jhin.sdk.http.ClientInfo;
 import com.astroreen.jhin.sdk.http.HttpRequest;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +43,7 @@ class ActionsTest {
     private SessionStore store;
     private FakeRunService runs;
     private FakeProviderRegistry providers;
+    private FakeQuestionBridge questions;
     private FakePluginContext.FakeServices services;
     private Map<String, ActionRoute.ActionHandler> handlers;
 
@@ -51,11 +57,13 @@ class ActionsTest {
         store = services.find(SessionStore.class).orElseThrow();
         runs = new FakeRunService();
         providers = new FakeProviderRegistry(List.of("mock"));
+        questions = new FakeQuestionBridge();
         services.publish(com.astroreen.jhin.plugin.security.api.EnrollmentService.class,
                 new FakeEnrollmentService());
         services.publish(com.astroreen.jhin.plugin.agent.api.RunService.class, runs);
         services.publish(ProviderRegistry.class, providers);
-        handlers = Actions.build(store, services, new Features(true, true, true, true),
+        services.publish(QuestionBridge.class, questions);
+        handlers = Actions.build(store, services, new Features(true, true, true, true, true),
                 UiSettings.open(tmp));
     }
 
@@ -242,6 +250,60 @@ class ActionsTest {
                 request(), Map.of("sessionId", "idle-1"));
         assertThat(idle).hasSize(1);
         assertThat(String.valueOf(idle.get(0).get("text"))).contains("no active run");
+    }
+
+    @Test
+    void answerQuestionDeliversAndRestoresTheComposer() {
+        questions.ask("s-ask", "c-ask-1", "Deploy to prod?", List.of("Yes", "No"));
+
+        List<Map<String, Object>> ops = handlers.get("answer-question").handle(request(),
+                Map.of("sessionId", "s-ask", "callId", "c-ask-1", "answer", "Yes"));
+
+        assertThat(ops).extracting(op -> op.get("op")).containsExactly("patch");
+        assertThat(ops.get(0)).containsEntry("id", ChatScreen.INPUT_ID);
+        assertThat(String.valueOf(ops.get(0).get("html"))).contains("messageInput");
+        assertThat(questions.answers()).containsExactly("s-ask:c-ask-1=Yes");
+    }
+
+    @Test
+    void answerQuestionRejectsADoubleAnswer() {
+        questions.ask("s-ask", "c-ask-1", "Deploy to prod?", List.of("Yes", "No"));
+        handlers.get("answer-question").handle(request(),
+                Map.of("sessionId", "s-ask", "callId", "c-ask-1", "answer", "Yes"));
+
+        List<Map<String, Object>> ops = handlers.get("answer-question").handle(request(),
+                Map.of("sessionId", "s-ask", "callId", "c-ask-1", "answer", "No"));
+
+        assertThat(ops).hasSize(1);
+        assertThat(ops.get(0)).containsEntry("op", "toast").containsEntry("style", "error");
+        assertThat(String.valueOf(ops.get(0).get("text"))).contains("no pending question");
+    }
+
+    @Test
+    void answerQuestionErrorsWhenTheBridgeIsAbsent() {
+        FakePluginContext.FakeServices bare = new FakePluginContext.FakeServices();
+        Map<String, ActionRoute.ActionHandler> built = Actions.build(store, bare,
+                new Features(true, true, true, true, true), UiSettings.open(tmp));
+
+        List<Map<String, Object>> ops = built.get("answer-question").handle(request(),
+                Map.of("sessionId", "s1", "callId", "c1", "answer", "Yes"));
+
+        assertThat(ops).hasSize(1);
+        assertThat(ops.get(0)).containsEntry("op", "toast").containsEntry("style", "error");
+        assertThat(String.valueOf(ops.get(0).get("text"))).contains("question bridge is unavailable");
+    }
+
+    @Test
+    void cancelAlsoFailsThePendingQuestionsOfTheSession() {
+        questions.ask("s-live", "c-ask-1", "Deploy?", List.of());
+
+        List<Map<String, Object>> ops = handlers.get("cancel").handle(
+                request(), Map.of("sessionId", "s-live"));
+
+        assertThat(ops).hasSize(1);
+        assertThat(String.valueOf(ops.get(0).get("text"))).contains("Run cancelled");
+        assertThat(runs.cancelled()).containsExactly("s-live");
+        assertThat(questions.cancelledSessions()).containsExactly("s-live");
     }
 
     @Test
@@ -556,11 +618,11 @@ class ActionsTest {
     void absentIntegrationsAnswerWithExplanatoryToasts() {
         FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
         Map<String, ActionRoute.ActionHandler> degraded =
-                Actions.build(store, services, new Features(false, false, false, false),
+                Actions.build(store, services, new Features(false, false, false, false, false),
                         UiSettings.open(tmp));
 
         assertThat(degraded.keySet()).containsExactlyInAnyOrder(
-                "enroll", "create-session", "send", "cancel",
+                "enroll", "create-session", "send", "cancel", "answer-question",
                 "create-provider", "delete-provider", "reload", "undo",
                 "keybind-edit", "keybind-save", "keybind-reset", "keybind-restore",
                 "save-appearance", "save-thread-behavior",
@@ -569,7 +631,7 @@ class ActionsTest {
                 "archive", "restore", "regenerate-title", "reorder",
                 "auto-settle", "delete-session", "arrange-toggle",
                 "preview-reload");
-        for (String name : List.of("enroll", "send", "cancel",
+        for (String name : List.of("enroll", "send", "cancel", "answer-question",
                 "create-provider", "delete-provider", "undo",
                 "pin", "unpin", "settle", "unsettle", "snooze", "wake",
                 "archive", "restore", "regenerate-title", "reorder",
@@ -577,6 +639,44 @@ class ActionsTest {
             List<Map<String, Object>> ops = degraded.get(name).handle(request(), Map.of());
             assertThat(ops).as(name).hasSize(1);
             assertThat(ops.get(0)).as(name).containsEntry("op", "toast");
+        }
+    }
+
+    /** A minimal question bridge: one pending question per (session, call). */
+    private static final class FakeQuestionBridge implements QuestionBridge {
+
+        private final Map<String, String> pending = new LinkedHashMap<>();
+        private final List<String> answers = new ArrayList<>();
+        private final List<String> cancelledSessions = new ArrayList<>();
+
+        List<String> answers() {
+            return answers;
+        }
+
+        List<String> cancelledSessions() {
+            return cancelledSessions;
+        }
+
+        @Override
+        public CompletionStage<String> ask(String sessionId, String callId, String question,
+                List<String> options) {
+            pending.put(sessionId + ":" + callId, question);
+            return new CompletableFuture<>();
+        }
+
+        @Override
+        public void answer(String sessionId, String callId, String answer) {
+            if (pending.remove(sessionId + ":" + callId) == null) {
+                throw new IllegalStateException(
+                        "no pending question for call " + callId);
+            }
+            answers.add(sessionId + ":" + callId + "=" + answer);
+        }
+
+        @Override
+        public void cancelAll(String sessionId) {
+            cancelledSessions.add(sessionId);
+            pending.keySet().removeIf(key -> key.startsWith(sessionId + ":"));
         }
     }
 

@@ -3,6 +3,7 @@ package com.astroreen.jhin.plugin.toolsbuiltin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.astroreen.jhin.plugin.agent.api.ToolDefinition;
+import com.astroreen.jhin.plugin.toolsbuiltin.api.QuestionBridge;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -13,21 +14,24 @@ import org.junit.jupiter.api.Test;
  */
 class ToolsRegistrationTest {
 
+    private final QuestionBridge bridge = new QuestionBridgeImpl();
+
     @Test
-    void linuxOsNameRegistersEightToolsWithoutPowershell() {
-        List<ToolDefinition> tools = ToolsPlugin.buildTools("Linux 6.8.0");
+    void linuxOsNameRegistersNineToolsWithoutPowershell() {
+        List<ToolDefinition> tools = ToolsPlugin.buildTools("Linux 6.8.0", bridge);
 
         assertThat(ToolsPlugin.toolNames(tools))
-                .containsExactly("ls", "write", "read", "edit", "edit-diff", "find", "grep", "bash")
+                .containsExactly("ls", "write", "read", "edit", "edit-diff", "find", "grep", "bash", "ask_user")
                 .doesNotContain("powershell");
     }
 
     @Test
-    void windowsOsNameRegistersNineToolsWithPowershell() {
-        List<ToolDefinition> tools = ToolsPlugin.buildTools("Windows 11");
+    void windowsOsNameRegistersTenToolsWithPowershell() {
+        List<ToolDefinition> tools = ToolsPlugin.buildTools("Windows 11", bridge);
 
         assertThat(ToolsPlugin.toolNames(tools))
-                .containsExactly("ls", "write", "read", "edit", "edit-diff", "find", "grep", "bash", "powershell");
+                .containsExactly(
+                        "ls", "write", "read", "edit", "edit-diff", "find", "grep", "bash", "ask_user", "powershell");
     }
 
     @Test
@@ -42,12 +46,12 @@ class ToolsRegistrationTest {
     @Test
     void currentHostRegistrationMatchesOsName() {
         String osName = System.getProperty("os.name", "");
-        List<ToolDefinition> tools = ToolsPlugin.buildTools(osName);
+        List<ToolDefinition> tools = ToolsPlugin.buildTools(osName, bridge);
 
         if (ToolsPlugin.isWindows(osName)) {
-            assertThat(ToolsPlugin.toolNames(tools)).hasSize(9).endsWith("powershell");
+            assertThat(ToolsPlugin.toolNames(tools)).hasSize(10).endsWith("powershell");
         } else {
-            assertThat(ToolsPlugin.toolNames(tools)).hasSize(8).doesNotContain("powershell");
+            assertThat(ToolsPlugin.toolNames(tools)).hasSize(9).doesNotContain("powershell");
         }
     }
 }

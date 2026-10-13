@@ -1,0 +1,22 @@
+T309 --fail proof b: cancelling a run while an ask_user call blocks fails
+the pending question and ends the run with an error instead of run_end.
+
+One session (437790ac-d69f-4a5c-88c0-a1f428b94d0a) runs a scripted ask_user call (qa-ask-1) and blocks on the
+QuestionBridge future. POST /ui/action/cancel (the sessionId payload) runs
+RunService.cancel first and then the presence-guarded
+QuestionBridge::cancelAll seam: the future fails with CancellationException,
+AskUserTool turns it into ToolResult.error("Question cancelled") and the
+agent loop — its cancellation flag flipped by the same action — emits one
+error event "cancelled" instead of run_end.
+
+  seed: POST /sessions -> 437790ac-d69f-4a5c-88c0-a1f428b94d0a (cancel), POST /sessions/437790ac-d69f-4a5c-88c0-a1f428b94d0a/messages -> 202
+  tool_use: call id qa-ask-1 (ask_user), panel rendered (cancel-panel.html)
+  POST /ui/action/cancel -> HTTP 200, toast "Run cancelled."
+  tool_use events:    1
+  tool_result:        content "Question cancelled" (error=true)
+  error event:        message "cancelled"
+  run_end events:     0 (expected 0)
+
+  event types: user_message run_start message_start tool_use tool_result error 
+  The cancel path is honest end to end: cancelled question, cancelled
+  tool call, cancelled run (cancel.txt).

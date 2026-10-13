@@ -7,10 +7,11 @@
  * the same path silently (a plugin route always supersedes a fallback).
  *
  * <p>The optional integrations (jhin.security, jhin.llm, jhin.agent,
- * jhin.reload) are detected once at start through the {@link Integrations}
- * probes and flow into every screen and handler as the {@link Features}
- * snapshot: an absent plugin means an absent screen, an action that answers
- * with an explanatory toast and no reference to its API classes.
+ * jhin.tools-builtin, jhin.reload) are detected once at start through the
+ * {@link Integrations} probes and flow into every screen and handler as the
+ * {@link Features} snapshot: an absent plugin means an absent screen, an
+ * action that answers with an explanatory toast and no reference to its API
+ * classes.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -34,6 +35,10 @@ public final class UiPlugin implements JhinPlugin {
 
     /** API class of the agent plugin, probed for the run actions. */
     private static final String AGENT_API = "com.astroreen.jhin.plugin.agent.api.RunService";
+
+    /** API class of the tools plugin, probed for the pending-question surface. */
+    private static final String TOOLS_API =
+            "com.astroreen.jhin.plugin.toolsbuiltin.api.QuestionBridge";
 
     /** Plugin id of the reload plugin, which exports no API class to probe. */
     private static final String RELOAD_ID = "jhin.reload";
@@ -79,7 +84,8 @@ public final class UiPlugin implements JhinPlugin {
                 probe.test(SECURITY_API),
                 probe.test(LLM_API),
                 probe.test(AGENT_API),
-                Integrations.loaded(ctx.kernel(), RELOAD_ID));
+                Integrations.loaded(ctx.kernel(), RELOAD_ID),
+                probe.test(TOOLS_API));
 
         UiSettings settings = new UiSettings(ctx.config(), ctx.dataDir());
         ScreenRegistry screens = new Screens(store, events, ctx.services(), ctx.kernel(),

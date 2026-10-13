@@ -1,0 +1,4 @@
+T309 answer — POST /ui/action/answer-question {sessionId:ed173e05-e327-414f-be54-e48a725cd38b, callId:qa-ask-1, answer:"Yes"}:
+  HTTP 200
+  patch directives: 1 (id "composer-input")
+  patch restores the message input (data-jhin-id="messageInput"): 1 hit(s)
