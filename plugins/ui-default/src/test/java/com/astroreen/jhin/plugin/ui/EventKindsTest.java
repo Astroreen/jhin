@@ -42,9 +42,13 @@ class EventKindsTest {
     void theDispatcherCoversEveryKindAndFallsBackForUnknown() {
         for (String kind : MessageCardBuilder.EVENT_KINDS) {
             UiNode row = MessageCardBuilder.dispatchEventRow(kind, Map.of(), 1);
+            // The subagent bar groups on `subagent:<id>` (the id falls back to
+            // `s<seq>`); every other kind keys on `event:<type>`.
+            String expectedKey = MessageCardBuilder.EVENT_SUBAGENT.equals(kind)
+                    ? "subagent:s1" : "event:" + kind;
             assertThat(row.props())
                     .containsEntry(MessageCardBuilder.ROW_KIND_PROP, "event")
-                    .containsEntry(MessageCardBuilder.ROW_KEY_PROP, "event:" + kind);
+                    .containsEntry(MessageCardBuilder.ROW_KEY_PROP, expectedKey);
         }
         UiNode unknown = MessageCardBuilder.dispatchEventRow("holo", Map.of(), 2);
         assertThat(unknown.props())
@@ -304,8 +308,9 @@ class EventKindsTest {
         UiNode row = MessageCardBuilder.dispatchEventRow("subagent", Map.of(
                 "title", "Scout: find the token expiry", "status", "running"), 19);
         Map<String, Object> json = row.toJson();
+        // No `id` in the payload: the row key falls back to `s<seq>`.
         assertThat(json)
-                .containsEntry(MessageCardBuilder.ROW_KEY_PROP, "event:subagent")
+                .containsEntry(MessageCardBuilder.ROW_KEY_PROP, "subagent:s19")
                 .containsEntry("align", "centerRight");
         assertThat(Json.write(json))
                 .contains("Scout: find the token expiry")
@@ -363,15 +368,21 @@ class EventKindsTest {
         List<String> keys = new java.util.ArrayList<>();
         walk(json, node -> {
             Object key = node.get(MessageCardBuilder.ROW_KEY_PROP);
-            if (key instanceof String text && text.startsWith("event:")) {
+            if (key instanceof String text
+                    && (text.startsWith("event:") || text.startsWith("subagent:"))) {
                 keys.add(text);
             }
         });
         // The 16 kinds + the unknown fallback; the T101 compaction event row
-        // adds one more distinct key.
+        // adds one more distinct key. The subagent bars come from
+        // fixtures/subagent-fixtures.json and all key on
+        // `subagent:scout-1` (the malformed scenario falls back to the
+        // shared `event:unknown` card).
         assertThat(keys.stream().distinct().toList()).hasSize(18);
         for (String kind : MessageCardBuilder.EVENT_KINDS) {
-            assertThat(keys).contains("event:" + kind);
+            String expectedKey = MessageCardBuilder.EVENT_SUBAGENT.equals(kind)
+                    ? "subagent:scout-1" : "event:" + kind;
+            assertThat(keys).contains(expectedKey);
         }
         assertThat(keys).contains("event:unknown");
     }

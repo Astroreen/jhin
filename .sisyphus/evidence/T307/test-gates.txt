@@ -1,0 +1,7 @@
+T307 test gates — the two suites green on the subagent bar surface:
+BUILD SUCCESSFUL in 927ms
+BUILD SUCCESSFUL in 632ms
+
+  :jhin-plugin-ui-kit:test      342 tests
+  :jhin-plugin-ui-default:test  507 tests (MessageCardBuilderTest, EventFramesTest, EventKindsTest, ChatScreenTest among them)
+  failures=0 errors=0 (expected 0/0)

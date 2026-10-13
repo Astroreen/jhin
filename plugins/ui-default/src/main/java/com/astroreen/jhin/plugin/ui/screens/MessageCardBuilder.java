@@ -1048,11 +1048,45 @@ public final class MessageCardBuilder {
      * {@code ProviderSubagentBar} rounded strip with the provider icon, the
      * model label and the status, {@code ProviderSubagentBar.tsx:66-70}).
      *
+     * <p>Payload contract: {@code id} (scalar — the row identity, the
+     * continuation key {@code subagent:<id>}, falling back to {@code s<seq>}),
+     * {@code title} (the agent label, default {@code "Subagent"}),
+     * {@code summary} (the optional task summary — a second muted small line
+     * under the title when non-blank), {@code status} (the chip, default
+     * {@code "running"}) and {@code steps} (the optional list of structured
+     * child payloads — each {@code Map} whose {@code type} names an event
+     * kind dispatches through {@link #dispatchEventRow} as a child of the
+     * indented column under the bar; an empty or absent {@code steps} renders
+     * the bar alone). A malformed payload — {@code steps} that is not a list,
+     * or an {@code id} that is not scalar — renders the
+     * {@link #unknownEventRow} placeholder instead of the bar; the row never
+     * throws on any payload shape.
+     *
      * @param seq     the event sequence number (drives the node id)
-     * @param payload {@code title}, {@code status}
-     * @return the {@code event:subagent} row
+     * @param payload the subagent payload (see the contract above)
+     * @return the {@code event:subagent} row keyed {@code subagent:<id>}
      */
     private static UiNode subagentEventRow(long seq, Map<String, Object> payload) {
+        Object rawId = payload.get("id");
+        Object rawSteps = payload.get("steps");
+        if (rawId instanceof Map<?, ?> || rawId instanceof List<?>
+                || (rawSteps != null && !(rawSteps instanceof List<?>))) {
+            return unknownEventRow(seq, EVENT_SUBAGENT);
+        }
+        String id = textOf(payload, "id", "");
+        if (id.isBlank()) {
+            id = "s" + seq;
+        }
+        Ui.ColumnBuilder titles = Ui.column().gap(2).flex(1)
+                .child(Ui.text(textOf(payload, "title", "Subagent"))
+                        .style("small")
+                        .maxLines(1)
+                        .ellipsis(true)
+                        .build());
+        String summary = textOf(payload, "summary", "");
+        if (!summary.isBlank()) {
+            titles.child(Ui.text(summary).style("small").color(MUTED).build());
+        }
         UiNode bar = Ui.card()
                 .id(eventId(seq) + "-bar")
                 .border(BORDER)
@@ -1060,16 +1094,64 @@ public final class MessageCardBuilder {
                 .padding(12)
                 .child(Ui.row().gap(8).align("center")
                         .child(Ui.icon().icon("smart_toy").size(16).color(MUTED).build())
-                        .child(Ui.text(textOf(payload, "title", "Subagent"))
-                                .style("small")
-                                .maxLines(1)
-                                .ellipsis(true)
-                                .flex(1)
-                                .build())
+                        .child(titles.build())
                         .child(statusChip(textOf(payload, "status", "running")))
                         .build())
                 .build();
-        return rowContainer(KIND_EVENT, EVENT_SUBAGENT, seq, "centerRight", 4, bar);
+        UiNode row;
+        if (rawSteps instanceof List<?> steps && !steps.isEmpty()) {
+            Ui.ColumnBuilder nested = Ui.column().gap(4).padding(List.of(0, 0, 0, 16));
+            for (Object step : steps) {
+                nested.child(stepRow(step, seq));
+            }
+            row = rowContainer(KIND_EVENT, EVENT_SUBAGENT, seq, "centerRight", 4,
+                    bar, nested.build());
+        } else {
+            row = rowContainer(KIND_EVENT, EVENT_SUBAGENT, seq, "centerRight", 4, bar);
+        }
+        // The bar groups on `subagent:<id>` (the subagent identity), not on
+        // the `event:<type>` key the other event rows carry.
+        Map<String, Object> props = new LinkedHashMap<>(row.props());
+        props.put(ROW_KEY_PROP, rowKey(EVENT_SUBAGENT, id));
+        return new UiNode(row.type(), props, row.children());
+    }
+
+    /**
+     * Whether a {@code subagent} payload carries no meaningful field at all
+     * (only the {@code type} marker, or an empty map): such a payload must
+     * not render the bar — the structured {@code tool_result} paths fall
+     * through to the plain work row instead.
+     *
+     * @param payload the structured payload to check
+     * @return {@code true} when the payload carries no meaningful field
+     */
+    public static boolean isSubagentPayloadEmpty(Map<String, Object> payload) {
+        if (payload == null || payload.isEmpty()) {
+            return true;
+        }
+        for (Map.Entry<String, Object> entry : payload.entrySet()) {
+            if ("type".equals(entry.getKey())) {
+                continue;
+            }
+            Object value = entry.getValue();
+            if (value == null
+                    || (value instanceof String text && text.isBlank())
+                    || (value instanceof List<?> list && list.isEmpty())) {
+                continue;
+            }
+            return false;
+        }
+        return true;
+    }
+
+    /** One nested {@code subagent} step row: an event dispatch, or the unknown card. */
+    private static UiNode stepRow(Object step, long seq) {
+        if (step instanceof Map<?, ?> map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> payload = (Map<String, Object>) map;
+            return dispatchEventRow(textOf(payload, "type", ""), payload, seq);
+        }
+        return unknownEventRow(seq, null);
     }
 
     /**

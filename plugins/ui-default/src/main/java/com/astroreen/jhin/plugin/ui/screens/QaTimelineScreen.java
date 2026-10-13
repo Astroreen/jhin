@@ -24,6 +24,9 @@ import java.util.Map;
 
 public final class QaTimelineScreen {
 
+    /** The {@code fixtures/subagent-fixtures.json} scenarios (the subagent bars). */
+    public static final String SUBAGENT_FIXTURE = "fixtures/subagent-fixtures.json";
+
     private QaTimelineScreen() {
     }
 
@@ -69,7 +72,9 @@ public final class QaTimelineScreen {
     /**
      * One event card of each of the 16 kinds (T102), in the plan section 4.5
      * order, each through {@link MessageCardBuilder#dispatchEventRow} with a
-     * representative payload.
+     * representative payload — except the {@code subagent} bar, which renders
+     * one row per {@link #SUBAGENT_FIXTURE} scenario so the bar contract is
+     * fixture-driven.
      */
     private static List<UiNode> eventRows() {
         long seq = 20;
@@ -105,8 +110,12 @@ public final class QaTimelineScreen {
                 Map.of("text", "The provider catalog refreshed."), seq++));
         rows.add(MessageCardBuilder.dispatchEventRow("queued-message",
                 Map.of("text", "Also run the integration suite."), seq++));
-        rows.add(MessageCardBuilder.dispatchEventRow("subagent", Map.of(
-                "title", "Scout: find the token expiry", "status", "running"), seq++));
+        // The subagent bar comes from the fixture: one row per scenario
+        // (the bar with nested steps, the bar alone, the malformed
+        // fallback to the unknown card).
+        for (Map<String, Object> payload : subagentPayloads()) {
+            rows.add(MessageCardBuilder.dispatchEventRow("subagent", payload, seq++));
+        }
         rows.add(MessageCardBuilder.dispatchEventRow("citation",
                 Map.of("label", "src/auth.java:42"), seq++));
         rows.add(MessageCardBuilder.dispatchEventRow("skill-invocation",
@@ -119,6 +128,26 @@ public final class QaTimelineScreen {
         // placeholder card.
         rows.add(MessageCardBuilder.dispatchEventRow("holo", Map.of(), seq++));
         return rows;
+    }
+
+    /**
+     * The {@code payload} maps of the {@link #SUBAGENT_FIXTURE} scenarios.
+     * Loaded from the classpath at build time, never fetched.
+     */
+    private static List<Map<String, Object>> subagentPayloads() {
+        Object scenarios = RightPanelBuilder.loadFixture(SUBAGENT_FIXTURE).get("scenarios");
+        List<Map<String, Object>> payloads = new ArrayList<>();
+        if (scenarios instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> scenario
+                        && scenario.get("payload") instanceof Map<?, ?> payload) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> typed = (Map<String, Object>) payload;
+                    payloads.add(typed);
+                }
+            }
+        }
+        return payloads;
     }
 
     /** The representative {@code diff} payload of the probe (3 hunks). */

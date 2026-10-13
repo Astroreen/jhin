@@ -135,6 +135,21 @@ class EventFramesTest {
         assertThat(Json.write(all)).doesNotContain("\"props\"");
     }
 
+    // --- the tool_result fall-through -----------------------------------
+
+    @Test
+    void anEmptySubagentPayloadFallsThroughToThePlainWorkRow() {
+        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        List<Map<String, Object>> frames = translator.frames("tool_result", Json.write(Map.of(
+                "id", "c1", "name", "subagent", "content", "spawned",
+                "structured", Json.write(Map.of("type", "subagent")))), 20);
+
+        assertThat(frames).hasSize(1);
+        Map<String, Object> item = payload(frames.get(0), "node");
+        String html = String.valueOf(item.get("html"));
+        assertThat(html).contains("spawned").doesNotContain("smart_toy");
+    }
+
     // --- delta batching (T205: <= 60 ms flush window) ---
 
     @Test

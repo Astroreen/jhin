@@ -515,14 +515,18 @@ final class EventFrames {
          * {@code type} names one of the 16 T102 event kinds renders that
          * event card (docs/sdui.md section 5 — the structured payload is the
          * UI card the tool produced); anything else degrades to the T101
-         * work row with the plain content detail.
+         * work row with the plain content detail. A {@code subagent} payload
+         * with no meaningful field (only the {@code type} marker) carries no
+         * bar and falls through to the same work row.
          */
         private UiNode toolResultFrame(Map<String, Object> payload, long seq) {
             Map<String, Object> structured = parseObjectOf(payload.get("structured"));
+            String type = (structured == null) ? null : stringOf(structured.get("type"));
             if (structured != null
-                    && MessageCardBuilder.isEventKind(stringOf(structured.get("type")))) {
-                return MessageCardBuilder.dispatchEventRow(
-                        stringOf(structured.get("type")), structured, seq);
+                    && MessageCardBuilder.isEventKind(type)
+                    && !(MessageCardBuilder.EVENT_SUBAGENT.equals(type)
+                            && MessageCardBuilder.isSubagentPayloadEmpty(structured))) {
+                return MessageCardBuilder.dispatchEventRow(type, structured, seq);
             }
             return MessageCardBuilder.workRow(
                     seq,

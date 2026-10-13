@@ -1,0 +1,21 @@
+T307 browser steps — UNAVAILABLE in this environment.
+
+Browser automation (the agent browser / screenshots / evaluate) cannot run
+on this QA machine; the T202–T208/T301–T306 precedent applies: every
+browser step is substituted with curl + static asserts.
+
+Not executed (the plan's interactive/visual cases):
+  - Watching the subagent bar slide to the right edge of the timeline lane
+    (the centerRight alignment in a real layout): substituted by the
+    subagent.html region asserts (the justify-self: end marker on the bar
+    rows of bar-with-steps-region.html and bar-only-region.html).
+  - Watching the nested steps indent under the bar and the bar-only strip
+    render bare: substituted by the region asserts (the step texts inside
+    the bar-with-steps region, absent from the bar-only region).
+  - Watching the malformed payload degrade to the placeholder card instead
+    of an empty bar: substituted by the --fail mode asserts (malformed.txt).
+
+What IS proven here: the served qa-timeline probe screen carries the
+subagent bars of the fixture scenarios — keyed subagent:<id>, right-aligned,
+with the indented steps of bar-with-steps and the bare bar of bar-only —
+all with curl.

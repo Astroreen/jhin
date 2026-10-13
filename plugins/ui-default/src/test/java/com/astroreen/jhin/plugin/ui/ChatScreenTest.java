@@ -84,6 +84,13 @@ class ChatScreenTest {
     }
 
     @Test
+    void thePlainTimelineIsUnchangedBySubagentSupport() {
+        List<Map<String, Object>> items = messageItems(render(fullRun()));
+        assertThat(items.stream().map(item -> item.get("id")).toList())
+                .containsExactly("ev-1-lifecycle", "ev-2", "ev-3", "ev-7", "ev-8", "ev-9");
+    }
+
+    @Test
     void stopButtonIsPresentOnlyWhileARunIsLive() {
         Map<String, Object> idle = render(List.of());
         Map<String, Object> running = render(List.of(

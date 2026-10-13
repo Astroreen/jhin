@@ -568,7 +568,9 @@ public final class ChatScreen {
             card = MessageCardBuilder.parseObject(text);
         }
         if (card != null && card.get("type") instanceof String type
-                && MessageCardBuilder.isEventKind(type)) {
+                && MessageCardBuilder.isEventKind(type)
+                && !(MessageCardBuilder.EVENT_SUBAGENT.equals(type)
+                        && MessageCardBuilder.isSubagentPayloadEmpty(card))) {
             return MessageCardBuilder.dispatchEventRow(type, card, seq);
         }
         return MessageCardBuilder.workRow(

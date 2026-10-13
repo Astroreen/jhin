@@ -1,0 +1,41 @@
+{
+  "id": "subagent-fixtures",
+  "scenarios": [
+    {
+      "name": "bar-with-steps",
+      "description": "The subagent bar with nested steps: the work-log entry and the running tool call indent under the bar.",
+      "payload": {
+        "id": "scout-1",
+        "title": "Scout",
+        "summary": "Search the codebase",
+        "status": "running",
+        "steps": [
+          {"type": "work-log-entry", "label": "read 4 files", "time": "14:02"},
+          {"type": "tool-call", "name": "grep", "status": "running", "summary": "find token expiry", "time": "14:03"}
+        ]
+      },
+      "expect": {"rowKey": "subagent:scout-1"}
+    },
+    {
+      "name": "bar-only",
+      "description": "The subagent bar alone: no steps, the bare rounded strip with the title, the summary and the running chip.",
+      "payload": {
+        "id": "scout-1",
+        "title": "Scout",
+        "summary": "Search the codebase",
+        "status": "running"
+      },
+      "expect": {"rowKey": "subagent:scout-1"}
+    },
+    {
+      "name": "malformed-steps",
+      "description": "A malformed subagent payload: steps that is not a list renders the unknown placeholder card instead of the bar.",
+      "payload": {
+        "id": "scout-1",
+        "title": "Scout",
+        "steps": "oops"
+      },
+      "expect": {"rowKey": "unknown"}
+    }
+  ]
+}

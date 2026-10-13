@@ -25,10 +25,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.astroreen.jhin.plugin.ui.screens.MessageCardBuilder;
+import com.astroreen.jhin.plugin.ui.screens.QaTimelineScreen;
+import com.astroreen.jhin.plugin.ui.screens.RightPanelBuilder;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
 import com.astroreen.jhin.plugin.uikit.text.PathDisplay;
 import com.astroreen.jhin.sdk.json.Json;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -318,7 +321,123 @@ class MessageCardBuilderTest {
         assertThat(html).containsPattern("data-jhin-id=\"ev-5-body\" hidden[\\s>]");
     }
 
+    // --- the subagent bar ------------------------------------------------
+
+    @Test
+    void theSubagentBarCarriesTheSubagentIdRowKeyAndTheStatusChip() {
+        Map<String, Object> json = MessageCardBuilder.dispatchEventRow("subagent", Map.of(
+                "id", "scout-1", "title", "Scout", "summary", "find the token expiry",
+                "status", "done"), 60).toJson();
+        assertThat(json)
+                .containsEntry(MessageCardBuilder.ROW_KEY_PROP, "subagent:scout-1")
+                .containsEntry("align", "centerRight");
+        String wire = Json.write(json);
+        assertThat(wire)
+                .contains("Scout")
+                .contains("find the token expiry")
+                .contains("Done")
+                .contains("smart_toy");
+    }
+
+    @Test
+    void theSubagentIdFallsBackToTheSeqAndTheStepsIndentUnderTheBar() {
+        Map<String, Object> json = MessageCardBuilder.dispatchEventRow("subagent", Map.of(
+                "steps", List.of(
+                        Map.of("type", "message", "text", "Step one."),
+                        Map.of("type", "system-notice", "text", "Step two."))), 61).toJson();
+        assertThat(json).containsEntry(MessageCardBuilder.ROW_KEY_PROP, "subagent:s61");
+        List<?> children = (List<?>) json.get("children");
+        assertThat(children).hasSize(2);
+        Map<String, Object> nested = columnWithPadding(json);
+        assertThat(nested).isNotNull();
+        assertThat(nested.get("gap")).isEqualTo(4);
+        assertThat(Json.write(nested)).contains("Step one.").contains("Step two.");
+    }
+
+    @Test
+    void theMalformedSubagentPayloadRendersTheUnknownCard() {
+        Map<String, Object> badSteps = MessageCardBuilder.dispatchEventRow("subagent", Map.of(
+                "id", "scout-1", "steps", "not-a-list"), 62).toJson();
+        assertThat(badSteps).containsEntry(MessageCardBuilder.ROW_KEY_PROP, "event:unknown");
+        Map<String, Object> mapId = MessageCardBuilder.dispatchEventRow("subagent", Map.of(
+                "id", Map.of("nested", true), "title", "Scout"), 63).toJson();
+        assertThat(mapId).containsEntry(MessageCardBuilder.ROW_KEY_PROP, "event:unknown");
+        Map<String, Object> listId = MessageCardBuilder.dispatchEventRow("subagent", Map.of(
+                "id", List.of("a"), "title", "Scout"), 64).toJson();
+        assertThat(listId).containsEntry(MessageCardBuilder.ROW_KEY_PROP, "event:unknown");
+    }
+
+    @Test
+    void theSubagentPayloadEmptyPredicateGatesTheNoBarFallback() {
+        assertThat(MessageCardBuilder.isSubagentPayloadEmpty(Map.of())).isTrue();
+        assertThat(MessageCardBuilder.isSubagentPayloadEmpty(Map.of("type", "subagent"))).isTrue();
+        assertThat(MessageCardBuilder.isSubagentPayloadEmpty(null)).isTrue();
+        assertThat(MessageCardBuilder.isSubagentPayloadEmpty(Map.of("title", ""))).isTrue();
+        assertThat(MessageCardBuilder.isSubagentPayloadEmpty(Map.of("steps", List.of()))).isTrue();
+        assertThat(MessageCardBuilder.isSubagentPayloadEmpty(Map.of("title", "Scout"))).isFalse();
+        assertThat(MessageCardBuilder.isSubagentPayloadEmpty(Map.of("status", "running"))).isFalse();
+    }
+
+    @Test
+    void theSubagentFixtureScenariosRenderTheBarsAndTheUnknownFallback() {
+        List<Map<String, Object>> scenarios = listOfMaps(
+                RightPanelBuilder.loadFixture(QaTimelineScreen.SUBAGENT_FIXTURE).get("scenarios"));
+        assertThat(scenarios.stream().map(scenario -> scenario.get("name")).toList())
+                .containsExactly("bar-with-steps", "bar-only", "malformed-steps");
+        String probeWire = Json.write(QaTimelineScreen.render().toJson());
+
+        Map<String, Object> withSteps = renderFixtureScenario(scenarios.get(0), 70);
+        assertThat(withSteps).containsEntry(MessageCardBuilder.ROW_KEY_PROP, "subagent:scout-1");
+        Map<String, Object> nested = columnWithPadding(withSteps);
+        assertThat(nested).isNotNull();
+        assertThat(nested.get("gap")).isEqualTo(4);
+        assertThat(Json.write(nested)).contains("read 4 files").contains("find token expiry");
+        assertThat(probeWire).contains("\"rowKey\":\"subagent:scout-1\"");
+
+        Map<String, Object> barOnly = renderFixtureScenario(scenarios.get(1), 71);
+        assertThat(barOnly).containsEntry(MessageCardBuilder.ROW_KEY_PROP, "subagent:scout-1");
+        assertThat(columnWithPadding(barOnly)).isNull();
+
+        Map<String, Object> malformed = renderFixtureScenario(scenarios.get(2), 72);
+        assertThat(malformed).containsEntry(MessageCardBuilder.ROW_KEY_PROP, "event:unknown");
+        assertThat(Json.write(malformed)).contains("Unknown event: subagent");
+        assertThat(probeWire).contains("\"rowKey\":\"event:unknown\"");
+    }
+
     // --- helpers ---
+
+    /** The {@code subagent} row one {@code expect.rowKey}-checked fixture scenario renders. */
+    private static Map<String, Object> renderFixtureScenario(Map<String, Object> scenario, long seq) {
+        Map<String, Object> json = MessageCardBuilder
+                .dispatchEventRow("subagent", castMap(scenario.get("payload")), seq).toJson();
+        String want = String.valueOf(castMap(scenario.get("expect")).get("rowKey"));
+        // The fixture names the unknown card by its bare kind; the wire key
+        // is `event:unknown`.
+        if ("unknown".equals(want)) {
+            want = "event:unknown";
+        }
+        assertThat(json).containsEntry(MessageCardBuilder.ROW_KEY_PROP, want);
+        return json;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Object value) {
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> listOfMaps(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                out.add((Map<String, Object>) map);
+            }
+        }
+        return out;
+    }
 
     private static String chipWire(String status) {
         return Json.write(MessageCardBuilder.dispatchEventRow("tool-call", Map.of(
@@ -341,6 +460,32 @@ class MessageCardBuilderTest {
         } else if (fragment instanceof List<?> list) {
             for (Object value : list) {
                 Map<String, Object> found = textNode(value, text);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** The first {@code column} node carrying the given left padding. */
+    private static Map<String, Object> columnWithPadding(Object fragment) {
+        if (fragment instanceof Map<?, ?> map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> node = (Map<String, Object>) map;
+            if ("column".equals(node.get("type"))
+                    && List.of(0, 0, 0, 16).equals(node.get("padding"))) {
+                return node;
+            }
+            for (Object value : node.values()) {
+                Map<String, Object> found = columnWithPadding(value);
+                if (found != null) {
+                    return found;
+                }
+            }
+        } else if (fragment instanceof List<?> list) {
+            for (Object value : list) {
+                Map<String, Object> found = columnWithPadding(value);
                 if (found != null) {
                     return found;
                 }
