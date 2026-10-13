@@ -12,6 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
+import com.astroreen.jhin.plugin.ui.screens.ChatScreen;
 import com.astroreen.jhin.plugin.ui.screens.EnrollScreen;
 import com.astroreen.jhin.sdk.http.ClientInfo;
 import com.astroreen.jhin.sdk.http.HttpRequest;
@@ -459,6 +460,99 @@ class ActionsTest {
     }
 
     @Test
+    void selectModelWritesTheSessionAndUpdatesTheModelLine() {
+        Session session = store.create("demo", "/tmp/work");
+
+        List<Map<String, Object>> ops = handlers.get("select-model").handle(
+                request(), Map.of("sessionId", session.id(),
+                        "providerId", "anthropic", "model", "claude-3-opus"));
+
+        assertThat(ops).extracting(op -> op.get("op"))
+                .containsExactly("patch", "setState", "dismissDialog");
+        assertThat(ops.get(0)).containsEntry("id", ChatScreen.CONTEXT_CHIP_ID);
+        assertThat(String.valueOf(ops.get(0).get("html"))).contains("claude-3-opus");
+        assertThat(ops.get(1)).containsEntry("id", ChatScreen.STATE_MODEL)
+                .containsEntry("value", "claude-3-opus");
+        Session updated = store.get(session.id()).orElseThrow();
+        assertThat(updated.model()).isEqualTo("claude-3-opus");
+        assertThat(updated.providerId()).isEqualTo("anthropic");
+    }
+
+    @Test
+    void selectModelFallsBackToTheIdPayloadKey() {
+        Session session = store.create("demo", "/tmp/work");
+
+        List<Map<String, Object>> ops = handlers.get("select-model").handle(
+                request(), Map.of("id", session.id(),
+                        "providerId", "openai", "model", "gpt-4.1"));
+
+        assertThat(ops).extracting(op -> op.get("op"))
+                .containsExactly("patch", "setState", "dismissDialog");
+        assertThat(store.get(session.id()).orElseThrow().model()).isEqualTo("gpt-4.1");
+    }
+
+    @Test
+    void selectModelRequiresTheModel() {
+        Session session = store.create("demo", "/tmp/work");
+
+        List<Map<String, Object>> ops = handlers.get("select-model").handle(
+                request(), Map.of("sessionId", session.id(), "providerId", "anthropic"));
+
+        assertThat(ops).hasSize(1);
+        assertThat(ops.get(0)).containsEntry("op", "toast").containsEntry("style", "error");
+        assertThat(store.get(session.id()).orElseThrow().model()).isNull();
+    }
+
+    @Test
+    void selectModelRejectsAnUnknownSession() {
+        List<Map<String, Object>> ops = handlers.get("select-model").handle(
+                request(), Map.of("sessionId", "nope",
+                        "providerId", "anthropic", "model", "claude-3-opus"));
+
+        assertThat(ops).hasSize(1);
+        assertThat(ops.get(0)).containsEntry("op", "toast")
+                .containsEntry("style", "error")
+                .containsEntry("text", "Session not found: nope");
+    }
+
+    @Test
+    void toggleFavoriteModelPersistsAndFlipsTheStar() {
+        Map<String, Object> payload = Map.of(
+                "sessionId", "s1", "providerId", "anthropic",
+                "model", "claude-3-opus", "starId", "model-star-1");
+
+        List<Map<String, Object>> ops =
+                handlers.get("toggle-favorite-model").handle(request(), payload);
+
+        assertThat(ops).extracting(op -> op.get("op")).containsExactly("toast", "patch");
+        assertThat(ops.get(1)).containsEntry("id", "model-star-1");
+        assertThat(String.valueOf(ops.get(1).get("html")))
+                .contains("data-jhin-icon=\"star\"")
+                .doesNotContain("data-jhin-icon=\"star_border\"");
+        assertThat(UiSettings.open(tmp).favoriteModels())
+                .containsExactly("anthropic/claude-3-opus");
+
+        List<Map<String, Object>> second =
+                handlers.get("toggle-favorite-model").handle(request(), payload);
+
+        assertThat(second.get(1)).containsEntry("id", "model-star-1");
+        assertThat(String.valueOf(second.get(1).get("html")))
+                .contains("data-jhin-icon=\"star_border\"");
+        assertThat(UiSettings.open(tmp).favoriteModels()).isEmpty();
+    }
+
+    @Test
+    void toggleFavoriteModelRequiresTheStarId() {
+        List<Map<String, Object>> ops = handlers.get("toggle-favorite-model").handle(
+                request(), Map.of("sessionId", "s1",
+                        "providerId", "anthropic", "model", "claude-3-opus"));
+
+        assertThat(ops).hasSize(1);
+        assertThat(ops.get(0)).containsEntry("op", "toast").containsEntry("style", "error");
+        assertThat(UiSettings.open(tmp).favoriteModels()).isEmpty();
+    }
+
+    @Test
     void absentIntegrationsAnswerWithExplanatoryToasts() {
         FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
         Map<String, ActionRoute.ActionHandler> degraded =
@@ -470,6 +564,7 @@ class ActionsTest {
                 "create-provider", "delete-provider", "reload", "undo",
                 "keybind-edit", "keybind-save", "keybind-reset", "keybind-restore",
                 "save-appearance", "save-thread-behavior",
+                "select-model", "toggle-favorite-model",
                 "pin", "unpin", "settle", "unsettle", "snooze", "wake",
                 "archive", "restore", "regenerate-title", "reorder",
                 "auto-settle", "delete-session", "arrange-toggle",

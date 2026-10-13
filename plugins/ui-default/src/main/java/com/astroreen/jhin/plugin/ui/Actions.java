@@ -3,7 +3,7 @@
  * action, registered always and degrading to an explanatory toast when the
  * plugin that would serve it is not loaded.
  *
- * <p>Names, exhaustively (27):
+ * <p>Names, exhaustively (30):
  * <ul>
  *   <li>{@code enroll} — redeem an enrollment code, answer
  *       {@code [setToken, navigate:sessions]} (jhin.security);</li>
@@ -26,6 +26,9 @@
  *       settings surface: persist the Appearance / Thread-behavior cards
  *       into the jhin.ui settings store and answer {@code reloadBootstrap}
  *       / {@code refresh} (see {@code SettingsActions});</li>
+ *   <li>{@code select-model} / {@code toggle-favorite-model} — the T308
+ *       model picker: write the chosen model onto the session and flip the
+ *       row's favourite star (see {@code ModelPickerActions});</li>
  *   <li>the T76 thread-row table of {@code SessionActions} — {@code pin},
  *       {@code unpin}, {@code settle}, {@code unsettle}, {@code snooze},
  *       {@code wake}, {@code archive}, {@code restore},
@@ -89,6 +92,8 @@ final class Actions {
         handlers.put("keybind-restore", KeybindActions::restore);
         handlers.put("save-appearance", SettingsActions.saveAppearance(settings));
         handlers.put("save-thread-behavior", SettingsActions.saveThreadBehavior(settings));
+        handlers.put("select-model", ModelPickerActions.selectModel(store));
+        handlers.put("toggle-favorite-model", ModelPickerActions.toggleFavoriteModel(settings));
         registerThreadRowActions(handlers, store, services, features);
         return Map.copyOf(handlers);
     }

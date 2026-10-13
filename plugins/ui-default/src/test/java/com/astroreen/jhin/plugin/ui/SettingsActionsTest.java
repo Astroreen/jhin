@@ -21,6 +21,7 @@ import com.astroreen.jhin.sdk.http.ClientInfo;
 import com.astroreen.jhin.sdk.http.HttpRequest;
 import com.astroreen.jhin.sdk.http.HttpResponse;
 import com.astroreen.jhin.sdk.json.Json;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -403,6 +404,48 @@ class SettingsActionsTest {
             }
         });
         assertThat(chipLabels).containsExactly("Light", "Dark");
+    }
+
+    @Test
+    void favoriteModelsDefaultToEmpty() {
+        UiSettings settings = UiSettings.open(tmp);
+
+        assertThat(settings.favoriteModels()).isEmpty();
+    }
+
+    @Test
+    void favoriteModelsSaveRoundTripsAcrossAStoreReopen() {
+        UiSettings settings = UiSettings.open(tmp);
+        settings.setFavoriteModels(List.of("anthropic/claude-sonnet-4-5", "openai/gpt-4o"));
+
+        // The saved list survives a re-open of the store.
+        assertThat(UiSettings.open(tmp).favoriteModels())
+                .containsExactly("anthropic/claude-sonnet-4-5", "openai/gpt-4o");
+
+        // Toggling an entry present removes it; toggling one absent adds it.
+        settings.toggleFavoriteModel("anthropic/claude-sonnet-4-5");
+        settings.toggleFavoriteModel("google/gemini-2.5-pro");
+
+        assertThat(UiSettings.open(tmp).favoriteModels())
+                .containsExactly("openai/gpt-4o", "google/gemini-2.5-pro");
+    }
+
+    @Test
+    void unparsableFavoriteModelsValueFallsBackToEmptyWithoutBreakingOtherKeys() throws Exception {
+        // A JSON array carrying a non-string entry is unparsable for the key.
+        Files.writeString(tmp.resolve(UiSettings.FILE_NAME),
+                "{\"composer.favoriteModels\":[\"openai/gpt-4o\",7],\"appearance\":\"dark\"}");
+
+        UiSettings settings = UiSettings.open(tmp);
+        assertThat(settings.favoriteModels()).isEmpty();
+        assertThat(settings.current().appearance()).isEqualTo("dark");
+
+        // A value that is no array at all is ignored the same way.
+        Files.writeString(tmp.resolve(UiSettings.FILE_NAME),
+                "{\"composer.favoriteModels\":\"openai/gpt-4o\",\"appearance\":\"light\"}");
+
+        assertThat(UiSettings.open(tmp).favoriteModels()).isEmpty();
+        assertThat(settings.current().appearance()).isEqualTo("light");
     }
 
     // --- helpers ---

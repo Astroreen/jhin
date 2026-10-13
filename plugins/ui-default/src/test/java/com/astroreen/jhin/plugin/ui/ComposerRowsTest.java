@@ -1,14 +1,16 @@
 /**
- * The T103 composer control surface: the header row of decorative pickers
- * (model, provider, effort, access mode, workspace, branch, host — each a
- * {@code demo} button whose action opens its dialog; the dialog options
- * dispatch the inline directive composite, {@code setState} + the preview
- * toast), the context chips row (the six upstream ContextChip kinds), the
- * decorative context-window meter (green / yellow / red with the hard stops
- * at 50 / 80%), the footer row (attach, voice, the prompt-stash menu, the
- * queue badge, the real send action, the stop button while a run is live and
- * the Direct/Queue/Steer split menu) and the invisible seed carriers of the
- * decorative defaults.
+ * The T103 composer control surface: the header row of pickers (the T308
+ * model picker is real — its dialog lists the configured provider models —
+ * and the T308 branch picker is the honest git shell whose dialog shows the
+ * {@code jhin.git} empty state; provider, effort, access mode, workspace
+ * and host stay {@code demo} buttons whose action opens its dialog and
+ * whose dialog options dispatch the inline directive composite, {@code
+ * setState} + the preview toast), the context chips row (the six upstream
+ * ContextChip kinds), the decorative context-window meter (green / yellow /
+ * red with the hard stops at 50 / 80%), the footer row (attach, voice, the
+ * prompt-stash menu, the queue badge, the real send action, the stop button
+ * while a run is live and the Direct/Queue/Steer split menu) and the
+ * invisible seed carriers of the decorative defaults.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -28,7 +30,7 @@ class ComposerRowsTest {
     private static final String SESSION_ID = "s-1";
 
     @Test
-    void headerRowCarriesTheSevenDemoPickersWithDialogActions() {
+    void headerRowCarriesTheSevenPickersWithDialogActions() {
         Map<String, Object> json = render(List.of());
 
         Map<String, Object> controls = byId(json, ChatScreen.CONTROLS_ID);
@@ -48,24 +50,32 @@ class ComposerRowsTest {
                         ChatScreen.PICKER_HOST + "-control");
 
         for (Map<String, Object> dialogButton : dialogs) {
-            assertThat(dialogButton).containsEntry("demo", true);
+            // The T308 model picker is real and the branch picker is the
+            // honest git shell; the five fixture pickers carry the demo
+            // marker.
+            if (ChatScreen.PICKER_MODEL.equals(dialogButton.get("id"))
+                    || ChatScreen.PICKER_BRANCH.equals(dialogButton.get("id"))) {
+                assertThat(dialogButton).doesNotContainKey("demo");
+            } else {
+                assertThat(dialogButton).containsEntry("demo", true);
+            }
             assertThat(byId(json, String.valueOf(dialogButton.get("id")))).isNotNull();
         }
     }
 
     @Test
-    void everyPickerDialogListsOptionsThatSetStateAndToast() {
+    void theFixturePickerDialogsListOptionsThatSetStateAndToast() {
         Map<String, Object> json = render(List.of());
 
+        // The T308 model dialog is real: with no providers configured it
+        // renders the no-providers empty card and no fixture options, and
+        // carries no demo marker.
         String modelDialog = dialogHtmlOf(json, ChatScreen.PICKER_MODEL);
-        assertThat(modelDialog).startsWith("<").contains("composer-model-dialog");
-        // The option rows dispatch the inline directive composite — setState
-        // + the preview toast — inside their action attribute; four options.
-        assertThat(modelDialog).contains("data-jhin-action").contains("setState")
-                .contains(ChatScreen.STATE_MODEL).contains("Opus 4.6")
-                .contains("toast").contains("preview only");
-        // Four option buttons plus the Done action.
-        assertThat(modelDialog.split("data-jhin-type=\"button\"", -1)).hasSize(6);
+        assertThat(modelDialog).startsWith("<").contains(ChatScreen.MODEL_DIALOG_ID);
+        assertThat(modelDialog).contains(ChatScreen.MODEL_EMPTY_TEXT)
+                .doesNotContain("data-jhin-demo");
+        // Only the Done action is a button in the empty state.
+        assertThat(modelDialog.split("data-jhin-type=\"button\"", -1)).hasSize(2);
 
         // The dialog title row carries the keyboard chord hint — the chord
         // renders as its kbd keys (mod + shift + m).
@@ -76,19 +86,31 @@ class ComposerRowsTest {
         // The dialog closes through the Done action.
         assertThat(modelDialog).contains("Done").contains("dismissDialog");
 
-        // The remaining six dialogs exist with their option lists.
+        // The five fixture dialogs are the option lists: the option rows
+        // dispatch the inline directive composite — setState + the
+        // preview toast — inside their action attribute.
         assertThat(dialogHtmlOf(json, ChatScreen.PICKER_PROVIDER))
-                .contains("composer-provider-dialog", "anthropic", "openai", "google");
+                .contains("composer-provider-dialog", "anthropic", "openai", "google")
+                .contains("data-jhin-action").contains("setState")
+                .contains(ChatScreen.STATE_PROVIDER).contains("toast")
+                .contains("preview only");
         assertThat(dialogHtmlOf(json, ChatScreen.PICKER_EFFORT))
                 .contains("composer-effort-dialog", "Low", "Med", "High");
         assertThat(dialogHtmlOf(json, ChatScreen.PICKER_MODE))
                 .contains("composer-mode-dialog", "Read only", "Ask", "Full access");
         assertThat(dialogHtmlOf(json, ChatScreen.PICKER_WORKSPACE))
                 .contains("composer-workspace-dialog");
+        // The T308 branch dialog is the honest git shell: no git service
+        // exists yet, so its body is exactly one empty-state card and it
+        // carries no demo markers.
         assertThat(dialogHtmlOf(json, ChatScreen.PICKER_BRANCH))
-                .contains("composer-branch-dialog");
+                .contains("composer-branch-dialog")
+                .contains("Git plugin not installed \u2014 branches unavailable")
+                .doesNotContain("data-jhin-demo");
+        // The T317 host shell keeps its demo markers.
         assertThat(dialogHtmlOf(json, ChatScreen.PICKER_HOST))
-                .contains("composer-host-dialog");
+                .contains("composer-host-dialog")
+                .contains("data-jhin-demo");
     }
 
     @Test

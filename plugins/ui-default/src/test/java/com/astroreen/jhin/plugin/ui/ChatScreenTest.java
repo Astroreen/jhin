@@ -9,7 +9,12 @@
  * that appears only while a run is live. The T100 frame wraps the timeline
  * in the content lane ({@code laneWidth}), the top scroll fade and the
  * composer-seam divider, and the header row carries the title, the status
- * badge, the demo-marked panel toggles and the thread action menu.
+ * badge, the demo-marked panel toggles and the thread action menu. The T308
+ * model picker dialog renders the real provider/model list (favourites
+ * first, provider groups, kbd jump labels) or the no-providers empty card.
+ * The T308 branch dialog is the honest git shell — the empty state until
+ * the {@code jhin.git} plugin arrives (T314) — and the host button keeps
+ * the {@code This host} shell label T317 owns.
  */
 package com.astroreen.jhin.plugin.ui;
 
@@ -381,6 +386,101 @@ class ChatScreenTest {
         assertThat(children.get(children.size() - 1)).containsEntry("type", "menu");
     }
 
+    @Test
+    void modelDialogShowsTheNoProvidersEmptyStateWithoutDemoMarkers() {
+        Map<String, Object> json = render(List.of());
+
+        Map<String, Object> picker = nodesOfType(json, "button").stream()
+                .filter(node -> ChatScreen.PICKER_MODEL.equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(picker).doesNotContainKey("demo");
+
+        String dialog = dialogHtmlOf(json, ChatScreen.PICKER_MODEL);
+        assertThat(dialog).contains(ChatScreen.MODEL_DIALOG_ID);
+        assertThat(dialog).contains(ChatScreen.MODEL_EMPTY_TEXT);
+        assertThat(dialog).doesNotContain("data-jhin-demo");
+    }
+
+    @Test
+    void branchDialogShowsTheGitPluginEmptyStateWithoutDemoMarkers() {
+        Map<String, Object> json = render(List.of());
+
+        // The T308 branch control is the honest shell: no demo marker.
+        Map<String, Object> picker = nodesOfType(json, "button").stream()
+                .filter(node -> ChatScreen.PICKER_BRANCH.equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(picker).doesNotContainKey("demo");
+
+        String dialog = dialogHtmlOf(json, ChatScreen.PICKER_BRANCH);
+        assertThat(dialog).contains("composer-branch-dialog");
+        assertThat(dialog).contains("Git plugin not installed \u2014 branches unavailable");
+        assertThat(dialog).doesNotContain("data-jhin-demo");
+        // The body is exactly one empty-state card: the Done action is the
+        // only button, there are no branch option rows.
+        assertThat(dialog.split("data-jhin-type=\"button\"", -1)).hasSize(2);
+    }
+
+    @Test
+    void hostButtonIsTheT317ShellStillDemoMarked() {
+        Map<String, Object> json = render(List.of());
+
+        Map<String, Object> picker = nodesOfType(json, "button").stream()
+                .filter(node -> ChatScreen.PICKER_HOST.equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(picker).containsEntry("label", "This host")
+                .containsEntry("demo", true);
+
+        // The T317 host dialog keeps its demo markers too.
+        String dialog = dialogHtmlOf(json, ChatScreen.PICKER_HOST);
+        assertThat(dialog).contains("composer-host-dialog");
+        assertThat(dialog).contains("data-jhin-demo");
+    }
+
+    @Test
+    void modelDialogListsFavoritesFirstThenProviderGroupsWithJumpLabels() {
+        List<ChatScreen.ModelChoice> choices = List.of(
+                new ChatScreen.ModelChoice("p-1", "Anthropic", "claude-sonnet-4-5"),
+                new ChatScreen.ModelChoice("p-1", "Anthropic", "claude-opus-4-6"),
+                new ChatScreen.ModelChoice("p-2", "OpenAI", "gpt-5-codex"));
+        Map<String, Object> json = render(List.of(), choices,
+                List.of("p-1/claude-opus-4-6"));
+
+        String dialog = dialogHtmlOf(json, ChatScreen.PICKER_MODEL);
+        assertThat(dialog).contains(ChatScreen.MODEL_DIALOG_ID);
+
+        // The favourite row leads the list with the filled star toggle; the
+        // other rows keep the outline star.
+        assertThat(dialog.indexOf("claude-opus-4-6"))
+                .isLessThan(dialog.indexOf("claude-sonnet-4-5"));
+        assertThat(dialog.indexOf("data-jhin-icon=\"star\""))
+                .isLessThan(dialog.indexOf("data-jhin-icon=\"star_border\""));
+
+        // One group header per provider over the option rows, and the
+        // type-ahead filter field of the T97 client-side search spec.
+        assertThat(dialog).contains("jhin-list-section-label");
+        assertThat(dialog).contains("Anthropic").contains("OpenAI");
+        assertThat(dialog).contains(ChatScreen.MODEL_FILTER_ID);
+
+        // The kbd jump labels number the three rows 1..3, none beyond.
+        assertThat(dialog).contains("jhin-kbd-key\">1</kbd>")
+                .contains("jhin-kbd-key\">2</kbd>")
+                .contains("jhin-kbd-key\">3</kbd>")
+                .doesNotContain("jhin-kbd-key\">4</kbd>");
+
+        // The row tap and the star toggle dispatch the real actions with
+        // the providerId / model payloads (the action JSON quotes are
+        // escaped inside the single-quoted attribute).
+        assertThat(dialog).contains("&quot;name&quot;:&quot;select-model&quot;")
+                .contains("&quot;name&quot;:&quot;toggle-favorite-model&quot;")
+                .contains("&quot;providerId&quot;:&quot;p-1&quot;")
+                .contains("&quot;providerId&quot;:&quot;p-2&quot;")
+                .contains("&quot;model&quot;:&quot;claude-opus-4-6&quot;")
+                .contains("&quot;model&quot;:&quot;gpt-5-codex&quot;");
+    }
+
     // --- fixture ---
 
     /** One completed run with a tool call: user -> assistant -> tool -> assistant. */
@@ -410,10 +510,16 @@ class ChatScreenTest {
     }
 
     private static Map<String, Object> render(List<EventRecord> history) {
+        return render(history, List.of(), List.of());
+    }
+
+    private static Map<String, Object> render(List<EventRecord> history,
+                                              List<ChatScreen.ModelChoice> choices,
+                                              List<String> favorites) {
         Session session = new Session(SESSION_ID, "acc-1", "demo", "/tmp/work",
                 null, null, "active", 0L, 0L, false, null, null, null, null,
                 false, null, null, false);
-        return ChatScreen.render(session, history).toJson();
+        return ChatScreen.render(session, history, choices, favorites).toJson();
     }
 
     // --- node walking helpers over the JSON wire shape ---
@@ -448,6 +554,15 @@ class ChatScreenTest {
                 .filter(node -> label.equals(node.get("label")))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    /** The dialog fragment one picker button opens (the action's {@code html}). */
+    private static String dialogHtmlOf(Map<String, Object> tree, String pickerId) {
+        Map<String, Object> button = nodesOfType(tree, "button").stream()
+                .filter(node -> pickerId.equals(node.get("id")))
+                .findFirst()
+                .orElseThrow();
+        return String.valueOf(castMap(button.get("action")).get("html"));
     }
 
     private static void collectIds(Object fragment, List<String> ids) {

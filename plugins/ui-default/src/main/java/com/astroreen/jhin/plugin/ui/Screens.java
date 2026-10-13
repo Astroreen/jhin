@@ -31,6 +31,7 @@
  */
 package com.astroreen.jhin.plugin.ui;
 
+import com.astroreen.jhin.plugin.llm.api.ProviderRecord;
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
 import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.Session;
@@ -56,6 +57,7 @@ import com.astroreen.jhin.sdk.http.ClientInfo;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -168,8 +170,10 @@ final class Screens implements ScreenRegistry {
         Optional<Session> session = account
                 .map(owner -> store.get(owner, sessionId))
                 .orElseGet(() -> store.get(sessionId));
-        return session.map(open -> (Supplier<UiNode>) () ->
-                ChatScreen.render(open, events.list(open.id(), 0)));
+        return session.map(open -> (Supplier<UiNode>) () -> ChatScreen.render(
+                open, events.list(open.id(), 0),
+                providersPresent() ? modelChoices(account) : List.of(),
+                providersPresent() ? settings.favoriteModels() : List.of()));
     }
 
     /**
@@ -229,5 +233,21 @@ final class Screens implements ScreenRegistry {
      */
     private Optional<ProviderRegistry> providerRegistry() {
         return features.llm() ? services.find(ProviderRegistry.class) : Optional.empty();
+    }
+
+    /**
+     * The T308 model picker choices of one caller: every provider of the
+     * account contributes its configured model. Only called under the
+     * {@code llm} feature flag (see {@link #providerRegistry()}), so the API
+     * classes are never loaded without that plugin.
+     */
+    private List<ChatScreen.ModelChoice> modelChoices(Optional<String> account) {
+        String accountId = account.orElse(ProviderRegistry.LOCAL_ACCOUNT);
+        List<ChatScreen.ModelChoice> choices = new ArrayList<>();
+        for (ProviderRecord record : providerRegistry().orElseThrow().list(accountId)) {
+            choices.add(new ChatScreen.ModelChoice(
+                    record.id(), record.format(), record.model()));
+        }
+        return List.copyOf(choices);
     }
 }

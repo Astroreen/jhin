@@ -50,9 +50,12 @@
  * {@code timelineScrollAnchoring.ts:39}) as the end inset.
  *
  * <p><b>Composer.</b> The full upstream control surface (T103): the header
- * row of decorative pickers (model, provider, effort, access mode, workspace,
- * branch, host — each a {@code demo} button whose picker opens a dialog list
- * that sets local state and toasts, the upstream control-row anatomy,
+ * row of pickers (the T308 model picker is real — its dialog lists the
+ * configured provider models — and the branch picker is the honest T308
+ * shell whose dialog shows the git empty state until the {@code jhin.git}
+ * plugin arrives (T314); provider, effort, access mode, workspace and host
+ * stay {@code demo} buttons whose picker opens a dialog list that sets
+ * local state and toasts, the upstream control-row anatomy,
  * {@code ChatComposer.tsx:5375-5555} + {@code ComposerControl.tsx}), the
  * context chips row (the upstream {@code ContextChip} pill kinds,
  * {@code ContextChip.tsx:25-83}), the decorative context-window meter (the
@@ -70,10 +73,12 @@
  * content. Send posts to the {@code send} action ({@code POST
  * /ui/action/send} with {@code sessionId} and the included {@code
  * messageInput}); the stop button posts the real {@code cancel} action. The
- * pickers seed their decorative defaults into the client state (the
+ * fixture pickers seed their decorative defaults into the client state (the
  * invisible {@code value} carriers) so their labels interpolate live —
- * selecting an option changes the visible label and toasts, never the
- * server. The status badge reads {@code Running\u2026} while the last
+ * selecting a fixture option changes the visible label and toasts, never
+ * the server (the host button keeps the static {@code This host} shell
+ * label T317 owns); the model picker's rows dispatch the real
+ * {@code select-model} action instead. The status badge reads {@code Running\u2026} while the last
  * {@code run_start} is unpaired, {@code Limited} when the last run closed
  * with an {@code error} and {@code Idle} otherwise.
  */
@@ -110,6 +115,9 @@ public final class ChatScreen {
 
     /** The chat header row id. */
     public static final String HEADER_ID = "chat-header";
+
+    /** The T303 context chip cluster id in the chat header. */
+    public static final String CONTEXT_CHIP_ID = "context-chip";
 
     /** The composer-seam divider id (the painted seam-above recipe). */
     public static final String SEAM_ID = "composer-seam";
@@ -169,6 +177,29 @@ public final class ChatScreen {
     public static final String PICKER_BRANCH = "composer-branch-picker";
     public static final String PICKER_HOST = "composer-host-picker";
 
+    /** The T308 model dialog id (the {@code mod+shift+m} picker). */
+    public static final String MODEL_DIALOG_ID = "composer-model-dialog";
+
+    /** The UiState id of the model dialog's type-ahead filter field. */
+    public static final String MODEL_FILTER_ID = "composerModelFilter";
+
+    /** The section id of the favourites block of the model dialog. */
+    public static final String MODEL_FAVORITES_SECTION_ID = "model-favorites";
+
+    /** The section id prefix of one provider group of the model dialog. */
+    public static final String MODEL_GROUP_PREFIX = "model-group-";
+
+    /** The empty-state copy of the model dialog (no providers configured). */
+    public static final String MODEL_EMPTY_TEXT =
+            "No providers configured \u2014 add one on the Providers screen.";
+
+    /**
+     * The empty-state copy of the branch dialog: there is no {@code jhin.git}
+     * plugin yet, so no git service exists to list branches from.
+     */
+    public static final String BRANCH_EMPTY_TEXT =
+            "Git plugin not installed \u2014 branches unavailable";
+
     /** The T108 permissions dialog ids (the access-mode picker shell). */
     public static final String PERMISSIONS_DIALOG_ID = "composer-mode-dialog";
     public static final String PERMISSIONS_MODES_ID = "permissions-modes";
@@ -189,13 +220,39 @@ public final class ChatScreen {
     }
 
     /**
-     * Builds the chat screen of one session.
+     * One provider/model entry of the T308 model picker: the owning
+     * provider (its registry id and display name) and the model string. A
+     * screen-level record so this screen stays free of the {@code jhin.llm}
+     * API types.
+     */
+    public record ModelChoice(String providerId, String providerName, String model) {
+    }
+
+    /**
+     * Builds the chat screen of one session; the model picker starts empty
+     * ({@link #render(Session, List, List, List)} carries the real choices).
      *
      * @param session the session the screen is opened for
      * @param history the stored events of the session in sequence order
      * @return the screen node
      */
     public static UiNode render(Session session, List<EventRecord> history) {
+        return render(session, history, List.of(), List.of());
+    }
+
+    /**
+     * Builds the chat screen of one session with the real T308 model picker
+     * contents.
+     *
+     * @param session         the session the screen is opened for
+     * @param history         the stored events of the session in sequence order
+     * @param choices         the provider/model entries of the model picker
+     * @param favoriteEntries the favourite {@code providerId/model} entries
+     *                        ({@code UiSettings.favoriteModels()})
+     * @return the screen node
+     */
+    public static UiNode render(Session session, List<EventRecord> history,
+                                List<ModelChoice> choices, List<String> favoriteEntries) {
         String sessionId = session.id();
         String status = statusOf(history);
         boolean runLive = MessageCardBuilder.STATUS_RUNNING.equals(status);
@@ -209,7 +266,8 @@ public final class ChatScreen {
                                 .gap(0)
                                 .child(header(session, status))
                                 .child(Ui.expanded()
-                                        .child(lane(sessionId, history, runLive))
+                                        .child(lane(sessionId, history, runLive,
+                                                choices, favoriteEntries))
                                         .build())
                                 .build())
                         .child(RightPanelBuilder.build(session, status))
@@ -283,7 +341,7 @@ public final class ChatScreen {
                 .child(panelToggle(STATE_RIGHT_PANEL, "view_sidebar"))
                 .child(panelToggle(STATE_TERMINAL, "dock"));
         if (MessageCardBuilder.hasContext(session.model(), session.providerId(), session.workdir())) {
-            header.child(MessageCardBuilder.contextChip("context-chip",
+            header.child(MessageCardBuilder.contextChip(CONTEXT_CHIP_ID,
                     session.model(), session.providerId(), session.workdir()));
         }
         return header.child(headerMenu(session)).build();
@@ -377,7 +435,8 @@ public final class ChatScreen {
      * at the {@code laneWidth} default the client resolves through its
      * {@code chatWidth} switch.
      */
-    private static UiNode lane(String sessionId, List<EventRecord> history, boolean runLive) {
+    private static UiNode lane(String sessionId, List<EventRecord> history, boolean runLive,
+                               List<ModelChoice> choices, List<String> favoriteEntries) {
         return Ui.container()
                 .id(LANE_ID)
                 .direction("column")
@@ -395,7 +454,7 @@ public final class ChatScreen {
                                 .build())
                         .build())
                 .child(seam())
-                .child(composer(sessionId, runLive))
+                .child(composer(sessionId, runLive, choices, favoriteEntries))
                 .build();
     }
 
@@ -587,13 +646,14 @@ public final class ChatScreen {
      * surface keeps the reserved {@code composer} id the client paints the
      * composer shadow and the bottom safe-area inset on.
      */
-    private static UiNode composer(String sessionId, boolean runLive) {
+    private static UiNode composer(String sessionId, boolean runLive,
+                                   List<ModelChoice> choices, List<String> favoriteEntries) {
         Map<String, Object> runPayload = Map.of("sessionId", sessionId);
         Ui.ColumnBuilder column = Ui.column()
                 .id(COMPOSER_ID)
                 .gap(8)
                 .padding(12)
-                .child(controlRow())
+                .child(controlRow(sessionId, choices, favoriteEntries))
                 .child(chipsRow())
                 .child(contextMeter())
                 .child(Ui.textarea(MESSAGE_INPUT)
@@ -612,53 +672,66 @@ public final class ChatScreen {
     }
 
     /**
-     * The header control row (T103.1): the seven decorative pickers — model,
-     * provider, effort, access mode, workspace, git branch and host. Each is
-     * a {@code demo} button (icon + live label + chevron) whose action opens
-     * the picker dialog; the dialog list sets local state and toasts.
+     * The header control row (T103.1): the seven pickers — model, provider,
+     * effort, access mode, workspace, git branch and host. The T308 model
+     * picker is real (its dialog lists the configured provider models) and
+     * the branch picker is the honest shell (its dialog shows the git empty
+     * state until the {@code jhin.git} plugin arrives); both carry no
+     * {@code demo} marker. The other five are {@code demo} buttons (icon +
+     * live label + chevron) whose picker opens a dialog list that sets
+     * local state and toasts.
      */
-    private static UiNode controlRow() {
+    private static UiNode controlRow(String sessionId, List<ModelChoice> choices,
+                                     List<String> favoriteEntries) {
         return Ui.row()
                 .id(CONTROLS_ID)
                 .align("center")
                 .gap(4)
                 .child(picker(PICKER_MODEL, "Model: ${" + STATE_MODEL + "}",
-                        "auto_awesome", "mod+shift+m", modelDialog()))
+                        "auto_awesome", "mod+shift+m",
+                        modelDialog(sessionId, choices, favoriteEntries), false))
                 .child(picker(PICKER_PROVIDER, "Provider: ${" + STATE_PROVIDER + "}",
-                        "smart_toy", null, providerDialog()))
+                        "smart_toy", null, providerDialog(), true))
                 .child(picker(PICKER_EFFORT, "Effort: ${" + STATE_EFFORT + "}",
-                        "speed", "mod+shift+e", effortDialog()))
+                        "speed", "mod+shift+e", effortDialog(), true))
                 .child(picker(PICKER_MODE, "Access: ${" + STATE_MODE + "}",
-                        "shield", "mod+shift+a", permissionsDialog()))
+                        "shield", "mod+shift+a", permissionsDialog(), true))
                 .child(picker(PICKER_WORKSPACE, "${" + STATE_WORKSPACE + "}",
-                        "folder_open", "mod+shift+x", workspaceDialog()))
+                        "folder_open", "mod+shift+x", workspaceDialog(), true))
                 .child(picker(PICKER_BRANCH, "${" + STATE_BRANCH + "}",
-                        "alt_route", "mod+shift+g", branchDialog()))
-                .child(picker(PICKER_HOST, "${" + STATE_HOST + "}",
-                        "computer", "mod+shift+h", hostDialog()))
+                        "alt_route", "mod+shift+g", branchDialog(), false))
+                .child(picker(PICKER_HOST, "This host",
+                        "computer", "mod+shift+h", hostDialog(), true))
                 .build();
     }
 
     /**
-     * One picker control: the {@code demo} button carrying the icon, the
-     * interpolating label and the dialog-opening action, plus the chord hint
-     * in its tooltip where upstream advertises one.
+     * One picker control: the button carrying the icon, the interpolating
+     * label and the dialog-opening action, plus the chord hint in its
+     * tooltip where upstream advertises one. The T308 model and branch
+     * pickers are honest and carry no {@code demo} marker; the five fixture
+     * pickers keep it (plan section 14.10).
      */
     private static UiNode picker(String id, String label, String icon, String chord,
-                                 UiNode dialogNode) {
+                                 UiNode dialogNode, boolean demo) {
+        String hint = chord == null ? "Picker" : chord + " \u2014 picker";
         Ui.ButtonBuilder button = Ui.button(label)
                 .id(id)
                 .icon(icon)
                 .action(Directives.dialog(dialogNode))
-                .set("demo", true)
-                .tooltip(chord == null ? "Picker (preview only)" : chord + " — picker (preview only)");
+                .tooltip(demo ? hint + " (preview only)" : hint);
+        if (demo) {
+            button.set("demo", true);
+        }
+        Ui.IconButtonBuilder chevron = Ui.iconButton()
+                .icon("expand_more")
+                .iconSize(16)
+                .action(Directives.dialog(dialogNode));
+        if (demo) {
+            chevron.set("demo", true);
+        }
         Ui.BoxBuilder chevronWrap = Ui.box()
-                .child(Ui.iconButton()
-                        .icon("expand_more")
-                        .iconSize(16)
-                        .set("demo", true)
-                        .action(Directives.dialog(dialogNode))
-                        .build());
+                .child(chevron.build());
         return Ui.row()
                 .id(id + "-control")
                 .align("center")
@@ -670,10 +743,11 @@ public final class ChatScreen {
 
     /**
      * The shared shape of the picker dialogs: the title row (name + chord
-     * hint) over the option list, closed by the {@code Done} action. Options
-     * dispatch the inline directive composite — {@code setState} + the
-     * preview toast — so a selection changes the visible label with no
-     * server round-trip.
+     * hint) over the option list, closed by the {@code Done} action. The
+     * fixture dialogs' options dispatch the inline directive composite —
+     * {@code setState} + the preview toast — so a selection changes the
+     * visible label with no server round-trip; the T308 model dialog fills
+     * this shell with the real option list instead.
      */
     private static Ui.ColumnBuilder dialogOptions(String dialogId, String name, String chord) {
         Ui.RowBuilder title = Ui.row()
@@ -696,15 +770,132 @@ public final class ChatScreen {
                 .build();
     }
 
-    /** The model picker dialog (decorative fixtures). */
-    private static UiNode modelDialog() {
-        return dialogOptions("composer-model-dialog", "Model", "mod+shift+m")
-                .child(option(STATE_MODEL, "Opus 4.6"))
-                .child(option(STATE_MODEL, "Sonnet 4.6"))
-                .child(option(STATE_MODEL, "GPT-5 Codex"))
-                .child(option(STATE_MODEL, "Gemini 3 Pro"))
+    /**
+     * The T308 model picker dialog: the real provider/model list. With no
+     * providers configured it renders the {@link #MODEL_EMPTY_TEXT} empty
+     * card instead of any option rows. The type-ahead filter is the T97
+     * client-side {@code list} {@code search} spec keyed to the
+     * {@link #MODEL_FILTER_ID} field (docs/sdui.md section 2.6) — the client
+     * filters the section rows against their titles as the query changes,
+     * with no server round-trip.
+     */
+    private static UiNode modelDialog(String sessionId, List<ModelChoice> choices,
+                                      List<String> favoriteEntries) {
+        Ui.ColumnBuilder dialog = dialogOptions(MODEL_DIALOG_ID, "Model", "mod+shift+m");
+        if (choices.isEmpty()) {
+            return dialog
+                    .child(Ui.card()
+                            .child(Ui.text(MODEL_EMPTY_TEXT)
+                                    .style("caption")
+                                    .color("$color.muted-foreground")
+                                    .build())
+                            .build())
+                    .child(dialogDone())
+                    .build();
+        }
+        return dialog
+                .child(Ui.input(MODEL_FILTER_ID)
+                        .placeholder("Filter models")
+                        .build())
+                .child(modelList(sessionId, choices, favoriteEntries))
                 .child(dialogDone())
                 .build();
+    }
+
+    /**
+     * The model option list: the favourites block first (the rows whose
+     * {@code providerId/model} entry is in {@code favoriteEntries}, leaving
+     * their provider group), then one group per provider. The T97
+     * {@code search} spec makes the client filter the section rows
+     * type-ahead against the row titles.
+     */
+    private static UiNode modelList(String sessionId, List<ModelChoice> choices,
+                                    List<String> favoriteEntries) {
+        List<ModelChoice> favorites = new ArrayList<>();
+        Map<String, List<ModelChoice>> groups = new LinkedHashMap<>();
+        Map<String, String> groupNames = new LinkedHashMap<>();
+        for (ModelChoice choice : choices) {
+            if (favoriteEntries.contains(entryOf(choice))) {
+                favorites.add(choice);
+            } else {
+                groups.computeIfAbsent(choice.providerId(), id -> new ArrayList<>()).add(choice);
+                groupNames.putIfAbsent(choice.providerId(), choice.providerName());
+            }
+        }
+        List<Object> sections = new ArrayList<>();
+        int jump = 1;
+        if (!favorites.isEmpty()) {
+            sections.add(modelSection("Favorites", MODEL_FAVORITES_SECTION_ID,
+                    favorites, favoriteEntries, jump, sessionId));
+            jump += favorites.size();
+        }
+        for (Map.Entry<String, List<ModelChoice>> group : groups.entrySet()) {
+            sections.add(modelSection(groupNames.get(group.getKey()),
+                    MODEL_GROUP_PREFIX + group.getKey(), group.getValue(),
+                    favoriteEntries, jump, sessionId));
+            jump += group.getValue().size();
+        }
+        return Ui.list()
+                .id("model-options")
+                .sections(sections)
+                .search(Map.of(
+                        "key", MODEL_FILTER_ID,
+                        "fields", List.of("title"),
+                        "empty", "No models match"))
+                .build();
+    }
+
+    /** One model dialog section: the group label and its numbered rows. */
+    private static Map<String, Object> modelSection(String label, String id,
+                                                    List<ModelChoice> rows,
+                                                    List<String> favoriteEntries,
+                                                    int jump, String sessionId) {
+        Map<String, Object> section = new LinkedHashMap<>();
+        section.put("label", label);
+        section.put("id", id);
+        List<Object> items = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            items.add(modelRow(rows.get(i), favoriteEntries, jump + i, sessionId));
+        }
+        section.put("items", items);
+        return section;
+    }
+
+    /**
+     * One model option row: the {@code kbd} jump label (the first nine rows
+     * of the whole list), the model name and the star toggle. The row tap
+     * dispatches the real {@code select-model} action, the star toggle the
+     * real {@code toggle-favorite-model} action, both with the
+     * {@code sessionId} / {@code providerId} / {@code model} payload (the
+     * star carries its own {@code starId} so the toggle can patch it back).
+     */
+    private static UiNode modelRow(ModelChoice choice, List<String> favoriteEntries,
+                                   int jump, String sessionId) {
+        boolean favorite = favoriteEntries.contains(entryOf(choice));
+        String starId = "model-star-" + jump;
+        Map<String, Object> payload = Map.of(
+                "sessionId", sessionId,
+                "providerId", choice.providerId(),
+                "model", choice.model(),
+                "starId", starId);
+        Ui.ListRowBuilder row = Ui.listRow()
+                .id("model-option-" + jump)
+                .title(choice.model())
+                .action(ActionDescriptors.of("select-model", payload, null))
+                .trailing(Ui.iconButton()
+                        .id(starId)
+                        .icon(favorite ? "star" : "star_border")
+                        .action(ActionDescriptors.of("toggle-favorite-model", payload, null))
+                        .build());
+        if (jump >= 1 && jump <= 9) {
+            row.leading(Ui.kbd().chord(String.valueOf(jump)).build());
+        }
+        return row.build();
+    }
+
+    /** The {@code providerId/model} favourite entry of one choice. */
+    private static String entryOf(ModelChoice choice) {
+        return choice.providerId() + "/" + choice.model();
     }
 
     /** The provider selector dialog: the three built-in provider kinds. */
@@ -836,18 +1027,54 @@ public final class ChatScreen {
                 .build();
     }
 
-    /** The git branch selector dialog. */
+    /**
+     * The T308 branch picker dialog: the honest shell over the T314 seam.
+     * The {@code jhin.git} plugin does not exist yet, so {@link
+     * #branchNames()} is empty and the dialog body is exactly one
+     * empty-state card; once the git service drives the seam, the dialog
+     * lists one option row per branch instead.
+     */
     private static UiNode branchDialog() {
-        return dialogOptions("composer-branch-dialog", "Branch", "mod+shift+g")
-                .child(option(STATE_BRANCH, "main"))
-                .child(option(STATE_BRANCH, "feat/composer-rows"))
+        Ui.ColumnBuilder dialog =
+                dialogOptions("composer-branch-dialog", "Branch", "mod+shift+g");
+        List<String> branches = branchNames();
+        if (branches.isEmpty()) {
+            return dialog
+                    .child(Ui.card()
+                            .child(Ui.text(BRANCH_EMPTY_TEXT)
+                                    .style("caption")
+                                    .color("$color.muted-foreground")
+                                    .build())
+                            .build())
+                    .child(dialogDone())
+                    .build();
+        }
+        for (String branch : branches) {
+            dialog.child(option(STATE_BRANCH, branch));
+        }
+        return dialog
                 .child(dialogDone())
                 .build();
     }
 
     /**
+     * The git branch names the branch dialog lists. The {@code jhin.git}
+     * plugin does not exist yet, so there is no git service to look up and
+     * the list stays empty — the dialog renders its {@link
+     * #BRANCH_EMPTY_TEXT} empty state instead. T314 brings the git plugin
+     * and its {@code ServiceRegistry} {@code find} lookup, which then
+     * drives this list; no reflective lookup or placeholder branches live
+     * here in the meantime.
+     */
+    static List<String> branchNames() {
+        return List.of();
+    }
+
+    /**
      * The machine/host selector dialog: the single real entry plus the
-     * decorative rows (the plan section 3.2 multi-environment rule).
+     * decorative rows (the plan section 3.2 multi-environment rule). The
+     * button above it keeps the static {@code This host} shell label T317
+     * owns.
      */
     private static UiNode hostDialog() {
         return dialogOptions("composer-host-dialog", "Host", "mod+shift+h")

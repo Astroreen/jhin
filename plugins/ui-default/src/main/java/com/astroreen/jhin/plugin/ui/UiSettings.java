@@ -46,6 +46,12 @@
  *       operator config read by jhin.sessions at startup and offers no write
  *       service, so this key persists the user preference only and does not
  *       reconfigure the sweep.</li>
+ *   <li>{@code composer.favoriteModels} — a JSON array of
+ *       {@code providerId/model} strings (e.g.
+ *       {@code ["anthropic/claude-sonnet-4-5","openai/gpt-4o"]}); the
+ *       composer's favourite models. Default empty; an unparsable value is
+ *       ignored key-by-key and resolves to the empty list, and the config
+ *       layer carries the same JSON array as text;</li>
  *   <li>{@code qaProbe} — boolean (default {@code false}); the QA-only
  *       switch that makes the level-3 probe screen resolvable (T88). The
  *       settings screen never writes it.</li>
@@ -60,7 +66,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -90,6 +98,13 @@ public final class UiSettings {
 
     /** Settings key: thread-behavior inactivity slider (days). */
     public static final String KEY_INACTIVITY_DAYS = "inactivityDays";
+
+    /**
+     * Settings key: the composer's favourite models, persisted as a JSON
+     * array of {@code providerId/model} strings (for example
+     * {@code ["anthropic/claude-sonnet-4-5","openai/gpt-4o"]}).
+     */
+    public static final String KEY_FAVORITE_MODELS = "composer.favoriteModels";
 
     /**
      * Config key: the QA level-3 probe screen (T88). Operator/QA-only — the
@@ -126,6 +141,9 @@ public final class UiSettings {
 
     /** Built-in default inactivity window (days): the jhin.sessions sweep default. */
     static final int DEFAULT_INACTIVITY_DAYS = 3;
+
+    /** Built-in default favourite models: none. */
+    static final List<String> DEFAULT_FAVORITE_MODELS = List.of();
 
     /** Built-in default of the QA level-3 probe screen switch: off. */
     static final boolean DEFAULT_QA_PROBE = false;
@@ -269,6 +287,51 @@ public final class UiSettings {
         store(saved);
     }
 
+    /**
+     * The composer's favourite models: {@code providerId/model} strings in
+     * user order. Never {@code null}; an unparsable value resolves to the
+     * empty list, exactly like the other keys of the store.
+     *
+     * @return the favourite model entries
+     */
+    public synchronized List<String> favoriteModels() {
+        return List.copyOf(favoriteModelsOf(load()));
+    }
+
+    /**
+     * Persists the composer's favourite models. Only this key is written.
+     *
+     * @param entries the {@code providerId/model} strings in user order
+     */
+    public synchronized void setFavoriteModels(List<String> entries) {
+        Map<String, Object> saved = load();
+        saved.put(KEY_FAVORITE_MODELS, List.copyOf(entries));
+        store(saved);
+    }
+
+    /**
+     * Adds one favourite model when it is absent and removes it when it is
+     * present. Only this key is written.
+     *
+     * @param entry one {@code providerId/model} string
+     * @return {@code true} when the entry is present after the toggle
+     */
+    public synchronized boolean toggleFavoriteModel(String entry) {
+        Map<String, Object> saved = load();
+        List<String> entries = new ArrayList<>(favoriteModelsOf(saved));
+        boolean present;
+        if (entries.contains(entry)) {
+            entries.remove(entry);
+            present = false;
+        } else {
+            entries.add(entry);
+            present = true;
+        }
+        saved.put(KEY_FAVORITE_MODELS, entries);
+        store(saved);
+        return present;
+    }
+
     /** The runtime-saved document; empty when absent or unparsable. */
     private Map<String, Object> load() {
         if (!Files.isRegularFile(file)) {
@@ -382,6 +445,50 @@ public final class UiSettings {
             }
         }
         return config.getBool(key, def);
+    }
+
+    /**
+     * The favourite-model key: the saved array when it parses, else the
+     * config value, else the empty default. An unparsable value is ignored
+     * key-by-key (the config/default layer answers), so a bad write never
+     * blocks boot.
+     */
+    private List<String> favoriteModelsOf(Map<String, Object> saved) {
+        List<String> parsed = stringListOf(saved.get(KEY_FAVORITE_MODELS));
+        if (parsed != null) {
+            return parsed;
+        }
+        parsed = stringListOf(config.get(KEY_FAVORITE_MODELS, ""));
+        return parsed != null ? parsed : DEFAULT_FAVORITE_MODELS;
+    }
+
+    /**
+     * One string-list value: a JSON array of strings, as the parsed saved
+     * value or as its text form in the config layer. Anything else answers
+     * {@code null} so the next layer can resolve the key.
+     */
+    private static List<String> stringListOf(Object value) {
+        List<?> items = null;
+        if (value instanceof List<?> list) {
+            items = list;
+        } else if (value instanceof String text && !text.isBlank()) {
+            try {
+                items = Json.read(text, List.class);
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
+        if (items == null) {
+            return null;
+        }
+        List<String> entries = new ArrayList<>();
+        for (Object item : items) {
+            if (!(item instanceof String entry)) {
+                return null;
+            }
+            entries.add(entry);
+        }
+        return entries;
     }
 
     /**

@@ -1,0 +1,24 @@
+T308 browser steps — UNAVAILABLE in this environment.
+
+Browser automation (the agent browser / screenshots / evaluate) cannot run
+on this QA machine; the T202–T208/T301–T307 precedent applies: every
+browser step is substituted with curl + static asserts.
+
+Not executed (the plan's interactive/visual cases):
+  - Opening the model picker and tapping a row (the dialog opening, the
+    type-ahead filter, the mod+1..9 jump labels, the star flip): substituted
+    by the picker.html dialog markup asserts (the provider/model rows, the
+    select-model and toggle-favorite-model action payloads) and the
+    POST /ui/action/select-model directive asserts.
+  - Watching the composer model line/chip change after the selection:
+    substituted by the picker-selected.html context-chip region assert and
+    the session.json model/providerId assert.
+  - Opening the branch picker and reading the empty state: substituted by
+    the picker.html "Git plugin not installed" assert.
+  - The no-providers empty state on a fresh account: substituted by the
+    --fail mode asserts (no-providers.txt).
+
+What IS proven here: the served chat screen carries the real provider/model
+picker wired to POST /ui/action/select-model (the choice is written onto the
+session and re-rendered as the model line on the context chip) and the
+honest branch-picker shell, all with curl.

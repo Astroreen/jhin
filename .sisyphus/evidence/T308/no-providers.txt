@@ -1,0 +1,20 @@
+T308 --fail: with no provider configured the model picker dialog renders
+the honest empty state.
+One fresh session is opened (POST /sessions -> 8917b0b7-673b-4edb-b398-1b940311f2ae) and no provider is
+created — GET /providers/formats may list the llm-builtin factories but
+the account's provider registry is empty, so ChatScreen.modelDialog
+renders MODEL_EMPTY_TEXT ("No providers configured — add one on the
+Providers screen.") inside the composer-model-dialog card instead of
+any option rows: no model rows, no select-model row actions, no
+toggle-favorite-model stars.
+
+  seed: POST /sessions -> 8917b0b7-673b-4edb-b398-1b940311f2ae (fail-picker)
+  GET /ui/screen/chat:8917b0b7-673b-4edb-b398-1b940311f2ae -> 200 (no-providers.html)
+
+  composer-model-dialog present:     4 hit(s)
+  "No providers configured" copy:    2 hit(s)
+  select-model row actions:          0 hit(s) (expected 0)
+
+  The model picker degrades to the empty state without providers —
+  the negative proof that the dialog is fed by the real jhin.llm
+  provider registry (screens/ChatScreen.java modelDialog).

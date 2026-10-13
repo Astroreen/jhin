@@ -1,0 +1,8 @@
+{
+  "action": "select-model",
+  "payload": {
+    "sessionId": "33e73b36-228b-4701-bee6-b83ecd0fc054",
+    "providerId": "7296a71d-7888-4651-b0f4-aa16b1a80ab8",
+    "model": "gpt-4o"
+  }
+}

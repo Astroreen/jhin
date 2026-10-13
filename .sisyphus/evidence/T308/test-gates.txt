@@ -1,0 +1,7 @@
+T308 test gates — the two suites green on the model/branch picker surface:
+BUILD SUCCESSFUL in 848ms
+BUILD SUCCESSFUL in 659ms
+
+  :jhin-plugin-ui-kit:test      342 tests
+  :jhin-plugin-ui-default:test  520 tests (ChatScreenTest, ActionsTest, ComposerRowsTest, SettingsActionsTest among them)
+  failures=0 errors=0 (expected 0/0)

@@ -1,0 +1,7 @@
+ok: build + two test gates green (342/520 tests, 0 failures; test-gates.txt)
+ok: kernel up on https://localhost:18443 (pid 3398102), GET /_jhin/health -> 200 in 5 s
+ok: device enrolled (cli create-account/create-enrollment qa + POST /enroll -> 200, bearer token captured)
+12:51:24 -- negative proof: with no provider configured the model dialog is the empty state
+ok: no providers configured -> the model dialog is the "No providers configured" empty state (no-providers.txt)
+ok: the empty model dialog carries no select-model row action (no-providers.txt)
+ok: T308 QA --fail: the negative proof PASS
