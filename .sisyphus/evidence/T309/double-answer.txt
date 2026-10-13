@@ -1,7 +1,7 @@
 T309 --fail proof a: answering twice is idempotent-rejected — a delivered
 answer can never be overwritten by a stale panel.
 
-One session (4da13fc3-2ec0-4938-985d-cc791cc1ecaa) runs a scripted ask_user call (qa-ask-1) and blocks on the
+One session (64d1d72e-2bad-4f78-9d85-e37142d4a753) runs a scripted ask_user call (qa-mock-ask-1) and blocks on the
 QuestionBridge future. The first POST /ui/action/answer-question (Yes)
 completes the future and the run reaches run_end with the answer as the
 tool_result content. The second POST (No) finds no pending question any
@@ -12,18 +12,22 @@ style=error toast and no composer-input patch (the milestone text names
 409/4xx; the implementation rejects at the directive level, never at the
 transport level — both codes are recorded here).
 
-  seed: POST /sessions -> 4da13fc3-2ec0-4938-985d-cc791cc1ecaa (double), POST /sessions/4da13fc3-2ec0-4938-985d-cc791cc1ecaa/messages -> 202
-  tool_use: call id qa-ask-1 (ask_user)
+  seed: POST /sessions -> 64d1d72e-2bad-4f78-9d85-e37142d4a753 (double), POST /sessions/64d1d72e-2bad-4f78-9d85-e37142d4a753/messages -> 202
+  tool_use: call id qa-mock-ask-1 (ask_user)
   first answer:  POST answer-question {answer:"Yes"} -> HTTP 200
+    request body:  {"action":"answer-question","payload":{"sessionId":"64d1d72e-2bad-4f78-9d85-e37142d4a753","callId":"qa-mock-ask-1","answer":"Yes"}}
+    response body: {"client":[{"op":"patch","id":"composer-input","html":"<textarea data-jhin-type=\"textarea\" id=\"messageInput\" data-jhin-id=\"messageInput\" style=\"flex-grow: 1\" class=\"jhin-input jhin-textarea\" aria-label=\"Message\" required=\"required\" data-jhin-error-text=\"Write a message first\" autofocus=\"autofocus\" data-jhin-min-lines=\"1\" data-jhin-max-lines=\"8\" data-jhin-constraints=\"{&quot;minHeight&quot;:160}\"></textarea>"}]}
   run after the first answer: run_end reached (double-events.sse)
   tool_result content after both answers: "Yes" (error=false)
     — the FIRST answer, never the rejected second one
   second answer: POST answer-question {answer:"No"} -> HTTP 200
+    request body:  {"action":"answer-question","payload":{"sessionId":"64d1d72e-2bad-4f78-9d85-e37142d4a753","callId":"qa-mock-ask-1","answer":"No"}}
+    response body: {"client":[{"op":"toast","text":"no pending question for 64d1d72e-2bad-4f78-9d85-e37142d4a753/qa-mock-ask-1 (already answered, cancelled or never asked)","style":"error"}]}
     toast directives:     1 (expected 1)
     toast style:          error (expected error)
-    toast text:           no pending question for 4da13fc3-2ec0-4938-985d-cc791cc1ecaa/qa-ask-1 (already answered, cancelled or never asked)
+    toast text:           no pending question for 64d1d72e-2bad-4f78-9d85-e37142d4a753/qa-mock-ask-1 (already answered, cancelled or never asked)
     patch directives:     0 (expected 0)
 
   The second answer is rejected exactly like the bridge contract says:
-  "no pending question for 4da13fc3-2ec0-4938-985d-cc791cc1ecaa/qa-ask-1 (already answered, cancelled or
+  "no pending question for 64d1d72e-2bad-4f78-9d85-e37142d4a753/qa-mock-ask-1 (already answered, cancelled or
   never asked)" — idempotent, state unchanged (double-answer.txt).

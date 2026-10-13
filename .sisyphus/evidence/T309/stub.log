@@ -1,4 +1,0 @@
-t309 stub listening on 127.0.0.1:18765
-dispatch=ask-user-tool-call
-dispatch=final-text
-dispatch=ask-user-tool-call

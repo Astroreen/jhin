@@ -15,3 +15,4 @@ when a static expectation and the code layout disagree).
   MessageCardBuilder composer-pending-question id          1 hit(s)  PRESENT
   ChatScreen pendingUserInputPanel wiring                  1 hit(s)  PRESENT
   QaTimelineScreen decorative approval fixture             5 hit(s)  PRESENT
+  QaMockFactory ASK_MODEL ask seam                         3 hit(s)  PRESENT

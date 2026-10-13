@@ -1,9 +1,9 @@
-{"seq":1,"ts":1791897362581,"type":"user_message","payload":"{\"text\":\"Ask me the question now.\"}"}
-{"seq":2,"ts":1791897362622,"type":"run_start","payload":"{\"runId\":\"6fb985a5-d875-46c6-a1ef-323c53438751\"}"}
-{"seq":3,"ts":1791897362659,"type":"message_start","payload":"{\"role\":\"assistant\"}"}
-{"seq":4,"ts":1791897362761,"type":"tool_use","payload":"{\"id\":\"qa-ask-1\",\"name\":\"ask_user\",\"arguments\":\"{\\\"question\\\":\\\"Should I proceed with the T309 cleanup?\\\",\\\"options\\\":[\\\"Yes\\\",\\\"No\\\"]}\"}"}
-{"seq":5,"ts":1791897364244,"type":"tool_result","payload":"{\"id\":\"qa-ask-1\",\"name\":\"ask_user\",\"content\":\"Yes\",\"error\":false}"}
-{"seq":6,"ts":1791897364279,"type":"message_start","payload":"{\"role\":\"assistant\"}"}
-{"seq":7,"ts":1791897364307,"type":"text_delta","payload":"{\"text\":\"Done.\"}"}
-{"seq":8,"ts":1791897364327,"type":"message_end","payload":"{\"text\":\"Done.\"}"}
-{"seq":9,"ts":1791897364346,"type":"run_end","payload":"{\"runId\":\"6fb985a5-d875-46c6-a1ef-323c53438751\"}"}
+{"seq":1,"ts":1791902583137,"type":"user_message","payload":"{\"text\":\"Ask me the question now.\"}"}
+{"seq":2,"ts":1791902583178,"type":"run_start","payload":"{\"runId\":\"ff85c8f8-dd89-4c9f-ac02-fb9cb0e8f7f6\"}"}
+{"seq":3,"ts":1791902583215,"type":"message_start","payload":"{\"role\":\"assistant\"}"}
+{"seq":4,"ts":1791902583237,"type":"tool_use","payload":"{\"id\":\"qa-mock-ask-1\",\"name\":\"ask_user\",\"arguments\":\"{\\\"question\\\":\\\"Proceed with the deployment?\\\",\\\"options\\\":[\\\"Yes\\\",\\\"No\\\"]}\"}"}
+{"seq":5,"ts":1791902584831,"type":"tool_result","payload":"{\"id\":\"qa-mock-ask-1\",\"name\":\"ask_user\",\"content\":\"Yes\",\"error\":false}"}
+{"seq":6,"ts":1791902584857,"type":"message_start","payload":"{\"role\":\"assistant\"}"}
+{"seq":7,"ts":1791902584877,"type":"text_delta","payload":"{\"text\":\"Done.\"}"}
+{"seq":8,"ts":1791902584904,"type":"message_end","payload":"{\"text\":\"Done.\"}"}
+{"seq":9,"ts":1791902584925,"type":"run_end","payload":"{\"runId\":\"ff85c8f8-dd89-4c9f-ac02-fb9cb0e8f7f6\"}"}

@@ -6,11 +6,11 @@
 # evidence/T309/browser-unavailable.txt plus strengthened curl asserts, the
 # T202–T208/T301–T308 precedent):
 #   1. build + test gates: the kernel boot jar and the nine plugin jars
-#      build and the three suites stay green (:jhin-plugin-ui-kit:test,
-#      :jhin-plugin-ui-default:test, :jhin-plugin-tools-builtin:test —
-#      AskUserToolTest, QuestionBridgeTest, ChatScreenTest, ActionsTest
-#      among them); counts are summed from the JUnit XML reports,
-#      failures/errors asserted 0;
+#      build and the four suites stay green (:jhin-plugin-ui-kit:test,
+#      :jhin-plugin-ui-default:test, :jhin-plugin-tools-builtin:test,
+#      :jhin-plugin-qa-mock-llm:test — AskUserToolTest, QuestionBridgeTest,
+#      ChatScreenTest, ActionsTest, QaMockFactoryTest among them); counts
+#      are summed from the JUnit XML reports, failures/errors asserted 0;
 #   2. static gates: the T309 sources carry the new surface — AskUserTool
 #      (ask_user), toolsbuiltin/api/QuestionBridge.java, the tools-builtin
 #      manifest export toolsbuiltin.api, AnswerQuestionAction
@@ -29,17 +29,14 @@
 #      one account/device is seeded through the admin CLI
 #      (create-account/create-enrollment) and POST /enroll, and every wire
 #      call carries Authorization: Bearer <token>.
-#      GET /providers/formats must list mock and openai. The qa-mock-llm
-#      factories cannot emit a custom tool call (QaMockChatModel scripts one
-#      hardcoded write call), so the scripted ask_user turn is driven by the
-#      most honest available mechanism: a one-file scripted
-#      OpenAI-compatible stub endpoint (T309LlmStub.java, JDK http server on
-#      127.0.0.1:18765) behind a real jhin.llm-builtin openai provider
-#      ({format:openai, model:t309-stub, baseUrl:http://127.0.0.1:18765/v1}).
-#      The stub answers every fresh conversation with one ask_user tool call
-#      (id qa-ask-1, "Should I proceed with the T309 cleanup?" with the
-#      options Yes/No) and every tool-result turn with the text "Done.".
-#      A run is then driven over the wire (POST /sessions with the stub
+#      GET /providers/formats must list mock and openai. The scripted
+#      ask_user turn is driven by the qa-mock-llm {@code ask} seam: one mock
+#      provider (POST /providers {"format":"mock","model":"ask"}) whose
+#      deterministic QaMockAskingModel emits exactly one ask_user tool call
+#      (id qa-mock-ask-1, "Proceed with the deployment?" with the options
+#      Yes/No) on the first turn that offers the tool and the text "Done."
+#      on the tool-result turn — no network endpoint is involved.
+#      A run is then driven over the wire (POST /sessions with the mock
 #      provider, POST /sessions/{id}/messages, SSE
 #      GET /sessions/{id}/events?fromSeq=N): the run blocks on the tool, the
 #      chat screen (panel.html) carries the composer-pending-question panel
@@ -72,7 +69,7 @@
 # HTTPS on https://localhost:18443 (the kernel default 8443 is occupied on
 # the QA machine; plan section 9 allows the QA-only port override) with the
 # self-signed keystore of jhin.security (curl -k). The happy mode runs the
-# three suites with --rerun; --fail keeps the build gate (the suites must be
+# four suites with --rerun; --fail keeps the build gate (the suites must be
 # green) but skips the forced rerun to stay small.
 #
 # On any failure one line is appended to evidence/T309/failures.txt and the
@@ -97,8 +94,6 @@ fi
 EVIDENCE="${1:-$ROOT/.sisyphus/evidence/T309}"
 PORT=18443
 BASE="https://localhost:$PORT"
-STUB_PORT=18765
-STUB_BASE="http://127.0.0.1:$STUB_PORT"
 CLIENT_API4='X-Jhin-Client: api=4; version=0.2.0; schema=5; caps=sse,open_url,secure_storage'
 ASK_USER_TOOL="plugins/tools-builtin/src/main/java/com/astroreen/jhin/plugin/toolsbuiltin/AskUserTool.java"
 QUESTION_BRIDGE="plugins/tools-builtin/src/main/java/com/astroreen/jhin/plugin/toolsbuiltin/api/QuestionBridge.java"
@@ -107,11 +102,13 @@ ANSWER_ACTION="plugins/ui-default/src/main/java/com/astroreen/jhin/plugin/ui/Ans
 MESSAGE_CARD="plugins/ui-default/src/main/java/com/astroreen/jhin/plugin/ui/screens/MessageCardBuilder.java"
 CHAT_SCREEN="plugins/ui-default/src/main/java/com/astroreen/jhin/plugin/ui/screens/ChatScreen.java"
 QA_TIMELINE="plugins/ui-default/src/main/java/com/astroreen/jhin/plugin/ui/screens/QaTimelineScreen.java"
+QA_MOCK_FACTORY="plugins/qa-mock-llm/src/main/java/com/astroreen/jhin/plugin/qamockllm/QaMockFactory.java"
 PLUGINS="sessions ui-kit ui-default security llm llm-builtin agent tools-builtin qa-mock-llm"
-QUESTION_TEXT="Should I proceed with the T309 cleanup?"
+QUESTION_TEXT="Proceed with the deployment?"
 
 mkdir -p "$EVIDENCE"
 rm -f "$EVIDENCE/failures.txt"
+rm -f "$EVIDENCE/stub.log" "$EVIDENCE/stub-health.body"
 if [ "$fail_mode" = "1" ]; then
     checks="$EVIDENCE/checks-fail.txt"
 else
@@ -122,8 +119,6 @@ fi
 token=""
 auth_hdr=""
 kernel_pid=""
-stub_pid=""
-stub_dir=""
 home=""
 bundled=""
 kernel_jar=""
@@ -143,10 +138,6 @@ fail() {
 }
 
 cleanup() {
-    if [ -n "$stub_pid" ] && kill -0 "$stub_pid" 2>/dev/null; then
-        kill "$stub_pid" 2>/dev/null || true
-        wait "$stub_pid" 2>/dev/null || true
-    fi
     if [ -n "$kernel_pid" ] && kill -0 "$kernel_pid" 2>/dev/null; then
         kill "$kernel_pid" 2>/dev/null || true
         wait "$kernel_pid" 2>/dev/null || true
@@ -273,7 +264,7 @@ enroll_device() {
 
 # create_session <title> <workdir-json> <provider-id> -> prints the session
 # id. The workdir is a JSON string fragment; the provider id binds the run
-# to the scripted stub model.
+# to the scripted mock ask model.
 create_session() {
     local title=$1 workdir=$2 provider=$3 code id
     code=$(api POST /sessions \
@@ -399,113 +390,8 @@ wait_for_panel() {
     return 1
 }
 
-# start_stub: writes and launches the scripted OpenAI-compatible chat
-# endpoint (single-file Java, JDK http server) and waits for its health.
-start_stub() {
-    stub_dir=$(mktemp -d /tmp/t309-stub.XXXXXX)
-    cat > "$stub_dir/T309LlmStub.java" <<'JAVA'
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-
-/**
- * T309 QA stub: a scripted OpenAI-compatible chat-completions endpoint.
- *
- * <p>Dispatch on the request body (whitespace-stripped): a tool result
- * ({@code "role":"tool"}) answers the text {@code "Done."}; otherwise, while
- * the {@code ask_user} tool is advertised, one {@code ask_user} tool call
- * (id {@code qa-ask-1}) with a fixed question and two options; otherwise a
- * plain text. No real model is involved.
- */
-public class T309LlmStub {
-
-    private static final String ASK_ARGS =
-            "{\"question\":\"Should I proceed with the T309 cleanup?\",\"options\":[\"Yes\",\"No\"]}";
-
-    public static void main(String[] args) throws Exception {
-        int port = args.length > 0 ? Integer.parseInt(args[0]) : 18765;
-        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
-        server.createContext("/_stub/health", ex -> respond(ex, 200, "{\"status\":\"ok\"}"));
-        server.createContext("/", T309LlmStub::chat);
-        server.start();
-        System.out.println("t309 stub listening on 127.0.0.1:" + port);
-    }
-
-    private static void chat(HttpExchange ex) throws IOException {
-        String body = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-        String flat = body.replaceAll("\\s", "");
-        String reply;
-        if (flat.contains("\"role\":\"tool\"")) {
-            reply = text("Done.");
-            System.out.println("dispatch=final-text");
-        } else if (flat.contains("\"name\":\"ask_user\"")) {
-            reply = toolCall();
-            System.out.println("dispatch=ask-user-tool-call");
-        } else {
-            reply = text("Nothing to ask.");
-            System.out.println("dispatch=plain-text");
-        }
-        respond(ex, 200, reply);
-    }
-
-    private static String envelope() {
-        return "{\"id\":\"chatcmpl-t309\",\"created\":1700000000,\"model\":\"t309-stub\",";
-    }
-
-    private static String usage() {
-        return "\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}";
-    }
-
-    private static String text(String content) {
-        return envelope()
-                + "\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":"
-                + quote(content) + "},\"finish_reason\":\"stop\"}]," + usage();
-    }
-
-    private static String toolCall() {
-        return envelope()
-                + "\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":null,"
-                + "\"tool_calls\":[{\"id\":\"qa-ask-1\",\"type\":\"function\",\"function\":"
-                + "{\"name\":\"ask_user\",\"arguments\":" + quote(ASK_ARGS) + "}}]},"
-                + "\"finish_reason\":\"tool_calls\"}]," + usage();
-    }
-
-    private static String quote(String value) {
-        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
-    }
-
-    private static void respond(HttpExchange ex, int code, String body) throws IOException {
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        ex.getResponseHeaders().set("Content-Type", "application/json");
-        ex.sendResponseHeaders(code, bytes.length);
-        try (OutputStream out = ex.getResponseBody()) {
-            out.write(bytes);
-        }
-    }
-}
-JAVA
-    java "$stub_dir/T309LlmStub.java" "$STUB_PORT" > "$EVIDENCE/stub.log" 2>&1 &
-    stub_pid=$!
-    local start code
-    start=$(date +%s)
-    while :; do
-        code=$(curl -s --max-time 2 -o "$EVIDENCE/stub-health.body" -w '%{http_code}' \
-            "$STUB_BASE/_stub/health" 2>/dev/null) || code=000
-        [ "$code" = "200" ] && break
-        kill -0 "$stub_pid" 2>/dev/null \
-            || fail "the scripted stub exited before /_stub/health answered (see $EVIDENCE/stub.log)"
-        [ $(( $(date +%s) - start )) -lt 30 ] \
-            || fail "the scripted stub did not answer /_stub/health within 30 s (last code $code)"
-        sleep 0.5
-    done
-    ok "scripted OpenAI stub up on $STUB_BASE (pid $stub_pid), /_stub/health -> 200"
-}
-
 build_and_test() {
-    echo "== Step 1: build the jars + run the three test gates =="
+    echo "== Step 1: build the jars + run the four test gates =="
     set +e
     ./gradlew --console=plain :kernel:bootJar \
         :jhin-plugin-sessions:jar :jhin-plugin-ui-kit:jar :jhin-plugin-ui-default:jar \
@@ -525,6 +411,7 @@ build_and_test() {
         :jhin-plugin-ui-kit:test $rerun \
         :jhin-plugin-ui-default:test $rerun \
         :jhin-plugin-tools-builtin:test $rerun \
+        :jhin-plugin-qa-mock-llm:test $rerun \
         2>&1 | tee -a "$EVIDENCE/build.log"
     local test_status="${PIPESTATUS[0]}"
     set -e
@@ -535,28 +422,33 @@ build_and_test() {
     ui_kit_tests=$(count_attr plugins/ui-kit/build/test-results/test tests)
     ui_default_tests=$(count_attr plugins/ui-default/build/test-results/test tests)
     tools_tests=$(count_attr plugins/tools-builtin/build/test-results/test tests)
+    mock_tests=$(count_attr plugins/qa-mock-llm/build/test-results/test tests)
     total_failures=$(( $(count_attr plugins/ui-kit/build/test-results/test failures) \
         + $(count_attr plugins/ui-default/build/test-results/test failures) \
-        + $(count_attr plugins/tools-builtin/build/test-results/test failures) ))
+        + $(count_attr plugins/tools-builtin/build/test-results/test failures) \
+        + $(count_attr plugins/qa-mock-llm/build/test-results/test failures) ))
     total_errors=$(( $(count_attr plugins/ui-kit/build/test-results/test errors) \
         + $(count_attr plugins/ui-default/build/test-results/test errors) \
-        + $(count_attr plugins/tools-builtin/build/test-results/test errors) ))
+        + $(count_attr plugins/tools-builtin/build/test-results/test errors) \
+        + $(count_attr plugins/qa-mock-llm/build/test-results/test errors) ))
     {
-        echo "T309 test gates — the three suites green on the ask_user / pending-question surface:"
+        echo "T309 test gates — the four suites green on the ask_user / pending-question surface:"
         grep -E '^> Task :[^ ]+:test$|BUILD SUCCESSFUL|BUILD FAILED' "$EVIDENCE/build.log" || true
         echo ""
         echo "  :jhin-plugin-ui-kit:test      $ui_kit_tests tests"
         echo "  :jhin-plugin-ui-default:test  $ui_default_tests tests (ChatScreenTest, ActionsTest among them)"
         echo "  :jhin-plugin-tools-builtin:test $tools_tests tests (AskUserToolTest, QuestionBridgeTest among them)"
+        echo "  :jhin-plugin-qa-mock-llm:test $mock_tests tests (QaMockFactoryTest, the ask seam among them)"
         echo "  failures=$total_failures errors=$total_errors (expected 0/0)"
     } > "$EVIDENCE/test-gates.txt"
-    for suite in ':jhin-plugin-ui-kit:test' ':jhin-plugin-ui-default:test' ':jhin-plugin-tools-builtin:test'; do
+    for suite in ':jhin-plugin-ui-kit:test' ':jhin-plugin-ui-default:test' \
+            ':jhin-plugin-tools-builtin:test' ':jhin-plugin-qa-mock-llm:test'; do
         grep -qF "> Task $suite" "$EVIDENCE/build.log" \
             || fail "test suite $suite did not run (see $EVIDENCE/build.log)"
     done
     [ "$total_failures" = "0" ] || fail "test failures=$total_failures (expected 0)"
     [ "$total_errors" = "0" ] || fail "test errors=$total_errors (expected 0)"
-    ok "build + three test gates green ($ui_kit_tests/$ui_default_tests/$tools_tests tests, 0 failures; test-gates.txt)"
+    ok "build + four test gates green ($ui_kit_tests/$ui_default_tests/$tools_tests/$mock_tests tests, 0 failures; test-gates.txt)"
 }
 
 # seed_home: temp JHIN_HOME + staged plugin jars + kernel-env.txt + the boot
@@ -579,7 +471,6 @@ seed_home() {
         echo "JHIN_UI_QAPROBE=true"
         echo "port=$PORT"
         echo "base=$BASE"
-        echo "stub=$STUB_BASE (scripted OpenAI-compatible chat endpoint)"
         echo "mode=HTTPS loopback (curl -k, self-signed)"
         echo "mode-reason=jhin.security is staged (the milestone plan's T309 staging) -> its"
         echo "            TlsProvider switches the listener to HTTPS and its bearer filter"
@@ -592,15 +483,14 @@ seed_home() {
         echo "plugin-reason=the blocking ask_user tool lives in jhin.tools-builtin (over the"
         echo "              jhin.agent tool SPI), its QuestionBridge service is picked up by"
         echo "              jhin.ui (the pending panel + answer-question action) and the run"
-        echo "              drives a real jhin.llm provider of jhin.llm-builtin; jhin.qa-mock-llm"
-        echo "              is staged per the plan but its factories script only the write tool,"
-        echo "              so the ask_user turn comes from the scripted stub endpoint."
+        echo "              drives the deterministic jhin.qa-mock-llm ask seam (format mock,"
+        echo "              model ask) through a real jhin.llm provider — no network endpoint."
     } > "$EVIDENCE/kernel-env.txt"
     ok "$jar_count jars staged for seeding (kernel-env.txt)"
 }
 
 # seed_provider: GET /providers/formats (mock + openai asserted) then one
-# openai provider pointed at the scripted stub.
+# mock provider on the qa-mock-llm ask seam.
 seed_provider() {
     local code
     code=$(api GET /providers/formats "" "$EVIDENCE/formats.json") \
@@ -611,13 +501,12 @@ seed_provider() {
         || fail "GET /providers/formats lists no mock factory (formats.json): $(cat "$EVIDENCE/formats.json")"
     jq -e 'index("openai")' "$EVIDENCE/formats.json" > /dev/null 2>&1 \
         || fail "GET /providers/formats lists no openai factory (formats.json): $(cat "$EVIDENCE/formats.json")"
-    start_stub
     code=$(api POST /providers \
-        "{\"format\":\"openai\",\"model\":\"t309-stub\",\"apiKey\":\"qa\",\"baseUrl\":\"$STUB_BASE/v1\"}" \
+        '{"format":"mock","model":"ask","apiKey":"qa"}' \
         "$EVIDENCE/provider.json") \
         || fail "POST /providers: curl failed"
     [ "$code" = "201" ] \
-        || fail "POST /providers (openai/stub) answered $code (expected 201): $(cat "$EVIDENCE/provider.json")"
+        || fail "POST /providers (mock/ask) answered $code (expected 201): $(cat "$EVIDENCE/provider.json")"
     provider_id=$(jq -r '.id' "$EVIDENCE/provider.json")
     [ -n "$provider_id" ] && [ "$provider_id" != "null" ] \
         || fail "POST /providers returned no id: $(cat "$EVIDENCE/provider.json")"
@@ -625,19 +514,19 @@ seed_provider() {
         echo "T309 provider seed — GET /providers/formats then POST /providers:"
         echo "  GET /providers/formats -> $(jq -c . "$EVIDENCE/formats.json")"
         echo "  (mock and openai both listed: qa-mock-llm and llm-builtin are loaded)"
-        echo "  POST /providers {\"format\":\"openai\",\"model\":\"t309-stub\",\"apiKey\":\"qa\","
-        echo "    \"baseUrl\":\"$STUB_BASE/v1\"} -> 201"
+        echo "  POST /providers {\"format\":\"mock\",\"model\":\"ask\",\"apiKey\":\"qa\"} -> 201"
         echo "  provider id: $provider_id"
         echo ""
-        echo "  Why a stub: the qa-mock-llm factories script exactly one hardcoded"
-        echo "  write tool call per conversation (QaMockChatModel) and cannot emit a"
-        echo "  custom ask_user call, so the scripted ask_user turn is driven by the"
-        echo "  most honest available mechanism — a real jhin.llm openai provider"
-        echo "  pointed at a one-file scripted OpenAI-compatible endpoint whose only"
-        echo "  behaviour is: fresh conversation -> one ask_user tool call (qa-ask-1),"
-        echo "  tool-result turn -> the text \"Done.\"."
+        echo "  Why the mock ask seam: jhin.qa-mock-llm ships the deterministic"
+        echo "  QaMockAskingModel (format mock, model ask — the ASK_MODEL seam): the"
+        echo "  first turn that offers the ask_user tool emits exactly one ask_user"
+        echo "  tool call (id qa-mock-ask-1, \"Proceed with the deployment?\" with the"
+        echo "  options Yes/No) and the tool-result turn answers the text \"Done.\"."
+        echo "  The question blocks on the QuestionBridge of jhin.tools-builtin, so"
+        echo "  the run observes the pending-question composer panel without any"
+        echo "  network endpoint."
     } > "$EVIDENCE/seeded.txt"
-    ok "provider $provider_id created (openai/t309-stub -> $STUB_BASE/v1) (seeded.txt)"
+    ok "provider $provider_id created (mock/ask, qa-mock-llm seam) (seeded.txt)"
 }
 
 # ---------------------------------------------------------- --fail mode
@@ -712,10 +601,14 @@ if [ "$fail_mode" = "1" ]; then
         echo "  seed: POST /sessions -> $b (double), POST /sessions/$b/messages -> 202"
         echo "  tool_use: call id $call_id (ask_user)"
         echo "  first answer:  POST answer-question {answer:\"Yes\"} -> HTTP $code1"
+        echo "    request body:  $(jq -c . "$EVIDENCE/answer-body-first.json")"
+        echo "    response body: $(jq -c . "$EVIDENCE/answer-first.json")"
         echo "  run after the first answer: run_end reached (double-events.sse)"
         echo "  tool_result content after both answers: \"$first_result\" (error=$first_error)"
         echo "    — the FIRST answer, never the rejected second one"
         echo "  second answer: POST answer-question {answer:\"No\"} -> HTTP $code2"
+        echo "    request body:  $(jq -c . "$EVIDENCE/answer-body-second.json")"
+        echo "    response body: $(jq -c . "$EVIDENCE/answer-second.json")"
         echo "    toast directives:     $toast_hits (expected 1)"
         echo "    toast style:          $toast_style (expected error)"
         echo "    toast text:           $toast_text"
@@ -805,6 +698,11 @@ if [ "$fail_mode" = "1" ]; then
         echo "                     \"$cancel_result\" (error=$cancel_error), one error event"
         echo "                     \"$cancel_message\", run_end count $run_end_count (cancel.txt)"
         echo ""
+        echo "  deviation:         the second answer-question is refused as HTTP $code2 with"
+        echo "                     the style=$toast_style toast (AnswerQuestionAction directive"
+        echo "                     contract), not as 409/4xx like the milestone text names;"
+        echo "                     both statuses and bodies are recorded in double-answer.txt"
+        echo ""
         echo "  evidence: $EVIDENCE"
         sed 's/^/  /' "$checks"
     } >> "$EVIDENCE/summary.txt"
@@ -855,6 +753,7 @@ static_gate "$ANSWER_ACTION" 'answer-question' 'AnswerQuestionAction answer-ques
 static_gate "$MESSAGE_CARD" 'composer-pending-question' 'MessageCardBuilder composer-pending-question id'
 static_gate "$CHAT_SCREEN" 'pendingUserInputPanel' 'ChatScreen pendingUserInputPanel wiring'
 static_gate "$QA_TIMELINE" 'composer-pending-approval' 'QaTimelineScreen decorative approval fixture'
+static_gate "$QA_MOCK_FACTORY" 'ASK_MODEL' 'QaMockFactory ASK_MODEL ask seam'
 [ "$static_ok" = "1" ] || fail "static source gates failed (see $EVIDENCE/source-gates.txt)"
 ok "T309 sources carry the new surface (source-gates.txt)"
 
@@ -868,7 +767,7 @@ boot_kernel "$home" "$bundled"
 enroll_device
 
 # ------------------------------------------------------------- the provider
-echo "== Step 5: formats + the scripted stub model =="
+echo "== Step 5: formats + the mock ask model =="
 seed_provider
 
 # ------------------------------------------------------------- the session
@@ -1030,11 +929,10 @@ ok "browser-unavailable.txt records the un-exercised visual cases"
     echo ""
     echo "  mode:              happy"
     echo "  suites:            :jhin-plugin-ui-kit:test $ui_kit_tests, :jhin-plugin-ui-default:test $ui_default_tests,"
-    echo "                     :jhin-plugin-tools-builtin:test $tools_tests (0 failures)"
-    echo "  provider:          POST /providers {\"format\":\"openai\",\"model\":\"t309-stub\","
-    echo "                     \"baseUrl\":\"$STUB_BASE/v1\"} -> $provider_id"
+    echo "                     :jhin-plugin-tools-builtin:test $tools_tests, :jhin-plugin-qa-mock-llm:test $mock_tests (0 failures)"
+    echo "  provider:          POST /providers {\"format\":\"mock\",\"model\":\"ask\",\"apiKey\":\"qa\"} -> $provider_id"
     echo "                     (GET /providers/formats lists mock + openai; the ask_user turn"
-    echo "                     is scripted by the one-file stub — qa-mock-llm cannot emit it)"
+    echo "                     is scripted by the qa-mock-llm ask seam, no network endpoint)"
     echo "  blocked run:       session $s, run $run_id — tool_use $call_id (ask_user),"
     echo "                     \"$QUESTION_TEXT\""
     echo "  pending panel:     panel.html — composer-pending-question + options"

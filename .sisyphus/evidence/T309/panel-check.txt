@@ -1,10 +1,10 @@
-T309 pending panel — GET /ui/screen/chat:ed173e05-e327-414f-be54-e48a725cd38b (panel.html):
+T309 pending panel — GET /ui/screen/chat:0f9f37f2-62f4-4ee7-82e6-a4de7ced6be1 (panel.html):
   composer-pending-question panel root: 4 hit(s)
   composer-pending-options chip row:    2 hit(s)
   composer-pending-reply row:           2 hit(s)
-  question text "Should I proceed with the T309 cleanup?": 3 hit(s)
+  question text "Proceed with the deployment?": 3 hit(s)
   option chip ">Yes<":                  1 hit(s)
   option chip ">No<":                   1 hit(s)
   reply input data-jhin-id="answer":     1 hit(s)
   answer-question action payloads:      6 hit(s)
-  call id qa-ask-1 in the payloads: 3 hit(s)
+  call id qa-mock-ask-1 in the payloads: 3 hit(s)

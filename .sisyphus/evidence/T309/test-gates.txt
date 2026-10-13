@@ -1,8 +1,9 @@
-T309 test gates — the three suites green on the ask_user / pending-question surface:
-BUILD SUCCESSFUL in 858ms
-BUILD SUCCESSFUL in 645ms
+T309 test gates — the four suites green on the ask_user / pending-question surface:
+BUILD SUCCESSFUL in 880ms
+BUILD SUCCESSFUL in 656ms
 
   :jhin-plugin-ui-kit:test      342 tests
   :jhin-plugin-ui-default:test  527 tests (ChatScreenTest, ActionsTest among them)
   :jhin-plugin-tools-builtin:test 60 tests (AskUserToolTest, QuestionBridgeTest among them)
+  :jhin-plugin-qa-mock-llm:test 11 tests (QaMockFactoryTest, the ask seam among them)
   failures=0 errors=0 (expected 0/0)

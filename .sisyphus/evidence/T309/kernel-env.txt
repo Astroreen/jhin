@@ -1,10 +1,9 @@
-JHIN_HOME=/tmp/t309-home.JQy1wl
-JHIN_BUNDLED_PLUGINS=/tmp/t309-bundled.FEb8YJ
+JHIN_HOME=/tmp/t309-home.7mDwpC
+JHIN_BUNDLED_PLUGINS=/tmp/t309-bundled.Kd2X4D
 JHIN_SESSIONS_QA=true
 JHIN_UI_QAPROBE=true
 port=18443
 base=https://localhost:18443
-stub=http://127.0.0.1:18765 (scripted OpenAI-compatible chat endpoint)
 mode=HTTPS loopback (curl -k, self-signed)
 mode-reason=jhin.security is staged (the milestone plan's T309 staging) -> its
             TlsProvider switches the listener to HTTPS and its bearer filter
@@ -17,6 +16,5 @@ plugins=jhin.sessions, jhin.ui-kit, jhin.ui, jhin.security, jhin.llm,
 plugin-reason=the blocking ask_user tool lives in jhin.tools-builtin (over the
               jhin.agent tool SPI), its QuestionBridge service is picked up by
               jhin.ui (the pending panel + answer-question action) and the run
-              drives a real jhin.llm provider of jhin.llm-builtin; jhin.qa-mock-llm
-              is staged per the plan but its factories script only the write tool,
-              so the ask_user turn comes from the scripted stub endpoint.
+              drives the deterministic jhin.qa-mock-llm ask seam (format mock,
+              model ask) through a real jhin.llm provider — no network endpoint.
