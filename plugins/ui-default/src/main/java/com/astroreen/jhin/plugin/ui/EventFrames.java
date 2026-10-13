@@ -77,6 +77,7 @@ package com.astroreen.jhin.plugin.ui;
 import com.astroreen.jhin.plugin.sessions.api.EventRecord;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.ui.screens.MessageCardBuilder;
+import com.astroreen.jhin.plugin.ui.screens.RunSummaryBuilder;
 import com.astroreen.jhin.plugin.ui.screens.SidebarBuilder;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.text.PathDisplay;
@@ -249,18 +250,27 @@ final class EventFrames {
         /** The clock reading at the open run's start (done duration). */
         private long runStartMillis;
 
-        /** Creates a translator on the system clock. */
-        Translator() {
-            this(System::currentTimeMillis);
+        /** The run's changed-files summary (T310), reset per opened run. */
+        private RunSummaryBuilder runSummary = new RunSummaryBuilder();
+
+        /** The session these frames belong to (the {@code open-diff} payload). */
+        private final String sessionId;
+
+        /** Creates a translator for one session on the system clock. */
+        Translator(String sessionId) {
+            this(sessionId, System::currentTimeMillis);
         }
 
         /**
-         * Creates a translator on the given clock (tests drive the flush
-         * window deterministically; production uses the system clock).
+         * Creates a translator for one session on the given clock (tests
+         * drive the flush window deterministically; production uses the
+         * system clock).
          *
-         * @param clock the wall clock in epoch milliseconds
+         * @param sessionId the session the translated events belong to
+         * @param clock     the wall clock in epoch milliseconds
          */
-        Translator(LongSupplier clock) {
+        Translator(String sessionId, LongSupplier clock) {
+            this.sessionId = sessionId;
             this.clock = clock;
             this.batcher = new DeltaBatcher(clock);
         }
@@ -462,11 +472,25 @@ final class EventFrames {
             if (workingRowId == null) {
                 out.add(StreamFrames.replace(MessageCardBuilder.STATUS_ID,
                         MessageCardBuilder.runBadge(MessageCardBuilder.STATUS_IDLE, null)));
+                out.add(summaryFrame(seq));
                 return out;
             }
             out.add(StreamFrames.remove(workingRowId));
             workingRowId = null;
+            out.add(summaryFrame(seq));
             return out;
+        }
+
+        /**
+         * The {@code run_end} summary frame: the changed-files card of the
+         * run (T310) — the {@link RunSummaryBuilder} rows folded from the
+         * run's {@code write}/{@code edit} {@code tool_use} payloads, or the
+         * empty card when the run changed no files.
+         */
+        private Map<String, Object> summaryFrame(long seq) {
+            return StreamFrames.node(runSummary.isEmpty()
+                    ? MessageCardBuilder.emptyRunSummaryCard(seq)
+                    : MessageCardBuilder.runSummaryCard(seq, sessionId, runSummary.files()));
         }
 
         /** Opens the run lifecycle state at {@code run_start}. */
@@ -474,6 +498,7 @@ final class EventFrames {
             lifecycleSeq = seq;
             lifecycleFailed = false;
             runStartMillis = clock.getAsLong();
+            runSummary = new RunSummaryBuilder();
         }
 
         /** Marks the open lifecycle row as failed (sticky until the run closes). */
@@ -550,6 +575,7 @@ final class EventFrames {
          */
         private Map<String, Object> useTool(Map<String, Object> payload, long seq) {
             String name = toolLabel(payload);
+            runSummary.record(name, parseObjectOf(payload.get("arguments")));
             OpenCall call = new OpenCall(seq, name);
             String callId = stringOf(payload.get("id"));
             if (callId != null && !callId.isBlank()) {

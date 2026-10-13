@@ -112,9 +112,10 @@ class StreamRouteTest {
         open("");
         List<Map<String, Object>> frames = lastPreamble();
 
-        // 10 events -> 8 frames: the two text_deltas coalesce into the single
-        // message_end patch (delta batching, T205)
-        assertThat(frames).hasSize(10);
+        // 10 events -> 11 frames: the two text_deltas coalesce into the
+        // message_end patch (delta batching, T205), run_end adds the
+        // changed-files summary node on top of its lifecycle frames
+        assertThat(frames).hasSize(11);
         // user_message -> the message:user row on the message surface.
         Map<String, Object> user = payload(frames.get(0), "node");
         assertThat(user.get("id")).isEqualTo("ev-1");
@@ -135,22 +136,26 @@ class StreamRouteTest {
         Map<String, Object> lifecycle = payload(frames.get(4), "node");
         assertThat(lifecycle.get("id")).isEqualTo("ev-6-lifecycle");
         assertThat(String.valueOf(lifecycle.get("html"))).contains("Running");
-        // run_end -> the done lifecycle row and the remove of that strip.
+        // run_end -> the done lifecycle row, the remove of that strip and
+        // the changed-files summary (empty here: no write/edit tool ran).
         Map<String, Object> settled = payload(frames.get(5), "replace");
         assertThat(settled.get("id")).isEqualTo("ev-6-lifecycle");
         assertThat(String.valueOf(settled.get("html"))).contains("Done");
         assertThat(frames.get(6)).containsExactly(Map.entry("remove", "ev-6"));
+        Map<String, Object> summary = payload(frames.get(7), "node");
+        assertThat(summary.get("id")).isEqualTo("ev-7");
+        assertThat(String.valueOf(summary.get("html"))).contains("No changed files.");
         // tool_use -> the live tool card; its matched tool_result replaces
         // that row with the done card (envelope ev-<useSeq>, row root ev-<resultSeq>).
-        Map<String, Object> toolUse = payload(frames.get(7), "node");
+        Map<String, Object> toolUse = payload(frames.get(8), "node");
         assertThat(toolUse.get("id")).isEqualTo("ev-8");
         assertThat(String.valueOf(toolUse.get("html"))).contains("read");
-        Map<String, Object> toolResult = payload(frames.get(8), "replace");
+        Map<String, Object> toolResult = payload(frames.get(9), "replace");
         assertThat(toolResult.get("id")).isEqualTo("ev-8");
         assertThat(String.valueOf(toolResult.get("html")))
                 .contains("data-jhin-id=\"ev-9\"").contains("done");
         // error -> the event:error row in the danger tone.
-        Map<String, Object> error = payload(frames.get(9), "node");
+        Map<String, Object> error = payload(frames.get(10), "node");
         assertThat(error.get("id")).isEqualTo("ev-10");
         assertThat(String.valueOf(error.get("html"))).contains("boom");
         // no frame carries a level-3 payload key
@@ -182,7 +187,7 @@ class StreamRouteTest {
 
     @Test
     void unknownWireEventFallsBackToTheUnknownRow() {
-        EventFrames.Translator translator = new EventFrames.Translator();
+        EventFrames.Translator translator = new EventFrames.Translator("s1");
 
         List<Map<String, Object>> frames = translator.frames("holo", "{\"text\":\"?\"}", 7);
 

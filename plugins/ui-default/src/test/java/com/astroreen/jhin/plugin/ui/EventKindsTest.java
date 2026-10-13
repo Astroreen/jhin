@@ -389,7 +389,7 @@ class EventKindsTest {
 
     @Test
     void theStructuredToolResultRendersTheEventCardOverTheFramePath() {
-        EventFrames.Translator translator = new EventFrames.Translator();
+        EventFrames.Translator translator = new EventFrames.Translator("s1");
         List<Map<String, Object>> frames = translator.frames("tool_result", Json.write(Map.of(
                 "id", "c1",
                 "name", "diff",
@@ -413,7 +413,7 @@ class EventKindsTest {
 
     @Test
     void thePlainToolResultStillRendersTheWorkRow() {
-        EventFrames.Translator translator = new EventFrames.Translator();
+        EventFrames.Translator translator = new EventFrames.Translator("s1");
         List<Map<String, Object>> frames = translator.frames("tool_result", Json.write(Map.of(
                 "id", "c1", "name", "read", "content", "ok", "error", false)), 31);
         @SuppressWarnings("unchecked")

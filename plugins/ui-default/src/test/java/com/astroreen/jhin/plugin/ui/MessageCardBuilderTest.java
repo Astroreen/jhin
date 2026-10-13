@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import com.astroreen.jhin.plugin.ui.screens.MessageCardBuilder;
 import com.astroreen.jhin.plugin.ui.screens.QaTimelineScreen;
 import com.astroreen.jhin.plugin.ui.screens.RightPanelBuilder;
+import com.astroreen.jhin.plugin.ui.screens.RunSummaryBuilder;
 import com.astroreen.jhin.plugin.uikit.UiNode;
 import com.astroreen.jhin.plugin.uikit.html.HtmlRenderer;
 import com.astroreen.jhin.plugin.uikit.text.PathDisplay;
@@ -404,6 +405,66 @@ class MessageCardBuilderTest {
         assertThat(probeWire).contains("\"rowKey\":\"event:unknown\"");
     }
 
+    // --- the run summary cards (T310) ---
+
+    @Test
+    void theRunSummaryCardRendersTheHeaderTotalsPerFileRowsAndTheOpenDiffAction() {
+        Map<String, Object> json = MessageCardBuilder.runSummaryCard(42, "s1", List.of(
+                new RunSummaryBuilder.FileStat("src/A.java", 2, 0, RunSummaryBuilder.Kind.ADDED),
+                new RunSummaryBuilder.FileStat("src/B.java", 4, 1, RunSummaryBuilder.Kind.MODIFIED),
+                new RunSummaryBuilder.FileStat("src/C.java", 1, 3, RunSummaryBuilder.Kind.DELETED)))
+                .toJson();
+        assertThat(json).containsEntry(MessageCardBuilder.ROW_KEY_PROP, "event:file-write");
+        // the header: the file count and the run's total line stats
+        assertThat(textNode(json, "Changed files \u00b7 3")).isNotNull();
+        assertThat(textNode(json, "+7")).isNotNull();
+        assertThat(textNode(json, "-4")).isNotNull();
+        // the A/M/D change badges in their diff colours
+        String wire = Json.write(json);
+        assertThat(wire)
+                .contains("\"label\":\"A\"")
+                .contains("\"label\":\"M\"")
+                .contains("\"label\":\"D\"")
+                .contains("$color.diff-addition-foreground")
+                .contains("$color.diff-deletion-foreground")
+                .contains("$color.sidebar-muted-foreground");
+        // the per-file rows: the path chips and the line stats
+        assertThat(wire)
+                .contains("\"label\":\"src/A.java\"")
+                .contains("\"label\":\"src/B.java\"")
+                .contains("\"label\":\"src/C.java\"");
+        assertThat(textNode(json, "+2")).isNotNull();
+        assertThat(textNode(json, "-3")).isNotNull();
+        // one Open diff button per row, each posting the real open-diff
+        // action with the session id and that row's path in its payload
+        List<Map<String, Object>> buttons = buttons(json, "Open diff");
+        assertThat(buttons).hasSize(3);
+        assertThat(castMap(buttons.get(0).get("action")))
+                .containsEntry("path", "/ui/action/open-diff")
+                .containsEntry("method", "POST")
+                .containsEntry("name", "open-diff")
+                .doesNotContainKey("include");
+        assertThat(buttons.stream()
+                .map(button -> castMap(castMap(button.get("action")).get("payload")))
+                .toList())
+                .containsExactly(
+                        Map.of("sessionId", "s1", "path", "src/A.java"),
+                        Map.of("sessionId", "s1", "path", "src/B.java"),
+                        Map.of("sessionId", "s1", "path", "src/C.java"));
+    }
+
+    @Test
+    void theEmptyRunSummaryCardRendersTheMutedNoChangedFilesLine() {
+        Map<String, Object> json = MessageCardBuilder.emptyRunSummaryCard(43).toJson();
+        assertThat(json).containsEntry(MessageCardBuilder.ROW_KEY_PROP, "event:file-write");
+        Map<String, Object> line = textNode(json, "No changed files.");
+        assertThat(line).isNotNull();
+        assertThat(line)
+                .containsEntry("style", "caption")
+                .containsEntry("color", "$color.muted-foreground");
+        assertThat(Json.write(json)).doesNotContain("open-diff");
+    }
+
     // --- helpers ---
 
     /** The {@code subagent} row one {@code expect.rowKey}-checked fixture scenario renders. */
@@ -442,6 +503,26 @@ class MessageCardBuilderTest {
     private static String chipWire(String status) {
         return Json.write(MessageCardBuilder.dispatchEventRow("tool-call", Map.of(
                 "arguments", "{}", "name", "read", "status", status), 41).toJson());
+    }
+
+    /** Every {@code button} node carrying the given label, in tree order. */
+    private static List<Map<String, Object>> buttons(Object fragment, String label) {
+        List<Map<String, Object>> found = new ArrayList<>();
+        if (fragment instanceof Map<?, ?> map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> node = (Map<String, Object>) map;
+            if ("button".equals(node.get("type")) && label.equals(node.get("label"))) {
+                found.add(node);
+            }
+            for (Object value : node.values()) {
+                found.addAll(buttons(value, label));
+            }
+        } else if (fragment instanceof List<?> list) {
+            for (Object value : list) {
+                found.addAll(buttons(value, label));
+            }
+        }
+        return found;
     }
 
     private static Map<String, Object> textNode(Object fragment, String text) {

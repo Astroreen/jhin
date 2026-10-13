@@ -76,7 +76,7 @@ class DemoMarkerSweepTest {
             "keybind-restore", "save-appearance", "save-thread-behavior",
             "pin", "unpin", "settle", "unsettle", "snooze", "wake", "archive",
             "restore", "regenerate-title", "reorder", "auto-settle",
-            "delete-session", "arrange-toggle");
+            "delete-session", "arrange-toggle", "open-diff");
 
     /** The action ops that are decorative inline directives (section 4.4). */
     private static final Set<String> DECORATIVE_OPS = Set.of(

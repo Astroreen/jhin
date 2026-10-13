@@ -3,7 +3,7 @@
  * action, registered always and degrading to an explanatory toast when the
  * plugin that would serve it is not loaded.
  *
- * <p>Names, exhaustively (31):
+ * <p>Names, exhaustively (32):
  * <ul>
  *   <li>{@code enroll} — redeem an enrollment code, answer
  *       {@code [setToken, navigate:sessions]} (jhin.security);</li>
@@ -41,6 +41,9 @@
  *   <li>{@code preview-reload} (T108) — the browser-preview reload: answers
  *       {@code [patch progress loading:true, toast]} and persists nothing —
  *       the decorative shell of the plan's T108 step 1.</li>
+ *   <li>{@code open-diff} (T310) — replay the recorded {@code write}/
+ *       {@code edit} deltas of one file into the right-panel diff view,
+ *       answer {@code [patch diff-view, toast]} (jhin.sessions, always).</li>
  * </ul>
  *
  * <p>The optional integrations are constructed behind their flag, so a
@@ -51,6 +54,7 @@ package com.astroreen.jhin.plugin.ui;
 import com.astroreen.jhin.plugin.agent.api.RunService;
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
 import com.astroreen.jhin.plugin.security.api.EnrollmentService;
+import com.astroreen.jhin.plugin.sessions.api.EventLog;
 import com.astroreen.jhin.plugin.sessions.api.SessionLifecycleService;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
 import com.astroreen.jhin.plugin.sessions.api.UndoJournal;
@@ -91,6 +95,7 @@ final class Actions {
         handlers.put("delete-provider", deleteProvider(services, features));
         handlers.put("reload", ReloadAction::handle);
         handlers.put("preview-reload", Actions::previewReload);
+        handlers.put("open-diff", openDiff(services));
         handlers.put("undo", undo(services));
         handlers.put("keybind-edit", KeybindActions::edit);
         handlers.put("keybind-save", KeybindActions::save);
@@ -158,6 +163,21 @@ final class Actions {
                 Directives.patch(RightPanelBuilder.PREVIEW_PROGRESS_ID,
                         RightPanelBuilder.previewProgress(true)),
                 Directives.toast("Reloading preview (preview only)"));
+    }
+
+    /**
+     * The T310 {@code open-diff} handler: replays the session's recorded
+     * {@code write}/{@code edit} deltas of one file into the right-panel
+     * diff view. The session event log is mandatory for jhin.ui, so its
+     * absence degrades to the explanatory toast like every optional
+     * integration.
+     */
+    private static ActionRoute.ActionHandler openDiff(ServiceRegistry services) {
+        Optional<EventLog> events = services.find(EventLog.class);
+        return events
+                .map(log -> (ActionRoute.ActionHandler) new OpenDiffAction(log)::handle)
+                .orElseGet(() -> (req, payload) -> ActionSupport.error(
+                        "The session event log is unavailable."));
     }
 
     /** The enroll handler, or its absent-plugin stand-in. */

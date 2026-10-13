@@ -202,7 +202,7 @@ class ChatScreenTest {
         List<EventRecord> history = fullRun();
         Map<String, Object> json = render(history);
 
-        EventFrames.Translator translator = new EventFrames.Translator();
+        EventFrames.Translator translator = new EventFrames.Translator("s1");
         List<String> frameIds = new ArrayList<>();
         for (EventRecord record : history) {
             for (Map<String, Object> frame : translator.frames(

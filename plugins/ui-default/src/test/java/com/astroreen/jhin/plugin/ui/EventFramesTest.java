@@ -38,7 +38,7 @@ class EventFramesTest {
 
     @Test
     void nodeFrameCarriesTheRowHtmlAndNoTree() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
 
         List<Map<String, Object>> frames =
                 translator.frames("user_message", json("text", "hi"), 1);
@@ -54,7 +54,7 @@ class EventFramesTest {
 
     @Test
     void patchFrameCarriesIdAndInnerHtml() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
         translator.frames("message_start", json("role", "assistant"), 2);
         translator.frames("text_delta", json("text", "Hel"), 3);
         translator.frames("text_delta", json("text", "lo"), 4);
@@ -75,12 +75,13 @@ class EventFramesTest {
 
     @Test
     void replaceFrameCarriesIdAndTheFullElement() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
 
         List<Map<String, Object>> frames =
                 translator.frames("run_end", json("runId", "r1"), 5);
 
-        assertThat(frames).hasSize(1);
+        // the badge replace plus the (empty) changed-files summary row
+        assertThat(frames).hasSize(2);
         Map<String, Object> item = payload(frames.get(0), "replace");
         assertThat(item).containsOnlyKeys("id", "html");
         assertThat(item.get("id")).isEqualTo("runStatus");
@@ -91,14 +92,15 @@ class EventFramesTest {
 
     @Test
     void removeFrameCarriesTheWorkingRowId() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
         translator.frames("run_start", json("runId", "r1"), 6);
 
         List<Map<String, Object>> frames =
                 translator.frames("run_end", json("runId", "r1"), 7);
 
         // run_end settles the lifecycle row to done, then removes the strip
-        assertThat(frames).hasSize(2);
+        // and appends the changed-files summary row
+        assertThat(frames).hasSize(3);
         Map<String, Object> settled = payload(frames.get(0), "replace");
         assertThat(settled.get("id")).isEqualTo("ev-6-lifecycle");
         assertThat(String.valueOf(settled.get("html"))).contains("Done");
@@ -107,8 +109,36 @@ class EventFramesTest {
     }
 
     @Test
+    void runEndCarriesTheChangedFilesSummaryOnBothReturnPaths() {
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
+        translator.frames("run_start", json("runId", "r1"), 20);
+        translator.frames("tool_use", Json.write(Map.of(
+                "id", "c1", "name", "write",
+                "arguments", Json.write(Map.of(
+                        "path", "src/A.java", "content", "a\nb\n")))), 21);
+
+        List<Map<String, Object>> frames =
+                translator.frames("run_end", json("runId", "r1"), 22);
+
+        // lifecycle replace, working-row remove, then the summary node
+        assertThat(frames).hasSize(3);
+        Map<String, Object> summary = payload(frames.get(2), "node");
+        String html = String.valueOf(summary.get("html"));
+        assertThat(html).contains("Changed files").contains("src/A.java").contains("+2");
+
+        // the mid-stream join path (no tracked working row) carries the
+        // summary too — here the empty one
+        EventFrames.Translator joiner = new EventFrames.Translator("s1", clock);
+        List<Map<String, Object>> join = joiner.frames("run_end", json("runId", "r2"), 23);
+
+        assertThat(join).hasSize(2);
+        Map<String, Object> empty = payload(join.get(1), "node");
+        assertThat(String.valueOf(empty.get("html"))).contains("No changed files.");
+    }
+
+    @Test
     void everyFrameShapeCarriesHtmlAndNoPropsOrNodeKeys() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
         List<Map<String, Object>> all = new ArrayList<>();
         all.addAll(translator.frames("user_message", json("text", "hi"), 1));
         all.addAll(translator.frames("run_start", json("runId", "r"), 2));
@@ -139,7 +169,7 @@ class EventFramesTest {
 
     @Test
     void anEmptySubagentPayloadFallsThroughToThePlainWorkRow() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
         List<Map<String, Object>> frames = translator.frames("tool_result", Json.write(Map.of(
                 "id", "c1", "name", "subagent", "content", "spawned",
                 "structured", Json.write(Map.of("type", "subagent")))), 20);
@@ -154,7 +184,7 @@ class EventFramesTest {
 
     @Test
     void deltasInsideOneFlushWindowProduceOnePatch() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
         translator.frames("message_start", json("role", "assistant"), 1);
 
         for (String delta : List.of("H", "e", "l", "l", "o")) {
@@ -172,7 +202,7 @@ class EventFramesTest {
 
     @Test
     void theFlushWindowBoundsThePatchRate() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
         translator.frames("message_start", json("role", "assistant"), 1);
         assertThat(translator.frames("text_delta", json("text", "A"), 2)).isEmpty();
         clock.now += 30;
@@ -189,7 +219,7 @@ class EventFramesTest {
 
     @Test
     void nonDeltaEventsFlushThePendingBatchFirst() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
         translator.frames("message_start", json("role", "assistant"), 1);
         assertThat(translator.frames("text_delta", json("text", "Hi"), 2)).isEmpty();
 
@@ -205,7 +235,7 @@ class EventFramesTest {
 
     @Test
     void closeFlushesTheTrailingBatch() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
         translator.frames("message_start", json("role", "assistant"), 1);
         assertThat(translator.frames("text_delta", json("text", "draft"), 2)).isEmpty();
 
@@ -219,7 +249,7 @@ class EventFramesTest {
 
     @Test
     void absorbedDeltasDoNotFlushHistoryText() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
         translator.absorb("message_start", json("role", "assistant"), 1);
         translator.absorb("text_delta", json("text", "Hello "), 2);
 
@@ -240,7 +270,7 @@ class EventFramesTest {
 
     @Test
     void streamedTextRendersScriptPayloadsEscaped() {
-        EventFrames.Translator translator = new EventFrames.Translator(clock);
+        EventFrames.Translator translator = new EventFrames.Translator("s1", clock);
         translator.frames("message_start", json("role", "assistant"), 1);
         translator.frames("text_delta", json("text", "<script>alert(1)</script>"), 2);
 

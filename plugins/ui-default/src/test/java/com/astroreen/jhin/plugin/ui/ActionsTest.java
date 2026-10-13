@@ -10,6 +10,8 @@ package com.astroreen.jhin.plugin.ui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.astroreen.jhin.plugin.llm.api.ProviderRegistry;
+import com.astroreen.jhin.plugin.sessions.api.EventLog;
+import com.astroreen.jhin.plugin.sessions.api.EventType;
 import com.astroreen.jhin.plugin.sessions.api.Session;
 import com.astroreen.jhin.plugin.sessions.api.SessionStore;
 import com.astroreen.jhin.plugin.toolsbuiltin.api.QuestionBridge;
@@ -615,6 +617,55 @@ class ActionsTest {
     }
 
     @Test
+    void openDiffPatchesTheDiffViewWithTheRecordedChanges() {
+        Session session = store.create("demo", "/tmp/work");
+        String id = session.id();
+        EventLog events = services.find(EventLog.class).orElseThrow();
+        events.append(id, EventType.TOOL_USE,
+                "{\"id\":\"call-1\",\"name\":\"write\",\"arguments\":\"{\\\"path\\\":"
+                        + "\\\"src/A.java\\\",\\\"content\\\":\\\"alpha\\\\nbeta\\\"}\"}");
+        events.append(id, EventType.TOOL_USE,
+                "{\"id\":\"call-2\",\"name\":\"edit\",\"arguments\":\"{\\\"path\\\":"
+                        + "\\\"src/A.java\\\",\\\"oldString\\\":\\\"beta\\\","
+                        + "\\\"newString\\\":\\\"gamma\\\"}\"}");
+
+        List<Map<String, Object>> ops = handlers.get("open-diff").handle(
+                request(), Map.of("sessionId", id, "path", "src/A.java"));
+
+        assertThat(ops).hasSize(4);
+        assertThat(ops.get(0)).containsEntry("op", "setState")
+                .containsEntry("id", ChatScreen.STATE_RIGHT_PANEL)
+                .containsEntry("value", true);
+        assertThat(ops.get(1)).containsEntry("op", "setState")
+                .containsEntry("id", "chat_diff_file")
+                .containsEntry("value", "src/A.java");
+        assertThat(ops.get(2)).containsEntry("op", "patch")
+                .containsEntry("id", "right-panel-diff-view");
+        assertThat(String.valueOf(ops.get(2).get("html")))
+                .contains("alpha")
+                .contains("beta")
+                .contains("gamma");
+        assertThat(ops.get(3)).containsEntry("op", "toast");
+    }
+
+    @Test
+    void openDiffRequiresTheSessionIdAndThePath() {
+        List<Map<String, Object>> ops = handlers.get("open-diff").handle(request(), Map.of());
+
+        assertThat(ops).hasSize(1);
+        assertThat(ops.get(0)).containsEntry("op", "toast").containsEntry("style", "error");
+    }
+
+    @Test
+    void openDiffRejectsAPathWithoutRecordedChanges() {
+        List<Map<String, Object>> ops = handlers.get("open-diff").handle(
+                request(), Map.of("sessionId", "sess-1", "path", "nope.txt"));
+
+        assertThat(ops).hasSize(1);
+        assertThat(ops.get(0)).containsEntry("op", "toast").containsEntry("style", "error");
+    }
+
+    @Test
     void absentIntegrationsAnswerWithExplanatoryToasts() {
         FakePluginContext.FakeServices services = new FakePluginContext.FakeServices();
         Map<String, ActionRoute.ActionHandler> degraded =
@@ -630,12 +681,12 @@ class ActionsTest {
                 "pin", "unpin", "settle", "unsettle", "snooze", "wake",
                 "archive", "restore", "regenerate-title", "reorder",
                 "auto-settle", "delete-session", "arrange-toggle",
-                "preview-reload");
+                "preview-reload", "open-diff");
         for (String name : List.of("enroll", "send", "cancel", "answer-question",
                 "create-provider", "delete-provider", "undo",
                 "pin", "unpin", "settle", "unsettle", "snooze", "wake",
                 "archive", "restore", "regenerate-title", "reorder",
-                "auto-settle")) {
+                "auto-settle", "open-diff")) {
             List<Map<String, Object>> ops = degraded.get(name).handle(request(), Map.of());
             assertThat(ops).as(name).hasSize(1);
             assertThat(ops.get(0)).as(name).containsEntry("op", "toast");

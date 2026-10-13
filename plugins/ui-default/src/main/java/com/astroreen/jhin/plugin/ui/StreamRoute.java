@@ -125,7 +125,7 @@ final class StreamRoute {
         });
         return streams.sse(FRAMES_TOPIC_PREFIX + sessionId, writer -> {
             try {
-                EventFrames.Translator translator = new EventFrames.Translator(clock);
+                EventFrames.Translator translator = new EventFrames.Translator(sessionId, clock);
                 // Seed the translation state from everything before the
                 // replay window, so a window that starts mid-message still
                 // patches the open message instead of opening a new one.
@@ -240,13 +240,14 @@ final class StreamRoute {
     private final class Forwarder {
 
         private final String sessionId;
-        private final EventFrames.Translator translator = new EventFrames.Translator(clock);
+        private final EventFrames.Translator translator;
         private final Queue<StreamEvent> pending = new ConcurrentLinkedQueue<>();
         private final Subscription subscription;
         private boolean live;
 
         private Forwarder(String sessionId) {
             this.sessionId = sessionId;
+            this.translator = new EventFrames.Translator(sessionId, clock);
             this.subscription = streams.subscribe(RAW_TOPIC_PREFIX + sessionId, this::onEvent);
             for (EventRecord record : events.list(sessionId, 0)) {
                 translator.absorb(record.type().wire(), record.payload(), record.seq());

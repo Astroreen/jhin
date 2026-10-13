@@ -369,7 +369,7 @@ public final class RightPanelBuilder {
                 .action(Directives.client(List.of(
                         Directives.setState(STATE_DIFF_VIEW, view),
                         Directives.patch(DIFF_VIEW_ID,
-                                diffViewNode(Map.of("view", view))))))
+                                diffViewNode(Map.of("view", view), true)))))
                 .set("demo", true)
                 .build();
     }
@@ -456,7 +456,7 @@ public final class RightPanelBuilder {
         item.put("action", Directives.client(List.of(
                 Directives.setState(STATE_DIFF_FILE, path),
                 Directives.patch(DIFF_VIEW_ID,
-                        diffViewNode(diffViewPatch(path, diffFiles))))));
+                        diffViewNode(diffViewPatch(path, diffFiles), true)))));
         return item;
     }
 
@@ -492,13 +492,20 @@ public final class RightPanelBuilder {
      * content the old prop patch merged is rendered as the level-4
      * {@code patch} {@code html} instead (docs/sdui.md section 4 — a content
      * swap, never a prop merge). Absent keys leave the field unset; the node
-     * keeps the {@code DIFF_VIEW_ID} address and the decorative marker of the
-     * authored view.
+     * keeps the {@code DIFF_VIEW_ID} address and carries the {@code demo}
+     * marker of its author — {@code true} for the decorative fixture panel,
+     * {@code false} for the real {@code open-diff} action output
+     * ({@link com.astroreen.jhin.plugin.ui.OpenDiffAction}).
+     *
+     * @param content the patch content map ({@code view}, {@code file},
+     *                {@code language}, {@code stats}, {@code hunks})
+     * @param demo    whether the node is decorative
+     * @return the {@code diff_view} node at {@link #DIFF_VIEW_ID}
      */
-    private static UiNode diffViewNode(Map<String, Object> content) {
+    public static UiNode diffViewNode(Map<String, Object> content, boolean demo) {
         Ui.DiffViewBuilder builder = Ui.diffView()
                 .id(DIFF_VIEW_ID)
-                .demo(true);
+                .demo(demo);
         if (content.get("view") != null) {
             builder.view(str(content.get("view")));
         }

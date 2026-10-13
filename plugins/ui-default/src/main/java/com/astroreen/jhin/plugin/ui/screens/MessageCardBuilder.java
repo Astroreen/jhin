@@ -865,6 +865,96 @@ public final class MessageCardBuilder {
     }
 
     /**
+     * The run's changed-files summary card (T310): the sticky
+     * {@code Changed files \u00b7 N} header with the run's total line stats
+     * and one row per changed file — the {@link PathDisplay} path chip, the
+     * A/M/D change badge, the {@code +add}/{@code -del} stats and the
+     * per-row {@code Open diff} button posting the real {@code open-diff}
+     * action with {@code sessionId} and that row's path in its payload (the
+     * handler replays the recorded tool deltas into the diff panel). The
+     * rows come from {@link RunSummaryBuilder} — the run's
+     * {@code write}/{@code edit} {@code tool_use} payloads, never git (the
+     * plan's D-6 ruling).
+     *
+     * @param seq       the event sequence number (drives the node id)
+     * @param sessionId the session the run belongs to (the action payload)
+     * @param files     the changed-file rows in first-seen order
+     * @return the {@code event:file-write} summary row
+     */
+    public static UiNode runSummaryCard(long seq, String sessionId,
+                                        List<RunSummaryBuilder.FileStat> files) {
+        int additions = 0;
+        int deletions = 0;
+        for (RunSummaryBuilder.FileStat file : files) {
+            additions += file.add();
+            deletions += file.del();
+        }
+        Ui.CardBuilder card = Ui.card()
+                .id(eventId(seq) + "-card")
+                .border(BORDER)
+                .borderRadius(EVENT_RADIUS)
+                .padding(12);
+        card.child(Ui.row().id(eventId(seq) + "-head").gap(8).align("center")
+                .child(Ui.icon().icon("edit_note").size(16).color(MUTED).build())
+                .child(Ui.text("Changed files \u00b7 " + files.size()).style("small").build())
+                .child(Ui.text("+" + additions).style("mono")
+                        .color(DIFF_ADDITION).build())
+                .child(Ui.text("-" + deletions).style("mono")
+                        .color(DIFF_DELETION).build())
+                .build());
+        for (RunSummaryBuilder.FileStat file : files) {
+            card.child(Ui.row().gap(8).align("center")
+                    .child(PathDisplay.chip(file.path()))
+                    .child(changeBadge(file.kind()))
+                    .child(Ui.text("+" + file.add()).style("mono")
+                            .color(DIFF_ADDITION).build())
+                    .child(Ui.text("-" + file.del()).style("mono")
+                            .color(DIFF_DELETION).build())
+                    .child(Ui.button("Open diff")
+                            .icon("open_in_new")
+                            .action(ActionDescriptors.of("open-diff",
+                                    Map.of("sessionId", sessionId,
+                                            "path", file.path()), null))
+                            .build())
+                    .build());
+        }
+        return rowContainer(KIND_EVENT, EVENT_FILE_WRITE, seq, null, 4, card.build());
+    }
+
+    /**
+     * The empty run-summary card: the zero-file-run state of the
+     * changed-files summary — the muted {@code No changed files.} line (the
+     * {@code jhin.ui} Files-tab empty copy) and no per-file rows.
+     *
+     * @param seq the event sequence number (drives the node id)
+     * @return the {@code event:file-write} empty summary row
+     */
+    public static UiNode emptyRunSummaryCard(long seq) {
+        Ui.CardBuilder card = Ui.card()
+                .id(eventId(seq) + "-card")
+                .border(BORDER)
+                .borderRadius(EVENT_RADIUS)
+                .padding(12);
+        card.child(Ui.text("No changed files.").style("caption").color(MUTED).build());
+        return rowContainer(KIND_EVENT, EVENT_FILE_WRITE, seq, null, 4, card.build());
+    }
+
+    /** The A/M/D change badge of one summary row (the {@code RightPanelBuilder} colours). */
+    private static UiNode changeBadge(RunSummaryBuilder.Kind kind) {
+        Ui.BadgeBuilder badge = Ui.badge().label(switch (kind) {
+            case ADDED -> "A";
+            case MODIFIED -> "M";
+            case DELETED -> "D";
+        });
+        switch (kind) {
+            case ADDED -> badge.color("$color.diff-addition-foreground");
+            case DELETED -> badge.color("$color.diff-deletion-foreground");
+            default -> badge.color("$color.sidebar-muted-foreground");
+        }
+        return badge.build();
+    }
+
+    /**
      * The {@code shell} card: the standard tool card with the command as the
      * summary line and the output as the code block (the plan's mapping).
      *
