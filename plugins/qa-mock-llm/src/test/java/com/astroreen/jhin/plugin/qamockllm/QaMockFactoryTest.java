@@ -1,9 +1,10 @@
 /**
  * The qa-mock-llm harness: the factory format and fail-fast check, and the
  * scripted model behavior — one {@code write} tool call while the tool is
- * offered, a text answer on the second call and on any call without a
- * {@code write} tool (the failure paths prove the model never invents a tool
- * call).
+ * offered, one blocking {@code ask_user} question from the {@code ask} model
+ * while that tool is offered, a text answer on the second call and on any
+ * call without the scripted tool (the failure paths prove the models never
+ * invent a tool call).
  */
 package com.astroreen.jhin.plugin.qamockllm;
 
@@ -120,8 +121,62 @@ class QaMockFactoryTest {
         assertThat(response.aiMessage().text()).hasSizeGreaterThan(60);
     }
 
+    @Test
+    void askModelEmitsExactlyOneAskUserToolCall() {
+        ChatModel model = factory.create(new ProviderConfig(null, QaMockFactory.ASK_MODEL, null));
+
+        ChatResponse response = model.chat(request("continue", askUserTool()));
+
+        List<ToolExecutionRequest> calls = response.aiMessage().toolExecutionRequests();
+        assertThat(calls).hasSize(1);
+        assertThat(calls.get(0).name()).isEqualTo(QaMockAskingModel.TOOL_NAME);
+        assertThat(calls.get(0).arguments()).isEqualTo(QaMockAskingModel.TOOL_ARGUMENTS);
+        assertThat(QaMockAskingModel.TOOL_ARGUMENTS).contains(QaMockAskingModel.QUESTION);
+    }
+
+    @Test
+    void askModelAnswersWithTextOnSecondCall() {
+        ChatModel model = factory.create(new ProviderConfig(null, QaMockFactory.ASK_MODEL, null));
+        model.chat(request("continue", askUserTool()));
+
+        ChatRequest second = ChatRequest.builder()
+                .messages(List.of(
+                        UserMessage.from("continue"),
+                        AiMessage.from(List.of(ToolExecutionRequest.builder()
+                                .id(QaMockAskingModel.TOOL_CALL_ID)
+                                .name(QaMockAskingModel.TOOL_NAME)
+                                .arguments(QaMockAskingModel.TOOL_ARGUMENTS)
+                                .build())),
+                        ToolExecutionResultMessage.builder()
+                                .id(QaMockAskingModel.TOOL_CALL_ID)
+                                .toolName(QaMockAskingModel.TOOL_NAME)
+                                .text("Yes")
+                                .build()))
+                .toolSpecifications(List.of(askUserTool()))
+                .build();
+
+        ChatResponse response = model.chat(second);
+
+        assertThat(response.aiMessage().text()).isEqualTo(QaMockAskingModel.TEXT_ANSWER);
+        assertThat(response.aiMessage().hasToolExecutionRequests()).isFalse();
+    }
+
+    @Test
+    void askModelWithoutAskUserToolAnswersWithTextDirectly() {
+        ChatModel model = factory.create(new ProviderConfig(null, QaMockFactory.ASK_MODEL, null));
+
+        ChatResponse response = model.chat(request("continue", writeTool()));
+
+        assertThat(response.aiMessage().text()).isEqualTo(QaMockAskingModel.TEXT_ANSWER);
+        assertThat(response.aiMessage().hasToolExecutionRequests()).isFalse();
+    }
+
     private static ToolSpecification writeTool() {
         return ToolSpecification.builder().name(QaMockChatModel.TOOL_NAME).build();
+    }
+
+    private static ToolSpecification askUserTool() {
+        return ToolSpecification.builder().name(QaMockAskingModel.TOOL_NAME).build();
     }
 
     private static ChatRequest request(String text, ToolSpecification... specs) {

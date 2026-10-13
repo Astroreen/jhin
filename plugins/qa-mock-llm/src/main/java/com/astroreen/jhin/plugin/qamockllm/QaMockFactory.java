@@ -1,9 +1,9 @@
 /**
  * {@code LlmProviderFactory} for the {@code mock} format: builds the
  * deterministic scripted chat models of {@link QaMockChatModel},
- * {@link QaMockFailingModel} and {@link QaMockTitleModel} (selected by the
- * configuration's {@code model} name) that an end-to-end run can observe
- * without any network endpoint.
+ * {@link QaMockAskingModel}, {@link QaMockFailingModel} and
+ * {@link QaMockTitleModel} (selected by the configuration's {@code model}
+ * name) that an end-to-end run can observe without any network endpoint.
  *
  * <p>Published by {@link QaMockLlmPlugin} unconditionally (the jar itself is
  * the QA opt-in) under the {@code mock} qualifier. The configuration is only
@@ -30,6 +30,9 @@ public final class QaMockFactory implements LlmProviderFactory {
     /** The {@code model} name that answers with an over-long fixed title. */
     public static final String TITLE_MODEL = "title";
 
+    /** The {@code model} name that emits one blocking {@code ask_user} question. */
+    public static final String ASK_MODEL = "ask";
+
     private final Logger log;
 
     /**
@@ -55,9 +58,10 @@ public final class QaMockFactory implements LlmProviderFactory {
     /**
      * Builds the deterministic scripted chat model. The {@code model} name
      * selects the script: {@link #FAIL_MODEL} refuses every call,
-     * {@link #TITLE_MODEL} answers with an over-long fixed title and anything
-     * else is the plain scripted run model. The configuration is otherwise
-     * only checked for presence; the models perform no network I/O.
+     * {@link #TITLE_MODEL} answers with an over-long fixed title,
+     * {@link #ASK_MODEL} emits one blocking {@code ask_user} question and
+     * anything else is the plain scripted run model. The configuration is
+     * otherwise only checked for presence; the models perform no network I/O.
      *
      * @param cfg the provider configuration (the {@code model} name selects
      *            the script)
@@ -74,6 +78,9 @@ public final class QaMockFactory implements LlmProviderFactory {
         }
         if (TITLE_MODEL.equals(cfg.model())) {
             return new QaMockTitleModel();
+        }
+        if (ASK_MODEL.equals(cfg.model())) {
+            return new QaMockAskingModel(log);
         }
         return new QaMockChatModel(log);
     }
