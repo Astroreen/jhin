@@ -1,9 +1,10 @@
 /**
  * {@code LlmProviderFactory} for the {@code mock} format: builds the
  * deterministic scripted chat models of {@link QaMockChatModel},
- * {@link QaMockAskingModel}, {@link QaMockFailingModel} and
- * {@link QaMockTitleModel} (selected by the configuration's {@code model}
- * name) that an end-to-end run can observe without any network endpoint.
+ * {@link QaMockAskingModel}, {@link QaMockFilesModel},
+ * {@link QaMockFailingModel} and {@link QaMockTitleModel} (selected by the
+ * configuration's {@code model} name) that an end-to-end run can observe
+ * without any network endpoint.
  *
  * <p>Published by {@link QaMockLlmPlugin} unconditionally (the jar itself is
  * the QA opt-in) under the {@code mock} qualifier. The configuration is only
@@ -33,6 +34,9 @@ public final class QaMockFactory implements LlmProviderFactory {
     /** The {@code model} name that emits one blocking {@code ask_user} question. */
     public static final String ASK_MODEL = "ask";
 
+    /** The {@code model} name that emits two {@code write} tool calls. */
+    public static final String FILES_MODEL = "files";
+
     private final Logger log;
 
     /**
@@ -59,9 +63,10 @@ public final class QaMockFactory implements LlmProviderFactory {
      * Builds the deterministic scripted chat model. The {@code model} name
      * selects the script: {@link #FAIL_MODEL} refuses every call,
      * {@link #TITLE_MODEL} answers with an over-long fixed title,
-     * {@link #ASK_MODEL} emits one blocking {@code ask_user} question and
-     * anything else is the plain scripted run model. The configuration is
-     * otherwise only checked for presence; the models perform no network I/O.
+     * {@link #ASK_MODEL} emits one blocking {@code ask_user} question,
+     * {@link #FILES_MODEL} emits two {@code write} tool calls and anything
+     * else is the plain scripted run model. The configuration is otherwise
+     * only checked for presence; the models perform no network I/O.
      *
      * @param cfg the provider configuration (the {@code model} name selects
      *            the script)
@@ -81,6 +86,9 @@ public final class QaMockFactory implements LlmProviderFactory {
         }
         if (ASK_MODEL.equals(cfg.model())) {
             return new QaMockAskingModel(log);
+        }
+        if (FILES_MODEL.equals(cfg.model())) {
+            return new QaMockFilesModel(log);
         }
         return new QaMockChatModel(log);
     }

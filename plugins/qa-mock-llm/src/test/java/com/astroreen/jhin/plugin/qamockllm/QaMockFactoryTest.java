@@ -171,6 +171,48 @@ class QaMockFactoryTest {
         assertThat(response.aiMessage().hasToolExecutionRequests()).isFalse();
     }
 
+    @Test
+    void filesModelEmitsExactlyTwoWriteToolCalls() {
+        ChatModel model = factory.create(new ProviderConfig(null, QaMockFactory.FILES_MODEL, null));
+
+        ChatResponse first = model.chat(request("do the work", writeTool()));
+        ChatResponse second = model.chat(request("do the work", writeTool()));
+
+        List<ToolExecutionRequest> firstCalls = first.aiMessage().toolExecutionRequests();
+        assertThat(firstCalls).hasSize(1);
+        assertThat(firstCalls.get(0).id()).isEqualTo(QaMockFilesModel.FIRST_CALL_ID);
+        assertThat(firstCalls.get(0).arguments()).isEqualTo(QaMockFilesModel.FIRST_ARGUMENTS);
+        assertThat(QaMockFilesModel.FIRST_ARGUMENTS).contains(QaMockFilesModel.FIRST_PATH);
+        List<ToolExecutionRequest> secondCalls = second.aiMessage().toolExecutionRequests();
+        assertThat(secondCalls).hasSize(1);
+        assertThat(secondCalls.get(0).id()).isEqualTo(QaMockFilesModel.SECOND_CALL_ID);
+        assertThat(secondCalls.get(0).arguments()).isEqualTo(QaMockFilesModel.SECOND_ARGUMENTS);
+        assertThat(QaMockFilesModel.SECOND_ARGUMENTS).contains(QaMockFilesModel.SECOND_PATH);
+    }
+
+    @Test
+    void filesModelAnswersWithTextAfterTheTwoCalls() {
+        ChatModel model = factory.create(new ProviderConfig(null, QaMockFactory.FILES_MODEL, null));
+        model.chat(request("do the work", writeTool()));
+        model.chat(request("do the work", writeTool()));
+
+        ChatResponse third = model.chat(request("do the work", writeTool()));
+
+        assertThat(third.aiMessage().text()).isEqualTo(QaMockFilesModel.TEXT_ANSWER);
+        assertThat(third.aiMessage().hasToolExecutionRequests()).isFalse();
+    }
+
+    @Test
+    void filesModelWithoutWriteToolAnswersWithTextDirectly() {
+        ChatModel model = factory.create(new ProviderConfig(null, QaMockFactory.FILES_MODEL, null));
+
+        ChatResponse response = model.chat(request("do the work",
+                ToolSpecification.builder().name("read").build()));
+
+        assertThat(response.aiMessage().text()).isEqualTo(QaMockFilesModel.TEXT_ANSWER);
+        assertThat(response.aiMessage().hasToolExecutionRequests()).isFalse();
+    }
+
     private static ToolSpecification writeTool() {
         return ToolSpecification.builder().name(QaMockChatModel.TOOL_NAME).build();
     }
