@@ -197,3 +197,9 @@ The old v1 backend is gone. The repository is a composite Gradle build:
 - OS-level account isolation (uid, nftables); app-layer only
 - Custom binary protocol (JSON + SSE only)
 - Encryption of stored API keys
+
+## Execution state
+
+Work on `.sisyphus/plans/jhin-t3code-experience-plan.md` is in progress
+(currently T310d, the QA proof for the run summary). The continuation brief
+lives in `.sisyphus/progress.md`; read it before resuming plan execution.
