@@ -94,69 +94,74 @@ function until(
 }
 
 describe("a mesh of real nodes", () => {
-  it("joins, relays a → c through b, and finds c again after it restarts", async () => {
-    // a and c advertise no address: neither can dial the other, both dial b.
-    const homeC = home("c", { advertise: [] });
-    const a = await serve("a", home("a", { advertise: [] }));
-    const b = await serve("b", home("b", {}));
-    let c = await serve("c", homeC);
+  // Four node processes start in this test; the limit bounds the run, nothing waits on time.
+  it(
+    "joins, relays a → c through b, and finds c again after it restarts",
+    { timeout: 60_000 },
+    async () => {
+      // a and c advertise no address: neither can dial the other, both dial b.
+      const homeC = home("c", { advertise: [] });
+      const a = await serve("a", home("a", { advertise: [] }));
+      const b = await serve("b", home("b", {}));
+      let c = await serve("c", homeC);
 
-    const invite = (node: Node) => node.client.call<{ url: string; code: string }>("mesh.invite");
-    const forA = await invite(b);
-    await a.client.call("mesh.join", { url: forA.url, code: forA.code });
-    const forC = await invite(b);
-    await c.client.call("mesh.join", { url: forC.url, code: forC.code });
+      const invite = (node: Node) => node.client.call<{ url: string; code: string }>("mesh.invite");
+      const forA = await invite(b);
+      await a.client.call("mesh.join", { url: forA.url, code: forA.code });
+      const forC = await invite(b);
+      await c.client.call("mesh.join", { url: forC.url, code: forC.code });
 
-    const reachC = (nodes: readonly NodeView[]) =>
-      nodes.some((node) => node.nodeId === c.nodeId && node.reachable);
-    const nodes = await until(a, reachC);
-    expect(nodes.find((node) => node.nodeId === c.nodeId)?.route).toEqual([
-      a.nodeId,
-      b.nodeId,
-      c.nodeId,
-    ]);
+      const reachC = (nodes: readonly NodeView[]) =>
+        nodes.some((node) => node.nodeId === c.nodeId && node.reachable);
+      const nodes = await until(a, reachC);
+      expect(nodes.find((node) => node.nodeId === c.nodeId)?.route).toEqual([
+        a.nodeId,
+        b.nodeId,
+        c.nodeId,
+      ]);
 
-    expect(
-      await a.client.call("mesh.call", {
-        node: c.nodeId,
-        method: "example.greet",
-        params: { name: "Ada" },
-      }),
-    ).toEqual({
-      message: "Hello, Ada!",
-      count: 1,
-    });
-    expect(
-      await a.client.call("mesh.resolve", { address: `jhin://${c.nodeId}/threads/42` }),
-    ).toMatchObject({
-      nodeId: c.nodeId,
-      path: "threads/42",
-      node: { reachable: true, route: [a.nodeId, b.nodeId, c.nodeId] },
-    });
+      expect(
+        await a.client.call("mesh.call", {
+          node: c.nodeId,
+          method: "example.greet",
+          params: { name: "Ada" },
+        }),
+      ).toEqual({
+        message: "Hello, Ada!",
+        count: 1,
+      });
+      expect(
+        await a.client.call("mesh.resolve", { address: `jhin://${c.nodeId}/threads/42` }),
+      ).toMatchObject({
+        nodeId: c.nodeId,
+        path: "threads/42",
+        node: { reachable: true, route: [a.nodeId, b.nodeId, c.nodeId] },
+      });
 
-    await c.stop();
-    await until(a, (view) => !view.some((node) => node.nodeId === c.nodeId && node.reachable));
-    await expect(
-      a.client.call("mesh.call", {
-        node: c.nodeId,
-        method: "example.greet",
-        params: { name: "x" },
-      }),
-    ).rejects.toMatchObject({
-      code: "NODE_UNREACHABLE",
-    });
+      await c.stop();
+      await until(a, (view) => !view.some((node) => node.nodeId === c.nodeId && node.reachable));
+      await expect(
+        a.client.call("mesh.call", {
+          node: c.nodeId,
+          method: "example.greet",
+          params: { name: "x" },
+        }),
+      ).rejects.toMatchObject({
+        code: "NODE_UNREACHABLE",
+      });
 
-    // c comes back from the same home: it remembers b and dials it.
-    c = await serve("c", homeC);
-    await until(a, reachC);
-    expect(
-      await a.client.call("mesh.call", {
-        node: c.nodeId,
-        method: "example.greet",
-        params: { name: "Bo" },
-      }),
-    ).toMatchObject({
-      message: "Hello, Bo!",
-    });
-  });
+      // c comes back from the same home: it remembers b and dials it.
+      c = await serve("c", homeC);
+      await until(a, reachC);
+      expect(
+        await a.client.call("mesh.call", {
+          node: c.nodeId,
+          method: "example.greet",
+          params: { name: "Bo" },
+        }),
+      ).toMatchObject({
+        message: "Hello, Bo!",
+      });
+    },
+  );
 });
