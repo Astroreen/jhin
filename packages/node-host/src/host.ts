@@ -97,6 +97,12 @@ function applyLayer(kernel: Kernel, layer: string, file: string, log: Logger): v
   else kernel.config.setLayer(layer, values);
 }
 
+function writeAtomically(file: string, text: string): void {
+  const temporary = `${file}.${process.pid}.tmp`;
+  Fs.writeFileSync(temporary, text);
+  Fs.renameSync(temporary, file);
+}
+
 /** Boots a server-side kernel over the plugins found on disk. */
 export async function startNodeHost(options: NodeHostOptions = {}): Promise<NodeHost> {
   const home = resolveHome(options.home);
@@ -254,9 +260,17 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     values: Record<string, unknown>,
     at: number,
   ): { applied: boolean; at: number; conflict?: { localAt: number } } {
-    const writes = (
-      Fs.existsSync(writesFile) ? JSON.parse(Fs.readFileSync(writesFile, "utf8")) : {}
-    ) as Record<string, Record<string, number>>;
+    let writes: Record<string, Record<string, number>> = {};
+    try {
+      if (Fs.existsSync(writesFile))
+        writes = JSON.parse(Fs.readFileSync(writesFile, "utf8")) as typeof writes;
+    } catch (error) {
+      // A damaged record of write times must not block every later change.
+      log.warn("config write times unreadable; starting over", {
+        file: writesFile,
+        error: String(error),
+      });
+    }
     const localAt = writes[layer]?.[section];
     if (localAt !== undefined && at < localAt) return { applied: false, at, conflict: { localAt } };
 
@@ -271,9 +285,11 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       );
     }
     Fs.mkdirSync(Path.dirname(file), { recursive: true });
-    Fs.writeFileSync(file, text);
+    // Times first, then the file, each replaced atomically: a crash in between
+    // can only make a later stale change lose, never win.
     writes[layer] = { ...writes[layer], [section]: at };
-    Fs.writeFileSync(writesFile, `${JSON.stringify(writes, null, 2)}\n`);
+    writeAtomically(writesFile, `${JSON.stringify(writes, null, 2)}\n`);
+    writeAtomically(file, text);
     applyLayer(kernel, layer, file, log);
     return { applied: true, at };
   }

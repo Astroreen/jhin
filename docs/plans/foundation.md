@@ -534,6 +534,15 @@ Implementation notes (PR 10):
   `mesh/outbox` stream and are delivered when a route exists
   (`mesh.config.delivered` / `mesh.config.conflict`).
 
+- Neighbors may only read and copy `threads`, `thread/*`, `mirror/*/…` of
+  those, and `mesh`; other streams (e.g. `mesh/outbox`) stay private.
+  Opened mirrors are remembered and resume after a restart; `mesh.close`
+  stops one.
+- Fan-out compares the sender's clock with the target's last write time: with
+  clocks apart, "later wins" follows the clocks. A change queued after a
+  `MESH_TIMEOUT` may already have been applied; applying it again is harmless
+  (same values, same time).
+
 ### PR 11 — Final end-to-end proof
 
 Implements D47.

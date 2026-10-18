@@ -143,6 +143,9 @@ export default definePlugin({
     };
 
     const remembered = (await kv.get(NAMESPACE, "members")) as MemberRecord[] | undefined;
+    const rememberedMirrors = (await kv.get(NAMESPACE, "mirrors")) as
+      | { owner: string; stream: string }[]
+      | undefined;
     let writes: Promise<unknown> = Promise.resolve();
     const mesh = createMesh({
       identity: { nodeId, publicKey: keys.publicKey, name: config.name ?? Os.hostname() },
@@ -164,6 +167,12 @@ export default definePlugin({
       ...(remembered === undefined ? {} : { members: remembered }),
       // Writes are chained so an older snapshot never lands after a newer one.
       log,
+      ...(rememberedMirrors === undefined ? {} : { mirrors: rememberedMirrors }),
+      persistMirrors: (mirrors) => {
+        writes = writes
+          .then(() => kv.set(NAMESPACE, "mirrors", mirrors as unknown as Json))
+          .catch(() => undefined);
+      },
       persist: (members) => {
         writes = writes
           .then(() => kv.set(NAMESPACE, "members", members as unknown as Json))
@@ -284,8 +293,19 @@ export default definePlugin({
         "Starts keeping a copy of another node's stream here (D26) and names the local stream to read",
       input: z.object({ node: z.string().min(1), stream: z.string().min(1) }),
       output: z.object({ stream: z.string() }),
-      permissions: ["mesh.read"],
+      permissions: ["mesh.open"],
       handler: ({ node, stream }) => ({ stream: mesh.mirror(node, stream) }),
+    });
+    context.commands.register({
+      name: "mesh.close",
+      description: "Stops keeping a copy of another node's stream; what was copied stays readable",
+      input: z.object({ node: z.string().min(1), stream: z.string().min(1) }),
+      output: z.object({}),
+      permissions: ["mesh.open"],
+      handler: ({ node, stream }) => {
+        mesh.unmirror(node, stream);
+        return {};
+      },
     });
 
     if (config.history === "eager") {
@@ -302,7 +322,12 @@ export default definePlugin({
             if (typeof id === "string") mesh.mirror(owner, `thread/${id}`);
           };
           context.subscriptions.add(log.subscribe(index, take));
-          void log.read(index).then((events) => events.forEach(take));
+          void log
+            .read(index)
+            .then((events) => events.forEach(take))
+            .catch((error: unknown) =>
+              context.log.warn("thread index unreadable", { node: owner, error: String(error) }),
+            );
         }
       };
       context.subscriptions.add(mesh.onChange(follow));
@@ -391,7 +416,13 @@ export default definePlugin({
         delivering = false;
       }
     }
-    context.subscriptions.add(mesh.onChange(() => void flushOutbox()));
+    const flushSafely = () =>
+      void flushOutbox().catch((error: unknown) =>
+        context.log.warn("config outbox delivery failed", { error: String(error) }),
+      );
+    context.subscriptions.add(mesh.onChange(flushSafely));
+    // Changes queued before a restart go out as soon as routes exist again.
+    flushSafely();
 
     context.commands.register({
       name: "mesh.config.patch",
@@ -419,22 +450,21 @@ export default definePlugin({
         const patch: Patch = { layer, section, values, at: Date.now() };
         const targets =
           nodes === "all" ? mesh.members().map((member) => member.record.nodeId) : nodes;
-        const results: Outcome[] = [];
-        for (const node of targets) {
-          try {
-            results.push(await deliver(node, patch));
-          } catch (error) {
-            if (!unreachable(error)) {
-              results.push({ node, status: "failed", error: String(error) });
-              continue;
+        // In parallel: one slow or unreachable node does not hold up the others.
+        const results = await Promise.all(
+          targets.map(async (node): Promise<Outcome> => {
+            try {
+              return await deliver(node, patch);
+            } catch (error) {
+              if (!unreachable(error)) return { node, status: "failed", error: String(error) };
+              const id = Crypto.randomUUID();
+              await log.append(OUTBOX, [
+                { type: "mesh.config.queued", payload: { id, node, patch } as unknown as Json },
+              ]);
+              return { node, status: "queued" };
             }
-            const id = Crypto.randomUUID();
-            await log.append(OUTBOX, [
-              { type: "mesh.config.queued", payload: { id, node, patch } as unknown as Json },
-            ]);
-            results.push({ node, status: "queued" });
-          }
-        }
+          }),
+        );
         return { at: patch.at, results };
       },
     });

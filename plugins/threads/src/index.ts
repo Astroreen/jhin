@@ -122,6 +122,22 @@ export default definePlugin({
       await kv.set(NAMESPACE, `project/${SCRATCH_PROJECT}`, scratch);
     }
 
+    // Threads made before the index existed are added to it once, oldest first.
+    if ((await log.head(THREADS_STREAM)) === 0) {
+      const existing = (await kv.list(NAMESPACE, { prefix: "thread/" }))
+        .map((entry) => Thread.parse(entry.value))
+        .toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
+      if (existing.length > 0) {
+        await log.append(
+          THREADS_STREAM,
+          existing.map((thread) => ({
+            type: ThreadEvents.threadCreated,
+            payload: thread as unknown as Json,
+          })),
+        );
+      }
+    }
+
     /** Reserves the thread synchronously, so two sends can never both start a turn. */
     function reserve(threadId: string, turnId: string): { entry: Running; finish: () => void } {
       let finish!: () => void;

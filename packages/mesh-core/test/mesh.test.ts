@@ -29,6 +29,9 @@ function startNode(
   id: string,
   options: {
     advertise?: boolean;
+    log?: EventLog;
+    mirrors?: { owner: string; stream: string }[];
+    persistMirrors?: (mirrors: readonly { owner: string; stream: string }[]) => void;
     now?: () => number;
     callDeadlineMs?: number;
     execute?: (method: string) => Promise<unknown>;
@@ -37,7 +40,7 @@ function startNode(
   const keys = Crypto.generateKeyPairSync("ed25519");
   const publicKey = keys.publicKey.export({ type: "spki", format: "der" }).toString("base64url");
   const address = `mem://${id}`;
-  const { log } = createMemoryStorage();
+  const log = options.log ?? createMemoryStorage().log;
   const mesh = createMesh({
     log,
     identity: { nodeId: id, publicKey, name: id },
@@ -58,6 +61,8 @@ function startNode(
     retryDelay: () => 1,
     ...(options.now === undefined ? {} : { now: options.now }),
     ...(options.callDeadlineMs === undefined ? {} : { callDeadlineMs: options.callDeadlineMs }),
+    ...(options.mirrors === undefined ? {} : { mirrors: options.mirrors }),
+    ...(options.persistMirrors === undefined ? {} : { persistMirrors: options.persistMirrors }),
   });
   meshes.push(mesh);
   network.listen(address, {
@@ -363,6 +368,81 @@ describe("mesh", () => {
     network.up(c.address);
     await headReaches(a.log, local, 5);
     expect((await a.log.read(local, { after: 3 })).map((event) => event.sequence)).toEqual([4, 5]);
+  });
+
+  it("attaches a mirror opened while the owner was away once a route appears", async () => {
+    const network = createMemoryNetwork();
+    network.block("mem://a", "mem://c");
+    const { a, c, all } = await chain(network);
+    network.down(c.address);
+    await until(all, () => view(a, c)?.reachable === false);
+    await c.log.append("thread/9", [{ type: "agent.item.delta", payload: 1 }]);
+
+    const local = a.mesh.mirror("c", "thread/9");
+    network.up(c.address);
+
+    await headReaches(a.log, local, 1);
+  });
+
+  it("repairs a gap left by a failed append", async () => {
+    const network = createMemoryNetwork();
+    const base = createMemoryStorage().log;
+    let failures = 1;
+    const flaky: EventLog = {
+      ...base,
+      append: (stream, events, options) => {
+        if (stream.startsWith("mirror/") && failures > 0) {
+          failures -= 1;
+          return Promise.reject(new Error("disk hiccup"));
+        }
+        return base.append(stream, events, options);
+      },
+    };
+    const a = startNode(network, "a", { log: flaky });
+    const b = startNode(network, "b");
+    await b.mesh.join(a.address, a.mesh.invite().code);
+    await until([a, b], () => view(a, b)?.reachable === true);
+    await b.log.append(
+      "thread/1",
+      [1, 2, 3].map((n) => ({ type: "agent.item.delta", payload: n })),
+    );
+
+    const local = a.mesh.mirror("b", "thread/1");
+    await headReaches(flaky, local, 3);
+    expect((await flaky.read(local)).map((event) => event.payload)).toEqual([1, 2, 3]);
+  });
+
+  it("copies only shared streams", async () => {
+    const network = createMemoryNetwork();
+    const a = startNode(network, "a");
+
+    expect(() => a.mesh.mirror("b", "mesh/outbox")).toThrow(
+      expect.objectContaining({ code: "STREAM_NOT_MIRRORABLE" }),
+    );
+    expect(a.mesh.mirror("b", "thread/1")).toBe("mirror/b/thread/1");
+  });
+
+  it("remembers opened mirrors and resumes them in a new run", async () => {
+    const network = createMemoryNetwork();
+    let saved: readonly { owner: string; stream: string }[] = [];
+    const sharedLog = createMemoryStorage().log;
+    const first = startNode(network, "a", {
+      log: sharedLog,
+      persistMirrors: (mirrors) => void (saved = mirrors),
+    });
+    first.mesh.mirror("b", "thread/7");
+    expect(saved).toEqual([{ owner: "b", stream: "thread/7" }]);
+    first.mesh.unmirror("b", "thread/7");
+    expect(saved).toEqual([]);
+    first.mesh.mirror("b", "thread/7");
+    first.mesh.dispose();
+
+    // A new run of a with the remembered list keeps copying b's thread.
+    const a = startNode(network, "a", { log: sharedLog, mirrors: [...saved] });
+    const b = startNode(network, "b");
+    await b.log.append("thread/7", [{ type: "agent.item.delta", payload: "x" }]);
+    await b.mesh.join(a.address, a.mesh.invite().code);
+    await headReaches(sharedLog, "mirror/b/thread/7", 1);
   });
 });
 

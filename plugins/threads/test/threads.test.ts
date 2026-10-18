@@ -217,4 +217,28 @@ describe("jhin.threads", () => {
 
     expect(project.path).toBe(data);
   });
+
+  it("lists threads made before the index existed in the threads stream", async () => {
+    const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-threads-"));
+    const storage = memoryStoragePlugin();
+    const old = {
+      id: "t-old",
+      projectId: "scratch",
+      title: "Old",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    };
+    await storage.storage.kv.set("jhin.threads", "thread/t-old", old);
+    const kernel = await createTestKernel({
+      plugins: [
+        mockCapability("host.paths", { home: data, dataDir: () => data }),
+        storage,
+        { manifest: manifest("threads"), definition: threads },
+      ],
+    });
+    stops.push(() => kernel.stop());
+
+    expect((await storage.storage.log.read("threads")).map((event) => event.payload)).toEqual([
+      old,
+    ]);
+  });
 });

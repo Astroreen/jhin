@@ -96,8 +96,10 @@ export function untilMesh(
         resolve(nodes);
       }
     };
-    const subscription = node.client.subscribe("mesh", {}, () => void check());
-    void check();
+    // A check still in flight when a node stops must not surface as an unhandled rejection.
+    const safely = () => void check().catch(() => undefined);
+    const subscription = node.client.subscribe("mesh", {}, safely);
+    safely();
   });
 }
 

@@ -72,6 +72,9 @@ export interface MeshOptions {
    * and mirrors of other nodes' streams are kept in it (D26).
    */
   readonly log?: EventLog;
+  /** Mirrors to resume from an earlier run, and where to remember the current ones. */
+  readonly mirrors?: readonly { readonly owner: string; readonly stream: string }[];
+  persistMirrors?(mirrors: readonly { owner: string; stream: string }[]): void;
 }
 
 export interface MemberView {
