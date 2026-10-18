@@ -37,7 +37,8 @@ export interface HostPlugin {
 /**
  * `host.plugins@1`: every plugin package the host discovered, including
  * client-side plugins its own kernel skips, and changes to their files (when
- * the host watches).
+ * the host watches). A plugin added, removed or with a changed manifest is
+ * reported as a change to its `package.json`; `list()` already reflects it.
  */
 export interface HostPlugins {
   list(): readonly HostPlugin[];

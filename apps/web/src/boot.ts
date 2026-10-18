@@ -39,64 +39,116 @@ async function fetchJson<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
+const builtinLocation = (id: string) => `builtin:${id}`;
+const remoteLocation = (id: string) => `remote:${id}`;
+
 /**
  * Starts the client-side kernel: the same kernel as a node's, with
  * `side: "client"`. Builtins come first; client plugins served by the node
- * are added, replacing a builtin with the same id (D15), and reloaded when
- * their files change (D16).
+ * are added, replacing a builtin with the same id (D15), reloaded when their
+ * files change, and added or removed while the page is open (D16).
  */
 export async function boot(): Promise<Kernel> {
   const remote = await fetchJson<RemotePlugin[]>("/client/plugins", []);
-  const remoteIds = new Set(remote.map((plugin) => plugin.manifest.id));
-  const builtins = BUILTIN_PLUGINS.filter((plugin) => !remoteIds.has(plugin.manifest.id));
-  const definitions = new Map(
-    builtins.map((plugin) => [`builtin:${plugin.manifest.id}`, plugin.definition]),
-  );
-  const entries = new Map(remote.map((plugin) => [`remote:${plugin.manifest.id}`, plugin.entry]));
+  const builtins = new Map(BUILTIN_PLUGINS.map((plugin) => [plugin.manifest.id, plugin]));
+  const entries = new Map<string, string>();
 
   const kernel = createKernel({
     side: "client",
     logger: consoleLogger({}),
     loader: {
       async load(source) {
-        const builtin = definitions.get(source.location);
-        if (builtin !== undefined) return { default: builtin };
+        if (source.location.startsWith("builtin:")) {
+          return { default: builtins.get(source.location.slice("builtin:".length))?.definition };
+        }
         return import(/* @vite-ignore */ entries.get(source.location)!);
       },
     },
   });
   kernel.config.setLayer("node", await fetchJson("/client/config", {}));
 
-  const sources: PluginSource[] = [
-    ...builtins.map((plugin) => ({
-      location: `builtin:${plugin.manifest.id}`,
-      manifest: plugin.manifest,
-    })),
-    ...remote.map((plugin) => ({
-      location: `remote:${plugin.manifest.id}`,
-      manifest: plugin.manifest,
-    })),
-  ];
-  await kernel.start(sources);
-  if (typeof EventSource !== "undefined") followNode(kernel, entries);
+  await kernel.start(sourcesFor(BUILTIN_PLUGINS, remote, entries));
+  if (typeof EventSource !== "undefined") followNode(kernel, builtins, entries, remote);
   return kernel;
 }
 
-/** Applies the node's change notifications: new plugin revisions and config. */
-function followNode(kernel: Kernel, entries: Map<string, string>): void {
-  const revisionPath = /^(\/client\/plugins\/[^/]+\/)\d+\//;
-  const apply = (id: string, rev: number) => {
-    const current = entries.get(`remote:${id}`);
-    if (current === undefined) return;
-    const next = current.replace(revisionPath, `$1${rev}/`);
-    if (next === current) return;
-    entries.set(`remote:${id}`, next);
-    void kernel
-      .reload(id)
+/**
+ * The page's plugins: builtins, then the node's client plugins; a node plugin
+ * replaces a builtin with its id (D15), and without it the builtin is back.
+ * Records each node plugin's entry URL for the loader.
+ */
+function sourcesFor(
+  builtins: Iterable<BuiltinPlugin>,
+  remote: readonly RemotePlugin[],
+  entries: Map<string, string>,
+): PluginSource[] {
+  const remoteIds = new Set(remote.map((plugin) => plugin.manifest.id));
+  return [
+    ...[...builtins]
+      .filter((plugin) => !remoteIds.has(plugin.manifest.id))
+      .map((plugin) => ({
+        location: builtinLocation(plugin.manifest.id),
+        manifest: plugin.manifest,
+      })),
+    ...remote.map((plugin) => {
+      const location = remoteLocation(plugin.manifest.id);
+      entries.set(location, plugin.entry);
+      return { location, manifest: plugin.manifest };
+    }),
+  ];
+}
+
+/**
+ * Applies the node's change notifications: new plugin revisions, plugins
+ * added or removed, and config. Changes are applied one at a time.
+ */
+function followNode(
+  kernel: Kernel,
+  builtins: ReadonlyMap<string, BuiltinPlugin>,
+  entries: Map<string, string>,
+  initial: readonly RemotePlugin[],
+): void {
+  /** The remote plugins as last applied, by id. */
+  let known = new Map(initial.map((plugin) => [plugin.manifest.id, plugin]));
+  let queue: Promise<void> = Promise.resolve();
+  const enqueue = (work: () => Promise<void>) => {
+    queue = queue
+      .then(work)
       .catch((error: unknown) =>
-        console.error(`[jhin] reloading ${id} failed; the next change to its files retries`, error),
+        console.error(
+          "[jhin] applying a client plugin change failed; the next change retries",
+          error,
+        ),
       );
   };
+
+  const reload = async (plugin: RemotePlugin) => {
+    entries.set(remoteLocation(plugin.manifest.id), plugin.entry);
+    await kernel
+      .reload(plugin.manifest.id)
+      .catch((error: unknown) =>
+        console.error(
+          `[jhin] reloading ${plugin.manifest.id} failed; the next change to its files retries`,
+          error,
+        ),
+      );
+  };
+
+  /** Brings the kernel to the node's current list: adds, removes, replaces and reloads. */
+  const sync = async () => {
+    const list = await fetchJson<RemotePlugin[]>("/client/plugins", [...known.values()]);
+    // The kernel restarts what was added, removed or got another manifest (and dependants).
+    const update = await kernel.update(sourcesFor(builtins.values(), list, entries));
+    const restarted = new Set([...update.added, ...update.changed, ...update.started]);
+    // Same manifest, new files: a reload, as for a `plugin` event.
+    for (const plugin of list) {
+      const id = plugin.manifest.id;
+      const had = known.get(id);
+      if (had !== undefined && had.rev !== plugin.rev && !restarted.has(id)) await reload(plugin);
+    }
+    known = new Map(list.map((plugin) => [plugin.manifest.id, plugin]));
+  };
+
   const refreshConfig = () =>
     void fetchJson("/client/config", {}).then((values) => kernel.config.setLayer("node", values));
 
@@ -107,17 +159,27 @@ function followNode(kernel: Kernel, entries: Map<string, string>): void {
   events.addEventListener("open", () => {
     opened += 1;
     if (opened === 1) return;
-    void fetchJson<RemotePlugin[]>("/client/plugins", []).then((plugins) => {
-      for (const plugin of plugins) apply(plugin.manifest.id, plugin.rev);
-    });
+    enqueue(sync);
     refreshConfig();
   });
   events.addEventListener("plugin", (message) => {
     const { id, rev } = JSON.parse(message.data) as { id: string; rev: number };
-    apply(id, rev);
+    enqueue(async () => {
+      const plugin = known.get(id);
+      // A plugin this page has not met yet: the list tells what it is.
+      if (plugin === undefined) return sync();
+      if (plugin.rev === rev) return;
+      const next = { ...plugin, rev, entry: plugin.entry.replace(REVISION, `$1${rev}/`) };
+      known.set(id, next);
+      await reload(next);
+    });
   });
+  events.addEventListener("plugins", () => enqueue(sync));
   events.addEventListener("config", refreshConfig);
 }
+
+/** The revision segment of a plugin file path: `/client/plugins/<id>/<rev>/`. */
+const REVISION = /^(\/client\/plugins\/[^/]+\/)\d+\//;
 
 /** The browser console as the client kernel's log; fields ride along as a second argument. */
 function consoleLogger(base: LogFields): Logger {

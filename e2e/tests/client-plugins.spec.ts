@@ -3,19 +3,25 @@ import * as Path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-import { startNode, writeConfig, type RunningNode } from "./support/node.ts";
+import {
+  startDevServer,
+  startNode,
+  writeConfig,
+  type DevServer,
+  type RunningNode,
+} from "./support/node.ts";
 
 /** A user client plugin as a plain ES module: no build step, shared packages from the import map. */
-function writeButtonPlugin(home: string, label: string): string {
-  const root = Path.join(home, "plugins", "acme-hello");
+function writeButtonPlugin(home: string, label: string, id = "acme.hello"): string {
+  const root = Path.join(home, "plugins", id.replace(".", "-"));
   Fs.mkdirSync(root, { recursive: true });
   Fs.writeFileSync(
     Path.join(root, "package.json"),
     JSON.stringify({
-      name: "acme-hello",
+      name: id.replace(".", "-"),
       type: "module",
       jhin: {
-        id: "acme.hello",
+        id,
         version: "1.0.0",
         apiVersion: 1,
         side: "client",
@@ -37,7 +43,7 @@ export default definePlugin({
     const slots = context.services.get(UI_SLOTS_CAPABILITY);
     context.subscriptions.add(
       slots.contribute("sidebar.actions", {
-        id: "acme.hello.button",
+        id: "${id}.button",
         component: () => createElement(Button, { size: "xs", variant: "outline" }, label),
       }),
     );
@@ -51,7 +57,10 @@ export default definePlugin({
 const path = (...parts: string[]) => Path.join(...parts);
 
 let node: RunningNode | undefined;
+let dev: DevServer | undefined;
 test.afterEach(async () => {
+  await dev?.stop();
+  dev = undefined;
   await node?.stop();
   node = undefined;
 });
@@ -73,6 +82,81 @@ test("a user plugin adds a sidebar button without a rebuild and hot reloads", as
 
   await expect(actions.getByRole("button", { name: "Hello v2" })).toBeVisible();
   await expect(actions.getByRole("button", { name: "Hello v1" })).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as { untouched?: boolean }).untouched)).toBe(
+    true,
+  );
+});
+
+test("a user plugin dropped in while the page is open activates, and deactivates when removed", async ({
+  page,
+}) => {
+  node = await startNode({ watch: true });
+  await page.goto(`${node.ui}#token=${node.token}`);
+  const actions = page.getByRole("toolbar", { name: "Sidebar actions" });
+  await expect(actions.getByRole("button", { name: "Inspector" })).toBeVisible();
+  await page.evaluate(() => Object.assign(window, { untouched: true }));
+
+  const root = writeButtonPlugin(node.home, "Hello new");
+  await expect(actions.getByRole("button", { name: "Hello new" })).toBeVisible();
+  await test.info().attach("added", { body: await page.screenshot(), contentType: "image/png" });
+
+  Fs.rmSync(root, { recursive: true });
+  await expect(actions.getByRole("button", { name: "Hello new" })).toHaveCount(0);
+  await expect(actions.getByRole("button", { name: "Inspector" })).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      (
+        window as unknown as {
+          jhin: { kernel: { inspect(): { plugins: { id: string }[] } } };
+        }
+      ).jhin.kernel
+        .inspect()
+        .plugins.some((plugin) => plugin.id === "acme.hello"),
+    ),
+  ).toBe(false);
+  expect(await page.evaluate(() => (window as unknown as { untouched?: boolean }).untouched)).toBe(
+    true,
+  );
+});
+
+test("a user plugin dropped in with a builtin's id replaces it; removing it brings the builtin back", async ({
+  page,
+}) => {
+  node = await startNode({ watch: true });
+  await page.goto(`${node.ui}#token=${node.token}`);
+  const actions = page.getByRole("toolbar", { name: "Sidebar actions" });
+  await expect(actions.getByRole("button", { name: "Inspector" })).toBeVisible();
+
+  const root = writeButtonPlugin(node.home, "My inspector", "jhin.inspector");
+  await expect(actions.getByRole("button", { name: "My inspector" })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Inspector", exact: true })).toHaveCount(0);
+
+  Fs.rmSync(root, { recursive: true });
+  await expect(actions.getByRole("button", { name: "Inspector", exact: true })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "My inspector" })).toHaveCount(0);
+});
+
+test("under vp dev, a user plugin loads with the app's shared modules and hot reloads", async ({
+  page,
+}) => {
+  let root = "";
+  node = await startNode({
+    watch: true,
+    setup: (home) => void (root = writeButtonPlugin(home, "Dev v1")),
+  });
+  dev = startDevServer(node.ui);
+  await page.goto(`${await dev.ready()}#token=${node.token}`);
+  const actions = page.getByRole("toolbar", { name: "Sidebar actions" });
+  await expect(actions.getByRole("button", { name: "Dev v1" })).toBeVisible();
+  await expect(page.getByLabel("Connection open")).toBeVisible();
+  await page.evaluate(() => Object.assign(window, { untouched: true }));
+
+  Fs.writeFileSync(Path.join(root, "label.js"), 'export const label = "Dev v2";\n');
+
+  await expect(actions.getByRole("button", { name: "Dev v2" })).toBeVisible();
+  await test
+    .info()
+    .attach("dev-server", { body: await page.screenshot(), contentType: "image/png" });
   expect(await page.evaluate(() => (window as unknown as { untouched?: boolean }).untouched)).toBe(
     true,
   );

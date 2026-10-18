@@ -37,6 +37,68 @@ export function writeConfig(home: string, config: Record<string, unknown>): void
   );
 }
 
+const WEB = Path.resolve(import.meta.dirname, "../../../apps/web");
+const VP = Path.resolve(import.meta.dirname, "../../../node_modules/vite-plus/bin/vp");
+
+export interface DevServer {
+  /** Base URL of the web client served by `vp dev`, once it listens. */
+  ready(): Promise<string>;
+  /** Stops `vp dev` and every process it started; resolves when all have exited. */
+  stop(): Promise<void>;
+}
+
+/**
+ * Starts `vp dev` for the web client on a free port, proxying to `node`
+ * (`JHIN_NODE_URL`). Returns at once, so a test can stop it (in `afterEach`)
+ * even if it never becomes ready; `ready()` resolves with its URL.
+ */
+export function startDevServer(node: string): DevServer {
+  // `vp dev` runs Vite in a child process of its own: the server gets its own
+  // process group, and stopping it signals the whole group.
+  const child = ChildProcess.spawn(
+    process.execPath,
+    [VP, "dev", "--host", "127.0.0.1", "--port", "0"],
+    {
+      cwd: WEB,
+      env: { ...process.env, JHIN_NODE_URL: node.replace(/\/$/, "") },
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
+    },
+  );
+  // Every process of the group holds the output pipes: they close when the last one exits.
+  const closed = Promise.all(
+    [child.stdout, child.stderr].map(
+      (stream) => new Promise((resolve) => stream.once("close", resolve)),
+    ),
+  );
+  const url = new Promise<string>((resolve, reject) => {
+    let text = "";
+    const read = (chunk: unknown) => {
+      // Colours (the test runner may force them) split the URL.
+      // oxlint-disable-next-line no-control-regex
+      text += String(chunk).replaceAll(/\u001B\[[\d;]*m/g, "");
+      const found = /Local:\s+(http:\/\/\S+)/.exec(text)?.[1];
+      if (found !== undefined) resolve(found);
+    };
+    child.stdout.on("data", read);
+    child.stderr.on("data", read);
+    child.once("exit", (code) => reject(new Error(`vp dev exited with ${code}:\n${text}`)));
+  });
+  // Rejections surface through ready(); a stopped server's must not go unhandled.
+  url.catch(() => undefined);
+  return {
+    ready: () => url,
+    async stop() {
+      try {
+        process.kill(-child.pid!, "SIGTERM");
+      } catch {
+        // The group is gone already.
+      }
+      await closed;
+    },
+  };
+}
+
 /** Starts a node in a fresh home on a free port; resolves once it printed its URLs. */
 export async function startNode(options: NodeOptions = {}): Promise<RunningNode> {
   const mode = options.mode ?? "ui";

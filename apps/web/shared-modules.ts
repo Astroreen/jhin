@@ -23,17 +23,29 @@ const PREFIX = "virtual:jhin-shared:";
 const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
 const entryName = (name: string) => `shared/${name.replaceAll("@", "").replaceAll("/", "-")}`;
 
+/** Where the dev server serves a virtual module (Vite's URL form of a `\0` id). */
+const devUrl = (name: string) => `/@id/__x00__${PREFIX}${name}`;
+
 /**
- * Builds one entry module per shared package and writes an import map into
- * index.html that points the bare names at them. The app imports the same
- * packages, so runtime-loaded plugins and the app share one instance of each.
- * Build only: under `vp dev`, runtime plugins cannot resolve bare names.
+ * One module per shared package, and an import map in index.html that points
+ * the bare names at them. The app imports the same packages, so
+ * runtime-loaded plugins and the app share one instance of each.
+ *
+ * - `vp build`: each shared module is a build entry.
+ * - `vp dev`: each is a virtual module the dev server serves; its imports are
+ *   rewritten to the very URLs the app's imports get, so the instances are
+ *   shared there too.
  */
 export function sharedModules(): Plugin {
   return {
     name: "jhin-shared-modules",
-    apply: "build",
-    config() {
+    config(_config, { command }) {
+      if (command === "serve") {
+        // Pre-bundled up front: discovering one when a plugin first imports it
+        // would make the dev server reload the page.
+        const cjs = Object.keys(SHARED).filter((name) => SHARED[name] === "cjs");
+        return { optimizeDeps: { include: cjs } };
+      }
       return {
         build: {
           rollupOptions: {
@@ -49,7 +61,9 @@ export function sharedModules(): Plugin {
       };
     },
     resolveId(id) {
-      return id.startsWith(PREFIX) ? `\0${id}` : undefined;
+      if (id.startsWith(PREFIX)) return `\0${id}`;
+      // The dev server's `/@id/__x00__…` URLs arrive already resolved.
+      return id.startsWith(`\0${PREFIX}`) ? id : undefined;
     },
     load(id) {
       if (!id.startsWith(`\0${PREFIX}`)) return undefined;
@@ -64,9 +78,13 @@ export function sharedModules(): Plugin {
     transformIndexHtml: {
       order: "post",
       handler(html, context) {
-        const bundle = context.bundle ?? {};
         const imports: Record<string, string> = {};
+        const bundle = context.bundle ?? {};
         for (const name of Object.keys(SHARED)) {
+          if (context.server !== undefined) {
+            imports[name] = devUrl(name);
+            continue;
+          }
           const chunk = Object.values(bundle).find(
             (output) =>
               output.type === "chunk" && output.isEntry && output.name === entryName(name),
