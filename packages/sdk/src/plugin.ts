@@ -118,6 +118,12 @@ export interface PluginContext {
   readonly manifest: PluginManifest;
   /** Disposed when the plugin deactivates. Registrations through `ctx` land here automatically. */
   readonly subscriptions: { add<T extends Disposable>(item: T): T };
+  /**
+   * Async cleanup before deactivation: awaited (in reverse order of
+   * registration) before `deactivate()` and before `subscriptions` are
+   * disposed, so work in flight can finish while its services still exist.
+   */
+  onDeactivate(cleanup: () => Awaitable<void>): void;
   readonly services: Services;
   readonly hooks: Hooks;
   readonly commands: Commands;

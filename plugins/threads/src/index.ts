@@ -20,6 +20,7 @@ import {
 } from "@jhin/storage-api";
 
 const NAMESPACE = "jhin.threads";
+const DRAIN_TIMEOUT_MS = 5000;
 /** Every node has this project for chats without a project (D51). */
 export const SCRATCH_PROJECT = "scratch";
 
@@ -68,16 +69,28 @@ interface Running {
   interrupted: boolean;
 }
 
-/** Turns in flight of the current activation; `deactivate` waits for them. */
-let running: Map<string, Running> | undefined;
-
 export default definePlugin({
   async activate(context) {
     const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
     const paths = context.services.get<HostPaths>(HOST_PATHS_CAPABILITY);
     const active = new Map<string, Running>();
-    running = active;
+    // Before storage stops (it deactivates after this plugin), running turns are
+    // interrupted and their last event recorded; an agent that ignores the
+    // interrupt cannot hold shutdown for more than DRAIN_TIMEOUT_MS.
+    context.onDeactivate(async () => {
+      const entries = [...active.values()];
+      for (const entry of entries) {
+        entry.interrupted = true;
+        entry.turn?.interrupt();
+      }
+      let timer: NodeJS.Timeout | undefined;
+      const timeout = new Promise<void>(
+        (resolve) => (timer = setTimeout(resolve, DRAIN_TIMEOUT_MS)),
+      );
+      await Promise.race([Promise.all(entries.map((entry) => entry.done)), timeout]);
+      clearTimeout(timer);
+    });
     const now = () => new Date().toISOString();
 
     const getProject = async (id: string): Promise<Project> => {
@@ -143,13 +156,21 @@ export default definePlugin({
             payload: { turnId, agentId: runtime.agentId, input: { text } },
           },
         ]);
-        turn = runtime.startTurn({
-          threadId: thread.id,
-          turnId,
-          input: { text },
-          history,
-          cwd: project.path,
-        });
+        try {
+          turn = runtime.startTurn({
+            threadId: thread.id,
+            turnId,
+            input: { text },
+            history,
+            cwd: project.path,
+          });
+        } catch (error) {
+          // turn.started is already recorded: close it.
+          await log.append(stream, [
+            { type: ThreadEvents.turnFailed, payload: { turnId, error: String(error) } },
+          ]);
+          throw error;
+        }
       } catch (error) {
         finish();
         throw error;
@@ -173,9 +194,21 @@ export default definePlugin({
           ]);
         } catch (error) {
           context.log.warn("turn failed", { threadId: thread.id, turnId, error: String(error) });
-          await log.append(stream, [
-            { type: ThreadEvents.turnFailed, payload: { turnId, error: String(error) } },
-          ]);
+          await log
+
+            .append(stream, [
+              { type: ThreadEvents.turnFailed, payload: { turnId, error: String(error) } },
+            ])
+
+            .catch((appendError: unknown) =>
+              context.log.error("could not record the end of a turn", {
+                threadId: thread.id,
+
+                turnId,
+
+                error: String(appendError),
+              }),
+            );
         } finally {
           finish();
         }
@@ -187,7 +220,7 @@ export default definePlugin({
       description: "Projects on this node, the scratch project first",
       input: z.object({}),
       output: z.array(Project),
-      permissions: ["threads.read"],
+      permissions: ["projects.read"],
       handler: async () =>
         (await kv.list(NAMESPACE, { prefix: "project/" }))
           .map((entry) => Project.parse(entry.value))
@@ -203,8 +236,10 @@ export default definePlugin({
       input: z.object({ name: z.string().min(1), path: z.string().min(1) }),
       output: Project,
       permissions: ["projects.write"],
-      handler: async ({ name, path }) => {
-        if (!Path.isAbsolute(path) || !Fs.existsSync(path) || !Fs.statSync(path).isDirectory()) {
+      handler: async ({ name, path: given }) => {
+        // Stored normalised: "/a/../b" becomes "/b".
+        const path = Path.resolve(given);
+        if (!Path.isAbsolute(given) || !Fs.existsSync(path) || !Fs.statSync(path).isDirectory()) {
           throw new ThreadsError(
             "PROJECT_PATH_INVALID",
             `${path} is not an existing absolute directory`,
@@ -248,10 +283,11 @@ export default definePlugin({
       handler: async ({ projectId, title }) => {
         await getProject(projectId);
         const thread: Thread = { id: Crypto.randomUUID(), projectId, title, createdAt: now() };
-        await kv.set(NAMESPACE, `thread/${thread.id}`, thread);
+        // The stream's first event comes first: a thread record never exists without it.
         await log.append(threadStream(thread.id), [
           { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
         ]);
+        await kv.set(NAMESPACE, `thread/${thread.id}`, thread);
         return thread;
       },
     });
@@ -335,17 +371,5 @@ export default definePlugin({
         return { interrupted: true };
       },
     });
-  },
-
-  async deactivate() {
-    const turns = running;
-    running = undefined;
-    if (turns === undefined) return;
-    // Recorded as interrupted before storage goes away (it stops after this plugin).
-    for (const entry of turns.values()) {
-      entry.interrupted = true;
-      entry.turn?.interrupt();
-    }
-    await Promise.all([...turns.values()].map((entry) => entry.done));
   },
 });

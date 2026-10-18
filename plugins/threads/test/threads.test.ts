@@ -24,7 +24,7 @@ afterEach(async () => {
   for (const stop of stops.splice(0)) await stop();
 });
 
-async function node(options: { agent?: boolean } = {}) {
+async function node(options: { agent?: boolean; runtime?: unknown } = {}) {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-threads-"));
   const storage = memoryStoragePlugin();
   const plugins: TestPlugin[] = [
@@ -38,7 +38,8 @@ async function node(options: { agent?: boolean } = {}) {
     storage,
     { manifest: manifest("threads"), definition: threads },
   ];
-  if (options.agent !== false)
+  if (options.runtime !== undefined) plugins.push(mockCapability("agent.runtime", options.runtime));
+  else if (options.agent !== false)
     plugins.push({ manifest: manifest("agent-fake"), definition: agent });
   const kernel = await createTestKernel({ plugins });
   const { client } = connectInMemory(kernel, { log: storage.storage.log });
@@ -177,5 +178,43 @@ describe("jhin.threads", () => {
     ).rejects.toMatchObject({
       code: "NO_AGENT",
     });
+  });
+
+  it("closes a turn whose agent fails to start and keeps the thread usable", async () => {
+    const { client } = await node({
+      runtime: {
+        agentId: "acme.broken",
+        startTurn() {
+          throw new Error("cannot start");
+        },
+      },
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {});
+    const { events, until } = watch(client, thread.id);
+
+    await expect(client.call("threads.send", { threadId: thread.id, text: "hi" })).rejects.toThrow(
+      "cannot start",
+    );
+    await until("agent.turn.failed");
+
+    expect(events.map((event) => event.type)).toEqual([
+      "threads.thread.created",
+      "agent.turn.started",
+      "agent.turn.failed",
+    ]);
+    expect(
+      (await client.call<{ running?: string }>("threads.get", { threadId: thread.id })).running,
+    ).toBeUndefined();
+  });
+
+  it("stores project paths normalised", async () => {
+    const { client, data } = await node();
+
+    const project = await client.call<{ path: string }>("projects.create", {
+      name: "x",
+      path: `${data}/sub/../`,
+    });
+
+    expect(project.path).toBe(data);
   });
 });
