@@ -170,13 +170,78 @@ record_pid() {
   trap 'exit 130' INT TERM
 }
 
-# Ends a process and all its descendants.
-kill_tree() {
+# Prints a process and all its descendants, parents first.
+tree_pids() {
   local child
+  echo "$1"
   for child in $(pgrep -P "$1" 2>/dev/null); do
-    kill_tree "$child"
+    tree_pids "$child"
   done
-  kill "$1" 2>/dev/null || true
+}
+
+# Ends a process and all its descendants, children before their parents.
+kill_tree() {
+  local pid
+  for pid in $(tree_pids "$1" | awk '{ line[NR] = $0 } END { for (i = NR; i > 0; i--) print line[i] }'); do
+    kill "$pid" 2>/dev/null || true
+  done
+}
+
+# True while pid runs; a zombie (exited, not yet reaped) counts as exited,
+# since no signal can remove it.
+is_running() {
+  local state
+  state="$(ps -o stat= -p "$1" 2>/dev/null)" || return 1
+  [ -n "$state" ] && [ "${state:0:1}" != "Z" ]
+}
+
+# Ends a process tree and returns once every process in it has exited.
+# SIGTERM first; whatever still runs after JHIN_STOP_GRACE tenths of a second
+# (default 100 = 10 s, one budget for the whole tree) gets SIGKILL; after 2 s
+# more it gives up and returns 1. Descendants that appear while it shuts down
+# are found on the next round (every 0.1 s) and signalled too, also once they
+# are reparented. Best effort: a child whose parent starts it and exits
+# within one round is not seen.
+stop_tree() {
+  local grace="${JHIN_STOP_GRACE:-100}" signal=TERM start elapsed
+  local seen signalled="" pid pids alive
+  # A positive number of tenths, or the default: 0 or text would never escalate.
+  [[ "$grace" =~ ^[1-9][0-9]*$ ]] || grace=100
+  start="${EPOCHREALTIME/[.,]/}"
+  seen="$(tree_pids "$1")"
+  while :; do
+    alive=0
+    for pid in $seen; do
+      is_running "$pid" || continue
+      alive=1
+      case " $signalled " in
+        *" $pid:$signal "*) ;;
+        *)
+          kill "-$signal" "$pid" 2>/dev/null || true
+          signalled="$signalled $pid:$signal"
+          ;;
+      esac
+    done
+    [ "$alive" = 0 ] && return 0
+    # Wall-clock tenths of a second since the start, however slow a round is.
+    elapsed=$(((${EPOCHREALTIME/[.,]/} - start) / 100000))
+    if [ "$elapsed" -ge $((grace + 20)) ]; then
+      echo "jhin: processes still running after SIGKILL:$(for pid in $seen; do is_running "$pid" && printf ' %s' "$pid"; done)" >&2
+      return 1
+    elif [ "$elapsed" -ge "$grace" ]; then
+      signal=KILL
+    fi
+    sleep 0.1
+    # Forget processes that have exited (their pid may be reused by an
+    # unrelated process) and pick up children spawned since the last look.
+    pids=""
+    for pid in $seen; do
+      is_running "$pid" && pids="$pids $(tree_pids "$pid")"
+    done
+    # No grep here: it fails on empty input, which errexit would turn into
+    # an abort exactly when everything has exited.
+    seen="$(printf '%s' "$pids" | tr -s ' ' '\n' | sort -un)"
+  done
 }
 
 # True when pid is alive and is scripts/t3/<name>.sh of this checkout, so a
