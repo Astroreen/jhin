@@ -474,7 +474,10 @@ export function createKernel(options: KernelOptions): Kernel {
     },
 
     config: {
-      setLayer: (name, values) => config.setLayer(name, values),
+      setLayer: (name, values) => {
+        config.setLayer(name, values);
+        events.emit("kernel.config.changed", { layer: name });
+      },
       get: (section) => config.get(section),
       jsonSchema: () => config.jsonSchema(),
     },

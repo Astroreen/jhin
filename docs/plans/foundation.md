@@ -236,6 +236,14 @@ and engineering practices.
 - OpenTelemetry export plugin.
 - Trying `tsc-rs` instead of TypeScript 7.
 - Publishing packages to npm.
+- Freeing old module instances after a hot reload: every reload leaves the
+  previous `?jhin-gen=N` modules in Node's ESM cache, so a long
+  `serve --watch` session grows in memory (D14). Out-of-process plugins fix
+  this.
+- Re-resolving the plugin graph when a plugin's manifest changes on disk
+  (today: the watcher logs that a restart is needed).
+- Building the CLI to JavaScript for publishing (today `bin/jhin.js` imports
+  TypeScript, which Node only strips outside `node_modules`).
 
 ## PR plan
 
@@ -296,6 +304,12 @@ Implements D13, D14, D15, D36, D37; CLI part of D17 and D21 (`serve`).
 - CLI package `jhin-ai`: `jhin serve`, `jhin inspect`, commands exposed as
   subcommands automatically.
 - Example plugin in the repository.
+- Public event types introduced here: `kernel.config.changed` (a config
+  layer was set) and `host.config.rejected` (a config file failed to parse;
+  the previous layer stays in effect).
+- Until the transport exists (PR 6), `jhin inspect` and `jhin <command>` boot
+  the node's plugins in-process, run, and stop; afterwards they talk to the
+  running node.
 - **Done when:** a test edits a plugin on disk and observes dispose →
   re-activate of it and its dependants with state preserved; a user plugin
   with the same id overrides a distribution plugin; `jhin inspect` JSON shows

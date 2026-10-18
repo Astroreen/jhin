@@ -5,7 +5,16 @@
       "entry": ["scripts/*.ts", "vite.config.ts"],
     },
     "packages/*": {
+      // Test drivers run in child processes, so nothing imports them.
+      "entry": ["src/index.ts", "test/support/driver.ts"],
+    },
+    "plugins/*": {
       "entry": ["src/index.ts"],
+    },
+    "apps/jhin": {
+      "entry": ["bin/jhin.js", "src/main.ts"],
+      // Distribution plugins are resolved by name from "jhinDistribution".
+      "ignoreDependencies": ["@jhin/plugin-example"],
     },
     "e2e": {
       "entry": ["playwright.config.ts", "tests/**/*.spec.ts"],

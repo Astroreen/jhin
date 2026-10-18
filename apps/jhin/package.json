@@ -1,0 +1,24 @@
+{
+  "name": "jhin-ai",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Jhin: a self-hosted AI harness where everything is a plugin",
+  "bin": {
+    "jhin": "./bin/jhin.js"
+  },
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@jhin/node-host": "workspace:*",
+    "@jhin/plugin-example": "workspace:*",
+    "@jhin/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  },
+  "jhinDistribution": [
+    "@jhin/plugin-example"
+  ]
+}
