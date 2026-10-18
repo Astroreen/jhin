@@ -18,6 +18,11 @@ export interface RpcClientOptions {
   connect(): Promise<Peer>;
   /** Delay before the n-th reconnect attempt (n starts at 1). Default: 250ms doubling up to 10s. */
   retryDelay?(attempt: number): number;
+  /**
+   * Called with every new channel, before it is used: a two-way link serves
+   * the other side's requests on it (`serveRpc(peer, …)`).
+   */
+  onConnected?(peer: Peer): void;
 }
 
 export interface ClientSubscription extends Disposable {
@@ -187,6 +192,8 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
       }
       return;
     }
+    // A request from the other side of a two-way link: served by onConnected's handler.
+    if (message.method !== undefined) return;
     if (typeof message.id !== "number") return;
     const call = pending.get(message.id);
     if (call === undefined) return;
@@ -222,6 +229,7 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
     attempt = 0;
     peer = next;
     next.onMessage(onMessage);
+    options.onConnected?.(next);
     next.onClose(() => {
       if (peer !== next) return;
       peer = undefined;

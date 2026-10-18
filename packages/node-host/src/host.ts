@@ -13,6 +13,7 @@ import {
   type PluginSource,
 } from "@jhin/kernel";
 import {
+  HOST_IDENTITY_CAPABILITY,
   HOST_PATHS_CAPABILITY,
   HOST_PLUGINS_CAPABILITY,
   HOST_TRACE_CAPABILITY,
@@ -145,6 +146,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       };
       context.services.provide(HOST_PATHS_CAPABILITY, paths);
       context.services.provide(HOST_TRACE_CAPABILITY, trace);
+      context.services.provide(HOST_IDENTITY_CAPABILITY, { nodeId });
       const plugins: HostPlugins = {
         list: () =>
           discovery.plugins.flatMap((plugin) => {
@@ -216,6 +218,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         [HOST_PATHS_CAPABILITY]: "1.0.0",
         [HOST_TRACE_CAPABILITY]: "1.0.0",
         [HOST_PLUGINS_CAPABILITY]: "1.0.0",
+        [HOST_IDENTITY_CAPABILITY]: "1.0.0",
       },
       entry: "host",
     },

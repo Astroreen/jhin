@@ -4,6 +4,7 @@ import type { Invocation } from "@jhin/sdk";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  createCaller,
   createPeerPair,
   createRpcClient,
   serveRpc,
@@ -282,6 +283,34 @@ describe("rpc", () => {
     );
 
     expect(error).toMatchObject({ code: "UNAVAILABLE" });
+    client.close();
+  });
+
+  it("carries calls both ways over one channel", async () => {
+    const [clientEnd, serverEnd] = createPeerPair();
+    const serve = (name: string) => ({
+      caller: { id: "peer", permissions: ["*"] },
+      logger: noopLogger,
+      hello: () => ({}),
+      newTraceId: () => "t",
+      execute: async (method: string, input: unknown) => ({ answeredBy: name, method, input }),
+    });
+    serveRpc(serverEnd, serve("server"));
+    const back = createCaller(serverEnd);
+    const client = createRpcClient({
+      retryDelay: () => 0,
+      connect: async () => clientEnd,
+      onConnected: (peer) => void serveRpc(peer, serve("client")),
+    });
+
+    const [there, here] = await Promise.all([
+      client.call("app.ping", { n: 1 }),
+      back.call("app.ping", { n: 2 }),
+    ]);
+
+    expect(there).toEqual({ answeredBy: "server", method: "app.ping", input: { n: 1 } });
+    expect(here).toEqual({ answeredBy: "client", method: "app.ping", input: { n: 2 } });
+    back.dispose();
     client.close();
   });
 });

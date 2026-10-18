@@ -47,3 +47,11 @@ export interface HostPlugins {
     dispose(): void;
   };
 }
+
+export const HOST_IDENTITY_CAPABILITY = "host.identity";
+
+/** `host.identity@1`: who this node is (D23). */
+export interface HostIdentity {
+  /** Stable for the life of the node's home. */
+  readonly nodeId: string;
+}

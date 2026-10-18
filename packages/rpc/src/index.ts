@@ -1,3 +1,4 @@
+export { createCaller, type Caller } from "./caller.ts";
 export {
   createRpcClient,
   type ClientSubscription,

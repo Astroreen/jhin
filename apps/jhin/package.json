@@ -18,6 +18,7 @@
     "@jhin/plugin-example": "workspace:*",
     "@jhin/plugin-http": "workspace:*",
     "@jhin/plugin-mcp-server": "workspace:*",
+    "@jhin/plugin-mesh": "workspace:*",
     "@jhin/plugin-storage-sqlite": "workspace:*",
     "@jhin/plugin-threads": "workspace:*",
     "@jhin/plugin-transport-ws": "workspace:*",
@@ -41,7 +42,8 @@
     "@jhin/plugin-transport-ws",
     "@jhin/plugin-threads",
     "@jhin/plugin-agent-fake",
-    "@jhin/plugin-mcp-server"
+    "@jhin/plugin-mcp-server",
+    "@jhin/plugin-mesh"
   ],
   "jhinUi": [
     "@jhin/plugin-web-ui"
