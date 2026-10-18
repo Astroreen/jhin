@@ -93,6 +93,16 @@ describe("commands", () => {
       permissions: ["math.use"],
       inputSchema: { type: "object", properties: { a: { type: "number" }, b: { type: "number" } } },
     });
+    expect(info).not.toHaveProperty("title");
+  });
+
+  it("lists a command's title for people", async () => {
+    const { kernel, context } = await withContext();
+    context.commands.register({ ...add, name: "math.titled", title: "Add numbers" });
+    expect(kernel.commands.list().find((command) => command.name === "math.titled")).toMatchObject({
+      title: "Add numbers",
+      description: "Adds two numbers",
+    });
   });
 
   it("checks caller permissions", async () => {

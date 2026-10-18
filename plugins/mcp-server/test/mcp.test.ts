@@ -4,12 +4,13 @@ import * as Path from "node:path";
 
 import { toolName } from "@jhin/mcp-bridge";
 import { connectWebSocket, createRpcClient } from "@jhin/rpc";
-import type { PluginDefinition } from "@jhin/sdk";
+import { definePlugin, z, type PluginDefinition } from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import {
   createTestKernel,
   memoryStoragePlugin,
   mockCapability,
+  testManifest,
   type TestKernel,
 } from "@jhin/testing";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -57,6 +58,21 @@ async function startNode() {
       real("threads", threads),
       real("agent-fake", agent),
       real("mcp-server", mcp),
+      {
+        manifest: testManifest("app.titled"),
+        definition: definePlugin({
+          activate(context) {
+            context.commands.register({
+              name: "app.hello",
+              title: "Say hello",
+              description: "Says hello",
+              input: z.object({}),
+              output: z.object({ text: z.string() }),
+              handler: () => ({ text: "hello" }),
+            });
+          },
+        }),
+      },
     ],
     config: { node: { "jhin.http": { port: 0 } } },
   });
@@ -105,6 +121,9 @@ describe("jhin.mcp-server", () => {
         .map((command) => toolName(command.name))
         .toSorted(),
     );
+    // A command's title is the tool's title.
+    expect(tools.find((tool) => tool.name === "app_hello")?.title).toBe("Say hello");
+    expect(tools.find((tool) => tool.name === "threads_send")?.title).toBeUndefined();
     expect(tools.find((tool) => tool.name === "threads_send")?.inputSchema).toMatchObject({
       type: "object",
       properties: { threadId: { type: "string" }, text: { type: "string" } },

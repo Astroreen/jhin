@@ -53,6 +53,7 @@ export class CommandRegistry {
     const info: CommandInfo = {
       name,
       description: definition.description,
+      ...(definition.title === undefined ? {} : { title: definition.title }),
       plugin,
       permissions: [...(definition.permissions ?? [])],
       inputSchema: jsonSchema(definition.input, "input"),
