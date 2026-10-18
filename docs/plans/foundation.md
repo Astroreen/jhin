@@ -258,13 +258,15 @@ and engineering practices.
 - Signed mesh records: today any member can overwrite another member's
   record (key, URLs, neighbors) or claim a far-future version; acceptable in
   one owner's trust domain (D22), not beyond it.
-- `/mesh/join` rate limiting keys on the socket address: behind a reverse
-  proxy every joiner shares one bucket.
 - Scoped permissions for mesh links: a member's calls run with every
   permission (`node:<id>`, `*`) on every other member — including
   `host.config.write`, so any member can change any node's config.
-- Compaction or expiry of the `mesh/outbox` stream: changes for a node that
-  never returns stay queued, and every mesh change reads the whole outbox.
+- Trimming the `mesh/outbox` history: outcomes of delivered changes stay in
+  the stream forever (`storage.eventlog@1` has no truncation); nothing reads
+  it on a mesh change any more, so it only costs disk.
+- Expiring queued config changes on a timer: today a change past
+  `jhin.mesh.queueExpiryHours` is marked expired the next time the outbox is
+  looked at (any mesh change, a fan-out, `mesh.config.pending`).
 - Fan-out to several projects of a node (D20's project picker): the
   `project` layer is the project the node was started in; other projects'
   config files are not loaded by the node yet.
@@ -572,6 +574,37 @@ Implementation notes (PR 10):
   clocks apart, "later wins" follows the clocks. A change queued after a
   `MESH_TIMEOUT` may already have been applied; applying it again is harmless
   (same values, same time).
+- Hardening (after PR 12): the changes still waiting live in `storage.kv`
+  (`jhin.mesh.outbox`, keyed by a number that only grows: the queue time, but
+  always above the last key's, so the order changes were made in survives
+  equal milliseconds and clock steps back); `mesh/outbox` stays the
+  append-only history. A mesh change lists only the pending changes and never
+  reads the stream; an outbox written before this is read once to build the
+  pending set (retried if storage fails; a retry keeps the changes a failed
+  attempt already took over, so each is pending once). Queueing writes the
+  pending entry before `mesh.config.queued`, and no flush delivers it until
+  that append is done; when the append fails, the entry is withdrawn and the
+  caller gets the error, so a change is either queued
+  with its history or not at all (a crash between the two writes leaves it
+  pending without the `queued` event). A change undelivered
+  `jhin.mesh.queueExpiryHours` after it was queued (default 720, `null` =
+  never) ends as `mesh.config.expired` instead of waiting forever;
+  `mesh.config.pending` lists what still waits (node, layer, section,
+  `expiresAt`; never the values). Changes taken over from an older outbox keep
+  their original queue time, so one queued longer ago than the expiry ends as
+  `mesh.config.expired` on the first look after the upgrade, before any
+  delivery attempt. Only an error of the delivery itself makes a change
+  `mesh.config.failed`; when recording an outcome fails, the change stays
+  pending and is delivered again later (harmless: same values, same time;
+  the history then holds two outcome events for that id, and readers of
+  `mesh/outbox` take the last one).
+- `/mesh/join` rate limiting keys on `http.server`'s `clientAddress` (1.1): the
+  socket's peer, or, when that peer is one of `jhin.http.trustProxy`
+  (addresses or CIDR ranges, empty by default), the first untrusted hop of
+  `jhin.http.forwardedHeader` (`x-forwarded-for` or RFC 7239 `forwarded`)
+  read from the right. Forwarded headers from any other peer are ignored.
+  Addresses come back in one spelling (canonical IPv6, IPv4-mapped IPv6 as
+  IPv4), so one client has one bucket; an empty hop is `unknown`.
 
 ### PR 11 — Final end-to-end proof
 

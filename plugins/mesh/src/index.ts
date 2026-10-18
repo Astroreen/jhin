@@ -35,6 +35,8 @@ import {
 } from "@jhin/storage-api";
 import { WebSocketServer, type WebSocket } from "ws";
 
+import { createOutbox, type Delivery, type Patch } from "./outbox.ts";
+
 const MESH_PATH = "/mesh";
 /** Every change of the mesh as seen from this node; clients wait on it. */
 export const MESH_STREAM = "mesh";
@@ -56,6 +58,16 @@ const Config = z.object({
    * (`mesh.open`); "eager" keeps a copy of every thread of every node.
    */
   history: z.enum(["on-open", "eager"]).default("on-open"),
+  /**
+   * D50: a config change for a node that stays away this long ends as
+   * `mesh.config.expired` in `mesh/outbox` instead of waiting forever;
+   * `null` keeps it until the node returns.
+   */
+  queueExpiryHours: z
+    .number()
+    .positive()
+    .nullable()
+    .default(24 * 30),
 });
 
 function loadKeys(dir: string): { privateKey: Crypto.KeyObject; publicKey: string } {
@@ -233,7 +245,8 @@ export default definePlugin({
     context.subscriptions.add(
       http.route("POST", `${MESH_PATH}/join`, async (request, response) => {
         // Invite codes are random UUIDs; this only keeps guessing and floods cheap to refuse.
-        const caller = request.socket.remoteAddress ?? "unknown";
+        // Behind a trusted reverse proxy (jhin.http.trustProxy) each client has its own bucket.
+        const caller = http.clientAddress(request);
         const minute = Math.floor(Date.now() / 60_000);
         const key = `${caller}:${minute}`;
         const attempts = (joinAttempts.get(key) ?? 0) + 1;
@@ -336,15 +349,7 @@ export default definePlugin({
 
     // --- Settings fan-out (D20, D50) ---------------------------------------
     // One change for many nodes. A node that cannot be reached gets it later:
-    // the change waits in this node's log until a route to the target exists.
-    const OUTBOX = "mesh/outbox";
-    const Patch = z.object({
-      layer: z.enum(["node", "project"]),
-      section: z.string().min(1),
-      values: z.record(z.string(), z.unknown()),
-      at: z.number(),
-    });
-    type Patch = z.infer<typeof Patch>;
+    // the change waits in this node's outbox (outbox.ts) until a route to it exists.
     type Outcome =
       | { node: string; status: "applied" }
       | { node: string; status: "conflict"; localAt: number }
@@ -355,7 +360,7 @@ export default definePlugin({
       const code = (error as { code?: unknown }).code;
       return code === "NODE_UNREACHABLE" || code === "MESH_TIMEOUT" || code === "DISCONNECTED";
     };
-    const deliver = async (node: string, patch: Patch): Promise<Outcome> => {
+    const deliver = async (node: string, patch: Patch): Promise<Delivery> => {
       const result = (await (node === nodeId
         ? context.commands.execute("host.config.patch", patch)
         : mesh.call(node, "host.config.patch", patch))) as {
@@ -363,63 +368,28 @@ export default definePlugin({
         conflict?: { localAt: number };
       };
       return result.applied
-        ? { node, status: "applied" }
-        : { node, status: "conflict", localAt: result.conflict?.localAt ?? 0 };
+        ? { status: "applied" }
+        : { status: "conflict", localAt: result.conflict?.localAt ?? 0 };
     };
 
-    let delivering = false;
-    let again = false;
-    async function flushOutbox(): Promise<void> {
-      if (delivering) {
-        again = true;
-        return;
-      }
-      delivering = true;
-      try {
-        do {
-          again = false;
-          const events = await log.read(OUTBOX);
-          const finished = new Set(
-            events
-              .filter((event) => event.type !== "mesh.config.queued")
-              .map((event) => (event.payload as { id: string }).id),
-          );
-          for (const event of events) {
-            if (event.type !== "mesh.config.queued") continue;
-            const { id, node, patch } = event.payload as { id: string; node: string; patch: Patch };
-            if (finished.has(id)) continue;
-            if (mesh.members().find((member) => member.record.nodeId === node)?.reachable !== true)
-              continue;
-            try {
-              const outcome = await deliver(node, patch);
-              await log.append(OUTBOX, [
-                {
-                  type:
-                    outcome.status === "conflict"
-                      ? "mesh.config.conflict"
-                      : "mesh.config.delivered",
-                  payload: { id, ...outcome } as unknown as Json,
-                },
-              ]);
-              if (outcome.status === "conflict")
-                context.log.warn("queued config change lost to a newer one", { node, id });
-            } catch (error) {
-              if (!unreachable(error)) {
-                await log.append(OUTBOX, [
-                  { type: "mesh.config.failed", payload: { id, node, error: String(error) } },
-                ]);
-              }
-            }
-          }
-        } while (again);
-      } finally {
-        delivering = false;
-      }
-    }
+    const outbox = createOutbox({
+      kv,
+      log,
+      now: Date.now,
+      expireAfterMs: config.queueExpiryHours === null ? null : config.queueExpiryHours * 3_600_000,
+      reachable: (node) =>
+        mesh.members().find((member) => member.record.nodeId === node)?.reachable === true,
+      deliver,
+      unreachable,
+      newId: () => Crypto.randomUUID(),
+      logger: context.log,
+    });
     const flushSafely = () =>
-      void flushOutbox().catch((error: unknown) =>
-        context.log.warn("config outbox delivery failed", { error: String(error) }),
-      );
+      void outbox
+        .flush()
+        .catch((error: unknown) =>
+          context.log.warn("config outbox delivery failed", { error: String(error) }),
+        );
     context.subscriptions.add(mesh.onChange(flushSafely));
     // Changes queued before a restart go out as soon as routes exist again.
     flushSafely();
@@ -454,19 +424,46 @@ export default definePlugin({
         const results = await Promise.all(
           targets.map(async (node): Promise<Outcome> => {
             try {
-              return await deliver(node, patch);
+              return { node, ...(await deliver(node, patch)) };
             } catch (error) {
               if (!unreachable(error)) return { node, status: "failed", error: String(error) };
-              const id = Crypto.randomUUID();
-              await log.append(OUTBOX, [
-                { type: "mesh.config.queued", payload: { id, node, patch } as unknown as Json },
-              ]);
+              await outbox.enqueue(node, patch);
+              // The node may have come back while the change was being queued.
+              flushSafely();
               return { node, status: "queued" };
             }
           }),
         );
         return { at: patch.at, results };
       },
+    });
+
+    context.commands.register({
+      name: "mesh.config.pending",
+      description:
+        "Config changes still waiting for their node (D50), oldest first; ones that waited past jhin.mesh.queueExpiryHours end as mesh.config.expired",
+      input: z.object({}),
+      output: z.array(
+        z.object({
+          id: z.string(),
+          node: z.string(),
+          layer: z.enum(["node", "project"]),
+          section: z.string(),
+          queuedAt: z.number(),
+          expiresAt: z.number().nullable(),
+        }),
+      ),
+      permissions: ["mesh.read"],
+      // Values may be secrets: only where they go is listed.
+      handler: async () =>
+        (await outbox.pending()).map((change) => ({
+          id: change.id,
+          node: change.node,
+          layer: change.patch.layer,
+          section: change.patch.section,
+          queuedAt: change.queuedAt,
+          expiresAt: change.expiresAt,
+        })),
     });
 
     context.commands.register({

@@ -19,6 +19,7 @@
     "@jhin/sdk": "workspace:*"
   },
   "devDependencies": {
+    "@jhin/testing": "workspace:*",
     "@types/node": "catalog:"
   },
   "jhin": {
@@ -29,7 +30,7 @@
     "description": "One HTTP listener per node; plugins add routes and upgrade handlers",
     "side": "server",
     "provides": {
-      "http.server": "1.0.0"
+      "http.server": "1.1.0"
     },
     "entry": "src/index.ts"
   }
