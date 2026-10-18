@@ -236,6 +236,9 @@ and engineering practices.
 - OpenTelemetry export plugin.
 - Trying `tsc-rs` instead of TypeScript 7.
 - Publishing packages to npm.
+- Visual regression snapshots (D40): screenshots differ between the NixOS
+  dev shell and CI runners; they need one pinned rendering environment (the
+  Playwright container) before baselines are worth keeping.
 - The "list nodes" MCP tool of D39: nodes exist with the mesh (PR 9); until
   then `host_inspect` describes the one node.
 - Freeing old module instances after a hot reload: every reload leaves the
@@ -408,6 +411,21 @@ panel from D36.
   it and sees the change hot reload; an e2e hides a first-party contribution
   through config; component tests run in Vitest browser mode; visual
   snapshots for the chat screen.
+
+Split during implementation (PR 8):
+
+- **PR 8a** — `@jhin/ui` (T3 Code-derived primitives, theme, `ui.slots@1`
+  with error-isolated contributions), `@jhin/client-api`
+  (`client.connections@1`, `client.navigation@1`), the `apps/web` client
+  (isomorphic kernel with `side: "client"`; built-in plugins `jhin.ui-react`,
+  `jhin.connections`, `jhin.navigation`, `jhin.sidebar`, `jhin.chat`,
+  `jhin.inspector`), the `jhin.web-ui` server plugin and `jhin serve --ui`.
+  Done when: Playwright sends a message and sees the streamed fake reply,
+  stops a running turn and opens the inspector, against a real
+  `jhin serve --ui`; slot behaviour is tested in Vitest browser mode.
+- **PR 8b** — runtime loading of user client plugins (import map + shims of
+  shared packages), their hot reload, hiding contributions through config,
+  and `jhin client`. Done when: the remaining PR 8 criteria pass.
 
 ### PR 9 — Mesh
 

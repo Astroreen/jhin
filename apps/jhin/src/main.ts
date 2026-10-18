@@ -11,18 +11,24 @@ import type { CommandInfo } from "@jhin/sdk";
 
 const require = Module.createRequire(import.meta.url);
 
-/** Package directories of the plugins this CLI ships with (`jhinDistribution`). */
-function distribution(): string[] {
+/**
+ * Package directories of the plugins this CLI ships with: `jhinDistribution`,
+ * plus `jhinUi` when the node serves the web client too (D21: a mode is a set
+ * of plugins).
+ */
+function distribution(options: { ui?: boolean } = {}): string[] {
   const manifest = JSON.parse(
     Fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-  ) as { jhinDistribution?: string[] };
-  return (manifest.jhinDistribution ?? []).map((name) =>
-    Path.dirname(require.resolve(`${name}/package.json`)),
-  );
+  ) as { jhinDistribution?: string[]; jhinUi?: string[] };
+  const names = [
+    ...(manifest.jhinDistribution ?? []),
+    ...(options.ui === true ? (manifest.jhinUi ?? []) : []),
+  ];
+  return names.map((name) => Path.dirname(require.resolve(`${name}/package.json`)));
 }
 
 const USAGE = `Usage:
-  jhin serve [--watch]          run this node until interrupted
+  jhin serve [--watch] [--ui]   run this node until interrupted; --ui also serves the web client
   jhin inspect                  print the node's live state as JSON
   jhin mcp                      serve every command as an MCP tool over stdio
   jhin <command> [--key value]  run a registered command, e.g. jhin example.greet --name Ada
@@ -72,7 +78,7 @@ function parseArgv(argv: readonly string[]): Args {
   return { positionals, options };
 }
 
-const GLOBAL_OPTIONS = new Set(["home", "cwd", "input", "watch", "help", "url", "token"]);
+const GLOBAL_OPTIONS = new Set(["home", "cwd", "input", "watch", "help", "url", "token", "ui"]);
 
 /**
  * `--name Ada --count 2 --flag` → { name: "Ada", count: 2, flag: true }. Values
@@ -179,6 +185,13 @@ async function rpcEndpoint(host: NodeHost): Promise<string> {
   return `rpc: ${rpcUrl(url)}\n`;
 }
 
+/** "ui: http://…/" when this node serves the web client, else nothing. */
+async function uiEndpoint(host: NodeHost): Promise<string> {
+  if (!host.kernel.commands.list().some((command) => command.name === "web-ui.info")) return "";
+  const { url } = (await host.kernel.commands.execute("web-ui.info", {})) as { url: string };
+  return `ui: ${url}\n`;
+}
+
 function describeCommands(commands: readonly CommandInfo[]): string {
   return commands
     .map((command) => `  ${command.name.padEnd(28)} ${command.description}`)
@@ -212,8 +225,9 @@ async function main(argv: readonly string[]): Promise<number> {
   }
 
   if (command === "serve") {
+    const ui = parsed.options.get("ui") === true;
     const host = await startNodeHost({
-      distribution: distribution(),
+      distribution: distribution({ ui }),
       watch: parsed.options.get("watch") === true,
       ...global,
     });
@@ -228,6 +242,7 @@ async function main(argv: readonly string[]): Promise<number> {
           .map((plugin) => `  ${plugin.status} ${plugin.id}: ${plugin.error?.message ?? ""}\n`)
           .join("") +
         (await rpcEndpoint(host)) +
+        (await uiEndpoint(host)) +
         `logs: ${host.log.file}\n`,
     );
     await new Promise<void>((resolve) => {

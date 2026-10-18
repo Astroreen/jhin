@@ -21,6 +21,7 @@
     "@jhin/plugin-storage-sqlite": "workspace:*",
     "@jhin/plugin-threads": "workspace:*",
     "@jhin/plugin-transport-ws": "workspace:*",
+    "@jhin/plugin-web-ui": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@modelcontextprotocol/sdk": "catalog:"
@@ -37,5 +38,8 @@
     "@jhin/plugin-threads",
     "@jhin/plugin-agent-fake",
     "@jhin/plugin-mcp-server"
+  ],
+  "jhinUi": [
+    "@jhin/plugin-web-ui"
   ]
 }
