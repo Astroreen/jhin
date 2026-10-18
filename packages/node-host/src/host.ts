@@ -486,14 +486,14 @@ function watchTargets({
     const id = (plugin.manifest as { id?: unknown } | undefined)?.id;
     if (typeof id !== "string") continue;
     const manifestFile = Path.join(plugin.root, "package.json");
-    const filter = buildOutputFilter(
-      String((plugin.manifest as { entry?: unknown } | undefined)?.entry ?? ""),
-    );
-    // The filter is part of the key: a manifest whose entry switches between
+    const entry = String((plugin.manifest as { entry?: unknown } | undefined)?.entry ?? "");
+    const filter = buildOutputFilter(entry);
+    // The entry kind is part of the key: a manifest whose entry switches between
     // TypeScript and JavaScript gets a fresh watcher with the right filter.
-    targets.set(`plugin:${id}:${plugin.root}:${filter === undefined ? "all" : "source"}`, {
+    const kind = /\.[cm]?tsx?$/.test(entry) ? "source" : "built";
+    targets.set(`plugin:${id}:${plugin.root}:${kind}`, {
       path: plugin.root,
-      ...(filter === undefined ? {} : { filter }),
+      filter,
       onChange: (files) => {
         if (!files.includes(manifestFile)) {
           reload(id, files);

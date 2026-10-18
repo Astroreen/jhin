@@ -302,6 +302,10 @@ and engineering practices.
   the filter drops it.
 - The storage contract suite (`@jhin/storage-api/contract`) in the packed
   package: it imports Vitest, so only the workspace has it today.
+- An atomic `dist/` swap in `scripts/build.ts`: between removing the old
+  `dist/` and renaming `.dist-next/` into place, `dist/` is briefly missing,
+  so a node that reloads a plugin run from `dist/` in that moment fails to
+  import it until the next change.
 - Build output outside `dist/` for plugins run from TypeScript source: the
   watcher ignores only `dist/`, so a plugin that builds elsewhere reloads on
   its own build (D14).

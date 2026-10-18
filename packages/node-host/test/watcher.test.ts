@@ -29,7 +29,7 @@ function watchPlugin(entry: string): WatchedPlugin {
       [
         {
           path: root,
-          ...(filter === undefined ? {} : { filter }),
+          filter,
           onChange: resolve,
           onIgnored: (relative) => {
             dropped.add(relative);
@@ -80,11 +80,33 @@ describe("plugin watching", () => {
 
   it("reloads on the build output of a plugin whose entry is JavaScript, wherever it is", async () => {
     for (const entry of ["dist/index.js", "build/index.mjs", "index.js"]) {
-      expect(buildOutputFilter(entry)).toBeUndefined();
+      const filter = buildOutputFilter(entry);
+      expect([filter("dist/index.js"), filter("build/index.js"), filter("index.js")]).toEqual([
+        true,
+        true,
+        true,
+      ]);
     }
     const plugin = watchPlugin("dist/index.js");
     Fs.writeFileSync(Path.join(plugin.root, "dist", "index.js"), "export default {};\n");
 
     expect(await plugin.firstBurst).toContain(Path.join(plugin.root, "dist", "index.js"));
+  });
+
+  it("drops .dist-next/ even for a plugin that runs from dist/, which only the swap reloads", async () => {
+    const plugin = watchPlugin("dist/index.js");
+    Fs.mkdirSync(Path.join(plugin.root, ".dist-next"));
+    const staged = Path.join(".dist-next", "index.js");
+
+    Fs.writeFileSync(Path.join(plugin.root, staged), "export default {};\n");
+    await Promise.race([
+      plugin.ignored(staged),
+      plugin.firstBurst.then((files) => {
+        throw new Error(`.dist-next/ change reported: ${files.join(", ")}`);
+      }),
+    ]);
+    Fs.writeFileSync(Path.join(plugin.root, "dist", "index.js"), "export default {};\n");
+
+    expect(await plugin.firstBurst).toEqual([Path.join(plugin.root, "dist", "index.js")]);
   });
 });
