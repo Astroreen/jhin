@@ -101,7 +101,10 @@ export interface Kernel {
    * activates them along the new graph. Unrelated plugins keep running.
    *
    * An invalid manifest at a location that held a valid plugin is listed in
-   * `inspect().invalid`, and that plugin keeps its previous manifest.
+   * `inspect().invalid`, and that plugin keeps its previous manifest. A second
+   * source with a running plugin's id stops it: both copies are blocked as
+   * duplicates until one goes. (The node host never passes duplicates: a
+   * later plugin layer shadows an earlier one, D15.)
    */
   update(sources: readonly PluginSource[]): Promise<PluginsUpdate>;
   readonly commands: {
@@ -157,7 +160,11 @@ function sameSet(a: ReadonlySet<string> | undefined, b: ReadonlySet<string> | un
   return left.size === right.size && [...left].every((item) => right.has(item));
 }
 
-/** What makes two records of one plugin id the same plugin to the graph. */
+/**
+ * What makes two records of one plugin id the same plugin to the graph. The
+ * first copy of a duplicate stays a record (blocked, outside the graph), so a
+ * copy appearing or going changes only this flag for it.
+ */
 function identity(record: PluginRecord): string {
   return JSON.stringify([
     record.source.location,

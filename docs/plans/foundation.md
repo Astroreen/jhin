@@ -280,6 +280,10 @@ and engineering practices.
 - A plugin copied into a plugin location file by file (not moved in whole)
   can be found before its entry file exists; it then fails to activate until
   its next change or `host.plugins.rescan`.
+- Plugin location watching on macOS and Windows: it relies on recursive
+  `fs.watch` of the user and workspace plugin directories, tested on Linux
+  only; on large plugin trees every nested change wakes the watcher before
+  the filter drops it.
 - Building the CLI to JavaScript for publishing (today `bin/jhin.js` imports
   TypeScript, which Node only strips outside `node_modules`).
 

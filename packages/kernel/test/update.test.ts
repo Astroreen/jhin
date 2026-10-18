@@ -187,6 +187,53 @@ describe("kernel.update", () => {
     expect(seen).toEqual([undefined, "dark"]);
   });
 
+  it("shows the new reason of a plugin that stays blocked", async () => {
+    const calls: string[] = [];
+    const store = tracked(calls, "app.store", { provides: { "app.storage": "2.0.0" } });
+    const ui = tracked(calls, "app.ui", { requires: { "app.storage": "^1" } });
+    const kernel = await createTestKernel({ plugins: [store, ui] });
+    const errorOf = (id: string) =>
+      kernel.inspect().plugins.find((plugin) => plugin.id === id)?.error?.code;
+    expect(errorOf("app.ui")).toBe("VERSION_MISMATCH");
+
+    await kernel.setPlugins([ui]);
+
+    expect(statuses(kernel)).toEqual({ "app.ui": "blocked" });
+    expect(errorOf("app.ui")).toBe("CAPABILITY_MISSING");
+    expect(calls).toEqual(["+app.store", "-app.store"]);
+  });
+
+  it("stops a running plugin when a second copy of it appears, and restarts it when the copy goes", async () => {
+    const calls: string[] = [];
+    const store = tracked(calls, "app.store");
+    const other = tracked(calls, "app.other");
+    const kernel = await createTestKernel({ plugins: [store, other] });
+    calls.length = 0;
+
+    const duplicated = await kernel.setPlugins([
+      store,
+      { ...store, location: "memory://copy/app.store" },
+      other,
+    ]);
+
+    expect(duplicated).toMatchObject({
+      changed: ["app.store"],
+      stopped: ["app.store"],
+      started: [],
+      invalid: ["memory://app.store", "memory://copy/app.store"],
+    });
+    expect(statuses(kernel)).toEqual({ "app.other": "active", "app.store": "blocked" });
+    expect(kernel.inspect().plugins.find((plugin) => plugin.id === "app.store")?.error?.code).toBe(
+      "DUPLICATE_PLUGIN",
+    );
+
+    const restored = await kernel.setPlugins([store, other]);
+
+    expect(restored).toMatchObject({ changed: ["app.store"], started: ["app.store"], invalid: [] });
+    expect(statuses(kernel)).toEqual({ "app.other": "active", "app.store": "active" });
+    expect(calls).toEqual(["-app.store", "+app.store"]);
+  });
+
   it("lets a plugin move to another location (a user copy replacing a distribution plugin)", async () => {
     const calls: string[] = [];
     const original = tracked(calls, "app.store");

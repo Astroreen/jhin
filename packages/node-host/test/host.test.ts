@@ -241,6 +241,17 @@ export default definePlugin({
       { id: "jhin.example", location: EXAMPLE, layer: "distribution", shadowedBy: custom },
     ]);
     expect((await host.execute("example.greet", { name: "Ada" })).value.message).toBe("Yo Ada");
+
+    // Without the workspace copy, the distribution plugin comes back.
+    Fs.rmSync(custom, { recursive: true });
+    expect((await host.execute("host.plugins.rescan")).value).toMatchObject({
+      changed: ["jhin.example"],
+      started: ["jhin.example"],
+    });
+    expect((await host.execute("host.inspect")).value.shadowed).toEqual([]);
+    expect((await host.execute("example.greet", { name: "Ada" })).value.message).toBe(
+      "Hello, Ada!",
+    );
   });
 
   it("lets a user plugin replace a distribution plugin with the same id", async () => {
