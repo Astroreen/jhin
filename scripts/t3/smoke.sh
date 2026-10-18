@@ -38,7 +38,11 @@ touch "$stub/ready"
 cat >"$stub/stubborn.sh" <<'STUB'
 trap 'bash -c "trap \"\" TERM; exec sleep 1000" & echo $! >"$1/child"' TERM
 echo ready >"$1/ready"
-while :; do sleep 0.1; done
+# `wait` returns when the TERM trap runs, so the loop only turns on signals.
+while :; do
+  sleep 1000 &
+  wait "$!"
+done
 STUB
 bash "$stub/stubborn.sh" "$stub" &
 stubborn=$!
@@ -49,7 +53,7 @@ kill "$!" 2>/dev/null || true # the tail behind the process substitution
 echo "$stubborn" >"$JHIN_DEV_DIR/pids/stubborn.pid"
 JHIN_STOP_GRACE=20 bash scripts/t3/stop.sh
 child="$(cat "$stub/child")"
-if kill -0 "$stubborn" 2>/dev/null && [ "$(ps -o stat= -p "$stubborn" | cut -c1)" != Z ] || kill -0 "$child" 2>/dev/null; then
+if is_running "$stubborn" || is_running "$child"; then
   echo "smoke: stop.sh left a SIGTERM-ignoring process or its late child running" >&2
   exit 1
 fi

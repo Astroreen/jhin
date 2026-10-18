@@ -179,10 +179,10 @@ tree_pids() {
   done
 }
 
-# Ends a process and all its descendants.
+# Ends a process and all its descendants, children before their parents.
 kill_tree() {
   local pid
-  for pid in $(tree_pids "$1"); do
+  for pid in $(tree_pids "$1" | awk '{ line[NR] = $0 } END { for (i = NR; i > 0; i--) print line[i] }'); do
     kill "$pid" 2>/dev/null || true
   done
 }
