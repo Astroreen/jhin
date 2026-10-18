@@ -25,6 +25,11 @@ function homeWith(
   // The CLI runs with --cwd <home>: a free port, never the user's real node.
   Fs.mkdirSync(Path.join(home, ".jhin"), { recursive: true });
   Fs.writeFileSync(Path.join(home, ".jhin", "config.jsonc"), '{ "jhin.http": { "port": 0 } }');
+  // An existing token: the first run does not print the "created the access
+  // token" notice on stderr, which tests parse as JSON.
+  const tokens = Path.join(home, "data", "jhin.auth-token");
+  Fs.mkdirSync(tokens, { recursive: true });
+  Fs.writeFileSync(Path.join(tokens, "token"), `${"t".repeat(43)}\n`, { mode: 0o600 });
   for (const [dir, plugin] of Object.entries(plugins)) {
     const root = Path.join(home, "plugins", dir);
     Fs.mkdirSync(root, { recursive: true });
@@ -46,7 +51,10 @@ function homeWith(
   return home;
 }
 
-describe("jhin CLI", () => {
+// Every jhin() call boots a node in a new process. That takes about a second,
+// several on a loaded CI runner, so the limit is a ceiling for real process
+// startups; nothing waits on it.
+describe("jhin CLI", { timeout: 30_000 }, () => {
   it("inspect prints plugins, services, commands, hooks and an activation error", () => {
     const home = homeWith({
       broken: {
@@ -114,7 +122,8 @@ export default definePlugin({
     );
   });
 
-  it("runs commands with flags or JSON input and reports validation errors", () => {
+  // At most two jhin() calls per test, so one slow startup is easy to spot.
+  it("runs commands with --key=value and --input JSON", () => {
     const home = homeWith({});
 
     expect(JSON.parse(jhin(home, "example.greet", "--name=Ada").stdout)).toEqual({
@@ -125,6 +134,10 @@ export default definePlugin({
       message: "Hello, Bo!",
       count: 1,
     });
+  });
+
+  it("reports invalid input and keeps numeric-looking strings as strings", () => {
+    const home = homeWith({});
 
     const invalid = jhin(home, "example.greet");
     expect(invalid.status).toBe(1);
@@ -134,6 +147,10 @@ export default definePlugin({
     expect(JSON.parse(jhin(home, "example.greet", "--name", "42").stdout).message).toBe(
       "Hello, 42!",
     );
+  });
+
+  it("rejects malformed --input JSON and unknown commands", () => {
+    const home = homeWith({});
 
     const badJson = jhin(home, "example.greet", "--input", "{nope");
     expect(badJson.status).toBe(2);
