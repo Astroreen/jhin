@@ -34,6 +34,9 @@ const result = ChildProcess.spawnSync(tsc, ["-p", "tsconfig.build.json", "--outD
 });
 if (result.error !== undefined) throw result.error;
 if (result.status === 0) {
+  // Not atomic: dist/ is missing for a moment between the two calls. A plugin run
+  // from source ignores both directories; one run from dist/ reloads after the
+  // swap, as its watcher debounces the burst.
   Fs.rmSync("dist", { recursive: true, force: true });
   Fs.renameSync(next, "dist");
 } else {
