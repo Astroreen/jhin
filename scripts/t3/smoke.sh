@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # CI check of the dev scripts: serve.sh starts a node that answers, a second
 # instance is refused, stop.sh ends it and leaves no process behind.
+# Linux only (GNU `tail --pid`); CI runs it on Ubuntu.
 # shellcheck source=env.sh
 source "$(dirname "$0")/env.sh"
 cd "$JHIN_ROOT" || exit 1
