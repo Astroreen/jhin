@@ -1,7 +1,9 @@
 import {
   CONNECTIONS_CAPABILITY,
+  MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   type Connections,
+  type MeshMembership,
   type Navigation,
   type NodeConnection,
 } from "@jhin/client-api";
@@ -13,7 +15,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 
 import { builtin } from "../lib/builtin.ts";
 import { useExternal } from "../lib/hooks.ts";
-import { useMeshNodes } from "../lib/mesh.ts";
+import { useMeshMembers } from "../lib/mesh.ts";
 import { threadTarget } from "../lib/target.ts";
 import { reduceTurns, type ChatTurn } from "../lib/turns.ts";
 import { THREADS_CHANGED } from "./sidebar.tsx";
@@ -138,6 +140,7 @@ export const chatPlugin = builtin(
       [UI_SLOTS_CAPABILITY]: "^1",
       [CONNECTIONS_CAPABILITY]: "^1",
       [NAVIGATION_CAPABILITY]: "^1",
+      [MESH_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -145,6 +148,7 @@ export const chatPlugin = builtin(
       const slots = context.services.get<SlotRegistry>(UI_SLOTS_CAPABILITY);
       const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
+      const mesh = context.services.get<MeshMembership>(MESH_CAPABILITY);
 
       function ThreadView({
         node,
@@ -286,7 +290,7 @@ export const chatPlugin = builtin(
             ? undefined
             : nodes.find((candidate) => candidate.id === route.node);
         // Called before any early return: hooks run in the same order every render.
-        const members = useMeshNodes(node);
+        const members = useMeshMembers(mesh, node?.id);
         if (nodes.length === 0 || route.panel === "connect")
           return <Connect cancellable={nodes.length > 0} />;
         if (node?.state === "open" && route.remote !== undefined && members === undefined) {

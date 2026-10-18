@@ -1,7 +1,9 @@
 import {
   CONNECTIONS_CAPABILITY,
+  MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   type Connections,
+  type MeshMembership,
   type Navigation,
   type NodeConnection,
 } from "@jhin/client-api";
@@ -12,7 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { builtin } from "../lib/builtin.ts";
 import { useExternal } from "../lib/hooks.ts";
-import { useMeshNodes } from "../lib/mesh.ts";
+import { useMeshMembers } from "../lib/mesh.ts";
 import { threadTarget, type ThreadTarget } from "../lib/target.ts";
 
 interface Project {
@@ -37,6 +39,7 @@ export const sidebarPlugin = builtin(
       [UI_SLOTS_CAPABILITY]: "^1",
       [CONNECTIONS_CAPABILITY]: "^1",
       [NAVIGATION_CAPABILITY]: "^1",
+      [MESH_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -44,6 +47,7 @@ export const sidebarPlugin = builtin(
       const slots = context.services.get<SlotRegistry>(UI_SLOTS_CAPABILITY);
       const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
+      const mesh = context.services.get<MeshMembership>(MESH_CAPABILITY);
 
       /** Projects and threads of one node: the connected one, or one reached through it. */
       function ThreadsSection(props: {
@@ -164,7 +168,7 @@ export const sidebarPlugin = builtin(
 
       /** The other nodes of a connected node's mesh, reached through it. */
       function MeshNodes({ node }: { node: NodeConnection }) {
-        const members = useMeshNodes(node) ?? [];
+        const members = useMeshMembers(mesh, node.id) ?? [];
         return (
           <>
             {members

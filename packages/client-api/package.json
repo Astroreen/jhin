@@ -2,7 +2,7 @@
   "name": "@jhin/client-api",
   "version": "0.0.0",
   "private": true,
-  "description": "Contracts of the client-side capabilities: client.connections@1, client.navigation@1",
+  "description": "Contracts of the client-side capabilities: client.connections@1, client.navigation@1, client.mesh@1",
   "type": "module",
   "exports": {
     ".": {
