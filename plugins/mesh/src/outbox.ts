@@ -79,7 +79,8 @@ export function createOutbox(options: OutboxOptions): Outbox {
   async function prepare(): Promise<void> {
     const newestKey = async () => {
       const newest = (await kv.list(PENDING)).at(-1)?.key;
-      if (newest !== undefined) last = Math.max(last, Number(newest.slice(0, newest.indexOf(":"))));
+      const order = newest === undefined ? Number.NaN : Number(newest.split(":")[0]);
+      if (Number.isFinite(order)) last = Math.max(last, order);
     };
     if ((await kv.get(BUILT.namespace, BUILT.key)) === undefined) {
       // A build that failed part way left some changes pending already: keep
@@ -120,7 +121,8 @@ export function createOutbox(options: OutboxOptions): Outbox {
 
   const finish = async (key: string, type: string, payload: Record<string, unknown>) => {
     // History first: a crash in between delivers the change again, which is harmless
-    // (same values, same time); the other order could lose the outcome.
+    // for the node (same values, same time) but leaves two outcome events for one
+    // id in the history; the other order could lose the outcome.
     await log.append(OUTBOX_STREAM, [{ type, payload: payload as Json }]);
     await kv.delete(PENDING, key);
   };

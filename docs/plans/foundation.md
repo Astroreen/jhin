@@ -579,7 +579,9 @@ Implementation notes (PR 10):
   `mesh.config.expired` on the first look after the upgrade, before any
   delivery attempt. Only an error of the delivery itself makes a change
   `mesh.config.failed`; when recording an outcome fails, the change stays
-  pending and is delivered again later (harmless: same values, same time).
+  pending and is delivered again later (harmless: same values, same time;
+  the history then holds two outcome events for that id, and readers of
+  `mesh/outbox` take the last one).
 - `/mesh/join` rate limiting keys on `http.server`'s `clientAddress` (1.1): the
   socket's peer, or, when that peer is one of `jhin.http.trustProxy`
   (addresses or CIDR ranges, empty by default), the first untrusted hop of
