@@ -56,6 +56,15 @@ export interface NodeHost {
 }
 
 const HOST_PLUGIN = "jhin.host";
+export const HOST_PATHS_CAPABILITY = "host.paths";
+
+/** `host.paths@1`: where a node keeps files. Provided by the built-in `jhin.host` plugin. */
+export interface HostPaths {
+  /** The Jhin home directory. */
+  readonly home: string;
+  /** A directory owned by `plugin` for its data; created on first use. */
+  dataDir(plugin: string): string;
+}
 const HOST_LOCATION = "host://jhin.host";
 const RECENT_EVENTS = 100;
 
@@ -104,6 +113,15 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
 
   const hostPlugin = definePlugin({
     activate(context) {
+      const paths: HostPaths = {
+        home: home.root,
+        dataDir(plugin) {
+          const dir = Path.join(home.root, "data", plugin);
+          Fs.mkdirSync(dir, { recursive: true });
+          return dir;
+        },
+      };
+      context.services.provide(HOST_PATHS_CAPABILITY, paths);
       context.commands.register({
         name: "host.inspect",
         description:
@@ -150,6 +168,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       version: "0.0.0",
       apiVersion: PLUGIN_API_VERSION,
       side: "server",
+      provides: { [HOST_PATHS_CAPABILITY]: "1.0.0" },
       entry: "host",
     },
   };

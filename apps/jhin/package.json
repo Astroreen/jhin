@@ -13,12 +13,14 @@
   "dependencies": {
     "@jhin/node-host": "workspace:*",
     "@jhin/plugin-example": "workspace:*",
+    "@jhin/plugin-storage-sqlite": "workspace:*",
     "@jhin/sdk": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:"
   },
   "jhinDistribution": [
-    "@jhin/plugin-example"
+    "@jhin/plugin-example",
+    "@jhin/plugin-storage-sqlite"
   ]
 }

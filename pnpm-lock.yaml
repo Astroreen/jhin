@@ -77,6 +77,9 @@ importers:
       '@jhin/plugin-example':
         specifier: workspace:*
         version: link:../../plugins/example
+      '@jhin/plugin-storage-sqlite':
+        specifier: workspace:*
+        version: link:../../plugins/storage-sqlite
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -132,6 +135,12 @@ importers:
         specifier: 'catalog:'
         version: 4.6.7
 
+  packages/storage-api:
+    dependencies:
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+
   packages/testing:
     dependencies:
       '@jhin/kernel':
@@ -140,12 +149,31 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../storage-api
 
   plugins/example:
     dependencies:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+
+  plugins/storage-sqlite:
+    dependencies:
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
+    devDependencies:
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
 
 packages:
 

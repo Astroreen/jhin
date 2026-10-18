@@ -5,5 +5,5 @@ export {
   type TestKernelOptions,
   type TestPlugin,
 } from "./kernel.ts";
-export { mockCapability } from "./mocks.ts";
+export { memoryStoragePlugin, mockCapability } from "./mocks.ts";
 export { nextEvent } from "./events.ts";
