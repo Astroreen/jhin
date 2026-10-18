@@ -12,10 +12,10 @@ export function readToken(home: string): string {
 
 /**
  * Gives a home an access token before its first start, so the node never
- * prints the "created the access token" notice. The plugin accepts any token
- * of at least 43 characters.
+ * prints the "created the access token" notice. 64 characters: well above
+ * the plugin's minimum (43, the length of the tokens it makes).
  */
 export function seedToken(home: string): void {
   Fs.mkdirSync(Path.dirname(tokenFile(home)), { recursive: true });
-  Fs.writeFileSync(tokenFile(home), `${"t".repeat(43)}\n`, { mode: 0o600 });
+  Fs.writeFileSync(tokenFile(home), `${"t".repeat(64)}\n`, { mode: 0o600 });
 }
