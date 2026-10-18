@@ -564,7 +564,12 @@ Implementation notes (PR 10):
   equal milliseconds and clock steps back); `mesh/outbox` stays the
   append-only history. A mesh change lists only the pending changes and never
   reads the stream; an outbox written before this is read once to build the
-  pending set (retried if storage fails). A change undelivered
+  pending set (retried if storage fails; a retry keeps the changes a failed
+  attempt already took over, so each is pending once). Queueing writes the
+  pending entry before `mesh.config.queued`: when that append fails, the entry
+  is withdrawn and the caller gets the error, so a change is either queued
+  with its history or not at all (a crash between the two writes leaves it
+  pending without the `queued` event). A change undelivered
   `jhin.mesh.queueExpiryHours` after it was queued (default 720, `null` =
   never) ends as `mesh.config.expired` instead of waiting forever;
   `mesh.config.pending` lists what still waits (node, layer, section,

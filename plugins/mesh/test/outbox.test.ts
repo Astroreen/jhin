@@ -34,7 +34,12 @@ function setup(
   // Counts reads of the outbox stream: a mesh change must not need any.
   const reads: string[] = [];
   // Storage faults a test arms: the next write of that kind fails once.
-  const faults = { append: undefined as string | undefined, kvGet: false };
+  const faults = {
+    append: undefined as string | undefined,
+    kvGet: false,
+    // Fails the kv.set after this many more succeed.
+    kvSetAfter: undefined as number | undefined,
+  };
   const log: EventLog = {
     ...storage.log,
     read(stream, readOptions) {
@@ -51,6 +56,13 @@ function setup(
   };
   const kv: KeyValueStore = {
     ...storage.kv,
+    set(namespace, key, value) {
+      if (faults.kvSetAfter !== undefined && faults.kvSetAfter-- === 0) {
+        faults.kvSetAfter = undefined;
+        return Promise.reject(new Error("database locked"));
+      }
+      return storage.kv.set(namespace, key, value);
+    },
     get(namespace, key) {
       if (faults.kvGet) {
         faults.kvGet = false;
@@ -304,6 +316,37 @@ describe("config outbox (D50)", () => {
     online.add("b");
     await outbox.flush();
     expect(delivered).toEqual([{ node: "b", patch: patch("a") }]);
+  });
+
+  it("resumes a build that failed part way without queueing a change twice", async () => {
+    const storage = createMemoryStorage();
+    const legacy = (id: string, node: string) => ({
+      type: "mesh.config.queued",
+      payload: { id, node, patch: patch(id) as unknown as Json },
+    });
+    await storage.log.append(OUTBOX_STREAM, [legacy("old-1", "b"), legacy("old-2", "c")]);
+    const first = setup({ storage });
+    first.faults.kvSetAfter = 1;
+    await expect(first.outbox.pending()).rejects.toThrow("database locked");
+    expect(await storage.kv.list("jhin.mesh.outbox")).toHaveLength(1);
+
+    // Retried in the same process, and again after a restart: each change pending once.
+    expect((await first.outbox.pending()).map((change) => change.id)).toEqual(["old-1", "old-2"]);
+    const second = setup({ storage });
+    expect((await second.outbox.pending()).map((change) => change.id)).toEqual(["old-1", "old-2"]);
+    second.online.add("b").add("c");
+    await second.outbox.flush();
+    expect(second.delivered.map((change) => change.node)).toEqual(["b", "c"]);
+  });
+
+  it("does not deliver a change it failed to queue", async () => {
+    const { outbox, faults, online, delivered, history } = setup();
+    faults.append = "mesh.config.queued";
+    await expect(outbox.enqueue("b", patch("x"))).rejects.toThrow("disk full");
+    online.add("b");
+    await outbox.flush();
+    expect(delivered).toEqual([]);
+    expect(await history()).toEqual([]);
   });
 
   it("flushes again when asked while a flush runs", async () => {

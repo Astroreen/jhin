@@ -77,7 +77,17 @@ export function createOutbox(options: OutboxOptions): Outbox {
 
   // Outboxes written before the pending set existed: read the stream once and build it.
   async function prepare(): Promise<void> {
+    const newestKey = async () => {
+      const newest = (await kv.list(PENDING)).at(-1)?.key;
+      if (newest !== undefined) last = Math.max(last, Number(newest.slice(0, newest.indexOf(":"))));
+    };
     if ((await kv.get(BUILT.namespace, BUILT.key)) === undefined) {
+      // A build that failed part way left some changes pending already: keep
+      // those as they are, so every change is pending once.
+      const taken = new Set(
+        (await kv.list(PENDING)).map(({ value }) => (value as { id: string }).id),
+      );
+      await newestKey();
       const events = await log.read(OUTBOX_STREAM);
       const finished = new Set(
         events
@@ -91,15 +101,14 @@ export function createOutbox(options: OutboxOptions): Outbox {
           node: string;
           patch: Patch;
         };
-        if (finished.has(id)) continue;
+        if (finished.has(id) || taken.has(id)) continue;
         // The original queue time: one older than queueExpiryHours expires on the first look.
         const change: PendingChange = { id, node, patch, queuedAt: Date.parse(event.at) };
         await kv.set(PENDING, nextKey(id, change.queuedAt), change as unknown as Json);
       }
       await kv.set(BUILT.namespace, BUILT.key, { version: 1 });
     }
-    const newest = (await kv.list(PENDING)).at(-1)?.key;
-    if (newest !== undefined) last = Math.max(last, Number(newest.slice(0, newest.indexOf(":"))));
+    await newestKey();
   }
   // A failed preparation (a storage error) is tried again on the next call.
   let preparing: Promise<void> | undefined;
@@ -220,10 +229,22 @@ export function createOutbox(options: OutboxOptions): Outbox {
       await ready();
       const change: PendingChange = { id: options.newId(), node, patch, queuedAt: options.now() };
       // Pending first: a crash in between leaves a change that is still delivered.
-      await kv.set(PENDING, nextKey(change.id, change.queuedAt), change as unknown as Json);
-      await log.append(OUTBOX_STREAM, [
-        { type: "mesh.config.queued", payload: change as unknown as Json },
-      ]);
+      const key = nextKey(change.id, change.queuedAt);
+      await kv.set(PENDING, key, change as unknown as Json);
+      try {
+        await log.append(OUTBOX_STREAM, [
+          { type: "mesh.config.queued", payload: change as unknown as Json },
+        ]);
+      } catch (error) {
+        // The caller hears the change was not queued: then it must not go out either.
+        await kv.delete(PENDING, key).catch((cleanup: unknown) =>
+          options.logger.warn("config outbox could not withdraw a change it failed to queue", {
+            id: change.id,
+            error: String(cleanup),
+          }),
+        );
+        throw error;
+      }
       return change;
     },
     flush,
