@@ -239,6 +239,9 @@ and engineering practices.
 - Keeping node tokens somewhere safer than `localStorage` in the web client:
   any script on the client's origin (including user client plugins) can read
   them today.
+- Runtime client plugins under `vp dev` (the import map exists only in the
+  production build) and client plugins added while a page is open (they
+  appear after a page reload; changed ones hot reload).
 - Visual regression snapshots (D40): screenshots differ between the NixOS
   dev shell and CI runners; they need one pinned rendering environment (the
   Playwright container) before baselines are worth keeping.
@@ -429,6 +432,22 @@ Split during implementation (PR 8):
 - **PR 8b** — runtime loading of user client plugins (import map + shims of
   shared packages), their hot reload, hiding contributions through config,
   and `jhin client`. Done when: the remaining PR 8 criteria pass.
+
+Implementation notes (PR 8b):
+
+- Shared packages for runtime plugins (`react`, `react/jsx-runtime`,
+  `react-dom`, `react-dom/client`, `@jhin/sdk`, `@jhin/ui`,
+  `@jhin/client-api`) are separate build entries; an import map in
+  `index.html` points the bare names at them, so plugins and app share one
+  instance of each. A user client plugin is plain ESM, no build step needed.
+- `jhin.web-ui` owns the `jhin.ui` config section (slot rules per slot) and
+  serves `GET /client/plugins`, `/client/plugins/<id>/<rev>/…` (the revision
+  in the path makes a reload re-import every file of the plugin),
+  `/client/config` (only `jhin.ui`) and `/client/events` (SSE: `plugin`,
+  `config`). `jhin.host` provides `host.plugins@1` (discovered plugins of both
+  sides and their file changes).
+- `jhin client` = `jhin.http` + `jhin.web-ui` (+ `jhin.host`): the web client
+  alone, connecting to remote nodes.
 
 ### PR 9 — Mesh
 

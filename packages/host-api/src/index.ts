@@ -21,3 +21,29 @@ export interface HostTrace {
   run<T>(traceId: string, work: () => T): T;
   current(): string | undefined;
 }
+
+export const HOST_PLUGINS_CAPABILITY = "host.plugins";
+
+/** A plugin package the host found on disk, for either side. */
+export interface HostPlugin {
+  readonly id: string;
+  /** The raw `"jhin"` manifest. */
+  readonly manifest: unknown;
+  /** Package root on disk. */
+  readonly root: string;
+  readonly layer: string;
+}
+
+/**
+ * `host.plugins@1`: every plugin package the host discovered, including
+ * client-side plugins its own kernel skips, and changes to their files (when
+ * the host watches).
+ */
+export interface HostPlugins {
+  list(): readonly HostPlugin[];
+  onChange(
+    listener: (change: { readonly id: string; readonly files: readonly string[] }) => void,
+  ): {
+    dispose(): void;
+  };
+}

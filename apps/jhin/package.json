@@ -29,6 +29,10 @@
   "devDependencies": {
     "@types/node": "catalog:"
   },
+  "jhinClient": [
+    "@jhin/plugin-http",
+    "@jhin/plugin-web-ui"
+  ],
   "jhinDistribution": [
     "@jhin/plugin-example",
     "@jhin/plugin-storage-sqlite",

@@ -14,8 +14,10 @@ import {
 } from "@jhin/kernel";
 import {
   HOST_PATHS_CAPABILITY,
+  HOST_PLUGINS_CAPABILITY,
   HOST_TRACE_CAPABILITY,
   type HostPaths,
+  type HostPlugins,
   type HostTrace,
 } from "@jhin/host-api";
 import {
@@ -122,6 +124,9 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
   const discovery = discoverPlugins(layers);
 
   const recentEvents: KernelEvent[] = [];
+  const pluginListeners = new Set<
+    (change: { readonly id: string; readonly files: readonly string[] }) => void
+  >();
   // Assigned right after the kernel exists; the host plugin only runs after that.
   let kernel!: Kernel;
 
@@ -140,6 +145,20 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       };
       context.services.provide(HOST_PATHS_CAPABILITY, paths);
       context.services.provide(HOST_TRACE_CAPABILITY, trace);
+      const plugins: HostPlugins = {
+        list: () =>
+          discovery.plugins.flatMap((plugin) => {
+            const id = (plugin.manifest as { id?: unknown } | undefined)?.id;
+            return typeof id === "string"
+              ? [{ id, manifest: plugin.manifest, root: plugin.root, layer: plugin.layer }]
+              : [];
+          }),
+        onChange(listener) {
+          pluginListeners.add(listener);
+          return { dispose: () => pluginListeners.delete(listener) };
+        },
+      };
+      context.services.provide(HOST_PLUGINS_CAPABILITY, plugins);
       context.commands.register({
         name: "host.inspect",
         description:
@@ -193,7 +212,11 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       version: "0.0.0",
       apiVersion: PLUGIN_API_VERSION,
       side: "server",
-      provides: { [HOST_PATHS_CAPABILITY]: "1.0.0", [HOST_TRACE_CAPABILITY]: "1.0.0" },
+      provides: {
+        [HOST_PATHS_CAPABILITY]: "1.0.0",
+        [HOST_TRACE_CAPABILITY]: "1.0.0",
+        [HOST_PLUGINS_CAPABILITY]: "1.0.0",
+      },
       entry: "host",
     },
   };
@@ -211,8 +234,11 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
   }
 
   let watching: Disposable | undefined;
-  if (options.watch === true)
-    watching = watchFiles(kernel, discovery.plugins, home, projectConfig, log);
+  if (options.watch === true) {
+    watching = watchFiles(kernel, discovery.plugins, home, projectConfig, log, (id, files) => {
+      for (const listener of Array.from(pluginListeners)) listener({ id, files });
+    });
+  }
 
   return {
     nodeId,
@@ -234,8 +260,8 @@ function watchFiles(
   home: JhinHome,
   projectConfig: string,
   log: Logger,
+  notify: (id: string, files: readonly string[]) => void,
 ): Disposable {
-  const reloadable = new Set(kernel.inspect().plugins.map((plugin) => plugin.id));
   return watch(
     [
       ...plugins
@@ -251,7 +277,12 @@ function watchFiles(
                 log.warn("plugin manifest changed; restart the node to apply it", { plugin: id });
                 return;
               }
-              if (!reloadable.has(id)) return;
+              notify(id, files);
+              // Client-side plugins are skipped by this kernel; their clients reload them.
+              const status = kernel
+                .inspect()
+                .plugins.find((candidate) => candidate.id === id)?.status;
+              if (status === undefined || status === "skipped") return;
               log.info("plugin files changed, reloading", { plugin: id, files });
               kernel.reload(id).catch((error: unknown) => {
                 log.error("plugin reload failed", { plugin: id, error: toErrorInfo(error) });

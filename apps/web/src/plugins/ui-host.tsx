@@ -1,8 +1,14 @@
-import { definePlugin } from "@jhin/sdk";
+import { definePlugin, z } from "@jhin/sdk";
 import { Slot, SlotsProvider, UI_SLOTS_CAPABILITY, createSlotRegistry } from "@jhin/ui";
 import { createRoot } from "react-dom/client";
 
 import { builtin } from "../lib/builtin.ts";
+
+/** Slot rules from config (`jhin.ui`), per slot: `{ hide: { "sidebar.actions": ["…"] } }`. */
+const UiConfig = z.object({
+  hide: z.record(z.string(), z.array(z.string())).default({}),
+  order: z.record(z.string(), z.array(z.string())).default({}),
+});
 
 /**
  * The UI host: owns the page and its top-level slots. Everything visible is a
@@ -24,6 +30,11 @@ export const uiHostPlugin = builtin(
           }),
       });
       context.services.provide(UI_SLOTS_CAPABILITY, registry);
+      context.config.define("jhin.ui", UiConfig);
+      registry.setRules(context.config.get<z.output<typeof UiConfig>>("jhin.ui"));
+      context.config.onDidChange<z.output<typeof UiConfig>>("jhin.ui", (rules) =>
+        registry.setRules(rules),
+      );
 
       const root = createRoot(document.getElementById("root")!);
       root.render(

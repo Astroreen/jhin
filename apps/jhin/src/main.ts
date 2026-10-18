@@ -12,23 +12,28 @@ import type { CommandInfo } from "@jhin/sdk";
 const require = Module.createRequire(import.meta.url);
 
 /**
- * Package directories of the plugins this CLI ships with: `jhinDistribution`,
- * plus `jhinUi` when the node serves the web client too (D21: a mode is a set
- * of plugins).
+ * Package directories of the plugins this CLI ships with. A mode is a set of
+ * plugins (D21): `serve` = `jhinDistribution`, `serve --ui` adds `jhinUi`,
+ * `client` = `jhinClient` (the web client alone, talking to remote nodes).
  */
-function distribution(options: { ui?: boolean } = {}): string[] {
+function distribution(mode: "serve" | "ui" | "client" = "serve"): string[] {
   const manifest = JSON.parse(
     Fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-  ) as { jhinDistribution?: string[]; jhinUi?: string[] };
-  const names = [
-    ...(manifest.jhinDistribution ?? []),
-    ...(options.ui === true ? (manifest.jhinUi ?? []) : []),
-  ];
+  ) as {
+    jhinDistribution?: string[];
+    jhinUi?: string[];
+    jhinClient?: string[];
+  };
+  const names =
+    mode === "client"
+      ? (manifest.jhinClient ?? [])
+      : [...(manifest.jhinDistribution ?? []), ...(mode === "ui" ? (manifest.jhinUi ?? []) : [])];
   return names.map((name) => Path.dirname(require.resolve(`${name}/package.json`)));
 }
 
 const USAGE = `Usage:
   jhin serve [--watch] [--ui]   run this node until interrupted; --ui also serves the web client
+  jhin client [--watch]         serve only the web client, which connects to remote nodes
   jhin inspect                  print the node's live state as JSON
   jhin mcp                      serve every command as an MCP tool over stdio
   jhin <command> [--key value]  run a registered command, e.g. jhin example.greet --name Ada
@@ -224,10 +229,11 @@ async function main(argv: readonly string[]): Promise<number> {
     return 0;
   }
 
-  if (command === "serve") {
-    const ui = parsed.options.get("ui") === true;
+  if (command === "serve" || command === "client") {
+    const mode =
+      command === "client" ? "client" : parsed.options.get("ui") === true ? "ui" : "serve";
     const host = await startNodeHost({
-      distribution: distribution({ ui }),
+      distribution: distribution(mode),
       watch: parsed.options.get("watch") === true,
       ...global,
     });
