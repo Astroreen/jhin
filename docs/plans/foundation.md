@@ -237,6 +237,10 @@ and engineering practices.
 - OpenTelemetry export plugin.
 - Trying `tsc-rs` instead of TypeScript 7.
 - Publishing packages to npm.
+- An `Origin` allowlist on the WebSocket transport: today the upgrade is
+  authenticated by token only, so a page in the owner's browser that knows a
+  token can call commands. It must still let `jhin client` and other nodes'
+  web clients connect cross-origin (D21).
 - Keeping node tokens somewhere safer than `localStorage` in the web client:
   any script on the client's origin (including user client plugins) can read
   them today.
