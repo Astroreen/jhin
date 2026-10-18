@@ -1,8 +1,0 @@
-ok: kernel booted for the failure path (fail-boot/kernel.log)
-ok: the active row targets only section-pinned and section-settled (fail-tree.json)
-FAIL: the dropTargets include the row's own section (as designed)
-  the own section and the Working/Snoozed shelves are non-target
-  areas: a drop there cancels and dispatches nothing; the client
-  suite proves it (drag_label_test.dart, the non-target case);
-  session id: 0ba3c9f5-79ce-4472-babc-29fe9e0400d2 (fail-tree.json)
-FAIL: deliberately wrong expectation: the dropTargets include the own section (they do not; see .sisyphus/evidence/T99/fail-tree.json)

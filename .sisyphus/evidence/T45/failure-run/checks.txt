@@ -1,8 +1,0 @@
-ok: jq and java present
-ok: build green: kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar
-ok: kernel up on http://localhost:18443 (pid 3417274, home /tmp/e2e-empty-home.UCODOq)
-FAIL: health lists 1 plugin(s), expected 0: {"status":"ok","kernel":"0.2.0","api":1,"plugins":[{"id":"jhin.sessions","version":"0.2.0","name":"Sessions"}],"failed":[]}
-FAIL: bootstrap is empty:true but plugins exist / health lists 1 plugin(s): {"api":1,"empty":true,"kernel":"0.2.0","plugins":[{"id":"jhin.sessions","version":"0.2.0","name":"Sessions"}],"message":"This server has no UI plugin installed."}
-FAIL: GET /sessions: expected 404, got 200: []
-ok: log: D-8 security warning (SECURITY + filter)
-ok: kernel stopped on SIGTERM and was reaped with wait (rc 143)

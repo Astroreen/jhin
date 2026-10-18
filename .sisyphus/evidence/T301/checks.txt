@@ -1,9 +1,0 @@
-ok: build + two test gates green (319/460 tests, 0 failures; test-gates.txt)
-ok: five upstream raw tokens present in web/css/tokens.css (tokens.txt)
-ok: 3 jars staged for seeding (kernel-env.txt)
-ok: kernel up on http://localhost:18443 (pid 36488), GET /_jhin/health -> 200 in 3 s
-ok: served tokens.css carries the five raw tokens; inline CSS aliases >= 63 colour names (89; tokens.txt)
-ok: t3-chat dark sentinels served verbatim, --primary = oklch(0.460685 0.185347 4.099) (themes.txt)
-ok: t3-chat light sentinels + five built-in dark primaries verbatim (themes.txt)
-ok: browser-unavailable.txt records the un-exercised visual cases
-ok: T301 QA PASS (summary.txt)

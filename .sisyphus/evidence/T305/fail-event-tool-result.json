@@ -1,1 +1,0 @@
-{"sessionId":"dcc728f0-940c-4dc6-8c96-c74d8ce5687d","seq":2,"ts":1791849386271,"type":"tool_result","payload":"{\"id\":\"r1\",\"name\":\"\",\"structured\":{\"type\":\"tool-call\",\"name\":\"\",\"status\":\"error\",\"arguments\":\"{}\"}}"}

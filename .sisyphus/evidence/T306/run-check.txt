@@ -1,8 +1,0 @@
-T306 stream replay — GET /ui/stream/session/e2f0c5ae-ca99-400e-ad1c-40a2faee88c2?fromSeq=0 (run.jsonl):
-  7 frames replayed from the 6 seeded run events
-  run_start -> node ev-1 (the "agent is working" working strip,
-    1 frame(s)) alongside node ev-1-lifecycle (Running,
-    1 frame(s)) — the running lifecycle row of the open run
-  run_end   -> replace ev-1-lifecycle with the Done chip (1
-    frame(s)) + remove ev-1 (1 frame(s)) — the
-    lifecycle row closes in place at run_end and the strip is gone

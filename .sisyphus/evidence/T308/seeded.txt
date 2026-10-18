@@ -1,4 +1,0 @@
-T308 provider seed — GET /providers/formats then POST /providers:
-  GET /providers/formats -> ["anthropic","gemini","openai"]
-  POST /providers {"format":"openai","model":"gpt-4o","apiKey":"qa"} -> 201
-  provider id: 7296a71d-7888-4651-b0f4-aa16b1a80ab8 (format openai, model gpt-4o)

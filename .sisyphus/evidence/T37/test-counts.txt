@@ -1,9 +1,0 @@
-exit code: 0
-jhin-plugin-ui-kit: 10
-jhin-plugin-ui-default: 61
-jhin-plugin-sessions: 27
-jhin-plugin-security: 48
-jhin-plugin-agent: 29
-jhin-plugin-llm: 12
-jhin-plugin-llm-builtin: 19
-kernel: 101

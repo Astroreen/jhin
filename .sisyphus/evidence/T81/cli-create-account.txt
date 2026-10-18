@@ -1,9 +1,0 @@
-18:28:33.469 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
-18:28:33.620 [main] INFO plugin.jhin.llm -- llm plugin started: provider registry and routes published
-18:28:33.687 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
-18:28:33.695 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
-18:28:33.702 [main] INFO plugin.jhin.agent -- agent plugin started: run service, prompt pipeline and message routes active
-18:28:33.703 [main] INFO plugin.jhin.mcp -- jhin.mcp: no configuration at /tmp/e2e-lifecycle-home.mxoeJj/mcp.json; no MCP servers to start
-18:28:33.707 [main] INFO plugin.jhin.tools-builtin -- jhin.tools-builtin started: 8 tools: ls, write, read, edit, edit-diff, find, grep, bash
-18:28:33.722 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
-created account: qa (id: f137c1e6-5d68-441e-9306-0526b5809069)

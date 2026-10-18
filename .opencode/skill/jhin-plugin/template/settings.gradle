@@ -1,4 +1,0 @@
-// Standalone build of this plugin module. The jar takes the project name
-// (jhin-plugin-<module>), and the root settings.gradle must include this
-// build as: includeBuild('plugins/<module>') { name = 'jhin-plugin-<module>' }
-rootProject.name = 'jhin-plugin-' + settingsDir.name

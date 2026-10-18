@@ -1,4 +1,0 @@
-T300 --fail: the pre-split asset URLs must answer 404 not_found.
-
-  GET /ui/assets/app.js -> 404  body: {"error":"not_found","message":"no asset with name app.js"}
-  GET /ui/assets/app.css -> 404  body: {"error":"not_found","message":"no asset with name app.css"}

@@ -1,7 +1,0 @@
-=== no-settle run (inactivityMs=Long.MAX_VALUE) ===
-plain:  {"id":"90f8d9b9-95d9-4a8e-8d41-637472d06943","accountId":"local","title":"t74-no-settle","workdir":"/tmp/t74","model":null,"providerId":null,"status":"active","createdAt":1791115280905,"updatedAt":1791115271078,"pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
-pinned: {"id":"df4eac46-a14e-42da-a0e8-8a47c0bc252f","accountId":"local","title":"t74-no-settle-pinned","workdir":"/tmp/t74","model":null,"providerId":null,"status":"active","createdAt":1791115280964,"updatedAt":1791115271115,"pinned":true,"pinnedOrder":1,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"autoSettle":true,"sortOrder":null,"settledReason":null,"autoSettleSuppressed":false}
-updated_at of both set to now-10s; several sweeps ran
-assert plain:  not settled -- ok
-assert pinned: not settled -- ok
-the pinned case (auto-settle keeps the pin) is asserted in sweep-transcript.txt

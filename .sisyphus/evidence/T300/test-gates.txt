@@ -1,9 +1,0 @@
-T300 test gates — the two suites green with the split runtime:
-BUILD SUCCESSFUL in 635ms
-> Task :jhin-plugin-ui-kit:test
-> Task :jhin-plugin-ui-default:test
-BUILD SUCCESSFUL in 25s
-
-  :jhin-plugin-ui-kit:test      310 tests
-  :jhin-plugin-ui-default:test  460 tests (WebAssetBudgetTest among them)
-  failures=0 errors=0 (expected 0/0)

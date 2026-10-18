@@ -1,8 +1,0 @@
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/right_panel_test.dart
-00:00 +0: the panel tab bar renders six tabs with icons and close buttons
-00:00 +1: closing a tab removes it with a client-side patch — no server round-trip
-00:00 +2: closing the last tab runs the node closeAction (the panel close)
-00:00 +3: a pinned tab (closable: false) close is a no-op
-00:00 +4: switching tabs keeps working with hasClose on
-00:00 +5: the panelWidth container parses the 17.5rem token
-00:00 +6: All tests passed!

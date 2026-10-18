@@ -1,2 +1,0 @@
-JHIN_HOME=/tmp/t38-home.gy0Ki1
-JHIN_BUNDLED_PLUGINS=/tmp/t38-bundled.8UMP5J

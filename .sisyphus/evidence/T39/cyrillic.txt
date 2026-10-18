@@ -1,3 +1,0 @@
-$ rg -c '[А-Яа-я]' AGENTS.md
-exit=1
-cyrillic characters found: 0 (rg exits 1 when there are no matches)

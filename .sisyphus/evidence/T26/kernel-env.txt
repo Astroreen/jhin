@@ -1,3 +1,0 @@
-JHIN_HOME=/tmp/t26-home.bJRuik
-JHIN_BUNDLED_PLUGINS=/tmp/t26-bundled.smpgJG
-JHIN_SESSIONS_QA=true

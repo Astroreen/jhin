@@ -1,6 +1,0 @@
-# goldens diffstat (T89)
-
-## git diff --stat (tracked golden sources)
-
-## new golden files (git status --porcelain)
-?? plugins/ui-kit/src/test/resources/regression/35-diff_view.json

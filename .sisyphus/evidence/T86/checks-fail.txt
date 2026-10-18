@@ -1,7 +1,0 @@
-ok: the purity test failed on the fixture primitive (purity-fail.txt)
-ok: the sweep went non-empty on the fixture (sweep-fail.txt)
-FAIL: fixture primitive with Color(0xFF000000) reintroduced the literal colour (as designed)
-  purity test: failed as required (purity-fail.txt)
-  sweep: non-empty (sweep-fail.txt)
-  fixture removed again; the tree is clean
-FAIL: deliberately wrong expectation: the fixture primitive is still in the tree (it is removed; see .sisyphus/evidence/T86/sweep-fail.txt)

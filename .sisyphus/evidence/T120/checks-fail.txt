@@ -1,6 +1,0 @@
-ok: schema=2 bootstrap answers 200 with entry version_gate and minSchema 3 (version-gate.json)
-ok: a screen below minSchema still renders for a schema=2 client: HTTP 200, no crash (version-gate.txt)
-FAIL: the payload carries a server-rendered version_gate node (as designed)
-  the version_gate surface is client-owned chrome: the server only
-  names it through the bootstrap entry, never as a node (version-gate.json)
-FAIL: deliberately wrong expectation: the version_gate surface is client-owned chrome and never server-rendered (see .sisyphus/evidence/T120/version-gate.json)

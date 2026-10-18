@@ -1,4 +1,0 @@
-{"node":{"type":"text","text":"hello","id":"ev-1","style":"body","bold":true}}
-{"node":{"type":"text","text":"","id":"msg-2","style":"body"}}
-{"patch":{"id":"msg-2","props":{"text":"Hi"}}}
-{"patch":{"id":"msg-2","props":{"text":"Hi"}}}

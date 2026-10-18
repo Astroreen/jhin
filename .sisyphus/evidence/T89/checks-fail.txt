@@ -1,5 +1,0 @@
-ok: the builder rejected glass on text with the unsupported-prop error (probe-rejection.txt)
-FAIL: glass on text was accepted by the builder (as designed)
-  rejection probe: failed as required, message carries 'unsupported prop' (probe-rejection.txt)
-  fixture removed again; the tree is clean
-FAIL: deliberately wrong expectation: the broken glass-on-text probe is still in the tree (it is removed; see .sisyphus/evidence/T89/probe-rejection.txt)

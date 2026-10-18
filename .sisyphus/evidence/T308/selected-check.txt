@@ -1,4 +1,0 @@
-T308 refreshed screen — GET /ui/screen/chat:33e73b36-228b-4701-bee6-b83ecd0fc054 (picker-selected.html):
-  "gpt-4o" on the whole screen: 8 hit(s)
-  context-chip region (context-chip-region.html): model "gpt-4o":
-    1 hit(s), providerId 7296a71d-7888-4651-b0f4-aa16b1a80ab8: 1 hit(s)

@@ -1,5 +1,0 @@
-SDUI_CONTRACT     = 4
-SDUI_CONTRACT_MIN = 4
-CLIENT_SCHEMA     = 5
-CLIENT_SCHEMA_MIN = 5
-CURRENT           = 1 (plugin contract, untouched)

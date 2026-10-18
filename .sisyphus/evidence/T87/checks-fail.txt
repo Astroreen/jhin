@@ -1,5 +1,0 @@
-ok: the degradation probe failed on the fixture (degrade-probe.txt)
-FAIL: glass without backdrop support rendered the backdrop filter instead of the solid fill (as designed)
-  degradation probe: failed as required (degrade-probe.txt)
-  fixture removed again; the tree is clean
-FAIL: deliberately wrong expectation: the broken glass fixture is still in the tree (it is removed; see .sisyphus/evidence/T87/degrade-probe.txt)

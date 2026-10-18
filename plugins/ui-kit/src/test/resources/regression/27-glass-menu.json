@@ -1,1 +1,0 @@
-{"type":"menu","id":"glass-menu","trigger":{"type":"button","label":"Open menu"},"items":[{"label":"One"},{"label":"Two"}],"glass":true,"glassTint":"$color.destructive"}

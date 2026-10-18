@@ -1,1 +1,0 @@
-{"type":"stack","id":"fixture-stack-basic","children":[{"type":"figure","shape":"circle","color":"#3D5A80","width":64,"height":64},{"type":"positioned","top":0,"right":0,"child":{"type":"box","color":"#C1272D","borderRadius":10,"padding":4,"child":{"type":"text","text":"3","color":"#FFFFFF","bold":true}}}]}

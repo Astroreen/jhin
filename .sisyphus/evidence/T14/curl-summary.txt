@@ -1,3 +1,0 @@
-health status=200
-GET /nope status=404
-OPTIONS /anything status=204

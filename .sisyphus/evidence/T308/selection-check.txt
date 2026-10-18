@@ -1,5 +1,0 @@
-T308 selection — POST /ui/action/select-model then GET /sessions/33e73b36-228b-4701-bee6-b83ecd0fc054:
-  request body: {"action":"select-model","payload":{"sessionId":"33e73b36-228b-4701-bee6-b83ecd0fc054","providerId":"7296a71d-7888-4651-b0f4-aa16b1a80ab8","model":"gpt-4o"}}
-  answer directives: patch setState dismissDialog (patch of the context chip, setState,
-    dismissDialog)
-  session.json: model=gpt-4o providerId=7296a71d-7888-4651-b0f4-aa16b1a80ab8

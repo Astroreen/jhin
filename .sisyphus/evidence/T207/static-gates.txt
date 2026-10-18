@@ -1,8 +1,0 @@
-T207 static gates — the plan's hard rules on the shipped web assets.
-
-gate 2a — no '<' in app.css:
-  grep -c '<' plugins/ui-default/src/main/resources/web/app.css -> 0 (must be 0)
-gate 2b — app.js size (<= 60000 bytes):
-  wc -c plugins/ui-default/src/main/resources/web/app.js -> 59970 bytes (must be <= 60000)
-gate 2c — app.css size (<= 40000 bytes):
-  wc -c plugins/ui-default/src/main/resources/web/app.css -> 35229 bytes (must be <= 40000)

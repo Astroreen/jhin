@@ -1,7 +1,0 @@
-ok: goldens produced on the flutter_test VM target (Flutter 3.47.0 • channel stable • https://github.com/flutter/flutter.git)
-ok: ui-kit and ui-default suites green (563 tests; test.txt)
-ok: the full-catalog gallery has exactly 68 entries matching catalog_primitives() (gallery/)
-ok: the full Flutter suite is green (1187 tests; flutter-test.txt)
-ok: the committed gallery + boot goldens regenerate byte-identically (flutter-goldens-gallery.txt, flutter-goldens-boot.txt)
-ok: golden diffstat recorded (golden-diffstat.txt)
-ok: the screenshot checklist lists 26 section 4.2 rows with a checked-status column (screens/checklist.md)

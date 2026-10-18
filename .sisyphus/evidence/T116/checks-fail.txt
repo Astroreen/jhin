@@ -1,7 +1,0 @@
-ok: the real behavior holds: an unknown when key evaluates false and never throws (test-real.txt)
-FAIL: the unknown when key was expected to evaluate true (as designed)
-  the real behavior is the opposite: an unknown context name evaluates
-  false and the evaluator never throws; the inverted suite failed as
-  required (test-fail.txt); the real behavior is recorded in
-  test-real.txt
-FAIL: deliberately wrong expectation: the unknown when key evaluated true (it evaluates false; see .sisyphus/evidence/T116/test-fail.txt)

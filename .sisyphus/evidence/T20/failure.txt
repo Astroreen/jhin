@@ -1,5 +1,0 @@
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/transport_failure_test.dart
-00:00 +0: TransportFailureTest getJson 500 surfaces the status code and the body
-00:00 +1: TransportFailureTest postJson 500 surfaces the status code and the body
-00:00 +2: TransportFailureTest health 500 surfaces the status code and the body
-00:00 +3: All tests passed!

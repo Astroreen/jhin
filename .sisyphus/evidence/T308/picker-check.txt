@@ -1,8 +1,0 @@
-T308 picker screen — GET /ui/screen/chat:33e73b36-228b-4701-bee6-b83ecd0fc054 (picker.html):
-  model rows carrying "gpt-4o": 6 hit(s)
-  provider group label "openai": 8 hit(s)
-  provider id 7296a71d-7888-4651-b0f4-aa16b1a80ab8 in the row payloads: 8 hit(s)
-  select-model row action: 4 hit(s)
-  toggle-favorite-model star action: 4 hit(s)
-  branch dialog composer-branch-dialog: 4 hit(s)
-  "Git plugin not installed" empty-state copy: 2 hit(s)

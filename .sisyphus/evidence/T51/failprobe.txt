@@ -1,2 +1,0 @@
-failprobe: parse("api=abc").api() = 1, asserting 7 (wrong on purpose)
-failprobe: intentional failure tripped (expected for --fail mode)

@@ -1,1 +1,0 @@
-{"client":[{"op":"patch","id":"right-panel-preview-progress","html":"<progress data-jhin-type=\"progress\" id=\"right-panel-preview-progress\" data-jhin-id=\"right-panel-preview-progress\" class=\"jhin-progress\"></progress>"},{"op":"toast","text":"Reloading preview (preview only)"}]}

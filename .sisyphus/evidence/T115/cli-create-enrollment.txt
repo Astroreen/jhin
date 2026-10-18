@@ -1,6 +1,0 @@
-13:28:03.507 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- no bundled plugin directory; nothing to seed
-13:28:03.708 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
-13:28:03.718 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log, lifecycle service, undo journal and routes published
-13:28:03.734 [main] INFO plugin.jhin.ui -- ui plugin started: bootstrap, screen, action, search and stream routes registered
-issued enrollment code for qa (id: 606268ae-fec3-47e7-86fd-5d6381ea6bc0), valid until 2026-10-06T10:38:03.740Z
-code: 3R7T7IRMSGMLCH5C6WREVUH7IA

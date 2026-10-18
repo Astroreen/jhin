@@ -1,6 +1,0 @@
-ok: --fail probe: the sweep caught the planted EdgeInsets.all(12) with file:line (sweep-fail.txt)
-ok: --fail probe: corrupted goldens/fixture-text-basic-light.png correctly failed the suite (test-fail.txt)
-ok: golden diff copied to /home/astroreen/Documents/jhin/.sisyphus/evidence/T82/diffs/fixture-text-basic-light_isolatedDiff.png
-FAIL (intentional): planted sweep violation and corrupted golden to prove T82 detects both kinds of regression
-ok: --fail probe passed: sweep and golden checker both reject the planted regressions, originals restored
-FAIL: --fail mode: intentional failure-path exit

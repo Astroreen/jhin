@@ -1,7 +1,0 @@
-OPTIONS /anything
-HTTP/1.1 204 
-access-control-allow-origin: *
-access-control-allow-headers: *
-access-control-allow-methods: GET,POST,PATCH,DELETE,OPTIONS
-Date: Wed, 30 Sep 2026 05:40:33 GMT
-

@@ -1,5 +1,0 @@
-{"action":"pin","payload":{"id":"1280b201-19f5-4231-bcf5-b10ed1a93c19"},"response":{"client":[{"op":"toast","text":"Pinned 1 thread,","action":{"path":"/ui/action/undo","method":"POST","name":"undo"},"duration":5000},{"op":"refresh"}]}}
-{"action":"snooze","payload":{"id":"1280b201-19f5-4231-bcf5-b10ed1a93c19","durationMs":3600000},"response":{"client":[{"op":"toast","text":"Snoozed 1 thread,","action":{"path":"/ui/action/undo","method":"POST","name":"undo"},"duration":5000},{"op":"refresh"}]}}
-{"action":"settle","payload":{"id":"1280b201-19f5-4231-bcf5-b10ed1a93c19","reason":"manual"},"response":{"client":[{"op":"toast","text":"Settled 1 thread,","action":{"path":"/ui/action/undo","method":"POST","name":"undo"},"duration":5000},{"op":"refresh"}]}}
-{"action":"undo","payload":{},"response":{"client":[{"op":"toast","text":"Undone"},{"op":"refresh"}]}}
-{"action":"snooze","payload":{"id":"3826563c-f9c7-4295-bc24-6e36ebca2028","durationMs":3600000},"response":{"client":[{"op":"toast","text":"Snoozed 1 thread,","action":{"path":"/ui/action/undo","method":"POST","name":"undo"},"duration":5000},{"op":"refresh"}]}}

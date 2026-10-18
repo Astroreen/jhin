@@ -1,8 +1,0 @@
-ok: hardcode scan clean (no EdgeInsets.all(11/12), maxHeight: 240 or height: 160 in frontend/lib)
-ok: flutter analyze clean
-ok: flutter suites green (696 tests; transcript in test.txt)
-ok: :jhin-plugin-ui-default:test green (send enqueues, create-session returns id, 4xx path)
-ok: send recorded (send.txt: exactly 1 send POST; Shift+Enter newline with 0 POSTs)
-ok: send-and-new recorded (send-and-new.txt: send + create-session + navigate chat:<id>)
-ok: recall recorded (recall.txt: walk + clear, decline keeps the draft, per-profile)
-ok: failure recorded (failure.txt: empty composer 0 POSTs + errorText; 4xx keeps the draft + toast)

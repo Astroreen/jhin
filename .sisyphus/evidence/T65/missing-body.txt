@@ -1,9 +1,0 @@
-T65 shell degrade proof (docs/sdui.md §2.6 `shell`)
-
-A shell without `body` degrades to a card with the text
-"Missing body" — zero exceptions (acceptance 7).
-
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch10_test.dart
-00:00 +0: shell missing body degrades to a card
-T65_MISSING_BODY rendered=card text=Missing body exceptions=0
-00:00 +1: All tests passed!

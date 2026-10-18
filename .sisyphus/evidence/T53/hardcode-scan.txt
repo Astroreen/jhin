@@ -1,2 +1,0 @@
-$ rg -n 'EdgeInsets\.all\(1[12]\)|maxHeight: 240|height: 160' frontend/lib
-(no hits)

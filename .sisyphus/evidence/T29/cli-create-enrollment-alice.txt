@@ -1,4 +1,0 @@
-23:38:04.749 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-security-0.2.0.jar: already seeded and unchanged
-23:38:04.892 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands registered
-issued enrollment code for alice (id: 738c2b90-5ec6-4efd-a91f-49de08b0d562), valid until 2026-09-30T20:48:04.896Z
-code: IJEJ7ODGGJKPI6MKF4NONWUJUI

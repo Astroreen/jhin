@@ -1,9 +1,0 @@
-ok: toolchain recorded (Flutter 3.47.0 • channel stable • https://github.com/flutter/flutter.git)
-ok: ui-default and ui-kit suites green (368 tests; transcript in test.txt)
-ok: Flutter sdui suite green incl. the T94 primitive_catalog_test (flutter.txt)
-ok: golden gallery: 36 goldens (00..23 level 2 byte-identical to HEAD + 24..35 level 3), append-only
-ok: kernel booted with sessions, ui-kit and ui plus the qaProbe level-3 probe screen (kernel.log)
-ok: probe screen at api=3;schema=4: the six level-3 primitives pass through with the glass group on the five surfaces, statusPulse, demo and safeArea present (probe-l3.json)
-ok: probe screen at api=2;schema=3: the downgrade map is complete — split→column, hover_card→trigger (tooltip kept), toast_stack→column of texts, kbd→mono text, scroll_fade→scroll, diff_view→code_block; glass/glassTint/statusPulse stripped; demo/safeArea kept (probe-l2.json)
-ok: catalog extraction reports exactly 68 names incl. the level-3 set (6 primitives + glass/demo; statusPulse/safeArea truncate to 'status'/'safe' under the canon lowercase pattern — full names asserted JVM/Dart-side)
-ok: conformance summary + goldens diffstat recorded (conformance.txt); golden count 36 = 24 + 12 (checks.txt)

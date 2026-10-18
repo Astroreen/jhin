@@ -1,9 +1,0 @@
-# T121 Flutter release build commands (build.gradle)
-179:        if (runFlutter(['build', 'web', '--release', '--no-tree-shake-icons'], 'frontend web bundle', { null })) {
-184:        if (runFlutter(['build', 'linux', '--release', '--no-tree-shake-icons'], 'frontend linux bundle', {
-198:        if (runFlutter(['build', 'apk', '--release', '--no-tree-shake-icons'], 'frontend apk', {
-
-# recorded from the dist run:
-64:dist: flutter build web --release --no-tree-shake-icons (in /home/astroreen/Documents/jhin/frontend)
-70:dist: flutter build linux --release --no-tree-shake-icons (in /home/astroreen/Documents/jhin/frontend)
-73:dist: flutter build apk --release --no-tree-shake-icons (in /home/astroreen/Documents/jhin/frontend)

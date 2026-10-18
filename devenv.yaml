@@ -1,7 +1,6 @@
 # yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
 #
-# Combined dev environment for the whole Jhin monorepo (see devenv.nix in
-# this directory): the sdk + kernel + plugins composite build in one shell.
+# Jhin dev environment (see devenv.nix).
 inputs:
   nixpkgs:
     url: github:cachix/devenv-nixpkgs/rolling

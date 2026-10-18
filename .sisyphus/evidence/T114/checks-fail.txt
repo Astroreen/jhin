@@ -1,8 +1,0 @@
-ok: the real behavior holds: the expired code answers the documented error and the pair screen shows the error card (test-real.txt)
-FAIL: the expired enrollment code succeeded (as designed)
-  the real behavior is the opposite: the expired code is refused with
-  the documented 410 code_expired error and the pair screen's
-  enroll-error banner is patched visible with the security message;
-  the inverted suite failed as required (test-fail.txt); the real
-  behavior is recorded in test-real.txt
-FAIL: deliberately wrong expectation: the expired code succeeded (it is refused; see .sisyphus/evidence/T114/test-fail.txt)

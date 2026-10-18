@@ -1,7 +1,0 @@
-T18 — unwritable JHIN_HOME: QA evidence
-cmd: JHIN_HOME=/tmp/opencode/t18-not-a-dir (a plain file) java -jar kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar cli
-
---- stdout:
---- stderr:
-fatal: cannot create directory /tmp/opencode/t18-not-a-dir
---- exit=1

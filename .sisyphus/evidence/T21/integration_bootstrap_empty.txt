@@ -1,3 +1,0 @@
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/integration/bootstrap_empty_test.dart
-00:00 +0: bare kernel fixture renders the built-in empty state
-00:00 +1: All tests passed!

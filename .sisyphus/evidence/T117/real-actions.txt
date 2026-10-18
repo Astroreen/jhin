@@ -1,8 +1,0 @@
-ok sessions: no real action carries demo
-ok settings: no real action carries demo
-ok settings:appearance: no real action carries demo
-ok settings:keybindings: no real action carries demo
-ok settings:providers: no real action carries demo
-ok settings:archived: no real action carries demo
-ok settings:licenses: no real action carries demo
-ok pair: no real action carries demo

@@ -1,3 +1,0 @@
-15:02:16 T74 QA --fail: the checker must fail on a deliberately wrong expectation
-15:02:16 evidence dir: .sisyphus/evidence/T74
-FAIL: deliberately wrong expectation: the huge-threshold sweep settled session 93d55960-29c6-444a-b7be-ea5b181e1513 (see .sisyphus/evidence/T74/no-settle-fail.txt)

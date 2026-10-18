@@ -1,5 +1,0 @@
-00:03:44.558 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-security-0.2.0.jar: already seeded and unchanged
-00:03:44.561 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-sessions-0.2.0.jar: already seeded and unchanged
-00:03:44.757 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands, bearer filter, enroll route and tls registered
-00:03:44.762 [main] INFO plugin.jhin.sessions -- sessions plugin started: store, event log and routes published
-created account: alice (id: 94495cb5-b9b6-448d-a350-2d3794129020)

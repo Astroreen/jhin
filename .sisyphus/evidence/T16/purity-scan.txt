@@ -1,9 +1,0 @@
-T16 — kernel purity scan: QA evidence
-cmd: grep -rniwE 'tool|session|agent|message|provider|enroll|account|device|llm|prompt|workdir|hub|worker|role' kernel/src/main/java kernel/src/main/resources
-(whole-word, case-insensitive)
-
-kernel/src/main/java/com/astroreen/jhin/kernel/KernelRoutes.java:117:        payload.put("message", "This server has no UI plugin installed.");
-grep exit=0
-
-one hit: the plan-mandated bootstrap JSON key in KernelRoutes.java (pre-existing, whitelisted in T14)
-T16 lifecycle/context (kernel/src/main/java/com/astroreen/jhin/kernel/loader/{PluginLifecycle,PluginContextImpl,PluginRegistry}.java) adds zero hits

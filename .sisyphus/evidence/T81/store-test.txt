@@ -1,4 +1,0 @@
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/store/evidence_test.dart
-00:00 +0: T54 evidence fixtures legacy blob migrates to schema 3 with identical data
-00:00 +1: T54 evidence fixtures a schema-9 blob is quarantined and the original survives
-00:00 +2: All tests passed!

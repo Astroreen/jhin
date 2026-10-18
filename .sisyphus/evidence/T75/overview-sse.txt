@@ -1,3 +1,0 @@
-event: frame
-data: {"patch":{"id":"session-row:c86c651b-27e2-43ec-97f0-539950094b48","props":{"title":"Fix the authentication flow across the gateway, the proxy an","workdir":"/tmp/t75","status":"active","pinned":false,"pinnedOrder":null,"settledAt":null,"snoozedUntil":null,"archivedAt":null,"settledReason":null,"sortOrder":null}}}
-

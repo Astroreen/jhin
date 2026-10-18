@@ -1,1 +1,0 @@
-{"type":"dialog","id":"glass-dialog","title":"Glass dialog","content":{"type":"text","text":"Blurred backdrop dialog"},"actions":[{"type":"button","label":"Close"}],"glass":true,"glassTint":"$color.destructive"}

@@ -1,1 +1,0 @@
-{"type":"form","fields":[{"type":"input","id":"a","label":"A"},"shorthand field"],"submit":{"label":"Send","action":{"name":"send","method":"POST","path":"/ui/action/send"}}}

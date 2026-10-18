@@ -1,8 +1,0 @@
-=== enroll ===
-POST /enroll
-client: api=3; version=0.3.0; schema=4; caps=sse,open_url
-req:  {"code":"MWGXDECTEZJXQVACJ3UD3YIYEM","deviceName":"t117-qa"}
-status: 200
-resp: {"token":"f8ff79a050be239e8df53e602b6b0ff0cc026e5e777af7d4300d56b0f636fb79","accountId":"b1d82a0e-45e7-432e-9320-2c22aa1af69e","accountName":"qa","deviceId":"285ae361-b9c8-4110-be36-d0f3746da7ee"}
-assert: status=200, jq '.token != null'
-assert: ok

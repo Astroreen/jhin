@@ -1,4 +1,0 @@
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/keyboard/palette_groups_test.dart
-00:00 +0: T115 disabled affordance T115 evidence/disabled: an unregistered keymap command renders a disabled row and logs once
-evidence/disabled: ghost.command disabled=true log=Jhin palette: unregistered command "ghost.command" in the keymap — rendered disabled
-00:00 +1: All tests passed!

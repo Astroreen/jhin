@@ -1,5 +1,0 @@
-ok: build + two test gates green (335/460 tests, 0 failures; test-gates.txt)
-07:04:44 -- negative proof a: the unclosed-fence degradation fails closed
-ok: kernel up on http://localhost:18443 (pid 142616), GET /_jhin/health -> 200 in 3 s
-ok: unclosed fence degrades to plain text and the acceptance probe fails closed against it (degraded.txt)
-ok: T302 QA --fail: the negative proof PASSes

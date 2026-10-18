@@ -1,8 +1,0 @@
-output=<span data-jhin-type="text" class="jhin-text">&lt;script&gt;alert(1)&lt;/script&gt;</span>
-output=<button data-jhin-type="button" type="button" class="jhin-button jhin-button-primary">&lt;script&gt;alert(1)&lt;/script&gt;</button>
-output=<section data-jhin-type="card" class="jhin-card"><h2 class="jhin-surface-title">&lt;script&gt;alert(1)&lt;/script&gt;</h2></section>
-output=<div data-jhin-type="markdown" class="jhin-markdown"><p>&lt;script&gt;alert(1)&lt;/script&gt;</p></div>
-output=<span data-jhin-type="text" title="&lt;script&gt;alert(1)&lt;/script&gt;" class="jhin-text">x</span>
-output=<span data-jhin-type="text" aria-label="&lt;script&gt;alert(1)&lt;/script&gt;" class="jhin-text">x</span>
-output=<input data-jhin-type="input" id="f" data-jhin-id="f" class="jhin-input" type="text" placeholder="&lt;script&gt;alert(1)&lt;/script&gt;">
-output=<pre data-jhin-type="code_block" class="jhin-code-block"><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>

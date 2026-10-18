@@ -1,5 +1,0 @@
-ok: an unknown chord token renders a literal pill and logs, never throws (probe-chord.txt)
-FAIL: the unknown chord token rendered no pill (as designed)
-  chord probe: failed as required, the literal banana pill was rendered (probe-chord.txt)
-  fixture removed again; the tree is clean
-FAIL: deliberately wrong expectation: the broken unknown-chord probe is still in the tree (it is removed; see .sisyphus/evidence/T91/probe-chord.txt)

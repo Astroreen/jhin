@@ -1,6 +1,0 @@
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/settings_shell_test.dart
-00:00 +0: the settings nav lists every sub-route entry
-00:00 +1: activeId highlights the active route
-00:00 +2: tapping a nav entry navigates to its screen id
-00:00 +3: the breadcrumb carries Settings / <name>
-00:00 +4: All tests passed!

@@ -1,9 +1,0 @@
-T308 static source gates — the new surface must exist in the sources
-the wire proofs exercise.
-
-  ChatScreen select-model row action                   3 hit(s)  PRESENT
-  ChatScreen favourite star action                     2 hit(s)  PRESENT
-  ChatScreen no-providers empty state                  1 hit(s)  PRESENT
-  ChatScreen branch empty-state copy                   1 hit(s)  PRESENT
-  ModelPickerActions selectModel handler               1 hit(s)  PRESENT
-  UiSettings favourites key                            2 hit(s)  PRESENT

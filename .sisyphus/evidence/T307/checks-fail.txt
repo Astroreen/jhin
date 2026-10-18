@@ -1,7 +1,0 @@
-ok: build + two test gates green (342/507 tests, 0 failures; test-gates.txt)
-ok: 8 jars staged for seeding (kernel-env-fail.txt)
-ok: kernel up on http://localhost:18443 (pid 3006923), GET /_jhin/health -> 200 in 3 s
-08:55:51 -- negative proof: the malformed-steps scenario must fall back to the unknown card
-ok: malformed-steps -> the "Unknown event: subagent" fallback card (malformed.txt)
-ok: malformed-steps -> no bar in its region (no subagent:scout-1 key, no smart_toy icon) (malformed.txt)
-ok: T307 QA --fail: the negative proof PASS

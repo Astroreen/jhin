@@ -1,8 +1,0 @@
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/store/keymap_store_test.dart
-00:00 +0: corruption safety (T70 evidence) a corrupted keybindings blob falls back to server defaults and quarantines the raw bytes (evidence)
-corrupt blob: '{"rules": [this is not json' (27 bytes)
-load -> 0 override rules (server defaults active)
-quarantine copy migration.quarantine:keybindings:1 == raw (27 bytes preserved)
-quarantine list contains keybindings: [keybindings]
-original key untouched: true
-00:00 +1: All tests passed!

@@ -1,9 +1,0 @@
-ok: the real behavior holds: malformed markdown renders partial content, never throws (flutter-real.txt)
-FAIL: malformed markdown throws (as designed)
-  the real behavior is the opposite: every malformed input —
-  unbalanced fences, broken links, control characters, unclosed
-  math markers — maps and renders partial content without
-  throwing (the §2.4 degrade list); the inverted suite failed
-  as required (flutter-fail.txt); the real behavior is recorded
-  in flutter-real.txt
-FAIL: deliberately wrong expectation: malformed markdown threw (it does not; see .sisyphus/evidence/T104/flutter-fail.txt)

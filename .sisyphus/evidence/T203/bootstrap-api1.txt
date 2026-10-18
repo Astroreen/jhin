@@ -1,6 +1,0 @@
-HTTP/1.1 426 
-Content-Type: application/json;charset=utf-8
-Content-Length: 121
-Date: Sun, 11 Oct 2026 05:35:23 GMT
-
-{"error":"contract_upgrade","message":"This server speaks the HTML UI contract (api=4). Upgrade your client.","minApi":4}

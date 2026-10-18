@@ -1,1 +1,0 @@
-FAIL: deliberately wrong expectation: the tool result card starts expanded (it starts collapsed; see .sisyphus/evidence/T77/chat-tree-fail.json)

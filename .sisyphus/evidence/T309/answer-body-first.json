@@ -1,8 +1,0 @@
-{
-  "action": "answer-question",
-  "payload": {
-    "sessionId": "64d1d72e-2bad-4f78-9d85-e37142d4a753",
-    "callId": "qa-mock-ask-1",
-    "answer": "Yes"
-  }
-}

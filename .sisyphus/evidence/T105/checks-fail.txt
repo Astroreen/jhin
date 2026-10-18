@@ -1,8 +1,0 @@
-ok: the real behavior holds: a pinned tab close is a no-op (flutter-real.txt)
-FAIL: a pinned (closable: false) tab close removed the tab (as designed)
-  the real behavior is the opposite: the close is a no-op — the
-  item stays and no items patch is recorded (the T105.1 pinned
-  contract); the inverted suite failed as required
-  (flutter-fail.txt); the real behavior is recorded in
-  flutter-real.txt
-FAIL: deliberately wrong expectation: the pinned tab close removed the tab (it does not; see .sisyphus/evidence/T105/flutter-fail.txt)

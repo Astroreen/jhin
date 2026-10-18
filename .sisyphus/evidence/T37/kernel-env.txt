@@ -1,3 +1,0 @@
-JHIN_HOME=/tmp/t37-home.2M7bdB
-JHIN_BUNDLED_PLUGINS=/tmp/t37-bundled.IkBVgb
-JHIN_LLM_BUILTIN_QA=true

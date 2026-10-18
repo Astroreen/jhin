@@ -1,3 +1,0 @@
-reload: 4
-example: 6
-kernel: 101

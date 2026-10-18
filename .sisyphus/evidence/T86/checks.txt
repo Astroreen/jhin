@@ -1,5 +1,0 @@
-ok: Flutter design suites green (147 tests; transcript in flutter-design.txt)
-ok: Flutter sdui suites green: the purity gate and the reduced-motion switch (flutter-sdui.txt)
-ok: no literal colour or EdgeInsets.all in frontend/lib/sdui/primitives/ (sweep.txt)
-ok: token goldens: iris/jhin x light/dark dumped with the boost-30 contrast palette (token-goldens/)
-ok: the boosted contrast foreground differs from the raw palette foreground (iris-dark, jhin-dark)

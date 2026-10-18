@@ -1,3 +1,0 @@
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/integration/profile_switch_test.dart
-00:00 +0: switching between two fixture servers renders two different trees without restarting the app
-00:01 +1: All tests passed!

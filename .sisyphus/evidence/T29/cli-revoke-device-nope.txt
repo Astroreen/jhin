@@ -1,2 +1,0 @@
-23:38:09.062 [main] INFO com.astroreen.jhin.kernel.seed.BundledPluginSeeder -- skipping jhin-plugin-security-0.2.0.jar: already seeded and unchanged
-23:38:09.201 [main] INFO plugin.jhin.security -- security plugin started: accounts, enrollment and devices published, cli commands registered

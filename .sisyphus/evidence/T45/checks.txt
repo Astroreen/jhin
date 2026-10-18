@@ -1,8 +1,0 @@
-ok: jq and java present
-ok: build green: kernel/build/libs/kernel-0.2.0-SNAPSHOT.jar
-ok: kernel up on http://localhost:18443 (pid 3385579, home /tmp/e2e-empty-home.Z4xsS4)
-ok: health: 200 with zero plugins listed
-ok: bootstrap: empty:true with zero plugins
-ok: sessions: 404 (no product route)
-ok: log: D-8 security warning (SECURITY + filter)
-ok: kernel stopped on SIGTERM and was reaped with wait (rc 143)

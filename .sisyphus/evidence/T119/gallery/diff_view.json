@@ -1,1 +1,0 @@
-{"type":"diff_view","id":"gallery-diff_view","file":"lib/agent/run.ts","language":"typescript","view":"unified","colorScheme":"default","stats":{"additions":1,"deletions":1},"demo":true,"hunks":[{"header":"@@ -1,2 +1,2 @@","lines":[{"kind":"ctx","oldNo":1,"newNo":1,"text":"unchanged"},{"kind":"del","oldNo":2,"text":"old line"},{"kind":"add","newNo":2,"text":"new line"}]}]}

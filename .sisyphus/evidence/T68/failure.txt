@@ -1,6 +1,0 @@
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/keyboard/keymap_test.dart
-00:00 +0: /home/astroreen/Documents/jhin/frontend/test/keyboard/composer_flow_test.dart: composer keyboard flow T68 evidence/failure: an empty composer dispatches nothing and shows errorText
-evidence/failure: empty composer posts=0 errorText='Write a message first' visible=1
-00:00 +1: /home/astroreen/Documents/jhin/frontend/test/keyboard/composer_flow_test.dart: composer keyboard flow T68 evidence/failure: a create-session 4xx keeps the draft and shows a toast
-evidence/failure: create-session 400 draft kept='hello' toast='1 visible'
-00:00 +2: All tests passed!

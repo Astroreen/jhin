@@ -1,6 +1,0 @@
-FAIL: a bare modifier capture showed the inline errorText and saved nothing (as designed)
-  the failure path is the documented behavior: a bare modifier yields
-  no chord, so the required keyCapture field stays empty, the required
-  rule reports its errorText ('Press a chord first') and the
-  keybind-save side effect writes no override (capture-fail.txt)
-FAIL: deliberately wrong expectation: a bare modifier capture saved a binding (it does not; see .sisyphus/evidence/T111/capture-fail.txt)

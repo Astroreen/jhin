@@ -1,5 +1,0 @@
-ok: ui-default and ui-kit suites green (307 tests; transcript in test.txt)
-ok: kernel booted with sessions, ui-kit and ui (kernel.log)
-ok: pinned values: color[sidebar-row-hover], radius.base 0.625rem, layout.topbarHeight 52, motion.easeDrawer cubic-bezier(0.32, 0.72, 0, 1), motion.panel 0, density comfortable
-ok: key sets: 56 color names + 15 contrast + radius/text/font/space/layout/glass/motion/shadow/scroll/z exactly per §4.3 (bootstrap-tokens.json)
-ok: bootstrap screens use only documented primitives (docs/sdui.md section 2.5)

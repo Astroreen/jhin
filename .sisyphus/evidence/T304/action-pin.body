@@ -1,1 +1,0 @@
-{"client":[{"op":"toast","text":"Pinned 1 thread,","action":{"path":"/ui/action/undo","method":"POST","name":"undo"},"duration":5000},{"op":"refresh"}]}

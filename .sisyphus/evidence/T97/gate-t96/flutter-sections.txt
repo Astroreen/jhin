@@ -1,7 +1,0 @@
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/sdui/sidebar_sections_test.dart
-00:00 +0: the when gate removes the whole section while it evaluates false and keeps it on unset or failing expressions
-00:00 +1: the uppercase transform renders the header uppercased while the label data stays canonical
-00:00 +2: the count badge renders the rounded-full pill over the badgeStyle surface
-00:00 +3: the collapse state persists under the section storeKey and the stored value wins over the collapsed default on remount
-00:00 +4: sections without the T96 keys render exactly as before (the additive contract)
-00:00 +5: All tests passed!

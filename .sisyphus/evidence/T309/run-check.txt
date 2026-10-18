@@ -1,4 +1,0 @@
-T309 run start — POST /sessions/0f9f37f2-62f4-4ee7-82e6-a4de7ced6be1/messages -> runId 9a2c0dbe-25ec-4d51-a2f5-8b12b0cbe252
-  tool_use name: ask_user
-  tool_use id:   qa-mock-ask-1
-  tool_use arguments: {"question":"Proceed with the deployment?","options":["Yes","No"]}

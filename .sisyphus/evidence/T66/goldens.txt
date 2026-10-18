@@ -1,8 +1,0 @@
-gallery baselines: 237 PNGs in frontend/test/gallery/goldens
-new T66 baselines: form.png (decorated form composition), table.png (table v2),
-  fixture-textarea-basic/propheavy-{light,dark}.png, fixture-tree-basic/propheavy-{light,dark}.png
-existing baselines: all unchanged except the four dropdown baselines
-  (fixture-dropdown-{basic,propheavy}-{light,dark}.png), recorded delta:
-  dropdown isDense now honors the documented default false (was the
-  DropdownButtonFormField widget default true) — see report; copies of
-  the pre-delta baselines kept outside the repo for comparison.

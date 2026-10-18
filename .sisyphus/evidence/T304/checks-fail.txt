@@ -1,8 +1,0 @@
-ok: build + two test gates green (335/478 tests, 0 failures; test-gates.txt)
-ok: kernel up on http://localhost:18443 (pid 1121259), GET /_jhin/health -> 200 in 3 s
-16:30:26 -- negative proof: settle on a settled session must 409 invalid_transition
-ok: settle on a settled session -> 409 invalid_transition (invalid-transition.txt)
-16:30:26 -- negative proof: undo after the 5 s window must answer Nothing to undo
-16:30:26 waiting 6 s past the 5 s undo window
-ok: undo after the 5 s window -> "Nothing to undo" toast (undo-expired.txt)
-ok: T304 QA --fail: the negative proofs PASS

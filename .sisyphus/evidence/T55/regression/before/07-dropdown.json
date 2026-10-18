@@ -1,1 +1,0 @@
-{"type":"dropdown","id":"d1","items":[{"label":"a","value":1},{"label":"b","value":"two"}],"value":1,"action":{"name":"pick","method":"POST","path":"/ui/action/pick"}}

@@ -1,6 +1,0 @@
-ok: the clean docs pass the sweep
-FAIL: the injected stale '58 primitives' mention was expected to pass the sweep (as designed)
-  the real behavior is the opposite: the sweep caught it —
-  /tmp/tmp.4NNxJy7tHC/docs/architecture.md:454:The catalog is 58 primitives at contract level 2.
-  the clean docs pass; the injected copy fails
-FAIL: deliberately wrong expectation: the injected stale mention passed the sweep (it is caught)

@@ -1,1 +1,0 @@
-FAIL: deliberately wrong expectation held: UndoJournal is documented (see .sisyphus/evidence/T80/doc-coverage-fail.txt)

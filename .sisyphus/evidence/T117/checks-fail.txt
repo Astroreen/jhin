@@ -1,7 +1,0 @@
-ok: the clean usage tree passes the sweep (fail-usage.json)
-FAIL: the injected unmarked decorative button was expected to pass the sweep (as designed)
-  the real behavior is the opposite: the sweep caught it —
-  button id=null label=Injected
-  the clean tree passes (fail-usage.json); the injected tree fails
-  (fail-injected.json)
-FAIL: deliberately wrong expectation: the injected unmarked button passed the sweep (it is caught; see .sisyphus/evidence/T117/fail-injected.json)

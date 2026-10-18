@@ -1,1 +1,0 @@
-{"sessionId":"bf0fb3ce-f036-4fda-b626-6e5f288ee8a3","seq":2,"ts":1791849360819,"type":"tool_use","payload":"{\"id\":\"c2\",\"name\":\"read\",\"arguments\":\"{\\\"path\\\":\\\"README.md\\\"}\"}"}

@@ -1,3 +1,0 @@
-/home/astroreen/…/MessageCardBuilder.java
-/home/astroreen/Documents/jhin/…/file.java
-src/auth.java

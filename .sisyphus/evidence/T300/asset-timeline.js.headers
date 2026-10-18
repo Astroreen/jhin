@@ -1,8 +1,0 @@
-HTTP/1.1 200 
-etag: "sha256-9dfd221f2680302b4807675b4721221033193b96042bdef424dc89ebe737ed16"
-content-security-policy: default-src 'self'; script-src 'self' 'nonce-qBPkdOHRnYeznKdaCkSBdExI'; style-src 'unsafe-inline' 'self'; object-src 'none'; base-uri 'none'
-cache-control: no-cache
-Content-Type: application/javascript;charset=utf-8
-Content-Length: 5974
-Date: Mon, 12 Oct 2026 01:11:57 GMT
-

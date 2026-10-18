@@ -1,1 +1,0 @@
-{"type":"hover_card","id":"gallery-hover_card","trigger":{"type":"text","text":"Hover trigger"},"content":{"type":"text","text":"Hover content"},"delay":500,"placement":"top"}

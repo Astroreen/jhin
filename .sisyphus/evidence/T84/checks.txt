@@ -1,6 +1,0 @@
-ok: ui-default and ui-kit suites green (307 tests; transcript in test.txt)
-ok: flutter test/design/palette_gen_test.dart green (transcript in flutter.txt)
-ok: java-dart hex parity byte-exact over 9 vectors x 56 colours (palettes.json)
-ok: seed-determined roles within dE76 < 2 vs themePalettes.ts for the 5 built-in pairs (deltaE.txt)
-ok: kernel booted with sessions, ui-kit and ui (kernel.log)
-ok: save-appearance x9: bootstrap theme.canvas/accent round-trip and theme.colors equals the generated palette (server.txt)

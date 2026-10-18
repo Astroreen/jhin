@@ -1,6 +1,0 @@
-T60 clipboard spy — code_block copy sends the exact source to the
-Clipboard (spied via TestDefaultBinaryMessenger) and shows a toast
-
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/primitives_batch5_test.dart
-00:00 +0: code_block (§2.6) code_block copy sends the exact source to the clipboard and toasts
-00:00 +1: All tests passed!

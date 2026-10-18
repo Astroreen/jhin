@@ -1,3 +1,0 @@
-{"node":{"type":"text","text":"hello","id":"ev-1","style":"body","bold":true}}
-{"node":{"type":"text","text":"Run started","id":"ev-2","style":"caption"}}
-{"node":{"type":"card","id":"ev-3","title":"Error","children":[{"type":"text","text":"session has no provider configured","id":"ev-3-msg","style":"body","color":"#E53935"}]}}

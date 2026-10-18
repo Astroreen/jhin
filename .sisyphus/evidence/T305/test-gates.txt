@@ -1,7 +1,0 @@
-T305 test gates — the two suites green on the tool-card surface:
-BUILD SUCCESSFUL in 750ms
-BUILD SUCCESSFUL in 570ms
-
-  :jhin-plugin-ui-kit:test      342 tests
-  :jhin-plugin-ui-default:test  489 tests (MessageCardBuilderTest, EventKindsTest, StreamRouteTest among them)
-  failures=0 errors=0 (expected 0/0)

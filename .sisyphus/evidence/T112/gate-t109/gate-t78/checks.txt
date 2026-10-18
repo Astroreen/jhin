@@ -1,9 +1,0 @@
-ok: ui-default and ui-kit suites green (517 tests; transcript in test.txt)
-ok: kernel booted with sessions, ui-kit and ui, without jhin.llm (kernel.log)
-ok: bootstrap defaults: theme.id t3-chat, appearance system, canvas #fdf7fd, accent #db2777, density comfortable, motion.panel 0
-ok: invalid hex blocked: errorText on the accent field, no persistence (validation.txt)
-ok: appearance round-trip: dark/#101018/#ff0000/compact/200ms in the next bootstrap (appearance-roundtrip.json)
-ok: settings tree: three section cards, PR-merged disabled with tooltip, T70 keyboard intact, only documented primitives
-ok: thread-behavior round-trip: auto-settle off and 14 days on the re-fetched settings screen
-ok: providers screen absent without jhin.llm, settings screen present (bootstrap-after.json)
-ok: settings.png skipped (no screenshot harness for server-rendered trees; settings-png-skipped.txt)

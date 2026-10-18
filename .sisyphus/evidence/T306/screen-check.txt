@@ -1,9 +1,0 @@
-T306 screen history — GET /ui/screen/chat:e2f0c5ae-ca99-400e-ad1c-40a2faee88c2 (timeline.html):
-  work:lifecycle rows: 1 — the run lifecycle row settles
-  in place at run_end (PASS)
-  Done chips: 1 — the settled lifecycle row carries the done
-  state chip (PASS)
-  duration label \d+\.\ds: 1 match(es)
-  (e.g. 0.1s) — the settled row shows the run duration (PASS)
-  "agent is working": 0 hit(s) — the working strip is gone
-  after run_end (PASS)

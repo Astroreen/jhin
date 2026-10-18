@@ -1,8 +1,0 @@
-00:00 +0: loading /home/astroreen/Documents/jhin/frontend/test/keyboard/keyboard_surface_test.dart
-00:00 +0: rows render the commands and their chords
-00:00 +1: the edit sheet captures a real key chord and Save persists it
-00:01 +2: a bare modifier capture fails validation and never saves
-00:01 +3: Reset reverts one command to its server default
-00:01 +4: Restore defaults clears every override
-00:01 +5: an old chord after a rebind no longer fires the command
-00:01 +6: All tests passed!

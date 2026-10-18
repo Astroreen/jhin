@@ -1,3 +1,0 @@
-15:40:35.443 [main] ERROR com.astroreen.jhin.kernel.loader.PluginLifecycle -- plugin jhin.tools-builtin failed: duplicate publication of com.astroreen.jhin.plugin.agent.api.ToolProvider already published by plugin jhin.example, attempted by plugin jhin.tools-builtin
-15:40:35.459 [main] ERROR com.astroreen.jhin.kernel.KernelBoot -- plugin load finished with 1 failed: jhin.tools-builtin: duplicate publication of com.astroreen.jhin.plugin.agent.api.ToolProvider already published by plugin jhin.example, attempted by plugin jhin.tools-builtin
-2026-10-06T15:40:36.661+03:00  INFO 3839408 --- [           main] com.astroreen.jhin.kernel.KernelMain     : Started KernelMain in 1.116 seconds (process running for 2.066)

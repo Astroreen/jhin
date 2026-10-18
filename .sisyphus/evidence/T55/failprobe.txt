@@ -1,2 +1,0 @@
-failprobe: asserting container().clip("nope") does NOT throw (wrong on purpose)
-failprobe: intentional failure tripped (the builder threw as designed)

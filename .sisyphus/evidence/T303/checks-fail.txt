@@ -1,5 +1,0 @@
-ok: build + two test gates green (335/467 tests, 0 failures; test-gates.txt)
-ok: kernel up on http://localhost:18443 (pid 478337), GET /_jhin/health -> 200 in 2 s
-10:26:50 -- negative proof: a workdir=null session lands in the No project bucket
-ok: workdir=null lands in the No project bucket, sorted last (null-workdir.txt)
-ok: T303 QA --fail: the negative proof PASSes

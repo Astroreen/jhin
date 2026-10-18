@@ -1,5 +1,0 @@
-exit code: 0
-jhin-plugin-ui-kit: 10
-jhin-plugin-ui-default: 61
-jhin-plugin-sessions: 27
-kernel: 101
