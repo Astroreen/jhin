@@ -13,9 +13,12 @@ export interface MeshNode {
  * `undefined` until the first answer, and while none has succeeded.
  */
 export function useMeshNodes(node: NodeConnection | undefined): readonly MeshNode[] | undefined {
-  const [members, setMembers] = useState<readonly MeshNode[] | undefined>(undefined);
+  // Keyed by the connection, so a new one never sees the previous one's members.
+  const [known, setKnown] = useState<{
+    node: NodeConnection;
+    members: readonly MeshNode[];
+  }>();
   useEffect(() => {
-    setMembers(undefined);
     if (node === undefined || node.state !== "open") return;
     let disposed = false;
     let latest = 0;
@@ -25,7 +28,7 @@ export function useMeshNodes(node: NodeConnection | undefined): readonly MeshNod
       void node.client
         .call<MeshNode[]>("mesh.nodes")
         .then((nodes) => {
-          if (!disposed && request === latest) setMembers(nodes);
+          if (!disposed && request === latest) setKnown({ node, members: nodes });
         })
         // A failed answer says nothing about the mesh: keep what is known. A node
         // without the mesh plugin never answers, so its routes are never judged.
@@ -38,5 +41,5 @@ export function useMeshNodes(node: NodeConnection | undefined): readonly MeshNod
       subscription.dispose();
     };
   }, [node]);
-  return members;
+  return known !== undefined && known.node === node ? known.members : undefined;
 }

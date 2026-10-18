@@ -214,6 +214,9 @@ and engineering practices.
 
 - One shared mesh membership feed per connection in the web client (the
   sidebar and the main view each subscribe today).
+- Web e2e for a failing `mesh.open` on a reachable remote and for remote
+  routes on a node without the mesh plugin; a failure path with the last
+  snapshot for `untilReachable` in `e2e/tests/mesh.spec.ts`.
 - Out-of-process plugins (JSON-RPC child processes, any language, WASM).
 - Real agent adapters: own LLM loop, Claude Code, Codex, OpenCode.
 - Record/replay of real provider transcripts.

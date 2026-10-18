@@ -289,6 +289,14 @@ export const chatPlugin = builtin(
         const members = useMeshNodes(node);
         if (nodes.length === 0 || route.panel === "connect")
           return <Connect cancellable={nodes.length > 0} />;
+        if (node !== undefined && route.remote !== undefined && members === undefined) {
+          // Judge a remote route only once the mesh has answered.
+          return (
+            <div role="status" className="flex flex-1 items-center justify-center">
+              <p className="text-sm text-muted-foreground">Finding the node…</p>
+            </div>
+          );
+        }
         if (
           node !== undefined &&
           route.remote !== undefined &&
