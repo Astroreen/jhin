@@ -187,4 +187,33 @@ describe("mesh", () => {
     expect(a.mesh.verifyToken("garbage")).toBeUndefined();
     expect(stranger.mesh.verifyToken(`a.stranger.${Date.now() - 1}.x`)).toBeUndefined();
   });
+
+  it("ignores malformed records arriving by gossip or join", async () => {
+    const network = createMemoryNetwork();
+    const { a, b, c, all } = await chain(network);
+    const before = a.mesh.members().length;
+
+    // A member sends garbage next to a valid change.
+    const evil = { nodeId: "x.y", publicKey: 5, urls: "nope", neighbors: [], version: -1 };
+    expect(() => a.mesh.acceptJoin({ code: a.mesh.invite().code, record: evil as never })).toThrow(
+      expect.objectContaining({ code: "JOIN_INVALID" }),
+    );
+    b.mesh.setUrls(["mem://b", "mem://b-too"]);
+    await until(all, () => view(a, b)?.record.urls.length === 2);
+
+    expect(a.mesh.members()).toHaveLength(before);
+    expect(await a.mesh.call("c", "app.whoami", {})).toMatchObject({ node: "c" });
+    void c;
+  });
+
+  it("refuses link tokens with a non-numeric or far-future expiry", () => {
+    const network = createMemoryNetwork();
+    const a = startNode(network, "a");
+    const b = startNode(network, "b");
+    // b is a member of a only after a join; record it directly through a join request.
+    a.mesh.acceptJoin({ code: a.mesh.invite().code, record: b.mesh.self() });
+
+    expect(a.mesh.verifyToken("b.a.NaN.sig")).toBeUndefined();
+    expect(a.mesh.verifyToken(`b.a.${Date.now() + 365 * 24 * 3600 * 1000}.sig`)).toBeUndefined();
+  });
 });

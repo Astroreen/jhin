@@ -243,6 +243,11 @@ and engineering practices.
   production build) and client plugins added while a page is open (they
   appear after a page reload; changed ones hot reload; removed ones stay
   loaded until a page reload).
+- Signed mesh records: today any member can overwrite another member's
+  record (key, URLs, neighbors) or claim a far-future version; acceptable in
+  one owner's trust domain (D22), not beyond it.
+- Scoped permissions for mesh links: a member's calls run with every
+  permission (`node:<id>`, `*`) on every other member.
 - Visual regression snapshots (D40): screenshots differ between the NixOS
   dev shell and CI runners; they need one pinned rendering environment (the
   Playwright container) before baselines are worth keeping.

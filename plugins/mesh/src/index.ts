@@ -40,6 +40,7 @@ const MESH_PATH = "/mesh";
 export const MESH_STREAM = "mesh";
 const NAMESPACE = "jhin.mesh";
 const MAX_BODY = 1024 * 1024;
+const JOIN_ATTEMPTS_PER_MINUTE = 20;
 
 const Config = z.object({
   /** How other nodes see this one; defaults to the host name. */
@@ -137,6 +138,7 @@ export default definePlugin({
     };
 
     const remembered = (await kv.get(NAMESPACE, "members")) as MemberRecord[] | undefined;
+    let writes: Promise<unknown> = Promise.resolve();
     const mesh = createMesh({
       identity: { nodeId, publicKey: keys.publicKey, name: config.name ?? Os.hostname() },
       sign: (data) => Crypto.sign(null, Buffer.from(data), keys.privateKey).toString("base64url"),
@@ -155,8 +157,12 @@ export default definePlugin({
       transport,
       execute: (method, params, invocation) => context.commands.execute(method, params, invocation),
       ...(remembered === undefined ? {} : { members: remembered }),
-      persist: (members) =>
-        void kv.set(NAMESPACE, "members", members as unknown as Json).catch(() => undefined),
+      // Writes are chained so an older snapshot never lands after a newer one.
+      persist: (members) => {
+        writes = writes
+          .then(() => kv.set(NAMESPACE, "members", members as unknown as Json))
+          .catch(() => undefined);
+      },
       logger: context.log,
     });
     context.subscriptions.add(mesh);
@@ -170,6 +176,8 @@ export default definePlugin({
           .catch(() => undefined);
       }),
     );
+
+    const joinAttempts = new Map<string, number>();
 
     // Links from other nodes: a signed link token in the WebSocket subprotocol.
     const inbound = new Set<WebSocket>();
@@ -209,6 +217,22 @@ export default definePlugin({
 
     context.subscriptions.add(
       http.route("POST", `${MESH_PATH}/join`, async (request, response) => {
+        // Invite codes are random UUIDs; this only keeps guessing and floods cheap to refuse.
+        const caller = request.socket.remoteAddress ?? "unknown";
+        const minute = Math.floor(Date.now() / 60_000);
+        const key = `${caller}:${minute}`;
+        const attempts = (joinAttempts.get(key) ?? 0) + 1;
+        joinAttempts.set(key, attempts);
+        for (const old of joinAttempts.keys())
+          if (!old.endsWith(`:${minute}`)) joinAttempts.delete(old);
+        if (attempts > JOIN_ATTEMPTS_PER_MINUTE) {
+          response
+            .writeHead(429, { "content-type": "application/json", "retry-after": "60" })
+            .end(
+              JSON.stringify({ code: "TOO_MANY_JOIN_ATTEMPTS", message: "Try again in a minute" }),
+            );
+          return;
+        }
         try {
           const result = mesh.acceptJoin((await readJson(request)) as never);
           response
@@ -226,14 +250,14 @@ export default definePlugin({
     // D24: `/n/<nodeId>/<path>` on any node leads to that node.
     context.subscriptions.add(
       http.route("GET", "/n/*", (request, response) => {
-        const [, , target, ...rest] = new URL(
-          request.url ?? "/",
-          "http://localhost",
-        ).pathname.split("/");
-        const resolved = mesh.resolve(`jhin://${target ?? ""}/${rest.join("/")}`);
+        const url = new URL(request.url ?? "/", "http://localhost");
+        const [, , target, ...rest] = url.pathname.split("/");
+        // Leading slashes would turn "/n/<self>//evil.com" into a protocol-relative redirect.
+        const path = rest.join("/").replace(/^\/+/, "");
+        const resolved = mesh.resolve(`jhin://${target ?? ""}/${path}`);
         const member = resolved.member;
-        const where = member?.self === true ? "" : member?.record.urls[0];
-        if (member === undefined || where === undefined) {
+        const base = member?.self === true ? "" : member?.record.urls[0];
+        if (member === undefined || base === undefined) {
           response.writeHead(404, { "content-type": "application/json" }).end(
             JSON.stringify({
               code: "NODE_UNKNOWN_OR_UNADDRESSED",
@@ -243,9 +267,8 @@ export default definePlugin({
           );
           return;
         }
-        response
-          .writeHead(307, { location: `${where === "" ? "" : httpBase(where)}/${resolved.path}` })
-          .end();
+        const location = `${base === "" ? "" : httpBase(base)}/${path}${url.search}`;
+        response.writeHead(307, { location }).end();
       }),
     );
 

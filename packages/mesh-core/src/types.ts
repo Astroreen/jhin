@@ -1,5 +1,19 @@
-import type { Invocation, Logger } from "@jhin/sdk";
+import { z, type Invocation, type Logger } from "@jhin/sdk";
 import type { Peer } from "@jhin/rpc";
+
+/** Every record from another node is parsed with this before it is used or stored. */
+export const MemberRecordSchema = z.object({
+  nodeId: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[^.]+$/, "node ids contain no dots"),
+  publicKey: z.string().min(1).max(512),
+  name: z.string().max(256),
+  urls: z.array(z.string().max(2048)).max(16),
+  neighbors: z.array(z.string().max(128)).max(1024),
+  version: z.number().int().nonnegative(),
+});
 
 /** What a node says about itself; spread to every member by gossip (D25). */
 export interface MemberRecord {

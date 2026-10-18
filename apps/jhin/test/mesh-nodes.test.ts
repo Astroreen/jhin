@@ -138,6 +138,15 @@ describe("a mesh of real nodes", () => {
         node: { reachable: true, route: [a.nodeId, b.nodeId, c.nodeId] },
       });
 
+      // D24: /n/<nodeId>/<path> on any node; never a redirect to another host.
+      const self = await fetch(`${a.http}/n/${a.nodeId}//evil.example/x?y=1`, {
+        redirect: "manual",
+      });
+      expect(self.status).toBe(307);
+      expect(self.headers.get("location")).toBe("/evil.example/x?y=1");
+      const relayed = await fetch(`${a.http}/n/${b.nodeId}/threads?z=2`, { redirect: "manual" });
+      expect(relayed.headers.get("location")).toBe(`${b.http}/threads?z=2`);
+
       await c.stop();
       await until(a, (view) => !view.some((node) => node.nodeId === c.nodeId && node.reachable));
       await expect(

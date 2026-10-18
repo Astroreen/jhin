@@ -9,13 +9,14 @@ import {
 import { toDisposable, type Disposable, type Invocation } from "@jhin/sdk";
 
 import { shortestPath } from "./routing.ts";
-import type {
-  JoinRequest,
-  JoinResponse,
-  MemberRecord,
-  MemberView,
-  MeshOptions,
-  Resolution,
+import {
+  MemberRecordSchema,
+  type JoinRequest,
+  type JoinResponse,
+  type MemberRecord,
+  type MemberView,
+  type MeshOptions,
+  type Resolution,
 } from "./types.ts";
 
 /** Hops a forwarded call may take before it is dropped. */
@@ -130,10 +131,18 @@ export function createMesh(options: MeshOptions): Mesh {
     }
   }
 
+  /** Records that do not parse are dropped: one bad record must not spread or stick. */
+  const valid = (incoming: unknown): MemberRecord[] =>
+    (Array.isArray(incoming) ? incoming : []).flatMap((item) => {
+      const parsed = MemberRecordSchema.safeParse(item);
+      if (!parsed.success) log.warn("mesh record ignored", { issues: parsed.error.issues.length });
+      return parsed.success ? [parsed.data] : [];
+    });
+
   /** Keeps the newest version of each record; returns whether anything changed. */
   function merge(incoming: readonly MemberRecord[]): boolean {
     let any = false;
-    for (const record of incoming) {
+    for (const record of valid(incoming)) {
       if (record.nodeId === selfId) {
         // Our own record from before a restart: move past its version.
         if (record.version > self.version) updateSelf({});
@@ -166,7 +175,7 @@ export function createMesh(options: MeshOptions): Mesh {
     newTraceId: randomId,
     async execute(method, params, invocation) {
       if (method === "mesh.gossip") {
-        merge((params as { records: MemberRecord[] }).records);
+        merge((params as { records?: MemberRecord[] } | undefined)?.records ?? []);
         return {};
       }
       if (method === "mesh.forward") return forward(params as Forward, invocation.traceId);
@@ -269,6 +278,7 @@ export function createMesh(options: MeshOptions): Mesh {
           (a, b) => Number(b.self) - Number(a.self) || a.record.name.localeCompare(b.record.name),
         ),
     invite() {
+      for (const [code, expiresAt] of invites) if (expiresAt < now()) invites.delete(code);
       const code = randomId();
       const expiresAt = now() + INVITE_TTL_MS;
       invites.set(code, expiresAt);
@@ -280,8 +290,11 @@ export function createMesh(options: MeshOptions): Mesh {
       if (expiresAt === undefined || expiresAt < now()) {
         throw new MeshError("INVITE_INVALID", "The invite code is unknown, used or expired");
       }
-      log.info("node joined the mesh", { node: request.record.nodeId, name: request.record.name });
-      merge([request.record]);
+      const [record] = valid([request.record]);
+      if (record === undefined)
+        throw new MeshError("JOIN_INVALID", "The joining node's record is malformed");
+      log.info("node joined the mesh", { node: record.nodeId, name: record.name });
+      merge([record]);
       return { record: self, members: [...records.values()] };
     },
     async join(url, code) {
@@ -300,7 +313,10 @@ export function createMesh(options: MeshOptions): Mesh {
         return undefined;
       }
       const record = records.get(nodeId);
-      if (record === undefined || Number(expires) < now()) return undefined;
+      const expiresAt = Number(expires);
+      // A finite time in the near future: no NaN, no token that lives for years.
+      if (record === undefined || !Number.isFinite(expiresAt)) return undefined;
+      if (expiresAt < now() || expiresAt > now() + 2 * TOKEN_TTL_MS) return undefined;
       const data = `jhin-mesh-link:${nodeId}:${target}:${expires}`;
       return options.verify(record.publicKey, data, signature) ? nodeId : undefined;
     },
