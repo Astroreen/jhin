@@ -3,8 +3,9 @@
 //   node scripts/pack-smoke.ts          pack, install, run, clean up
 //   node scripts/pack-smoke.ts --keep   keep the temporary directory for inspection
 //
-// Packs `jhin-ai` and every workspace package it depends on (`pnpm pack` runs
-// each package's build through "prepack"), installs the tarballs into a fresh
+// Packs `jhin-ai` and every workspace package it depends on with scripts/pack.ts
+// (`pnpm pack` builds each package through "prepack"; no workspace file is
+// rewritten, which this checks after every package), installs the tarballs into a fresh
 // directory outside the workspace and runs the installed `jhin`: `help`,
 // `inspect`, a command, then `serve --ui` with a remote `inspect` and a request
 // for the web client. Needs the npm registry for third-party dependencies.
@@ -67,6 +68,20 @@ function closure(packages: ReadonlyMap<string, string>): string[] {
   };
   visit(CLI);
   return [...found].toSorted();
+}
+
+/** `git status` and contents of every workspace package.json. */
+function manifestState(packages: ReadonlyMap<string, string>): string {
+  const files = [...packages.values()].map((dir) => Path.join(dir, "package.json")).toSorted();
+  const status = run("git", ["status", "--porcelain", "--", ...files], ROOT);
+  return [status, ...files.map((file) => Fs.readFileSync(file, "utf8"))].join("\0");
+}
+
+function untouched(before: string, when: string): void {
+  if (manifestState(workspacePackages()) !== before) {
+    const status = run("git", ["status", "--porcelain"], ROOT);
+    throw new Error(`workspace package.json files changed ${when}:\n${status}`);
+  }
 }
 
 /** Starts `jhin serve --ui` and resolves once it printed its endpoints. */
@@ -155,29 +170,29 @@ async function main(): Promise<void> {
     const names = closure(packages);
 
     step(`pack ${names.length} packages`);
+    // Packing must never rewrite workspace manifests: `serve --watch` reloads on them (D14).
+    const manifests = manifestState(packages);
+    // A rewrite that is undone before the pack returns still reaches a watching node.
+    const written: string[] = [];
+    const watchers = [...packages.values()].map((dir) => {
+      const file = Path.join(dir, "package.json");
+      return Fs.watch(file, () => written.push(file));
+    });
     const tarballs = Path.join(tmp, "tarballs");
     const tarball = new Map<string, string>();
     for (const name of names) {
       const file = Path.join(tarballs, `${name.replace("@", "").replace("/", "-")}.tgz`);
-      const dir = packages.get(name)!;
-      // postpack does not run when pack fails: put the workspace manifest back
-      // regardless, without letting a failed restore hide the pack error.
-      const restore = () =>
-        run("node", [Path.join(ROOT, "scripts", "pack-manifest.ts"), "postpack"], dir);
-      try {
-        run("pnpm", ["pack", "--out", file], dir);
-      } catch (error) {
-        try {
-          restore();
-        } catch (restoreError) {
-          process.stderr.write(`restoring ${dir}/package.json failed: ${String(restoreError)}\n`);
-        }
-        throw error;
-      }
-      restore();
+      run("node", [Path.join(ROOT, "scripts", "pack.ts"), packages.get(name)!, file], ROOT);
+      untouched(manifests, `after packing ${name}`);
       checkTarball(file);
       tarball.set(name, file);
       process.stdout.write(`${Path.basename(file)}\n`);
+    }
+    // Let the watchers deliver what the file system queued while packing blocked the loop.
+    await new Promise((resolve) => setImmediate(resolve));
+    for (const watcher of watchers) watcher.close();
+    if (written.length > 0) {
+      throw new Error(`packing wrote workspace manifests: ${[...new Set(written)].join(", ")}`);
     }
 
     step(`install into ${Path.join(tmp, "app")}`);
@@ -285,7 +300,8 @@ async function main(): Promise<void> {
     const code = await exited;
     if (code !== 0) throw new Error(`jhin serve exited with ${code}`);
 
-    step("ok: the packed CLI runs from node_modules");
+    untouched(manifests, "at the end");
+    step("ok: the packed CLI runs from node_modules; workspace manifests untouched");
   } finally {
     if (keep) process.stdout.write(`kept ${tmp}\n`);
     else Fs.rmSync(tmp, { recursive: true, force: true });

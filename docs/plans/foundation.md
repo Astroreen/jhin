@@ -49,8 +49,9 @@ and engineering practices.
   validates manifests and the graph before running any plugin code. Code
   exports `definePlugin({ activate(ctx) })`. In the workspace `entry` is
   TypeScript, run from source; a packed package names its built JavaScript
-  instead (`publishConfig.jhin` overrides `jhin` in the tarball), because Node
-  does not strip types under `node_modules`.
+  instead, because Node does not strip types under `node_modules`.
+  `scripts/pack.ts` applies `publishConfig.jhin` to `jhin` inside the tarball
+  and never rewrites the workspace manifest, which a watching node reloads on.
 - **D11. Dependencies target capabilities**, not concrete plugins
   (`ui.sidebar@^1`), so any implementation is replaceable.
 - **D12. First-party plugins use only the public API.** UI is slots plus

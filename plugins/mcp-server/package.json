@@ -29,8 +29,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "prepack": "tsc -p tsconfig.build.json && node ../../scripts/pack-manifest.ts prepack",
-    "postpack": "node ../../scripts/pack-manifest.ts postpack"
+    "prepack": "tsc -p tsconfig.build.json && node ../../scripts/pack.ts guard"
   },
   "dependencies": {
     "@jhin/auth-api": "workspace:*",

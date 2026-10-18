@@ -39,7 +39,7 @@ const GLOBAL_FILES = new Set([
 // A change to any of these, or to a package the CLI ships with, can break the
 // packed CLI (scripts/pack-smoke.ts).
 const PACKING =
-  /(^|\/)(package\.json|tsconfig\.build\.json)$|^pnpm-(workspace\.yaml|lock\.yaml)$|^scripts\/pack-/;
+  /(^|\/)(package\.json|tsconfig\.build\.json)$|^pnpm-(workspace\.yaml|lock\.yaml)$|^scripts\/pack[-.]/;
 
 const args = process.argv.slice(2);
 const affected = args.includes("--affected");
