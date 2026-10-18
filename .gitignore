@@ -34,3 +34,6 @@ Thumbs.db
 secrets/
 .env
 .env.*
+
+# Dev home and tool shims of scripts/t3
+.jhin-dev/
