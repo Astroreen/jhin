@@ -18,6 +18,7 @@
     "@base-ui/react": "catalog:",
     "@jhin/sdk": "workspace:*",
     "class-variance-authority": "catalog:",
+    "lucide-react": "catalog:",
     "tailwind-merge": "catalog:"
   },
   "devDependencies": {
