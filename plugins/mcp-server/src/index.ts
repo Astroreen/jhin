@@ -11,6 +11,7 @@ import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 
 export const MCP_PATH = "/mcp";
 const MAX_BODY = 4 * 1024 * 1024;
+const TRACE_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 
 function readJson(request: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -68,8 +69,9 @@ export default definePlugin({
           return;
         }
         const header = request.headers["x-jhin-trace"];
+        // Trace ids end up in logs: accept only short, plain ones.
         const traceId =
-          typeof header === "string" && header.length > 0 ? header : Crypto.randomUUID();
+          typeof header === "string" && TRACE_ID.test(header) ? header : Crypto.randomUUID();
         const server = createMcpServer({
           list: async () => context.commands.list(),
           execute: (name, input) => context.commands.execute(name, input, { traceId, caller }),

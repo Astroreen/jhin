@@ -236,6 +236,8 @@ and engineering practices.
 - OpenTelemetry export plugin.
 - Trying `tsc-rs` instead of TypeScript 7.
 - Publishing packages to npm.
+- The "list nodes" MCP tool of D39: nodes exist with the mesh (PR 9); until
+  then `host_inspect` describes the one node.
 - Freeing old module instances after a hot reload: every reload leaves the
   previous `?jhin-gen=N` modules in Node's ESM cache, so a long
   `serve --watch` session grows in memory (D14). Out-of-process plugins fix

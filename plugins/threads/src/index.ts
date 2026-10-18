@@ -165,10 +165,17 @@ export default definePlugin({
             cwd: project.path,
           });
         } catch (error) {
-          // turn.started is already recorded: close it.
-          await log.append(stream, [
-            { type: ThreadEvents.turnFailed, payload: { turnId, error: String(error) } },
-          ]);
+          // turn.started is already recorded: close it, keeping the agent's error for the caller.
+          await log
+            .append(stream, [
+              { type: ThreadEvents.turnFailed, payload: { turnId, error: String(error) } },
+            ])
+            .catch((appendError: unknown) =>
+              context.log.error("could not record a failed start", {
+                turnId,
+                error: String(appendError),
+              }),
+            );
           throw error;
         }
       } catch (error) {
@@ -177,9 +184,22 @@ export default definePlugin({
       }
       entry.turn = turn;
       if (entry.interrupted) turn.interrupt();
+      /** Appends a turn's last event; a storage failure here is logged, never thrown. */
+      const recordEnd = (type: string, payload: Json) =>
+        log.append(stream, [{ type, payload }]).then(
+          () => undefined,
+          (appendError: unknown) =>
+            context.log.error("could not record the end of a turn", {
+              threadId: thread.id,
+              turnId,
+              error: String(appendError),
+            }),
+        );
       void (async () => {
         try {
+          let completed = false;
           for await (const item of turn.items) {
+            if (item.kind === "message.completed") completed = true;
             const type =
               item.kind === "message.delta" ? ThreadEvents.itemDelta : ThreadEvents.itemCompleted;
             await log.append(stream, [
@@ -188,27 +208,17 @@ export default definePlugin({
           }
           await log.append(stream, [
             {
-              type: entry.interrupted ? ThreadEvents.turnInterrupted : ThreadEvents.turnCompleted,
+              // A turn that delivered its answer is complete even if an interrupt came late.
+              type:
+                entry.interrupted && !completed
+                  ? ThreadEvents.turnInterrupted
+                  : ThreadEvents.turnCompleted,
               payload: { turnId },
             },
           ]);
         } catch (error) {
           context.log.warn("turn failed", { threadId: thread.id, turnId, error: String(error) });
-          await log
-
-            .append(stream, [
-              { type: ThreadEvents.turnFailed, payload: { turnId, error: String(error) } },
-            ])
-
-            .catch((appendError: unknown) =>
-              context.log.error("could not record the end of a turn", {
-                threadId: thread.id,
-
-                turnId,
-
-                error: String(appendError),
-              }),
-            );
+          await recordEnd(ThreadEvents.turnFailed, { turnId, error: String(error) });
         } finally {
           finish();
         }
