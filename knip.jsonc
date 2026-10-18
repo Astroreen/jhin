@@ -23,10 +23,19 @@
         "@jhin/plugin-threads",
         "@jhin/plugin-agent-fake",
         "@jhin/plugin-mcp-server",
+        "@jhin/plugin-web-ui",
       ],
     },
+    "apps/web": {
+      "entry": ["src/main.tsx", "vite.config.ts"],
+    },
+    "plugins/web-ui": {
+      // Located at runtime through require.resolve("@jhin/web/package.json").
+      "entry": ["src/index.ts"],
+      "ignoreDependencies": ["@jhin/web"],
+    },
     "e2e": {
-      "entry": ["playwright.config.ts", "tests/**/*.spec.ts"],
+      "entry": ["playwright.config.ts", "tests/**/*.spec.ts", "tests/support/*.ts"],
     },
   },
 }

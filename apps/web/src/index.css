@@ -1,0 +1,5 @@
+@import "tailwindcss";
+@import "@jhin/ui/theme.css";
+
+/* Tailwind only sees classes in files it scans: the app and the UI kit. */
+@source "../../../packages/ui/src";
