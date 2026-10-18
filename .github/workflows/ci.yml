@@ -84,11 +84,22 @@ jobs:
       - run: shellcheck scripts/t3/*.sh
       - run: bash scripts/t3/smoke.sh
 
+  pack:
+    name: Packed CLI
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+      # Packs jhin-ai and its workspace packages, installs the tarballs outside
+      # the workspace and runs the installed CLI from node_modules.
+      - run: pnpm pack:smoke
+
   # Single required status for branch protection.
   ci:
     name: CI
     if: always()
-    needs: [check, typecheck, unit, knip, e2e, dev-scripts]
+    needs: [check, typecheck, unit, knip, e2e, dev-scripts, pack]
     runs-on: ubuntu-latest
     steps:
       - name: All jobs passed

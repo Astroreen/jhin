@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "description": "Contracts of the storage.kv@1 and storage.eventlog@1 capabilities, an in-memory implementation and the contract test suite",
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -14,8 +17,18 @@
       "import": "./src/contract.ts"
     }
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepack": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "@jhin/sdk": "workspace:*"

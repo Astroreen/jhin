@@ -33,8 +33,11 @@ const GLOBAL_FILES = new Set([
   "tsconfig.base.json",
   "vite.config.ts",
   "knip.jsonc",
+  "tsconfig.build.json",
   "scripts/verify.ts",
 ]);
+// A change to any of these can break the packed CLI (scripts/pack-smoke.ts).
+const PACKING = /(^|\/)(package\.json|tsconfig\.build\.json)$|^scripts\/pack-/;
 
 const args = process.argv.slice(2);
 const affected = args.includes("--affected");
@@ -122,6 +125,7 @@ function plan(): { steps: Step[]; skippedSteps: StepResult[] } {
     { name: "unit", command: ["vp", "test", "run"] },
     { name: "knip", command: ["knip", "--no-config-hints"] },
     { name: "e2e", command: ["pnpm", "e2e"] },
+    { name: "pack", command: ["node", "scripts/pack-smoke.ts"] },
   ];
   if (!affected) return { steps: full, skippedSteps: [] };
 
@@ -171,6 +175,11 @@ function plan(): { steps: Step[]; skippedSteps: StepResult[] } {
     steps.push({ name: "e2e", command: ["pnpm", "e2e"] });
   } else {
     skippedSteps.push(skip("e2e", "only Markdown changed"));
+  }
+  if (files.some((file) => PACKING.test(file))) {
+    steps.push({ name: "pack", command: ["node", "scripts/pack-smoke.ts"] });
+  } else {
+    skippedSteps.push(skip("pack", "no manifest or build config changed"));
   }
   return { steps, skippedSteps };
 }

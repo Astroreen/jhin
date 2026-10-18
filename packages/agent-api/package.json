@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "description": "Contract of the agent.runtime@1 capability and the thread event types",
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -10,8 +13,18 @@
       "import": "./src/index.ts"
     }
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepack": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "@jhin/storage-api": "workspace:*"

@@ -47,7 +47,10 @@ and engineering practices.
   (`id`, `version`, `apiVersion`, `side: server | client | both`,
   `provides` / `requires` as capability + semver range, `entry`). The kernel
   validates manifests and the graph before running any plugin code. Code
-  exports `definePlugin({ activate(ctx) })`.
+  exports `definePlugin({ activate(ctx) })`. In the workspace `entry` is
+  TypeScript, run from source; a packed package names its built JavaScript
+  instead (`publishConfig.jhin` overrides `jhin` in the tarball), because Node
+  does not strip types under `node_modules`.
 - **D11. Dependencies target capabilities**, not concrete plugins
   (`ui.sidebar@^1`), so any implementation is replaceable.
 - **D12. First-party plugins use only the public API.** UI is slots plus
@@ -288,8 +291,8 @@ and engineering practices.
   `fs.watch` of the user and workspace plugin directories, tested on Linux
   only; on large plugin trees every nested change wakes the watcher before
   the filter drops it.
-- Building the CLI to JavaScript for publishing (today `bin/jhin.js` imports
-  TypeScript, which Node only strips outside `node_modules`).
+- The storage contract suite (`@jhin/storage-api/contract`) in the packed
+  package: it imports Vitest, so only the workspace has it today.
 
 ## PR plan
 

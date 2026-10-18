@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "Static bearer token authentication (auth.verifier@1)",
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -11,8 +14,23 @@
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./package.json": "./package.json"
+    },
+    "jhin": {
+      "entry": "dist/index.js"
+    }
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepack": "tsc -p tsconfig.build.json && node ../../scripts/pack-manifest.ts prepack",
+    "postpack": "node ../../scripts/pack-manifest.ts postpack"
   },
   "dependencies": {
     "@jhin/auth-api": "workspace:*",

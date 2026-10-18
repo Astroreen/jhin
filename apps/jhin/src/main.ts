@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import * as Fs from "node:fs";
 import * as Module from "node:module";
 import * as Path from "node:path";
