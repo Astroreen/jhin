@@ -11,7 +11,15 @@ import {
   type ModuleLoader,
   type PluginSource,
 } from "@jhin/kernel";
-import { definePlugin, PLUGIN_API_VERSION, z, type Disposable, type Logger } from "@jhin/sdk";
+import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
+import {
+  definePlugin,
+  DOTTED_ID,
+  PLUGIN_API_VERSION,
+  z,
+  type Disposable,
+  type Logger,
+} from "@jhin/sdk";
 
 import {
   discoverPlugins,
@@ -56,15 +64,6 @@ export interface NodeHost {
 }
 
 const HOST_PLUGIN = "jhin.host";
-export const HOST_PATHS_CAPABILITY = "host.paths";
-
-/** `host.paths@1`: where a node keeps files. Provided by the built-in `jhin.host` plugin. */
-export interface HostPaths {
-  /** The Jhin home directory. */
-  readonly home: string;
-  /** A directory owned by `plugin` for its data; created on first use. */
-  dataDir(plugin: string): string;
-}
 const HOST_LOCATION = "host://jhin.host";
 const RECENT_EVENTS = 100;
 
@@ -116,6 +115,9 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       const paths: HostPaths = {
         home: home.root,
         dataDir(plugin) {
+          if (!DOTTED_ID.test(plugin)) {
+            throw new Error(`dataDir needs a plugin id, got ${JSON.stringify(plugin)}`);
+          }
           const dir = Path.join(home.root, "data", plugin);
           Fs.mkdirSync(dir, { recursive: true });
           return dir;

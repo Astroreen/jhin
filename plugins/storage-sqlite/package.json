@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@jhin/host-api": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/storage-api": "workspace:*"
   },

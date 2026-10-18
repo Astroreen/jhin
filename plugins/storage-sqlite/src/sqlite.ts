@@ -168,10 +168,11 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
       assertEvents(events);
       assertCount("expectedHead", options.expectedHead);
       const payloads = events.map((event) => serialize(event.payload));
-      const at = now().toISOString();
       let stored: StoredEvent[];
       db.exec("BEGIN IMMEDIATE");
       try {
+        // Taken under the write lock, so `at` never goes backwards as `sequence` grows.
+        const at = now().toISOString();
         const head = headOf(stream);
         if (options.expectedHead !== undefined && options.expectedHead !== head) {
           throw new StorageError(

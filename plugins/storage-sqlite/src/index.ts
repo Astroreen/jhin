@@ -1,14 +1,10 @@
 import * as Path from "node:path";
 
+import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { definePlugin, z } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, KV_CAPABILITY } from "@jhin/storage-api";
 
 import { openSqliteStorage } from "./sqlite.ts";
-
-/** `host.paths@1`, provided by the node host. */
-interface HostPaths {
-  dataDir(plugin: string): string;
-}
 
 const Config = z.object({
   /** Database file; defaults to `<home>/data/jhin.storage-sqlite/jhin.db`. */
@@ -22,7 +18,7 @@ export default definePlugin({
     const file =
       config.path ??
       Path.join(
-        context.services.get<HostPaths>("host.paths").dataDir(context.plugin.id),
+        context.services.get<HostPaths>(HOST_PATHS_CAPABILITY).dataDir(context.plugin.id),
         "jhin.db",
       );
 
