@@ -279,8 +279,19 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     for (const listener of Array.from(pluginListeners)) listener({ id, files });
   };
 
-  /** Discovers plugins again and applies the differences to the running kernel. */
-  async function rescan(): Promise<PluginsUpdate> {
+  let rescans: Promise<unknown> = Promise.resolve();
+  /**
+   * Discovers plugins again and applies the differences to the running kernel.
+   * Rescans run one at a time, so each discovers after the previous one applied
+   * and the last one leaves `discovery` and the watchers matching the kernel.
+   */
+  function rescan(): Promise<PluginsUpdate> {
+    const run = rescans.then(rescanNow, rescanNow);
+    rescans = run.catch(() => undefined);
+    return run;
+  }
+
+  async function rescanNow(): Promise<PluginsUpdate> {
     discovery = discoverPlugins(layers);
     const found = discovery.plugins;
     const update = await kernel.update([hostSource, ...found]);
@@ -432,8 +443,8 @@ function watchTargets({
       log.error("plugin rescan failed", { reason, error: toErrorInfo(error) });
       return undefined;
     });
-  const reload = (id: string, files: readonly string[]) => {
-    notify(id, files);
+  const reload = (id: string, files: readonly string[], notified = false) => {
+    if (!notified) notify(id, files);
     // Client-side plugins are skipped by this kernel; their clients reload them.
     const status = kernel.inspect().plugins.find((candidate) => candidate.id === id)?.status;
     if (status === undefined || status === "skipped") return;
@@ -461,7 +472,10 @@ function watchTargets({
           if (update !== undefined && (update.started.includes(id) || update.removed.includes(id)))
             return;
           // A failed rescan, or a manifest saved unchanged, still reloads the code saved with it.
-          reload(id, rest);
+          // A rescan already told listeners about an added or changed plugin.
+          const notified =
+            update !== undefined && (update.added.includes(id) || update.changed.includes(id));
+          reload(id, rest, notified);
         });
       },
     });
