@@ -251,7 +251,11 @@ and engineering practices.
 - Rich composer (tiptap), Storybook.
 - OpenTelemetry export plugin.
 - Trying `tsc-rs` instead of TypeScript 7.
-- Publishing packages to npm.
+- Publishing packages to npm. The pipeline publishes the tarballs
+  `scripts/pack.ts` produces (`pnpm publish <tgz>`); a plugin's guard against
+  a bare `pnpm pack`/`publish` is an environment flag, so a manual
+  `JHIN_PACK_STAGED=1 pnpm publish` still bypasses it. Repacked tarballs are
+  not byte-reproducible yet (file times and order come from the local `tar`).
 - An `Origin` allowlist on the WebSocket transport: today the upgrade is
   authenticated by token only, so a page in the owner's browser that knows a
   token can call commands. It must still let `jhin client` and other nodes'

@@ -12,6 +12,7 @@ node_modules/
 
 # build outputs
 dist/
+.dist-next/
 build/
 out/
 coverage/

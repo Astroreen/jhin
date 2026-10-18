@@ -24,11 +24,19 @@ if (!Fs.existsSync(tsc)) throw new Error(`${tsc} is missing: run pnpm install fi
 if (!Fs.existsSync("tsconfig.build.json")) {
   throw new Error(`${Path.resolve("tsconfig.build.json")} is missing: run this in a package`);
 }
-Fs.rmSync("dist", { recursive: true, force: true });
-const result = ChildProcess.spawnSync(tsc, ["-p", "tsconfig.build.json"], {
+// Built into a fresh directory first: a failed build keeps the previous dist/.
+const next = ".dist-next";
+Fs.rmSync(next, { recursive: true, force: true });
+const result = ChildProcess.spawnSync(tsc, ["-p", "tsconfig.build.json", "--outDir", next], {
   stdio: "inherit",
   // A .cmd shim runs only through a shell.
   shell: windows,
 });
 if (result.error !== undefined) throw result.error;
+if (result.status === 0) {
+  Fs.rmSync("dist", { recursive: true, force: true });
+  Fs.renameSync(next, "dist");
+} else {
+  Fs.rmSync(next, { recursive: true, force: true });
+}
 process.exitCode = result.status ?? 1;

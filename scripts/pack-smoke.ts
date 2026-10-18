@@ -172,6 +172,17 @@ async function main(): Promise<void> {
     const packages = workspacePackages();
     const names = closure(packages);
 
+    step("every plugin package guards against a bare pnpm pack");
+    for (const [name, dir] of packages) {
+      const manifest = readJson<{ jhin?: unknown; scripts?: Record<string, string> }>(
+        Path.join(dir, "package.json"),
+      );
+      if (manifest.jhin !== undefined && !manifest.scripts?.prepack?.includes("pack.ts guard")) {
+        throw new Error(`${name} has a jhin manifest but no "pack.ts guard" in its prepack`);
+      }
+    }
+    process.stdout.write("guarded\n");
+
     step("a bare pnpm pack of a plugin is refused");
     const bare = ChildProcess.spawnSync("pnpm", ["pack", "--out", Path.join(tmp, "bare.tgz")], {
       cwd: packages.get("@jhin/plugin-example")!,
