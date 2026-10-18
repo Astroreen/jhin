@@ -25,7 +25,8 @@ async function start(options: Parameters<typeof startNode>[0]): Promise<RunningN
 /**
  * Resolves once `node` sees `name` reachable, re-checking on its mesh stream:
  * no polling. Rejects with the last snapshot it saw once it can no longer
- * learn anything: the connection to `node` goes away or the stream is refused.
+ * learn anything: `mesh.nodes` fails, the connection to `node` goes away or
+ * the stream is refused.
  * `onSnapshot` sees every answer of `mesh.nodes`.
  */
 function untilReachable(
@@ -60,9 +61,8 @@ function untilReachable(
           finish();
           resolve(found);
         })
-        .catch((error: unknown) => {
-          if (!done) last = `failed: ${(error as Error).message}`;
-        });
+        // A failing `mesh.nodes` (e.g. no mesh plugin) never turns into an answer.
+        .catch((error: unknown) => fail(`mesh.nodes failed: ${(error as Error).message}`));
     const subscription = client.subscribe(
       "mesh",
       { onError: (error) => fail(`mesh stream refused: ${error.message}`) },
@@ -253,8 +253,16 @@ test("untilReachable fails with the last snapshot when its node goes away", asyn
   await answered.promise;
   // Handled before the node stops, so the rejection is never unhandled.
   const failed = expect(waiting).rejects.toThrow(
-    /ghost never became reachable \(connection closed\); last mesh\.nodes: \[\{.*"name":"a"/,
+    // A call in flight when the socket closes may report first; either way the snapshot rides along.
+    /ghost never became reachable \((connection closed|mesh\.nodes failed: .*)\); last mesh\.nodes: \[\{.*"name":"a"/,
   );
   await a.stop();
   await failed;
+});
+
+test("untilReachable fails at once on a node whose mesh.nodes fails", async () => {
+  const a = await start({ mode: "serve", setup: withoutMesh });
+  await expect(untilReachable(a, "ghost")).rejects.toThrow(
+    /ghost never became reachable \(mesh\.nodes failed: .+\); last mesh\.nodes: no answer yet/,
+  );
 });

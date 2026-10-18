@@ -31,7 +31,16 @@ export const meshPlugin = builtin(
       const feeds = new Map<string, Feed>();
 
       const notify = (feed: Feed) => {
-        for (const listener of Array.from(feed.listeners)) listener();
+        for (const listener of Array.from(feed.listeners)) {
+          // One faulty consumer (e.g. a user plugin) never keeps the update from the others.
+          try {
+            listener();
+          } catch (error) {
+            context.log.error("a client.mesh listener failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
       };
 
       /** Starts the feed on the connection's current client, or stops it when there is none. */
@@ -42,11 +51,15 @@ export const meshPlugin = builtin(
         feed.stop?.();
         feed.stop = undefined;
         feed.client = client;
-        // A new client (or none) never shows the previous one's members.
-        const hadMembers = feed.members !== undefined;
-        feed.members = undefined;
+        // A new client (or none) never shows the previous one's members: the
+        // reset is announced first, then the new client's answers follow.
+        if (feed.members !== undefined) {
+          feed.members = undefined;
+          notify(feed);
+          // The last subscriber may have left while being told.
+          if (feeds.get(id) !== feed) return;
+        }
         if (client !== undefined) feed.stop = follow(client, feed);
-        if (hadMembers) notify(feed);
       };
 
       const follow = (client: RpcClient, feed: Feed): (() => void) => {

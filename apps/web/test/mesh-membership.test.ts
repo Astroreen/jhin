@@ -7,7 +7,7 @@ import {
   type NodeConnection,
 } from "@jhin/client-api";
 import type { RpcClient } from "@jhin/rpc";
-import { definePlugin, toDisposable } from "@jhin/sdk";
+import { definePlugin, toDisposable, type Logger } from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import { createTestKernel, mockCapability, testManifest } from "@jhin/testing";
 import { describe, expect, it } from "vite-plus/test";
@@ -86,10 +86,11 @@ const connection = (
   state,
 });
 
-async function start(connections: Connections) {
+async function start(connections: Connections, logger?: Logger) {
   let membership: MeshMembership | undefined;
   const kernel = await createTestKernel({
     side: "client",
+    ...(logger === undefined ? {} : { logger }),
     plugins: [
       mockCapability(CONNECTIONS_CAPABILITY, connections),
       meshPlugin,
@@ -144,6 +145,32 @@ describe("client.mesh@1", () => {
     main.dispose();
     expect(node.subscriptions()).toEqual({ opened: 1, open: 0 });
     expect(membership.members(id)).toBeUndefined();
+    await kernel.stop();
+  });
+
+  it("keeps telling the other consumers when one listener throws, and logs it", async () => {
+    const node = fakeClient([async () => [member("a"), member("c")]]);
+    const errors: string[] = [];
+    const logger: Logger = {
+      debug: () => undefined,
+      info: () => undefined,
+      warn: () => undefined,
+      error: (message) => void errors.push(message),
+      child: () => logger,
+    };
+    const { kernel, membership } = await start(
+      fakeConnections(connection(node.client)).connections,
+      logger,
+    );
+    const id = "ws://a/rpc";
+    const faulty = membership.subscribe(id, () => {
+      throw new Error("broken consumer");
+    });
+    // Subscribed after the faulty one: it is told only if the loop goes on.
+    await nextChange(membership, id);
+    expect(membership.members(id)).toEqual([member("a"), member("c")]);
+    expect(errors).toEqual(["a client.mesh listener failed"]);
+    faulty.dispose();
     await kernel.stop();
   });
 
