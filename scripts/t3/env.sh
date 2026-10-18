@@ -170,13 +170,40 @@ record_pid() {
   trap 'exit 130' INT TERM
 }
 
+# Prints a process and all its descendants, parents first.
+tree_pids() {
+  local child
+  echo "$1"
+  for child in $(pgrep -P "$1" 2>/dev/null); do
+    tree_pids "$child"
+  done
+}
+
 # Ends a process and all its descendants.
 kill_tree() {
-  local child
-  for child in $(pgrep -P "$1" 2>/dev/null); do
-    kill_tree "$child"
+  local pid
+  for pid in $(tree_pids "$1"); do
+    kill "$pid" 2>/dev/null || true
   done
-  kill "$1" 2>/dev/null || true
+}
+
+# Ends a process tree and returns once every process in it has exited;
+# whatever still runs after 10 s gets SIGKILL.
+stop_tree() {
+  local pids pid tries=0
+  pids="$(tree_pids "$1")"
+  for pid in $pids; do
+    kill "$pid" 2>/dev/null || true
+  done
+  for pid in $pids; do
+    while kill -0 "$pid" 2>/dev/null; do
+      if [ "$tries" -ge 100 ]; then
+        kill -9 "$pid" 2>/dev/null || true
+      fi
+      tries=$((tries + 1))
+      sleep 0.1
+    done
+  done
 }
 
 # True when pid is alive and is scripts/t3/<name>.sh of this checkout, so a

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Stops whatever serve.sh and dev.sh started.
+# Stops whatever serve.sh and dev.sh started and returns once all of it has
+# exited, so the ports are free and nothing is left running.
 # shellcheck source=env.sh
 source "$(dirname "$0")/env.sh"
 
@@ -8,7 +9,7 @@ for file in "$JHIN_DEV_DIR"/pids/*.pid; do
   name="$(basename "$file" .pid)"
   pid="$(cat "$file")"
   if is_ours "$pid" "$name"; then
-    kill_tree "$pid"
+    stop_tree "$pid"
     echo "jhin: stopped $name ($pid)"
   fi
   rm -f "$file"
