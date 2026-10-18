@@ -122,16 +122,22 @@ function followNode(
       );
   };
 
+  /**
+   * Reloads a plugin at a new revision and records the revision as applied
+   * only if the reload ran, so the next sync (a `plugins` event, a reconnect)
+   * retries one that did not.
+   */
   const reload = async (plugin: RemotePlugin) => {
     entries.set(remoteLocation(plugin.manifest.id), plugin.entry);
-    await kernel
-      .reload(plugin.manifest.id)
-      .catch((error: unknown) =>
-        console.error(
-          `[jhin] reloading ${plugin.manifest.id} failed; the next change to its files retries`,
-          error,
-        ),
+    try {
+      await kernel.reload(plugin.manifest.id);
+      known.set(plugin.manifest.id, plugin);
+    } catch (error) {
+      console.error(
+        `[jhin] reloading ${plugin.manifest.id} failed; the next change or sync retries`,
+        error,
       );
+    }
   };
 
   /** Brings the kernel to the node's current list: adds, removes, replaces and reloads. */
@@ -146,12 +152,19 @@ function followNode(
     const update = await kernel.update(sourcesFor(builtins.values(), list, entries));
     const restarted = new Set([...update.added, ...update.changed, ...update.started]);
     // Same manifest, new files: a reload, as for a `plugin` event.
+    const previous = known;
+    known = new Map();
     for (const plugin of list) {
       const id = plugin.manifest.id;
-      const had = known.get(id);
-      if (had !== undefined && had.rev !== plugin.rev && !restarted.has(id)) await reload(plugin);
+      const had = previous.get(id);
+      if (had === undefined || had.rev === plugin.rev || restarted.has(id)) {
+        known.set(id, plugin);
+      } else {
+        // Recorded by `reload` once it ran; until then the old revision stands.
+        known.set(id, had);
+        await reload(plugin);
+      }
     }
-    known = new Map(list.map((plugin) => [plugin.manifest.id, plugin]));
   };
 
   const refreshConfig = () =>
@@ -174,9 +187,7 @@ function followNode(
       // A plugin this page has not met yet: the list tells what it is.
       if (plugin === undefined) return sync();
       if (plugin.rev === rev) return;
-      const next = { ...plugin, rev, entry: plugin.entry.replace(REVISION, `$1${rev}/`) };
-      known.set(id, next);
-      await reload(next);
+      await reload({ ...plugin, rev, entry: plugin.entry.replace(REVISION, `$1${rev}/`) });
     });
   });
   events.addEventListener("plugins", () => enqueue(sync));

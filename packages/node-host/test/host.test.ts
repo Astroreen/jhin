@@ -298,6 +298,61 @@ export default definePlugin({
     );
   });
 
+  it("tells host.plugins listeners about added, swapped and removed client plugins by their package.json", async () => {
+    const home = tempDir("home");
+    writePlugin(
+      Path.join(home, "plugins", "spy"),
+      { id: "acme.spy", requires: { "host.plugins": "^1" } },
+      {
+        "index.ts": `
+import { definePlugin, z } from "@jhin/sdk";
+export default definePlugin({
+  activate(context) {
+    const changes: unknown[] = [];
+    context.subscriptions.add(context.services.get<any>("host.plugins").onChange((change: unknown) => changes.push(change)));
+    context.commands.register({
+      name: "acme.spy.changes",
+      description: "host.plugins changes seen so far, then forgets them",
+      input: z.object({}),
+      output: z.unknown(),
+      handler: () => changes.splice(0),
+    });
+  },
+});
+`,
+      },
+    );
+    host = new HostProcess({ home, cwd: tempDir("cwd") });
+    await host.ready();
+    const client = (dir: string) =>
+      writePlugin(
+        Path.join(home, "plugins", dir),
+        { id: "acme.client", side: "client", entry: "index.js" },
+        { "index.js": "export default {};\n" },
+      );
+
+    const first = client("client-a");
+    await host.execute("host.plugins.rescan");
+    expect((await host.execute("acme.spy.changes")).value).toEqual([
+      { id: "acme.client", files: [Path.join(first, "package.json")] },
+    ]);
+
+    // Another folder with the same id, swapped in within one rescan: a change, at the new place.
+    Fs.rmSync(first, { recursive: true });
+    const second = client("client-b");
+    await host.execute("host.plugins.rescan");
+    expect((await host.execute("acme.spy.changes")).value).toEqual([
+      { id: "acme.client", files: [Path.join(second, "package.json")] },
+    ]);
+
+    // Removed: reported with the manifest it had.
+    Fs.rmSync(second, { recursive: true });
+    await host.execute("host.plugins.rescan");
+    expect((await host.execute("acme.spy.changes")).value).toEqual([
+      { id: "acme.client", files: [Path.join(second, "package.json")] },
+    ]);
+  });
+
   it("lets a user plugin replace a distribution plugin with the same id", async () => {
     const home = tempDir("home");
     const custom = writePlugin(

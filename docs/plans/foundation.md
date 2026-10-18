@@ -478,7 +478,7 @@ Implementation notes (PR 8b):
 - `jhin.web-ui` owns the `jhin.ui` config section (slot rules per slot) and
   serves `GET /client/plugins`, `/client/plugins/<id>/<rev>/…` (the revision
   in the path makes a reload re-import every file of the plugin),
-  `/client/config` (only `jhin.ui`) and `/client/events` (SSE: `plugin`,
+  `/client/config` (only `jhin.ui`) and `/client/events` (SSE: `plugin`, `plugins`,
   `config`). `jhin.host` provides `host.plugins@1` (discovered plugins of both
   sides and their file changes).
 - The watcher reloads any plugin of the node's own side that changed, including

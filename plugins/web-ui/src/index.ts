@@ -233,6 +233,8 @@ export default definePlugin({
           listed = current;
           if (!concerned) return;
           // A fresh revision path: the package may be another one than before.
+          // Kept after a removal on purpose (one number per id): a package
+          // re-added under that id must not get a path a browser has cached.
           bump(id);
           context.log.info("client plugins changed", { plugin: id });
           broadcast("plugins", {});
