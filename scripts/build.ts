@@ -20,6 +20,10 @@ const tsc = Path.join(
 );
 if (!Fs.existsSync(tsc)) throw new Error(`${tsc} is missing: run pnpm install first`);
 
+// Only a package directory gets its dist/ removed.
+if (!Fs.existsSync("tsconfig.build.json")) {
+  throw new Error(`${Path.resolve("tsconfig.build.json")} is missing: run this in a package`);
+}
 Fs.rmSync("dist", { recursive: true, force: true });
 const result = ChildProcess.spawnSync(tsc, ["-p", "tsconfig.build.json"], {
   stdio: "inherit",

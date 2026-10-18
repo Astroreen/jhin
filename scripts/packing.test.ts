@@ -105,6 +105,11 @@ describe("lockedPins", () => {
     expect(lockedPackages(LOCKFILE)).not.toContain("plain@4.0.0: {}");
   });
 
+  it("fails loudly when it misses a package key", () => {
+    const unparsable = LOCKFILE.replace("  plain@4.0.0:\n", "  plain@4.0.0: # odd\n");
+    expect(() => lockedPackages(unparsable)).toThrow("parsed 9 package keys but found 10");
+  });
+
   it("fails loudly when it finds no packages", () => {
     expect(() => lockedPins("lockfileVersion: '9.0'\n")).toThrow("found no packages to pin");
   });

@@ -33,7 +33,15 @@ const SEMVER = /^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/;
 /** The `name@version` keys of a pnpm lockfile's `packages:` section. */
 export function lockedPackages(lockfile: string): string[] {
   const section = /^packages:\n([\s\S]*?)^snapshots:/m.exec(lockfile)?.[1] ?? "";
-  return [...section.matchAll(/^ {2}'?([^'\s][^'\n]*?)'?:$/gm)].map((match) => match[1]!);
+  const keys = [...section.matchAll(/^ {2}'?([^'\s][^'\n]*?)'?:$/gm)].map((match) => match[1]!);
+  // Every package entry has one resolution: a key this parser missed shows up here.
+  const resolutions = section.match(/^ {4}resolution:/gm)?.length ?? 0;
+  if (keys.length !== resolutions) {
+    throw new Error(
+      `pnpm-lock.yaml: parsed ${keys.length} package keys but found ${resolutions} resolutions`,
+    );
+  }
+  return keys;
 }
 
 /** Third-party versions a pnpm lockfile resolved, as pnpm overrides. */

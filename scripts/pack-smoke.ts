@@ -172,6 +172,20 @@ async function main(): Promise<void> {
     const packages = workspacePackages();
     const names = closure(packages);
 
+    step("a bare pnpm pack of a plugin is refused");
+    const bare = ChildProcess.spawnSync("pnpm", ["pack", "--out", Path.join(tmp, "bare.tgz")], {
+      cwd: packages.get("@jhin/plugin-example")!,
+      encoding: "utf8",
+      shell: process.platform === "win32",
+    });
+    if (bare.status === 0 || Fs.existsSync(Path.join(tmp, "bare.tgz"))) {
+      throw new Error("a bare pnpm pack of a plugin produced a tarball");
+    }
+    if (!`${bare.stdout}${bare.stderr}`.includes("a bare `pnpm pack` would ship")) {
+      throw new Error(`a bare pnpm pack failed for another reason:\n${bare.stdout}${bare.stderr}`);
+    }
+    process.stdout.write("refused\n");
+
     step(`pack ${names.length} packages`);
     // Packing must never rewrite workspace manifests: `serve --watch` reloads on them (D14).
     const manifests = manifestState(packages);
