@@ -236,6 +236,9 @@ and engineering practices.
 - OpenTelemetry export plugin.
 - Trying `tsc-rs` instead of TypeScript 7.
 - Publishing packages to npm.
+- Keeping node tokens somewhere safer than `localStorage` in the web client:
+  any script on the client's origin (including user client plugins) can read
+  them today.
 - Visual regression snapshots (D40): screenshots differ between the NixOS
   dev shell and CI runners; they need one pinned rendering environment (the
   Playwright container) before baselines are worth keeping.

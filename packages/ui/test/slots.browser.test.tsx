@@ -29,7 +29,7 @@ describe("slots", () => {
     );
     expect(texts(view.container)).toEqual(["Z", "A", "B"]);
 
-    act(() => registry.setRules({ hide: ["a"], order: { bar: ["b"] } }));
+    act(() => registry.setRules({ hide: { bar: ["a"], other: ["b"] }, order: { bar: ["b"] } }));
     expect(texts(view.container)).toEqual(["B", "Z"]);
 
     act(() => late.dispose());
@@ -37,8 +37,9 @@ describe("slots", () => {
     view.unmount();
   });
 
-  it("keeps the page alive when a contribution throws", () => {
-    const registry = createSlotRegistry();
+  it("keeps the page alive when a contribution throws, and reports the error", () => {
+    const reported: [string, unknown][] = [];
+    const registry = createSlotRegistry({ onError: (id, error) => reported.push([id, error]) });
     registry.contribute("bar", {
       id: "broken",
       component: () => {
@@ -59,6 +60,9 @@ describe("slots", () => {
       "broken failed to render",
     );
     expect(texts(view.container)).toEqual(["fine"]);
+    expect(reported.map(([id, error]) => [id, (error as Error).message])).toEqual([
+      ["broken", "plugin bug"],
+    ]);
     view.unmount();
   });
 });

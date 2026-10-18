@@ -61,3 +61,26 @@ test("shows the node's live state in the inspector", async ({ page }) => {
   await panel.getByRole("button", { name: "Close inspector" }).click();
   await expect(panel).toBeHidden();
 });
+
+test("serves the client strictly: 404 for missing files, 400 for bad escapes, HEAD works", async ({
+  request,
+}) => {
+  expect((await request.get(`${node.ui}assets/missing-1234.js`)).status()).toBe(404);
+  expect((await request.get(`${node.ui}%E0%A4%A`)).status()).toBe(400);
+  const head = await request.head(`${node.ui}some/app/route`);
+  expect(head.status()).toBe(200);
+  expect(head.headers()["content-type"]).toContain("text/html");
+});
+
+test("ignores malformed saved nodes instead of failing to load", async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "jhin.nodes",
+      JSON.stringify([{ url: 5 }, { url: "not a url", token: "x", label: "y" }]),
+    ),
+  );
+  await page.goto(`${node.ui}#token=${node.token}`);
+
+  await expect(page.getByLabel("Connection open")).toBeVisible();
+  await expect(page.getByRole("region", { name: /^Node / })).toHaveCount(1);
+});

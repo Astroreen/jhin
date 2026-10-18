@@ -2,7 +2,7 @@ import * as Fs from "node:fs";
 import * as Module from "node:module";
 import * as Path from "node:path";
 
-import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
+import { HTTP_SERVER_CAPABILITY, type HttpHandler, type HttpServer } from "@jhin/http-api";
 import { definePlugin, z } from "@jhin/sdk";
 
 const require = Module.createRequire(import.meta.url);
@@ -39,25 +39,39 @@ export default definePlugin({
       );
     }
 
-    context.subscriptions.add(
-      http.route("GET", "/*", (request, response) => {
-        const pathname = decodeURIComponent(
-          new URL(request.url ?? "/", "http://localhost").pathname,
-        );
-        const file = Path.join(dir, Path.normalize(pathname));
-        // Never outside the client's directory; unknown paths are app routes.
-        const inside = file.startsWith(`${dir}${Path.sep}`);
-        const target = inside && Fs.existsSync(file) && Fs.statSync(file).isFile() ? file : index;
-        const hashed = target.includes(`${Path.sep}assets${Path.sep}`);
-        response.writeHead(200, {
-          "content-type": TYPES[Path.extname(target)] ?? "application/octet-stream",
-          "cache-control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
-          "x-content-type-options": "nosniff",
-          "referrer-policy": "no-referrer",
-        });
-        Fs.createReadStream(target).pipe(response);
-      }),
-    );
+    const serve: HttpHandler = (request, response) => {
+      const send = (status: number, text: string) =>
+        response.writeHead(status, { "content-type": "text/plain; charset=utf-8" }).end(text);
+      let pathname: string;
+      try {
+        pathname = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
+      } catch {
+        send(400, "Bad path");
+        return;
+      }
+      const file = Path.join(dir, Path.normalize(pathname));
+      // Never outside the client's directory.
+      const inside = file.startsWith(`${dir}${Path.sep}`);
+      const exists = inside && Fs.existsSync(file) && Fs.statSync(file).isFile();
+      // A missing file is a 404; only extensionless paths are app routes served by index.html.
+      if (!exists && Path.extname(pathname) !== "") {
+        send(404, "Not found");
+        return;
+      }
+      const target = exists ? file : index;
+      const hashed = target.includes(`${Path.sep}assets${Path.sep}`);
+      response.writeHead(200, {
+        "content-type": TYPES[Path.extname(target)] ?? "application/octet-stream",
+        "content-length": Fs.statSync(target).size,
+        "cache-control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "no-referrer",
+      });
+      if (request.method === "HEAD") response.end();
+      else Fs.createReadStream(target).pipe(response);
+    };
+    context.subscriptions.add(http.route("GET", "/*", serve));
+    context.subscriptions.add(http.route("HEAD", "/*", serve));
     context.commands.register({
       name: "web-ui.info",
       description: "Where this node serves the web client",

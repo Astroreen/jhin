@@ -11,28 +11,45 @@ export interface Contribution<P = Record<string, never>> {
   readonly component: React.ComponentType<P>;
 }
 
-/** Overrides from config: hide contributions, or put some first in a given order. */
+/**
+ * Overrides from config, per slot: hide contributions, or put some first in a
+ * given order. Keys are slot names, values contribution ids.
+ */
 export interface SlotRules {
-  readonly hide?: readonly string[];
+  readonly hide?: Readonly<Record<string, readonly string[]>>;
   readonly order?: Readonly<Record<string, readonly string[]>>;
 }
 
 /** `ui.slots@1`: named places in the UI that plugins contribute to. */
 export interface SlotRegistry {
   contribute<P>(slot: string, contribution: Contribution<P>): Disposable;
+  /** Called when a contribution throws while rendering. */
+  reportError(id: string, error: unknown): void;
+  /** Render key of a contribution; new on every registration, so a reloaded plugin gets a fresh error boundary. */
+  keyOf(contribution: Contribution<never>): string;
   /** Visible contributions of a slot, in display order. */
   list(slot: string): readonly Contribution<never>[];
   setRules(rules: SlotRules): void;
   subscribe(listener: () => void): Disposable;
 }
 
-export function createSlotRegistry(): SlotRegistry {
-  const slots = new Map<string, Contribution<never>[]>();
+interface Entry {
+  readonly contribution: Contribution<never>;
+  /** New on every registration, so a plugin reload starts with a fresh error boundary. */
+  readonly key: string;
+}
+
+export function createSlotRegistry(
+  options: { onError?: (id: string, error: unknown) => void } = {},
+): SlotRegistry {
+  const slots = new Map<string, Entry[]>();
+  let registrations = 0;
   const listeners = new Set<() => void>();
   let rules: SlotRules = {};
   // Lists are cached per version so React sees stable snapshots.
   let version = 0;
   const cache = new Map<string, { version: number; list: readonly Contribution<never>[] }>();
+  const keys = new WeakMap<Contribution<never>, string>();
   const changed = () => {
     version += 1;
     for (const listener of Array.from(listeners)) listener();
@@ -41,10 +58,15 @@ export function createSlotRegistry(): SlotRegistry {
   return {
     contribute(slot, contribution) {
       const list = slots.get(slot) ?? [];
-      if (list.some((item) => item.id === contribution.id)) {
+      if (list.some((item) => item.contribution.id === contribution.id)) {
         throw new Error(`Slot ${slot} already has a contribution ${contribution.id}`);
       }
-      const entry = contribution as unknown as Contribution<never>;
+      registrations += 1;
+      const entry: Entry = {
+        contribution: contribution as unknown as Contribution<never>,
+        key: `${contribution.id}#${registrations}`,
+      };
+      keys.set(entry.contribution, entry.key);
       slots.set(slot, [...list, entry]);
       changed();
       return toDisposable(() => {
@@ -55,13 +77,17 @@ export function createSlotRegistry(): SlotRegistry {
         changed();
       });
     },
+    reportError(id, error) {
+      options.onError?.(id, error);
+    },
     list(slot) {
       const cached = cache.get(slot);
       if (cached?.version === version) return cached.list;
-      const hidden = new Set(rules.hide ?? []);
+      const hidden = new Set(rules.hide?.[slot] ?? []);
       const first = rules.order?.[slot] ?? [];
       const rank = (id: string) => (first.includes(id) ? first.indexOf(id) : first.length);
       const list = (slots.get(slot) ?? [])
+        .map((item) => item.contribution)
         .filter((item) => !hidden.has(item.id))
         .toSorted(
           (a, b) =>
@@ -78,6 +104,7 @@ export function createSlotRegistry(): SlotRegistry {
       listeners.add(listener);
       return toDisposable(() => listeners.delete(listener));
     },
+    keyOf: (contribution) => keys.get(contribution) ?? contribution.id,
   };
 }
 
@@ -104,13 +131,17 @@ export function useSlot(slot: string): readonly Contribution<never>[] {
 
 /** A plugin's broken component shows a note instead of taking the page down. */
 class ContributionBoundary extends React.Component<
-  { id: string; children: React.ReactNode },
+  { id: string; onError: (id: string, error: unknown) => void; children: React.ReactNode },
   { error: unknown }
 > {
   override state: { error: unknown } = { error: undefined };
 
   static getDerivedStateFromError(error: unknown) {
     return { error };
+  }
+
+  override componentDidCatch(error: unknown): void {
+    this.props.onError(this.props.id, error);
   }
 
   override render(): React.ReactNode {
@@ -131,13 +162,18 @@ class ContributionBoundary extends React.Component<
 
 /** Renders every visible contribution of `name`, each with `props`. */
 export function Slot<P extends object>(props: { name: string; props?: P }): React.ReactNode {
+  const registry = React.useContext(SlotsContext);
   const contributions = useSlot(props.name);
   return (
     <>
       {contributions.map((contribution) => {
         const Component = contribution.component as unknown as React.ComponentType<P>;
         return (
-          <ContributionBoundary key={contribution.id} id={contribution.id}>
+          <ContributionBoundary
+            key={registry!.keyOf(contribution)}
+            id={contribution.id}
+            onError={(id, error) => registry!.reportError(id, error)}
+          >
             <Component {...((props.props ?? {}) as P)} />
           </ContributionBoundary>
         );

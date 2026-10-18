@@ -16,7 +16,13 @@ export const uiHostPlugin = builtin(
   { provides: { [UI_SLOTS_CAPABILITY]: "1.0.0" } },
   definePlugin({
     activate(context) {
-      const registry = createSlotRegistry();
+      const registry = createSlotRegistry({
+        onError: (id, error) =>
+          context.log.error("contribution failed to render", {
+            contribution: id,
+            error: String(error),
+          }),
+      });
       context.services.provide(UI_SLOTS_CAPABILITY, registry);
 
       const root = createRoot(document.getElementById("root")!);

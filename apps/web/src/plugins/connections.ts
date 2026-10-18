@@ -1,29 +1,42 @@
 import { CONNECTIONS_CAPABILITY, type Connections, type NodeConnection } from "@jhin/client-api";
 import { connectWebSocket, createRpcClient, type RpcClient } from "@jhin/rpc";
-import { definePlugin, toDisposable } from "@jhin/sdk";
+import { definePlugin, toDisposable, z } from "@jhin/sdk";
 
 import { builtin } from "../lib/builtin.ts";
 
 const STORAGE_KEY = "jhin.nodes";
 
-interface Saved {
-  readonly url: string;
-  readonly token: string;
-  readonly label: string;
-}
+const WebSocketUrl = z
+  .string()
+  .refine(
+    (value) => URL.canParse(value) && /^wss?:$/.test(new URL(value).protocol),
+    "must be a ws:// or wss:// URL",
+  );
 
+const Saved = z.object({ url: WebSocketUrl, token: z.string().min(1), label: z.string().min(1) });
+type Saved = z.infer<typeof Saved>;
+
+/** Saved nodes; entries that do not parse are dropped instead of breaking the client. */
 function load(): Saved[] {
+  let raw: unknown;
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as Saved[];
+    raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
   } catch {
     return [];
   }
+  return (Array.isArray(raw) ? raw : []).flatMap((entry) => {
+    const parsed = Saved.safeParse(entry);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 /** The node that served this page, when it did: `ws(s)://<host>/rpc`. */
 function sameOriginUrl(): string {
   return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/rpc`;
 }
+
+// Tokens are kept in localStorage: any script on this origin can read them,
+// including user client plugins. Recorded as a known limit in the plan.
 
 /**
  * A token in the URL fragment (`#token=…`) connects this page's own node;
@@ -77,11 +90,20 @@ export const connectionsPlugin = builtin(
         list: () => snapshot,
         get: (id) => snapshot.find((node) => node.id === id),
         add({ url, token, label }) {
-          nodes.get(url)?.client.close();
-          open({ url, token, label: label ?? new URL(url).host });
-          persist();
-          changed();
-          return snapshot.find((node) => node.id === url)!;
+          const saved = Saved.parse({
+            url,
+            token,
+            label: label ?? (URL.canParse(url) ? new URL(url).host : url),
+          });
+          const existing = nodes.get(saved.url);
+          // The same node with the same token stays connected (e.g. a reload with #token=).
+          if (existing === undefined || existing.saved.token !== saved.token) {
+            existing?.client.close();
+            open(saved);
+            persist();
+            changed();
+          }
+          return snapshot.find((node) => node.id === saved.url)!;
         },
         remove(id) {
           nodes.get(id)?.client.close();

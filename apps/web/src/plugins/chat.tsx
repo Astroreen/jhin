@@ -5,7 +5,7 @@ import {
   type Navigation,
   type NodeConnection,
 } from "@jhin/client-api";
-import { definePlugin } from "@jhin/sdk";
+import { definePlugin, z } from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import { Button, Input, Textarea, UI_SLOTS_CAPABILITY, type SlotRegistry } from "@jhin/ui";
 import { ArrowUpIcon, SquareIcon } from "lucide-react";
@@ -182,12 +182,22 @@ export const chatPlugin = builtin(
           `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/rpc`,
         );
         const [token, setToken] = useState("");
+        const [error, setError] = useState<string | undefined>();
         return (
           <form
             aria-label="Connect a node"
             onSubmit={(event) => {
               event.preventDefault();
-              connections.add({ url, token });
+              try {
+                connections.add({ url, token });
+                setError(undefined);
+              } catch (failure) {
+                setError(
+                  failure instanceof z.ZodError
+                    ? failure.issues.map((issue) => issue.message).join("; ")
+                    : String(failure),
+                );
+              }
             }}
             className="mx-auto mt-24 flex w-full max-w-sm flex-col gap-3"
           >
@@ -207,6 +217,11 @@ export const chatPlugin = builtin(
               value={token}
               onChange={(event) => setToken(event.target.value)}
             />
+            {error !== undefined && (
+              <p role="alert" className="text-xs text-error-foreground">
+                {error}
+              </p>
+            )}
             <Button type="submit" disabled={token === ""}>
               Connect
             </Button>
