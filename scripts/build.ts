@@ -9,5 +9,9 @@ import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
 
 Fs.rmSync("dist", { recursive: true, force: true });
-const result = ChildProcess.spawnSync("tsc", ["-p", "tsconfig.build.json"], { stdio: "inherit" });
+const result = ChildProcess.spawnSync("tsc", ["-p", "tsconfig.build.json"], {
+  stdio: "inherit",
+  // On Windows the binary is tsc.cmd, which only a shell resolves.
+  shell: process.platform === "win32",
+});
 process.exitCode = result.status ?? 1;
