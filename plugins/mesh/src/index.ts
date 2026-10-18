@@ -330,7 +330,9 @@ export default definePlugin({
           const owner = member.record.nodeId;
           followed.add(owner);
           const index = mesh.mirror(owner, "threads");
-          const take = (event: { payload: unknown }) => {
+          // The index also records changes to projects and threads; only a created thread is new.
+          const take = (event: { type: string; payload: unknown }) => {
+            if (event.type !== "threads.thread.created") return;
             const id = (event.payload as { id?: unknown } | null)?.id;
             if (typeof id === "string") mesh.mirror(owner, `thread/${id}`);
           };
