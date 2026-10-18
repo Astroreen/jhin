@@ -1,5 +1,5 @@
 import type { ConnectionState, RpcClient } from "@jhin/rpc";
-import type { Disposable } from "@jhin/sdk";
+import { z, type Disposable } from "@jhin/sdk";
 
 export const CONNECTIONS_CAPABILITY = "client.connections";
 export const NAVIGATION_CAPABILITY = "client.navigation";
@@ -38,3 +38,11 @@ export interface Navigation {
   navigate(route: Route): void;
   subscribe(listener: () => void): Disposable;
 }
+
+/** The `jhin.ui` config section: slot rules (D12), keyed by slot name. */
+export const UI_CONFIG_SECTION = "jhin.ui";
+export const UiConfig = z.object({
+  hide: z.record(z.string(), z.array(z.string())).default({}),
+  order: z.record(z.string(), z.array(z.string())).default({}),
+});
+export type UiConfig = z.output<typeof UiConfig>;

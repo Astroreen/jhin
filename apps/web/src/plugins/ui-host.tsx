@@ -1,3 +1,4 @@
+import { UI_CONFIG_SECTION, UiConfig } from "@jhin/client-api";
 import { definePlugin } from "@jhin/sdk";
 import { Slot, SlotsProvider, UI_SLOTS_CAPABILITY, createSlotRegistry } from "@jhin/ui";
 import { createRoot } from "react-dom/client";
@@ -24,6 +25,9 @@ export const uiHostPlugin = builtin(
           }),
       });
       context.services.provide(UI_SLOTS_CAPABILITY, registry);
+      context.config.define(UI_CONFIG_SECTION, UiConfig);
+      registry.setRules(context.config.get<UiConfig>(UI_CONFIG_SECTION));
+      context.config.onDidChange<UiConfig>(UI_CONFIG_SECTION, (rules) => registry.setRules(rules));
 
       const root = createRoot(document.getElementById("root")!);
       root.render(

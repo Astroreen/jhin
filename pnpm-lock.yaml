@@ -196,6 +196,9 @@ importers:
       '@tailwindcss/vite':
         specifier: 'catalog:'
         version: 4.3.3(@voidzero-dev/vite-plus-core@1.3.0(@types/node@24.19.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.1))
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
@@ -524,6 +527,12 @@ importers:
 
   plugins/web-ui:
     dependencies:
+      '@jhin/client-api':
+        specifier: workspace:*
+        version: link:../../packages/client-api
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../../packages/host-api
       '@jhin/http-api':
         specifier: workspace:*
         version: link:../../packages/http-api

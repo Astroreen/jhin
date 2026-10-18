@@ -3,8 +3,8 @@
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": [],
+    "types": ["node"],
     "noUncheckedSideEffectImports": false
   },
-  "include": ["src", "test", "vite.config.ts"]
+  "include": ["src", "test", "vite.config.ts", "shared-modules.ts"]
 }
