@@ -82,19 +82,37 @@ export async function boot(): Promise<Kernel> {
 
 /** Applies the node's change notifications: new plugin revisions and config. */
 function followNode(kernel: Kernel, entries: Map<string, string>): void {
-  const events = new EventSource("/client/events");
-  events.addEventListener("plugin", (message) => {
-    const { id, rev } = JSON.parse(message.data) as { id: string; rev: number };
+  const revisionPath = /^(\/client\/plugins\/[^/]+\/)\d+\//;
+  const apply = (id: string, rev: number) => {
     const current = entries.get(`remote:${id}`);
     if (current === undefined) return;
-    entries.set(`remote:${id}`, current.replace(/^(\/client\/plugins\/[^/]+\/)\d+\//, `$1${rev}/`));
+    const next = current.replace(revisionPath, `$1${rev}/`);
+    if (next === current) return;
+    entries.set(`remote:${id}`, next);
     void kernel
       .reload(id)
       .catch((error: unknown) => console.error(`[jhin] reloading ${id} failed`, error));
-  });
-  events.addEventListener("config", () => {
+  };
+  const refreshConfig = () =>
     void fetchJson("/client/config", {}).then((values) => kernel.config.setLayer("node", values));
+
+  const events = new EventSource("/client/events");
+  let opened = 0;
+  // EventSource reconnects on its own; whatever changed while it was away is
+  // caught up from the current state.
+  events.addEventListener("open", () => {
+    opened += 1;
+    if (opened === 1) return;
+    void fetchJson<RemotePlugin[]>("/client/plugins", []).then((plugins) => {
+      for (const plugin of plugins) apply(plugin.manifest.id, plugin.rev);
+    });
+    refreshConfig();
   });
+  events.addEventListener("plugin", (message) => {
+    const { id, rev } = JSON.parse(message.data) as { id: string; rev: number };
+    apply(id, rev);
+  });
+  events.addEventListener("config", refreshConfig);
 }
 
 /** The browser console as the client kernel's log; fields ride along as a second argument. */

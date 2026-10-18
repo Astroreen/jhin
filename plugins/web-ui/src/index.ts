@@ -2,6 +2,7 @@ import * as Fs from "node:fs";
 import * as Module from "node:module";
 import * as Path from "node:path";
 
+import { UI_CONFIG_SECTION, UiConfig } from "@jhin/client-api";
 import { HOST_PLUGINS_CAPABILITY, type HostPlugins } from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpHandler, type HttpServer } from "@jhin/http-api";
 import { definePlugin, z } from "@jhin/sdk";
@@ -25,13 +26,10 @@ const Config = z.object({
   dir: z.string().optional(),
 });
 
-/** Config the web client reads: slot rules (D12) keyed by slot name. */
-const UiConfig = z.object({
-  hide: z.record(z.string(), z.array(z.string())).default({}),
-  order: z.record(z.string(), z.array(z.string())).default({}),
-});
-
 const CLIENT = "/client";
+
+// Client plugin files and `jhin.ui` are served without a token: the browser needs
+// them before it has one, like the page itself. Nothing else of the node is.
 
 /** True for plugins whose code runs in the web client. */
 const forClient = (manifest: unknown) => {
@@ -42,7 +40,7 @@ const forClient = (manifest: unknown) => {
 export default definePlugin({
   activate(context) {
     context.config.define("jhin.web-ui", Config);
-    context.config.define("jhin.ui", UiConfig);
+    context.config.define(UI_CONFIG_SECTION, UiConfig);
     const http = context.services.get<HttpServer>(HTTP_SERVER_CAPABILITY);
     const hostPlugins = context.services.get<HostPlugins>(HOST_PLUGINS_CAPABILITY);
     const dir = Path.resolve(
@@ -89,7 +87,23 @@ export default definePlugin({
     };
     // --- Client plugins (D16): listed, served under a revision, changes pushed. ---
     const revisions = new Map<string, number>();
-    const clientPlugins = () => hostPlugins.list().filter((plugin) => forClient(plugin.manifest));
+    // Browsers run JavaScript: a client plugin whose entry is not .js/.mjs (e.g. a
+    // TypeScript source of a `both` plugin) is reported in the log, not served.
+    const runnable = (plugin: { id: string; manifest: unknown }) => {
+      const entry = String((plugin.manifest as { entry?: unknown }).entry ?? "");
+      if (/\.m?js$/.test(entry)) return true;
+      if (!warned.has(plugin.id)) {
+        warned.add(plugin.id);
+        context.log.warn("client plugin not served: its entry is not JavaScript", {
+          plugin: plugin.id,
+          entry,
+        });
+      }
+      return false;
+    };
+    const warned = new Set<string>();
+    const clientPlugins = () =>
+      hostPlugins.list().filter((plugin) => forClient(plugin.manifest) && runnable(plugin));
     const json = (response: Parameters<HttpHandler>[1], value: unknown): void => {
       response
         .writeHead(200, { "content-type": "application/json", "cache-control": "no-cache" })
@@ -128,27 +142,28 @@ export default definePlugin({
         }
         const file =
           plugin === undefined ? undefined : Path.join(plugin.root, Path.normalize(relative));
+        // Containment is checked on real paths: a symlink cannot lead outside the plugin.
+        const real = file !== undefined && Fs.existsSync(file) ? Fs.realpathSync(file) : undefined;
         if (
           plugin === undefined ||
-          file === undefined ||
-          !file.startsWith(`${plugin.root}${Path.sep}`) ||
-          !Fs.existsSync(file) ||
-          !Fs.statSync(file).isFile()
+          real === undefined ||
+          !real.startsWith(`${Fs.realpathSync(plugin.root)}${Path.sep}`) ||
+          !Fs.statSync(real).isFile()
         ) {
           response.writeHead(404, { "content-type": "text/plain" }).end("Not found");
           return;
         }
         response.writeHead(200, {
-          "content-type": TYPES[Path.extname(file)] ?? "application/octet-stream",
+          "content-type": TYPES[Path.extname(real)] ?? "application/octet-stream",
           "cache-control": "no-cache",
           "x-content-type-options": "nosniff",
         });
-        Fs.createReadStream(file).pipe(response);
+        Fs.createReadStream(real).pipe(response);
       }),
     );
     context.subscriptions.add(
       http.route("GET", `${CLIENT}/config`, (_request, response) =>
-        json(response, { "jhin.ui": context.config.get("jhin.ui") }),
+        json(response, { [UI_CONFIG_SECTION]: context.config.get(UI_CONFIG_SECTION) }),
       ),
     );
 
@@ -180,9 +195,14 @@ export default definePlugin({
         broadcast("plugin", { id, rev });
       }),
     );
-    context.config.onDidChange("jhin.ui", () => broadcast("config", {}));
+    context.config.onDidChange(UI_CONFIG_SECTION, () => broadcast("config", {}));
+    // Comments keep idle proxies from closing the stream.
+    const keepAlive = setInterval(() => {
+      for (const stream of streams) stream.write(": keep-alive\n\n");
+    }, 25_000);
     context.subscriptions.add({
       dispose() {
+        clearInterval(keepAlive);
         for (const stream of streams) stream.end();
         streams.clear();
       },

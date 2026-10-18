@@ -527,6 +527,9 @@ importers:
 
   plugins/web-ui:
     dependencies:
+      '@jhin/client-api':
+        specifier: workspace:*
+        version: link:../../packages/client-api
       '@jhin/host-api':
         specifier: workspace:*
         version: link:../../packages/host-api

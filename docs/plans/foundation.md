@@ -446,6 +446,10 @@ Implementation notes (PR 8b):
   `/client/config` (only `jhin.ui`) and `/client/events` (SSE: `plugin`,
   `config`). `jhin.host` provides `host.plugins@1` (discovered plugins of both
   sides and their file changes).
+- The watcher reloads any plugin of the node's own side that changed, including
+  one that failed to activate: fixing a broken plugin's file activates it.
+- Client plugin files and `jhin.ui` are served without a token (the page needs
+  them before it has one); only entries ending in `.js`/`.mjs` are served.
 - `jhin client` = `jhin.http` + `jhin.web-ui` (+ `jhin.host`): the web client
   alone, connecting to remote nodes.
 
