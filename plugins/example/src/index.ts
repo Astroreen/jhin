@@ -34,6 +34,7 @@ export default definePlugin({
           const count = (context.state.get<number>("count") ?? 0) + 1;
           context.state.set("count", count);
           context.events.emit("example.greeted", { name, count });
+          context.log.info("greeted", { name, count });
           return { message: greeter.greet(name), count };
         }),
     });

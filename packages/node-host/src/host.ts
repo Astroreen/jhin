@@ -1,3 +1,4 @@
+import * as AsyncHooks from "node:async_hooks";
 import * as Fs from "node:fs";
 import * as Path from "node:path";
 
@@ -11,7 +12,12 @@ import {
   type ModuleLoader,
   type PluginSource,
 } from "@jhin/kernel";
-import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
+import {
+  HOST_PATHS_CAPABILITY,
+  HOST_TRACE_CAPABILITY,
+  type HostPaths,
+  type HostTrace,
+} from "@jhin/host-api";
 import {
   definePlugin,
   DOTTED_ID,
@@ -91,9 +97,18 @@ function applyLayer(kernel: Kernel, layer: string, file: string, log: Logger): v
 export async function startNodeHost(options: NodeHostOptions = {}): Promise<NodeHost> {
   const home = resolveHome(options.home);
   const nodeId = readNodeId(home);
+  const traces = new AsyncHooks.AsyncLocalStorage<string>();
+  const trace: HostTrace = {
+    run: (traceId, work) => traces.run(traceId, work),
+    current: () => traces.getStore(),
+  };
   const log = createNodeLogger({
     logsDir: home.logs,
     nodeId,
+    mixin: () => {
+      const traceId = traces.getStore();
+      return traceId === undefined ? {} : { traceId };
+    },
     ...(options.logLevel === undefined ? {} : { level: options.logLevel }),
   });
   const cwd = options.cwd ?? process.cwd();
@@ -124,6 +139,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         },
       };
       context.services.provide(HOST_PATHS_CAPABILITY, paths);
+      context.services.provide(HOST_TRACE_CAPABILITY, trace);
       context.commands.register({
         name: "host.inspect",
         description:
@@ -132,6 +148,13 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         output: z.unknown(),
         permissions: ["host.inspect"],
         handler: () => inspect(),
+      });
+      context.commands.register({
+        name: "host.commands.list",
+        description: "Every command on this node, with JSON Schemas of input and output",
+        input: z.object({}),
+        output: z.unknown(),
+        handler: () => context.commands.list(),
       });
       context.commands.register({
         name: "host.plugins.reload",
@@ -170,7 +193,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       version: "0.0.0",
       apiVersion: PLUGIN_API_VERSION,
       side: "server",
-      provides: { [HOST_PATHS_CAPABILITY]: "1.0.0" },
+      provides: { [HOST_PATHS_CAPABILITY]: "1.0.0", [HOST_TRACE_CAPABILITY]: "1.0.0" },
       entry: "host",
     },
   };

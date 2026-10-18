@@ -28,6 +28,8 @@ export function createNodeLogger(options: {
   logsDir: string;
   nodeId: string;
   level?: string;
+  /** Extra fields for every line, computed when it is written (e.g. the current traceId). */
+  mixin?: () => Record<string, unknown>;
 }): NodeLogger {
   const file = Path.join(options.logsDir, "node.log");
   const destination = pino.destination({ dest: file, mkdir: true, sync: true });
@@ -36,6 +38,7 @@ export function createNodeLogger(options: {
       level: options.level ?? "info",
       base: { nodeId: options.nodeId },
       timestamp: pino.stdTimeFunctions.isoTime,
+      ...(options.mixin === undefined ? {} : { mixin: options.mixin }),
     },
     destination,
   );

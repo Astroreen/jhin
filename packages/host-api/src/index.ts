@@ -10,3 +10,14 @@ export interface HostPaths {
    */
   dataDir(plugin: string): string;
 }
+
+export const HOST_TRACE_CAPABILITY = "host.trace";
+
+/**
+ * `host.trace@1`: the trace id of the work in progress. Every log line written
+ * inside `run` carries it as `traceId`, across awaits (D37).
+ */
+export interface HostTrace {
+  run<T>(traceId: string, work: () => T): T;
+  current(): string | undefined;
+}

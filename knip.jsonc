@@ -14,7 +14,13 @@
     "apps/jhin": {
       "entry": ["bin/jhin.js", "src/main.ts"],
       // Distribution plugins are resolved by name from "jhinDistribution".
-      "ignoreDependencies": ["@jhin/plugin-example", "@jhin/plugin-storage-sqlite"],
+      "ignoreDependencies": [
+        "@jhin/plugin-example",
+        "@jhin/plugin-storage-sqlite",
+        "@jhin/plugin-http",
+        "@jhin/plugin-auth-token",
+        "@jhin/plugin-transport-ws",
+      ],
     },
     "e2e": {
       "entry": ["playwright.config.ts", "tests/**/*.spec.ts"],

@@ -337,6 +337,24 @@ Implements D29, D30.
   duplicates, rejected connection without a token, `traceId` propagated from
   request to logs.
 
+Implementation notes (PR 6):
+
+- Protocol details: the WebSocket subprotocol is `jhin.v1`; browsers cannot
+  set headers, so the token travels as a second subprotocol
+  `jhin.token.<token>` that the server never echoes. After checking it the
+  server sends `rpc.ready` first, or closes with code 4401 (the client then
+  stops retrying). Subscription ids are chosen by the client, because backlog
+  events arrive before `rpc.subscribe` returns. Reserved methods:
+  `rpc.hello`, `rpc.subscribe`, `rpc.unsubscribe`; notifications `rpc.ready`,
+  `rpc.event`. Every other method is a command name.
+- `jhin.http` provides `http.server@1` for every plugin that needs HTTP (the
+  transport now, MCP and the web client later); `jhin.host` also provides
+  `host.trace@1` (AsyncLocalStorage, every log line gets `traceId`) and the
+  `host.commands.list` command. Contracts live in `@jhin/http-api`,
+  `@jhin/auth-api` and `@jhin/host-api`.
+- The CLI talks to a running node with `--url` (token read from the home by
+  default); without it, it still boots the plugins in-process.
+
 ### PR 7 — Projects, threads, fake agent, MCP
 
 Implements D33, D34, D39, D49, D51, D52.
