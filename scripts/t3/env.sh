@@ -15,6 +15,8 @@ fi
 
 JHIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export JHIN_ROOT
+# The same path without symlinks, as /proc/<pid>/cwd reports it.
+JHIN_ROOT_PHYSICAL="$(cd "$JHIN_ROOT" && pwd -P)"
 
 # Everything the dev scripts create lives here (gitignored).
 JHIN_DEV_DIR="${JHIN_DEV_DIR:-$JHIN_ROOT/.jhin-dev}"
@@ -46,7 +48,11 @@ if [ "$(node_major)" -lt 24 ]; then
   if [ ! -x "$node_dir/bin/node" ]; then
     mkdir -p "$cache"
     base="https://nodejs.org/dist/v$JHIN_NODE_VERSION"
-    sum="$(curl -fsSL "$base/SHASUMS256.txt" | grep " $name.tar.gz\$" | cut -d' ' -f1)"
+    sum="$(curl -fsSL "$base/SHASUMS256.txt" 2>/dev/null | grep " $name.tar.gz\$" | cut -d' ' -f1 || true)"
+    if [ -z "$sum" ]; then
+      echo "jhin: no checksum for $name at $base (is JHIN_NODE_VERSION=$JHIN_NODE_VERSION right?)" >&2
+      exit 1
+    fi
     # A private staging directory, renamed into place at the end: two scripts
     # starting at once never extract over each other.
     staging="$(mktemp -d "$cache/.download.XXXXXX")"
@@ -58,12 +64,13 @@ if [ "$(node_major)" -lt 24 ]; then
     else
       actual="$(shasum -a 256 "$staging/$name.tar.gz" | cut -d' ' -f1)"
     fi
-    if [ -z "$sum" ] || [ "$actual" != "$sum" ]; then
+    if [ "$actual" != "$sum" ]; then
       echo "jhin: checksum mismatch for $name.tar.gz" >&2
       exit 1
     fi
     tar -xzf "$staging/$name.tar.gz" -C "$staging"
     mv "$staging/$name" "$node_dir" 2>/dev/null || true # lost the race: the other copy is identical
+    [ -x "$node_dir/bin/node" ] || { echo "jhin: could not install $name into $cache" >&2; exit 1; }
     rm -rf "$staging"
     trap - EXIT
   fi
@@ -179,6 +186,6 @@ is_ours() {
   # However it was started (`bash scripts/t3/serve.sh`, `./serve.sh`, …).
   ps -o args= -p "$1" 2>/dev/null | grep -Eq "(^|[ /])$2\.sh( |\$)" || return 1
   if [ -d "/proc/$1" ]; then
-    [ "$(readlink "/proc/$1/cwd")" = "$JHIN_ROOT" ] || return 1
+    [ "$(readlink "/proc/$1/cwd")" = "$JHIN_ROOT_PHYSICAL" ] || return 1
   fi
 }

@@ -5,6 +5,7 @@
 source "$(dirname "$0")/env.sh"
 cd "$JHIN_ROOT" || exit 1
 log="$(mktemp)"
+trap 'bash scripts/t3/stop.sh >/dev/null' EXIT
 
 bash scripts/t3/serve.sh >"$log" 2>&1 &
 # Wait for the concrete "open" line (or serve.sh exiting), not for a time.

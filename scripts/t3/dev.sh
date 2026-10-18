@@ -15,4 +15,7 @@ echo "jhin: open http://127.0.0.1:$JHIN_WEB_PORT/#token=$(dev_token)" >&2
 JHIN_NODE_URL="$NODE_URL" pnpm --filter @jhin/web exec vp dev --host 127.0.0.1 --port "$JHIN_WEB_PORT" --strictPort &
 web_pid=$!
 
-wait -n "$NODE_PID" "$web_pid" || true
+# The status of whichever exits first, so a crashed node is not a clean exit.
+rc=0
+wait -n "$NODE_PID" "$web_pid" || rc=$?
+exit "$rc"
