@@ -203,8 +203,11 @@ is_running() {
 # are reparented. Best effort: a child whose parent starts it and exits
 # within one round is not seen.
 stop_tree() {
-  local grace="${JHIN_STOP_GRACE:-100}" tries=0 signal=TERM
+  local grace="${JHIN_STOP_GRACE:-100}" signal=TERM start elapsed
   local seen signalled="" pid pids alive
+  # A positive number of tenths, or the default: 0 or text would never escalate.
+  [[ "$grace" =~ ^[1-9][0-9]*$ ]] || grace=100
+  start="${EPOCHREALTIME/[.,]/}"
   seen="$(tree_pids "$1")"
   while :; do
     alive=0
@@ -220,12 +223,13 @@ stop_tree() {
       esac
     done
     [ "$alive" = 0 ] && return 0
-    tries=$((tries + 1))
-    if [ "$tries" -eq "$grace" ]; then
-      signal=KILL
-    elif [ "$tries" -ge $((grace + 20)) ]; then
+    # Wall-clock tenths of a second since the start, however slow a round is.
+    elapsed=$(((${EPOCHREALTIME/[.,]/} - start) / 100000))
+    if [ "$elapsed" -ge $((grace + 20)) ]; then
       echo "jhin: processes still running after SIGKILL:$(for pid in $seen; do is_running "$pid" && printf ' %s' "$pid"; done)" >&2
       return 1
+    elif [ "$elapsed" -ge "$grace" ]; then
+      signal=KILL
     fi
     sleep 0.1
     # Forget processes that have exited (their pid may be reused by an

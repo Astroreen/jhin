@@ -45,6 +45,7 @@ stubborn=$!
 trap 'kill -9 "$stubborn" $(cat "$stub/child" 2>/dev/null) 2>/dev/null || true; rm -rf "$stub" "$log"; bash scripts/t3/stop.sh >/dev/null' EXIT
 # Until the stub has installed its trap, or fails if the stub exits first.
 grep -m1 -q ready < <(tail -n +1 -f --pid="$stubborn" "$stub/ready")
+kill "$!" 2>/dev/null || true # the tail behind the process substitution
 echo "$stubborn" >"$JHIN_DEV_DIR/pids/stubborn.pid"
 JHIN_STOP_GRACE=20 bash scripts/t3/stop.sh
 child="$(cat "$stub/child")"
