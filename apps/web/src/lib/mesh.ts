@@ -31,7 +31,8 @@ export function useMeshNodes(node: NodeConnection | undefined): readonly MeshNod
           if (!disposed && request === latest) setKnown({ node, members: nodes });
         })
         // A later failure says nothing new about the mesh: keep what is known.
-        // Without any answer (no mesh plugin, or it fails) no remote is known.
+        // Without any answer (no mesh plugin, or it fails) no remote is known; a
+        // transient first failure reads as unreachable until the next mesh event.
         .catch(() => {
           if (disposed || request !== latest) return;
           setKnown((previous) =>

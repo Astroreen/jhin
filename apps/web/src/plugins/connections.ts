@@ -65,13 +65,16 @@ export const connectionsPlugin = builtin(
       const nodes = new Map<string, { saved: Saved; client: RpcClient }>();
       let snapshot: readonly NodeConnection[] = [];
       const changed = () => {
-        snapshot = [...nodes.values()].map(({ saved, client }) => ({
-          id: saved.url,
-          url: saved.url,
-          label: saved.label,
-          client,
-          state: client.state,
-        }));
+        // An unchanged node keeps its object: views keyed on it do not restart.
+        snapshot = [...nodes.values()].map(({ saved, client }) => {
+          const previous = snapshot.find((node) => node.id === saved.url);
+          return previous !== undefined &&
+            previous.client === client &&
+            previous.label === saved.label &&
+            previous.state === client.state
+            ? previous
+            : { id: saved.url, url: saved.url, label: saved.label, client, state: client.state };
+        });
         for (const listener of Array.from(listeners)) listener();
       };
       const persist = () =>

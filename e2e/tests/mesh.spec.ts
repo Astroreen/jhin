@@ -55,6 +55,13 @@ test("D47: a client connected to a creates a thread on c, two hops away, and get
   expect(seen.route).toHaveLength(3);
 
   await page.goto(`${a.ui}#token=${a.token}`);
+  // A second, independent connection whose state changes later.
+  const other = await start({ mode: "serve" });
+  await page.getByRole("button", { name: "Add node" }).click();
+  await page.getByRole("textbox", { name: "Node URL" }).fill(other.rpc);
+  await page.getByRole("textbox", { name: "Token" }).fill(other.token);
+  await page.getByRole("button", { name: "Connect" }).click();
+  await expect(page.getByLabel("Connection open")).toHaveCount(2);
   const nodeC = page.getByRole("region", { name: "Node c" });
   await nodeC.getByRole("button", { name: "New thread" }).click();
   const message = page.getByRole("textbox", { name: "Message" });
@@ -72,6 +79,15 @@ test("D47: a client connected to a creates a thread on c, two hops away, and get
   const shot = info.outputPath("mesh-chat.png");
   await page.screenshot({ path: shot });
   await info.attach("mesh-chat", { path: shot, contentType: "image/png" });
+
+  // Another connection changing state leaves the open remote thread alone (no remount).
+  const log = page.getByRole("log", { name: "Messages" });
+  // A mark on the element itself: a remount would replace it with a fresh one.
+  await log.evaluate((element) => element.setAttribute("data-mark", "kept"));
+  await other.stop();
+  await expect(page.getByLabel("Connection open")).toHaveCount(1);
+  await expect(log).toHaveAttribute("data-mark", "kept");
+  await expect(agent).toHaveText("Echo: across the mesh");
 
   // c leaves: its section goes away and the open thread says why.
   await c.stop();
