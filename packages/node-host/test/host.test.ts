@@ -46,6 +46,17 @@ export default definePlugin({
 });
 `;
 
+/** The payload of the next `kernel.plugins.updated` event that matches. */
+async function pluginsUpdated(host: HostProcess, match: (payload: any) => boolean): Promise<any> {
+  const message = await host.next(
+    (candidate) =>
+      candidate.type === "event" &&
+      (candidate["event"] as any).type === "kernel.plugins.updated" &&
+      match((candidate["event"] as any).payload),
+  );
+  return (message["event"] as any).payload;
+}
+
 let host: HostProcess | undefined;
 afterEach(async () => {
   await host?.stop();
@@ -84,6 +95,152 @@ describe("node host", () => {
     });
     expect((await host.execute("acme.counter.bump")).value).toEqual({ label: "v2", count: 2 });
     expect((await host.execute("acme.view.show")).value).toBe("view:v2");
+  });
+
+  it("re-resolves the plugin graph when a manifest changes on disk, leaving unrelated plugins running", async () => {
+    const home = tempDir("home");
+    const counter = writePlugin(
+      Path.join(home, "plugins", "counter"),
+      { id: "acme.counter", provides: { "acme.count": "1.0.0" } },
+      { "index.ts": counterIndex, "lib.ts": 'export const label = "v1";\n' },
+    );
+    writePlugin(
+      Path.join(home, "plugins", "view"),
+      { id: "acme.view", requires: { "acme.count": "^1" } },
+      { "index.ts": viewIndex },
+    );
+    host = new HostProcess({ home, cwd: tempDir("cwd"), distribution: [EXAMPLE], watch: true });
+    await host.ready();
+    expect((await host.execute("acme.counter.bump")).value).toEqual({ label: "v1", count: 1 });
+    const manifest = Path.join(counter, "package.json");
+    const packageJson = JSON.parse(Fs.readFileSync(manifest, "utf8"));
+    const pluginsById = async () =>
+      Object.fromEntries(
+        (await host!.execute("host.inspect")).value.kernel.plugins.map((plugin: any) => [
+          plugin.id,
+          plugin,
+        ]),
+      );
+
+    // A breaking version: the dependant blocks, everything else keeps running.
+    let update = pluginsUpdated(host, (payload) => payload.changed.includes("acme.counter"));
+    packageJson.jhin.provides["acme.count"] = "2.0.0";
+    Fs.writeFileSync(manifest, JSON.stringify(packageJson));
+    expect(await update).toEqual({
+      added: [],
+      removed: [],
+      changed: ["acme.counter"],
+      stopped: ["acme.view", "acme.counter"],
+      started: ["acme.counter"],
+      invalid: [],
+    });
+    let plugins = await pluginsById();
+    expect(plugins["acme.view"]).toMatchObject({
+      status: "blocked",
+      error: { code: "VERSION_MISMATCH" },
+    });
+    expect(plugins["acme.counter"].provides).toEqual({ "acme.count": "2.0.0" });
+    expect(plugins["jhin.example"].status).toBe("active");
+    // Scoped state survives the restart.
+    expect((await host.execute("acme.counter.bump")).value).toEqual({ label: "v1", count: 2 });
+
+    // An invalid manifest is shown and the plugin keeps its previous one.
+    update = pluginsUpdated(host, (payload) => payload.invalid.length > 0);
+    Fs.writeFileSync(manifest, '{ "jhin": { "id": ');
+    expect(await update).toMatchObject({ changed: [], stopped: [] });
+    const inspection = (await host.execute("host.inspect")).value;
+    expect(inspection.kernel.invalid).toEqual([
+      {
+        location: counter,
+        error: expect.objectContaining({
+          code: "MANIFEST_INVALID",
+          details: expect.objectContaining({ kept: "acme.counter" }),
+        }),
+      },
+    ]);
+    expect((await host.execute("acme.counter.bump")).value).toEqual({ label: "v1", count: 3 });
+
+    // Fixing it brings the dependant back.
+    update = pluginsUpdated(host, (payload) => payload.changed.includes("acme.counter"));
+    packageJson.jhin.provides["acme.count"] = "1.1.0";
+    Fs.writeFileSync(manifest, JSON.stringify(packageJson));
+    expect(await update).toMatchObject({
+      started: ["acme.counter", "acme.view"],
+      invalid: [],
+    });
+    plugins = await pluginsById();
+    expect(plugins["acme.view"].status).toBe("active");
+    expect((await host.execute("acme.view.show")).value).toBe("view:v1");
+  });
+
+  it("activates plugins added to a plugin directory and stops removed ones while watching", async () => {
+    const home = tempDir("home");
+    host = new HostProcess({ home, cwd: tempDir("cwd"), distribution: [EXAMPLE], watch: true });
+    await host.ready();
+
+    // Moved in whole, the way a package manager or an editor's "move" ends up.
+    const staged = writePlugin(
+      Path.join(tempDir("staging"), "counter"),
+      { id: "acme.counter", provides: { "acme.count": "1.0.0" } },
+      { "index.ts": counterIndex, "lib.ts": 'export const label = "new";\n' },
+    );
+    const installed = Path.join(home, "plugins", "counter");
+    let update = pluginsUpdated(host, (payload) => payload.added.includes("acme.counter"));
+    Fs.renameSync(staged, installed);
+    expect(await update).toMatchObject({ added: ["acme.counter"], started: ["acme.counter"] });
+    expect((await host.execute("acme.counter.bump")).value).toEqual({ label: "new", count: 1 });
+
+    update = pluginsUpdated(host, (payload) => payload.removed.includes("acme.counter"));
+    Fs.rmSync(installed, { recursive: true });
+    expect(await update).toMatchObject({ removed: ["acme.counter"], stopped: ["acme.counter"] });
+    expect((await host.execute("acme.counter.bump")).error).toMatchObject({
+      code: "COMMAND_NOT_FOUND",
+    });
+    expect((await host.execute("example.greet", { name: "Ada" })).value.message).toBe(
+      "Hello, Ada!",
+    );
+  });
+
+  it("applies plugins added or changed on disk through the host.plugins.rescan command", async () => {
+    const cwd = tempDir("cwd");
+    host = new HostProcess({ home: tempDir("home"), cwd, distribution: [EXAMPLE] });
+    await host.ready();
+
+    // A workspace copy with the same id overrides the distribution plugin (D15).
+    const custom = writePlugin(
+      Path.join(cwd, ".jhin", "plugins", "my-example"),
+      { id: "jhin.example" },
+      {
+        "index.ts": `
+import { definePlugin, z } from "@jhin/sdk";
+export default definePlugin({
+  activate(context) {
+    context.commands.register({
+      name: "example.greet",
+      description: "My own greeting",
+      input: z.object({ name: z.string() }),
+      output: z.object({ message: z.string(), count: z.number() }),
+      handler: ({ name }) => ({ message: "Yo " + name, count: 0 }),
+    });
+  },
+});
+`,
+      },
+    );
+    const result = await host.execute("host.plugins.rescan");
+
+    expect(result.value).toEqual({
+      added: [],
+      removed: [],
+      changed: ["jhin.example"],
+      stopped: ["jhin.example"],
+      started: ["jhin.example"],
+      invalid: [],
+    });
+    expect((await host.execute("host.inspect")).value.shadowed).toEqual([
+      { id: "jhin.example", location: EXAMPLE, layer: "distribution", shadowedBy: custom },
+    ]);
+    expect((await host.execute("example.greet", { name: "Ada" })).value.message).toBe("Yo Ada");
   });
 
   it("lets a user plugin replace a distribution plugin with the same id", async () => {

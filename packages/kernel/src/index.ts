@@ -12,5 +12,6 @@ export {
   type PluginInfo,
   type PluginSource,
   type PluginStatus,
+  type PluginsUpdate,
 } from "./kernel.ts";
 export { noopLogger } from "./logger.ts";

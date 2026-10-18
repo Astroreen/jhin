@@ -58,7 +58,11 @@ and engineering practices.
   but the plugin contract stays serialisable and async so they fit later.
 - **D14. Server hot reload:** a watcher disposes the plugin and its
   dependants, re-imports with cache busting, re-activates along the graph.
-  Also triggerable by a `reload plugin` command. Known limitation: old modules
+  Also triggerable by a `reload plugin` command. A changed manifest, or a
+  plugin added to or removed from a plugin location (D15), re-resolves the
+  graph the same way: only the plugins concerned and their dependants restart
+  (`kernel.plugins.updated`, `host.plugins.rescan`); an invalid manifest keeps
+  the previous one and shows in the inspector. Known limitation: old modules
   stay in Node's memory.
 - **D15. Plugin locations and precedence** (same id → topmost wins, i.e.
   "fork one plugin, not the app"): distribution (npm deps of the CLI package)
@@ -269,8 +273,13 @@ and engineering practices.
   previous `?jhin-gen=N` modules in Node's ESM cache, so a long
   `serve --watch` session grows in memory (D14). Out-of-process plugins fix
   this.
-- Re-resolving the plugin graph when a plugin's manifest changes on disk
-  (today: the watcher logs that a restart is needed).
+- Watching a plugin location whose parent directory did not exist when the
+  node started (`.jhin/plugins` in a project without `.jhin/`), and dev paths
+  or distribution plugins added after start: `host.plugins.rescan` or a
+  restart picks them up.
+- A plugin copied into a plugin location file by file (not moved in whole)
+  can be found before its entry file exists; it then fails to activate until
+  its next change or `host.plugins.rescan`.
 - Building the CLI to JavaScript for publishing (today `bin/jhin.js` imports
   TypeScript, which Node only strips outside `node_modules`).
 

@@ -11,6 +11,7 @@ import {
   type KernelSnapshot,
   type ModuleLoader,
   type PluginSource,
+  type PluginsUpdate,
 } from "@jhin/kernel";
 import {
   HOST_IDENTITY_CAPABILITY,
@@ -50,7 +51,11 @@ export interface NodeHostOptions {
   /** Package directories of the distribution plugins. */
   readonly distribution?: readonly string[];
   readonly dev?: readonly string[];
-  /** Reload plugins and config when their files change (D14). */
+  /**
+   * Reload plugins and config when their files change (D14), and re-resolve the
+   * plugin graph when a manifest changes or a plugin is added to or removed from
+   * the user or workspace plugin directory (D15).
+   */
   readonly watch?: boolean;
   readonly logLevel?: string;
 }
@@ -131,7 +136,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     workspace: Path.join(cwd, ".jhin", "plugins"),
     dev: options.dev ?? [],
   };
-  const discovery = discoverPlugins(layers);
+  let discovery = discoverPlugins(layers);
 
   const recentEvents: KernelEvent[] = [];
   const pluginListeners = new Set<
@@ -207,6 +212,22 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           patchConfig(layer, section, values, at ?? Date.now()),
       });
       context.commands.register({
+        name: "host.plugins.rescan",
+        description:
+          "Finds plugins on disk again: activates added ones, stops removed ones and re-resolves changed manifests with everything depending on them",
+        input: z.object({}),
+        output: z.object({
+          added: z.array(z.string()).readonly(),
+          removed: z.array(z.string()).readonly(),
+          changed: z.array(z.string()).readonly(),
+          stopped: z.array(z.string()).readonly(),
+          started: z.array(z.string()).readonly(),
+          invalid: z.array(z.string()).readonly(),
+        }),
+        permissions: ["host.plugins.reload"],
+        handler: () => rescan(),
+      });
+      context.commands.register({
         name: "host.plugins.reload",
         description: "Re-imports a plugin and re-activates it with everything depending on it",
         input: z.object({ plugin: z.string() }),
@@ -253,6 +274,26 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     },
   };
   await kernel.start([hostSource, ...discovery.plugins]);
+
+  const notifyPlugin = (id: string, files: readonly string[]) => {
+    for (const listener of Array.from(pluginListeners)) listener({ id, files });
+  };
+
+  /** Discovers plugins again and applies the differences to the running kernel. */
+  async function rescan(): Promise<PluginsUpdate> {
+    discovery = discoverPlugins(layers);
+    const found = discovery.plugins;
+    const update = await kernel.update([hostSource, ...found]);
+    rewatch();
+    // Client plugins are skipped here; listeners (the web UI) tell their clients.
+    for (const id of [...update.added, ...update.changed]) {
+      const plugin = found.find(
+        (candidate) => (candidate.manifest as { id?: unknown } | undefined)?.id === id,
+      );
+      if (plugin !== undefined) notifyPlugin(id, [Path.join(plugin.root, "package.json")]);
+    }
+    return update;
+  }
 
   /** Last write time per layer and section, so a stale change from elsewhere can lose (D50). */
   const writesFile = Path.join(home.root, "config-writes.json");
@@ -317,11 +358,37 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
   }
 
   let watching: Disposable | undefined;
-  if (options.watch === true) {
-    watching = watchFiles(kernel, discovery.plugins, home, projectConfig, log, (id, files) => {
-      for (const listener of Array.from(pluginListeners)) listener({ id, files });
+  let watched: string | undefined;
+  let stopping = false;
+  const locations = [layers.user, layers.workspace].filter((dir) => dir !== undefined);
+  /**
+   * (Re)builds the file watchers when the watched paths changed. Only then:
+   * rebuilding drops changes still waiting out their debounce.
+   */
+  function rewatch(): void {
+    if (options.watch !== true || stopping) return;
+    const paths = JSON.stringify([
+      discovery.plugins.map((plugin) => [
+        plugin.root,
+        (plugin.manifest as { id?: unknown } | undefined)?.id,
+      ]),
+      locations.map((dir) => Fs.existsSync(dir)),
+    ]);
+    if (paths === watched) return;
+    watched = paths;
+    watching?.dispose();
+    watching = watchFiles({
+      kernel,
+      plugins: discovery.plugins,
+      locations,
+      home,
+      projectConfig,
+      log,
+      notify: notifyPlugin,
+      rescan,
     });
   }
+  rewatch();
 
   return {
     nodeId,
@@ -330,6 +397,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     log,
     inspect,
     async stop() {
+      stopping = true;
       watching?.dispose();
       await kernel.stop();
       log.flush();
@@ -337,14 +405,43 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
   };
 }
 
-function watchFiles(
-  kernel: Kernel,
-  plugins: readonly DiscoveredPlugin[],
-  home: JhinHome,
-  projectConfig: string,
-  log: Logger,
-  notify: (id: string, files: readonly string[]) => void,
-): Disposable {
+interface WatchFilesOptions {
+  readonly kernel: Kernel;
+  readonly plugins: readonly DiscoveredPlugin[];
+  /** Directories whose subdirectories are plugins (D15): watched for plugins coming and going. */
+  readonly locations: readonly string[];
+  readonly home: JhinHome;
+  readonly projectConfig: string;
+  readonly log: Logger;
+  readonly notify: (id: string, files: readonly string[]) => void;
+  readonly rescan: () => Promise<PluginsUpdate>;
+}
+
+function watchFiles({
+  kernel,
+  plugins,
+  locations,
+  home,
+  projectConfig,
+  log,
+  notify,
+  rescan,
+}: WatchFilesOptions): Disposable {
+  const rescanQuietly = (reason: string) =>
+    rescan().catch((error: unknown) => {
+      log.error("plugin rescan failed", { reason, error: toErrorInfo(error) });
+      return undefined;
+    });
+  const reload = (id: string, files: readonly string[]) => {
+    notify(id, files);
+    // Client-side plugins are skipped by this kernel; their clients reload them.
+    const status = kernel.inspect().plugins.find((candidate) => candidate.id === id)?.status;
+    if (status === undefined || status === "skipped") return;
+    log.info("plugin files changed, reloading", { plugin: id, files });
+    kernel.reload(id).catch((error: unknown) => {
+      log.error("plugin reload failed", { plugin: id, error: toErrorInfo(error) });
+    });
+  };
   return watch(
     [
       ...plugins
@@ -353,26 +450,34 @@ function watchFiles(
         )
         .map((plugin) => {
           const id = (plugin.manifest as { id: string }).id;
+          const manifestFile = Path.join(plugin.root, "package.json");
           return {
             path: plugin.root,
             onChange: (files: readonly string[]) => {
-              if (files.some((file) => Path.basename(file) === "package.json")) {
-                log.warn("plugin manifest changed; restart the node to apply it", { plugin: id });
+              if (!files.includes(manifestFile)) {
+                reload(id, files);
                 return;
               }
-              notify(id, files);
-              // Client-side plugins are skipped by this kernel; their clients reload them.
-              const status = kernel
-                .inspect()
-                .plugins.find((candidate) => candidate.id === id)?.status;
-              if (status === undefined || status === "skipped") return;
-              log.info("plugin files changed, reloading", { plugin: id, files });
-              kernel.reload(id).catch((error: unknown) => {
-                log.error("plugin reload failed", { plugin: id, error: toErrorInfo(error) });
+              log.info("plugin manifest changed, re-resolving the plugin graph", { plugin: id });
+              void rescanQuietly(`manifest of ${id} changed`).then((update) => {
+                const rest = files.filter((file) => file !== manifestFile);
+                // A manifest saved without changes still reloads the code saved with it.
+                if (update === undefined || rest.length === 0) return;
+                if (update.started.includes(id) || update.removed.includes(id)) return;
+                reload(id, rest);
               });
             },
           };
         }),
+      ...locations.map((path) => ({
+        path,
+        // A plugin directory coming or going, or the manifest of one (maybe not discovered yet).
+        filter: (relative: string) => {
+          const parts = relative.split(Path.sep);
+          return parts.length === 1 || (parts.length === 2 && parts[1] === "package.json");
+        },
+        onChange: () => void rescanQuietly(`plugins changed in ${path}`),
+      })),
       {
         path: home.config,
         onChange: () => applyLayer(kernel, "node", home.config, log),

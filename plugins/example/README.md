@@ -14,7 +14,9 @@ It shows every surface of `PluginContext`:
 - `events.emit` and `log`.
 
 To try a change without restarting, run `jhin serve --watch` and edit
-`src/index.ts`: the plugin reloads and keeps its state.
+`src/index.ts`: the plugin reloads and keeps its state. Changing the
+`"jhin"` manifest, or adding or removing a plugin directory, re-resolves the
+plugin graph without a restart.
 
 User plugins live in `~/.jhin/plugins/<name>/` (or `.jhin/plugins/` in a
 project). They import `@jhin/sdk` without installing it: the host provides
