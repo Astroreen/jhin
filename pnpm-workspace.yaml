@@ -1,0 +1,24 @@
+packages:
+  - packages/*
+  - plugins/*
+  - apps/*
+  - e2e
+
+catalog:
+  "@playwright/test": 1.61.1
+  "@types/node": 24.19.2
+  knip: 6.41.0
+  typescript: 7.0.2
+  vite: npm:@voidzero-dev/vite-plus-core@1.3.0
+  vite-plus: 1.3.0
+
+# Vite+ ships its own Vite core; route every `vite` request to it so the
+# toolchain has a single Vite and test-runner instance.
+overrides:
+  vite: "catalog:"
+
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"

@@ -92,7 +92,7 @@ and engineering practices.
 - **D22. Single owner, single trust domain.** Federation between owners is
   not planned.
 - **D23. Node identity:** each node generates a stable `nodeId` and an
-  Ed25519 key pair on first start. `nodeId` is *who*, URL is *where*.
+  Ed25519 key pair on first start. `nodeId` is _who_, URL is _where_.
 - **D24. Stable addresses:** `jhin://<nodeId>/threads/<id>`, resolvable
   through any node as `https://<any-node>/n/<nodeId>/...`. Human-readable
   aliases may sit on top; the `nodeId` form stays canonical.
@@ -103,8 +103,8 @@ and engineering practices.
   the foundation:
   - `on-open` — pull missing events by `sequence` when a thread is opened;
   - `eager` — keep copies of other nodes' threads in the background.
-  Default for `serve` nodes: `on-open`, user may enable `eager`. The owner
-  node stays the source of truth.
+    Default for `serve` nodes: `on-open`, user may enable `eager`. The owner
+    node stays the source of truth.
 - **D27. Joining:** `jhin mesh invite` issues a one-time token, `jhin mesh
   join <url> <token>` uses it; keys are exchanged and membership spreads by
   gossip. Implemented as a plugin on top of `auth.token`.
@@ -245,6 +245,7 @@ kernel or transport failures.
 ### PR 1 — Docs
 
 Implements D7, D32, D42, D46.
+
 - This plan, `GLOSSARY.md` (node, project, thread, turn, item, agent,
   capability, plugin, slot, contribution, command, hook), `AGENTS.md`
   rewritten with the agent rules, `LICENSE` (Apache-2.0),
@@ -255,6 +256,7 @@ Implements D7, D32, D42, D46.
 ### PR 2 — Monorepo skeleton
 
 Implements D2, D4, D5, D41, D43, D44.
+
 - pnpm workspace, Node 24 pin, Vite+ (`vp`), TypeScript 7 strict base
   config, oxlint, oxfmt, knip, staged hooks; one placeholder package with a
   test; `devenv.nix` moved to Node 24.
@@ -268,6 +270,7 @@ Implements D2, D4, D5, D41, D43, D44.
 
 Implements D3, D8–D12, D17, D18, D19 (layers engine), D38 (test kernel and
 capability mocks).
+
 - `@jhin/kernel`: manifest parsing and validation, capability graph with
   semver, lifecycle, service registry, hooks, command registry with Zod
   schemas and permissions, layered JSONC config with merged JSON Schema,
@@ -283,6 +286,7 @@ capability mocks).
 ### PR 4 — Server host, hot reload, inspector, logs, CLI
 
 Implements D13, D14, D15, D36, D37; CLI part of D17 and D21 (`serve`).
+
 - `@jhin/node-host`: filesystem loader, plugin locations and precedence,
   watcher-driven reload with cascade along the graph, `reload plugin`
   command.
@@ -298,6 +302,7 @@ Implements D13, D14, D15, D36, D37; CLI part of D17 and D21 (`serve`).
 ### PR 5 — Storage
 
 Implements D31.
+
 - `storage.kv` and `storage.eventlog` on `node:sqlite`; per-stream
   monotonic `sequence`; read from a sequence.
 - **Done when:** contract tests run against the SQLite plugin and the
@@ -306,6 +311,7 @@ Implements D31.
 ### PR 6 — Transport and auth
 
 Implements D29, D30.
+
 - WebSocket + JSON-RPC 2.0 transport plugin (server and client sides); every
   command reachable as RPC; event subscriptions with catch-up from a
   `sequence`; fake in-process transport in `@jhin/testing`.
@@ -318,6 +324,7 @@ Implements D29, D30.
 ### PR 7 — Projects, threads, fake agent, MCP
 
 Implements D33, D34, D39, D49, D51, D52.
+
 - Projects (including the scratch project), threads, turns, items as
   namespaced events in the event log; "agent runtime" capability; fake
   provider with scripted, deterministic streaming replies and `agentId`.
@@ -332,6 +339,7 @@ Implements D33, D34, D39, D49, D51, D52.
 
 Implements D6, D16, D21 (`client`, `serve --ui`), D35, D40; inspector dev
 panel from D36.
+
 - Client host on the isomorphic kernel; `ui.react` UI host plugin with slots
   and contributions; import map for shared dependencies; runtime loading of
   client plugins from the node or a local folder.
@@ -348,6 +356,7 @@ panel from D36.
 ### PR 9 — Mesh
 
 Implements D22–D25, D27, D28.
+
 - Node identity (`nodeId`, Ed25519 keys), `jhin mesh invite` / `jhin mesh
   join`, gossip of membership, replicated catalog (nodes, status,
   capabilities, projects, thread metadata), routing with relay, `jhin://`
@@ -360,6 +369,7 @@ Implements D22–D25, D27, D28.
 ### PR 10 — History sync and settings fan-out
 
 Implements D20, D26, D50.
+
 - `on-open` and `eager` history policies into the local node database by
   `sequence`; config commands fanned out to selected nodes and projects;
   offline queue with later-wins and conflict reporting.
@@ -370,6 +380,7 @@ Implements D20, D26, D50.
 ### PR 11 — Final end-to-end proof
 
 Implements D47.
+
 - Playwright e2e over three real node processes chained A–B–C: the client
   connected to A creates a thread on C and receives the fake reply; a second
   e2e shows two independent nodes in one client.

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.ts", "vite.config.ts"],
+    },
+    "packages/*": {
+      "entry": ["src/index.ts"],
+    },
+    "e2e": {
+      "entry": ["playwright.config.ts", "tests/**/*.spec.ts"],
+    },
+  },
+}

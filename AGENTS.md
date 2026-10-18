@@ -40,12 +40,19 @@ Read these before working:
 
 Work is done only when it is proven. Prefer the smallest proof:
 
-- run only the affected tests, files and packages locally;
-- leave repo-wide runs to CI, or run `verify --affected` when the change
-  spans packages;
+- run only the affected tests, files and packages locally:
+  `vp test run <files>`, `vp check <files>`,
+  `vp run --filter <package> typecheck`;
+- when the change spans packages, run `pnpm verify --affected` (diffs
+  against the merge base with `origin/main`); add `--json` for a
+  machine-readable summary;
+- leave the full run (`pnpm verify`) to CI unless you changed shared config;
 - use the inspector (`jhin inspect`, or the MCP `inspect` tool) to check the
   live state of a node instead of guessing from logs;
 - read structured logs by `traceId` when a request crosses nodes.
+
+The dev shell (`devenv`) provides Node 24, pnpm and Playwright browsers;
+without nix, `pnpm exec playwright install chromium` inside `e2e/` is enough.
 
 Tests:
 
@@ -62,9 +69,6 @@ Pull requests:
 - The PR description lists the decisions (D-numbers) it implements and
   concrete evidence: commands run with their output, screenshots for UI.
   "Tests pass" alone is not evidence.
-
-The tooling commands (`vp`, `verify`) arrive with the monorepo skeleton
-(PR 2 of the foundation plan).
 
 ## Rules
 
