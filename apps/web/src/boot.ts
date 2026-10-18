@@ -125,7 +125,9 @@ function followNode(
   /**
    * Reloads a plugin at a new revision and records the revision as applied
    * only if the reload ran, so the next sync (a `plugins` event, a reconnect)
-   * retries one that did not.
+   * retries one that did not. The loader points at the new revision either
+   * way: if anything restarts the plugin before then (a dependency's reload),
+   * it loads the current files, which is what the retry would do too.
    */
   const reload = async (plugin: RemotePlugin) => {
     entries.set(remoteLocation(plugin.manifest.id), plugin.entry);
@@ -153,6 +155,8 @@ function followNode(
     const restarted = new Set([...update.added, ...update.changed, ...update.started]);
     // Same manifest, new files: a reload, as for a `plugin` event.
     const previous = known;
+    const listed = new Set(list.map((plugin) => plugin.manifest.id));
+    for (const id of previous.keys()) if (!listed.has(id)) entries.delete(remoteLocation(id));
     known = new Map();
     for (const plugin of list) {
       const id = plugin.manifest.id;

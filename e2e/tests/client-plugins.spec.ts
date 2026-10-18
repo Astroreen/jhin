@@ -136,6 +136,67 @@ test("a user plugin dropped in with a builtin's id replaces it; removing it brin
   await expect(actions.getByRole("button", { name: "My inspector" })).toHaveCount(0);
 });
 
+/** Reads `/client/events` and yields event names in arrival order. */
+async function openEvents(ui: string): Promise<{ next(): Promise<string>; close(): void }> {
+  const controller = new AbortController();
+  const response = await fetch(`${ui}client/events`, { signal: controller.signal });
+  const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  return {
+    async next() {
+      for (;;) {
+        const match = /^event: (\S+)$/m.exec(buffer);
+        if (match !== null) {
+          buffer = buffer.slice(match.index + match[0].length);
+          return match[1]!;
+        }
+        const { value, done } = await reader.read();
+        if (done) throw new Error("event stream ended");
+        buffer += value;
+      }
+    },
+    close: () => controller.abort(),
+  };
+}
+
+test("the node sends `plugins` for client plugin list changes only, in order", async () => {
+  node = await startNode({ watch: true });
+  const events = await openEvents(node.ui);
+  try {
+    const rescan = () => node!.client().call("host.plugins.rescan");
+    // A config change is the marker: it shows which events came before it.
+    const configChanged = (marker: string) =>
+      writeConfig(node!.home, { "jhin.ui": { hide: { "sidebar.actions": [marker] } } });
+
+    // A server-only plugin added: no `plugins` before the marker.
+    const server = Path.join(node.home, "plugins", "acme-server");
+    Fs.mkdirSync(server, { recursive: true });
+    Fs.writeFileSync(Path.join(server, "index.js"), "export default { activate() {} };\n");
+    const manifest = (side: string) =>
+      JSON.stringify({
+        name: "acme-server",
+        type: "module",
+        jhin: { id: "acme.server", version: "1.0.0", apiVersion: 1, side, entry: "index.js" },
+      });
+    Fs.writeFileSync(Path.join(server, "package.json"), manifest("server"));
+    await rescan();
+    configChanged("a");
+    expect(await events.next()).toBe("config");
+
+    // The same plugin turned into a client plugin, then back: each changes the list.
+    Fs.writeFileSync(Path.join(server, "package.json"), manifest("client"));
+    await rescan();
+    expect(await events.next()).toBe("plugins");
+    Fs.writeFileSync(Path.join(server, "package.json"), manifest("server"));
+    await rescan();
+    expect(await events.next()).toBe("plugins");
+    configChanged("b");
+    expect(await events.next()).toBe("config");
+  } finally {
+    events.close();
+  }
+});
+
 test("under vp dev, a user plugin loads with the app's shared modules and hot reloads", async ({
   page,
 }) => {
