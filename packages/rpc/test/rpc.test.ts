@@ -339,4 +339,27 @@ describe("rpc", () => {
     expect(first).toEqual(["early-1", "early-2", "live"]);
     expect(second).toEqual(["early-1", "early-2", "live"]);
   });
+
+  it("holds messages again after the last listener leaves", async () => {
+    const handlers: ((event: { data: unknown }) => void)[] = [];
+    const socket = {
+      readyState: 1,
+      send: () => undefined,
+      close: () => undefined,
+      addEventListener: (type: string, handler: (event: { data: unknown }) => void) =>
+        void (type === "message" && handlers.push(handler)),
+      removeEventListener: () => undefined,
+    };
+    const peer = webSocketPeer(socket as never);
+    const first = peer.onMessage(() => undefined);
+    await Promise.resolve();
+    first.dispose();
+    for (const handler of handlers) handler({ data: "while-nobody-listens" });
+
+    const later: string[] = [];
+    peer.onMessage((text) => later.push(text));
+    await Promise.resolve();
+
+    expect(later).toEqual(["while-nobody-listens"]);
+  });
 });

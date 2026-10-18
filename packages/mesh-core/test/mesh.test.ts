@@ -3,6 +3,8 @@ import * as Crypto from "node:crypto";
 import { noopLogger } from "@jhin/kernel";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
+import { createPeerPair, serveRpc } from "@jhin/rpc";
+
 import { createMemoryNetwork, createMesh, type Mesh } from "../src/index.ts";
 
 type Network = ReturnType<typeof createMemoryNetwork>;
@@ -23,7 +25,12 @@ afterEach(() => {
 function startNode(
   network: Network,
   id: string,
-  options: { advertise?: boolean; now?: () => number } = {},
+  options: {
+    advertise?: boolean;
+    now?: () => number;
+    callDeadlineMs?: number;
+    execute?: (method: string) => Promise<unknown>;
+  } = {},
 ): TestNode {
   const keys = Crypto.generateKeyPairSync("ed25519");
   const publicKey = keys.publicKey.export({ type: "spki", format: "der" }).toString("base64url");
@@ -39,15 +46,14 @@ function startNode(
         Buffer.from(signature, "base64url"),
       ),
     transport: network.transport(address),
-    execute: async (method, params, invocation) => ({
-      node: id,
-      method,
-      params,
-      caller: invocation.caller?.id,
-    }),
+    execute: async (method, params, invocation) =>
+      options.execute !== undefined
+        ? options.execute(method)
+        : { node: id, method, params, caller: invocation.caller?.id },
     logger: noopLogger,
     retryDelay: () => 1,
     ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.callDeadlineMs === undefined ? {} : { callDeadlineMs: options.callDeadlineMs }),
   });
   meshes.push(mesh);
   network.listen(address, {
@@ -256,5 +262,74 @@ describe("mesh", () => {
     clock += 16 * 60 * 1000;
 
     await expect(b.mesh.join(a.address, code)).rejects.toMatchObject({ code: "INVITE_INVALID" });
+  });
+
+  it("fails a relayed call with MESH_TIMEOUT when no answer comes back in time", async () => {
+    const network = createMemoryNetwork();
+    // The deadline is the behaviour under test: the test awaits the rejection, not time.
+    const a = startNode(network, "a", { callDeadlineMs: 20 });
+    const b = startNode(network, "b", { execute: () => new Promise(() => undefined) });
+    await b.mesh.join(a.address, a.mesh.invite().code);
+    await until([a, b], () => view(a, b)?.linked === true);
+    await expect(a.mesh.call("b", "app.never", {})).rejects.toMatchObject({ code: "MESH_TIMEOUT" });
+  });
+
+  it("lets a new inbound link from a node supersede its older one", async () => {
+    const network = createMemoryNetwork();
+    const a = startNode(network, "a", { advertise: false });
+    const b = startNode(network, "b", { advertise: false });
+    a.mesh.acceptJoin({ code: a.mesh.invite().code, record: b.mesh.self() });
+
+    // Two connections from b to a, each answered by its own handler.
+    const serveAs = (name: string) => {
+      const [mine, theirs] = createPeerPair();
+      serveRpc(mine, {
+        caller: { id: "a", permissions: ["*"] },
+        logger: noopLogger,
+        hello: () => ({}),
+        newTraceId: () => "t",
+        execute: async () => ({ via: name }),
+      });
+      const closed = new Promise<{ code: number; reason: string }>((resolve) =>
+        mine.onClose(resolve),
+      );
+      a.mesh.accept(theirs, "b");
+      return closed;
+    };
+    const firstClosed = serveAs("first");
+    void serveAs("second");
+
+    expect(await firstClosed).toMatchObject({ code: 1000, reason: "superseded" });
+    expect(await a.mesh.call("b", "app.which", {})).toEqual({ via: "second" });
+  });
+
+  it("ignores remembered members that are malformed or from the far future", () => {
+    const network = createMemoryNetwork();
+    const keys = Crypto.generateKeyPairSync("ed25519");
+    const publicKey = keys.publicKey.export({ type: "spki", format: "der" }).toString("base64url");
+    const good = {
+      nodeId: "g",
+      publicKey,
+      name: "g",
+      urls: [],
+      neighbors: [],
+      version: Date.now(),
+    };
+    const mesh = createMesh({
+      identity: { nodeId: "a", publicKey, name: "a" },
+      sign: () => "",
+      verify: () => false,
+      transport: network.transport("mem://a"),
+      execute: async () => null,
+      logger: noopLogger,
+      members: [
+        good,
+        { nodeId: 5 } as never,
+        { ...good, nodeId: "future", version: Date.now() + 9e12 },
+      ],
+    });
+    meshes.push(mesh);
+
+    expect(mesh.members().map((member) => member.record.nodeId)).toEqual(["a", "g"]);
   });
 });

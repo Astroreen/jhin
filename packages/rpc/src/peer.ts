@@ -23,6 +23,8 @@ export interface WebSocketLike {
 }
 
 const OPEN = 1;
+/** Messages kept for a socket nobody listens on yet. */
+const MAX_HELD_MESSAGES = 1000;
 
 /**
  * A peer over a WebSocket. Messages that arrive while nobody listens are kept
@@ -45,8 +47,16 @@ export function webSocketPeer(socket: WebSocketLike): Peer {
   };
   socket.addEventListener("message", (event: { data: unknown }) => {
     const text = String(event.data);
-    if (held !== undefined) held.push(text);
-    else deliver(text);
+    if (held === undefined) {
+      deliver(text);
+      return;
+    }
+    held.push(text);
+    // Nobody reads this socket: a peer that keeps sending must not grow memory forever.
+    if (held.length > MAX_HELD_MESSAGES) {
+      held = [];
+      socket.close(1008, "too many unread messages");
+    }
   });
 
   return {

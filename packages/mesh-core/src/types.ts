@@ -61,6 +61,11 @@ export interface MeshOptions {
   now?(): number;
   randomId?(): string;
   retryDelay?(attempt: number): number;
+  /**
+   * How long one relayed hop waits for its answer (default 30 s). Mesh calls are
+   * for quick commands; long work, like a turn, starts and returns at once.
+   */
+  readonly callDeadlineMs?: number;
 }
 
 export interface MemberView {

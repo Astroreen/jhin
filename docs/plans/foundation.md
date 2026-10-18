@@ -491,6 +491,10 @@ Implementation notes (PR 9):
   drops out as soon as its neighbors notice.
 - Calls: `mesh.call {node, method, params}` → `mesh.forward` hop by hop
   (at most 8). The target runs the command with caller `node:<origin>`.
+- A relayed call is request/response for quick commands: each hop waits at
+  most 30 s (`callDeadlineMs`) and reports `MESH_TIMEOUT`. Long work starts
+  and returns at once (`threads.send` returns a turn id; the turn streams as
+  events), so no deadline cuts it off.
 - `mesh.nodes` (the "list nodes" tool of D39), `mesh.resolve`, the `mesh`
   stream (`mesh.nodes.changed`) and `GET /n/<nodeId>/<path>` (307 to the
   node, D24). `jhin.host` provides `host.identity@1`. Config: `jhin.mesh.name`,

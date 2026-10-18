@@ -46,7 +46,7 @@ interface Link {
   close?(): void;
 }
 
-/** A forwarded call that gets no answer in this time fails instead of hanging. */
+/** Default deadline of one relayed hop: an answer must come back within it. */
 const CALL_DEADLINE_MS = 30_000;
 
 // Every runtime this package targets has timers, but lib "ESNext" does not declare them.
@@ -55,13 +55,12 @@ const timers = globalThis as unknown as {
   clearTimeout(handle: unknown): void;
 };
 
-function withDeadline<T>(work: Promise<T>, what: string): Promise<T> {
+function withDeadline<T>(work: Promise<T>, what: string, ms: number): Promise<T> {
   let handle: unknown;
   const deadline = new Promise<never>((_, reject) => {
     handle = timers.setTimeout(
-      () =>
-        reject(new MeshError("MESH_TIMEOUT", `No answer from ${what} in ${CALL_DEADLINE_MS} ms`)),
-      CALL_DEADLINE_MS,
+      () => reject(new MeshError("MESH_TIMEOUT", `No answer from ${what} in ${ms} ms`)),
+      ms,
     );
   });
   return Promise.race([work, deadline]).finally(() => timers.clearTimeout(handle));
@@ -94,11 +93,9 @@ export function createMesh(options: MeshOptions): Mesh {
     (() => (globalThis as unknown as { crypto: { randomUUID(): string } }).crypto.randomUUID());
   const log = options.logger;
   const selfId = options.identity.nodeId;
+  const deadlineMs = options.callDeadlineMs ?? CALL_DEADLINE_MS;
 
   const records = new Map<string, MemberRecord>();
-  for (const record of options.members ?? []) {
-    if (record.nodeId !== selfId) records.set(record.nodeId, record);
-  }
   let self: MemberRecord = {
     nodeId: selfId,
     publicKey: options.identity.publicKey,
@@ -108,6 +105,11 @@ export function createMesh(options: MeshOptions): Mesh {
     version: now(),
   };
   records.set(selfId, self);
+  // Remembered members pass the same checks as gossip: an old or corrupt entry
+  // must not break routing on every start.
+  for (const record of valid(options.members ?? [])) {
+    if (record.nodeId !== selfId) records.set(record.nodeId, record);
+  }
 
   const links = new Map<string, Set<Link>>();
   const clients = new Map<string, RpcClient>();
@@ -159,8 +161,8 @@ export function createMesh(options: MeshOptions): Mesh {
   }
 
   /** Records that do not parse are dropped: one bad record must not spread or stick. */
-  const valid = (incoming: unknown): MemberRecord[] =>
-    (Array.isArray(incoming) ? incoming : []).flatMap((item) => {
+  function valid(incoming: unknown): MemberRecord[] {
+    return (Array.isArray(incoming) ? incoming : []).flatMap((item) => {
       const parsed = MemberRecordSchema.safeParse(item);
       if (!parsed.success) {
         log.warn("mesh record ignored", { issues: parsed.error.issues.length });
@@ -172,6 +174,7 @@ export function createMesh(options: MeshOptions): Mesh {
       }
       return [parsed.data];
     });
+  }
 
   /** Keeps the newest version of each record; returns whether anything changed. */
   function merge(incoming: readonly MemberRecord[]): boolean {
@@ -291,6 +294,9 @@ export function createMesh(options: MeshOptions): Mesh {
     return withDeadline(
       next.call("mesh.forward", { ...request, hops: request.hops + 1 }, trace),
       path[1]!,
+      // Each hop waits a little less than the one before, so the hop nearest to
+      // the failure reports it.
+      Math.max(1, deadlineMs - request.hops * 10),
     );
   }
 
