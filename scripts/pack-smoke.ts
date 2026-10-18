@@ -95,7 +95,7 @@ function serve(
 }
 
 /** Third-party versions the workspace lockfile resolved, as pnpm overrides (pins the smoke install). */
-function lockedOverrides(): Map<string, string> {
+function lockedOverrides(): { pins: Map<string, string>; unpinned: string[] } {
   const lockfile = Fs.readFileSync(Path.join(ROOT, "pnpm-lock.yaml"), "utf8");
   const section = /^packages:\n([\s\S]*?)^snapshots:/m.exec(lockfile)?.[1] ?? "";
   const versions = new Map<string, string[]>();
@@ -104,7 +104,12 @@ function lockedOverrides(): Map<string, string> {
     const name = key!.slice(0, at);
     versions.set(name, [...(versions.get(name) ?? []), key!.slice(at + 1)]);
   }
+  // A lockfile format this parser does not understand must not silently unpin everything.
+  if (versions.size === 0) {
+    throw new Error("pnpm-lock.yaml: found no packages to pin; has the lockfile format changed?");
+  }
   const overrides = new Map<string, string>();
+  const unpinned: string[] = [];
   for (const [name, list] of versions) {
     if (list.length === 1) {
       overrides.set(name, list[0]!);
@@ -116,10 +121,13 @@ function lockedOverrides(): Map<string, string> {
       return major === "0" ? `0.${minor}` : major!;
     };
     const lines = list.map(line);
-    if (new Set(lines).size !== lines.length) continue;
+    if (new Set(lines).size !== lines.length) {
+      unpinned.push(`${name} (${list.join(", ")})`);
+      continue;
+    }
     list.forEach((version, index) => overrides.set(`${name}@${lines[index]}`, version));
   }
-  return overrides;
+  return { pins: overrides, unpinned };
 }
 
 /** Fails unless the tarball holds only dist/, package.json, LICENSE and README.md, and names no source. */
@@ -180,10 +188,17 @@ async function main(): Promise<void> {
     // tarball. Third-party packages get the versions the workspace lockfile has, so
     // an upstream release cannot change what this check installs.
     const locked = lockedOverrides();
-    process.stdout.write(`${locked.size} third-party versions pinned from pnpm-lock.yaml\n`);
-    const pins = new Map([
-      ...locked,
-      ...names.filter((name) => name !== CLI).map((name) => [name, `file:${tarball.get(name)}`]),
+    process.stdout.write(`${locked.pins.size} third-party versions pinned from pnpm-lock.yaml\n`);
+    if (locked.unpinned.length > 0) {
+      process.stdout.write(
+        `left unpinned (same major, several versions): ${locked.unpinned.join("; ")}\n`,
+      );
+    }
+    const pins = new Map<string, string>([
+      ...locked.pins,
+      ...names
+        .filter((name) => name !== CLI)
+        .map((name): [string, string] => [name, `file:${tarball.get(name)}`]),
     ]);
     const overrides = [...pins].map(
       ([name, spec]) => `  ${JSON.stringify(name)}: ${JSON.stringify(spec)}`,

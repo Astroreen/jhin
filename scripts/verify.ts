@@ -36,7 +36,8 @@ const GLOBAL_FILES = new Set([
   "tsconfig.build.json",
   "scripts/verify.ts",
 ]);
-// A change to any of these can break the packed CLI (scripts/pack-smoke.ts).
+// A change to any of these, or to a package the CLI ships with, can break the
+// packed CLI (scripts/pack-smoke.ts).
 const PACKING =
   /(^|\/)(package\.json|tsconfig\.build\.json)$|^pnpm-(workspace\.yaml|lock\.yaml)$|^scripts\/pack-/;
 
@@ -72,6 +73,8 @@ interface Workspace {
   readonly dir: string;
   readonly name: string;
   readonly dependsOn: readonly string[];
+  /** Workspace packages in `dependencies`: what ships with this package when packed. */
+  readonly runtime: readonly string[];
 }
 
 function readWorkspace(dir: string): Workspace | undefined {
@@ -86,7 +89,10 @@ function readWorkspace(dir: string): Workspace | undefined {
   const dependsOn = Object.entries(deps)
     .filter(([, spec]) => String(spec).startsWith("workspace:"))
     .map(([name]) => name);
-  return { dir, name: manifest.name, dependsOn };
+  const runtime = Object.entries(manifest.dependencies ?? {})
+    .filter(([, spec]) => String(spec).startsWith("workspace:"))
+    .map(([name]) => name);
+  return { dir, name: manifest.name, dependsOn, runtime };
 }
 
 function workspaces(): Workspace[] {
@@ -99,6 +105,21 @@ function workspaces(): Workspace[] {
     ...SINGLE_WORKSPACES,
   ];
   return dirs.flatMap((dir) => readWorkspace(dir) ?? []);
+}
+
+/** Directories of the CLI and every workspace package it ships with (scripts/pack-smoke.ts). */
+function packedDirs(all: readonly Workspace[]): string[] {
+  const byName = new Map(all.map((ws) => [ws.name, ws]));
+  const found = new Set<string>();
+  const visit = (name: string) => {
+    const ws = byName.get(name);
+    if (ws === undefined || found.has(ws.dir)) return;
+    found.add(ws.dir);
+    // The web client ships a bundle of everything it imports, devDependencies included.
+    (ws.name === "@jhin/web" ? ws.dependsOn : ws.runtime).forEach(visit);
+  };
+  visit("jhin-ai");
+  return [...found];
 }
 
 /** Workspaces containing a changed file, plus everything depending on them. */
@@ -177,10 +198,12 @@ function plan(): { steps: Step[]; skippedSteps: StepResult[] } {
   } else {
     skippedSteps.push(skip("e2e", "only Markdown changed"));
   }
-  if (files.some((file) => PACKING.test(file))) {
+  const packed = packedDirs(all);
+  const shipsChange = (file: string) => packed.some((dir) => file.startsWith(`${dir}/`));
+  if (files.some((file) => PACKING.test(file) || shipsChange(file))) {
     steps.push({ name: "pack", command: ["node", "scripts/pack-smoke.ts"] });
   } else {
-    skippedSteps.push(skip("pack", "no manifest or build config changed"));
+    skippedSteps.push(skip("pack", "nothing the packed CLI ships changed"));
   }
   return { steps, skippedSteps };
 }
