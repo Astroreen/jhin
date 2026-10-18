@@ -5,17 +5,30 @@ import * as Path from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
+import { seedToken } from "./support/token.ts";
+
 const BIN = Path.resolve(import.meta.dirname, "../bin/jhin.js");
 
-function jhin(home: string, ...args: string[]): { status: number; stdout: string; stderr: string } {
-  const result = ChildProcess.spawnSync(
-    process.execPath,
-    [BIN, ...args, "--home", home, "--cwd", home],
-    {
-      encoding: "utf8",
-    },
-  );
-  return { status: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
+/** Runs the CLI in a child process; async, so the test runner's limit applies. */
+function jhin(
+  home: string,
+  ...args: string[]
+): Promise<{ status: number; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    ChildProcess.execFile(
+      process.execPath,
+      [BIN, ...args, "--home", home, "--cwd", home],
+      { encoding: "utf8" },
+      (error, stdout, stderr) => {
+        const code = (error as { code?: unknown } | null)?.code;
+        resolve({
+          status: error === null ? 0 : typeof code === "number" ? code : -1,
+          stdout,
+          stderr,
+        });
+      },
+    );
+  });
 }
 
 function homeWith(
@@ -25,11 +38,8 @@ function homeWith(
   // The CLI runs with --cwd <home>: a free port, never the user's real node.
   Fs.mkdirSync(Path.join(home, ".jhin"), { recursive: true });
   Fs.writeFileSync(Path.join(home, ".jhin", "config.jsonc"), '{ "jhin.http": { "port": 0 } }');
-  // An existing token: the first run does not print the "created the access
-  // token" notice on stderr, which tests parse as JSON.
-  const tokens = Path.join(home, "data", "jhin.auth-token");
-  Fs.mkdirSync(tokens, { recursive: true });
-  Fs.writeFileSync(Path.join(tokens, "token"), `${"t".repeat(43)}\n`, { mode: 0o600 });
+  // The first run then keeps stderr clean JSON (no token notice).
+  seedToken(home);
   for (const [dir, plugin] of Object.entries(plugins)) {
     const root = Path.join(home, "plugins", dir);
     Fs.mkdirSync(root, { recursive: true });
@@ -55,7 +65,7 @@ function homeWith(
 // several on a loaded CI runner, so the limit is a ceiling for real process
 // startups; nothing waits on it.
 describe("jhin CLI", { timeout: 30_000 }, () => {
-  it("inspect prints plugins, services, commands, hooks and an activation error", () => {
+  it("inspect prints plugins, services, commands, hooks and an activation error", async () => {
     const home = homeWith({
       broken: {
         manifest: { id: "acme.broken" },
@@ -73,7 +83,7 @@ export default definePlugin({
       },
     });
 
-    const result = jhin(home, "inspect");
+    const result = await jhin(home, "inspect");
 
     expect(result.status).toBe(0);
     const inspection = JSON.parse(result.stdout);
@@ -101,14 +111,14 @@ export default definePlugin({
     });
 
     // The hook from the user plugin applies when the command runs.
-    const greet = jhin(home, "example.greet", "--name", "Ada");
+    const greet = await jhin(home, "example.greet", "--name", "Ada");
     expect(JSON.parse(greet.stdout)).toEqual({ message: "HELLO, ADA!", count: 1 });
   });
 
-  it("writes JSON logs with nodeId and plugin fields", () => {
+  it("writes JSON logs with nodeId and plugin fields", async () => {
     const home = homeWith({});
 
-    jhin(home, "inspect");
+    await jhin(home, "inspect");
 
     const nodeId = Fs.readFileSync(Path.join(home, "node-id"), "utf8").trim();
     const lines = Fs.readFileSync(Path.join(home, "logs", "node.log"), "utf8")
@@ -123,40 +133,41 @@ export default definePlugin({
   });
 
   // At most two jhin() calls per test, so one slow startup is easy to spot.
-  it("runs commands with --key=value and --input JSON", () => {
+  it("runs commands with --key=value and --input JSON", async () => {
     const home = homeWith({});
 
-    expect(JSON.parse(jhin(home, "example.greet", "--name=Ada").stdout)).toEqual({
+    const flags = await jhin(home, "example.greet", "--name=Ada");
+    expect(JSON.parse(flags.stdout)).toEqual({
       message: "Hello, Ada!",
       count: 1,
     });
-    expect(JSON.parse(jhin(home, "example.greet", "--input", '{"name":"Bo"}').stdout)).toEqual({
+    const json = await jhin(home, "example.greet", "--input", '{"name":"Bo"}');
+    expect(JSON.parse(json.stdout)).toEqual({
       message: "Hello, Bo!",
       count: 1,
     });
   });
 
-  it("reports invalid input and keeps numeric-looking strings as strings", () => {
+  it("reports invalid input and keeps numeric-looking strings as strings", async () => {
     const home = homeWith({});
 
-    const invalid = jhin(home, "example.greet");
+    const invalid = await jhin(home, "example.greet");
     expect(invalid.status).toBe(1);
     expect(JSON.parse(invalid.stderr).error.code).toBe("COMMAND_INPUT_INVALID");
 
     // A string property keeps a numeric-looking value as a string.
-    expect(JSON.parse(jhin(home, "example.greet", "--name", "42").stdout).message).toBe(
-      "Hello, 42!",
-    );
+    const numeric = await jhin(home, "example.greet", "--name", "42");
+    expect(JSON.parse(numeric.stdout).message).toBe("Hello, 42!");
   });
 
-  it("rejects malformed --input JSON and unknown commands", () => {
+  it("rejects malformed --input JSON and unknown commands", async () => {
     const home = homeWith({});
 
-    const badJson = jhin(home, "example.greet", "--input", "{nope");
+    const badJson = await jhin(home, "example.greet", "--input", "{nope");
     expect(badJson.status).toBe(2);
     expect(badJson.stderr).toContain("--input is not valid JSON");
 
-    const unknown = jhin(home, "nope.command");
+    const unknown = await jhin(home, "nope.command");
     expect(unknown.status).toBe(2);
     expect(unknown.stderr).toContain("example.greet");
   });

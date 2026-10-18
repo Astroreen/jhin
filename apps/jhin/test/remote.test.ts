@@ -6,6 +6,8 @@ import * as Path from "node:path";
 import { connectWebSocket, createRpcClient } from "@jhin/rpc";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
+import { readToken } from "./support/token.ts";
+
 const BIN = Path.resolve(import.meta.dirname, "../bin/jhin.js");
 
 let serve: ChildProcess.ChildProcess | undefined;
@@ -48,10 +50,7 @@ describe("a running node", () => {
       Fs.mkdirSync(Path.join(home, ".jhin"));
       Fs.writeFileSync(Path.join(home, ".jhin", "config.jsonc"), '{ "jhin.http": { "port": 0 } }');
       const url = await startServe(home);
-      const token = Fs.readFileSync(
-        Path.join(home, "data", "jhin.auth-token", "token"),
-        "utf8",
-      ).trim();
+      const token = readToken(home);
 
       const client = createRpcClient({ connect: () => connectWebSocket(url, token) });
       const result = await client.call("example.greet", { name: "Ada" }, { trace: "trace-e2e-1" });
