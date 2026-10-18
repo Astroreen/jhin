@@ -1,0 +1,149 @@
+import * as Fs from "node:fs";
+import * as Os from "node:os";
+import * as Path from "node:path";
+
+import { toolName } from "@jhin/mcp-bridge";
+import { connectWebSocket, createRpcClient } from "@jhin/rpc";
+import type { PluginDefinition } from "@jhin/sdk";
+import type { StoredEvent } from "@jhin/storage-api";
+import {
+  createTestKernel,
+  memoryStoragePlugin,
+  mockCapability,
+  type TestKernel,
+} from "@jhin/testing";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+// The SDK's transport types disagree under exactOptionalPropertyTypes; the objects match.
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { afterEach, describe, expect, it } from "vite-plus/test";
+
+import agent from "../../agent-fake/src/index.ts";
+import auth from "../../auth-token/src/index.ts";
+import http from "../../http/src/index.ts";
+import threads from "../../threads/src/index.ts";
+import transport from "../../transport-ws/src/index.ts";
+import mcp from "../src/index.ts";
+
+const manifest = (dir: string) =>
+  JSON.parse(Fs.readFileSync(new URL(`../../${dir}/package.json`, import.meta.url), "utf8")).jhin;
+const real = (dir: string, definition: PluginDefinition) => ({
+  manifest: manifest(dir),
+  definition,
+});
+
+let kernel: TestKernel | undefined;
+afterEach(async () => {
+  await kernel?.stop();
+  kernel = undefined;
+});
+
+async function startNode() {
+  const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-mcp-"));
+  const storage = memoryStoragePlugin();
+  kernel = await createTestKernel({
+    plugins: [
+      mockCapability("host.paths", {
+        home: data,
+        dataDir: (id: string) => {
+          Fs.mkdirSync(Path.join(data, id), { recursive: true });
+          return Path.join(data, id);
+        },
+      }),
+      storage,
+      real("http", http),
+      real("auth-token", auth),
+      real("transport-ws", transport),
+      real("threads", threads),
+      real("agent-fake", agent),
+      real("mcp-server", mcp),
+    ],
+    config: { node: { "jhin.http": { port: 0 } } },
+  });
+  expect(kernel.inspect().plugins.filter((plugin) => plugin.status !== "active")).toEqual([]);
+  const { url } = (await kernel.commands.execute("http.info", {})) as { url: string };
+  const { token } = (await kernel.commands.execute("auth.token.show", {})) as { token: string };
+  return { kernel, url, token };
+}
+
+async function mcpClient(url: string, token: string): Promise<Client> {
+  const client = new Client({ name: "jhin-test", version: "0.0.0" });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`${url}/mcp`), {
+      requestInit: { headers: { authorization: `Bearer ${token}` } },
+    }) as unknown as Transport,
+  );
+  return client;
+}
+
+describe("jhin.mcp-server", () => {
+  it("lists every command as a tool and reads back a turn driven over RPC", async () => {
+    const node = await startNode();
+    const rpc = createRpcClient({
+      connect: () => connectWebSocket(`${node.url.replace(/^http/, "ws")}/rpc`, node.token),
+    });
+
+    // Drive a full turn over RPC (WebSocket).
+    const thread = await rpc.call<{ id: string }>("threads.create", { title: "Over RPC" });
+    const seen: StoredEvent[] = [];
+    const completed = new Promise<void>((resolve) =>
+      rpc.subscribe(`thread/${thread.id}`, {}, (event) => {
+        seen.push(event);
+        if (event.type === "agent.turn.completed") resolve();
+      }),
+    );
+    await rpc.call("threads.send", { threadId: thread.id, text: "ping" });
+    await completed;
+    rpc.close();
+
+    // Read it back over MCP.
+    const client = await mcpClient(node.url, node.token);
+    const { tools } = await client.listTools();
+    expect(tools.map((tool) => tool.name).toSorted()).toEqual(
+      node.kernel.commands
+        .list()
+        .map((command) => toolName(command.name))
+        .toSorted(),
+    );
+    expect(tools.find((tool) => tool.name === "threads_send")?.inputSchema).toMatchObject({
+      type: "object",
+      properties: { threadId: { type: "string" }, text: { type: "string" } },
+    });
+
+    const result = await client.callTool({
+      name: "threads_events",
+      arguments: { threadId: thread.id },
+    });
+    const events = JSON.parse((result.content as { text: string }[])[0]!.text) as StoredEvent[];
+    expect(events).toEqual(seen);
+    expect(events.at(-2)?.payload).toMatchObject({ text: "Echo: ping" });
+
+    const failure = await client.callTool({
+      name: "threads_send",
+      arguments: { threadId: "missing", text: "x" },
+    });
+    expect(failure.isError).toBe(true);
+    expect(JSON.parse((failure.content as { text: string }[])[0]!.text)).toMatchObject({
+      code: "THREAD_NOT_FOUND",
+    });
+    await client.close();
+  });
+
+  it("refuses MCP requests without the token", async () => {
+    const node = await startNode();
+
+    const response = await fetch(`${node.url}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+
+    expect(response.status).toBe(401);
+    await expect(
+      mcpClient(node.url, "wrong-token-wrong-token-wrong-token-wrong-to"),
+    ).rejects.toThrow();
+  });
+});

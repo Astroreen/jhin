@@ -3,7 +3,10 @@ import * as Module from "node:module";
 import * as Path from "node:path";
 
 import { resolveHome, startNodeHost, type NodeHost } from "@jhin/node-host";
+import { createMcpServer } from "@jhin/mcp-bridge";
 import { connectWebSocket, createRpcClient } from "@jhin/rpc";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { CommandInfo } from "@jhin/sdk";
 
 const require = Module.createRequire(import.meta.url);
@@ -21,6 +24,7 @@ function distribution(): string[] {
 const USAGE = `Usage:
   jhin serve [--watch]          run this node until interrupted
   jhin inspect                  print the node's live state as JSON
+  jhin mcp                      serve every command as an MCP tool over stdio
   jhin <command> [--key value]  run a registered command, e.g. jhin example.greet --name Ada
          [--input '<json>']     ...or pass the whole input as JSON
   jhin help                     list every command
@@ -231,6 +235,24 @@ async function main(argv: readonly string[]): Promise<number> {
       process.once("SIGTERM", resolve);
     });
     await host.stop();
+    return 0;
+  }
+
+  if (command === "mcp") {
+    // stdout is the MCP channel from here on: everything else goes to the log file or stderr.
+    await withTarget(remote, async (target) => {
+      const server = createMcpServer({
+        list: () => target.list(),
+        execute: (name, input) => target.execute(name, input),
+      });
+      const finished = new Promise<void>((resolve) => {
+        // oxlint-disable-next-line unicorn/prefer-add-event-listener -- the MCP SDK Server only offers onclose
+        server.onclose = resolve;
+        process.stdin.once("end", resolve);
+      });
+      await server.connect(new StdioServerTransport() as unknown as Transport);
+      await finished;
+    });
     return 0;
   }
 

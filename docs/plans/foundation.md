@@ -373,6 +373,22 @@ Implements D33, D34, D39, D49, D51, D52.
   through MCP; interrupt stops a streaming turn; an MCP client lists the
   tools generated from commands.
 
+Implementation notes (PR 7):
+
+- Contracts: `@jhin/agent-api` holds `agent.runtime@1` (`startTurn` returns
+  `{ items, interrupt }`) and the thread event types: `threads.thread.created`,
+  `agent.turn.started` (with `agentId`, D52), `agent.item.delta`,
+  `agent.item.completed`, `agent.turn.completed`, `agent.turn.interrupted`,
+  `agent.turn.failed`. A thread's stream is `thread/<id>`.
+- `jhin.threads` commands: `projects.list`, `projects.create`, `threads.list`,
+  `threads.create`, `threads.get`, `threads.events`, `threads.send`,
+  `threads.interrupt`; one turn per thread at a time (`TURN_IN_PROGRESS`).
+- MCP tool names are command names with `.` → `_` (`threads.send` →
+  `threads_send`), reversible because command names have no `_`, and valid
+  for model APIs that forbid dots. `jhin.mcp-server` is stateless Streamable
+  HTTP at `POST /mcp` with `Authorization: Bearer <token>`; `jhin mcp` serves
+  the same tools over stdio, in-process or against `--url`.
+
 ### PR 8 — Web client
 
 Implements D6, D16, D21 (`client`, `serve --ui`), D35, D40; inspector dev

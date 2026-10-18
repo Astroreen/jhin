@@ -20,6 +20,9 @@
         "@jhin/plugin-http",
         "@jhin/plugin-auth-token",
         "@jhin/plugin-transport-ws",
+        "@jhin/plugin-threads",
+        "@jhin/plugin-agent-fake",
+        "@jhin/plugin-mcp-server",
       ],
     },
     "e2e": {

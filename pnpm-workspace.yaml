@@ -5,6 +5,7 @@ packages:
   - e2e
 
 catalog:
+  "@modelcontextprotocol/sdk": 1.32.1
   "@playwright/test": 1.61.1
   "@types/node": 24.19.2
   "@types/semver": 7.8.0
