@@ -5,6 +5,7 @@ import type { BuiltinPlugin } from "./lib/builtin.ts";
 import { chatPlugin } from "./plugins/chat.tsx";
 import { connectionsPlugin } from "./plugins/connections.ts";
 import { inspectorPlugin } from "./plugins/inspector.tsx";
+import { meshPlugin } from "./plugins/mesh.ts";
 import { navigationPlugin } from "./plugins/navigation.ts";
 import { sidebarPlugin } from "./plugins/sidebar.tsx";
 import { uiHostPlugin } from "./plugins/ui-host.tsx";
@@ -14,6 +15,7 @@ const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
   uiHostPlugin,
   connectionsPlugin,
   navigationPlugin,
+  meshPlugin,
   sidebarPlugin,
   chatPlugin,
   inspectorPlugin,

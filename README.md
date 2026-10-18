@@ -10,6 +10,7 @@ implementation lives in git history.
 
 - Design and roadmap: [`docs/plans/foundation.md`](docs/plans/foundation.md)
 - Vocabulary: [`GLOSSARY.md`](GLOSSARY.md)
+- Running from a checkout: [`scripts/t3/README.md`](scripts/t3/README.md)
 
 Licensed under Apache-2.0. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
 for derived work.

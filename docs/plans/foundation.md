@@ -219,11 +219,6 @@ and engineering practices.
 
 ## Deferred (not in the foundation)
 
-- One shared mesh membership feed per connection in the web client (the
-  sidebar and the main view each subscribe today).
-- Web e2e for a failing `mesh.open` on a reachable remote and for remote
-  routes on a node without the mesh plugin; a failure path with the last
-  snapshot for `untilReachable` in `e2e/tests/mesh.spec.ts`.
 - Out-of-process plugins (JSON-RPC child processes, any language, WASM).
 - Real agent adapters: own LLM loop, Claude Code, Codex, OpenCode.
 - Record/replay of real provider transcripts.
@@ -249,6 +244,10 @@ and engineering practices.
 - OpenTelemetry export plugin.
 - Trying `tsc-rs` instead of TypeScript 7.
 - Publishing packages to npm.
+- An `Origin` allowlist on the WebSocket transport: today the upgrade is
+  authenticated by token only, so a page in the owner's browser that knows a
+  token can call commands. It must still let `jhin client` and other nodes'
+  web clients connect cross-origin (D21).
 - Keeping node tokens somewhere safer than `localStorage` in the web client:
   any script on the client's origin (including user client plugins) can read
   them today.
@@ -592,3 +591,8 @@ Implementation notes (PR 11):
   node (`#n=<connection>&r=<node>&t=<thread>`).
 - "Add node" (`sidebar.actions`) opens the connect form, so one client holds
   several independent nodes (D8).
+- `client.mesh@1` (`@jhin/client-api`, provided by the built-in
+  `jhin.mesh-membership`) keeps one `mesh` subscription per connection,
+  shared by every view (the sidebar and the main view today): the first
+  subscriber opens it, the last one closes it, and a new client for the
+  connection starts it over.

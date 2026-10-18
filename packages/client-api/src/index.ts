@@ -3,6 +3,7 @@ import { z, type Disposable } from "@jhin/sdk";
 
 export const CONNECTIONS_CAPABILITY = "client.connections";
 export const NAVIGATION_CAPABILITY = "client.navigation";
+export const MESH_CAPABILITY = "client.mesh";
 
 /** One node this client talks to (D8: a client holds N connections). */
 export interface NodeConnection {
@@ -23,6 +24,33 @@ export interface Connections {
   remove(id: string): void;
   /** Fires when the list or any connection state changes. */
   subscribe(listener: () => void): Disposable;
+}
+
+/** One node of a connected node's mesh, as that node's `mesh.nodes` lists it. */
+export interface MeshMember {
+  readonly nodeId: string;
+  readonly name: string;
+  /** The connected node itself. */
+  readonly self: boolean;
+  /** The connected node has a route to it now. */
+  readonly reachable: boolean;
+}
+
+/**
+ * `client.mesh@1`: the mesh of each connected node, kept current from its
+ * `mesh` stream. One feed per connection, shared by every subscriber: the
+ * first subscriber opens it, the last one closes it.
+ */
+export interface MeshMembership {
+  /**
+   * What the connection's node reports: `undefined` while nobody subscribes,
+   * while the connection is not open and until the first answer; empty when
+   * the first answer fails (no mesh plugin there). The same array until it
+   * changes.
+   */
+  members(connection: string): readonly MeshMember[] | undefined;
+  /** Follows the connection's mesh; `listener` fires whenever `members` changes. */
+  subscribe(connection: string, listener: () => void): Disposable;
 }
 
 export interface Route {

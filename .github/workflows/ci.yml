@@ -73,11 +73,22 @@ jobs:
           path: e2e/playwright-report
           retention-days: 7
 
+  dev-scripts:
+    name: Dev scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup
+      # shellcheck is preinstalled on GitHub's Ubuntu runners.
+      - run: shellcheck scripts/t3/*.sh
+      - run: bash scripts/t3/smoke.sh
+
   # Single required status for branch protection.
   ci:
     name: CI
     if: always()
-    needs: [check, typecheck, unit, knip, e2e]
+    needs: [check, typecheck, unit, knip, e2e, dev-scripts]
     runs-on: ubuntu-latest
     steps:
       - name: All jobs passed

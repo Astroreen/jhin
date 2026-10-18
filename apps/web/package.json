@@ -25,6 +25,7 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@jhin/testing": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
