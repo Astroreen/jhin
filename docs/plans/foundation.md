@@ -212,6 +212,8 @@ and engineering practices.
 
 ## Deferred (not in the foundation)
 
+- One shared mesh membership feed per connection in the web client (the
+  sidebar and the main view each subscribe today).
 - Out-of-process plugins (JSON-RPC child processes, any language, WASM).
 - Real agent adapters: own LLM loop, Claude Code, Codex, OpenCode.
 - Record/replay of real provider transcripts.

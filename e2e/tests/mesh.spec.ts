@@ -79,6 +79,24 @@ test("D47: a client connected to a creates a thread on c, two hops away, and get
   await expect(page.getByRole("status")).toContainText("Node unreachable");
 });
 
+test("D47: a link to a node the mesh does not know says so", async ({ page }) => {
+  const a = await start({ mode: "ui", config: { "jhin.mesh": { name: "a" } } });
+  await page.goto(`${a.ui}#token=${a.token}`);
+  await page
+    .getByRole("region", { name: /^Node / })
+    .first()
+    .getByRole("button", { name: "New thread" })
+    .click();
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+  // The same thread id, but behind a remote node nobody has heard of.
+  await page.evaluate(() => {
+    const params = new URLSearchParams(location.hash.slice(1));
+    params.set("r", "nobody");
+    location.hash = params.toString();
+  });
+  await expect(page.getByRole("status")).toContainText("Node unreachable");
+});
+
 test("D47: one client shows two independent nodes at once", async ({ page }, info) => {
   const x = await start({ mode: "ui" });
   const y = await start({ mode: "serve" });

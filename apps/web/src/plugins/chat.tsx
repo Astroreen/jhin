@@ -208,6 +208,12 @@ export const chatPlugin = builtin(
         );
       }
 
+      /** Leaves the current panel, keeping the rest of the route. */
+      const closePanel = () => {
+        const { panel: _panel, ...rest } = navigation.current();
+        navigation.navigate(rest);
+      };
+
       function Connect({ cancellable }: { cancellable: boolean }) {
         const [url, setUrl] = useState(
           `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/rpc`,
@@ -222,8 +228,7 @@ export const chatPlugin = builtin(
               try {
                 connections.add({ url, token });
                 setError(undefined);
-                const { panel: _panel, ...rest } = navigation.current();
-                navigation.navigate(rest);
+                closePanel();
               } catch (failure) {
                 setError(
                   failure instanceof z.ZodError
@@ -263,8 +268,7 @@ export const chatPlugin = builtin(
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  const { panel: _panel, ...rest } = navigation.current();
-                  navigation.navigate(rest);
+                  closePanel();
                 }}
               >
                 Cancel
