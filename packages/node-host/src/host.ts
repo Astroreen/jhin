@@ -212,6 +212,38 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           patchConfig(layer, section, values, at ?? Date.now()),
       });
       context.commands.register({
+        name: "host.config.get",
+        description:
+          "A config section of this node: its effective value and what the node and project files set",
+        input: z.object({ section: z.string().regex(DOTTED_ID) }),
+        output: z.object({
+          /** Absent when the section is not defined or its value is invalid. */
+          value: z.unknown().optional(),
+          error: z.string().optional(),
+          layers: z.object({ node: z.unknown().optional(), project: z.unknown().optional() }),
+        }),
+        permissions: ["host.config.read"],
+        handler: ({ section }) => {
+          const files = {
+            node: readLayer(home.config, log)?.[section],
+            project: readLayer(projectConfig, log)?.[section],
+          };
+          try {
+            return { value: kernel.config.get(section), layers: files };
+          } catch (error) {
+            return { error: error instanceof Error ? error.message : String(error), layers: files };
+          }
+        },
+      });
+      context.commands.register({
+        name: "host.config.schema",
+        description: "JSON Schema of every config section of this node, keyed by section",
+        input: z.object({}),
+        output: z.unknown(),
+        permissions: ["host.config.read"],
+        handler: () => kernel.config.jsonSchema(),
+      });
+      context.commands.register({
         name: "host.plugins.rescan",
         description:
           "Finds plugins on disk again: activates added ones, stops removed ones and re-resolves changed manifests with everything depending on them",
