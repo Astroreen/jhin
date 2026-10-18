@@ -196,8 +196,9 @@ is_running() {
 }
 
 # Ends a process tree and returns once every process in it has exited.
-# Descendants that appear while it shuts down (also those reparented after
-# their parent exited) are signalled too. SIGTERM first; whatever still runs
+# Descendants that appear while it shuts down are found on the next round
+# (every 0.1 s) and signalled too, also once they are reparented. Best effort:
+# a child whose parent starts it and exits within one round is not seen. SIGTERM first; whatever still runs
 # after JHIN_STOP_GRACE tenths of a second (default 100 = 10 s, one budget
 # for the whole tree) gets SIGKILL; after 2 s more it gives up and fails.
 stop_tree() {

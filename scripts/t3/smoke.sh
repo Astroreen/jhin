@@ -34,7 +34,7 @@ echo "smoke: stop.sh left no node running"
 # A process that ignores SIGTERM and, when signalled, starts a child that
 # ignores it too: stop.sh must catch the late child and reach SIGKILL.
 stub="$(mktemp -d)"
-mkfifo "$stub/ready"
+touch "$stub/ready"
 cat >"$stub/stubborn.sh" <<'STUB'
 trap 'bash -c "trap \"\" TERM; exec sleep 1000" & echo $! >"$1/child"' TERM
 echo ready >"$1/ready"
@@ -43,8 +43,8 @@ STUB
 bash "$stub/stubborn.sh" "$stub" &
 stubborn=$!
 trap 'kill -9 "$stubborn" $(cat "$stub/child" 2>/dev/null) 2>/dev/null || true; rm -rf "$stub" "$log"; bash scripts/t3/stop.sh >/dev/null' EXIT
-# Blocks until the stub has installed its trap and written to the fifo.
-read -r _ <"$stub/ready"
+# Until the stub has installed its trap, or fails if the stub exits first.
+grep -m1 -q ready < <(tail -n +1 -f --pid="$stubborn" "$stub/ready")
 echo "$stubborn" >"$JHIN_DEV_DIR/pids/stubborn.pid"
 JHIN_STOP_GRACE=20 bash scripts/t3/stop.sh
 child="$(cat "$stub/child")"
