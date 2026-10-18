@@ -196,11 +196,12 @@ is_running() {
 }
 
 # Ends a process tree and returns once every process in it has exited.
-# Descendants that appear while it shuts down are found on the next round
-# (every 0.1 s) and signalled too, also once they are reparented. Best effort:
-# a child whose parent starts it and exits within one round is not seen. SIGTERM first; whatever still runs
-# after JHIN_STOP_GRACE tenths of a second (default 100 = 10 s, one budget
-# for the whole tree) gets SIGKILL; after 2 s more it gives up and fails.
+# SIGTERM first; whatever still runs after JHIN_STOP_GRACE tenths of a second
+# (default 100 = 10 s, one budget for the whole tree) gets SIGKILL; after 2 s
+# more it gives up and returns 1. Descendants that appear while it shuts down
+# are found on the next round (every 0.1 s) and signalled too, also once they
+# are reparented. Best effort: a child whose parent starts it and exits
+# within one round is not seen.
 stop_tree() {
   local grace="${JHIN_STOP_GRACE:-100}" tries=0 signal=TERM
   local seen signalled="" pid pids alive
@@ -233,7 +234,9 @@ stop_tree() {
     for pid in $seen; do
       is_running "$pid" && pids="$pids $(tree_pids "$pid")"
     done
-    seen="$(printf '%s' "$pids" | tr ' ' '\n' | grep -v '^$' | sort -un)"
+    # No grep here: it fails on empty input, which errexit would turn into
+    # an abort exactly when everything has exited.
+    seen="$(printf '%s' "$pids" | tr -s ' ' '\n' | sort -un)"
   done
 }
 
