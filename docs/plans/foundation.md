@@ -559,18 +559,28 @@ Implementation notes (PR 10):
   `MESH_TIMEOUT` may already have been applied; applying it again is harmless
   (same values, same time).
 - Hardening (after PR 12): the changes still waiting live in `storage.kv`
-  (`jhin.mesh.outbox`, keyed by queue time); `mesh/outbox` stays the
+  (`jhin.mesh.outbox`, keyed by a number that only grows: the queue time, but
+  always above the last key's, so the order changes were made in survives
+  equal milliseconds and clock steps back); `mesh/outbox` stays the
   append-only history. A mesh change lists only the pending changes and never
   reads the stream; an outbox written before this is read once to build the
-  pending set. A change undelivered `jhin.mesh.queueExpiryHours` after it was
-  queued (default 720, `null` = never) ends as `mesh.config.expired` instead
-  of waiting forever; `mesh.config.pending` lists what still waits (node,
-  layer, section, `expiresAt`; never the values).
+  pending set (retried if storage fails). A change undelivered
+  `jhin.mesh.queueExpiryHours` after it was queued (default 720, `null` =
+  never) ends as `mesh.config.expired` instead of waiting forever;
+  `mesh.config.pending` lists what still waits (node, layer, section,
+  `expiresAt`; never the values). Changes taken over from an older outbox keep
+  their original queue time, so one queued longer ago than the expiry ends as
+  `mesh.config.expired` on the first look after the upgrade, before any
+  delivery attempt. Only an error of the delivery itself makes a change
+  `mesh.config.failed`; when recording an outcome fails, the change stays
+  pending and is delivered again later (harmless: same values, same time).
 - `/mesh/join` rate limiting keys on `http.server`'s `clientAddress` (1.1): the
   socket's peer, or, when that peer is one of `jhin.http.trustProxy`
   (addresses or CIDR ranges, empty by default), the first untrusted hop of
   `jhin.http.forwardedHeader` (`x-forwarded-for` or RFC 7239 `forwarded`)
   read from the right. Forwarded headers from any other peer are ignored.
+  Addresses come back in one spelling (canonical IPv6, IPv4-mapped IPv6 as
+  IPv4), so one client has one bucket; an empty hop is `unknown`.
 
 ### PR 11 — Final end-to-end proof
 

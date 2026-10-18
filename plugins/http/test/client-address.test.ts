@@ -52,6 +52,15 @@ describe("clientAddress", () => {
     expect(xff("fd00::1", "2001:db8::7", ["fd00::/8"])).toBe("2001:db8::7");
   });
 
+  it("gives one client one spelling, and an empty hop no address", () => {
+    expect(xff("10.0.0.2", "2001:0DB8:0:0:0:0:0:1", ["10.0.0.0/8"])).toBe("2001:db8::1");
+    expect(xff("10.0.0.2", "[2001:db8::1]:443", ["10.0.0.0/8"])).toBe("2001:db8::1");
+    expect(xff("10.0.0.2", "0:0:0:0:0:ffff:c633:6401", ["10.0.0.0/8"])).toBe("198.51.100.1");
+    expect(xff("0:0:0:0:0:0:0:1", "198.51.100.1", ["::1"])).toBe("198.51.100.1");
+    expect(xff("10.0.0.2", "198.51.100.1, ", ["10.0.0.0/8"])).toBe("unknown");
+    expect(xff("10.0.0.2", " ,", ["10.0.0.0/8"])).toBe("unknown");
+  });
+
   it("reads RFC 7239 Forwarded only when configured", () => {
     const forwarded = (header: string) =>
       clientAddress(

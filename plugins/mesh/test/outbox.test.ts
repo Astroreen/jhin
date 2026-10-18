@@ -1,5 +1,11 @@
 import type { Logger } from "@jhin/sdk";
-import { createMemoryStorage, type EventLog, type Json, type StoredEvent } from "@jhin/storage-api";
+import {
+  createMemoryStorage,
+  type EventLog,
+  type Json,
+  type KeyValueStore,
+  type StoredEvent,
+} from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createOutbox, OUTBOX_STREAM, type Delivery, type Patch } from "../src/outbox.ts";
@@ -27,11 +33,30 @@ function setup(
   const storage = options.storage ?? createMemoryStorage();
   // Counts reads of the outbox stream: a mesh change must not need any.
   const reads: string[] = [];
+  // Storage faults a test arms: the next write of that kind fails once.
+  const faults = { append: undefined as string | undefined, kvGet: false };
   const log: EventLog = {
     ...storage.log,
     read(stream, readOptions) {
       reads.push(stream);
       return storage.log.read(stream, readOptions);
+    },
+    append(stream, events, appendOptions) {
+      if (events.some((event) => event.type === faults.append)) {
+        faults.append = undefined;
+        return Promise.reject(new Error("disk full"));
+      }
+      return storage.log.append(stream, events, appendOptions);
+    },
+  };
+  const kv: KeyValueStore = {
+    ...storage.kv,
+    get(namespace, key) {
+      if (faults.kvGet) {
+        faults.kvGet = false;
+        return Promise.reject(new Error("database locked"));
+      }
+      return storage.kv.get(namespace, key);
     },
   };
   let now = 1_000_000;
@@ -40,7 +65,7 @@ function setup(
   const delivered: { node: string; patch: Patch }[] = [];
   const answers = new Map<string, () => Delivery>();
   const outbox = createOutbox({
-    kv: storage.kv,
+    kv,
     log,
     now: () => now,
     expireAfterMs: options.expireAfterMs === undefined ? 24 * HOUR : options.expireAfterMs,
@@ -55,6 +80,7 @@ function setup(
   });
   return {
     storage,
+    faults,
     outbox,
     reads,
     online,
@@ -62,6 +88,9 @@ function setup(
     answers,
     advance: (ms: number) => {
       now += ms;
+    },
+    setNow: (value: number) => {
+      now = value;
     },
     history: async () =>
       (await storage.log.read(OUTBOX_STREAM)).map((event: StoredEvent) => [
@@ -199,6 +228,82 @@ describe("config outbox (D50)", () => {
     await second.outbox.flush();
     expect(second.reads).toEqual([]);
     expect(await second.outbox.pending()).toEqual([]);
+  });
+
+  it("keeps the order changes were made in, within one millisecond and after the clock steps back", async () => {
+    const storage = createMemoryStorage();
+    const first = setup({ storage });
+    await first.outbox.enqueue("b", patch("1"));
+    await first.outbox.enqueue("b", patch("2"));
+    first.advance(-60_000);
+    await first.outbox.enqueue("b", patch("3"));
+
+    // A restart with the clock further back still queues behind what is pending.
+    const second = setup({ storage });
+    second.setNow(5);
+    await second.outbox.enqueue("b", patch("4"));
+    second.online.add("b");
+    await second.outbox.flush();
+    expect(second.delivered.map((change) => change.patch.values["greeting"])).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+    ]);
+  });
+
+  it("does not call an applied change failed when recording its outcome fails", async () => {
+    const { outbox, online, delivered, faults, history } = setup();
+    await outbox.enqueue("b", patch("1"));
+    await outbox.enqueue("c", patch("2"));
+    online.add("b").add("c");
+    faults.append = "mesh.config.delivered";
+    await outbox.flush();
+    // The rest of the queue still went out; the one whose outcome was lost stays pending.
+    expect(delivered.map((change) => change.node)).toEqual(["b", "c"]);
+    expect((await outbox.pending()).map((change) => change.node)).toEqual(["b"]);
+    expect((await history()).map(([type]) => type)).not.toContain("mesh.config.failed");
+
+    // Delivered again on the next flush (harmless: same values, same time) and recorded.
+    await outbox.flush();
+    expect(delivered.map((change) => change.node)).toEqual(["b", "c", "b"]);
+    expect(await outbox.pending()).toEqual([]);
+    expect(await history()).toEqual([
+      ["mesh.config.queued", "change-1"],
+      ["mesh.config.queued", "change-2"],
+      ["mesh.config.delivered", "change-2"],
+      ["mesh.config.delivered", "change-1"],
+    ]);
+  });
+
+  it("keeps an expired change pending until its expiry is recorded", async () => {
+    const { outbox, faults, advance, history } = setup({ expireAfterMs: HOUR });
+    await outbox.enqueue("gone", patch("x"));
+    advance(HOUR);
+    faults.append = "mesh.config.expired";
+    expect(await outbox.pending()).toEqual([]);
+    expect((await history()).map(([type]) => type)).toEqual(["mesh.config.queued"]);
+    await outbox.flush();
+    expect((await history()).map(([type]) => type)).toEqual([
+      "mesh.config.queued",
+      "mesh.config.expired",
+    ]);
+  });
+
+  it("tries a failed preparation again instead of failing for good", async () => {
+    const storage = createMemoryStorage();
+    await storage.log.append(OUTBOX_STREAM, [
+      {
+        type: "mesh.config.queued",
+        payload: { id: "old", node: "b", patch: patch("a") as unknown as Json },
+      },
+    ]);
+    const { outbox, faults, online, delivered } = setup({ storage });
+    faults.kvGet = true;
+    await expect(outbox.flush()).rejects.toThrow("database locked");
+    online.add("b");
+    await outbox.flush();
+    expect(delivered).toEqual([{ node: "b", patch: patch("a") }]);
   });
 
   it("flushes again when asked while a flush runs", async () => {

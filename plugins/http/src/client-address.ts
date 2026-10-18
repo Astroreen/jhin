@@ -3,10 +3,22 @@ import * as Net from "node:net";
 
 export type ForwardedHeader = "x-forwarded-for" | "forwarded";
 
-/** `::ffff:10.0.0.1` → `10.0.0.1`, so IPv4 rules match IPv4 peers on dual-stack sockets. */
-function unmap(address: string): string {
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
-  return mapped === null ? address : mapped[1]!;
+/**
+ * One spelling per address, so one client gets one rate-limit bucket: IPv6
+ * in its canonical form (`2001:0db8:0:0::1` → `2001:db8::1`), IPv4-mapped
+ * IPv6 as plain IPv4 (`::ffff:10.0.0.1` → `10.0.0.1`, so IPv4 rules match
+ * dual-stack peers). Anything that is not an address is kept; an empty one
+ * is `unknown`.
+ */
+function normalise(address: string): string {
+  if (address === "") return "unknown";
+  if (Net.isIP(address) !== 6) return address;
+  const canonical = new URL(`http://[${address}]`).hostname.slice(1, -1);
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(canonical);
+  if (mapped === null) return canonical;
+  const high = Number.parseInt(mapped[1]!, 16);
+  const low = Number.parseInt(mapped[2]!, 16);
+  return [high >> 8, high & 255, low >> 8, low & 255].join(".");
 }
 
 /** Parses `trustProxy` entries; throws on anything that is not an address or a CIDR range. */
@@ -38,15 +50,15 @@ function trusted(list: Net.BlockList, address: string): boolean {
 
 /**
  * One hop of a forwarded chain as an address: strips quotes, `[…]` around
- * IPv6 and a port. Anything else (`unknown`, `_hidden`) is kept as it is: it
- * is never trusted, so it ends the walk.
+ * IPv6 and a port. Anything else (`unknown`, `_hidden`, an empty hop) is
+ * never trusted, so it ends the walk.
  */
 function hop(value: string): string {
   let text = value.trim().replace(/^"(.*)"$/, "$1");
   const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(text);
   if (bracketed !== null) text = bracketed[1]!;
   else if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(text)) text = text.slice(0, text.lastIndexOf(":"));
-  return unmap(text);
+  return normalise(text);
 }
 
 /** Hops of `X-Forwarded-For` or RFC 7239 `Forwarded`, the client first. */
@@ -78,7 +90,7 @@ export function clientAddress(
   headers: IncomingHttpHeaders,
   options: { readonly trust: Net.BlockList; readonly header: ForwardedHeader },
 ): string {
-  let current = unmap(peer ?? "unknown");
+  let current = normalise(peer ?? "");
   const hops = chain(headers, options.header);
   while (trusted(options.trust, current) && hops.length > 0) current = hops.pop()!;
   return current;
