@@ -299,6 +299,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
   }
 
   async function rescanNow(): Promise<PluginsUpdate> {
+    const previous = discovery.plugins;
     const next = discoverPlugins(layers);
     const found = next.plugins;
     const update = await kernel.update([hostSource, ...found]);
@@ -306,11 +307,17 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     discovery = next;
     rewatch();
     // Client plugins are skipped here; listeners (the web UI) tell their clients.
-    for (const id of [...update.added, ...update.changed]) {
-      const plugin = found.find(
-        (candidate) => (candidate.manifest as { id?: unknown } | undefined)?.id === id,
-      );
-      if (plugin !== undefined) notifyPlugin(id, [Path.join(plugin.root, "package.json")]);
+    // A removed plugin is reported with its former manifest file.
+    for (const [ids, plugins] of [
+      [[...update.added, ...update.changed], found],
+      [update.removed, previous],
+    ] as const) {
+      for (const id of ids) {
+        const plugin = plugins.find(
+          (candidate) => (candidate.manifest as { id?: unknown } | undefined)?.id === id,
+        );
+        if (plugin !== undefined) notifyPlugin(id, [Path.join(plugin.root, "package.json")]);
+      }
     }
     return update;
   }

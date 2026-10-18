@@ -251,10 +251,10 @@ and engineering practices.
 - Keeping node tokens somewhere safer than `localStorage` in the web client:
   any script on the client's origin (including user client plugins) can read
   them today.
-- Runtime client plugins under `vp dev` (the import map exists only in the
-  production build) and client plugins added while a page is open (they
-  appear after a page reload; changed ones hot reload; removed ones stay
-  loaded until a page reload).
+- Runtime client plugins under `vp dev` need a `jhin serve --ui` node behind
+  `JHIN_NODE_URL`: a headless `jhin serve` does not serve `/client/*`.
+- Unloading a removed client plugin's modules: the browser keeps imported ES
+  modules until a page reload (the plugin is deactivated and disposed).
 - Signed mesh records: today any member can overwrite another member's
   record (key, URLs, neighbors) or claim a far-future version; acceptable in
   one owner's trust domain (D22), not beyond it.
@@ -478,13 +478,22 @@ Implementation notes (PR 8b):
 - `jhin.web-ui` owns the `jhin.ui` config section (slot rules per slot) and
   serves `GET /client/plugins`, `/client/plugins/<id>/<rev>/…` (the revision
   in the path makes a reload re-import every file of the plugin),
-  `/client/config` (only `jhin.ui`) and `/client/events` (SSE: `plugin`,
+  `/client/config` (only `jhin.ui`) and `/client/events` (SSE: `plugin`, `plugins`,
   `config`). `jhin.host` provides `host.plugins@1` (discovered plugins of both
   sides and their file changes).
 - The watcher reloads any plugin of the node's own side that changed, including
   one that failed to activate: fixing a broken plugin's file activates it.
 - Client plugin files and `jhin.ui` are served without a token (the page needs
   them before it has one); only entries ending in `.js`/`.mjs` are served.
+- Client plugins added, removed or with a new manifest while a page is open:
+  the node's rescan (D14) reports each such plugin to `host.plugins@1`
+  listeners as a change to its `package.json`; `jhin.web-ui` then sends a
+  `plugins` event, and the page re-reads `/client/plugins` and applies it
+  with `kernel.update` — no page reload. A removed plugin that replaced a
+  builtin brings the builtin back.
+- Under `vp dev` the shared packages are virtual modules of the dev server,
+  so their imports resolve to the same URLs as the app's; the import map
+  points at them, and `/client/*` is proxied to the node (`JHIN_NODE_URL`).
 - `jhin client` = `jhin.http` + `jhin.web-ui` (+ `jhin.host`): the web client
   alone, connecting to remote nodes.
 

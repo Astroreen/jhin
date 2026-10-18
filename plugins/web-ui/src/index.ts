@@ -197,7 +197,8 @@ export default definePlugin({
     );
 
     // Server-sent events: `plugin` {id, rev} when a client plugin's files change,
-    // `config` when the jhin.ui section changes.
+    // `plugins` when client plugins are added, removed or change manifest (clients re-read the
+    // list), `config` when the jhin.ui section changes.
     const streams = new Set<Parameters<HttpHandler>[1]>();
     const broadcast = (event: string, data: unknown) => {
       for (const stream of streams)
@@ -215,11 +216,32 @@ export default definePlugin({
         request.on("close", () => streams.delete(response));
       }),
     );
+    const bump = (id: string) => {
+      const rev = Math.max(Date.now(), (revisions.get(id) ?? startedAt) + 1);
+      revisions.set(id, rev);
+      return rev;
+    };
+    // The ids of the client plugins clients were last told about.
+    let listed = new Set(clientPlugins().map((plugin) => plugin.id));
     context.subscriptions.add(
-      hostPlugins.onChange(({ id }) => {
-        if (!clientPlugins().some((plugin) => plugin.id === id)) return;
-        const rev = Math.max(Date.now(), (revisions.get(id) ?? startedAt) + 1);
-        revisions.set(id, rev);
+      hostPlugins.onChange(({ id, files }) => {
+        const current = new Set(clientPlugins().map((plugin) => plugin.id));
+        // A plugin added, removed or with a new manifest changes the list: clients re-read it.
+        const manifest = files.some((file) => Path.basename(file) === "package.json");
+        if (manifest || listed.has(id) !== current.has(id)) {
+          const concerned = listed.has(id) || current.has(id);
+          listed = current;
+          if (!concerned) return;
+          // A fresh revision path: the package may be another one than before.
+          // Kept after a removal on purpose (one number per id): a package
+          // re-added under that id must not get a path a browser has cached.
+          bump(id);
+          context.log.info("client plugins changed", { plugin: id });
+          broadcast("plugins", {});
+          return;
+        }
+        if (!current.has(id)) return;
+        const rev = bump(id);
         context.log.info("client plugin changed", { plugin: id, rev });
         broadcast("plugin", { id, rev });
       }),
