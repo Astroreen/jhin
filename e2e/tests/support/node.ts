@@ -3,6 +3,8 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
+import { connectWebSocket, createRpcClient, type RpcClient } from "@jhin/rpc";
+
 const BIN = Path.resolve(import.meta.dirname, "../../../apps/jhin/bin/jhin.js");
 
 export interface RunningNode {
@@ -12,6 +14,8 @@ export interface RunningNode {
   /** RPC endpoint, e.g. ws://127.0.0.1:41234/rpc (when served). */
   readonly rpc: string;
   readonly token: string;
+  /** An RPC client to the node, opened on first use. */
+  client(): RpcClient;
   stop(): Promise<void>;
 }
 
@@ -60,12 +64,20 @@ export async function startNode(options: NodeOptions = {}): Promise<RunningNode>
     child.once("exit", (code) => reject(new Error(`jhin ${mode} exited with ${code}:\n${text}`)));
   });
   const tokenFile = Path.join(home, "data", "jhin.auth-token", "token");
+  const rpcUrl = /rpc: (ws:\/\/\S+)/.exec(stderr)?.[1] ?? "";
+  const token = Fs.existsSync(tokenFile) ? Fs.readFileSync(tokenFile, "utf8").trim() : "";
+  let connection: RpcClient | undefined;
   return {
     home,
     ui: /ui: (http:\/\/\S+)/.exec(stderr)?.[1] ?? "",
-    rpc: /rpc: (ws:\/\/\S+)/.exec(stderr)?.[1] ?? "",
-    token: Fs.existsSync(tokenFile) ? Fs.readFileSync(tokenFile, "utf8").trim() : "",
+    rpc: rpcUrl,
+    token,
+    client() {
+      connection ??= createRpcClient({ connect: () => connectWebSocket(rpcUrl, token) });
+      return connection;
+    },
     async stop() {
+      connection?.close();
       if (child.exitCode !== null) return;
       const exited = new Promise((resolve) => child.once("exit", resolve));
       child.kill("SIGTERM");

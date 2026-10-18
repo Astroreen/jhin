@@ -13,18 +13,35 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 
 import { builtin } from "../lib/builtin.ts";
 import { useExternal } from "../lib/hooks.ts";
+import { threadTarget } from "../lib/target.ts";
 import { reduceTurns, type ChatTurn } from "../lib/turns.ts";
 import { THREADS_CHANGED } from "./sidebar.tsx";
 
-function useThreadEvents(node: NodeConnection, threadId: string): readonly StoredEvent[] {
+function useThreadEvents(
+  node: NodeConnection,
+  remote: string | undefined,
+  threadId: string,
+): readonly StoredEvent[] {
   const [events, setEvents] = useState<readonly StoredEvent[]>([]);
   useEffect(() => {
     setEvents([]);
-    const subscription = node.client.subscribe(`thread/${threadId}`, {}, (event) =>
-      setEvents((previous) => [...previous, event]),
-    );
-    return () => subscription.dispose();
-  }, [node, threadId]);
+    let disposed = false;
+    let subscription: { dispose(): void } | undefined;
+    // The stream to read: the thread itself, or this node's copy of a remote one (D26).
+    void threadTarget(node, remote)
+      .open(threadId)
+      .then((stream) => {
+        if (disposed) return;
+        subscription = node.client.subscribe(stream, {}, (event) =>
+          setEvents((previous) => [...previous, event]),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      subscription?.dispose();
+    };
+  }, [node, remote, threadId]);
   return events;
 }
 
@@ -124,8 +141,17 @@ export const chatPlugin = builtin(
       const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
 
-      function ThreadView({ node, threadId }: { node: NodeConnection; threadId: string }) {
-        const events = useThreadEvents(node, threadId);
+      function ThreadView({
+        node,
+        remote,
+        threadId,
+      }: {
+        node: NodeConnection;
+        remote: string | undefined;
+        threadId: string;
+      }) {
+        const target = threadTarget(node, remote);
+        const events = useThreadEvents(node, remote, threadId);
         const turns = useMemo(() => reduceTurns(events), [events]);
         const running = turns.at(-1)?.status === "running";
         const end = useRef<HTMLDivElement>(null);
@@ -163,7 +189,7 @@ export const chatPlugin = builtin(
                 onSend={async (text) => {
                   setError(undefined);
                   try {
-                    await node.client.call("threads.send", { threadId, text });
+                    await target.call("threads.send", { threadId, text });
                   } catch (failure) {
                     setError((failure as Error).message);
                   }
@@ -191,6 +217,8 @@ export const chatPlugin = builtin(
               try {
                 connections.add({ url, token });
                 setError(undefined);
+                const { panel: _panel, ...rest } = navigation.current();
+                navigation.navigate(rest);
               } catch (failure) {
                 setError(
                   failure instanceof z.ZodError
@@ -236,7 +264,7 @@ export const chatPlugin = builtin(
           route.node === undefined
             ? undefined
             : nodes.find((candidate) => candidate.id === route.node);
-        if (nodes.length === 0) return <Connect />;
+        if (nodes.length === 0 || route.panel === "connect") return <Connect />;
         if (node === undefined || route.thread === undefined) {
           const first = nodes[0]!;
           const start = async () => {
@@ -258,7 +286,12 @@ export const chatPlugin = builtin(
           );
         }
         return (
-          <ThreadView key={`${node.id}:${route.thread}`} node={node} threadId={route.thread} />
+          <ThreadView
+            key={`${node.id}:${route.remote ?? ""}:${route.thread}`}
+            node={node}
+            remote={route.remote}
+            threadId={route.thread}
+          />
         );
       }
 

@@ -3,15 +3,17 @@ import { definePlugin, toDisposable } from "@jhin/sdk";
 
 import { builtin } from "../lib/builtin.ts";
 
-/** The route lives in the fragment: `#n=<node>&t=<thread>&p=<panel>`. */
+/** The route lives in the fragment: `#n=<node>&r=<remote>&t=<thread>&p=<panel>`. */
 function read(): Route {
   const params = new URLSearchParams(location.hash.slice(1));
   const value = (key: string) => params.get(key) ?? undefined;
   const node = value("n");
+  const remote = value("r");
   const thread = value("t");
   const panel = value("p");
   return {
     ...(node === undefined ? {} : { node }),
+    ...(remote === undefined ? {} : { remote }),
     ...(thread === undefined ? {} : { thread }),
     ...(panel === undefined ? {} : { panel }),
   };
@@ -20,6 +22,7 @@ function read(): Route {
 function write(route: Route): string {
   const params = new URLSearchParams();
   if (route.node !== undefined) params.set("n", route.node);
+  if (route.remote !== undefined) params.set("r", route.remote);
   if (route.thread !== undefined) params.set("t", route.thread);
   if (route.panel !== undefined) params.set("p", route.panel);
   return params.toString();

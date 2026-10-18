@@ -32,7 +32,9 @@ test("connects with the token from the URL, sends a message and streams the repl
   await expect(page.getByRole("button", { name: "New thread", exact: true }).first()).toBeVisible();
   await expect(page.locator("[aria-current=page]")).toHaveText("New thread");
 
-  await info.attach("chat", { body: await page.screenshot(), contentType: "image/png" });
+  const shot = info.outputPath("chat.png");
+  await page.screenshot({ path: shot });
+  await info.attach("chat", { path: shot, contentType: "image/png" });
 });
 
 test("stops a running turn", async ({ page }) => {

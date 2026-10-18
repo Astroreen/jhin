@@ -1,6 +1,7 @@
 # Foundation plan
 
-Status: **approved**. This file records every
+Status: **implemented** — all PRs below are merged; D47's end-to-end proof
+passes in CI. This file records every
 decision taken while designing the foundation of the codebase, everything
 explicitly deferred, and the PR-by-PR plan with acceptance criteria.
 
@@ -560,3 +561,13 @@ Implements D47.
   connected to A creates a thread on C and receives the fake reply; a second
   e2e shows two independent nodes in one client.
 - **Done when:** both e2e tests pass in CI.
+
+Implementation notes (PR 11):
+
+- The web client reaches other nodes of a connected node's mesh: the
+  sidebar lists them (from `mesh.nodes`, kept current by the `mesh` stream)
+  under the connection, and a remote thread is read from the connection's
+  copy (`mesh.open`) and driven with `mesh.call`. Routes carry the remote
+  node (`#n=<connection>&r=<node>&t=<thread>`).
+- "Add node" (`sidebar.actions`) opens the connect form, so one client holds
+  several independent nodes (D8).
