@@ -74,6 +74,8 @@ export interface NodeHost {
 }
 
 const HOST_PLUGIN = "jhin.host";
+/** How far ahead of this node's clock a config change time may be (D50). */
+const MAX_CONFIG_SKEW_MS = 60 * 60 * 1000;
 const HOST_LOCATION = "host://jhin.host";
 const RECENT_EVENTS = 100;
 
@@ -270,6 +272,15 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         file: writesFile,
         error: String(error),
       });
+    }
+    // A time far ahead would lock the section against every later change.
+    if (at > Date.now() + MAX_CONFIG_SKEW_MS) {
+      throw Object.assign(
+        new Error(`Change time ${at} is more than an hour ahead of this node's clock`),
+        {
+          code: "CONFIG_TIME_IN_FUTURE",
+        },
+      );
     }
     const localAt = writes[layer]?.[section];
     if (localAt !== undefined && at < localAt) return { applied: false, at, conflict: { localAt } };

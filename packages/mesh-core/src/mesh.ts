@@ -27,6 +27,8 @@ const TOKEN_TTL_MS = 5 * 60 * 1000;
 const INVITE_TTL_MS = 15 * 60 * 1000;
 /** Versions are times; one further ahead than this is a broken clock or a lie, and is dropped. */
 const MAX_VERSION_SKEW_MS = 60 * 60 * 1000;
+/** Copies a node keeps at most (its own opens and neighbors' requests together). */
+const MAX_MIRRORS = 10_000;
 const ADDRESS = /^jhin:\/\/([^/]+)\/?(.*)$/;
 /**
  * Streams neighbors may read and copy (D26): thread histories, the thread
@@ -257,7 +259,14 @@ export function createMesh(options: MeshOptions): Mesh {
       }
       if (method === "mesh.forward") return forward(params as Forward, invocation.traceId);
       if (method === "mesh.mirror") {
-        const { owner, stream } = params as { owner: string; stream: string };
+        const { owner, stream } = (params ?? {}) as { owner?: unknown; stream?: unknown };
+        // Only members' streams, and a bounded number of copies, for a neighbor's request.
+        if (typeof owner !== "string" || typeof stream !== "string" || !records.has(owner)) {
+          throw new MeshError("MIRROR_INVALID", "mesh.mirror needs a member's id and a stream");
+        }
+        if (!mirrors.has(`mirror/${owner}/${stream}`) && mirrors.size >= MAX_MIRRORS) {
+          throw new MeshError("MIRROR_LIMIT", `This node keeps at most ${MAX_MIRRORS} copies`);
+        }
         return { stream: mirror(owner, stream) };
       }
       return options.execute(method, params, invocation);

@@ -3,7 +3,7 @@ import * as Crypto from "node:crypto";
 import { noopLogger } from "@jhin/kernel";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { createPeerPair, serveRpc } from "@jhin/rpc";
+import { createCaller, createPeerPair, serveRpc } from "@jhin/rpc";
 import { createMemoryStorage, type EventLog } from "@jhin/storage-api";
 
 import { createMemoryNetwork, createMesh, type Mesh } from "../src/index.ts";
@@ -410,6 +410,33 @@ describe("mesh", () => {
     const local = a.mesh.mirror("b", "thread/1");
     await headReaches(flaky, local, 3);
     expect((await flaky.read(local)).map((event) => event.payload)).toEqual([1, 2, 3]);
+  });
+
+  it("keeps a copy for a neighbor only of a member's stream", async () => {
+    const network = createMemoryNetwork();
+    const { a, b } = await chain(network);
+    // b asks a over their link, as the next hop of a relayed mirror would.
+    const link = await (async () => {
+      const [mine, theirs] = createPeerPair();
+      a.mesh.accept(theirs, "b");
+      serveRpc(mine, {
+        caller: { id: "a", permissions: ["*"] },
+        logger: noopLogger,
+        hello: () => ({}),
+        newTraceId: () => "t",
+        execute: async () => null,
+      });
+      return createCaller(mine);
+    })();
+    await expect(
+      link.call("mesh.mirror", { owner: "nobody", stream: "thread/1" }),
+    ).rejects.toMatchObject({
+      code: "MIRROR_INVALID",
+    });
+    expect(await link.call("mesh.mirror", { owner: "c", stream: "thread/1" })).toEqual({
+      stream: "mirror/c/thread/1",
+    });
+    void b;
   });
 
   it("copies only shared streams", async () => {

@@ -263,5 +263,13 @@ export default definePlugin({
       at: now - 1000,
     });
     expect(stale.value).toEqual({ applied: false, at: now - 1000, conflict: { localAt: now } });
+
+    const future = await host.execute("host.config.patch", {
+      layer: "node",
+      section: "jhin.example",
+      values: { greeting: "From the future" },
+      at: Date.now() + 2 * 60 * 60 * 1000,
+    });
+    expect(future.error).toMatchObject({ code: "CONFIG_TIME_IN_FUTURE" });
   });
 });

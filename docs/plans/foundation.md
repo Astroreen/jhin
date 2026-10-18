@@ -249,7 +249,10 @@ and engineering practices.
 - `/mesh/join` rate limiting keys on the socket address: behind a reverse
   proxy every joiner shares one bucket.
 - Scoped permissions for mesh links: a member's calls run with every
-  permission (`node:<id>`, `*`) on every other member.
+  permission (`node:<id>`, `*`) on every other member — including
+  `host.config.write`, so any member can change any node's config.
+- Compaction or expiry of the `mesh/outbox` stream: changes for a node that
+  never returns stay queued, and every mesh change reads the whole outbox.
 - Fan-out to several projects of a node (D20's project picker): the
   `project` layer is the project the node was started in; other projects'
   config files are not loaded by the node yet.
@@ -538,6 +541,12 @@ Implementation notes (PR 10):
   those, and `mesh`; other streams (e.g. `mesh/outbox`) stay private.
   Opened mirrors are remembered and resume after a restart; `mesh.close`
   stops one.
+- The link protocol's own methods (`mesh.gossip`, `mesh.forward`,
+  `mesh.mirror`) are handled inside the mesh, not as commands: they are the
+  transport between nodes, not operations of a node (an exception to
+  AGENTS.md rule 6). `mesh.mirror` only accepts members' streams and at most
+  10 000 copies per node. A config change time more than an hour ahead is
+  refused (`CONFIG_TIME_IN_FUTURE`).
 - Fan-out compares the sender's clock with the target's last write time: with
   clocks apart, "later wins" follows the clocks. A change queued after a
   `MESH_TIMEOUT` may already have been applied; applying it again is harmless
