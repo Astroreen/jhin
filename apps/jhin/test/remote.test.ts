@@ -39,38 +39,43 @@ function jhin(...args: string[]): { status: number; stdout: string; stderr: stri
 }
 
 describe("a running node", () => {
-  it("serves RPC, carries the request's traceId into plugin logs, and answers the remote CLI", async () => {
-    const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-remote-"));
-    Fs.mkdirSync(Path.join(home, ".jhin"));
-    Fs.writeFileSync(Path.join(home, ".jhin", "config.jsonc"), '{ "jhin.http": { "port": 0 } }');
-    const url = await startServe(home);
-    const token = Fs.readFileSync(
-      Path.join(home, "data", "jhin.auth-token", "token"),
-      "utf8",
-    ).trim();
+  // Spawns a node and three CLI processes; the limit bounds the run, nothing waits on time.
+  it(
+    "serves RPC, carries the request's traceId into plugin logs, and answers the remote CLI",
+    { timeout: 30_000 },
+    async () => {
+      const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-remote-"));
+      Fs.mkdirSync(Path.join(home, ".jhin"));
+      Fs.writeFileSync(Path.join(home, ".jhin", "config.jsonc"), '{ "jhin.http": { "port": 0 } }');
+      const url = await startServe(home);
+      const token = Fs.readFileSync(
+        Path.join(home, "data", "jhin.auth-token", "token"),
+        "utf8",
+      ).trim();
 
-    const client = createRpcClient({ connect: () => connectWebSocket(url, token) });
-    const result = await client.call("example.greet", { name: "Ada" }, { trace: "trace-e2e-1" });
-    client.close();
-    expect(result).toEqual({ message: "Hello, Ada!", count: 1 });
+      const client = createRpcClient({ connect: () => connectWebSocket(url, token) });
+      const result = await client.call("example.greet", { name: "Ada" }, { trace: "trace-e2e-1" });
+      client.close();
+      expect(result).toEqual({ message: "Hello, Ada!", count: 1 });
 
-    const lines = Fs.readFileSync(Path.join(home, "logs", "node.log"), "utf8")
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-    expect(lines).toContainEqual(
-      expect.objectContaining({ msg: "greeted", plugin: "jhin.example", traceId: "trace-e2e-1" }),
-    );
+      const lines = Fs.readFileSync(Path.join(home, "logs", "node.log"), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(lines).toContainEqual(
+        expect.objectContaining({ msg: "greeted", plugin: "jhin.example", traceId: "trace-e2e-1" }),
+      );
 
-    // The CLI reads the token from the same home and talks to the running node.
-    const remote = jhin("example.greet", "--name", "Bo", "--url", url, "--home", home);
-    expect(remote.status).toBe(0);
-    expect(JSON.parse(remote.stdout)).toEqual({ message: "Hello, Bo!", count: 2 });
-    const inspection = JSON.parse(jhin("inspect", "--url", url, "--home", home).stdout);
-    expect(inspection.nodeId).toBe(Fs.readFileSync(Path.join(home, "node-id"), "utf8").trim());
+      // The CLI reads the token from the same home and talks to the running node.
+      const remote = jhin("example.greet", "--name", "Bo", "--url", url, "--home", home);
+      expect(remote.status).toBe(0);
+      expect(JSON.parse(remote.stdout)).toEqual({ message: "Hello, Bo!", count: 2 });
+      const inspection = JSON.parse(jhin("inspect", "--url", url, "--home", home).stdout);
+      expect(inspection.nodeId).toBe(Fs.readFileSync(Path.join(home, "node-id"), "utf8").trim());
 
-    const refused = jhin("example.greet", "--name", "Eve", "--url", url, "--token", "wrong");
-    expect(refused.status).not.toBe(0);
-    expect(refused.stderr).toContain("UNAUTHENTICATED");
-  });
+      const refused = jhin("example.greet", "--name", "Eve", "--url", url, "--token", "wrong");
+      expect(refused.status).not.toBe(0);
+      expect(refused.stderr).toContain("UNAUTHENTICATED");
+    },
+  );
 });

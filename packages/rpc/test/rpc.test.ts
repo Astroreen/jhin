@@ -4,11 +4,13 @@ import type { Invocation } from "@jhin/sdk";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  createCaller,
   createPeerPair,
   createRpcClient,
   serveRpc,
   type Peer,
   type RpcClient,
+  webSocketPeer,
 } from "../src/index.ts";
 
 interface Harness {
@@ -283,5 +285,81 @@ describe("rpc", () => {
 
     expect(error).toMatchObject({ code: "UNAVAILABLE" });
     client.close();
+  });
+
+  it("carries calls both ways over one channel", async () => {
+    const [clientEnd, serverEnd] = createPeerPair();
+    const serve = (name: string) => ({
+      caller: { id: "peer", permissions: ["*"] },
+      logger: noopLogger,
+      hello: () => ({}),
+      newTraceId: () => "t",
+      execute: async (method: string, input: unknown) => ({ answeredBy: name, method, input }),
+    });
+    serveRpc(serverEnd, serve("server"));
+    const back = createCaller(serverEnd);
+    const client = createRpcClient({
+      retryDelay: () => 0,
+      connect: async () => clientEnd,
+      onConnected: (peer) => void serveRpc(peer, serve("client")),
+    });
+
+    const [there, here] = await Promise.all([
+      client.call("app.ping", { n: 1 }),
+      back.call("app.ping", { n: 2 }),
+    ]);
+
+    expect(there).toEqual({ answeredBy: "server", method: "app.ping", input: { n: 1 } });
+    expect(here).toEqual({ answeredBy: "client", method: "app.ping", input: { n: 2 } });
+    back.dispose();
+    client.close();
+  });
+
+  it("keeps WebSocket messages that arrive before anyone listens, for everyone who listens next", async () => {
+    const handlers: ((event: { data: unknown }) => void)[] = [];
+    const socket = {
+      readyState: 1,
+      send: () => undefined,
+      close: () => undefined,
+      addEventListener: (type: string, handler: (event: { data: unknown }) => void) =>
+        void (type === "message" && handlers.push(handler)),
+      removeEventListener: () => undefined,
+    };
+    const peer = webSocketPeer(socket as never);
+    for (const handler of handlers) handler({ data: "early-1" });
+    for (const handler of handlers) handler({ data: "early-2" });
+
+    const first: string[] = [];
+    const second: string[] = [];
+    peer.onMessage((text) => first.push(text));
+    peer.onMessage((text) => second.push(text));
+    await Promise.resolve();
+    for (const handler of handlers) handler({ data: "live" });
+
+    expect(first).toEqual(["early-1", "early-2", "live"]);
+    expect(second).toEqual(["early-1", "early-2", "live"]);
+  });
+
+  it("holds messages again after the last listener leaves", async () => {
+    const handlers: ((event: { data: unknown }) => void)[] = [];
+    const socket = {
+      readyState: 1,
+      send: () => undefined,
+      close: () => undefined,
+      addEventListener: (type: string, handler: (event: { data: unknown }) => void) =>
+        void (type === "message" && handlers.push(handler)),
+      removeEventListener: () => undefined,
+    };
+    const peer = webSocketPeer(socket as never);
+    const first = peer.onMessage(() => undefined);
+    await Promise.resolve();
+    first.dispose();
+    for (const handler of handlers) handler({ data: "while-nobody-listens" });
+
+    const later: string[] = [];
+    peer.onMessage((text) => later.push(text));
+    await Promise.resolve();
+
+    expect(later).toEqual(["while-nobody-listens"]);
   });
 });

@@ -8,3 +8,5 @@ export {
 export { memoryStoragePlugin, mockCapability } from "./mocks.ts";
 export { nextEvent } from "./events.ts";
 export { connectInMemory, type InMemoryConnection } from "./transport.ts";
+/** In-memory mesh of N nodes in one process (D38). */
+export { createMemoryNetwork } from "@jhin/mesh-core";

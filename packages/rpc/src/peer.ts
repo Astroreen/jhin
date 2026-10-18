@@ -23,8 +23,45 @@ export interface WebSocketLike {
 }
 
 const OPEN = 1;
+/** Messages kept for a socket nobody listens on yet. */
+const MAX_HELD_MESSAGES = 1000;
 
+/**
+ * A peer over a WebSocket. Messages that arrive while nobody listens are kept
+ * and handed, in order, to the listeners present on the next tick: a link
+ * whose handlers attach a moment after the socket opened loses nothing.
+ */
 export function webSocketPeer(socket: WebSocketLike): Peer {
+  const listeners = new Set<(text: string) => void>();
+  let held: string[] | undefined = [];
+  let flushing = false;
+  let overflowed = false;
+
+  const deliver = (text: string) => {
+    for (const listener of Array.from(listeners)) listener(text);
+  };
+  const flush = () => {
+    flushing = false;
+    const pending = held ?? [];
+    held = listeners.size === 0 ? [] : undefined;
+    for (const text of pending) deliver(text);
+  };
+  socket.addEventListener("message", (event: { data: unknown }) => {
+    const text = String(event.data);
+    if (held === undefined) {
+      deliver(text);
+      return;
+    }
+    if (overflowed) return;
+    held.push(text);
+    // Nobody reads this socket: a peer that keeps sending must not grow memory forever.
+    if (held.length > MAX_HELD_MESSAGES) {
+      overflowed = true;
+      held = [];
+      socket.close(1008, "too many unread messages");
+    }
+  });
+
   return {
     send(text) {
       if (socket.readyState === OPEN) socket.send(text);
@@ -33,9 +70,15 @@ export function webSocketPeer(socket: WebSocketLike): Peer {
       socket.close(code, reason);
     },
     onMessage(listener) {
-      const handler = (event: { data: unknown }) => listener(String(event.data));
-      socket.addEventListener("message", handler);
-      return toDisposable(() => socket.removeEventListener("message", handler as never));
+      listeners.add(listener);
+      if (held !== undefined && !flushing) {
+        flushing = true;
+        void Promise.resolve().then(flush);
+      }
+      return toDisposable(() => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && held === undefined) held = [];
+      });
     },
     onClose(listener) {
       const handler = (event: { code: number; reason: string }) =>

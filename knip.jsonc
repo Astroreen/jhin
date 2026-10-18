@@ -24,6 +24,7 @@
         "@jhin/plugin-agent-fake",
         "@jhin/plugin-mcp-server",
         "@jhin/plugin-web-ui",
+        "@jhin/plugin-mesh",
       ],
     },
     "apps/web": {

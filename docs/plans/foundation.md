@@ -243,11 +243,16 @@ and engineering practices.
   production build) and client plugins added while a page is open (they
   appear after a page reload; changed ones hot reload; removed ones stay
   loaded until a page reload).
+- Signed mesh records: today any member can overwrite another member's
+  record (key, URLs, neighbors) or claim a far-future version; acceptable in
+  one owner's trust domain (D22), not beyond it.
+- `/mesh/join` rate limiting keys on the socket address: behind a reverse
+  proxy every joiner shares one bucket.
+- Scoped permissions for mesh links: a member's calls run with every
+  permission (`node:<id>`, `*`) on every other member.
 - Visual regression snapshots (D40): screenshots differ between the NixOS
   dev shell and CI runners; they need one pinned rendering environment (the
   Playwright container) before baselines are worth keeping.
-- The "list nodes" MCP tool of D39: nodes exist with the mesh (PR 9); until
-  then `host_inspect` describes the one node.
 - Freeing old module instances after a hot reload: every reload leaves the
   previous `?jhin-gen=N` modules in Node's ESM cache, so a long
   `serve --watch` session grows in memory (D14). Out-of-process plugins fix
@@ -466,6 +471,37 @@ Implements D22–D25, D27, D28.
 - **Done when:** in-memory tests cover join, gossip convergence, node leaving
   and returning, routing A→C through B, address resolution after a node
   changes its URL; one multi-process test does the same over real sockets.
+
+Implementation notes (PR 9):
+
+- `@jhin/mesh-core` holds the mesh logic, independent of transport; the
+  `jhin.mesh` plugin wires it to WebSockets and HTTP. `@jhin/testing`
+  re-exports its in-memory network.
+- Links are two-way RPC over one WebSocket at `/mesh` (both ends serve and
+  call), so a node without an address (behind NAT) is reached over the link it
+  opened. A link presents `jhin.token.<nodeId>.<target>.<expiresAt>.<sig>`:
+  an Ed25519 signature over `jhin-mesh-link:<nodeId>:<target>:<expiresAt>`,
+  valid 5 minutes, for one target, from a known member only.
+- Joining: `mesh.invite` returns a one-time code (15 minutes);
+  `mesh.join {url, code}` posts the joiner's record to `POST /mesh/join` and
+  gets the inviter's members back. Records are trusted within one owner (D22).
+- Records carry `urls`, `neighbors` and a `version` that only grows (it is a
+  time), so the newest wins across restarts. Gossip floods changes; routing
+  uses an edge only when both ends list each other, so a node that went away
+  drops out as soon as its neighbors notice.
+- Calls: `mesh.call {node, method, params}` → `mesh.forward` hop by hop
+  (at most 8). The target runs the command with caller `node:<origin>`.
+- A relayed call is request/response for quick commands: each hop waits at
+  most 30 s (`callDeadlineMs`) and reports `MESH_TIMEOUT`. Long work starts
+  and returns at once (`threads.send` returns a turn id; the turn streams as
+  events), so no deadline cuts it off. A `MESH_TIMEOUT` does not mean the
+  command did not run (it may still be running on the target); the hop it
+  names is best effort, since each hop waits only 10 ms less than the one
+  before.
+- `mesh.nodes` (the "list nodes" tool of D39), `mesh.resolve`, the `mesh`
+  stream (`mesh.nodes.changed`) and `GET /n/<nodeId>/<path>` (307 to the
+  node, D24). `jhin.host` provides `host.identity@1`. Config: `jhin.mesh.name`,
+  `jhin.mesh.advertise` (`[]` = not directly reachable).
 
 ### PR 10 — History sync and settings fan-out
 
