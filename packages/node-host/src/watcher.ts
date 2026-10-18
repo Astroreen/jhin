@@ -4,23 +4,30 @@ import * as Path from "node:path";
 import type { Disposable, Logger } from "@jhin/sdk";
 
 export interface WatchTarget {
-  /** Absolute directory or file to watch. */
+  /** A directory (watched recursively) or a file (which may not exist yet). */
   readonly path: string;
   /** Called once per burst of changes; `files` are absolute paths. */
   readonly onChange: (files: readonly string[]) => void;
 }
 
-const IGNORED = /(^|[/\\])(node_modules|\.git|dist)([/\\]|$)/;
+const IGNORED = /(^|[/\\])(node_modules|\.git)([/\\]|$)/;
 
 /**
- * Watches directories and files and reports bursts of changes. Editors write
- * files in several steps, so changes are debounced per target.
+ * Watches directories and files and reports bursts of changes; editors write
+ * a file in several steps, so changes are debounced per target.
+ *
+ * A file is watched through its parent directory: that survives editors that
+ * save by renaming a temporary file over the original, and it notices a file
+ * created after the watch started. A file whose parent directory does not
+ * exist is not watched.
  */
 export function watch(targets: readonly WatchTarget[], log: Logger, debounceMs = 75): Disposable {
   const closers: (() => void)[] = [];
   for (const target of targets) {
-    if (!Fs.existsSync(target.path)) continue;
-    const isDirectory = Fs.statSync(target.path).isDirectory();
+    const isDirectory = Fs.existsSync(target.path) && Fs.statSync(target.path).isDirectory();
+    const directory = isDirectory ? target.path : Path.dirname(target.path);
+    if (!Fs.existsSync(directory)) continue;
+
     const pending = new Set<string>();
     let timer: NodeJS.Timeout | undefined;
     const flush = () => {
@@ -33,10 +40,10 @@ export function watch(targets: readonly WatchTarget[], log: Logger, debounceMs =
         log.error("watch handler failed", { path: target.path, error: String(error) });
       }
     };
-    const watcher = Fs.watch(target.path, { recursive: isDirectory }, (_event, name) => {
-      const file =
-        isDirectory && name !== null ? Path.join(target.path, name.toString()) : target.path;
-      if (IGNORED.test(Path.relative(target.path, file))) return;
+    const watcher = Fs.watch(directory, { recursive: isDirectory }, (_event, name) => {
+      if (name === null) return;
+      const file = Path.join(directory, name.toString());
+      if (isDirectory ? IGNORED.test(Path.relative(directory, file)) : file !== target.path) return;
       pending.add(file);
       if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(flush, debounceMs);

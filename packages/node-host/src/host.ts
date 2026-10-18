@@ -59,14 +59,24 @@ const HOST_PLUGIN = "jhin.host";
 const HOST_LOCATION = "host://jhin.host";
 const RECENT_EVENTS = 100;
 
-function readLayer(file: string, log: Logger): Record<string, unknown> {
+/** The layer in `file`; `undefined` when it cannot be parsed (the caller keeps the previous layer). */
+function readLayer(file: string, log: Logger): Record<string, unknown> | undefined {
   if (!Fs.existsSync(file)) return {};
   try {
     return parseConfigText(Fs.readFileSync(file, "utf8"), file);
   } catch (error) {
-    log.error("config file ignored", { file, error: toErrorInfo(error) });
-    return {};
+    log.error("config file not applied; keeping the previous values", {
+      file,
+      error: toErrorInfo(error),
+    });
+    return undefined;
   }
+}
+
+function applyLayer(kernel: Kernel, layer: string, file: string, log: Logger): void {
+  const values = readLayer(file, log);
+  if (values === undefined) kernel.events.emit("host.config.rejected", { layer, file });
+  else kernel.config.setLayer(layer, values);
 }
 
 /** Boots a server-side kernel over the plugins found on disk. */
@@ -130,8 +140,8 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     if (recentEvents.length > RECENT_EVENTS) recentEvents.shift();
   });
 
-  kernel.config.setLayer("node", readLayer(home.config, log));
-  kernel.config.setLayer("project", readLayer(projectConfig, log));
+  applyLayer(kernel, "node", home.config, log);
+  applyLayer(kernel, "project", projectConfig, log);
 
   const hostSource: PluginSource = {
     location: HOST_LOCATION,
@@ -207,11 +217,11 @@ function watchFiles(
         }),
       {
         path: home.config,
-        onChange: () => kernel.config.setLayer("node", readLayer(home.config, log)),
+        onChange: () => applyLayer(kernel, "node", home.config, log),
       },
       {
         path: projectConfig,
-        onChange: () => kernel.config.setLayer("project", readLayer(projectConfig, log)),
+        onChange: () => applyLayer(kernel, "project", projectConfig, log),
       },
     ],
     log,

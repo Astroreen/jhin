@@ -32,7 +32,6 @@ function print(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-/** `--name Ada --count 2 --flag` → { name: "Ada", count: 2, flag: true } (JSON values are parsed). */
 interface Args {
   readonly positionals: readonly string[];
   /** Every `--key value`, `--key=value` or bare `--flag` (true), in order. */
@@ -65,15 +64,25 @@ function parseArgv(argv: readonly string[]): Args {
   return { positionals, options };
 }
 
-const GLOBAL_OPTIONS = new Set(["home", "cwd", "input", "watch"]);
+const GLOBAL_OPTIONS = new Set(["home", "cwd", "input", "watch", "help"]);
 
-/** `--name Ada --count 2 --flag` → { name: "Ada", count: 2, flag: true }; JSON values are parsed. */
-function inputFromOptions(options: ReadonlyMap<string, string | true>): Record<string, unknown> {
+/**
+ * `--name Ada --count 2 --flag` → { name: "Ada", count: 2, flag: true }. Values
+ * are parsed as JSON unless the command's input schema declares the property a
+ * string, so `--name 42` stays "42".
+ */
+function inputFromOptions(
+  options: ReadonlyMap<string, string | true>,
+  command: CommandInfo,
+): Record<string, unknown> {
+  const properties =
+    (command.inputSchema as { properties?: Record<string, { type?: unknown }> } | undefined)
+      ?.properties ?? {};
   const input: Record<string, unknown> = {};
   for (const [key, value] of options) {
     if (GLOBAL_OPTIONS.has(key)) continue;
-    if (value === true) {
-      input[key] = true;
+    if (value === true || properties[key]?.type === "string") {
+      input[key] = value;
       continue;
     }
     try {
@@ -118,7 +127,7 @@ async function main(argv: readonly string[]): Promise<number> {
     ...(typeof cwd === "string" ? { cwd } : {}),
   };
 
-  if (command === undefined || command === "help" || command === "--help") {
+  if (command === undefined || command === "help" || parsed.options.has("help")) {
     if (command === undefined) process.stdout.write(`${USAGE}\n`);
     else
       await withHost(global, async (host) =>
@@ -168,14 +177,25 @@ async function main(argv: readonly string[]): Promise<number> {
   }
   return withHost(global, async (host) => {
     const known = host.kernel.commands.list();
-    if (!known.some((info) => info.name === command)) {
+    const target = known.find((candidate) => candidate.name === command);
+    if (target === undefined) {
       process.stderr.write(
         `Unknown command: ${command}\n\nCommands:\n${describeCommands(known)}\n`,
       );
       return 2;
     }
     const raw = parsed.options.get("input");
-    const input = typeof raw === "string" ? JSON.parse(raw) : inputFromOptions(parsed.options);
+    let input: unknown;
+    if (typeof raw === "string") {
+      try {
+        input = JSON.parse(raw);
+      } catch {
+        process.stderr.write(`--input is not valid JSON: ${raw}\n`);
+        return 2;
+      }
+    } else {
+      input = inputFromOptions(parsed.options, target);
+    }
     try {
       print(await host.kernel.commands.execute(command, input));
       return 0;

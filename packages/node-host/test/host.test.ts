@@ -164,4 +164,31 @@ export default definePlugin({
       count: 1,
     });
   });
+
+  it("keeps the previous config when the file becomes invalid, and survives atomic saves", async () => {
+    const home = tempDir("home");
+    const config = Path.join(home, "config.jsonc");
+    host = new HostProcess({ home, cwd: tempDir("cwd"), distribution: [EXAMPLE], watch: true });
+    await host.ready();
+    const isEvent = (type: string) => (message: { type: string; [key: string]: unknown }) =>
+      message.type === "event" && (message["event"] as { type: string }).type === type;
+
+    // The file did not exist when the watch started.
+    let changed = host.next(isEvent("kernel.config.changed"));
+    Fs.writeFileSync(config, '{ "jhin.example": { "greeting": "Hi" } }');
+    await changed;
+    expect((await host.execute("example.greet", { name: "A" })).value.message).toBe("Hi, A!");
+
+    const rejected = host.next(isEvent("host.config.rejected"));
+    Fs.writeFileSync(config, '{ "jhin.example": { "greeting": ');
+    await rejected;
+    expect((await host.execute("example.greet", { name: "A" })).value.message).toBe("Hi, A!");
+
+    // Editors often save by renaming a temporary file over the original.
+    changed = host.next(isEvent("kernel.config.changed"));
+    Fs.writeFileSync(`${config}.tmp`, '{ "jhin.example": { "greeting": "Hey" } }');
+    Fs.renameSync(`${config}.tmp`, config);
+    await changed;
+    expect((await host.execute("example.greet", { name: "A" })).value.message).toBe("Hey, A!");
+  });
 });

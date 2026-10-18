@@ -127,6 +127,15 @@ export default definePlugin({
     expect(invalid.status).toBe(1);
     expect(JSON.parse(invalid.stderr).error.code).toBe("COMMAND_INPUT_INVALID");
 
+    // A string property keeps a numeric-looking value as a string.
+    expect(JSON.parse(jhin(home, "example.greet", "--name", "42").stdout).message).toBe(
+      "Hello, 42!",
+    );
+
+    const badJson = jhin(home, "example.greet", "--input", "{nope");
+    expect(badJson.status).toBe(2);
+    expect(badJson.stderr).toContain("--input is not valid JSON");
+
     const unknown = jhin(home, "nope.command");
     expect(unknown.status).toBe(2);
     expect(unknown.stderr).toContain("example.greet");

@@ -24,7 +24,7 @@ function rootOf(url: string): string | undefined {
 /**
  * Two resolve hooks, installed once per process:
  *
- * - Shared packages (`@jhin/sdk`) resolve to the host's copy, so plugins
+ * - Shared packages (`@jhin/sdk` and its subpaths) resolve to the host's copy, so plugins
  *   outside any node_modules tree (`~/.jhin/plugins`) can import them and
  *   every plugin sees the same instances.
  * - A file imported by a plugin module loaded with `?jhin-gen=N` gets the same
@@ -35,11 +35,13 @@ function rootOf(url: string): string | undefined {
 function installHooks(): void {
   if (installed) return;
   installed = true;
-  const shared = new Map(SHARED.map((name) => [name, import.meta.resolve(name)]));
   Module.registerHooks({
     resolve(specifier, context, nextResolve) {
-      const sharedUrl = shared.get(specifier);
-      if (sharedUrl !== undefined) return { url: sharedUrl, shortCircuit: true };
+      // Subpaths too (`@jhin/sdk/x`), resolved from the host so there is one copy.
+      if (SHARED.some((name) => specifier === name || specifier.startsWith(`${name}/`))) {
+        // Resolve as if the host imported it; import.meta.resolve here would re-enter this hook.
+        return nextResolve(specifier, { ...context, parentURL: import.meta.url });
+      }
 
       const result = nextResolve(specifier, context);
       const parent = context.parentURL;
