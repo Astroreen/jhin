@@ -22,9 +22,9 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node ../../scripts/build.ts",
     "typecheck": "tsc --noEmit",
-    "prepack": "tsc -p tsconfig.build.json"
+    "prepack": "node ../../scripts/build.ts"
   },
   "dependencies": {
     "@jhin/sdk": "workspace:*",

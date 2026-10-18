@@ -94,13 +94,15 @@ function untouched(before: string, when: string): void {
   }
 }
 
-/** Starts `jhin serve --ui`; resolves once it printed its endpoints. */
+/** Starts `jhin serve --ui`; resolves once it printed its RPC, UI and log lines, in any order. */
 function serve(
   bin: string,
   dir: string,
 ): Promise<{
   child: ChildProcess.ChildProcess;
   output: string;
+  rpc: string;
+  ui: string;
   exited: Promise<number | null>;
 }> {
   const child = ChildProcess.spawn(bin, ["serve", "--ui", "--home", dir, "--cwd", dir], {
@@ -113,7 +115,12 @@ function serve(
     child.stderr.on("data", (chunk) => {
       output += String(chunk);
       process.stderr.write(chunk);
-      if (output.includes("logs:")) resolve({ child, output, exited });
+      // Whole lines only: a chunk may end in the middle of one.
+      const rpc = /^rpc: (\S+)\n/m.exec(output)?.[1];
+      const ui = /^ui: (\S+)\n/m.exec(output)?.[1];
+      if (rpc !== undefined && ui !== undefined && /^logs: .+\n/m.test(output)) {
+        resolve({ child, output, rpc, ui, exited });
+      }
     });
     // Before the endpoints are printed an exit is a failure; after, resolve() already won.
     void exited.then((code) => reject(new Error(`jhin serve exited with ${code}:\n${output}`)));
@@ -237,12 +244,9 @@ async function main(): Promise<void> {
     process.stdout.write(run(bin, ["example.greet", "--name", "Ada", ...at], tmp));
 
     step("jhin serve --ui");
-    const { child, output, exited } = await serve(bin, dir);
+    const { child, output, rpc, ui, exited } = await serve(bin, dir);
     try {
       if (!output.includes(", 0 with problems")) throw new Error("jhin serve reported problems");
-      const rpc = /rpc: (\S+)/.exec(output)?.[1];
-      const ui = /ui: (\S+)/.exec(output)?.[1];
-      if (rpc === undefined || ui === undefined) throw new Error("jhin serve printed no endpoints");
 
       step(`GET ${ui}`);
       const page = await fetch(ui);
