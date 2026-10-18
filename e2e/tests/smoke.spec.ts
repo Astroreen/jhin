@@ -5,5 +5,5 @@ test("renders a page and reads it through the accessibility tree", async ({ page
   await page.setContent(`<main><h1>Jhin</h1><button>Send</button></main>`);
 
   await expect(page.getByRole("heading", { name: "Jhin" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Missing" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 });
