@@ -60,6 +60,26 @@ export function describeStorageContract(name: string, open: () => Promise<Storag
         expect(await kv.get("app", "k")).toEqual({ list: [1] });
       });
 
+      it("orders keys by code point, also outside the Basic Multilingual Plane", async () => {
+        const { kv } = await open();
+        // U+FFFD sorts before U+1F600 by code point; UTF-16 code units would say the opposite.
+        await kv.set("app", "😀b", 2);
+        await kv.set("app", "\uFFFD", 1);
+        await kv.set("app", "😀a", 3);
+        await kv.set("app", "a", 0);
+
+        expect((await kv.list("app")).map((entry) => entry.key)).toEqual([
+          "a",
+          "\uFFFD",
+          "😀a",
+          "😀b",
+        ]);
+        expect((await kv.list("app", { prefix: "😀" })).map((entry) => entry.key)).toEqual([
+          "😀a",
+          "😀b",
+        ]);
+      });
+
       it("rejects empty names", async () => {
         const { kv } = await open();
         await expect(kv.set("", "k", 1)).rejects.toMatchObject({ code: "INVALID" });
@@ -151,6 +171,51 @@ export function describeStorageContract(name: string, open: () => Promise<Storag
           [2, "app.a"],
           [3, "app.b"],
         ]);
+      });
+
+      it("rejects counts that are not non-negative integers", async () => {
+        const { log } = await open();
+        await log.append("s", [{ type: "app.a", payload: 1 }]);
+
+        await expect(log.read("s", { limit: -1 })).rejects.toMatchObject({ code: "INVALID" });
+        await expect(log.read("s", { after: 1.5 })).rejects.toMatchObject({ code: "INVALID" });
+        await expect(log.append("s", [], { expectedHead: Number.NaN })).rejects.toMatchObject({
+          code: "INVALID",
+        });
+        expect(await log.read("s", { limit: 0 })).toEqual([]);
+      });
+
+      it("treats an empty batch as a no-op that still checks the expected head", async () => {
+        const { log } = await open();
+        await log.append("s", [{ type: "app.a", payload: 1 }]);
+
+        expect(await log.append("s", [], { expectedHead: 1 })).toEqual([]);
+        await expect(log.append("s", [], { expectedHead: 0 })).rejects.toMatchObject({
+          code: "CONFLICT",
+        });
+        expect(await log.head("s")).toBe(1);
+      });
+
+      it("keeps sequence order for subscribers when a subscriber appends", async () => {
+        const { log } = await open();
+        const seen: number[] = [];
+        let reacted = false;
+        let reaction: Promise<unknown> = Promise.resolve();
+        log.subscribe("s", (event) => {
+          seen.push(event.sequence);
+          if (!reacted) {
+            reacted = true;
+            reaction = log.append("s", [{ type: "app.reaction", payload: null }]);
+          }
+        });
+
+        await log.append("s", [
+          { type: "app.a", payload: 1 },
+          { type: "app.b", payload: 2 },
+        ]);
+        await reaction;
+
+        expect(seen).toEqual([1, 2, 3]);
       });
 
       it("lists non-empty streams by prefix with their heads", async () => {

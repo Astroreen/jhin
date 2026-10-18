@@ -1,10 +1,12 @@
 import { DatabaseSync } from "node:sqlite";
 
-import { toDisposable } from "@jhin/sdk";
 import {
   StorageError,
+  assertCount,
   assertEvents,
   assertName,
+  createNotifier,
+  parseStored,
   type EventLog,
   type Json,
   type KeyValueStore,
@@ -42,6 +44,21 @@ function serialize(value: Json): string {
   return text;
 }
 
+/**
+ * The smallest string greater than every string starting with `prefix`, in
+ * code point order (SQLite's BINARY collation on UTF-8), or undefined when
+ * there is none. Lets a prefix scan use the primary key index.
+ */
+function prefixUpperBound(prefix: string): string | undefined {
+  const points = [...prefix];
+  while (points.length > 0) {
+    let code = points.pop()!.codePointAt(0)! + 1;
+    if (code >= 0xd800 && code <= 0xdfff) code = 0xe000;
+    if (code <= 0x10ffff) return points.join("") + String.fromCodePoint(code);
+  }
+  return undefined;
+}
+
 interface EventRow {
   stream: string;
   sequence: number;
@@ -54,28 +71,32 @@ const toEvent = (row: EventRow): StoredEvent => ({
   stream: row.stream,
   sequence: Number(row.sequence),
   type: row.type,
-  payload: JSON.parse(row.payload) as Json,
+  payload: parseStored(row.payload, { stream: row.stream, sequence: Number(row.sequence) }),
   at: row.at,
 });
+
+function migrate(db: DatabaseSync): void {
+  // IMMEDIATE takes the write lock first, so two processes opening the same
+  // file cannot both run a migration; the version is re-read under the lock.
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const version = Number(
+      (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
+    );
+    for (let index = version; index < MIGRATIONS.length; index += 1) db.exec(MIGRATIONS[index]!);
+    if (version < MIGRATIONS.length) db.exec(`PRAGMA user_version = ${MIGRATIONS.length}`);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
 
 /** Opens (and migrates) the database at `file`; `":memory:"` works for tests. */
 export function openSqliteStorage(file: string, now: () => Date = () => new Date()): SqliteStorage {
   const db = new DatabaseSync(file);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;");
-  const version = Number(
-    (db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version,
-  );
-  for (let index = version; index < MIGRATIONS.length; index += 1) {
-    db.exec("BEGIN");
-    try {
-      db.exec(MIGRATIONS[index]!);
-      db.exec(`PRAGMA user_version = ${index + 1}`);
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
-  }
+  migrate(db);
 
   const statements = {
     kvGet: db.prepare("SELECT value FROM kv WHERE namespace = ? AND key = ?"),
@@ -83,8 +104,11 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
       "INSERT INTO kv (namespace, key, value) VALUES (?, ?, ?) ON CONFLICT (namespace, key) DO UPDATE SET value = excluded.value",
     ),
     kvDelete: db.prepare("DELETE FROM kv WHERE namespace = ? AND key = ?"),
-    kvList: db.prepare(
-      "SELECT key, value FROM kv WHERE namespace = ? AND substr(key, 1, ?) = ? ORDER BY key",
+    kvListFrom: db.prepare(
+      "SELECT key, value FROM kv WHERE namespace = ? AND key >= ? ORDER BY key",
+    ),
+    kvListRange: db.prepare(
+      "SELECT key, value FROM kv WHERE namespace = ? AND key >= ? AND key < ? ORDER BY key",
     ),
     head: db.prepare("SELECT coalesce(max(sequence), 0) AS head FROM events WHERE stream = ?"),
     insert: db.prepare(
@@ -93,11 +117,14 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
     read: db.prepare(
       "SELECT stream, sequence, type, payload, at FROM events WHERE stream = ? AND sequence > ? ORDER BY sequence LIMIT ?",
     ),
-    streams: db.prepare(
-      "SELECT stream, max(sequence) AS head FROM events WHERE substr(stream, 1, ?) = ? GROUP BY stream ORDER BY stream",
+    streamsFrom: db.prepare(
+      "SELECT stream, max(sequence) AS head FROM events WHERE stream >= ? GROUP BY stream ORDER BY stream",
+    ),
+    streamsRange: db.prepare(
+      "SELECT stream, max(sequence) AS head FROM events WHERE stream >= ? AND stream < ? GROUP BY stream ORDER BY stream",
     ),
   };
-  const listeners = new Map<string, Set<(event: StoredEvent) => void>>();
+  const notifier = createNotifier();
   const headOf = (stream: string) => Number((statements.head.get(stream) as { head: number }).head);
 
   const kv: KeyValueStore = {
@@ -105,7 +132,7 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
       assertName("namespace", namespace);
       assertName("key", key);
       const row = statements.kvGet.get(namespace, key) as { value: string } | undefined;
-      return row === undefined ? undefined : (JSON.parse(row.value) as Json);
+      return row === undefined ? undefined : parseStored(row.value, { namespace, key });
     },
     async set(namespace, key, value) {
       assertName("namespace", namespace);
@@ -120,9 +147,18 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
     async list(namespace, options = {}) {
       assertName("namespace", namespace);
       const prefix = options.prefix ?? "";
-      return (
-        statements.kvList.all(namespace, prefix.length, prefix) as { key: string; value: string }[]
-      ).map((row) => ({ key: row.key, value: JSON.parse(row.value) as Json }));
+      const upper = prefixUpperBound(prefix);
+      const rows = (
+        upper === undefined
+          ? statements.kvListFrom.all(namespace, prefix)
+          : statements.kvListRange.all(namespace, prefix, upper)
+      ) as { key: string; value: string }[];
+      return rows
+        .filter((row) => row.key.startsWith(prefix))
+        .map((row) => ({
+          key: row.key,
+          value: parseStored(row.value, { namespace, key: row.key }),
+        }));
     },
   };
 
@@ -130,6 +166,7 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
     async append(stream, events: readonly NewEvent[], options = {}) {
       assertName("stream", stream);
       assertEvents(events);
+      assertCount("expectedHead", options.expectedHead);
       const payloads = events.map((event) => serialize(event.payload));
       const at = now().toISOString();
       let stored: StoredEvent[];
@@ -140,11 +177,7 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
           throw new StorageError(
             "CONFLICT",
             `Stream ${stream} is at ${head}, expected ${options.expectedHead}`,
-            {
-              stream,
-              head,
-              expectedHead: options.expectedHead,
-            },
+            { stream, head, expectedHead: options.expectedHead },
           );
         }
         stored = events.map((event, index) => {
@@ -163,19 +196,13 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
         db.exec("ROLLBACK");
         throw error;
       }
-      for (const event of stored) {
-        for (const listener of Array.from(listeners.get(stream) ?? [])) {
-          try {
-            listener({ ...event, payload: JSON.parse(JSON.stringify(event.payload)) as Json });
-          } catch {
-            // A failing subscriber must not fail the append that already happened.
-          }
-        }
-      }
+      notifier.notify(stored);
       return stored;
     },
     async read(stream, options = {}) {
       assertName("stream", stream);
+      assertCount("after", options.after);
+      assertCount("limit", options.limit);
       const rows = statements.read.all(
         stream,
         options.after ?? 0,
@@ -189,19 +216,19 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
     },
     async streams(options = {}) {
       const prefix = options.prefix ?? "";
-      return (
-        statements.streams.all(prefix.length, prefix) as { stream: string; head: number }[]
-      ).map((row) => ({
-        stream: row.stream,
-        head: Number(row.head),
-      }));
+      const upper = prefixUpperBound(prefix);
+      const rows = (
+        upper === undefined
+          ? statements.streamsFrom.all(prefix)
+          : statements.streamsRange.all(prefix, upper)
+      ) as { stream: string; head: number }[];
+      return rows
+        .filter((row) => row.stream.startsWith(prefix))
+        .map((row) => ({ stream: row.stream, head: Number(row.head) }));
     },
     subscribe(stream, listener) {
       assertName("stream", stream);
-      const set = listeners.get(stream) ?? new Set();
-      set.add(listener);
-      listeners.set(stream, set);
-      return toDisposable(() => set.delete(listener));
+      return notifier.subscribe(stream, listener);
     },
   };
 
@@ -209,7 +236,7 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
     kv,
     log,
     close: () => {
-      listeners.clear();
+      notifier.clear();
       db.close();
     },
   };

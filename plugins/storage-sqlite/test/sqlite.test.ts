@@ -1,6 +1,7 @@
 import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { definePlugin } from "@jhin/sdk";
 import type { EventLog, KeyValueStore } from "@jhin/storage-api";
@@ -66,5 +67,35 @@ describe("jhin.storage-sqlite plugin", () => {
     ]);
     expect(Fs.existsSync(Path.join(data, "jhin.storage-sqlite", "jhin.db"))).toBe(true);
     await second.stop();
+  });
+
+  it("reports a corrupt stored value as CORRUPT with its location", async () => {
+    const file = Path.join(tempDir(), "corrupt.db");
+    openSqliteStorage(file).close();
+    const raw = new DatabaseSync(file);
+    raw
+      .prepare("INSERT INTO kv (namespace, key, value) VALUES (?, ?, ?)")
+      .run("app", "bad", "{oops");
+    raw.close();
+
+    const storage = openSqliteStorage(file);
+    await expect(storage.kv.get("app", "bad")).rejects.toMatchObject({
+      code: "CORRUPT",
+      details: { namespace: "app", key: "bad" },
+    });
+    storage.close();
+  });
+
+  it("lets two storages open the same new file", async () => {
+    const file = Path.join(tempDir(), "shared.db");
+    const one = openSqliteStorage(file);
+    const two = openSqliteStorage(file);
+
+    await one.log.append("s", [{ type: "app.a", payload: 1 }]);
+    await two.log.append("s", [{ type: "app.b", payload: 2 }]);
+
+    expect((await one.log.read("s")).map((event) => event.sequence)).toEqual([1, 2]);
+    one.close();
+    two.close();
   });
 });
