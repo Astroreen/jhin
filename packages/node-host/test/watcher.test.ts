@@ -57,23 +57,26 @@ afterEach(() => {
 });
 
 describe("plugin watching", () => {
-  it("drops dist/ changes of a plugin that runs from TypeScript source", async () => {
-    const plugin = watchPlugin("src/index.ts");
-    const built = Path.join("dist", "index.js");
+  for (const output of ["dist", ".dist-next"]) {
+    it(`drops ${output}/ changes of a plugin that runs from TypeScript source`, async () => {
+      const plugin = watchPlugin("src/index.ts");
+      Fs.mkdirSync(Path.join(plugin.root, output), { recursive: true });
+      const built = Path.join(output, "index.js");
 
-    Fs.writeFileSync(Path.join(plugin.root, built), "export default {};\n");
-    // The change reached the watcher and was dropped, so it can join no burst. Had it
-    // counted, it would start a burst instead, and the test fails on it at once.
-    await Promise.race([
-      plugin.ignored(built),
-      plugin.firstBurst.then((files) => {
-        throw new Error(`dist/ change reported: ${files.join(", ")}`);
-      }),
-    ]);
-    Fs.writeFileSync(Path.join(plugin.root, "src", "index.ts"), "export default {};\n");
+      Fs.writeFileSync(Path.join(plugin.root, built), "export default {};\n");
+      // The change reached the watcher and was dropped, so it can join no burst. Had it
+      // counted, it would start a burst instead, and the test fails on it at once.
+      await Promise.race([
+        plugin.ignored(built),
+        plugin.firstBurst.then((files) => {
+          throw new Error(`${output}/ change reported: ${files.join(", ")}`);
+        }),
+      ]);
+      Fs.writeFileSync(Path.join(plugin.root, "src", "index.ts"), "export default {};\n");
 
-    expect(await plugin.firstBurst).toEqual([Path.join(plugin.root, "src", "index.ts")]);
-  });
+      expect(await plugin.firstBurst).toEqual([Path.join(plugin.root, "src", "index.ts")]);
+    });
+  }
 
   it("reloads on the build output of a plugin whose entry is JavaScript, wherever it is", async () => {
     for (const entry of ["dist/index.js", "build/index.mjs", "index.js"]) {

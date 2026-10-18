@@ -70,7 +70,7 @@ and engineering practices.
   kernel host that applies no precedence) stop the running plugin: both copies
   are blocked as duplicates until one goes; the node host never passes
   duplicates, a later layer shadows an earlier one. A plugin run from
-  TypeScript source ignores its `dist/` (where `build` and `pack` write), so
+  TypeScript source ignores its `dist/` and `.dist-next/` (where `build` and `pack` write), so
   building or packing it does not reload it; a plugin whose entry is
   JavaScript reloads on any change, wherever it is built to. Known
   limitation: old modules

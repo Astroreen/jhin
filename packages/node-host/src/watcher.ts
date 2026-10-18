@@ -16,16 +16,19 @@ export interface WatchTarget {
 
 const IGNORED = /(^|[/\\])(node_modules|\.git)([/\\]|$)/;
 
+/** Where scripts/build.ts writes: it compiles into `.dist-next/`, then swaps it in as `dist/`. */
+const BUILD_OUTPUT = new Set(["dist", ".dist-next"]);
+
 /**
  * For a plugin root: what a change to its build output means depends on the
- * entry. A plugin run from TypeScript source ignores `dist/`, where
- * `build` and `pack` write (scripts/build.ts), so building it does not reload
- * it. A plugin whose entry is JavaScript runs from its build output, wherever
- * that is, and reloads on every change.
+ * entry. A plugin run from TypeScript source ignores `dist/` and `.dist-next/`,
+ * where `build` and `pack` write (scripts/build.ts), so building it does not
+ * reload it. A plugin whose entry is JavaScript runs from its build output,
+ * wherever that is, and reloads on every change.
  */
 export function buildOutputFilter(entry: string): ((relative: string) => boolean) | undefined {
   if (!/\.[cm]?tsx?$/.test(entry)) return undefined;
-  return (relative) => relative.split(/[/\\]/)[0] !== "dist";
+  return (relative) => !BUILD_OUTPUT.has(relative.split(/[/\\]/)[0]!);
 }
 
 /**
