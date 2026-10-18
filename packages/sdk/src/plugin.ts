@@ -17,7 +17,13 @@ export interface Logger {
   child(fields: LogFields): Logger;
 }
 
-/** Who runs a command and with which rights. Absent caller = trusted host code. */
+/**
+ * Who runs a command and with which rights.
+ *
+ * An absent `caller` means trusted in-process code and skips permission
+ * checks. Every remote surface (RPC, CLI over a connection, MCP) must set a
+ * caller.
+ */
 export interface Invocation {
   readonly traceId?: string;
   readonly caller?: {
@@ -85,6 +91,12 @@ export interface Config {
   /** Declares a config section; values are validated and defaulted by the schema. */
   define<S extends z.ZodType>(section: string, schema: S): Disposable;
   get<T = unknown>(section: string): T;
+  /**
+   * Called when the merged raw value of the section changes (a layer was set).
+   * Schema defaults are not part of the comparison. If the new value fails
+   * validation the listener is not called and the error is logged; `get`
+   * throws `CONFIG_INVALID` until a layer fixes it.
+   */
   onDidChange<T = unknown>(section: string, listener: (value: T) => void): Disposable;
 }
 

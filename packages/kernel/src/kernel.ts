@@ -107,6 +107,24 @@ interface PluginRecord {
   subscriptions: DisposableStore | undefined;
 }
 
+/** A capability missing here but provided by a plugin built for the other side gets a hint. */
+function withSideHint(error: ErrorInfo, otherSide: readonly PluginRecord[]): ErrorInfo {
+  if (error.code !== "CAPABILITY_MISSING") return error;
+  const capability = error.details?.["capability"];
+  const provider = otherSide.find(
+    (record) => typeof capability === "string" && capability in record.manifest.provides,
+  );
+  if (provider === undefined) return error;
+  return {
+    ...error,
+    message: `${error.message}; ${provider.manifest.id} provides it but runs on the ${provider.manifest.side} side`,
+    details: {
+      ...error.details,
+      otherSide: { plugin: provider.manifest.id, side: provider.manifest.side },
+    },
+  };
+}
+
 export function createKernel(options: KernelOptions): Kernel {
   const log = options.logger ?? noopLogger;
   const services = new ServiceRegistry();
@@ -121,12 +139,34 @@ export function createKernel(options: KernelOptions): Kernel {
   const activeOrder: string[] = [];
   let resolution: Resolution | undefined;
   let phase: "new" | "started" | "stopped" = "new";
+  // start, stop and reload run one at a time, in call order. Calling one of them
+  // from inside a plugin's activate/deactivate would wait on itself: don't.
+  let lifecycle: Promise<unknown> = Promise.resolve();
+  const serial = <T>(operation: () => Promise<T>): Promise<T> => {
+    const run = lifecycle.then(operation, operation);
+    lifecycle = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  };
 
   function contextFor(record: PluginRecord, store: DisposableStore): PluginContext {
     const { manifest } = record;
     const id = manifest.id;
     const pluginLog = log.child({ plugin: id });
-    const own = <T extends Disposable>(item: T): T => store.add(item);
+    // Registrations go through `own`, so a context retained after deactivation
+    // (a late callback, a timer) cannot register anything that would outlive it.
+    const own = <T extends Disposable>(register: () => T): T => {
+      if (store.isDisposed) {
+        throw new KernelError(
+          "KERNEL_STATE",
+          `${id} is not active; its context can no longer register anything`,
+          { plugin: id },
+        );
+      }
+      return store.add(register());
+    };
     const declared = (capability: string) =>
       capability in manifest.requires ||
       capability in manifest.optional ||
@@ -137,7 +177,7 @@ export function createKernel(options: KernelOptions): Kernel {
     return {
       plugin: { id, version: manifest.version },
       manifest,
-      subscriptions: { add: own },
+      subscriptions: { add: (item) => store.add(item) },
       services: {
         provide(capability, implementation) {
           if (!(capability in manifest.provides)) {
@@ -147,7 +187,7 @@ export function createKernel(options: KernelOptions): Kernel {
               { plugin: id, capability },
             );
           }
-          return own(services.provide(id, capability, implementation));
+          return own(() => services.provide(id, capability, implementation));
         },
         get<T>(capability: string): T {
           if (!declared(capability)) {
@@ -182,27 +222,27 @@ export function createKernel(options: KernelOptions): Kernel {
       },
       hooks: {
         before: (name, hook, hookOptions) =>
-          own(hooks.add(name, "before", id, hook as never, hookOptions?.order)),
+          own(() => hooks.add(name, "before", id, hook as never, hookOptions?.order)),
         after: (name, hook, hookOptions) =>
-          own(hooks.add(name, "after", id, hook as never, hookOptions?.order)),
+          own(() => hooks.add(name, "after", id, hook as never, hookOptions?.order)),
         around: (name, hook, hookOptions) =>
-          own(hooks.add(name, "around", id, hook as never, hookOptions?.order)),
+          own(() => hooks.add(name, "around", id, hook as never, hookOptions?.order)),
         run: (name, input, implementation) => hooks.run(name, input, implementation),
       },
       commands: {
-        register: (definition) => own(commands.register(id, definition as never)),
+        register: (definition) => own(() => commands.register(id, definition as never)),
         execute: (name, input, invocation) => commands.execute(name, input, invocation),
         list: () => commands.list(),
       },
       config: {
-        define: (section, schema) => own(config.define(id, section, schema)),
+        define: (section, schema) => own(() => config.define(id, section, schema)),
         get: <T>(section: string) => config.get(section) as T,
         onDidChange: (section, listener) =>
-          own(config.onDidChange(section, listener as (value: unknown) => void)),
+          own(() => config.onDidChange(section, listener as (value: unknown) => void)),
       },
       events: {
         emit: (type, payload) => events.emit(type, payload),
-        on: (type, listener) => own(events.on(type, listener)),
+        on: (type, listener) => own(() => events.on(type, listener)),
       },
       state: {
         get: <T>(key: string) => state.get(key) as T | undefined,
@@ -318,107 +358,115 @@ export function createKernel(options: KernelOptions): Kernel {
   }
 
   return {
-    async start(sources) {
-      if (phase !== "new") throw new KernelError("KERNEL_STATE", "Kernel can only be started once");
-      phase = "started";
+    start: (sources) =>
+      serial(async () => {
+        if (phase !== "new")
+          throw new KernelError("KERNEL_STATE", "Kernel can only be started once");
+        phase = "started";
 
-      const candidates: PluginRecord[] = [];
-      const seen = new Map<string, PluginRecord>();
-      for (const source of sources) {
-        const parsed = PluginManifest.safeParse(source.manifest);
-        if (!parsed.success) {
-          invalid.push({
-            location: source.location,
-            error: {
-              code: "MANIFEST_INVALID",
-              message: `Invalid manifest at ${source.location}`,
-              details: {
-                issues: parsed.error.issues.map((issue) => ({
-                  path: issue.path.join("."),
-                  message: issue.message,
-                })),
+        const candidates: PluginRecord[] = [];
+        const seen = new Map<string, PluginRecord>();
+        for (const source of sources) {
+          const parsed = PluginManifest.safeParse(source.manifest);
+          if (!parsed.success) {
+            invalid.push({
+              location: source.location,
+              error: {
+                code: "MANIFEST_INVALID",
+                message: `Invalid manifest at ${source.location}`,
+                details: {
+                  issues: parsed.error.issues.map((issue) => ({
+                    path: issue.path.join("."),
+                    message: issue.message,
+                  })),
+                },
               },
-            },
-          });
-          continue;
-        }
-        const record: PluginRecord = {
-          manifest: parsed.data,
-          source,
-          status: "inactive",
-          error: undefined,
-          generation: 0,
-          definition: undefined,
-          subscriptions: undefined,
-        };
-        const duplicate = seen.get(parsed.data.id);
-        if (duplicate !== undefined) {
-          for (const item of [duplicate, record]) {
-            item.status = "blocked";
-            item.error = {
-              code: "DUPLICATE_PLUGIN",
-              message: `Plugin ${parsed.data.id} is found at ${duplicate.source.location} and ${source.location}`,
-              details: { locations: [duplicate.source.location, source.location] },
-            };
+            });
+            continue;
           }
-          invalid.push({ location: source.location, error: record.error! });
-          continue;
+          const record: PluginRecord = {
+            manifest: parsed.data,
+            source,
+            status: "inactive",
+            error: undefined,
+            generation: 0,
+            definition: undefined,
+            subscriptions: undefined,
+          };
+          const duplicate = seen.get(parsed.data.id);
+          if (duplicate !== undefined) {
+            for (const item of [duplicate, record]) {
+              item.status = "blocked";
+              item.error = {
+                code: "DUPLICATE_PLUGIN",
+                message: `Plugin ${parsed.data.id} is found at ${duplicate.source.location} and ${source.location}`,
+                details: { locations: [duplicate.source.location, source.location] },
+              };
+            }
+            if (!invalid.some((item) => item.location === duplicate.source.location)) {
+              invalid.push({ location: duplicate.source.location, error: duplicate.error! });
+            }
+            invalid.push({ location: source.location, error: record.error! });
+            continue;
+          }
+          seen.set(parsed.data.id, record);
+          candidates.push(record);
         }
-        seen.set(parsed.data.id, record);
-        candidates.push(record);
-      }
 
-      for (const record of candidates) {
-        plugins.set(record.manifest.id, record);
-        const side = record.manifest.side;
-        if (side !== "both" && side !== options.side) record.status = "skipped";
-      }
+        for (const record of candidates) {
+          plugins.set(record.manifest.id, record);
+          const side = record.manifest.side;
+          if (side !== "both" && side !== options.side) record.status = "skipped";
+        }
 
-      const eligible = candidates
-        .filter((record) => record.status === "inactive")
-        .map((record) => record.manifest);
-      resolution = resolveGraph(eligible);
-      for (const [id, error] of resolution.blocked) {
-        const record = plugins.get(id)!;
-        record.status = "blocked";
-        record.error = error;
-        log.warn("plugin blocked", { plugin: id, error });
-      }
+        const eligible = candidates
+          .filter((record) => record.status === "inactive")
+          .map((record) => record.manifest);
+        resolution = resolveGraph(eligible);
+        const otherSide = candidates.filter((record) => record.status === "skipped");
+        for (const [id, error] of resolution.blocked) {
+          const record = plugins.get(id)!;
+          record.status = "blocked";
+          record.error = withSideHint(error, otherSide);
+          log.warn("plugin blocked", { plugin: id, error });
+        }
 
-      for (const id of resolution.order) await activate(plugins.get(id)!);
-      events.emit("kernel.started", { active: [...activeOrder] });
-    },
+        for (const id of resolution.order) await activate(plugins.get(id)!);
+        events.emit("kernel.started", { active: [...activeOrder] });
+      }),
 
-    async stop() {
-      if (phase !== "started") return;
-      phase = "stopped";
-      for (const id of [...activeOrder].toReversed()) await deactivate(plugins.get(id)!);
-      events.emit("kernel.stopped");
-    },
+    stop: () =>
+      serial(async () => {
+        if (phase !== "started") return;
+        phase = "stopped";
+        for (const id of [...activeOrder].toReversed()) await deactivate(plugins.get(id)!);
+        events.emit("kernel.stopped");
+      }),
 
-    async reload(pluginId) {
-      if (phase !== "started") throw new KernelError("KERNEL_STATE", "Kernel is not running");
-      const record = plugins.get(pluginId);
-      if (
-        record === undefined ||
-        resolution === undefined ||
-        !resolution.order.includes(pluginId)
-      ) {
-        throw new KernelError(
-          "PLUGIN_NOT_FOUND",
-          `Plugin ${pluginId} is not loaded or cannot activate`,
-          {
-            plugin: pluginId,
-          },
-        );
-      }
-      const affected = dependantsOf(pluginId);
-      const toStop = [...activeOrder].toReversed().filter((id) => affected.has(id));
-      for (const id of toStop) await deactivate(plugins.get(id)!);
-      const toStart = resolution.order.filter((id) => affected.has(id));
-      for (const id of toStart) await activate(plugins.get(id)!);
-      events.emit("kernel.plugin.reloaded", { plugin: pluginId, affected: toStart });
-    },
+    reload: (pluginId) =>
+      serial(async () => {
+        if (phase !== "started") throw new KernelError("KERNEL_STATE", "Kernel is not running");
+        const record = plugins.get(pluginId);
+        if (
+          record === undefined ||
+          resolution === undefined ||
+          !resolution.order.includes(pluginId)
+        ) {
+          throw new KernelError(
+            "PLUGIN_NOT_FOUND",
+            `Plugin ${pluginId} is not loaded or cannot activate`,
+            {
+              plugin: pluginId,
+            },
+          );
+        }
+        const affected = dependantsOf(pluginId);
+        const toStop = [...activeOrder].toReversed().filter((id) => affected.has(id));
+        for (const id of toStop) await deactivate(plugins.get(id)!);
+        const toStart = resolution.order.filter((id) => affected.has(id));
+        for (const id of toStart) await activate(plugins.get(id)!);
+        events.emit("kernel.plugin.reloaded", { plugin: pluginId, affected: toStart });
+      }),
 
     commands: {
       execute: (name, input, invocation) => commands.execute(name, input, invocation),

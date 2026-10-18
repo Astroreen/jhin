@@ -24,11 +24,17 @@ function isPlainObject(value: unknown): value is Values {
 }
 
 /** Objects merge key by key; everything else (arrays included) is replaced by the higher layer. */
+// Layers come from user files; these keys would reach Object.prototype through assignment.
+const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 function merge(base: unknown, override: unknown): unknown {
   if (!isPlainObject(base) || !isPlainObject(override))
     return override === undefined ? base : override;
-  const result: Values = { ...base };
-  for (const [key, value] of Object.entries(override)) result[key] = merge(base[key], value);
+  const result: Values = {};
+  for (const [key, value] of Object.entries(base)) if (!UNSAFE_KEYS.has(key)) result[key] = value;
+  for (const [key, value] of Object.entries(override)) {
+    if (!UNSAFE_KEYS.has(key)) result[key] = merge(base[key], value);
+  }
   return result;
 }
 

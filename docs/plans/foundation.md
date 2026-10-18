@@ -69,7 +69,9 @@ and engineering practices.
   map. An e2e test proves a user plugin adds a sidebar button and hot reloads.
 - **D17. One command registry, every surface:** a command is declared once
   (name, Zod input/output, required permissions, handler) and is exposed
-  automatically as an RPC method, a CLI subcommand and an MCP tool.
+  automatically as an RPC method, a CLI subcommand and an MCP tool. An
+  invocation without a caller is trusted in-process code and skips permission
+  checks; every remote surface (RPC, CLI over a connection, MCP) must set one.
 
 ### Config
 

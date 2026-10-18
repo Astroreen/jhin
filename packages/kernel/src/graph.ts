@@ -95,17 +95,26 @@ export function resolveGraph(manifests: readonly PluginManifest[]): Resolution {
     requiredDependencies.set(manifest.id, required);
   }
 
-  // 3. Cycles.
-  for (const cycle of findCycles(
-    manifests.map((manifest) => manifest.id),
-    dependencies,
-  )) {
+  // 3. Cycles. Only required edges can deadlock; an optional edge that closes a
+  //    cycle is dropped (the plugin then runs without that optional capability).
+  const ids = manifests.map((manifest) => manifest.id);
+  for (const cycle of findCycles(ids, requiredDependencies)) {
     for (const id of cycle) {
       block(id, {
         code: "DEPENDENCY_CYCLE",
         message: `Dependency cycle: ${[...cycle, cycle[0]].join(" → ")}`,
         details: { cycle },
       });
+    }
+  }
+  for (const component of findCycles(ids, dependencies)) {
+    const members = new Set(component);
+    for (const id of component) {
+      const edges = dependencies.get(id)!;
+      const required = requiredDependencies.get(id)!;
+      for (const dependency of edges) {
+        if (members.has(dependency) && !required.has(dependency)) edges.delete(dependency);
+      }
     }
   }
 

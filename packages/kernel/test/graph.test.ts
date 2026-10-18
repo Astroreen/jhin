@@ -158,6 +158,7 @@ describe("capability graph", () => {
     expect(snapshot.invalid.map((item) => item.error.code)).toEqual([
       "MANIFEST_INVALID",
       "DUPLICATE_PLUGIN",
+      "DUPLICATE_PLUGIN",
     ]);
     expect(statusOf(snapshot, "dup")).toEqual({ status: "blocked", code: "DUPLICATE_PLUGIN" });
   });
