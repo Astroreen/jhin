@@ -46,8 +46,8 @@ export interface Outbox {
   enqueue(node: string, patch: Patch): Promise<PendingChange>;
   /**
    * Expires what waited too long, then delivers what is pending for reachable
-   * nodes. Reads only the pending set, never the outbox stream. Calls made
-   * while a flush runs make it run once more.
+   * nodes. Reads only the pending set, never the outbox stream. A call made
+   * while a flush runs makes it run once more and resolves after that pass.
    */
   flush(): Promise<void>;
   /** What is still waiting (expiring what waited too long first), oldest first. */
@@ -191,14 +191,20 @@ export function createOutbox(options: OutboxOptions): Outbox {
 
   /** Changes whose pending entry exists but whose `queued` event is still being written. */
   const enqueuing = new Set<string>();
-  let delivering = false;
+  let running: Promise<void> | undefined;
   let again = false;
-  async function flush(): Promise<void> {
-    if (delivering) {
+  function flush(): Promise<void> {
+    if (running !== undefined) {
+      // The running flush makes one more pass; resolve when that pass is done.
       again = true;
-      return;
+      return running;
     }
-    delivering = true;
+    running = deliverAll();
+    return running;
+  }
+  async function deliverAll(): Promise<void> {
+    // Cleared in the same step the loop ends, so a call arriving later starts
+    // a new flush instead of joining one that already decided to stop.
     try {
       do {
         again = false;
@@ -225,7 +231,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
         }
       } while (again);
     } finally {
-      delivering = false;
+      running = undefined;
     }
   }
 

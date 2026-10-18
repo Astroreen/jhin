@@ -41,6 +41,8 @@ function setup(
     kvSetAfter: undefined as number | undefined,
     // Holds the next `queued` append until the test settles it.
     holdQueued: undefined as Promise<void> | undefined,
+    // Holds the next delivery until the test settles it.
+    holdDelivery: undefined as Promise<void> | undefined,
     // Called once a held append is waiting (the pending entry is written by then).
     onHeld: () => undefined as void,
   };
@@ -94,6 +96,12 @@ function setup(
     reachable: (node) => online.has(node),
     async deliver(node, change) {
       delivered.push({ node, patch: change });
+      const gate = faults.holdDelivery;
+      if (gate !== undefined) {
+        faults.holdDelivery = undefined;
+        faults.onHeld();
+        await gate;
+      }
       return answers.get(node)?.() ?? { status: "applied" };
     },
     unreachable: (error) => (error as { code?: unknown }).code === "NODE_UNREACHABLE",
@@ -384,13 +392,24 @@ describe("config outbox (D50)", () => {
     expect(await history()).toEqual([]);
   });
 
-  it("flushes again when asked while a flush runs", async () => {
-    const { outbox, online, delivered } = setup();
+  it("flushes again when asked while a flush runs, and resolves after that pass", async () => {
+    const { outbox, online, delivered, faults } = setup();
     online.add("b");
     await outbox.enqueue("b", patch("1"));
-    const running = outbox.flush();
+    let release!: () => void;
+    faults.holdDelivery = new Promise((resolve) => {
+      release = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      faults.onHeld = resolve;
+    });
+    void outbox.flush();
+    await held;
+    // Queued while the first pass is still delivering "1".
     await outbox.enqueue("b", patch("2"));
-    await Promise.all([running, outbox.flush()]);
+    const second = outbox.flush();
+    release();
+    await second;
     expect(delivered.map((change) => change.patch.values)).toEqual([
       { greeting: "1" },
       { greeting: "2" },
