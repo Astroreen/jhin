@@ -18,7 +18,8 @@ function jhin(
     ChildProcess.execFile(
       process.execPath,
       [BIN, ...args, "--home", home, "--cwd", home],
-      { encoding: "utf8" },
+      // inspect prints the whole node state; the 1 MiB default could cut it off.
+      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
       (error, stdout, stderr) => {
         const code = (error as { code?: unknown } | null)?.code;
         resolve({
