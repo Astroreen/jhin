@@ -79,13 +79,65 @@ function serve(
   });
   return new Promise((resolve, reject) => {
     let output = "";
+    const exited = (code: number | null) =>
+      reject(new Error(`jhin serve exited with ${code}:\n${output}`));
+    child.once("exit", exited);
     child.stderr.on("data", (chunk) => {
       output += String(chunk);
       process.stderr.write(chunk);
-      if (output.includes("logs:")) resolve({ child, output });
+      if (output.includes("logs:")) {
+        // From here on the caller owns the exit.
+        child.off("exit", exited);
+        resolve({ child, output });
+      }
     });
-    child.once("exit", (code) => reject(new Error(`jhin serve exited with ${code}`)));
   });
+}
+
+/** Third-party versions the workspace lockfile resolved, as pnpm overrides (pins the smoke install). */
+function lockedOverrides(): Map<string, string> {
+  const lockfile = Fs.readFileSync(Path.join(ROOT, "pnpm-lock.yaml"), "utf8");
+  const section = /^packages:\n([\s\S]*?)^snapshots:/m.exec(lockfile)?.[1] ?? "";
+  const versions = new Map<string, string[]>();
+  for (const [, key] of section.matchAll(/^ {2}'?([^'\s][^'\n]*?)'?:$/gm)) {
+    const at = key!.lastIndexOf("@");
+    const name = key!.slice(0, at);
+    versions.set(name, [...(versions.get(name) ?? []), key!.slice(at + 1)]);
+  }
+  const overrides = new Map<string, string>();
+  for (const [name, list] of versions) {
+    if (list.length === 1) {
+      overrides.set(name, list[0]!);
+      continue;
+    }
+    // Several versions: pin each by its major (0.x by its minor) when that tells them apart.
+    const line = (version: string) => {
+      const [major, minor] = version.split(".");
+      return major === "0" ? `0.${minor}` : major!;
+    };
+    const lines = list.map(line);
+    if (new Set(lines).size !== lines.length) continue;
+    list.forEach((version, index) => overrides.set(`${name}@${lines[index]}`, version));
+  }
+  return overrides;
+}
+
+/** Fails unless the tarball holds only dist/, package.json, LICENSE and README.md, and names no source. */
+function checkTarball(file: string): void {
+  const entries = run("tar", ["-tzf", file], ROOT).trim().split("\n");
+  const stray = entries.filter(
+    (entry) => !/^package\/(dist\/.+|LICENSE|README\.md|package\.json)$/.test(entry),
+  );
+  if (stray.length > 0) throw new Error(`${file} ships more than dist/: ${stray.join(", ")}`);
+  const manifest = JSON.parse(run("tar", ["-xzOf", file, "package/package.json"], ROOT)) as {
+    exports?: unknown;
+    bin?: unknown;
+    jhin?: { entry?: unknown };
+  };
+  const pointers = JSON.stringify([manifest.exports, manifest.bin, manifest.jhin?.entry]);
+  if (/src\/|\.tsx?"/.test(pointers.replaceAll(".d.ts", ""))) {
+    throw new Error(`${file} points at source: ${pointers}`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -99,7 +151,14 @@ async function main(): Promise<void> {
     const tarball = new Map<string, string>();
     for (const name of names) {
       const file = Path.join(tarballs, `${name.replace("@", "").replace("/", "-")}.tgz`);
-      run("pnpm", ["pack", "--out", file], packages.get(name)!);
+      const dir = packages.get(name)!;
+      try {
+        run("pnpm", ["pack", "--out", file], dir);
+      } finally {
+        // postpack does not run when pack fails: put the workspace manifest back regardless.
+        run("node", [Path.join(ROOT, "scripts", "pack-manifest.ts"), "postpack"], dir);
+      }
+      checkTarball(file);
       tarball.set(name, file);
       process.stdout.write(`${Path.basename(file)}\n`);
     }
@@ -117,10 +176,18 @@ async function main(): Promise<void> {
         dependencies: { [CLI]: `file:${tarball.get(CLI)}` },
       }),
     );
-    // The workspace packages are not on the registry: every reference goes to its tarball.
-    const overrides = names
-      .filter((name) => name !== CLI)
-      .map((name) => `  ${JSON.stringify(name)}: ${JSON.stringify(`file:${tarball.get(name)}`)}`);
+    // The workspace packages are not on the registry: every reference goes to its
+    // tarball. Third-party packages get the versions the workspace lockfile has, so
+    // an upstream release cannot change what this check installs.
+    const locked = lockedOverrides();
+    process.stdout.write(`${locked.size} third-party versions pinned from pnpm-lock.yaml\n`);
+    const pins = new Map([
+      ...locked,
+      ...names.filter((name) => name !== CLI).map((name) => [name, `file:${tarball.get(name)}`]),
+    ]);
+    const overrides = [...pins].map(
+      ([name, spec]) => `  ${JSON.stringify(name)}: ${JSON.stringify(spec)}`,
+    );
     Fs.writeFileSync(
       Path.join(app, "pnpm-workspace.yaml"),
       `overrides:\n${overrides.join("\n")}\n`,
@@ -143,12 +210,26 @@ async function main(): Promise<void> {
 
     step("jhin inspect");
     const snapshot = JSON.parse(run(bin, ["inspect", ...at], tmp)) as {
-      kernel: { plugins: { id: string; status: string; location?: string }[] };
+      kernel: { plugins: { id: string; status: string; location: string }[] };
     };
     const plugins = snapshot.kernel.plugins;
-    for (const plugin of plugins) process.stdout.write(`${plugin.status.padEnd(8)} ${plugin.id}\n`);
-    const broken = plugins.filter((plugin) => plugin.status !== "active");
-    if (broken.length > 0) throw new Error(`plugins not active: ${JSON.stringify(broken)}`);
+    const installed = Path.join(Fs.realpathSync(app), "node_modules") + Path.sep;
+    for (const plugin of plugins) {
+      if (plugin.status !== "active") throw new Error(`not active: ${JSON.stringify(plugin)}`);
+      // The host's own plugin has no package (host://jhin.host).
+      if (plugin.location.includes("://")) {
+        process.stdout.write(`active   ${plugin.id.padEnd(20)} ${plugin.location}\n`);
+        continue;
+      }
+      const location = Fs.realpathSync(plugin.location);
+      const { jhin } = readJson<{ jhin: { entry: string } }>(Path.join(location, "package.json"));
+      if (!location.startsWith(installed) || jhin.entry !== "dist/index.js") {
+        throw new Error(`${plugin.id} is not the packed plugin: ${location}, entry ${jhin.entry}`);
+      }
+      process.stdout.write(
+        `active   ${plugin.id.padEnd(20)} ${Path.relative(installed, location)}/${jhin.entry}\n`,
+      );
+    }
 
     step("jhin example.greet --name Ada");
     process.stdout.write(run(bin, ["example.greet", "--name", "Ada", ...at], tmp));
