@@ -8,10 +8,11 @@ import {
 import { definePlugin } from "@jhin/sdk";
 import { Button, Slot, UI_SLOTS_CAPABILITY, cn, type SlotRegistry } from "@jhin/ui";
 import { PlusIcon, ServerIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { builtin } from "../lib/builtin.ts";
 import { useExternal } from "../lib/hooks.ts";
+import { useMeshNodes } from "../lib/mesh.ts";
 import { threadTarget, type ThreadTarget } from "../lib/target.ts";
 
 interface Project {
@@ -24,13 +25,6 @@ interface Thread {
   readonly id: string;
   readonly projectId: string;
   readonly title: string;
-}
-
-interface MeshNode {
-  readonly nodeId: string;
-  readonly name: string;
-  readonly self: boolean;
-  readonly reachable: boolean;
 }
 
 /** Emitted on the client kernel whenever a thread list may have changed. */
@@ -62,7 +56,7 @@ export const sidebarPlugin = builtin(
         const route = useExternal(navigation, navigation.current);
         const [projects, setProjects] = useState<readonly Project[]>([]);
         const [threads, setThreads] = useState<readonly Thread[]>([]);
-        const target: ThreadTarget = threadTarget(node, remote);
+        const target: ThreadTarget = useMemo(() => threadTarget(node, remote), [node, remote]);
 
         const refresh = useCallback(async () => {
           if (state !== "open") return;
@@ -72,8 +66,7 @@ export const sidebarPlugin = builtin(
           ]);
           setProjects(nextProjects);
           setThreads(nextThreads);
-          // `target` is rebuilt every render from node and remote.
-        }, [node, remote, state]);
+        }, [target, state]);
 
         useEffect(() => {
           void refresh().catch(() => undefined);
@@ -169,21 +162,9 @@ export const sidebarPlugin = builtin(
         );
       }
 
-      /** The other nodes of a connected node's mesh, kept current from its `mesh` stream. */
+      /** The other nodes of a connected node's mesh, reached through it. */
       function MeshNodes({ node }: { node: NodeConnection }) {
-        const [members, setMembers] = useState<readonly MeshNode[]>([]);
-        useEffect(() => {
-          if (node.state !== "open") return;
-          const load = () =>
-            void node.client
-              .call<MeshNode[]>("mesh.nodes")
-              .then(setMembers)
-              // A node without the mesh plugin simply has no other nodes.
-              .catch(() => setMembers([]));
-          load();
-          const subscription = node.client.subscribe("mesh", {}, load);
-          return () => subscription.dispose();
-        }, [node]);
+        const members = useMeshNodes(node) ?? [];
         return (
           <>
             {members

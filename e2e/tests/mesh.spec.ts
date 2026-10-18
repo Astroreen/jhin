@@ -64,10 +64,7 @@ test("D47: a client connected to a creates a thread on c, two hops away, and get
   const agent = page.getByRole("log", { name: "Messages" }).getByRole("article", { name: "Agent" });
   await expect(agent).toHaveText("Echo: across the mesh");
   await expect(agent).toHaveAttribute("aria-busy", "false");
-  // The thread lives on c: it is listed under c, and c's own node has it.
-  await expect(
-    nodeC.getByRole("button", { name: "New thread", exact: true }).first(),
-  ).toBeVisible();
+  // The thread lives on c: it is listed (and selected) under c, and c's own node has it.
   await expect(nodeC.locator("[aria-current=page]")).toHaveText("New thread");
   const onC = await c.client().call<{ title: string }[]>("threads.list");
   expect(onC.map((thread) => thread.title)).toEqual(["New thread"]);
@@ -75,6 +72,11 @@ test("D47: a client connected to a creates a thread on c, two hops away, and get
   const shot = info.outputPath("mesh-chat.png");
   await page.screenshot({ path: shot });
   await info.attach("mesh-chat", { path: shot, contentType: "image/png" });
+
+  // c leaves: its section goes away and the open thread says why.
+  await c.stop();
+  await expect(nodeC).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("Node unreachable");
 });
 
 test("D47: one client shows two independent nodes at once", async ({ page }, info) => {
@@ -83,6 +85,10 @@ test("D47: one client shows two independent nodes at once", async ({ page }, inf
 
   await page.goto(`${x.ui}#token=${x.token}`);
   await expect(page.getByLabel("Connection open")).toHaveCount(1);
+  // The form can be left without connecting anything.
+  await page.getByRole("button", { name: "Add node" }).click();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("form", { name: "Connect a node" })).toHaveCount(0);
   await page.getByRole("button", { name: "Add node" }).click();
   await page.getByRole("textbox", { name: "Node URL" }).fill(y.rpc);
   await page.getByRole("textbox", { name: "Token" }).fill(y.token);
