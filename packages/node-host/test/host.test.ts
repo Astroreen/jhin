@@ -191,4 +191,47 @@ export default definePlugin({
     await changed;
     expect((await host.execute("example.greet", { name: "A" })).value.message).toBe("Hey, A!");
   });
+
+  it("gives plugins data directories only under <home>/data, by plugin id", async () => {
+    const home = tempDir("home");
+    writePlugin(
+      Path.join(home, "plugins", "paths"),
+      { id: "acme.paths", requires: { "host.paths": "^1" } },
+      {
+        "index.ts": `
+import { definePlugin, z } from "@jhin/sdk";
+export default definePlugin({
+  activate(context) {
+    const paths = context.services.get<{ dataDir(plugin: string): string }>("host.paths");
+    context.commands.register({
+      name: "acme.paths.try",
+      description: "Asks for a data directory",
+      input: z.object({ plugin: z.string() }),
+      output: z.object({ dir: z.string().optional(), error: z.string().optional() }),
+      handler: ({ plugin }) => {
+        try {
+          return { dir: paths.dataDir(plugin) };
+        } catch (error) {
+          return { error: String(error) };
+        }
+      },
+    });
+  },
+});
+`,
+      },
+    );
+    host = new HostProcess({ home, cwd: tempDir("cwd") });
+    await host.ready();
+
+    expect((await host.execute("acme.paths.try", { plugin: "acme.paths" })).value).toEqual({
+      dir: Path.join(home, "data", "acme.paths"),
+    });
+    for (const plugin of ["../escape", "a/b", "/abs", ""]) {
+      expect((await host.execute("acme.paths.try", { plugin })).value.error).toContain(
+        "needs a plugin id",
+      );
+    }
+    expect(Fs.existsSync(Path.join(home, "escape"))).toBe(false);
+  });
 });

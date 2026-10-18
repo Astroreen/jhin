@@ -1,0 +1,20 @@
+export { createMemoryStorage, type MemoryStorage } from "./memory.ts";
+export {
+  EVENTLOG_CAPABILITY,
+  KV_CAPABILITY,
+  StorageError,
+  assertCount,
+  assertEvents,
+  assertName,
+  compareKeys,
+  copyJson,
+  createNotifier,
+  parseStored,
+  type AppendOptions,
+  type EventLog,
+  type Json,
+  type KeyValueStore,
+  type NewEvent,
+  type StorageErrorCode,
+  type StoredEvent,
+} from "./types.ts";

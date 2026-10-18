@@ -11,7 +11,15 @@ import {
   type ModuleLoader,
   type PluginSource,
 } from "@jhin/kernel";
-import { definePlugin, PLUGIN_API_VERSION, z, type Disposable, type Logger } from "@jhin/sdk";
+import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
+import {
+  definePlugin,
+  DOTTED_ID,
+  PLUGIN_API_VERSION,
+  z,
+  type Disposable,
+  type Logger,
+} from "@jhin/sdk";
 
 import {
   discoverPlugins,
@@ -104,6 +112,18 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
 
   const hostPlugin = definePlugin({
     activate(context) {
+      const paths: HostPaths = {
+        home: home.root,
+        dataDir(plugin) {
+          if (!DOTTED_ID.test(plugin)) {
+            throw new Error(`dataDir needs a plugin id, got ${JSON.stringify(plugin)}`);
+          }
+          const dir = Path.join(home.root, "data", plugin);
+          Fs.mkdirSync(dir, { recursive: true });
+          return dir;
+        },
+      };
+      context.services.provide(HOST_PATHS_CAPABILITY, paths);
       context.commands.register({
         name: "host.inspect",
         description:
@@ -150,6 +170,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       version: "0.0.0",
       apiVersion: PLUGIN_API_VERSION,
       side: "server",
+      provides: { [HOST_PATHS_CAPABILITY]: "1.0.0" },
       entry: "host",
     },
   };

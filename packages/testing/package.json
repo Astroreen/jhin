@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@jhin/kernel": "workspace:*",
-    "@jhin/sdk": "workspace:*"
+    "@jhin/sdk": "workspace:*",
+    "@jhin/storage-api": "workspace:*"
   }
 }
