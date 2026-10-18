@@ -84,3 +84,14 @@ test("ignores malformed saved nodes instead of failing to load", async ({ page }
   await expect(page.getByLabel("Connection open")).toBeVisible();
   await expect(page.getByRole("region", { name: /^Node / })).toHaveCount(1);
 });
+
+test("serves only browser files of client plugins", async ({ request }) => {
+  // No plugin with this id: 404, and dotfiles or node_modules are never served.
+  for (const path of [
+    "acme.none/1/index.js",
+    "acme.none/1/.env",
+    "acme.none/1/node_modules/x.js",
+  ]) {
+    expect((await request.get(`${node.ui}client/plugins/${path}`)).status()).toBe(404);
+  }
+});

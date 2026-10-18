@@ -91,7 +91,9 @@ function followNode(kernel: Kernel, entries: Map<string, string>): void {
     entries.set(`remote:${id}`, next);
     void kernel
       .reload(id)
-      .catch((error: unknown) => console.error(`[jhin] reloading ${id} failed`, error));
+      .catch((error: unknown) =>
+        console.error(`[jhin] reloading ${id} failed; the next change to its files retries`, error),
+      );
   };
   const refreshConfig = () =>
     void fetchJson("/client/config", {}).then((values) => kernel.config.setLayer("node", values));

@@ -28,6 +28,17 @@ const Config = z.object({
 
 const CLIENT = "/client";
 
+/** File types served from client plugin packages. */
+const SERVABLE: Readonly<Record<string, true>> = {
+  ".js": true,
+  ".mjs": true,
+  ".css": true,
+  ".json": true,
+  ".svg": true,
+  ".png": true,
+  ".woff2": true,
+};
+
 // Client plugin files and `jhin.ui` are served without a token: the browser needs
 // them before it has one, like the page itself. Nothing else of the node is.
 
@@ -86,9 +97,13 @@ export default definePlugin({
       else Fs.createReadStream(target).pipe(response);
     };
     // --- Client plugins (D16): listed, served under a revision, changes pushed. ---
+    // Revisions are times: they only grow, also across node restarts, so a
+    // browser never meets a revision path it already cached from older code.
+    const startedAt = Date.now();
     const revisions = new Map<string, number>();
     // Browsers run JavaScript: a client plugin whose entry is not .js/.mjs (e.g. a
     // TypeScript source of a `both` plugin) is reported in the log, not served.
+    const warned = new Set<string>();
     const runnable = (plugin: { id: string; manifest: unknown }) => {
       const entry = String((plugin.manifest as { entry?: unknown }).entry ?? "");
       if (/\.m?js$/.test(entry)) return true;
@@ -101,7 +116,6 @@ export default definePlugin({
       }
       return false;
     };
-    const warned = new Set<string>();
     const clientPlugins = () =>
       hostPlugins.list().filter((plugin) => forClient(plugin.manifest) && runnable(plugin));
     const json = (response: Parameters<HttpHandler>[1], value: unknown): void => {
@@ -115,7 +129,7 @@ export default definePlugin({
         json(
           response,
           clientPlugins().map((plugin) => {
-            const rev = revisions.get(plugin.id) ?? 1;
+            const rev = revisions.get(plugin.id) ?? startedAt;
             const entry = String((plugin.manifest as { entry?: unknown }).entry ?? "index.js");
             return {
               manifest: plugin.manifest,
@@ -140,17 +154,32 @@ export default definePlugin({
           response.writeHead(400).end();
           return;
         }
-        const file =
-          plugin === undefined ? undefined : Path.join(plugin.root, Path.normalize(relative));
-        // Containment is checked on real paths: a symlink cannot lead outside the plugin.
-        const real = file !== undefined && Fs.existsSync(file) ? Fs.realpathSync(file) : undefined;
+        const notFound = () =>
+          response.writeHead(404, { "content-type": "text/plain" }).end("Not found");
+        // Only what a browser loads: no dotfiles, no node_modules, known types only.
+        const segments = relative.split(/[\\/]/);
         if (
           plugin === undefined ||
-          real === undefined ||
-          !real.startsWith(`${Fs.realpathSync(plugin.root)}${Path.sep}`) ||
-          !Fs.statSync(real).isFile()
+          segments.some((segment) => segment.startsWith(".") || segment === "node_modules") ||
+          SERVABLE[Path.extname(relative)] !== true
         ) {
-          response.writeHead(404, { "content-type": "text/plain" }).end("Not found");
+          notFound();
+          return;
+        }
+        let real: string;
+        try {
+          // Containment is checked on real paths: a symlink cannot lead outside the plugin.
+          real = Fs.realpathSync(Path.join(plugin.root, Path.normalize(relative)));
+          if (
+            !real.startsWith(`${Fs.realpathSync(plugin.root)}${Path.sep}`) ||
+            !Fs.statSync(real).isFile()
+          ) {
+            notFound();
+            return;
+          }
+        } catch {
+          // Missing, or gone between discovery and this request.
+          notFound();
           return;
         }
         response.writeHead(200, {
@@ -189,7 +218,7 @@ export default definePlugin({
     context.subscriptions.add(
       hostPlugins.onChange(({ id }) => {
         if (!clientPlugins().some((plugin) => plugin.id === id)) return;
-        const rev = (revisions.get(id) ?? 1) + 1;
+        const rev = Math.max(Date.now(), (revisions.get(id) ?? startedAt) + 1);
         revisions.set(id, rev);
         context.log.info("client plugin changed", { plugin: id, rev });
         broadcast("plugin", { id, rev });

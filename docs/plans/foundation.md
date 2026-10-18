@@ -241,7 +241,8 @@ and engineering practices.
   them today.
 - Runtime client plugins under `vp dev` (the import map exists only in the
   production build) and client plugins added while a page is open (they
-  appear after a page reload; changed ones hot reload).
+  appear after a page reload; changed ones hot reload; removed ones stay
+  loaded until a page reload).
 - Visual regression snapshots (D40): screenshots differ between the NixOS
   dev shell and CI runners; they need one pinned rendering environment (the
   Playwright container) before baselines are worth keeping.
