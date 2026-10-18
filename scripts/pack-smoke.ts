@@ -8,7 +8,11 @@
 // rewritten, which this checks after every package), installs the tarballs into a fresh
 // directory outside the workspace and runs the installed `jhin`: `help`,
 // `inspect`, a command, then `serve --ui` with a remote `inspect` and a request
-// for the web client. Needs the npm registry for third-party dependencies.
+// for the web client.
+//
+// Needs the npm registry for third-party dependencies, and `tar` on PATH (GNU
+// tar or the bsdtar Windows 10+ ships). It waits on process output and exit
+// events only; a node that hangs is stopped by the CI job's time limit.
 
 import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";

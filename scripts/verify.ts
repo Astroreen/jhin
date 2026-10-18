@@ -36,10 +36,10 @@ const GLOBAL_FILES = new Set([
   "tsconfig.build.json",
   "scripts/verify.ts",
 ]);
-// A change to any of these, or to a package the CLI ships with, can break the
-// packed CLI (scripts/pack-smoke.ts).
+// A change to any of these root files, or to a package the CLI ships with, can
+// break the packed CLI (scripts/pack-smoke.ts).
 const PACKING =
-  /(^|\/)(package\.json|tsconfig\.build\.json)$|^pnpm-(workspace\.yaml|lock\.yaml)$|^scripts\/(pack|build)/;
+  /^(package\.json|tsconfig\.build\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml)$|^scripts\/(pack|build)/;
 
 const args = process.argv.slice(2);
 const affected = args.includes("--affected");

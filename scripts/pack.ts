@@ -11,7 +11,8 @@
 // `pnpm pack` (whose "prepack" builds dist/), then merges `publishConfig.jhin`
 // into `jhin` inside the produced tarball. Files of the workspace are never
 // rewritten: a node running `serve --watch` from this checkout reloads on
-// manifest changes (D14).
+// manifest changes (D14). Needs `tar` on PATH (GNU tar or the bsdtar Windows
+// 10+ ships).
 
 import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
