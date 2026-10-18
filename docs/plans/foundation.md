@@ -236,6 +236,8 @@ and engineering practices.
 - OpenTelemetry export plugin.
 - Trying `tsc-rs` instead of TypeScript 7.
 - Publishing packages to npm.
+- The "list nodes" MCP tool of D39: nodes exist with the mesh (PR 9); until
+  then `host_inspect` describes the one node.
 - Freeing old module instances after a hot reload: every reload leaves the
   previous `?jhin-gen=N` modules in Node's ESM cache, so a long
   `serve --watch` session grows in memory (D14). Out-of-process plugins fix
@@ -372,6 +374,22 @@ Implements D33, D34, D39, D49, D51, D52.
 - **Done when:** a test drives a full turn through RPC and reads it back
   through MCP; interrupt stops a streaming turn; an MCP client lists the
   tools generated from commands.
+
+Implementation notes (PR 7):
+
+- Contracts: `@jhin/agent-api` holds `agent.runtime@1` (`startTurn` returns
+  `{ items, interrupt }`) and the thread event types: `threads.thread.created`,
+  `agent.turn.started` (with `agentId`, D52), `agent.item.delta`,
+  `agent.item.completed`, `agent.turn.completed`, `agent.turn.interrupted`,
+  `agent.turn.failed`. A thread's stream is `thread/<id>`.
+- `jhin.threads` commands: `projects.list`, `projects.create`, `threads.list`,
+  `threads.create`, `threads.get`, `threads.events`, `threads.send`,
+  `threads.interrupt`; one turn per thread at a time (`TURN_IN_PROGRESS`).
+- MCP tool names are command names with `.` → `_` (`threads.send` →
+  `threads_send`), reversible because command names have no `_`, and valid
+  for model APIs that forbid dots. `jhin.mcp-server` is stateless Streamable
+  HTTP at `POST /mcp` with `Authorization: Bearer <token>`; `jhin mcp` serves
+  the same tools over stdio, in-process or against `--url`.
 
 ### PR 8 — Web client
 

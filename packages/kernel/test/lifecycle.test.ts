@@ -194,4 +194,35 @@ describe("lifecycle", () => {
       ["app.ui", "active"],
     ]);
   });
+
+  it("awaits onDeactivate cleanups, newest first, before deactivate and disposal", async () => {
+    const calls: string[] = [];
+    let release!: () => void;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    const kernel = await createTestKernel({
+      plugins: [
+        {
+          manifest: testManifest("app.worker"),
+          definition: definePlugin({
+            activate(context) {
+              context.subscriptions.add({ dispose: () => calls.push("disposed") });
+              context.onDeactivate(async () => {
+                calls.push("first:start");
+                await slow;
+                calls.push("first:end");
+              });
+              context.onDeactivate(() => void calls.push("second"));
+            },
+            deactivate: () => void calls.push("deactivate"),
+          }),
+        },
+      ],
+    });
+
+    const stopped = kernel.stop();
+    release();
+    await stopped;
+
+    expect(calls).toEqual(["second", "first:start", "first:end", "deactivate", "disposed"]);
+  });
 });

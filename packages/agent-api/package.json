@@ -1,0 +1,19 @@
+{
+  "name": "@jhin/agent-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Contract of the agent.runtime@1 capability and the thread event types",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@jhin/storage-api": "workspace:*"
+  }
+}

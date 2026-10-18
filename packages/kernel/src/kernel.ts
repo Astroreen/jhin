@@ -105,6 +105,8 @@ interface PluginRecord {
   generation: number;
   definition: PluginDefinition | undefined;
   subscriptions: DisposableStore | undefined;
+  /** `onDeactivate` cleanups of the current activation. */
+  cleanups: (() => unknown)[];
 }
 
 /** A capability missing here but provided by a plugin built for the other side gets a hint. */
@@ -178,6 +180,14 @@ export function createKernel(options: KernelOptions): Kernel {
       plugin: { id, version: manifest.version },
       manifest,
       subscriptions: { add: (item) => store.add(item) },
+      onDeactivate: (cleanup) => {
+        if (store.isDisposed) {
+          throw new KernelError("KERNEL_STATE", `${id} is not active; it cannot add cleanups`, {
+            plugin: id,
+          });
+        }
+        record.cleanups.push(cleanup);
+      },
       services: {
         provide(capability, implementation) {
           if (!(capability in manifest.provides)) {
@@ -271,6 +281,7 @@ export function createKernel(options: KernelOptions): Kernel {
     }
 
     record.generation += 1;
+    record.cleanups = [];
     const store = new DisposableStore();
     try {
       const module = (await options.loader.load(
@@ -293,6 +304,7 @@ export function createKernel(options: KernelOptions): Kernel {
       record.definition = definition as PluginDefinition;
       await definition.activate(contextFor(record, store));
     } catch (error) {
+      await runCleanups(record);
       disposeQuietly(id, store);
       record.definition = undefined;
       record.status = "failed";
@@ -324,9 +336,22 @@ export function createKernel(options: KernelOptions): Kernel {
     }
   }
 
+  async function runCleanups(record: PluginRecord): Promise<void> {
+    const cleanups = record.cleanups.toReversed();
+    record.cleanups = [];
+    for (const cleanup of cleanups) {
+      try {
+        await cleanup();
+      } catch (error) {
+        log.error("plugin cleanup failed", { plugin: record.manifest.id, error: String(error) });
+      }
+    }
+  }
+
   async function deactivate(record: PluginRecord): Promise<void> {
     const id = record.manifest.id;
     if (record.status !== "active") return;
+    await runCleanups(record);
     try {
       await record.definition?.deactivate?.();
     } catch (error) {
@@ -392,6 +417,7 @@ export function createKernel(options: KernelOptions): Kernel {
             generation: 0,
             definition: undefined,
             subscriptions: undefined,
+            cleanups: [],
           };
           const duplicate = seen.get(parsed.data.id);
           if (duplicate !== undefined) {
