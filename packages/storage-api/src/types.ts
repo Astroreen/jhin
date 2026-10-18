@@ -64,8 +64,10 @@ export interface EventLog {
   /** Non-empty streams in code point order, optionally only those starting with `prefix`. */
   streams(options?: { prefix?: string }): Promise<{ stream: string; head: number }[]>;
   /**
-   * Receives every event appended after this call, in sequence order, even when
-   * a listener appends to the same stream while handling an event.
+   * Receives every event appended after this call through this same instance,
+   * in sequence order, even when a listener appends to the same stream while
+   * handling an event. Appends made by another process sharing the storage are
+   * not delivered; read them with `read`.
    */
   subscribe(stream: string, listener: (event: StoredEvent) => void): Disposable;
 }
