@@ -160,12 +160,21 @@ async function main(): Promise<void> {
     for (const name of names) {
       const file = Path.join(tarballs, `${name.replace("@", "").replace("/", "-")}.tgz`);
       const dir = packages.get(name)!;
+      // postpack does not run when pack fails: put the workspace manifest back
+      // regardless, without letting a failed restore hide the pack error.
+      const restore = () =>
+        run("node", [Path.join(ROOT, "scripts", "pack-manifest.ts"), "postpack"], dir);
       try {
         run("pnpm", ["pack", "--out", file], dir);
-      } finally {
-        // postpack does not run when pack fails: put the workspace manifest back regardless.
-        run("node", [Path.join(ROOT, "scripts", "pack-manifest.ts"), "postpack"], dir);
+      } catch (error) {
+        try {
+          restore();
+        } catch (restoreError) {
+          process.stderr.write(`restoring ${dir}/package.json failed: ${String(restoreError)}\n`);
+        }
+        throw error;
       }
+      restore();
       checkTarball(file);
       tarball.set(name, file);
       process.stdout.write(`${Path.basename(file)}\n`);
