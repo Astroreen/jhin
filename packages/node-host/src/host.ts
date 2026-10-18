@@ -29,6 +29,7 @@ import {
   type Disposable,
   type Logger,
 } from "@jhin/sdk";
+import { applyEdits, modify } from "jsonc-parser";
 
 import {
   discoverPlugins,
@@ -73,6 +74,8 @@ export interface NodeHost {
 }
 
 const HOST_PLUGIN = "jhin.host";
+/** How far ahead of this node's clock a config change time may be (D50). */
+const MAX_CONFIG_SKEW_MS = 60 * 60 * 1000;
 const HOST_LOCATION = "host://jhin.host";
 const RECENT_EVENTS = 100;
 
@@ -94,6 +97,12 @@ function applyLayer(kernel: Kernel, layer: string, file: string, log: Logger): v
   const values = readLayer(file, log);
   if (values === undefined) kernel.events.emit("host.config.rejected", { layer, file });
   else kernel.config.setLayer(layer, values);
+}
+
+function writeAtomically(file: string, text: string): void {
+  const temporary = `${file}.${process.pid}.tmp`;
+  Fs.writeFileSync(temporary, text);
+  Fs.renameSync(temporary, file);
 }
 
 /** Boots a server-side kernel over the plugins found on disk. */
@@ -178,6 +187,26 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         handler: () => context.commands.list(),
       });
       context.commands.register({
+        name: "host.config.patch",
+        description:
+          "Changes this node's node or project config file, keeping its comments; refuses a change older than the last one (D50)",
+        input: z.object({
+          layer: z.enum(["node", "project"]),
+          section: z.string().regex(DOTTED_ID),
+          values: z.record(z.string(), z.unknown()),
+          /** When the change was made (ms); later changes win. Defaults to now. */
+          at: z.number().int().nonnegative().optional(),
+        }),
+        output: z.object({
+          applied: z.boolean(),
+          at: z.number(),
+          conflict: z.object({ localAt: z.number() }).optional(),
+        }),
+        permissions: ["host.config.write"],
+        handler: ({ layer, section, values, at }) =>
+          patchConfig(layer, section, values, at ?? Date.now()),
+      });
+      context.commands.register({
         name: "host.plugins.reload",
         description: "Re-imports a plugin and re-activates it with everything depending on it",
         input: z.object({ plugin: z.string() }),
@@ -224,6 +253,57 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     },
   };
   await kernel.start([hostSource, ...discovery.plugins]);
+
+  /** Last write time per layer and section, so a stale change from elsewhere can lose (D50). */
+  const writesFile = Path.join(home.root, "config-writes.json");
+  function patchConfig(
+    layer: "node" | "project",
+    section: string,
+    values: Record<string, unknown>,
+    at: number,
+  ): { applied: boolean; at: number; conflict?: { localAt: number } } {
+    let writes: Record<string, Record<string, number>> = {};
+    try {
+      if (Fs.existsSync(writesFile))
+        writes = JSON.parse(Fs.readFileSync(writesFile, "utf8")) as typeof writes;
+    } catch (error) {
+      // A damaged record of write times must not block every later change.
+      log.warn("config write times unreadable; starting over", {
+        file: writesFile,
+        error: String(error),
+      });
+    }
+    // A time far ahead would lock the section against every later change.
+    if (at > Date.now() + MAX_CONFIG_SKEW_MS) {
+      throw Object.assign(
+        new Error(`Change time ${at} is more than an hour ahead of this node's clock`),
+        {
+          code: "CONFIG_TIME_IN_FUTURE",
+        },
+      );
+    }
+    const localAt = writes[layer]?.[section];
+    if (localAt !== undefined && at < localAt) return { applied: false, at, conflict: { localAt } };
+
+    const file = layer === "node" ? home.config : projectConfig;
+    let text = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n";
+    for (const [key, value] of Object.entries(values)) {
+      text = applyEdits(
+        text,
+        modify(text, [section, key], value, {
+          formattingOptions: { insertSpaces: true, tabSize: 2 },
+        }),
+      );
+    }
+    Fs.mkdirSync(Path.dirname(file), { recursive: true });
+    // Times first, then the file, each replaced atomically: a crash in between
+    // can only make a later stale change lose, never win.
+    writes[layer] = { ...writes[layer], [section]: at };
+    writeAtomically(writesFile, `${JSON.stringify(writes, null, 2)}\n`);
+    writeAtomically(file, text);
+    applyLayer(kernel, layer, file, log);
+    return { applied: true, at };
+  }
 
   function inspect(): NodeInspection {
     return {

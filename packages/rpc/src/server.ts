@@ -139,6 +139,8 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       // On a two-way link the other side's answers to our own calls arrive here
       // too; they belong to a caller (createCaller / createRpcClient), not to us.
       if (typeof raw === "object" && raw !== null && !("method" in raw)) return;
+      // Notifications (no id), e.g. rpc.event for a subscription this side made: not requests.
+      if (typeof raw === "object" && raw !== null && "method" in raw && !("id" in raw)) return;
       const parsed = RequestMessage.safeParse(raw);
       if (!parsed.success) {
         const id = (raw as { id?: unknown } | null)?.id;

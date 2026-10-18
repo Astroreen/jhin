@@ -51,6 +51,11 @@ const Config = z.object({
    * dials out and is reached through those links (D28).
    */
   advertise: z.array(z.string()).optional(),
+  /**
+   * D26: "on-open" copies another node's thread here when it is opened
+   * (`mesh.open`); "eager" keeps a copy of every thread of every node.
+   */
+  history: z.enum(["on-open", "eager"]).default("on-open"),
 });
 
 function loadKeys(dir: string): { privateKey: Crypto.KeyObject; publicKey: string } {
@@ -138,6 +143,9 @@ export default definePlugin({
     };
 
     const remembered = (await kv.get(NAMESPACE, "members")) as MemberRecord[] | undefined;
+    const rememberedMirrors = (await kv.get(NAMESPACE, "mirrors")) as
+      | { owner: string; stream: string }[]
+      | undefined;
     let writes: Promise<unknown> = Promise.resolve();
     const mesh = createMesh({
       identity: { nodeId, publicKey: keys.publicKey, name: config.name ?? Os.hostname() },
@@ -158,6 +166,13 @@ export default definePlugin({
       execute: (method, params, invocation) => context.commands.execute(method, params, invocation),
       ...(remembered === undefined ? {} : { members: remembered }),
       // Writes are chained so an older snapshot never lands after a newer one.
+      log,
+      ...(rememberedMirrors === undefined ? {} : { mirrors: rememberedMirrors }),
+      persistMirrors: (mirrors) => {
+        writes = writes
+          .then(() => kv.set(NAMESPACE, "mirrors", mirrors as unknown as Json))
+          .catch(() => undefined);
+      },
       persist: (members) => {
         writes = writes
           .then(() => kv.set(NAMESPACE, "members", members as unknown as Json))
@@ -271,6 +286,188 @@ export default definePlugin({
         response.writeHead(307, { location }).end();
       }),
     );
+
+    context.commands.register({
+      name: "mesh.open",
+      description:
+        "Starts keeping a copy of another node's stream here (D26) and names the local stream to read",
+      input: z.object({ node: z.string().min(1), stream: z.string().min(1) }),
+      output: z.object({ stream: z.string() }),
+      permissions: ["mesh.open"],
+      handler: ({ node, stream }) => ({ stream: mesh.mirror(node, stream) }),
+    });
+    context.commands.register({
+      name: "mesh.close",
+      description: "Stops keeping a copy of another node's stream; what was copied stays readable",
+      input: z.object({ node: z.string().min(1), stream: z.string().min(1) }),
+      output: z.object({}),
+      permissions: ["mesh.open"],
+      handler: ({ node, stream }) => {
+        mesh.unmirror(node, stream);
+        return {};
+      },
+    });
+
+    if (config.history === "eager") {
+      // Follow every node's index of threads and mirror each thread it lists.
+      const followed = new Set<string>();
+      const follow = () => {
+        for (const member of mesh.members()) {
+          if (member.self || !member.reachable || followed.has(member.record.nodeId)) continue;
+          const owner = member.record.nodeId;
+          followed.add(owner);
+          const index = mesh.mirror(owner, "threads");
+          const take = (event: { payload: unknown }) => {
+            const id = (event.payload as { id?: unknown } | null)?.id;
+            if (typeof id === "string") mesh.mirror(owner, `thread/${id}`);
+          };
+          context.subscriptions.add(log.subscribe(index, take));
+          void log
+            .read(index)
+            .then((events) => events.forEach(take))
+            .catch((error: unknown) =>
+              context.log.warn("thread index unreadable", { node: owner, error: String(error) }),
+            );
+        }
+      };
+      context.subscriptions.add(mesh.onChange(follow));
+      follow();
+    }
+
+    // --- Settings fan-out (D20, D50) ---------------------------------------
+    // One change for many nodes. A node that cannot be reached gets it later:
+    // the change waits in this node's log until a route to the target exists.
+    const OUTBOX = "mesh/outbox";
+    const Patch = z.object({
+      layer: z.enum(["node", "project"]),
+      section: z.string().min(1),
+      values: z.record(z.string(), z.unknown()),
+      at: z.number(),
+    });
+    type Patch = z.infer<typeof Patch>;
+    type Outcome =
+      | { node: string; status: "applied" }
+      | { node: string; status: "conflict"; localAt: number }
+      | { node: string; status: "queued" }
+      | { node: string; status: "failed"; error: string };
+
+    const unreachable = (error: unknown) => {
+      const code = (error as { code?: unknown }).code;
+      return code === "NODE_UNREACHABLE" || code === "MESH_TIMEOUT" || code === "DISCONNECTED";
+    };
+    const deliver = async (node: string, patch: Patch): Promise<Outcome> => {
+      const result = (await (node === nodeId
+        ? context.commands.execute("host.config.patch", patch)
+        : mesh.call(node, "host.config.patch", patch))) as {
+        applied: boolean;
+        conflict?: { localAt: number };
+      };
+      return result.applied
+        ? { node, status: "applied" }
+        : { node, status: "conflict", localAt: result.conflict?.localAt ?? 0 };
+    };
+
+    let delivering = false;
+    let again = false;
+    async function flushOutbox(): Promise<void> {
+      if (delivering) {
+        again = true;
+        return;
+      }
+      delivering = true;
+      try {
+        do {
+          again = false;
+          const events = await log.read(OUTBOX);
+          const finished = new Set(
+            events
+              .filter((event) => event.type !== "mesh.config.queued")
+              .map((event) => (event.payload as { id: string }).id),
+          );
+          for (const event of events) {
+            if (event.type !== "mesh.config.queued") continue;
+            const { id, node, patch } = event.payload as { id: string; node: string; patch: Patch };
+            if (finished.has(id)) continue;
+            if (mesh.members().find((member) => member.record.nodeId === node)?.reachable !== true)
+              continue;
+            try {
+              const outcome = await deliver(node, patch);
+              await log.append(OUTBOX, [
+                {
+                  type:
+                    outcome.status === "conflict"
+                      ? "mesh.config.conflict"
+                      : "mesh.config.delivered",
+                  payload: { id, ...outcome } as unknown as Json,
+                },
+              ]);
+              if (outcome.status === "conflict")
+                context.log.warn("queued config change lost to a newer one", { node, id });
+            } catch (error) {
+              if (!unreachable(error)) {
+                await log.append(OUTBOX, [
+                  { type: "mesh.config.failed", payload: { id, node, error: String(error) } },
+                ]);
+              }
+            }
+          }
+        } while (again);
+      } finally {
+        delivering = false;
+      }
+    }
+    const flushSafely = () =>
+      void flushOutbox().catch((error: unknown) =>
+        context.log.warn("config outbox delivery failed", { error: String(error) }),
+      );
+    context.subscriptions.add(mesh.onChange(flushSafely));
+    // Changes queued before a restart go out as soon as routes exist again.
+    flushSafely();
+
+    context.commands.register({
+      name: "mesh.config.patch",
+      description:
+        "Applies one config change to several nodes (or all); unreachable ones get it when they return (D20, D50)",
+      input: z.object({
+        nodes: z.union([z.literal("all"), z.array(z.string().min(1)).min(1)]),
+        layer: z.enum(["node", "project"]),
+        section: z.string().min(1),
+        values: z.record(z.string(), z.unknown()),
+      }),
+      output: z.object({
+        at: z.number(),
+        results: z.array(
+          z.object({
+            node: z.string(),
+            status: z.enum(["applied", "conflict", "queued", "failed"]),
+            localAt: z.number().optional(),
+            error: z.string().optional(),
+          }),
+        ),
+      }),
+      permissions: ["mesh.admin", "host.config.write"],
+      handler: async ({ nodes, layer, section, values }) => {
+        const patch: Patch = { layer, section, values, at: Date.now() };
+        const targets =
+          nodes === "all" ? mesh.members().map((member) => member.record.nodeId) : nodes;
+        // In parallel: one slow or unreachable node does not hold up the others.
+        const results = await Promise.all(
+          targets.map(async (node): Promise<Outcome> => {
+            try {
+              return await deliver(node, patch);
+            } catch (error) {
+              if (!unreachable(error)) return { node, status: "failed", error: String(error) };
+              const id = Crypto.randomUUID();
+              await log.append(OUTBOX, [
+                { type: "mesh.config.queued", payload: { id, node, patch } as unknown as Json },
+              ]);
+              return { node, status: "queued" };
+            }
+          }),
+        );
+        return { at: patch.at, results };
+      },
+    });
 
     context.commands.register({
       name: "mesh.invite",

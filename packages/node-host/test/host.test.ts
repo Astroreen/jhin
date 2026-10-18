@@ -234,4 +234,42 @@ export default definePlugin({
     }
     expect(Fs.existsSync(Path.join(home, "escape"))).toBe(false);
   });
+
+  it("patches config keeping comments, refuses older changes, and survives a damaged record of write times", async () => {
+    const home = tempDir("home");
+    Fs.writeFileSync(
+      Path.join(home, "config.jsonc"),
+      '{\n  // mine\n  "jhin.example": { "greeting": "Hello" }\n}\n',
+    );
+    Fs.writeFileSync(Path.join(home, "config-writes.json"), "{ damaged");
+    host = new HostProcess({ home, cwd: tempDir("cwd"), distribution: [EXAMPLE] });
+    await host.ready();
+
+    const now = Date.now();
+    const applied = await host.execute("host.config.patch", {
+      layer: "node",
+      section: "jhin.example",
+      values: { greeting: "Hey" },
+      at: now,
+    });
+    expect(applied.value).toEqual({ applied: true, at: now });
+    expect(Fs.readFileSync(Path.join(home, "config.jsonc"), "utf8")).toContain("// mine");
+    expect((await host.execute("example.greet", { name: "A" })).value.message).toBe("Hey, A!");
+
+    const stale = await host.execute("host.config.patch", {
+      layer: "node",
+      section: "jhin.example",
+      values: { greeting: "Old" },
+      at: now - 1000,
+    });
+    expect(stale.value).toEqual({ applied: false, at: now - 1000, conflict: { localAt: now } });
+
+    const future = await host.execute("host.config.patch", {
+      layer: "node",
+      section: "jhin.example",
+      values: { greeting: "From the future" },
+      at: Date.now() + 2 * 60 * 60 * 1000,
+    });
+    expect(future.error).toMatchObject({ code: "CONFIG_TIME_IN_FUTURE" });
+  });
 });

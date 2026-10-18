@@ -21,6 +21,9 @@ import {
 
 const NAMESPACE = "jhin.threads";
 const DRAIN_TIMEOUT_MS = 5000;
+/** One event per thread created on this node, in order. */
+export const THREADS_STREAM = "threads";
+
 /** Every node has this project for chats without a project (D51). */
 export const SCRATCH_PROJECT = "scratch";
 
@@ -117,6 +120,22 @@ export default definePlugin({
         createdAt: now(),
       };
       await kv.set(NAMESPACE, `project/${SCRATCH_PROJECT}`, scratch);
+    }
+
+    // Threads made before the index existed are added to it once, oldest first.
+    if ((await log.head(THREADS_STREAM)) === 0) {
+      const existing = (await kv.list(NAMESPACE, { prefix: "thread/" }))
+        .map((entry) => Thread.parse(entry.value))
+        .toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
+      if (existing.length > 0) {
+        await log.append(
+          THREADS_STREAM,
+          existing.map((thread) => ({
+            type: ThreadEvents.threadCreated,
+            payload: thread as unknown as Json,
+          })),
+        );
+      }
     }
 
     /** Reserves the thread synchronously, so two sends can never both start a turn. */
@@ -295,6 +314,10 @@ export default definePlugin({
         const thread: Thread = { id: Crypto.randomUUID(), projectId, title, createdAt: now() };
         // The stream's first event comes first: a thread record never exists without it.
         await log.append(threadStream(thread.id), [
+          { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
+        ]);
+        // The node's index of threads: other nodes follow it to mirror new threads (D26 eager).
+        await log.append(THREADS_STREAM, [
           { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
         ]);
         await kv.set(NAMESPACE, `thread/${thread.id}`, thread);
