@@ -47,7 +47,11 @@ and engineering practices.
   (`id`, `version`, `apiVersion`, `side: server | client | both`,
   `provides` / `requires` as capability + semver range, `entry`). The kernel
   validates manifests and the graph before running any plugin code. Code
-  exports `definePlugin({ activate(ctx) })`.
+  exports `definePlugin({ activate(ctx) })`. In the workspace `entry` is
+  TypeScript, run from source; a packed package names its built JavaScript
+  instead, because Node does not strip types under `node_modules`.
+  `scripts/pack.ts` applies `publishConfig.jhin` to `jhin` inside the tarball
+  and never rewrites the workspace manifest, which a watching node reloads on.
 - **D11. Dependencies target capabilities**, not concrete plugins
   (`ui.sidebar@^1`), so any implementation is replaceable.
 - **D12. First-party plugins use only the public API.** UI is slots plus
@@ -65,7 +69,11 @@ and engineering practices.
   the previous one and shows in the inspector. Two sources with one id (a
   kernel host that applies no precedence) stop the running plugin: both copies
   are blocked as duplicates until one goes; the node host never passes
-  duplicates, a later layer shadows an earlier one. Known limitation: old modules
+  duplicates, a later layer shadows an earlier one. A plugin run from
+  TypeScript source ignores its `dist/` and `.dist-next/` (where `build` and `pack` write), so
+  building or packing it does not reload it; a plugin whose entry is
+  JavaScript reloads on any change, wherever it is built to. Known
+  limitation: old modules
   stay in Node's memory.
 - **D15. Plugin locations and precedence** (same id → topmost wins, i.e.
   "fork one plugin, not the app"): distribution (npm deps of the CLI package)
@@ -243,7 +251,11 @@ and engineering practices.
 - Rich composer (tiptap), Storybook.
 - OpenTelemetry export plugin.
 - Trying `tsc-rs` instead of TypeScript 7.
-- Publishing packages to npm.
+- Publishing packages to npm. The pipeline publishes the tarballs
+  `scripts/pack.ts` produces (`pnpm publish <tgz>`); a plugin's guard against
+  a bare `pnpm pack`/`publish` is an environment flag, so a manual
+  `JHIN_PACK_STAGED=1 pnpm publish` still bypasses it. Repacked tarballs are
+  not byte-reproducible yet (file times and order come from the local `tar`).
 - An `Origin` allowlist on the WebSocket transport: today the upgrade is
   authenticated by token only, so a page in the owner's browser that knows a
   token can call commands. It must still let `jhin client` and other nodes'
@@ -288,8 +300,15 @@ and engineering practices.
   `fs.watch` of the user and workspace plugin directories, tested on Linux
   only; on large plugin trees every nested change wakes the watcher before
   the filter drops it.
-- Building the CLI to JavaScript for publishing (today `bin/jhin.js` imports
-  TypeScript, which Node only strips outside `node_modules`).
+- The storage contract suite (`@jhin/storage-api/contract`) in the packed
+  package: it imports Vitest, so only the workspace has it today.
+- An atomic `dist/` swap in `scripts/build.ts`: between removing the old
+  `dist/` and renaming `.dist-next/` into place, `dist/` is briefly missing,
+  so a node that reloads a plugin run from `dist/` in that moment fails to
+  import it until the next change.
+- Build output outside `dist/` for plugins run from TypeScript source: the
+  watcher ignores only `dist/`, so a plugin that builds elsewhere reloads on
+  its own build (D14).
 
 ## PR plan
 

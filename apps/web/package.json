@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "description": "The Jhin web client: a client-side kernel whose screens are plugins",
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
     "./package.json": "./package.json"
@@ -10,27 +13,26 @@
   "scripts": {
     "build": "vp build",
     "dev": "vp dev",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "vp build"
   },
-  "dependencies": {
+  "devDependencies": {
     "@jhin/agent-api": "workspace:*",
     "@jhin/client-api": "workspace:*",
     "@jhin/kernel": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/storage-api": "workspace:*",
-    "@jhin/ui": "workspace:*",
-    "lucide-react": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:"
-  },
-  "devDependencies": {
     "@jhin/testing": "workspace:*",
+    "@jhin/ui": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "lucide-react": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "tailwindcss": "catalog:",
     "vite": "catalog:"
   }

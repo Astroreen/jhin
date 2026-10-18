@@ -6,9 +6,19 @@
   "bin": {
     "jhin": "./bin/jhin.js"
   },
+  "files": [
+    "dist"
+  ],
   "type": "module",
+  "publishConfig": {
+    "bin": {
+      "jhin": "./dist/main.js"
+    }
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts"
   },
   "dependencies": {
     "@jhin/mcp-bridge": "workspace:*",

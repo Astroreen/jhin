@@ -33,8 +33,13 @@ const GLOBAL_FILES = new Set([
   "tsconfig.base.json",
   "vite.config.ts",
   "knip.jsonc",
+  "tsconfig.build.json",
   "scripts/verify.ts",
 ]);
+// A change to any of these root files, or to a package the CLI ships with, can
+// break the packed CLI (scripts/pack-smoke.ts).
+const PACKING =
+  /^(package\.json|tsconfig\.build\.json|pnpm-workspace\.yaml|pnpm-lock\.yaml)$|^scripts\/(pack|build)/;
 
 const args = process.argv.slice(2);
 const affected = args.includes("--affected");
@@ -68,6 +73,8 @@ interface Workspace {
   readonly dir: string;
   readonly name: string;
   readonly dependsOn: readonly string[];
+  /** Workspace packages in `dependencies`: what ships with this package when packed. */
+  readonly runtime: readonly string[];
 }
 
 function readWorkspace(dir: string): Workspace | undefined {
@@ -82,7 +89,10 @@ function readWorkspace(dir: string): Workspace | undefined {
   const dependsOn = Object.entries(deps)
     .filter(([, spec]) => String(spec).startsWith("workspace:"))
     .map(([name]) => name);
-  return { dir, name: manifest.name, dependsOn };
+  const runtime = Object.entries(manifest.dependencies ?? {})
+    .filter(([, spec]) => String(spec).startsWith("workspace:"))
+    .map(([name]) => name);
+  return { dir, name: manifest.name, dependsOn, runtime };
 }
 
 function workspaces(): Workspace[] {
@@ -95,6 +105,21 @@ function workspaces(): Workspace[] {
     ...SINGLE_WORKSPACES,
   ];
   return dirs.flatMap((dir) => readWorkspace(dir) ?? []);
+}
+
+/** Directories of the CLI and every workspace package it ships with (scripts/pack-smoke.ts). */
+function packedDirs(all: readonly Workspace[]): string[] {
+  const byName = new Map(all.map((ws) => [ws.name, ws]));
+  const found = new Set<string>();
+  const visit = (name: string) => {
+    const ws = byName.get(name);
+    if (ws === undefined || found.has(ws.dir)) return;
+    found.add(ws.dir);
+    // The web client ships a bundle of everything it imports, devDependencies included.
+    (ws.name === "@jhin/web" ? ws.dependsOn : ws.runtime).forEach(visit);
+  };
+  visit("jhin-ai");
+  return [...found];
 }
 
 /** Workspaces containing a changed file, plus everything depending on them. */
@@ -122,6 +147,7 @@ function plan(): { steps: Step[]; skippedSteps: StepResult[] } {
     { name: "unit", command: ["vp", "test", "run"] },
     { name: "knip", command: ["knip", "--no-config-hints"] },
     { name: "e2e", command: ["pnpm", "e2e"] },
+    { name: "pack", command: ["node", "scripts/pack-smoke.ts"] },
   ];
   if (!affected) return { steps: full, skippedSteps: [] };
 
@@ -171,6 +197,16 @@ function plan(): { steps: Step[]; skippedSteps: StepResult[] } {
     steps.push({ name: "e2e", command: ["pnpm", "e2e"] });
   } else {
     skippedSteps.push(skip("e2e", "only Markdown changed"));
+  }
+  const packed = packedDirs(all);
+  // Tests never reach a tarball (a package's README.md does).
+  const NOT_SHIPPED = /\/test\/|\.test\.tsx?$/;
+  const shipsChange = (file: string) =>
+    !NOT_SHIPPED.test(file) && packed.some((dir) => file.startsWith(`${dir}/`));
+  if (files.some((file) => PACKING.test(file) || shipsChange(file))) {
+    steps.push({ name: "pack", command: ["node", "scripts/pack-smoke.ts"] });
+  } else {
+    skippedSteps.push(skip("pack", "nothing the packed CLI ships changed"));
   }
   return { steps, skippedSteps };
 }

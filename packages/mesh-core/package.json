@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "description": "The mesh of one owner's nodes: membership, gossip, routing with relay, addresses; transport-agnostic",
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -10,8 +13,18 @@
       "import": "./src/index.ts"
     }
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts"
   },
   "dependencies": {
     "@jhin/rpc": "workspace:*",

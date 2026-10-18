@@ -11,6 +11,7 @@
     "e2e": "vp run --filter @jhin/web build && vp run --filter @jhin/e2e e2e",
     "knip": "knip --no-config-hints",
     "verify": "node scripts/verify.ts",
+    "pack:smoke": "node scripts/pack-smoke.ts",
     "jhin": "node apps/jhin/bin/jhin.js"
   },
   "devDependencies": {

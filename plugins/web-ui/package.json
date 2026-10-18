@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "Serves the Jhin web client from the node (jhin serve --ui)",
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -11,8 +14,22 @@
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./package.json": "./package.json"
+    },
+    "jhin": {
+      "entry": "dist/index.js"
+    }
+  },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "node ../../scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../../scripts/build.ts && node ../../scripts/pack.ts guard"
   },
   "dependencies": {
     "@jhin/client-api": "workspace:*",
