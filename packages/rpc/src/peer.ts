@@ -24,7 +24,31 @@ export interface WebSocketLike {
 
 const OPEN = 1;
 
+/**
+ * A peer over a WebSocket. Messages that arrive while nobody listens are kept
+ * and handed, in order, to the listeners present on the next tick: a link
+ * whose handlers attach a moment after the socket opened loses nothing.
+ */
 export function webSocketPeer(socket: WebSocketLike): Peer {
+  const listeners = new Set<(text: string) => void>();
+  let held: string[] | undefined = [];
+  let flushing = false;
+
+  const deliver = (text: string) => {
+    for (const listener of Array.from(listeners)) listener(text);
+  };
+  const flush = () => {
+    flushing = false;
+    const pending = held ?? [];
+    held = listeners.size === 0 ? [] : undefined;
+    for (const text of pending) deliver(text);
+  };
+  socket.addEventListener("message", (event: { data: unknown }) => {
+    const text = String(event.data);
+    if (held !== undefined) held.push(text);
+    else deliver(text);
+  });
+
   return {
     send(text) {
       if (socket.readyState === OPEN) socket.send(text);
@@ -33,9 +57,15 @@ export function webSocketPeer(socket: WebSocketLike): Peer {
       socket.close(code, reason);
     },
     onMessage(listener) {
-      const handler = (event: { data: unknown }) => listener(String(event.data));
-      socket.addEventListener("message", handler);
-      return toDisposable(() => socket.removeEventListener("message", handler as never));
+      listeners.add(listener);
+      if (held !== undefined && !flushing) {
+        flushing = true;
+        void Promise.resolve().then(flush);
+      }
+      return toDisposable(() => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && held === undefined) held = [];
+      });
     },
     onClose(listener) {
       const handler = (event: { code: number; reason: string }) =>

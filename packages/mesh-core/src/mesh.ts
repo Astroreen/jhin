@@ -24,6 +24,8 @@ const MAX_HOPS = 8;
 /** Lifetime of a link token: long enough for a slow handshake, short enough to be useless later. */
 const TOKEN_TTL_MS = 5 * 60 * 1000;
 const INVITE_TTL_MS = 15 * 60 * 1000;
+/** Versions are times; one further ahead than this is a broken clock or a lie, and is dropped. */
+const MAX_VERSION_SKEW_MS = 60 * 60 * 1000;
 const ADDRESS = /^jhin:\/\/([^/]+)\/?(.*)$/;
 
 export class MeshError extends Error {
@@ -40,6 +42,29 @@ export class MeshError extends Error {
 
 interface Link {
   call(method: string, params: unknown, trace?: string): Promise<unknown>;
+  /** Drops the link (inbound links only: a newer connection from the same node supersedes it). */
+  close?(): void;
+}
+
+/** A forwarded call that gets no answer in this time fails instead of hanging. */
+const CALL_DEADLINE_MS = 30_000;
+
+// Every runtime this package targets has timers, but lib "ESNext" does not declare them.
+const timers = globalThis as unknown as {
+  setTimeout(handler: () => void, ms: number): unknown;
+  clearTimeout(handle: unknown): void;
+};
+
+function withDeadline<T>(work: Promise<T>, what: string): Promise<T> {
+  let handle: unknown;
+  const deadline = new Promise<never>((_, reject) => {
+    handle = timers.setTimeout(
+      () =>
+        reject(new MeshError("MESH_TIMEOUT", `No answer from ${what} in ${CALL_DEADLINE_MS} ms`)),
+      CALL_DEADLINE_MS,
+    );
+  });
+  return Promise.race([work, deadline]).finally(() => timers.clearTimeout(handle));
 }
 
 export interface Mesh extends Disposable {
@@ -96,8 +121,8 @@ export function createMesh(options: MeshOptions): Mesh {
   };
 
   /** A new version of our own record: always larger, also across restarts. */
-  const updateSelf = (change: Partial<Pick<MemberRecord, "urls" | "neighbors">>) => {
-    self = { ...self, ...change, version: Math.max(now(), self.version + 1) };
+  const updateSelf = (change: Partial<Pick<MemberRecord, "urls" | "neighbors">>, past = 0) => {
+    self = { ...self, ...change, version: Math.max(now(), self.version + 1, past + 1) };
     records.set(selfId, self);
     changed();
     gossip();
@@ -110,15 +135,17 @@ export function createMesh(options: MeshOptions): Mesh {
     if (neighbors.join() !== self.neighbors.join()) updateSelf({ neighbors });
   };
 
-  const addLink = (nodeId: string, link: Link): Disposable => {
+  const addLink = (nodeId: string, link: Link, direction: "inbound" | "outbound"): Disposable => {
     const set = links.get(nodeId) ?? new Set();
     set.add(link);
     links.set(nodeId, set);
+    log.info("mesh link up", { node: nodeId, direction, links: set.size });
     refreshNeighbors();
     // Tell the new neighbor everything we know.
     void link.call("mesh.gossip", { records: [...records.values()] }).catch(() => undefined);
     return toDisposable(() => {
       set.delete(link);
+      log.info("mesh link down", { node: nodeId, direction, links: set.size });
       refreshNeighbors();
     });
   };
@@ -135,8 +162,15 @@ export function createMesh(options: MeshOptions): Mesh {
   const valid = (incoming: unknown): MemberRecord[] =>
     (Array.isArray(incoming) ? incoming : []).flatMap((item) => {
       const parsed = MemberRecordSchema.safeParse(item);
-      if (!parsed.success) log.warn("mesh record ignored", { issues: parsed.error.issues.length });
-      return parsed.success ? [parsed.data] : [];
+      if (!parsed.success) {
+        log.warn("mesh record ignored", { issues: parsed.error.issues.length });
+        return [];
+      }
+      if (parsed.data.version > now() + MAX_VERSION_SKEW_MS) {
+        log.warn("mesh record from the future ignored", { node: parsed.data.nodeId });
+        return [];
+      }
+      return [parsed.data];
     });
 
   /** Keeps the newest version of each record; returns whether anything changed. */
@@ -145,7 +179,7 @@ export function createMesh(options: MeshOptions): Mesh {
     for (const record of valid(incoming)) {
       if (record.nodeId === selfId) {
         // Our own record from before a restart: move past its version.
-        if (record.version > self.version) updateSelf({});
+        if (record.version > self.version) updateSelf({}, record.version);
         continue;
       }
       const known = records.get(record.nodeId);
@@ -202,10 +236,14 @@ export function createMesh(options: MeshOptions): Mesh {
     });
     client.onState((state) => {
       if (state === "open" && current === undefined) {
-        current = addLink(nodeId, {
-          call: (method, params, trace) =>
-            client.call(method, params, trace === undefined ? {} : { trace }),
-        });
+        current = addLink(
+          nodeId,
+          {
+            call: (method, params, trace) =>
+              client.call(method, params, trace === undefined ? {} : { trace }),
+          },
+          "outbound",
+        );
       } else if (state !== "open" && current !== undefined) {
         current.dispose();
         current = undefined;
@@ -246,10 +284,14 @@ export function createMesh(options: MeshOptions): Mesh {
         },
       );
     }
-    const next = [...(links.get(path[1]!) ?? [])][0];
+    // The newest link: an older one may be a half-open socket of a restarted node.
+    const next = [...(links.get(path[1]!) ?? [])].at(-1);
     if (next === undefined)
       throw new MeshError("NODE_UNREACHABLE", `Link to ${path[1]} just closed`);
-    return next.call("mesh.forward", { ...request, hops: request.hops + 1 }, trace);
+    return withDeadline(
+      next.call("mesh.forward", { ...request, hops: request.hops + 1 }, trace),
+      path[1]!,
+    );
   }
 
   const view = (record: MemberRecord): MemberView => {
@@ -321,12 +363,20 @@ export function createMesh(options: MeshOptions): Mesh {
       return options.verify(record.publicKey, data, signature) ? nodeId : undefined;
     },
     accept(peer, nodeId) {
+      // A new connection from a node replaces its older inbound ones: after a
+      // restart the old socket may linger half-open and swallow calls.
+      for (const old of links.get(nodeId) ?? []) old.close?.();
       const server = serveRpc(peer, serveLink(nodeId));
       const caller = createCaller(peer);
-      const link = addLink(nodeId, {
-        call: (method, params, trace) =>
-          caller.call(method, params, trace === undefined ? {} : { trace }),
-      });
+      const link = addLink(
+        nodeId,
+        {
+          call: (method, params, trace) =>
+            caller.call(method, params, trace === undefined ? {} : { trace }),
+          close: () => peer.close(1000, "superseded"),
+        },
+        "inbound",
+      );
       peer.onClose(() => {
         link.dispose();
         caller.dispose();

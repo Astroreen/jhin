@@ -246,6 +246,8 @@ and engineering practices.
 - Signed mesh records: today any member can overwrite another member's
   record (key, URLs, neighbors) or claim a far-future version; acceptable in
   one owner's trust domain (D22), not beyond it.
+- `/mesh/join` rate limiting keys on the socket address: behind a reverse
+  proxy every joiner shares one bucket.
 - Scoped permissions for mesh links: a member's calls run with every
   permission (`node:<id>`, `*`) on every other member.
 - Visual regression snapshots (D40): screenshots differ between the NixOS

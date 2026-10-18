@@ -147,6 +147,21 @@ describe("a mesh of real nodes", () => {
       const relayed = await fetch(`${a.http}/n/${b.nodeId}/threads?z=2`, { redirect: "manual" });
       expect(relayed.headers.get("location")).toBe(`${b.http}/threads?z=2`);
 
+      // Guessing invite codes is cut off after 20 attempts a minute from one address
+      // (the two joins above count too; 41 tries cross the limit even across a minute boundary).
+      const statuses: number[] = [];
+      for (let attempt = 0; attempt < 41; attempt += 1) {
+        const response = await fetch(`${b.http}/mesh/join`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code: "guess", record: {} }),
+        });
+        statuses.push(response.status);
+      }
+      const firstRefusal = statuses.indexOf(429);
+      expect(firstRefusal).toBeGreaterThan(0);
+      expect(statuses.slice(0, firstRefusal).every((status) => status === 400)).toBe(true);
+
       await c.stop();
       await until(a, (view) => !view.some((node) => node.nodeId === c.nodeId && node.reachable));
       await expect(

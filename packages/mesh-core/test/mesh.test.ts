@@ -11,6 +11,8 @@ interface TestNode {
   readonly id: string;
   readonly address: string;
   readonly mesh: Mesh;
+  /** Signs like the node does, to forge tokens with odd fields in tests. */
+  sign(data: string): string;
 }
 
 const meshes: Mesh[] = [];
@@ -18,7 +20,11 @@ afterEach(() => {
   for (const mesh of meshes.splice(0)) mesh.dispose();
 });
 
-function startNode(network: Network, id: string, options: { advertise?: boolean } = {}): TestNode {
+function startNode(
+  network: Network,
+  id: string,
+  options: { advertise?: boolean; now?: () => number } = {},
+): TestNode {
   const keys = Crypto.generateKeyPairSync("ed25519");
   const publicKey = keys.publicKey.export({ type: "spki", format: "der" }).toString("base64url");
   const address = `mem://${id}`;
@@ -41,6 +47,7 @@ function startNode(network: Network, id: string, options: { advertise?: boolean 
     }),
     logger: noopLogger,
     retryDelay: () => 1,
+    ...(options.now === undefined ? {} : { now: options.now }),
   });
   meshes.push(mesh);
   network.listen(address, {
@@ -53,7 +60,9 @@ function startNode(network: Network, id: string, options: { advertise?: boolean 
     join: (request) => mesh.acceptJoin(request),
   });
   if (options.advertise !== false) mesh.setUrls([address]);
-  return { id, address, mesh };
+  const sign = (data: string) =>
+    Crypto.sign(null, Buffer.from(data), keys.privateKey).toString("base64url");
+  return { id, address, mesh, sign };
 }
 
 /** Resolves once `condition` holds, re-checking whenever any of the meshes changes. */
@@ -206,14 +215,46 @@ describe("mesh", () => {
     void c;
   });
 
-  it("refuses link tokens with a non-numeric or far-future expiry", () => {
+  it("refuses properly signed link tokens whose expiry is not a near, finite time", () => {
     const network = createMemoryNetwork();
     const a = startNode(network, "a");
     const b = startNode(network, "b");
-    // b is a member of a only after a join; record it directly through a join request.
     a.mesh.acceptJoin({ code: a.mesh.invite().code, record: b.mesh.self() });
+    const signed = (expires: string) => `b.a.${expires}.${b.sign(`jhin-mesh-link:b:a:${expires}`)}`;
 
-    expect(a.mesh.verifyToken("b.a.NaN.sig")).toBeUndefined();
-    expect(a.mesh.verifyToken(`b.a.${Date.now() + 365 * 24 * 3600 * 1000}.sig`)).toBeUndefined();
+    expect(a.mesh.verifyToken(signed(String(Date.now() + 60_000)))).toBe("b");
+    expect(a.mesh.verifyToken(signed("NaN"))).toBeUndefined();
+    expect(a.mesh.verifyToken(signed(String(Date.now() + 365 * 24 * 3600 * 1000)))).toBeUndefined();
+    expect(a.mesh.verifyToken(signed(String(Date.now() - 1)))).toBeUndefined();
+  });
+
+  it("moves its own version past an echo of an older life, and drops records from the far future", () => {
+    const network = createMemoryNetwork();
+    const a = startNode(network, "a");
+    const ahead = a.mesh.self().version + 10 * 60 * 1000;
+
+    // A peer still remembers a's record from before a restart, with a later version.
+    a.mesh.acceptJoin({ code: a.mesh.invite().code, record: { ...a.mesh.self(), version: ahead } });
+    expect(a.mesh.self().version).toBeGreaterThan(ahead);
+
+    const b = startNode(network, "b");
+    expect(() =>
+      a.mesh.acceptJoin({
+        code: a.mesh.invite().code,
+        record: { ...b.mesh.self(), version: Date.now() + 9e12 },
+      }),
+    ).toThrow(expect.objectContaining({ code: "JOIN_INVALID" }));
+  });
+
+  it("refuses an invite after it expired", async () => {
+    let clock = Date.now();
+    const network = createMemoryNetwork();
+    const a = startNode(network, "a", { now: () => clock });
+    const b = startNode(network, "b");
+    const { code } = a.mesh.invite();
+
+    clock += 16 * 60 * 1000;
+
+    await expect(b.mesh.join(a.address, code)).rejects.toMatchObject({ code: "INVITE_INVALID" });
   });
 });
