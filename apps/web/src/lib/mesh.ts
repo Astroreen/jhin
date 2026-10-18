@@ -10,7 +10,7 @@ export interface MeshNode {
 
 /**
  * The nodes of a connected node's mesh, kept current from its `mesh` stream.
- * `undefined` until the first answer, and while none has succeeded.
+ * `undefined` until the first answer; empty if the first one fails.
  */
 export function useMeshNodes(node: NodeConnection | undefined): readonly MeshNode[] | undefined {
   // Keyed by the connection, so a new one never sees the previous one's members.
@@ -30,9 +30,14 @@ export function useMeshNodes(node: NodeConnection | undefined): readonly MeshNod
         .then((nodes) => {
           if (!disposed && request === latest) setKnown({ node, members: nodes });
         })
-        // A failed answer says nothing about the mesh: keep what is known. A node
-        // without the mesh plugin never answers, so its routes are never judged.
-        .catch(() => undefined);
+        // A later failure says nothing new about the mesh: keep what is known.
+        // Without any answer (no mesh plugin, or it fails) no remote is known.
+        .catch(() => {
+          if (disposed || request !== latest) return;
+          setKnown((previous) =>
+            previous !== undefined && previous.node === node ? previous : { node, members: [] },
+          );
+        });
     };
     load();
     const subscription = node.client.subscribe("mesh", {}, load);
