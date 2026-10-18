@@ -39,6 +39,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
+      # Browser-mode tests (*.browser.test.ts) run in headless Chromium.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
       - run: vp test run
 
   knip:
