@@ -40,7 +40,14 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
   const subscriptions = new Map<string, Disposable>();
   const traced = options.traced ?? (<T>(_trace: string, work: () => Promise<T>) => work());
 
-  const reply = (message: ResponseMessage) => peer.send(JSON.stringify(message));
+  const reply = (message: ResponseMessage) => {
+    try {
+      peer.send(JSON.stringify(message));
+    } catch (error) {
+      // The peer closed under us; there is nobody left to answer.
+      options.logger.debug("reply dropped", { error: String(error) });
+    }
+  };
   const fail = (id: ResponseMessage["id"], error: ErrorObject, trace?: string) =>
     reply({ jsonrpc: "2.0", id, error, ...(trace === undefined ? {} : { trace }) });
 
@@ -69,14 +76,27 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
     // in the buffer, in the backlog, or both; `lastSent` drops duplicates.
     const live$ = log.subscribe(stream, (event) => (live ? deliver(event) : buffered.push(event)));
     subscriptions.set(id, live$);
-    const head = await log.head(stream);
-    for (;;) {
-      const page = await log.read(stream, { after: lastSent, limit: BACKLOG_PAGE });
-      for (const event of page) deliver(event);
-      if (page.length < BACKLOG_PAGE) break;
+    // An unsubscribe (or a closed connection) while the backlog is read ends the replay.
+    const active = () => subscriptions.get(id) === live$;
+    let head: number;
+    try {
+      head = await log.head(stream);
+      for (;;) {
+        const page = await log.read(stream, { after: lastSent, limit: BACKLOG_PAGE });
+        if (!active()) break;
+        for (const event of page) deliver(event);
+        if (page.length < BACKLOG_PAGE) break;
+      }
+    } catch (error) {
+      // A failed replay leaves nothing behind, so the client can retry with the same id.
+      live$.dispose();
+      if (active()) subscriptions.delete(id);
+      throw error;
     }
-    for (const event of buffered) deliver(event);
-    live = true;
+    if (active()) {
+      for (const event of buffered) deliver(event);
+      live = true;
+    }
     return { subscription: id, head };
   }
 
@@ -128,21 +148,23 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       }
       const request = parsed.data;
       const trace = request.trace ?? options.newTraceId();
-      void traced(trace, async () => {
+      traced(trace, async () => {
         const started = Date.now();
         try {
           const result = await handle(request, trace);
-          options.logger.debug("rpc call", {
-            method: request.method,
-            ms: Date.now() - started,
-          });
+          options.logger.debug("rpc call", { method: request.method, ms: Date.now() - started });
           reply({ jsonrpc: "2.0", id: request.id, result: result ?? null, trace });
         } catch (error) {
           const object = toErrorObject(error);
           options.logger.info("rpc call failed", { method: request.method, error: object });
           fail(request.id, object, trace);
         }
-      });
+      }).catch((error: unknown) =>
+        options.logger.error("rpc request crashed", {
+          method: request.method,
+          error: String(error),
+        }),
+      );
     }),
   );
   store.add(

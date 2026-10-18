@@ -76,6 +76,9 @@ export default definePlugin({
         });
       }),
     );
+    context.events.on("auth.token.rotated", () => {
+      for (const socket of sockets) socket.close(CLOSE_UNAUTHENTICATED, "token rotated");
+    });
     context.subscriptions.add({
       dispose() {
         for (const socket of sockets) socket.close(CLOSE_SERVICE_RESTART, "transport restarting");

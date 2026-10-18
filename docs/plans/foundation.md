@@ -352,6 +352,10 @@ Implementation notes (PR 6):
   `host.trace@1` (AsyncLocalStorage, every log line gets `traceId`) and the
   `host.commands.list` command. Contracts live in `@jhin/http-api`,
   `@jhin/auth-api` and `@jhin/host-api`.
+- Token rotation (`auth.token.rotate`) emits `auth.token.rotated`; the
+  transport then closes every open connection with 4401, so a rotated-out
+  token stops working at once. Tokens shorter than 43 characters (including
+  an empty token file) are never accepted; such a file is regenerated.
 - The CLI talks to a running node with `--url` (token read from the home by
   default); without it, it still boots the plugins in-process.
 

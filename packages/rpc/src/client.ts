@@ -38,7 +38,11 @@ export interface RpcClient {
    */
   subscribe(
     stream: string,
-    options: { after?: number },
+    options: {
+      after?: number;
+      /** The node refused the subscription (other than a dropped connection); it is then disposed. */
+      onError?: (error: RpcError) => void;
+    },
     onEvent: (event: StoredEvent) => void,
   ): ClientSubscription;
   close(): void;
@@ -53,6 +57,7 @@ interface SubscriptionState {
   readonly stream: string;
   lastSequence: number;
   readonly onEvent: (event: StoredEvent) => void;
+  readonly onError: ((error: RpcError) => void) | undefined;
   /** Server-side id on the current connection. */
   serverId: string | undefined;
   disposed: boolean;
@@ -114,6 +119,11 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
   function send(target: Peer, method: string, params: unknown, trace?: string): Promise<unknown> {
     const id = nextId++;
     return new Promise((resolve, reject) => {
+      // The connection may have dropped while the caller waited for it.
+      if (peer !== target) {
+        reject(disconnected());
+        return;
+      }
       pending.set(id, { resolve, reject });
       target.send(
         JSON.stringify({
@@ -131,11 +141,28 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
     // The id is set before the call: backlog events arrive before its result.
     const id = String(nextSubscriptionId++);
     subscription.serverId = id;
-    await send(target, RPC_SUBSCRIBE, {
-      subscription: id,
-      stream: subscription.stream,
-      after: subscription.lastSequence,
-    });
+    try {
+      await send(target, RPC_SUBSCRIBE, {
+        subscription: id,
+        stream: subscription.stream,
+        after: subscription.lastSequence,
+      });
+    } catch (error) {
+      // A dropped connection is retried on reconnect; anything else is final.
+      if (error instanceof RpcError && error.code === "DISCONNECTED") return;
+      subscription.disposed = true;
+      subscriptions.delete(subscription);
+      subscription.onError?.(
+        error instanceof RpcError
+          ? error
+          : new RpcError({
+              code: ErrorCodes.SERVER_ERROR,
+              message: String(error),
+              data: { code: "INTERNAL" },
+            }),
+      );
+      return;
+    }
     if (subscription.disposed) {
       void send(target, RPC_UNSUBSCRIBE, { subscription: id }).catch(() => undefined);
     }
@@ -250,6 +277,7 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
         stream,
         lastSequence: subscribeOptions.after ?? 0,
         onEvent,
+        onError: subscribeOptions.onError,
         serverId: undefined,
         disposed: false,
       };

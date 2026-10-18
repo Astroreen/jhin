@@ -185,4 +185,103 @@ describe("rpc", () => {
 
     await expect(waiting).rejects.toMatchObject({ code: "DISCONNECTED" });
   });
+
+  it("cleans up a subscription whose replay failed, so the same id can be retried", async () => {
+    const storage = createMemoryStorage();
+    await storage.log.append("s", [{ type: "app.a", payload: 1 }]);
+    let failNextRead = true;
+    const log = {
+      ...storage.log,
+      read: (stream: string, options?: { after?: number; limit?: number }) => {
+        if (failNextRead) {
+          failNextRead = false;
+          return Promise.reject(new Error("disk hiccup"));
+        }
+        return storage.log.read(stream, options);
+      },
+    };
+    const [clientEnd, serverEnd] = createPeerPair();
+    serveRpc(serverEnd, {
+      caller: { id: "owner", permissions: ["*"] },
+      log,
+      logger: noopLogger,
+      hello: () => ({}),
+      newTraceId: () => "t",
+      execute: async () => null,
+    });
+    const responses: {
+      id?: number;
+      error?: unknown;
+      method?: string;
+      params?: { event: { sequence: number } };
+    }[] = [];
+    const next = () =>
+      new Promise<void>((resolve) => {
+        const subscription = clientEnd.onMessage(() => {
+          subscription.dispose();
+          resolve();
+        });
+      });
+    clientEnd.onMessage((text) => responses.push(JSON.parse(text)));
+    const subscribe = (id: number) =>
+      clientEnd.send(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          method: "rpc.subscribe",
+          params: { subscription: "a", stream: "s" },
+        }),
+      );
+
+    let arrived = next();
+    subscribe(1);
+    await arrived;
+    while (!responses.some((message) => message.id === 1)) {
+      arrived = next();
+      await arrived;
+    }
+    expect(responses.find((message) => message.id === 1)?.error).toBeDefined();
+
+    subscribe(2);
+    while (!responses.some((message) => message.id === 2)) {
+      arrived = next();
+      await arrived;
+    }
+    expect(responses.find((message) => message.id === 2)).toMatchObject({
+      result: { subscription: "a", head: 1 },
+    });
+    expect(
+      responses
+        .filter((message) => message.method === "rpc.event")
+        .map((message) => message.params?.event.sequence),
+    ).toEqual([1]);
+  });
+
+  it("does not crash when the connection closes while a reply is on its way", async () => {
+    const { client, servers } = harness();
+    await nextState(client, "open");
+    const pendingCall = client.call("app.echo", { late: true });
+    servers.at(-1)!.close(1006, "gone");
+
+    await expect(pendingCall).rejects.toMatchObject({ code: "DISCONNECTED" });
+    client.close();
+  });
+
+  it("reports a refused subscription through onError and stops it", async () => {
+    const [clientEnd, serverEnd] = createPeerPair();
+    serveRpc(serverEnd, {
+      caller: { id: "owner", permissions: ["*"] },
+      logger: noopLogger,
+      hello: () => ({}),
+      newTraceId: () => "t",
+      execute: async () => null,
+    });
+    const client = createRpcClient({ retryDelay: () => 0, connect: async () => clientEnd });
+    const error = await new Promise((resolve) =>
+      client.subscribe("s", { onError: resolve }, () => undefined),
+    );
+
+    expect(error).toMatchObject({ code: "UNAVAILABLE" });
+    client.close();
+  });
 });

@@ -50,8 +50,12 @@ afterEach(async () => {
   for (const kernel of kernels.splice(0)) await kernel.stop();
 });
 
-async function startNode(): Promise<Node> {
+async function startNode(options: { tokenFile?: string } = {}): Promise<Node> {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-transport-"));
+  if (options.tokenFile !== undefined) {
+    Fs.mkdirSync(Path.join(data, "jhin.auth-token"), { recursive: true });
+    Fs.writeFileSync(Path.join(data, "jhin.auth-token", "token"), options.tokenFile);
+  }
   const storage = memoryStoragePlugin();
   const real = (dir: string, definition: PluginDefinition) => ({
     manifest: manifest(dir),
@@ -159,5 +163,26 @@ describe("jhin.transport-ws", () => {
     await reach(8);
 
     expect(events.map((event) => event.sequence)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("never accepts an empty token, even from an empty token file", async () => {
+    const node = await startNode({ tokenFile: "\n" });
+
+    expect(node.token).toHaveLength(43);
+    const refused = connect(node.url, "");
+    await closed(refused);
+    expect(refused.closeReason).toMatchObject({ code: "UNAUTHENTICATED" });
+  });
+
+  it("drops open connections when the token is rotated", async () => {
+    const node = await startNode();
+    const owner = connect(node.url, node.token);
+    expect(await owner.call("app.echo", { text: "before" })).toEqual({ text: "before" });
+
+    const gone = closed(owner);
+    await node.kernel.commands.execute("auth.token.rotate", {});
+    await gone;
+
+    expect(owner.closeReason).toMatchObject({ code: "UNAUTHENTICATED" });
   });
 });
