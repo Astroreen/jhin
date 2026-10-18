@@ -1,3 +1,6 @@
+import * as Fs from "node:fs";
+import * as Path from "node:path";
+
 import { expect, test } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
@@ -19,25 +22,73 @@ async function start(options: Parameters<typeof startNode>[0]): Promise<RunningN
   return node;
 }
 
-/** Resolves once `node` sees `name` reachable, re-checking on its mesh stream: no polling. */
-function untilReachable(node: RunningNode, name: string): Promise<MeshNode> {
-  return new Promise((resolve) => {
+/**
+ * Resolves once `node` sees `name` reachable, re-checking on its mesh stream:
+ * no polling. Rejects with the last snapshot it saw once it can no longer
+ * learn anything: the connection to `node` goes away or the stream is refused.
+ * `onSnapshot` sees every answer of `mesh.nodes`.
+ */
+function untilReachable(
+  node: RunningNode,
+  name: string,
+  onSnapshot?: (nodes: readonly MeshNode[]) => void,
+): Promise<MeshNode> {
+  return new Promise((resolve, reject) => {
+    const client = node.client();
     let done = false;
+    let last = "no answer yet";
+    let wasOpen = client.state === "open";
+    const finish = () => {
+      done = true;
+      subscription.dispose();
+      state.dispose();
+    };
+    const fail = (why: string) => {
+      if (done) return;
+      finish();
+      reject(new Error(`${name} never became reachable (${why}); last mesh.nodes: ${last}`));
+    };
     const check = () =>
-      void node
-        .client()
+      void client
         .call<MeshNode[]>("mesh.nodes")
         .then((nodes) => {
+          if (done) return;
+          last = JSON.stringify(nodes);
+          onSnapshot?.(nodes);
           const found = nodes.find((candidate) => candidate.name === name && candidate.reachable);
-          if (done || found === undefined) return;
-          done = true;
-          subscription.dispose();
+          if (found === undefined) return;
+          finish();
           resolve(found);
         })
-        .catch(() => undefined);
-    const subscription = node.client().subscribe("mesh", {}, check);
+        .catch((error: unknown) => {
+          if (!done) last = `failed: ${(error as Error).message}`;
+        });
+    const subscription = client.subscribe(
+      "mesh",
+      { onError: (error) => fail(`mesh stream refused: ${error.message}`) },
+      check,
+    );
+    const state = client.onState((next) => {
+      if (next === "open") wasOpen = true;
+      else if (next === "closed" || wasOpen) fail(`connection ${next}`);
+    });
     check();
   });
+}
+
+/** A user plugin with the mesh plugin's id: it shadows the shipped one, so the node has no mesh. */
+function withoutMesh(home: string): void {
+  const root = Path.join(home, "plugins", "no-mesh");
+  Fs.mkdirSync(root, { recursive: true });
+  Fs.writeFileSync(
+    Path.join(root, "package.json"),
+    JSON.stringify({
+      name: "no-mesh",
+      type: "module",
+      jhin: { id: "jhin.mesh", version: "0.0.0", apiVersion: 1, side: "server", entry: "index.js" },
+    }),
+  );
+  Fs.writeFileSync(Path.join(root, "index.js"), "export default { activate() {} };\n");
 }
 
 test("D47: a client connected to a creates a thread on c, two hops away, and gets the reply", async ({
@@ -141,4 +192,69 @@ test("D47: one client shows two independent nodes at once", async ({ page }, inf
   const shot = info.outputPath("two-nodes.png");
   await page.screenshot({ path: shot });
   await info.attach("two-nodes", { path: shot, contentType: "image/png" });
+});
+
+test("D47: a thread a reachable remote cannot share says why and leaves the remote listed", async ({
+  page,
+}) => {
+  const a = await start({ mode: "ui", config: { "jhin.mesh": { name: "a" } } });
+  const b = await start({ mode: "serve", config: { "jhin.mesh": { name: "b" } } });
+  const invite = await b.client().call<{ url: string; code: string }>("mesh.invite");
+  await a.client().call("mesh.join", { url: invite.url, code: invite.code });
+  await untilReachable(a, "b");
+
+  await page.goto(`${a.ui}#token=${a.token}`);
+  const nodeB = page.getByRole("region", { name: "Node b" });
+  await nodeB.getByRole("button", { name: "New thread" }).click();
+  await expect(nodeB.locator("[aria-current=page]")).toHaveText("New thread");
+  // The same reachable remote, but a thread `mesh.open` refuses to copy.
+  await page.evaluate(() => {
+    const params = new URLSearchParams(location.hash.slice(1));
+    params.set("t", "no/such");
+    location.hash = params.toString();
+  });
+
+  await expect(page.getByRole("alert")).toContainText(
+    "Cannot open this thread: Stream thread/no/such cannot be copied across the mesh",
+  );
+  // b is still reachable: the failure is the thread's, not the node's.
+  await expect(page.getByRole("status")).toHaveCount(0);
+  await expect(nodeB).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+});
+
+test("D47: remote routes on a node without the mesh plugin read as unreachable", async ({
+  page,
+}) => {
+  const a = await start({ mode: "ui", setup: withoutMesh });
+  await expect(a.client().call("mesh.nodes")).rejects.toThrow();
+
+  await page.goto(`${a.ui}#token=${a.token}`);
+  await expect(page.getByLabel("Connection open")).toHaveCount(1);
+  // Only the connection itself is listed: no mesh, so no other nodes.
+  const nodes = page.getByRole("region", { name: /^Node / });
+  await expect(nodes).toHaveCount(1);
+  await nodes.getByRole("button", { name: "New thread" }).click();
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+
+  await page.evaluate(() => {
+    const params = new URLSearchParams(location.hash.slice(1));
+    params.set("r", "somewhere");
+    location.hash = params.toString();
+  });
+  await expect(page.getByRole("status")).toContainText("Node unreachable");
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
+});
+
+test("untilReachable fails with the last snapshot when its node goes away", async () => {
+  const a = await start({ mode: "serve", config: { "jhin.mesh": { name: "a" } } });
+  const answered = Promise.withResolvers<void>();
+  const waiting = untilReachable(a, "ghost", () => answered.resolve());
+  await answered.promise;
+  // Handled before the node stops, so the rejection is never unhandled.
+  const failed = expect(waiting).rejects.toThrow(
+    /ghost never became reachable \(connection closed\); last mesh\.nodes: \[\{.*"name":"a"/,
+  );
+  await a.stop();
+  await failed;
 });
