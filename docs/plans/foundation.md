@@ -250,6 +250,9 @@ and engineering practices.
   proxy every joiner shares one bucket.
 - Scoped permissions for mesh links: a member's calls run with every
   permission (`node:<id>`, `*`) on every other member.
+- Fan-out to several projects of a node (D20's project picker): the
+  `project` layer is the project the node was started in; other projects'
+  config files are not loaded by the node yet.
 - Visual regression snapshots (D40): screenshots differ between the NixOS
   dev shell and CI runners; they need one pinned rendering environment (the
   Playwright container) before baselines are worth keeping.
@@ -513,6 +516,23 @@ Implements D20, D26, D50.
 - **Done when:** tests show a thread from C readable on A after C goes
   offline (both policies); a patch to "all nodes" reaches an offline node
   after it returns; a concurrent local change produces a reported conflict.
+
+Implementation notes (PR 10):
+
+- History sync uses mirrors: `mesh.open {node, stream}` (or the `eager`
+  policy, `jhin.mesh.history`) keeps `mirror/<node>/<stream>` in this node's
+  log. A node next to the owner reads the stream itself over the link; a node
+  further away asks the next hop to keep its own mirror and reads that, so
+  every hop caches (D26). Sequences equal the source's (`expectedHead`), and a
+  mirror catches up from its head whenever a route returns.
+- `eager` follows every node's `threads` stream (one event per thread
+  created, written by `jhin.threads`) and mirrors each thread it lists.
+- `host.config.patch {layer, section, values, at}` edits the node's JSONC
+  file keeping comments and records the time per section; an older change
+  loses (`conflict`). `mesh.config.patch {nodes, layer, section, values}`
+  applies one change everywhere; changes for unreachable nodes wait in the
+  `mesh/outbox` stream and are delivered when a route exists
+  (`mesh.config.delivered` / `mesh.config.conflict`).
 
 ### PR 11 — Final end-to-end proof
 

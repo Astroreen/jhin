@@ -1,5 +1,6 @@
 import { z, type Invocation, type Logger } from "@jhin/sdk";
 import type { Peer } from "@jhin/rpc";
+import type { EventLog } from "@jhin/storage-api";
 
 /** Every record from another node is parsed with this before it is used or stored. */
 export const MemberRecordSchema = z.object({
@@ -66,6 +67,11 @@ export interface MeshOptions {
    * for quick commands; long work, like a turn, starts and returns at once.
    */
   readonly callDeadlineMs?: number;
+  /**
+   * This node's event log: neighbors may subscribe to its streams over a link,
+   * and mirrors of other nodes' streams are kept in it (D26).
+   */
+  readonly log?: EventLog;
 }
 
 export interface MemberView {

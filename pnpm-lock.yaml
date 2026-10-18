@@ -159,6 +159,9 @@ importers:
         specifier: 'catalog:'
         version: 1.32.1(zod@4.6.7)
     devDependencies:
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
@@ -293,6 +296,9 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../storage-api
     devDependencies:
       '@jhin/kernel':
         specifier: workspace:*
@@ -312,6 +318,9 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../sdk
+      jsonc-parser:
+        specifier: 'catalog:'
+        version: 3.3.1
       pino:
         specifier: 'catalog:'
         version: 10.4.0

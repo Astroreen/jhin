@@ -28,6 +28,7 @@
     "@modelcontextprotocol/sdk": "catalog:"
   },
   "devDependencies": {
+    "@jhin/storage-api": "workspace:*",
     "@types/node": "catalog:"
   },
   "jhinClient": [

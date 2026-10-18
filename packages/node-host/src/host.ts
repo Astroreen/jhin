@@ -29,6 +29,7 @@ import {
   type Disposable,
   type Logger,
 } from "@jhin/sdk";
+import { applyEdits, modify } from "jsonc-parser";
 
 import {
   discoverPlugins,
@@ -178,6 +179,26 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         handler: () => context.commands.list(),
       });
       context.commands.register({
+        name: "host.config.patch",
+        description:
+          "Changes this node's node or project config file, keeping its comments; refuses a change older than the last one (D50)",
+        input: z.object({
+          layer: z.enum(["node", "project"]),
+          section: z.string().regex(DOTTED_ID),
+          values: z.record(z.string(), z.unknown()),
+          /** When the change was made (ms); later changes win. Defaults to now. */
+          at: z.number().int().nonnegative().optional(),
+        }),
+        output: z.object({
+          applied: z.boolean(),
+          at: z.number(),
+          conflict: z.object({ localAt: z.number() }).optional(),
+        }),
+        permissions: ["host.config.write"],
+        handler: ({ layer, section, values, at }) =>
+          patchConfig(layer, section, values, at ?? Date.now()),
+      });
+      context.commands.register({
         name: "host.plugins.reload",
         description: "Re-imports a plugin and re-activates it with everything depending on it",
         input: z.object({ plugin: z.string() }),
@@ -224,6 +245,38 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     },
   };
   await kernel.start([hostSource, ...discovery.plugins]);
+
+  /** Last write time per layer and section, so a stale change from elsewhere can lose (D50). */
+  const writesFile = Path.join(home.root, "config-writes.json");
+  function patchConfig(
+    layer: "node" | "project",
+    section: string,
+    values: Record<string, unknown>,
+    at: number,
+  ): { applied: boolean; at: number; conflict?: { localAt: number } } {
+    const writes = (
+      Fs.existsSync(writesFile) ? JSON.parse(Fs.readFileSync(writesFile, "utf8")) : {}
+    ) as Record<string, Record<string, number>>;
+    const localAt = writes[layer]?.[section];
+    if (localAt !== undefined && at < localAt) return { applied: false, at, conflict: { localAt } };
+
+    const file = layer === "node" ? home.config : projectConfig;
+    let text = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n";
+    for (const [key, value] of Object.entries(values)) {
+      text = applyEdits(
+        text,
+        modify(text, [section, key], value, {
+          formattingOptions: { insertSpaces: true, tabSize: 2 },
+        }),
+      );
+    }
+    Fs.mkdirSync(Path.dirname(file), { recursive: true });
+    Fs.writeFileSync(file, text);
+    writes[layer] = { ...writes[layer], [section]: at };
+    Fs.writeFileSync(writesFile, `${JSON.stringify(writes, null, 2)}\n`);
+    applyLayer(kernel, layer, file, log);
+    return { applied: true, at };
+  }
 
   function inspect(): NodeInspection {
     return {

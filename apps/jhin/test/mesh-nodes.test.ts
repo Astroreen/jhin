@@ -1,97 +1,14 @@
-import * as ChildProcess from "node:child_process";
-import * as Fs from "node:fs";
-import * as Os from "node:os";
-import * as Path from "node:path";
-
-import { connectWebSocket, createRpcClient, type RpcClient } from "@jhin/rpc";
 import { afterAll, describe, expect, it } from "vite-plus/test";
 
-const BIN = Path.resolve(import.meta.dirname, "../bin/jhin.js");
-
-interface Node {
-  readonly name: string;
-  readonly home: string;
-  readonly http: string;
-  readonly nodeId: string;
-  readonly client: RpcClient;
-  stop(): Promise<void>;
-}
+import { makeHome, serve, untilMesh, type Node, type NodeView } from "./support/nodes.ts";
 
 const running: Node[] = [];
 afterAll(async () => {
   for (const node of running.splice(0)) await node.stop();
 });
 
-function home(name: string, mesh: Record<string, unknown>): string {
-  const dir = Fs.mkdtempSync(Path.join(Os.tmpdir(), `jhin-mesh-${name}-`));
-  Fs.mkdirSync(Path.join(dir, ".jhin"));
-  Fs.writeFileSync(
-    Path.join(dir, ".jhin", "config.jsonc"),
-    JSON.stringify({ "jhin.http": { port: 0 }, "jhin.mesh": { name, ...mesh } }),
-  );
-  return dir;
-}
-
-/** `jhin serve` on a free port in `dir`; connected over RPC once it printed its endpoints. */
-async function serve(name: string, dir: string): Promise<Node> {
-  const child = ChildProcess.spawn(process.execPath, [BIN, "serve", "--home", dir, "--cwd", dir], {
-    stdio: ["ignore", "ignore", "pipe"],
-  });
-  const rpc = await new Promise<string>((resolve, reject) => {
-    let text = "";
-    child.stderr.on("data", (chunk) => {
-      text += String(chunk);
-      const match = /rpc: (ws:\/\/\S+)/.exec(text);
-      if (match !== null && text.includes("logs:")) resolve(match[1]!);
-    });
-    child.once("exit", (code) => reject(new Error(`${name} exited with ${code}:\n${text}`)));
-  });
-  const token = Fs.readFileSync(Path.join(dir, "data", "jhin.auth-token", "token"), "utf8").trim();
-  const client = createRpcClient({ connect: () => connectWebSocket(rpc, token) });
-  const node: Node = {
-    name,
-    home: dir,
-    http: rpc.replace(/^ws/, "http").replace(/\/rpc$/, ""),
-    nodeId: Fs.readFileSync(Path.join(dir, "node-id"), "utf8").trim(),
-    client,
-    async stop() {
-      client.close();
-      if (child.exitCode !== null) return;
-      const exited = new Promise((resolve) => child.once("exit", resolve));
-      child.kill("SIGTERM");
-      await exited;
-    },
-  };
-  running.push(node);
-  return node;
-}
-
-interface NodeView {
-  readonly nodeId: string;
-  readonly reachable: boolean;
-  readonly route?: readonly string[];
-}
-
-/** Re-checks `condition` on `node`'s mesh view whenever its mesh stream moves: no polling, no sleeps. */
-function until(
-  node: Node,
-  condition: (nodes: readonly NodeView[]) => boolean,
-): Promise<readonly NodeView[]> {
-  return new Promise((resolve) => {
-    let done = false;
-    const check = async () => {
-      if (done) return;
-      const nodes = await node.client.call<NodeView[]>("mesh.nodes");
-      if (!done && condition(nodes)) {
-        done = true;
-        subscription.dispose();
-        resolve(nodes);
-      }
-    };
-    const subscription = node.client.subscribe("mesh", {}, () => void check());
-    void check();
-  });
-}
+const home = (name: string, mesh: Record<string, unknown>) => makeHome(name, mesh);
+const until = untilMesh;
 
 describe("a mesh of real nodes", () => {
   // Four node processes start in this test; the limit bounds the run, nothing waits on time.
@@ -101,9 +18,9 @@ describe("a mesh of real nodes", () => {
     async () => {
       // a and c advertise no address: neither can dial the other, both dial b.
       const homeC = home("c", { advertise: [] });
-      const a = await serve("a", home("a", { advertise: [] }));
-      const b = await serve("b", home("b", {}));
-      let c = await serve("c", homeC);
+      const a = await serve("a", home("a", { advertise: [] }), running);
+      const b = await serve("b", home("b", {}), running);
+      let c = await serve("c", homeC, running);
 
       const invite = (node: Node) => node.client.call<{ url: string; code: string }>("mesh.invite");
       const forA = await invite(b);
@@ -175,7 +92,7 @@ describe("a mesh of real nodes", () => {
       });
 
       // c comes back from the same home: it remembers b and dials it.
-      c = await serve("c", homeC);
+      c = await serve("c", homeC, running);
       await until(a, reachC);
       expect(
         await a.client.call("mesh.call", {

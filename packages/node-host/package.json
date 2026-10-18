@@ -16,6 +16,7 @@
     "@jhin/host-api": "workspace:*",
     "@jhin/kernel": "workspace:*",
     "@jhin/sdk": "workspace:*",
+    "jsonc-parser": "catalog:",
     "pino": "catalog:"
   },
   "devDependencies": {

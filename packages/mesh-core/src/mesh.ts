@@ -7,6 +7,7 @@ import {
   type RpcServerOptions,
 } from "@jhin/rpc";
 import { toDisposable, type Disposable, type Invocation } from "@jhin/sdk";
+import type { StoredEvent } from "@jhin/storage-api";
 
 import { shortestPath } from "./routing.ts";
 import {
@@ -42,6 +43,7 @@ export class MeshError extends Error {
 
 interface Link {
   call(method: string, params: unknown, trace?: string): Promise<unknown>;
+  subscribe(stream: string, after: number, onEvent: (event: StoredEvent) => void): Disposable;
   /** Drops the link (inbound links only: a newer connection from the same node supersedes it). */
   close?(): void;
 }
@@ -83,6 +85,13 @@ export interface Mesh extends Disposable {
   /** Runs `method` on `target`, directly or through relays. */
   call(target: string, method: string, params: unknown, trace?: string): Promise<unknown>;
   resolve(address: string): Resolution;
+  /**
+   * Keeps a copy of `owner`'s `stream` in this node's log (D26) and returns
+   * the local stream name (`mirror/<owner>/<stream>`; the stream itself for
+   * this node). Sequences match the source; the copy survives the owner
+   * going offline and catches up when a route returns.
+   */
+  mirror(owner: string, stream: string): string;
   onChange(listener: () => void): Disposable;
 }
 
@@ -120,6 +129,8 @@ export function createMesh(options: MeshOptions): Mesh {
   const changed = () => {
     options.persist?.([...records.values()]);
     for (const listener of Array.from(listeners)) listener();
+    // Links and routes may have moved: mirrors follow on the next tick.
+    void Promise.resolve().then(checkMirrors);
   };
 
   /** A new version of our own record: always larger, also across restarts. */
@@ -208,6 +219,7 @@ export function createMesh(options: MeshOptions): Mesh {
   const serveLink = (nodeId: string): RpcServerOptions => ({
     caller: { id: `node:${nodeId}`, permissions: ["*"] },
     logger: log,
+    ...(options.log === undefined ? {} : { log: options.log }),
     hello: () => ({ nodeId: selfId }),
     newTraceId: randomId,
     async execute(method, params, invocation) {
@@ -216,6 +228,10 @@ export function createMesh(options: MeshOptions): Mesh {
         return {};
       }
       if (method === "mesh.forward") return forward(params as Forward, invocation.traceId);
+      if (method === "mesh.mirror") {
+        const { owner, stream } = params as { owner: string; stream: string };
+        return { stream: mirror(owner, stream) };
+      }
       return options.execute(method, params, invocation);
     },
   });
@@ -244,6 +260,7 @@ export function createMesh(options: MeshOptions): Mesh {
           {
             call: (method, params, trace) =>
               client.call(method, params, trace === undefined ? {} : { trace }),
+            subscribe: (stream, after, onEvent) => client.subscribe(stream, { after }, onEvent),
           },
           "outbound",
         );
@@ -310,6 +327,95 @@ export function createMesh(options: MeshOptions): Mesh {
       ...(route === undefined ? {} : { route }),
     };
   };
+
+  interface Mirror {
+    readonly owner: string;
+    readonly stream: string;
+    readonly local: string;
+    /** The link it currently reads from, and the subscription on it. */
+    link: Link | undefined;
+    subscription: Disposable | undefined;
+    connecting: boolean;
+    /** Appends one at a time, in order. */
+    writes: Promise<void>;
+  }
+  const mirrors = new Map<string, Mirror>();
+
+  function mirror(owner: string, stream: string): string {
+    if (owner === selfId) return stream;
+    const local = `mirror/${owner}/${stream}`;
+    if (!mirrors.has(local)) {
+      mirrors.set(local, {
+        owner,
+        stream,
+        local,
+        link: undefined,
+        subscription: undefined,
+        connecting: false,
+        writes: Promise.resolve(),
+      });
+      void connectMirror(local);
+    }
+    return local;
+  }
+
+  /** Re-attaches mirrors whose link closed or whose route now goes elsewhere. */
+  function checkMirrors(): void {
+    for (const [local, state] of mirrors) {
+      const path = shortestPath(records, selfId, linkedIds(), state.owner);
+      const via = path?.[1];
+      const current = via === undefined ? undefined : [...(links.get(via) ?? [])].at(-1);
+      if (current !== state.link) void connectMirror(local);
+    }
+  }
+
+  async function connectMirror(local: string): Promise<void> {
+    const state = mirrors.get(local);
+    const store = options.log;
+    if (state === undefined || store === undefined || closed || state.connecting) return;
+    state.connecting = true;
+    try {
+      state.subscription?.dispose();
+      state.subscription = undefined;
+      state.link = undefined;
+      const path = shortestPath(records, selfId, linkedIds(), state.owner);
+      const via = path?.[1];
+      const link = via === undefined ? undefined : [...(links.get(via) ?? [])].at(-1);
+      // No route now: the copy stays readable; a later change reconnects it.
+      if (via === undefined || link === undefined) return;
+      // Next to the owner: read the stream itself. Further away: the next hop
+      // keeps its own copy, and this one reads that.
+      let source = state.stream;
+      if (via !== state.owner) {
+        const answer = (await link.call("mesh.mirror", {
+          owner: state.owner,
+          stream: state.stream,
+        })) as {
+          stream: string;
+        };
+        source = answer.stream;
+      }
+      const after = await store.head(local);
+      state.link = link;
+      state.subscription = link.subscribe(source, after, (event) => {
+        state.writes = state.writes
+          .then(async () => {
+            const head = await store.head(local);
+            if (event.sequence !== head + 1) return;
+            await store.append(local, [{ type: event.type, payload: event.payload }], {
+              expectedHead: head,
+            });
+          })
+          .catch((error: unknown) =>
+            log.warn("mirror append failed", { stream: local, error: String(error) }),
+          );
+      });
+    } catch (error) {
+      log.warn("mirror could not connect", { stream: local, error: String(error) });
+    } finally {
+      state.connecting = false;
+    }
+  }
 
   for (const record of records.values()) ensureDialer(record.nodeId);
 
@@ -379,6 +485,7 @@ export function createMesh(options: MeshOptions): Mesh {
         {
           call: (method, params, trace) =>
             caller.call(method, params, trace === undefined ? {} : { trace }),
+          subscribe: (stream, after, onEvent) => caller.subscribe(stream, after, onEvent),
           close: () => peer.close(1000, "superseded"),
         },
         "inbound",
@@ -392,6 +499,7 @@ export function createMesh(options: MeshOptions): Mesh {
     call(target, method, params, trace) {
       return forward({ origin: selfId, target, method, params, hops: 0 }, trace);
     },
+    mirror,
     resolve(address) {
       const match = ADDRESS.exec(address);
       if (match === null)
