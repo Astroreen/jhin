@@ -17,6 +17,7 @@
     "prepack": "vp build"
   },
   "devDependencies": {
+    "@base-ui/react": "catalog:",
     "@jhin/agent-api": "workspace:*",
     "@jhin/client-api": "workspace:*",
     "@jhin/kernel": "workspace:*",
@@ -31,8 +32,13 @@
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "lucide-react": "catalog:",
+    "oxc-transform-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-markdown": "catalog:",
+    "remark-breaks": "catalog:",
+    "remark-gfm": "catalog:",
+    "shiki": "catalog:",
     "tailwindcss": "catalog:",
     "vite": "catalog:"
   }

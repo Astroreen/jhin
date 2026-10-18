@@ -2,7 +2,12 @@ import * as Fs from "node:fs";
 import * as Module from "node:module";
 import * as Path from "node:path";
 
-import { UI_CONFIG_SECTION, UiConfig } from "@jhin/client-api";
+import {
+  KEYBINDINGS_CONFIG_SECTION,
+  KeybindingsConfig,
+  UI_CONFIG_SECTION,
+  UiConfig,
+} from "@jhin/client-api";
 import { HOST_PLUGINS_CAPABILITY, type HostPlugins } from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpHandler, type HttpServer } from "@jhin/http-api";
 import { definePlugin, z } from "@jhin/sdk";
@@ -39,8 +44,9 @@ const SERVABLE: Readonly<Record<string, true>> = {
   ".woff2": true,
 };
 
-// Client plugin files and `jhin.ui` are served without a token: the browser needs
-// them before it has one, like the page itself. Nothing else of the node is.
+// Client plugin files and the client's config sections (`jhin.ui`,
+// `jhin.keybindings`) are served without a token: the browser needs them before
+// it has one, like the page itself. Nothing else of the node is.
 
 /** True for plugins whose code runs in the web client. */
 const forClient = (manifest: unknown) => {
@@ -52,6 +58,7 @@ export default definePlugin({
   activate(context) {
     context.config.define("jhin.web-ui", Config);
     context.config.define(UI_CONFIG_SECTION, UiConfig);
+    context.config.define(KEYBINDINGS_CONFIG_SECTION, KeybindingsConfig);
     const http = context.services.get<HttpServer>(HTTP_SERVER_CAPABILITY);
     const hostPlugins = context.services.get<HostPlugins>(HOST_PLUGINS_CAPABILITY);
     const dir = Path.resolve(
@@ -192,13 +199,16 @@ export default definePlugin({
     );
     context.subscriptions.add(
       http.route("GET", `${CLIENT}/config`, (_request, response) =>
-        json(response, { [UI_CONFIG_SECTION]: context.config.get(UI_CONFIG_SECTION) }),
+        json(response, {
+          [UI_CONFIG_SECTION]: context.config.get(UI_CONFIG_SECTION),
+          [KEYBINDINGS_CONFIG_SECTION]: context.config.get(KEYBINDINGS_CONFIG_SECTION),
+        }),
       ),
     );
 
     // Server-sent events: `plugin` {id, rev} when a client plugin's files change,
     // `plugins` when client plugins are added, removed or change manifest (clients re-read the
-    // list), `config` when the jhin.ui section changes.
+    // list), `config` when the jhin.ui or jhin.keybindings section changes.
     const streams = new Set<Parameters<HttpHandler>[1]>();
     const broadcast = (event: string, data: unknown) => {
       for (const stream of streams)
@@ -247,6 +257,7 @@ export default definePlugin({
       }),
     );
     context.config.onDidChange(UI_CONFIG_SECTION, () => broadcast("config", {}));
+    context.config.onDidChange(KEYBINDINGS_CONFIG_SECTION, () => broadcast("config", {}));
     // Comments keep idle proxies from closing the stream.
     const keepAlive = setInterval(() => {
       for (const stream of streams) stream.write(": keep-alive\n\n");

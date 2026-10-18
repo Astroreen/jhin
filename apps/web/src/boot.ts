@@ -1,25 +1,107 @@
+import { SETTINGS_CAPABILITY, type DeviceSettings } from "@jhin/client-api";
 import { createKernel, type Kernel, type PluginSource } from "@jhin/kernel";
-import type { LogFields, Logger } from "@jhin/sdk";
+import { definePlugin, type LogFields, type Logger } from "@jhin/sdk";
 
-import type { BuiltinPlugin } from "./lib/builtin.ts";
-import { chatPlugin } from "./plugins/chat.tsx";
+import { builtin, type BuiltinPlugin } from "./lib/builtin.ts";
+import { chatPlugin } from "./plugins/chat/index.tsx";
+import { commandPalettePlugin } from "./plugins/command-palette.tsx";
 import { connectionsPlugin } from "./plugins/connections.ts";
 import { inspectorPlugin } from "./plugins/inspector.tsx";
+import { keybindingsPlugin } from "./plugins/keybindings.ts";
 import { meshPlugin } from "./plugins/mesh.ts";
 import { navigationPlugin } from "./plugins/navigation.ts";
+import { notificationsPlugin } from "./plugins/notifications.tsx";
+import { settingsPlugin } from "./plugins/settings/index.tsx";
 import { sidebarPlugin } from "./plugins/sidebar.tsx";
+import { threadsStorePlugin } from "./plugins/threads-store.ts";
 import { uiHostPlugin } from "./plugins/ui-host.tsx";
 
+/** The client's config layers: the node's (served with the page), then this device's. */
+const CONFIG_LAYERS = ["distribution", "node", "device"] as const;
+const DEVICE_STORAGE_KEY = "jhin.settings";
+
+/** This device's layer, as kept in the browser; unreadable storage is an empty layer. */
+function loadDeviceLayer(): Record<string, Record<string, unknown>> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(DEVICE_STORAGE_KEY) ?? "{}");
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, Record<string, unknown>>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * `jhin.client-host`: what the page itself offers plugins. It lives here
+ * because it needs the kernel: this device's config layer (`client.settings@1`).
+ */
+function clientHostPlugin(kernel: () => Kernel): BuiltinPlugin {
+  return builtin(
+    "jhin.client-host",
+    { provides: { [SETTINGS_CAPABILITY]: "1.0.0" } },
+    definePlugin({
+      activate(context) {
+        let layer = loadDeviceLayer();
+        const write = (next: Record<string, Record<string, unknown>>) => {
+          layer = next;
+          try {
+            localStorage.setItem(DEVICE_STORAGE_KEY, JSON.stringify(layer));
+          } catch (error) {
+            context.log.warn("device settings not kept", { error: String(error) });
+          }
+          kernel().config.setLayer("device", layer);
+        };
+        const settings: DeviceSettings = {
+          values: (section) => layer[section] ?? {},
+          patch(section, values) {
+            const next: Record<string, unknown> = { ...layer[section] };
+            for (const [key, value] of Object.entries(values)) {
+              if (value === undefined) delete next[key];
+              else next[key] = value;
+            }
+            const { [section]: _previous, ...rest } = layer;
+            write(Object.keys(next).length === 0 ? rest : { ...rest, [section]: next });
+          },
+          reset(section) {
+            const { [section]: _previous, ...rest } = layer;
+            write(rest);
+          },
+        };
+        // Another tab changed this device's settings.
+        const onStorage = (event: StorageEvent) => {
+          if (event.key !== DEVICE_STORAGE_KEY) return;
+          layer = loadDeviceLayer();
+          kernel().config.setLayer("device", layer);
+        };
+        window.addEventListener("storage", onStorage);
+        context.subscriptions.add({
+          dispose: () => window.removeEventListener("storage", onStorage),
+        });
+        context.services.provide(SETTINGS_CAPABILITY, settings);
+      },
+    }),
+  );
+}
+
 /** The plugins every web client starts with; users replace or extend them (D15, D16). */
-const BUILTIN_PLUGINS: readonly BuiltinPlugin[] = [
-  uiHostPlugin,
-  connectionsPlugin,
-  navigationPlugin,
-  meshPlugin,
-  sidebarPlugin,
-  chatPlugin,
-  inspectorPlugin,
-];
+function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
+  return [
+    clientHostPlugin(kernel),
+    uiHostPlugin,
+    keybindingsPlugin,
+    connectionsPlugin,
+    navigationPlugin,
+    meshPlugin,
+    threadsStorePlugin,
+    sidebarPlugin,
+    chatPlugin,
+    commandPalettePlugin,
+    settingsPlugin,
+    notificationsPlugin,
+    inspectorPlugin,
+  ];
+}
 
 /** A client-side plugin served by the node that served this page. */
 interface RemotePlugin {
@@ -50,11 +132,14 @@ const remoteLocation = (id: string) => `remote:${id}`;
  */
 export async function boot(): Promise<Kernel> {
   const remote = await fetchJson<RemotePlugin[]>("/client/plugins", []);
+  let kernelRef: Kernel | undefined;
+  const BUILTIN_PLUGINS = builtinPlugins(() => kernelRef!);
   const builtins = new Map(BUILTIN_PLUGINS.map((plugin) => [plugin.manifest.id, plugin]));
   const entries = new Map<string, string>();
 
   const kernel = createKernel({
     side: "client",
+    configLayers: CONFIG_LAYERS,
     logger: consoleLogger({}),
     loader: {
       async load(source) {
@@ -65,7 +150,9 @@ export async function boot(): Promise<Kernel> {
       },
     },
   });
+  kernelRef = kernel;
   kernel.config.setLayer("node", await fetchJson("/client/config", {}));
+  kernel.config.setLayer("device", loadDeviceLayer());
 
   await kernel.start(sourcesFor(BUILTIN_PLUGINS, remote, entries));
   if (typeof EventSource !== "undefined") followNode(kernel, builtins, entries, remote);

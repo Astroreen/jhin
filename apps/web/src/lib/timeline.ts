@@ -1,0 +1,492 @@
+// The work-log summary follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
+// packages/client-runtime/src/work-log/presentation.ts.
+import {
+  ThreadEvents,
+  type AgentRequest,
+  type AgentResponse,
+  type PlanStep,
+  type TokenUsage,
+  type ToolCall,
+  type TurnAttachment,
+} from "@jhin/agent-api";
+import type { StoredEvent } from "@jhin/storage-api";
+
+type TurnState = "running" | "completed" | "interrupted" | "failed";
+
+export interface MessageItem {
+  readonly kind: "message";
+  readonly itemId: string;
+  readonly text: string;
+  readonly completed: boolean;
+  readonly at: string;
+}
+
+interface ReasoningItem {
+  readonly kind: "reasoning";
+  readonly itemId: string;
+  readonly text: string;
+  readonly completed: boolean;
+  readonly at: string;
+}
+
+export interface ToolItem {
+  readonly kind: "tool";
+  readonly itemId: string;
+  readonly tool: ToolCall;
+  readonly output: string;
+  readonly status: "running" | "completed" | "failed" | "declined";
+  readonly error?: string;
+  readonly at: string;
+  readonly endedAt?: string;
+}
+
+/** Something the agent asked the user; open until answered or until its turn ends. */
+export interface RequestItem {
+  readonly kind: "request";
+  readonly requestId: string;
+  readonly request: AgentRequest;
+  readonly state: "open" | "answered" | "closed";
+  readonly response?: AgentResponse;
+  readonly at: string;
+}
+
+export interface PlanItem {
+  readonly kind: "plan";
+  readonly steps: readonly PlanStep[];
+  readonly at: string;
+}
+
+type TimelineItem = MessageItem | ReasoningItem | ToolItem | RequestItem | PlanItem;
+
+export interface TimelineTurn {
+  readonly turnId: string;
+  readonly agentId: string;
+  readonly model?: string;
+  readonly runtimeMode?: string;
+  readonly interactionMode?: string;
+  readonly text: string;
+  readonly attachments: readonly TurnAttachment[];
+  readonly startedAt: string;
+  readonly endedAt?: string;
+  readonly state: TurnState;
+  readonly error?: string;
+  /** The agent's output in the order it came. A plan stays where it first appeared. */
+  readonly items: readonly TimelineItem[];
+  readonly usage?: TokenUsage;
+}
+
+export interface Timeline {
+  readonly turns: readonly TimelineTurn[];
+  /** The thread was deleted on its node. */
+  readonly deleted: boolean;
+}
+
+interface Payload {
+  readonly turnId?: string;
+  readonly itemId?: string;
+  readonly requestId?: string;
+  readonly agentId?: string;
+  readonly model?: string;
+  readonly runtimeMode?: string;
+  readonly interactionMode?: string;
+  readonly kind?: string;
+  readonly input?: { readonly text?: string; readonly attachments?: readonly TurnAttachment[] };
+  readonly text?: string;
+  readonly error?: string;
+  readonly reason?: string;
+  readonly status?: string;
+  readonly output?: string;
+  readonly tool?: ToolCall;
+  readonly request?: AgentRequest;
+  readonly response?: AgentResponse;
+  readonly steps?: readonly PlanStep[];
+  readonly usage?: TokenUsage;
+}
+
+type MutableTurn = { -readonly [K in keyof TimelineTurn]: TimelineTurn[K] } & {
+  items: TimelineItem[];
+};
+
+/** Folds a thread's events into turns, in order. Unknown event types are ignored. */
+export function reduceTimeline(events: readonly StoredEvent[]): Timeline {
+  const turns: MutableTurn[] = [];
+  const byId = new Map<string, MutableTurn>();
+  let deleted = false;
+
+  const replaceItem = (
+    turn: MutableTurn,
+    match: (item: TimelineItem) => boolean,
+    next: TimelineItem,
+  ) => {
+    const index = turn.items.findIndex(match);
+    if (index >= 0) turn.items[index] = next;
+    else turn.items.push(next);
+  };
+
+  for (const event of events) {
+    if (event.type === ThreadEvents.threadDeleted) {
+      deleted = true;
+      continue;
+    }
+    const payload = (event.payload ?? {}) as Payload;
+    if (event.type === ThreadEvents.turnStarted) {
+      if (payload.turnId === undefined) continue;
+      const turn: MutableTurn = {
+        turnId: payload.turnId,
+        agentId: payload.agentId ?? "",
+        ...(payload.model === undefined ? {} : { model: payload.model }),
+        ...(payload.runtimeMode === undefined ? {} : { runtimeMode: payload.runtimeMode }),
+        ...(payload.interactionMode === undefined
+          ? {}
+          : { interactionMode: payload.interactionMode }),
+        text: payload.input?.text ?? "",
+        attachments: payload.input?.attachments ?? [],
+        startedAt: event.at,
+        state: "running",
+        items: [],
+      };
+      byId.set(turn.turnId, turn);
+      turns.push(turn);
+      continue;
+    }
+    const turn = payload.turnId === undefined ? undefined : byId.get(payload.turnId);
+    if (turn === undefined) continue;
+    const itemId = payload.itemId;
+    switch (event.type) {
+      case ThreadEvents.itemStarted: {
+        if (itemId === undefined || payload.tool === undefined) break;
+        turn.items.push({
+          kind: "tool",
+          itemId,
+          tool: payload.tool,
+          output: "",
+          status: "running",
+          at: event.at,
+        });
+        break;
+      }
+      case ThreadEvents.itemDelta: {
+        if (itemId === undefined) break;
+        const text = payload.text ?? "";
+        const existing = turn.items.find((item) => "itemId" in item && item.itemId === itemId);
+        if (payload.kind === "tool") {
+          if (existing?.kind === "tool") {
+            replaceItem(turn, (item) => item === existing, {
+              ...existing,
+              output: existing.output + text,
+            });
+          }
+          break;
+        }
+        const kind = payload.kind === "reasoning" ? "reasoning" : "message";
+        if (existing !== undefined && existing.kind === kind) {
+          replaceItem(turn, (item) => item === existing, {
+            ...existing,
+            text: existing.text + text,
+          });
+        } else if (existing === undefined) {
+          turn.items.push({ kind, itemId, text, completed: false, at: event.at });
+        }
+        break;
+      }
+      case ThreadEvents.itemCompleted: {
+        if (itemId === undefined) break;
+        const existing = turn.items.find((item) => "itemId" in item && item.itemId === itemId);
+        if (payload.kind === "tool") {
+          if (existing?.kind !== "tool") break;
+          const status =
+            payload.status === "failed" || payload.status === "declined"
+              ? payload.status
+              : "completed";
+          replaceItem(turn, (item) => item === existing, {
+            ...existing,
+            status,
+            output: payload.output ?? existing.output,
+            ...(payload.error === undefined ? {} : { error: payload.error }),
+            endedAt: event.at,
+          });
+          break;
+        }
+        const kind = payload.kind === "reasoning" ? "reasoning" : "message";
+        const next = {
+          kind,
+          itemId,
+          text:
+            payload.text ?? (existing !== undefined && existing.kind === kind ? existing.text : ""),
+          completed: true,
+          at: existing?.at ?? event.at,
+        } as MessageItem | ReasoningItem;
+        replaceItem(turn, (item) => item === existing, next);
+        break;
+      }
+      case ThreadEvents.requestOpened: {
+        if (payload.requestId === undefined || payload.request === undefined) break;
+        turn.items.push({
+          kind: "request",
+          requestId: payload.requestId,
+          request: payload.request,
+          state: "open",
+          at: event.at,
+        });
+        break;
+      }
+      case ThreadEvents.requestResolved: {
+        const existing = turn.items.find(
+          (item) => item.kind === "request" && item.requestId === payload.requestId,
+        );
+        if (existing?.kind !== "request") break;
+        replaceItem(turn, (item) => item === existing, {
+          ...existing,
+          state: payload.response === undefined ? "closed" : "answered",
+          ...(payload.response === undefined ? {} : { response: payload.response }),
+        });
+        break;
+      }
+      case ThreadEvents.planUpdated: {
+        const steps = payload.steps ?? [];
+        replaceItem(turn, (item) => item.kind === "plan", {
+          kind: "plan",
+          steps,
+          at: turn.items.find((item) => item.kind === "plan")?.at ?? event.at,
+        });
+        break;
+      }
+      case ThreadEvents.usageUpdated:
+        if (payload.usage !== undefined) turn.usage = payload.usage;
+        break;
+      case ThreadEvents.turnCompleted:
+        turn.state = "completed";
+        turn.endedAt = event.at;
+        break;
+      case ThreadEvents.turnInterrupted:
+        turn.state = "interrupted";
+        turn.endedAt = event.at;
+        if (payload.reason !== undefined) turn.error = payload.reason;
+        break;
+      case ThreadEvents.turnFailed:
+        turn.state = "failed";
+        turn.endedAt = event.at;
+        if (payload.error !== undefined) turn.error = payload.error;
+        break;
+    }
+  }
+  // A turn that ended with a request still open never got it answered.
+  for (const turn of turns) {
+    if (turn.state === "running") continue;
+    turn.items = turn.items.map((item) =>
+      item.kind === "request" && item.state === "open" ? { ...item, state: "closed" } : item,
+    );
+  }
+  return { turns, deleted };
+}
+
+/** The open requests of the running turn: what the composer asks the user to answer. */
+export function openRequests(timeline: Timeline): RequestItem[] {
+  const last = timeline.turns.at(-1);
+  if (last === undefined || last.state !== "running") return [];
+  return last.items.filter(
+    (item): item is RequestItem => item.kind === "request" && item.state === "open",
+  );
+}
+
+/** Work entries: what the work log lists between messages. */
+export type WorkEntry = ReasoningItem | ToolItem | RequestItem;
+
+export type TurnBlock =
+  | { readonly kind: "message"; readonly item: MessageItem; readonly final: boolean }
+  | { readonly kind: "work"; readonly entries: readonly WorkEntry[] }
+  | { readonly kind: "plan"; readonly item: PlanItem };
+
+/**
+ * A turn's items as rendered: consecutive work entries become one work block;
+ * open requests are left to the composer. The last message of a turn that
+ * ended is its final answer.
+ */
+export function turnBlocks(turn: TimelineTurn): TurnBlock[] {
+  const blocks: TurnBlock[] = [];
+  let work: WorkEntry[] = [];
+  const flush = () => {
+    if (work.length > 0) blocks.push({ kind: "work", entries: work });
+    work = [];
+  };
+  const lastMessage = turn.items.findLast((item) => item.kind === "message");
+  for (const item of turn.items) {
+    if (item.kind === "message") {
+      flush();
+      blocks.push({
+        kind: "message",
+        item,
+        final: turn.state !== "running" && item === lastMessage,
+      });
+    } else if (item.kind === "plan") {
+      flush();
+      blocks.push({ kind: "plan", item });
+    } else if (item.kind === "request" && item.state === "open") {
+      continue;
+    } else {
+      work.push(item);
+    }
+  }
+  flush();
+  return blocks;
+}
+
+/**
+ * Whether a settled turn folds: everything before its final answer hides
+ * behind "Worked for …". A failed turn, or one with no final answer, shows all.
+ */
+export function foldsBeforeFinal(turn: TimelineTurn): boolean {
+  if (turn.state === "running" || turn.state === "failed") return false;
+  const blocks = turnBlocks(turn);
+  const finalIndex = blocks.findIndex((block) => block.kind === "message" && block.final);
+  return finalIndex > 0;
+}
+
+type SummaryAction = "read" | "edit" | "command" | "web" | "code-search" | "request" | "other";
+
+function actionOf(entry: WorkEntry): SummaryAction {
+  if (entry.kind === "request") return "request";
+  if (entry.kind !== "tool") return "other";
+  switch (entry.tool.kind) {
+    case "file_read":
+      return "read";
+    case "file_change":
+      return "edit";
+    case "command":
+      return "command";
+    case "web":
+      return "web";
+    case "search":
+      return "code-search";
+    default:
+      return "other";
+  }
+}
+
+function actionLabel(action: SummaryAction, count: number): string {
+  switch (action) {
+    case "read":
+      return `Read ${count} ${count === 1 ? "file" : "files"}`;
+    case "edit":
+      return `Changed ${count} ${count === 1 ? "file" : "files"}`;
+    case "command":
+      return `Ran ${count} ${count === 1 ? "command" : "commands"}`;
+    case "web":
+      return `Searched the web ${count} ${count === 1 ? "time" : "times"}`;
+    case "code-search":
+      return `Searched code ${count} ${count === 1 ? "time" : "times"}`;
+    case "request":
+      return `Answered ${count} ${count === 1 ? "request" : "requests"}`;
+    case "other":
+      return `Used ${count} ${count === 1 ? "tool" : "tools"}`;
+  }
+}
+
+const actionPriority = (action: SummaryAction) =>
+  action === "command" || action === "edit" ? 0 : action === "other" ? 2 : 1;
+
+/** "Ran 2 commands and read 3 files", "Thought (×2)": the header of a group of work entries. */
+export function summarizeWork(entries: readonly WorkEntry[]): {
+  summary: string;
+  hasFailure: boolean;
+} {
+  const work = entries.filter((entry) => entry.kind !== "reasoning");
+  if (entries.length > 0 && work.length === 0) {
+    return {
+      summary: entries.length === 1 ? "Thought" : `Thought (×${entries.length})`,
+      hasFailure: false,
+    };
+  }
+  const groups = new Map<SummaryAction, WorkEntry[]>();
+  for (const entry of work) {
+    const action = actionOf(entry);
+    groups.set(action, [...(groups.get(action) ?? []), entry]);
+  }
+  const summaries = [...groups].map(([action, group], index) => {
+    // Edits count files, not edits.
+    const count =
+      action === "edit"
+        ? new Set(group.map((entry) => (entry.kind === "tool" ? entry.tool.detail : ""))).size
+        : group.length;
+    return { action, index, count: group.length, label: actionLabel(action, count) };
+  });
+  const selected = summaries
+    .toSorted((a, b) => actionPriority(a.action) - actionPriority(b.action) || a.index - b.index)
+    .slice(0, 2)
+    .toSorted((a, b) => a.index - b.index);
+  const labels = selected.map((entry) => entry.label);
+  const remaining = work.length - selected.reduce((sum, entry) => sum + entry.count, 0);
+  if (remaining > 0)
+    labels.push(`Performed ${remaining} other ${remaining === 1 ? "action" : "actions"}`);
+  const sentence = labels.map((label, index) =>
+    index === 0 ? label : label.charAt(0).toLowerCase() + label.slice(1),
+  );
+  const summary =
+    sentence.length < 3
+      ? sentence.join(" and ")
+      : `${sentence.slice(0, -1).join(", ")}, and ${sentence.at(-1)}`;
+  return {
+    summary,
+    hasFailure: work.some((entry) => entry.kind === "tool" && entry.status === "failed"),
+  };
+}
+
+const firstWord = (line: string) => line.trim().split(/\s+/)[0] ?? "";
+
+/** The one-line label of a work entry: "Ran npm", "Running npm", "Edited src/a.ts", "Thought". */
+export function workEntryLabel(entry: WorkEntry): string {
+  if (entry.kind === "reasoning") {
+    const preview = entry.text.replace(/\s+/g, " ").trim();
+    return preview === "" ? (entry.completed ? "Thought" : "Thinking") : preview;
+  }
+  if (entry.kind === "request") {
+    if (entry.request.kind === "approval") {
+      const verdict =
+        entry.state === "closed"
+          ? "Unanswered"
+          : entry.response?.kind === "approval" &&
+              (entry.response.decision === "accept" ||
+                entry.response.decision === "accept-for-session")
+            ? "Approved"
+            : "Declined";
+      return `${verdict}: ${entry.request.tool.detail ?? entry.request.tool.title}`;
+    }
+    return entry.request.questions.map((question) => question.question).join(" · ");
+  }
+  const { tool } = entry;
+  if (tool.kind === "command") {
+    const program = firstWord(tool.detail ?? "") || tool.name;
+    switch (entry.status) {
+      case "running":
+        return `Running ${program}`;
+      case "failed":
+        return `Failed ${program}`;
+      case "declined":
+        return `Declined ${program}`;
+      case "completed":
+        return `Ran ${program}`;
+    }
+  }
+  if (tool.detail !== undefined && tool.detail !== "") {
+    const verb =
+      tool.kind === "file_read"
+        ? "Read"
+        : tool.kind === "file_change"
+          ? "Edited"
+          : tool.kind === "search"
+            ? "Searched"
+            : tool.kind === "web"
+              ? "Searched the web for"
+              : tool.title;
+    return `${verb} ${tool.detail}`;
+  }
+  return tool.title;
+}
+
+/** The answers given to a user-input request, by question, for display. */
+export function answerPreview(entry: RequestItem): string {
+  if (entry.response?.kind !== "user-input") return "";
+  return Object.values(entry.response.answers)
+    .map((answer) => (Array.isArray(answer) ? answer.join(", ") : String(answer)))
+    .join(" · ");
+}

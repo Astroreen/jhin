@@ -1,53 +1,72 @@
-import { NAVIGATION_CAPABILITY, type Navigation, type Route } from "@jhin/client-api";
-import { definePlugin, toDisposable } from "@jhin/sdk";
+import {
+  KEYBINDINGS_CAPABILITY,
+  NAVIGATION_CAPABILITY,
+  type Keybindings,
+  type Navigation,
+  type Route,
+} from "@jhin/client-api";
+import { definePlugin, toDisposable, z } from "@jhin/sdk";
 
 import { builtin } from "../lib/builtin.ts";
 
-/** The route lives in the fragment: `#n=<node>&r=<remote>&t=<thread>&p=<panel>`. */
-function read(): Route {
-  const params = new URLSearchParams(location.hash.slice(1));
-  const value = (key: string) => params.get(key) ?? undefined;
-  const node = value("n");
-  const remote = value("r");
-  const thread = value("t");
-  const panel = value("p");
-  return {
-    ...(node === undefined ? {} : { node }),
-    ...(remote === undefined ? {} : { remote }),
-    ...(thread === undefined ? {} : { thread }),
-    ...(panel === undefined ? {} : { panel }),
-  };
+/** Fragment keys of each route field. */
+const KEYS = {
+  node: "n",
+  remote: "r",
+  thread: "t",
+  project: "j",
+  panel: "p",
+  section: "s",
+} as const satisfies Record<keyof Route, string>;
+
+/** The route lives in the fragment: `#n=<node>&r=<remote>&t=<thread>&j=<project>&p=<panel>&s=<section>`. */
+export function readRoute(hash: string): Route {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const route: Record<string, string> = {};
+  for (const [field, key] of Object.entries(KEYS)) {
+    const value = params.get(key);
+    if (value !== null) route[field] = value;
+  }
+  return route as Route;
 }
 
-function write(route: Route): string {
+export function writeRoute(route: Route): string {
   const params = new URLSearchParams();
-  if (route.node !== undefined) params.set("n", route.node);
-  if (route.remote !== undefined) params.set("r", route.remote);
-  if (route.thread !== undefined) params.set("t", route.thread);
-  if (route.panel !== undefined) params.set("p", route.panel);
+  for (const [field, key] of Object.entries(KEYS)) {
+    const value = route[field as keyof Route];
+    if (value !== undefined) params.set(key, value);
+  }
   return params.toString();
 }
 
 export const navigationPlugin = builtin(
   "jhin.navigation",
-  { provides: { [NAVIGATION_CAPABILITY]: "1.0.0" } },
+  {
+    provides: { [NAVIGATION_CAPABILITY]: "1.0.0" },
+    optional: { [KEYBINDINGS_CAPABILITY]: "^1" },
+  },
   definePlugin({
     activate(context) {
       const listeners = new Set<() => void>();
-      let route = read();
+      let route = readRoute(location.hash);
       const changed = () => {
-        route = read();
+        route = readRoute(location.hash);
         for (const listener of Array.from(listeners)) listener();
       };
       window.addEventListener("hashchange", changed);
+      window.addEventListener("popstate", changed);
       context.subscriptions.add({
-        dispose: () => window.removeEventListener("hashchange", changed),
+        dispose: () => {
+          window.removeEventListener("hashchange", changed);
+          window.removeEventListener("popstate", changed);
+        },
       });
 
       const navigation: Navigation = {
         current: () => route,
         navigate(next) {
-          const hash = write(next);
+          const hash = writeRoute(next);
+          if (hash === writeRoute(route)) return;
           history.pushState(
             null,
             "",
@@ -61,6 +80,42 @@ export const navigationPlugin = builtin(
         },
       };
       context.services.provide(NAVIGATION_CAPABILITY, navigation);
+
+      context.commands.register({
+        name: "navigation.back",
+        title: "Go back",
+        description: "Goes back to the previous view",
+        input: z.object({}),
+        output: z.object({}),
+        handler: () => {
+          history.back();
+          return {};
+        },
+      });
+      context.commands.register({
+        name: "navigation.forward",
+        title: "Go forward",
+        description: "Goes forward again after going back",
+        input: z.object({}),
+        output: z.object({}),
+        handler: () => {
+          history.forward();
+          return {};
+        },
+      });
+      const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
+      if (keybindings !== undefined) {
+        context.subscriptions.add(
+          keybindings.addDefaults([
+            { key: "mod+[", command: "navigation.back", when: "!terminalFocus && !editableFocus" },
+            {
+              key: "mod+]",
+              command: "navigation.forward",
+              when: "!terminalFocus && !editableFocus",
+            },
+          ]),
+        );
+      }
     },
   }),
 );

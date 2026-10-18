@@ -1,0 +1,71 @@
+// The client settings follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md): packages/contracts/src/settings.ts.
+import { z, type PluginContext } from "@jhin/sdk";
+import { useSyncExternalStore } from "react";
+
+/** Colors and widths of the page; defined by the UI host. */
+export const APPEARANCE_SECTION = "jhin.appearance";
+export const Appearance = z.object({
+  /** Light, dark, or following the system. */
+  mode: z.enum(["system", "light", "dark"]).default("system"),
+  /** How wide the chat column is. */
+  chatWidth: z.enum(["comfortable", "wide", "full"]).default("comfortable"),
+});
+export type Appearance = z.output<typeof Appearance>;
+
+/** Settings of the chat and the thread lists; defined by the chat plugin. */
+export const CHAT_SECTION = "jhin.chat";
+export const ChatSettings = z.object({
+  /** Clock times in the timeline. */
+  timestampFormat: z.enum(["locale", "12-hour", "24-hour"]).default("locale"),
+  /** Enter sends (Shift+Enter is a new line), or ⌘/Ctrl+Enter sends. */
+  sendShortcut: z.enum(["enter", "mod-enter"]).default("enter"),
+  /** Ask before archiving a thread. */
+  confirmArchive: z.boolean().default(false),
+  /** Ask before deleting a thread or removing a project. */
+  confirmDelete: z.boolean().default(true),
+  /** Threads listed per project before "Show more". */
+  threadPreviewCount: z.number().int().min(1).max(15).default(6),
+});
+export type ChatSettings = z.output<typeof ChatSettings>;
+
+/** A section's value, or its schema's defaults when nobody defined it (its plugin is absent). */
+export function readSection<S extends z.ZodType>(
+  context: PluginContext,
+  section: string,
+  schema: S,
+): z.output<S> {
+  try {
+    return context.config.get<z.output<S>>(section);
+  } catch {
+    return schema.parse({});
+  }
+}
+
+const cache = new WeakMap<PluginContext, Map<string, { raw: string; value: unknown }>>();
+
+/** `readSection` for components: re-renders when the section changes. */
+export function useSection<S extends z.ZodType>(
+  context: PluginContext,
+  section: string,
+  schema: S,
+): z.output<S> {
+  return useSyncExternalStore(
+    (listener) => {
+      const subscription = context.config.onDidChange(section, listener);
+      return () => subscription.dispose();
+    },
+    () => {
+      const value = readSection(context, section, schema);
+      const raw = JSON.stringify(value);
+      let sections = cache.get(context);
+      if (sections === undefined) {
+        sections = new Map();
+        cache.set(context, sections);
+      }
+      const cached = sections.get(section);
+      if (cached !== undefined && cached.raw === raw) return cached.value as z.output<S>;
+      sections.set(section, { raw, value });
+      return value;
+    },
+  );
+}

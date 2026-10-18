@@ -62,7 +62,7 @@ export const connectionsPlugin = builtin(
   definePlugin({
     activate(context) {
       const listeners = new Set<() => void>();
-      const nodes = new Map<string, { saved: Saved; client: RpcClient }>();
+      const nodes = new Map<string, { saved: Saved; readonly client: RpcClient }>();
       let snapshot: readonly NodeConnection[] = [];
       const changed = () => {
         // An unchanged node keeps its object: views keyed on it do not restart.
@@ -107,6 +107,14 @@ export const connectionsPlugin = builtin(
             changed();
           }
           return snapshot.find((node) => node.id === saved.url)!;
+        },
+        rename(id, label) {
+          const node = nodes.get(id);
+          const trimmed = label.trim();
+          if (node === undefined || trimmed === "" || node.saved.label === trimmed) return;
+          node.saved = { ...node.saved, label: trimmed };
+          persist();
+          changed();
         },
         remove(id) {
           nodes.get(id)?.client.close();

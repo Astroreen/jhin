@@ -28,9 +28,10 @@ test("connects with the token from the URL, sends a message and streams the repl
   await expect(log.getByRole("article", { name: "You" })).toHaveText("hello there");
   await expect(log.getByRole("article", { name: "Agent" })).toHaveText("Echo: hello there");
   await expect(log.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "false");
-  // The new thread is listed and selected in the sidebar.
-  await expect(page.getByRole("button", { name: "New thread", exact: true }).first()).toBeVisible();
-  await expect(page.locator("[aria-current=page]")).toHaveText("New thread");
+  // The new thread is listed and selected in the sidebar, titled after its first message.
+  const threads = page.getByRole("list", { name: "Threads of No project" });
+  await expect(threads.locator("[aria-current=page]")).toContainText("hello there");
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText("hello there");
 
   const shot = info.outputPath("chat.png");
   await page.screenshot({ path: shot });
@@ -45,10 +46,60 @@ test("stops a running turn", async ({ page }) => {
   await message.press("Enter");
 
   await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Holding");
-  await page.getByRole("button", { name: "Stop" }).click();
+  await page.getByRole("button", { name: "Stop generation" }).click();
 
-  await expect(page.getByText("Interrupted")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+  await expect(page.getByText("Run interrupted")).toBeVisible();
+  await expect(page.getByText(/^You stopped after /)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
+});
+
+test("asks for approval in the composer and runs the tool once approved", async ({ page }) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/approve rm -rf build");
+  await message.press("Enter");
+
+  await expect(page.getByRole("group", { name: "Command approval" })).toContainText("rm -rf build");
+  await page.getByRole("button", { name: "Approve", exact: true }).click();
+
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText(
+    "Approved and ran rm -rf build",
+  );
+  // The settled turn folds its work behind a summary.
+  await expect(page.getByRole("button", { name: /^Worked for / })).toBeVisible();
+});
+
+test("answers the agent's question from the composer", async ({ page }) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/ask");
+  await message.press("Enter");
+
+  await expect(page.getByText("Which color should I use?")).toBeVisible();
+  await page.getByRole("button", { name: /^Blue/ }).click();
+  await page.getByRole("button", { name: "Submit answer" }).click();
+
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("You chose Blue");
+});
+
+test("finds a thread from the command palette", async ({ page }) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("palette target");
+  await message.press("Enter");
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: palette target");
+
+  await page.getByRole("button", { name: "New thread", exact: true }).first().click();
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("combobox", { name: "Search commands" }).fill("palette target");
+  await palette.getByRole("option", { name: /palette target/ }).click();
+
+  await expect(palette).toBeHidden();
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText("palette target");
 });
 
 test("shows the node's live state in the inspector", async ({ page }) => {
