@@ -494,7 +494,10 @@ Implementation notes (PR 9):
 - A relayed call is request/response for quick commands: each hop waits at
   most 30 s (`callDeadlineMs`) and reports `MESH_TIMEOUT`. Long work starts
   and returns at once (`threads.send` returns a turn id; the turn streams as
-  events), so no deadline cuts it off.
+  events), so no deadline cuts it off. A `MESH_TIMEOUT` does not mean the
+  command did not run (it may still be running on the target); the hop it
+  names is best effort, since each hop waits only 10 ms less than the one
+  before.
 - `mesh.nodes` (the "list nodes" tool of D39), `mesh.resolve`, the `mesh`
   stream (`mesh.nodes.changed`) and `GET /n/<nodeId>/<path>` (307 to the
   node, D24). `jhin.host` provides `host.identity@1`. Config: `jhin.mesh.name`,

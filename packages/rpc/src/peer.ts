@@ -35,6 +35,7 @@ export function webSocketPeer(socket: WebSocketLike): Peer {
   const listeners = new Set<(text: string) => void>();
   let held: string[] | undefined = [];
   let flushing = false;
+  let overflowed = false;
 
   const deliver = (text: string) => {
     for (const listener of Array.from(listeners)) listener(text);
@@ -51,9 +52,11 @@ export function webSocketPeer(socket: WebSocketLike): Peer {
       deliver(text);
       return;
     }
+    if (overflowed) return;
     held.push(text);
     // Nobody reads this socket: a peer that keeps sending must not grow memory forever.
     if (held.length > MAX_HELD_MESSAGES) {
+      overflowed = true;
       held = [];
       socket.close(1008, "too many unread messages");
     }
