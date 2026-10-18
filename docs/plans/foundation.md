@@ -1,6 +1,7 @@
 # Foundation plan
 
-Status: **approved**. This file records every
+Status: **implemented** — all PRs below are merged; D47's end-to-end proof
+passes in CI. This file records every
 decision taken while designing the foundation of the codebase, everything
 explicitly deferred, and the PR-by-PR plan with acceptance criteria.
 
@@ -211,6 +212,11 @@ and engineering practices.
 
 ## Deferred (not in the foundation)
 
+- One shared mesh membership feed per connection in the web client (the
+  sidebar and the main view each subscribe today).
+- Web e2e for a failing `mesh.open` on a reachable remote and for remote
+  routes on a node without the mesh plugin; a failure path with the last
+  snapshot for `untilReachable` in `e2e/tests/mesh.spec.ts`.
 - Out-of-process plugins (JSON-RPC child processes, any language, WASM).
 - Real agent adapters: own LLM loop, Claude Code, Codex, OpenCode.
 - Record/replay of real provider transcripts.
@@ -560,3 +566,13 @@ Implements D47.
   connected to A creates a thread on C and receives the fake reply; a second
   e2e shows two independent nodes in one client.
 - **Done when:** both e2e tests pass in CI.
+
+Implementation notes (PR 11):
+
+- The web client reaches other nodes of a connected node's mesh: the
+  sidebar lists them (from `mesh.nodes`, kept current by the `mesh` stream)
+  under the connection, and a remote thread is read from the connection's
+  copy (`mesh.open`) and driven with `mesh.call`. Routes carry the remote
+  node (`#n=<connection>&r=<node>&t=<thread>`).
+- "Add node" (`sidebar.actions`) opens the connect form, so one client holds
+  several independent nodes (D8).

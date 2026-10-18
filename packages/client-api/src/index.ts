@@ -26,7 +26,10 @@ export interface Connections {
 }
 
 export interface Route {
+  /** The connection (node this client talks to). */
   readonly node?: string;
+  /** Another node of that node's mesh, reached through it (D47). */
+  readonly remote?: string;
   readonly thread?: string;
   /** A panel opened on top of the main view, e.g. "inspector". */
   readonly panel?: string;

@@ -13,19 +13,41 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 
 import { builtin } from "../lib/builtin.ts";
 import { useExternal } from "../lib/hooks.ts";
+import { useMeshNodes } from "../lib/mesh.ts";
+import { threadTarget } from "../lib/target.ts";
 import { reduceTurns, type ChatTurn } from "../lib/turns.ts";
 import { THREADS_CHANGED } from "./sidebar.tsx";
 
-function useThreadEvents(node: NodeConnection, threadId: string): readonly StoredEvent[] {
+function useThreadEvents(
+  node: NodeConnection,
+  remote: string | undefined,
+  threadId: string,
+): { events: readonly StoredEvent[]; error: string | undefined } {
   const [events, setEvents] = useState<readonly StoredEvent[]>([]);
+  const [error, setError] = useState<string | undefined>();
   useEffect(() => {
     setEvents([]);
-    const subscription = node.client.subscribe(`thread/${threadId}`, {}, (event) =>
-      setEvents((previous) => [...previous, event]),
-    );
-    return () => subscription.dispose();
-  }, [node, threadId]);
-  return events;
+    setError(undefined);
+    let disposed = false;
+    let subscription: { dispose(): void } | undefined;
+    // The stream to read: the thread itself, or this node's copy of a remote one (D26).
+    void threadTarget(node, remote)
+      .open(threadId)
+      .then((stream) => {
+        if (disposed) return;
+        subscription = node.client.subscribe(stream, {}, (event) =>
+          setEvents((previous) => [...previous, event]),
+        );
+      })
+      .catch((failure: unknown) => {
+        if (!disposed) setError(`Cannot open this thread: ${(failure as Error).message}`);
+      });
+    return () => {
+      disposed = true;
+      subscription?.dispose();
+    };
+  }, [node, remote, threadId]);
+  return { events, error };
 }
 
 function Turn({ turn }: { turn: ChatTurn }) {
@@ -124,8 +146,17 @@ export const chatPlugin = builtin(
       const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
 
-      function ThreadView({ node, threadId }: { node: NodeConnection; threadId: string }) {
-        const events = useThreadEvents(node, threadId);
+      function ThreadView({
+        node,
+        remote,
+        threadId,
+      }: {
+        node: NodeConnection;
+        remote: string | undefined;
+        threadId: string;
+      }) {
+        const target = threadTarget(node, remote);
+        const { events, error: openError } = useThreadEvents(node, remote, threadId);
         const turns = useMemo(() => reduceTurns(events), [events]);
         const running = turns.at(-1)?.status === "running";
         const end = useRef<HTMLDivElement>(null);
@@ -150,12 +181,12 @@ export const chatPlugin = builtin(
               </div>
             </div>
             <div className="px-4 pb-4">
-              {error !== undefined && (
+              {(openError ?? error) !== undefined && (
                 <p
                   role="alert"
                   className="mx-auto mb-2 max-w-[var(--chat-content-max-width)] text-xs text-error-foreground"
                 >
-                  {error}
+                  {openError ?? error}
                 </p>
               )}
               <Composer
@@ -163,7 +194,7 @@ export const chatPlugin = builtin(
                 onSend={async (text) => {
                   setError(undefined);
                   try {
-                    await node.client.call("threads.send", { threadId, text });
+                    await target.call("threads.send", { threadId, text });
                   } catch (failure) {
                     setError((failure as Error).message);
                   }
@@ -177,7 +208,13 @@ export const chatPlugin = builtin(
         );
       }
 
-      function Connect() {
+      /** Leaves the current panel, keeping the rest of the route. */
+      const closePanel = () => {
+        const { panel: _panel, ...rest } = navigation.current();
+        navigation.navigate(rest);
+      };
+
+      function Connect({ cancellable }: { cancellable: boolean }) {
         const [url, setUrl] = useState(
           `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/rpc`,
         );
@@ -191,6 +228,7 @@ export const chatPlugin = builtin(
               try {
                 connections.add({ url, token });
                 setError(undefined);
+                closePanel();
               } catch (failure) {
                 setError(
                   failure instanceof z.ZodError
@@ -225,6 +263,17 @@ export const chatPlugin = builtin(
             <Button type="submit" disabled={token === ""}>
               Connect
             </Button>
+            {cancellable && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  closePanel();
+                }}
+              >
+                Cancel
+              </Button>
+            )}
           </form>
         );
       }
@@ -236,7 +285,34 @@ export const chatPlugin = builtin(
           route.node === undefined
             ? undefined
             : nodes.find((candidate) => candidate.id === route.node);
-        if (nodes.length === 0) return <Connect />;
+        // Called before any early return: hooks run in the same order every render.
+        const members = useMeshNodes(node);
+        if (nodes.length === 0 || route.panel === "connect")
+          return <Connect cancellable={nodes.length > 0} />;
+        if (node?.state === "open" && route.remote !== undefined && members === undefined) {
+          // Judge a remote route only once the mesh has answered (it always does).
+          return (
+            <div role="status" className="flex flex-1 items-center justify-center">
+              <p className="text-sm text-muted-foreground">Finding the node…</p>
+            </div>
+          );
+        }
+        if (
+          node !== undefined &&
+          route.remote !== undefined &&
+          members !== undefined &&
+          !members.some((member) => member.nodeId === route.remote && member.reachable)
+        ) {
+          // A remote node that left the mesh, or a deep link to an unknown one.
+          return (
+            <div role="status" className="flex flex-1 flex-col items-center justify-center gap-3">
+              <p className="text-sm font-medium">Node unreachable</p>
+              <p className="text-sm text-muted-foreground">
+                {node.label} has no route to it now. Its threads come back when it does.
+              </p>
+            </div>
+          );
+        }
         if (node === undefined || route.thread === undefined) {
           const first = nodes[0]!;
           const start = async () => {
@@ -258,7 +334,12 @@ export const chatPlugin = builtin(
           );
         }
         return (
-          <ThreadView key={`${node.id}:${route.thread}`} node={node} threadId={route.thread} />
+          <ThreadView
+            key={`${node.id}:${route.remote ?? ""}:${route.thread}`}
+            node={node}
+            remote={route.remote}
+            threadId={route.thread}
+          />
         );
       }
 

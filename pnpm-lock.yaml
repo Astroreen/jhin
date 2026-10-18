@@ -223,6 +223,9 @@ importers:
 
   e2e:
     devDependencies:
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../packages/rpc
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.61.1

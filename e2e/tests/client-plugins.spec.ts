@@ -113,14 +113,15 @@ test("config reorders contributions in a slot, live", async ({ page }) => {
   node = await startNode({ watch: true, setup: (home) => void writeButtonPlugin(home, "Hello") });
   await page.goto(`${node.ui}#token=${node.token}`);
   const actions = page.getByRole("toolbar", { name: "Sidebar actions" }).getByRole("button");
-  // Default order: by order, then id — "acme.hello.button" before "jhin.inspector.toggle".
-  await expect(actions).toHaveText(["Hello", ""]);
-  await expect(actions.nth(1)).toHaveAccessibleName("Inspector");
+  // Default order: by order, then id — "Add node" (order -10), then "acme.hello.button", then the inspector.
+  await expect(actions).toHaveText(["", "Hello", ""]);
+  await expect(actions.nth(0)).toHaveAccessibleName("Add node");
+  await expect(actions.nth(2)).toHaveAccessibleName("Inspector");
 
   writeConfig(node.home, {
     "jhin.ui": { order: { "sidebar.actions": ["jhin.inspector.toggle"] } },
   });
 
   await expect(actions.nth(0)).toHaveAccessibleName("Inspector");
-  await expect(actions.nth(1)).toHaveText("Hello");
+  await expect(actions.nth(2)).toHaveText("Hello");
 });
