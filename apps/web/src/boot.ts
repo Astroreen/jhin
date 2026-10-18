@@ -136,7 +136,12 @@ function followNode(
 
   /** Brings the kernel to the node's current list: adds, removes, replaces and reloads. */
   const sync = async () => {
-    const list = await fetchJson<RemotePlugin[]>("/client/plugins", [...known.values()]);
+    // A failed fetch throws: the queue logs it, and the next `plugins` or `open` event retries.
+    const response = await fetch("/client/plugins");
+    if (!response.ok) throw new Error(`GET /client/plugins: ${response.status}`);
+    const list = (await response.json()) as RemotePlugin[];
+    // `sourcesFor` points the loader at the new revisions before the update, on
+    // purpose: any restart from here on must load the current files.
     // The kernel restarts what was added, removed or got another manifest (and dependants).
     const update = await kernel.update(sourcesFor(builtins.values(), list, entries));
     const restarted = new Set([...update.added, ...update.changed, ...update.started]);
