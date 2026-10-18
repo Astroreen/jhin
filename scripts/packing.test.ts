@@ -27,6 +27,14 @@ describe("packedManifest", () => {
     expect(packedManifest(library)).toBe(library);
   });
 
+  it("refuses a publishConfig.jhin that is not an object", () => {
+    for (const jhin of ["dist/index.js", null, ["dist/index.js"]]) {
+      expect(() =>
+        packedManifest({ jhin: { entry: "src/index.ts" }, publishConfig: { jhin } as never }),
+      ).toThrow("must be an object");
+    }
+  });
+
   it("refuses publishConfig.jhin without a jhin manifest", () => {
     expect(() => packedManifest({ publishConfig: { jhin: { entry: "a" } } })).toThrow(
       'without "jhin"',

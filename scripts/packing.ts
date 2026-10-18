@@ -11,6 +11,9 @@ export interface PackedManifest {
 export function packedManifest(manifest: PackedManifest): PackedManifest {
   const { jhin: override, ...publishConfig } = manifest.publishConfig ?? {};
   if (override === undefined) return manifest;
+  if (typeof override !== "object" || override === null || Array.isArray(override)) {
+    throw new Error('"publishConfig.jhin" must be an object');
+  }
   if (manifest.jhin === undefined) throw new Error('"publishConfig.jhin" without "jhin"');
   const packed: PackedManifest = { ...manifest, jhin: { ...manifest.jhin, ...override } };
   if (Object.keys(publishConfig).length > 0) packed.publishConfig = publishConfig;
