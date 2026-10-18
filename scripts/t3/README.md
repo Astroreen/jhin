@@ -5,15 +5,15 @@ actions call them. They need only bash and curl: inside the devenv shell they
 use its Node 24, elsewhere they download Node 24 into `~/.cache/jhin` and get
 pnpm through corepack.
 
-| Script      | What it does                                                                        |
-| ----------- | ----------------------------------------------------------------------------------- |
-| `setup.sh`  | `pnpm install`                                                                      |
-| `serve.sh`  | builds the web client and runs `jhin serve --ui --watch` on `http://127.0.0.1:7777` |
-| `dev.sh`    | headless node plus the Vite dev server with hot reload on `http://127.0.0.1:7780`   |
-| `stop.sh`   | stops what `serve.sh` and `dev.sh` started                                          |
-| `verify.sh` | `pnpm verify --affected` (`--all` for the full run)                                 |
-| `e2e.sh`    | Playwright end-to-end tests                                                         |
-| `reset.sh`  | deletes the dev home, so the next start is a fresh node                             |
+| Script      | What it does                                                                              |
+| ----------- | ----------------------------------------------------------------------------------------- |
+| `setup.sh`  | `pnpm install`                                                                            |
+| `serve.sh`  | builds the web client and runs `jhin serve --ui --watch` on `http://127.0.0.1:7777`       |
+| `dev.sh`    | headless node plus the Vite dev server with hot reload on `http://127.0.0.1:7780`         |
+| `stop.sh`   | stops what `serve.sh` and `dev.sh` started and waits until it exited (SIGKILL after 10 s) |
+| `verify.sh` | `pnpm verify --affected` (`--all` for the full run)                                       |
+| `e2e.sh`    | Playwright end-to-end tests                                                               |
+| `reset.sh`  | deletes the dev home, so the next start is a fresh node                                   |
 
 The node runs in its own home, `.jhin-dev/home` (gitignored), never in
 `~/.jhin`, and listens on 127.0.0.1 only. Its access token is random, made on

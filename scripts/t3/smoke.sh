@@ -30,3 +30,24 @@ if pgrep -f "apps/jhin/bin/jhin.js --home $JHIN_DEV_HOME" >/dev/null; then
   exit 1
 fi
 echo "smoke: stop.sh left no node running"
+
+# A process that ignores SIGTERM and, when signalled, starts a child that
+# ignores it too: stop.sh must catch the late child and reach SIGKILL.
+stub="$(mktemp -d)"
+cat >"$stub/stubborn.sh" <<'STUB'
+trap 'bash -c "trap \"\" TERM; exec sleep 1000" & echo $! >"$1/child"' TERM
+touch "$1/ready"
+while :; do sleep 0.1; done
+STUB
+bash "$stub/stubborn.sh" "$stub" &
+stubborn=$!
+until [ -f "$stub/ready" ]; do sleep 0.1; done
+echo "$stubborn" >"$JHIN_DEV_DIR/pids/stubborn.pid"
+JHIN_STOP_GRACE=20 bash scripts/t3/stop.sh
+child="$(cat "$stub/child")"
+if kill -0 "$stubborn" 2>/dev/null || kill -0 "$child" 2>/dev/null; then
+  echo "smoke: stop.sh left a SIGTERM-ignoring process or its late child running" >&2
+  exit 1
+fi
+rm -rf "$stub"
+echo "smoke: stop.sh ended a SIGTERM-ignoring process and its late child"

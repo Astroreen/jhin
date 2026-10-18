@@ -187,22 +187,51 @@ kill_tree() {
   done
 }
 
-# Ends a process tree and returns once every process in it has exited;
-# whatever still runs after 10 s gets SIGKILL.
+# True while pid runs; a zombie (exited, not yet reaped) counts as exited,
+# since no signal can remove it.
+is_running() {
+  local state
+  state="$(ps -o stat= -p "$1" 2>/dev/null)" || return 1
+  [ -n "$state" ] && [ "${state:0:1}" != "Z" ]
+}
+
+# Ends a process tree and returns once every process in it has exited.
+# Descendants that appear while it shuts down (also those reparented after
+# their parent exited) are signalled too. SIGTERM first; whatever still runs
+# after JHIN_STOP_GRACE tenths of a second (default 100 = 10 s, one budget
+# for the whole tree) gets SIGKILL; after 2 s more it gives up and fails.
 stop_tree() {
-  local pids pid tries=0
-  pids="$(tree_pids "$1")"
-  for pid in $pids; do
-    kill "$pid" 2>/dev/null || true
-  done
-  for pid in $pids; do
-    while kill -0 "$pid" 2>/dev/null; do
-      if [ "$tries" -ge 100 ]; then
-        kill -9 "$pid" 2>/dev/null || true
-      fi
-      tries=$((tries + 1))
-      sleep 0.1
+  local grace="${JHIN_STOP_GRACE:-100}" tries=0 signal=TERM
+  local seen signalled="" pid pids alive
+  seen="$(tree_pids "$1")"
+  while :; do
+    alive=0
+    for pid in $seen; do
+      is_running "$pid" || continue
+      alive=1
+      case " $signalled " in
+        *" $pid:$signal "*) ;;
+        *)
+          kill "-$signal" "$pid" 2>/dev/null || true
+          signalled="$signalled $pid:$signal"
+          ;;
+      esac
     done
+    [ "$alive" = 0 ] && return 0
+    tries=$((tries + 1))
+    if [ "$tries" -eq "$grace" ]; then
+      signal=KILL
+    elif [ "$tries" -ge $((grace + 20)) ]; then
+      echo "jhin: processes still running after SIGKILL:$(for pid in $seen; do is_running "$pid" && printf ' %s' "$pid"; done)" >&2
+      return 1
+    fi
+    sleep 0.1
+    # Pick up children spawned since the last look.
+    pids=""
+    for pid in $seen; do
+      pids="$pids $(tree_pids "$pid")"
+    done
+    seen="$(printf '%s' "$pids" | tr ' ' '\n' | grep -v '^$' | sort -un)"
   done
 }
 
