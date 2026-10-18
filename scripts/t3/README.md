@@ -21,6 +21,9 @@ the first start; `serve.sh` and `dev.sh` print the URL to open with it:
 
     jhin: open http://127.0.0.1:7777/#token=…
 
+The URL (and so the token) also lands in the terminal and T3 Code's action
+log; fine for a local dev token, never paste it anywhere shared.
+
 The web client keeps the token in the page's storage, so after opening that
 URL once, the plain `http://127.0.0.1:7777` (T3 Code's preview) stays
 connected until `reset.sh` makes a new home.
@@ -30,4 +33,7 @@ home's config when the home is created, a warning when it differs later),
 `JHIN_WEB_PORT` (Vite, default 7780), `JHIN_NODE_VERSION` (the Node release
 downloaded when none is on PATH), `JHIN_DEV_DIR`, `JHIN_DEV_HOME`.
 
-`shellcheck scripts/t3/*.sh` is clean (config in `.shellcheckrc`).
+The scripts need bash 5.1 or newer (`brew install bash` on macOS).
+`shellcheck scripts/t3/*.sh` is clean (config in `.shellcheckrc`); CI runs
+it and `smoke.sh`, which starts `serve.sh`, checks the page, a refused second
+instance and a clean `stop.sh`.

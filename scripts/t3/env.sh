@@ -7,6 +7,12 @@
 
 set -euo pipefail
 
+# `wait -n` with pids and `exec {fd}<` need bash 5.1; macOS ships 3.2.
+if [ "${BASH_VERSINFO[0]}" -lt 5 ] || { [ "${BASH_VERSINFO[0]}" -eq 5 ] && [ "${BASH_VERSINFO[1]}" -lt 1 ]; }; then
+  echo "jhin: these scripts need bash 5.1 or newer (found $BASH_VERSION); on macOS: brew install bash" >&2
+  exit 1
+fi
+
 JHIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export JHIN_ROOT
 
@@ -103,7 +109,7 @@ prepare_dev_home() {
   "jhin.http": { "port": $JHIN_PORT }
 }
 JSONC
-  elif [ -n "${JHIN_PORT_SET:-}" ] && ! grep -q "\"port\": *$JHIN_PORT\b" "$JHIN_DEV_HOME/config.jsonc"; then
+  elif [ -n "${JHIN_PORT_SET:-}" ] && ! grep -Eq "\"port\": *$JHIN_PORT([^0-9]|\$)" "$JHIN_DEV_HOME/config.jsonc"; then
     echo "jhin: JHIN_PORT=$JHIN_PORT is ignored, $JHIN_DEV_HOME/config.jsonc sets the port" >&2
   fi
 }
@@ -140,15 +146,18 @@ start_dev_node() {
 }
 
 # Records this script's pid so stop.sh can end it; refuses a second instance.
-# The pid file is removed when the script exits.
+# The pid file is created with noclobber, so two simultaneous starts cannot
+# both win; it is removed when the script exits.
 record_pid() {
   local file="$JHIN_DEV_DIR/pids/$1.pid"
   mkdir -p "$JHIN_DEV_DIR/pids"
-  if [ -f "$file" ] && is_ours "$(cat "$file")" "$1"; then
+  if [ -f "$file" ] && ! is_ours "$(cat "$file" 2>/dev/null || true)" "$1"; then
+    rm -f "$file" # stale: its process is gone or is something else now
+  fi
+  if ! (set -o noclobber && echo "$$" >"$file") 2>/dev/null; then
     echo "jhin: $1 is already running (pid $(cat "$file")); run scripts/t3/stop.sh first" >&2
     exit 1
   fi
-  echo "$$" >"$file"
   # shellcheck disable=SC2154 # job is the loop variable inside the trap string
   trap 'rm -f "'"$file"'"; for job in $(jobs -p); do kill_tree "$job"; done' EXIT
   trap 'exit 130' INT TERM
@@ -167,7 +176,8 @@ kill_tree() {
 # stale pid file never matches an unrelated process that reused the pid.
 is_ours() {
   kill -0 "$1" 2>/dev/null || return 1
-  ps -o args= -p "$1" 2>/dev/null | grep -q "scripts/t3/$2.sh" || return 1
+  # However it was started (`bash scripts/t3/serve.sh`, `./serve.sh`, …).
+  ps -o args= -p "$1" 2>/dev/null | grep -Eq "(^|[ /])$2\.sh( |\$)" || return 1
   if [ -d "/proc/$1" ]; then
     [ "$(readlink "/proc/$1/cwd")" = "$JHIN_ROOT" ] || return 1
   fi
