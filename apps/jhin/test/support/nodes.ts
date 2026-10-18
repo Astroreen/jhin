@@ -6,6 +6,8 @@ import * as Path from "node:path";
 import { connectWebSocket, createRpcClient, type RpcClient } from "@jhin/rpc";
 import type { StoredEvent } from "@jhin/storage-api";
 
+import { readToken } from "./token.ts";
+
 const BIN = Path.resolve(import.meta.dirname, "../../bin/jhin.js");
 
 export interface Node {
@@ -46,7 +48,7 @@ export async function serve(name: string, dir: string, running: Node[]): Promise
     });
     child.once("exit", (code) => reject(new Error(`${name} exited with ${code}:\n${text}`)));
   });
-  const token = Fs.readFileSync(Path.join(dir, "data", "jhin.auth-token", "token"), "utf8").trim();
+  const token = readToken(dir);
   const client = createRpcClient({ connect: () => connectWebSocket(rpc, token) });
   const node: Node = {
     name,
