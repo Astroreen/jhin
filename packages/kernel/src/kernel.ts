@@ -75,11 +75,38 @@ export interface KernelSnapshot {
   };
 }
 
+/** What `Kernel.update` changed; also the payload of `kernel.plugins.updated`. */
+export interface PluginsUpdate {
+  readonly added: readonly string[];
+  readonly removed: readonly string[];
+  /** Plugins whose manifest or location changed. */
+  readonly changed: readonly string[];
+  /** Plugins deactivated, in deactivation order. */
+  readonly stopped: readonly string[];
+  /** Plugins activated along the new graph, in activation order (each may still fail). */
+  readonly started: readonly string[];
+  /** Locations whose manifest is invalid after the update. */
+  readonly invalid: readonly string[];
+}
+
 export interface Kernel {
   start(sources: readonly PluginSource[]): Promise<void>;
   stop(): Promise<void>;
   /** Re-imports a plugin and re-activates it together with everything depending on it. */
   reload(pluginId: string): Promise<void>;
+  /**
+   * Replaces the set of plugin sources while running: validates the manifests,
+   * resolves the graph again, deactivates the added, removed and changed plugins
+   * and everything depending on them (in the old or the new graph), and
+   * activates them along the new graph. Unrelated plugins keep running.
+   *
+   * An invalid manifest at a location that held a valid plugin is listed in
+   * `inspect().invalid`, and that plugin keeps its previous manifest. A second
+   * source with a running plugin's id stops it: both copies are blocked as
+   * duplicates until one goes. (The node host never passes duplicates: a
+   * later plugin layer shadows an earlier one, D15.)
+   */
+  update(sources: readonly PluginSource[]): Promise<PluginsUpdate>;
   readonly commands: {
     execute(name: string, input: unknown, invocation?: Invocation): Promise<unknown>;
     list(): readonly CommandInfo[];
@@ -125,6 +152,25 @@ function withSideHint(error: ErrorInfo, otherSide: readonly PluginRecord[]): Err
       otherSide: { plugin: provider.manifest.id, side: provider.manifest.side },
     },
   };
+}
+
+function sameSet(a: ReadonlySet<string> | undefined, b: ReadonlySet<string> | undefined): boolean {
+  const left = a ?? new Set<string>();
+  const right = b ?? new Set<string>();
+  return left.size === right.size && [...left].every((item) => right.has(item));
+}
+
+/**
+ * What makes two records of one plugin id the same plugin to the graph. The
+ * first copy of a duplicate stays a record (blocked, outside the graph), so a
+ * copy appearing or going changes only this flag for it.
+ */
+function identity(record: PluginRecord): string {
+  return JSON.stringify([
+    record.source.location,
+    record.manifest,
+    record.error?.code === "DUPLICATE_PLUGIN",
+  ]);
 }
 
 export function createKernel(options: KernelOptions): Kernel {
@@ -366,12 +412,13 @@ export function createKernel(options: KernelOptions): Kernel {
     events.emit("kernel.plugin.deactivated", { plugin: id });
   }
 
-  function dependantsOf(id: string): Set<string> {
-    const result = new Set<string>([id]);
+  /** `seeds` and every plugin depending on one of them, directly or not, in `graph`. */
+  function dependantsOf(seeds: Iterable<string>, graph: Resolution | undefined): Set<string> {
+    const result = new Set<string>(seeds);
     let grew = true;
     while (grew) {
       grew = false;
-      for (const [plugin, dependencies] of resolution?.dependencies ?? []) {
+      for (const [plugin, dependencies] of graph?.dependencies ?? []) {
         if (result.has(plugin)) continue;
         if ([...dependencies].some((dependency) => result.has(dependency))) {
           result.add(plugin);
@@ -382,6 +429,100 @@ export function createKernel(options: KernelOptions): Kernel {
     return result;
   }
 
+  /**
+   * Validates manifests into records, one per plugin id. An invalid manifest at a
+   * location in `previous` keeps that location's previous record's manifest.
+   */
+  function readSources(
+    sources: readonly PluginSource[],
+    previous: ReadonlyMap<string, PluginRecord>,
+  ): { records: PluginRecord[]; invalid: { location: string; error: ErrorInfo }[] } {
+    const candidates: PluginRecord[] = [];
+    const rejected: { location: string; error: ErrorInfo }[] = [];
+    const seen = new Map<string, PluginRecord>();
+    for (const given of sources) {
+      let source = given;
+      let manifest: PluginManifest;
+      const parsed = PluginManifest.safeParse(given.manifest);
+      if (parsed.success) {
+        manifest = parsed.data;
+      } else {
+        const kept = previous.get(given.location);
+        const issues = parsed.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          message: issue.message,
+        }));
+        rejected.push({
+          location: given.location,
+          error:
+            kept === undefined
+              ? {
+                  code: "MANIFEST_INVALID",
+                  message: `Invalid manifest at ${given.location}`,
+                  details: { issues },
+                }
+              : {
+                  code: "MANIFEST_INVALID",
+                  message: `Invalid manifest at ${given.location}; ${kept.manifest.id} keeps its previous manifest`,
+                  details: { issues, kept: kept.manifest.id },
+                },
+        });
+        if (kept === undefined) continue;
+        source = kept.source;
+        manifest = kept.manifest;
+      }
+      const record: PluginRecord = {
+        manifest,
+        source,
+        status: "inactive",
+        error: undefined,
+        generation: 0,
+        definition: undefined,
+        subscriptions: undefined,
+        cleanups: [],
+      };
+      const duplicate = seen.get(manifest.id);
+      if (duplicate !== undefined) {
+        for (const item of [duplicate, record]) {
+          item.status = "blocked";
+          item.error = {
+            code: "DUPLICATE_PLUGIN",
+            message: `Plugin ${manifest.id} is found at ${duplicate.source.location} and ${source.location}`,
+            details: { locations: [duplicate.source.location, source.location] },
+          };
+        }
+        if (!rejected.some((item) => item.location === duplicate.source.location)) {
+          rejected.push({ location: duplicate.source.location, error: duplicate.error! });
+        }
+        rejected.push({ location: source.location, error: record.error! });
+        continue;
+      }
+      seen.set(manifest.id, record);
+      candidates.push(record);
+    }
+    return { records: candidates, invalid: rejected };
+  }
+
+  /** Marks records built for the other side as skipped and graph problems as blocked. */
+  function classify(records: readonly PluginRecord[]): Resolution {
+    for (const record of records) {
+      const side = record.manifest.side;
+      if (side !== "both" && side !== options.side) record.status = "skipped";
+    }
+    const graph = resolveGraph(
+      records.filter((record) => record.status === "inactive").map((record) => record.manifest),
+    );
+    const otherSide = records.filter((record) => record.status === "skipped");
+    const byId = new Map(records.map((record) => [record.manifest.id, record]));
+    for (const [id, error] of graph.blocked) {
+      const record = byId.get(id)!;
+      record.status = "blocked";
+      record.error = withSideHint(error, otherSide);
+      log.warn("plugin blocked", { plugin: id, error });
+    }
+    return graph;
+  }
+
   return {
     start: (sources) =>
       serial(async () => {
@@ -389,73 +530,10 @@ export function createKernel(options: KernelOptions): Kernel {
           throw new KernelError("KERNEL_STATE", "Kernel can only be started once");
         phase = "started";
 
-        const candidates: PluginRecord[] = [];
-        const seen = new Map<string, PluginRecord>();
-        for (const source of sources) {
-          const parsed = PluginManifest.safeParse(source.manifest);
-          if (!parsed.success) {
-            invalid.push({
-              location: source.location,
-              error: {
-                code: "MANIFEST_INVALID",
-                message: `Invalid manifest at ${source.location}`,
-                details: {
-                  issues: parsed.error.issues.map((issue) => ({
-                    path: issue.path.join("."),
-                    message: issue.message,
-                  })),
-                },
-              },
-            });
-            continue;
-          }
-          const record: PluginRecord = {
-            manifest: parsed.data,
-            source,
-            status: "inactive",
-            error: undefined,
-            generation: 0,
-            definition: undefined,
-            subscriptions: undefined,
-            cleanups: [],
-          };
-          const duplicate = seen.get(parsed.data.id);
-          if (duplicate !== undefined) {
-            for (const item of [duplicate, record]) {
-              item.status = "blocked";
-              item.error = {
-                code: "DUPLICATE_PLUGIN",
-                message: `Plugin ${parsed.data.id} is found at ${duplicate.source.location} and ${source.location}`,
-                details: { locations: [duplicate.source.location, source.location] },
-              };
-            }
-            if (!invalid.some((item) => item.location === duplicate.source.location)) {
-              invalid.push({ location: duplicate.source.location, error: duplicate.error! });
-            }
-            invalid.push({ location: source.location, error: record.error! });
-            continue;
-          }
-          seen.set(parsed.data.id, record);
-          candidates.push(record);
-        }
-
-        for (const record of candidates) {
-          plugins.set(record.manifest.id, record);
-          const side = record.manifest.side;
-          if (side !== "both" && side !== options.side) record.status = "skipped";
-        }
-
-        const eligible = candidates
-          .filter((record) => record.status === "inactive")
-          .map((record) => record.manifest);
-        resolution = resolveGraph(eligible);
-        const otherSide = candidates.filter((record) => record.status === "skipped");
-        for (const [id, error] of resolution.blocked) {
-          const record = plugins.get(id)!;
-          record.status = "blocked";
-          record.error = withSideHint(error, otherSide);
-          log.warn("plugin blocked", { plugin: id, error });
-        }
+        const read = readSources(sources, new Map());
+        invalid.push(...read.invalid);
+        for (const record of read.records) plugins.set(record.manifest.id, record);
+        resolution = classify(read.records);
 
         for (const id of resolution.order) await activate(plugins.get(id)!);
         events.emit("kernel.started", { active: [...activeOrder] });
@@ -486,12 +564,89 @@ export function createKernel(options: KernelOptions): Kernel {
             },
           );
         }
-        const affected = dependantsOf(pluginId);
+        const affected = dependantsOf([pluginId], resolution);
         const toStop = [...activeOrder].toReversed().filter((id) => affected.has(id));
         for (const id of toStop) await deactivate(plugins.get(id)!);
         const toStart = resolution.order.filter((id) => affected.has(id));
         for (const id of toStart) await activate(plugins.get(id)!);
         events.emit("kernel.plugin.reloaded", { plugin: pluginId, affected: toStart });
+      }),
+
+    update: (sources) =>
+      serial(async () => {
+        if (phase !== "started") throw new KernelError("KERNEL_STATE", "Kernel is not running");
+        const previous = new Map(
+          [...plugins.values()].map((record) => [record.source.location, record]),
+        );
+        const read = readSources(sources, previous);
+        const next = new Map(read.records.map((record) => [record.manifest.id, record]));
+        const graph = classify(read.records);
+
+        const added = [...next.keys()].filter((id) => !plugins.has(id)).toSorted();
+        const removed = [...plugins.keys()].filter((id) => !next.has(id)).toSorted();
+        const changed = [...next.keys()]
+          .filter((id) => plugins.has(id) && identity(plugins.get(id)!) !== identity(next.get(id)!))
+          .toSorted();
+        const seeds = new Set([...added, ...removed, ...changed]);
+        // Unchanged plugins the new graph treats differently: unblocked, newly
+        // blocked, or with other dependencies (an optional capability appeared).
+        for (const id of next.keys()) {
+          if (!plugins.has(id)) continue;
+          if (
+            resolution?.blocked.has(id) !== graph.blocked.has(id) ||
+            !sameSet(resolution?.dependencies.get(id), graph.dependencies.get(id))
+          ) {
+            seeds.add(id);
+          }
+        }
+        const affected = new Set([
+          ...dependantsOf(seeds, resolution),
+          ...dependantsOf(seeds, graph),
+        ]);
+
+        const stopped = [...activeOrder].toReversed().filter((id) => affected.has(id));
+        for (const id of stopped) await deactivate(plugins.get(id)!);
+
+        // From here the new graph is in place before anything activates. This
+        // relies on `activate` never throwing (it records failures instead):
+        // a throw would leave the update half-applied.
+        const current = new Map(plugins);
+        plugins.clear();
+        for (const record of read.records) {
+          const id = record.manifest.id;
+          const kept = current.get(id);
+          if (kept !== undefined && !affected.has(id)) {
+            // Still blocked by the graph, maybe for another reason.
+            if (record.status === "blocked") kept.error = record.error;
+            plugins.set(id, kept);
+            continue;
+          }
+          // Generations keep growing, so a re-added plugin gets fresh modules too.
+          record.generation = kept?.generation ?? 0;
+          plugins.set(id, record);
+        }
+        const invalidBefore = JSON.stringify(invalid);
+        invalid.splice(0, invalid.length, ...read.invalid);
+        resolution = graph;
+
+        const started = graph.order.filter(
+          (id) => affected.has(id) && plugins.get(id)!.status === "inactive",
+        );
+        for (const id of started) await activate(plugins.get(id)!);
+
+        const update: PluginsUpdate = {
+          added,
+          removed,
+          changed,
+          stopped,
+          started,
+          invalid: invalid.map((item) => item.location),
+        };
+        if (seeds.size > 0 || JSON.stringify(invalid) !== invalidBefore) {
+          log.info("plugins updated", { ...update });
+          events.emit("kernel.plugins.updated", update);
+        }
+        return update;
       }),
 
     commands: {

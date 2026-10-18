@@ -4,6 +4,7 @@ import {
   type KernelSide,
   type ModuleLoader,
   type PluginSource,
+  type PluginsUpdate,
 } from "@jhin/kernel";
 import { PLUGIN_API_VERSION, type Logger, type PluginDefinition } from "@jhin/sdk";
 
@@ -12,6 +13,8 @@ export interface TestPlugin {
   /** Raw manifest; validated by the kernel exactly like a real one. */
   readonly manifest: unknown;
   readonly definition: PluginDefinition;
+  /** Where the plugin "lives"; defaults to `memory://<index>`. Keep it stable across `setPlugins`. */
+  readonly location?: string;
 }
 
 export interface TestKernelOptions {
@@ -28,6 +31,11 @@ export interface TestKernel extends Kernel {
   replace(pluginId: string, definition: PluginDefinition): void;
   /** How many times each plugin's module was loaded. */
   loads(pluginId: string): number;
+  /**
+   * Replaces the plugin set while running, like a host that found plugins
+   * added, removed or with a changed manifest on disk (`Kernel.update`).
+   */
+  setPlugins(plugins: readonly TestPlugin[]): Promise<PluginsUpdate>;
 }
 
 /** A complete manifest with test defaults; override any field. */
@@ -49,11 +57,13 @@ export function testManifest(
 export async function createTestKernel(options: TestKernelOptions): Promise<TestKernel> {
   const definitions = new Map<string, PluginDefinition>();
   const loadCounts = new Map<string, number>();
-  const sources: PluginSource[] = options.plugins.map((plugin, index) => {
-    const location = `memory://${index}`;
-    definitions.set(location, plugin.definition);
-    return { location, manifest: plugin.manifest };
-  });
+  const toSources = (plugins: readonly TestPlugin[]): PluginSource[] =>
+    plugins.map((plugin, index) => {
+      const location = plugin.location ?? `memory://${index}`;
+      definitions.set(location, plugin.definition);
+      return { location, manifest: plugin.manifest };
+    });
+  let sources = toSources(options.plugins);
   const locationOf = (pluginId: string): string => {
     const found = sources.find(
       (source) => (source.manifest as { id?: unknown } | null)?.id === pluginId,
@@ -85,6 +95,10 @@ export async function createTestKernel(options: TestKernelOptions): Promise<Test
     },
     loads(pluginId: string) {
       return loadCounts.get(pluginId) ?? 0;
+    },
+    setPlugins(plugins: readonly TestPlugin[]) {
+      sources = toSources(plugins);
+      return kernel.update(sources);
     },
   });
 }

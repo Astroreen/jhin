@@ -6,6 +6,8 @@ import type { Disposable, Logger } from "@jhin/sdk";
 export interface WatchTarget {
   /** A directory (watched recursively) or a file (which may not exist yet). */
   readonly path: string;
+  /** For a directory: which changes count, by path relative to it. Default: all. */
+  readonly filter?: (relative: string) => boolean;
   /** Called once per burst of changes; `files` are absolute paths. */
   readonly onChange: (files: readonly string[]) => void;
 }
@@ -43,7 +45,10 @@ export function watch(targets: readonly WatchTarget[], log: Logger, debounceMs =
     const watcher = Fs.watch(directory, { recursive: isDirectory }, (_event, name) => {
       if (name === null) return;
       const file = Path.join(directory, name.toString());
-      if (isDirectory ? IGNORED.test(Path.relative(directory, file)) : file !== target.path) return;
+      const relative = Path.relative(directory, file);
+      if (isDirectory) {
+        if (IGNORED.test(relative) || target.filter?.(relative) === false) return;
+      } else if (file !== target.path) return;
       pending.add(file);
       if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(flush, debounceMs);
