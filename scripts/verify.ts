@@ -199,7 +199,10 @@ function plan(): { steps: Step[]; skippedSteps: StepResult[] } {
     skippedSteps.push(skip("e2e", "only Markdown changed"));
   }
   const packed = packedDirs(all);
-  const shipsChange = (file: string) => packed.some((dir) => file.startsWith(`${dir}/`));
+  // Tests and Markdown never reach a tarball.
+  const NOT_SHIPPED = /\/test\/|\.test\.tsx?$|\.md$/;
+  const shipsChange = (file: string) =>
+    !NOT_SHIPPED.test(file) && packed.some((dir) => file.startsWith(`${dir}/`));
   if (files.some((file) => PACKING.test(file) || shipsChange(file))) {
     steps.push({ name: "pack", command: ["node", "scripts/pack-smoke.ts"] });
   } else {

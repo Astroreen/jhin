@@ -140,7 +140,8 @@ function checkTarball(file: string): void {
     jhin?: { entry?: unknown };
   };
   const pointers = JSON.stringify([manifest.exports, manifest.bin, manifest.jhin?.entry]);
-  if (/src\/|\.tsx?"/.test(pointers.replaceAll(".d.ts", ""))) {
+  // A path that starts in src/ or names TypeScript (declarations are fine).
+  if (/"(\.\/)?src\/|\.tsx?"/.test(pointers.replaceAll('.d.ts"', '"'))) {
     throw new Error(`${file} points at source: ${pointers}`);
   }
 }
