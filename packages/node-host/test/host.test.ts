@@ -201,6 +201,50 @@ describe("node host", () => {
     );
   });
 
+  it("tells host.plugins listeners once about a manifest saved together with code", async () => {
+    const home = tempDir("home");
+    writePlugin(
+      Path.join(home, "plugins", "listener"),
+      { id: "acme.listener", requires: { "host.plugins": "^1" } },
+      {
+        "index.ts": `
+import { definePlugin, z } from "@jhin/sdk";
+export default definePlugin({
+  activate(context) {
+    const seen: string[] = [];
+    const plugins = context.services.get<any>("host.plugins");
+    context.subscriptions.add(plugins.onChange(({ id }: { id: string }) => seen.push(id)));
+    context.commands.register({
+      name: "acme.listener.seen",
+      description: "Plugin changes seen so far",
+      input: z.object({}),
+      output: z.array(z.string()),
+      handler: () => seen,
+    });
+  },
+});
+`,
+      },
+    );
+    const client = writePlugin(
+      Path.join(home, "plugins", "client"),
+      { id: "acme.client", side: "client", entry: "index.js" },
+      { "index.js": "export default {};\n" },
+    );
+    host = new HostProcess({ home, cwd: tempDir("cwd"), watch: true });
+    await host.ready();
+
+    const update = pluginsUpdated(host, (payload) => payload.changed.includes("acme.client"));
+    const manifest = Path.join(client, "package.json");
+    const packageJson = JSON.parse(Fs.readFileSync(manifest, "utf8"));
+    packageJson.jhin.version = "1.1.0";
+    Fs.writeFileSync(manifest, JSON.stringify(packageJson));
+    Fs.writeFileSync(Path.join(client, "index.js"), "export default { changed: true };\n");
+    await update;
+
+    expect((await host.execute("acme.listener.seen")).value).toEqual(["acme.client"]);
+  });
+
   it("applies plugins added or changed on disk through the host.plugins.rescan command", async () => {
     const cwd = tempDir("cwd");
     host = new HostProcess({ home: tempDir("home"), cwd, distribution: [EXAMPLE] });

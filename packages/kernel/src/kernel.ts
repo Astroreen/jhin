@@ -607,6 +607,9 @@ export function createKernel(options: KernelOptions): Kernel {
         const stopped = [...activeOrder].toReversed().filter((id) => affected.has(id));
         for (const id of stopped) await deactivate(plugins.get(id)!);
 
+        // From here the new graph is in place before anything activates. This
+        // relies on `activate` never throwing (it records failures instead):
+        // a throw would leave the update half-applied.
         const current = new Map(plugins);
         plugins.clear();
         for (const record of read.records) {

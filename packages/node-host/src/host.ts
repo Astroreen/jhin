@@ -387,6 +387,12 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       log,
       notify: notifyPlugin,
       rescan,
+      hasOwnWatcher: (location) =>
+        discovery.plugins.some(
+          (plugin) =>
+            plugin.location === location &&
+            typeof (plugin.manifest as { id?: unknown } | undefined)?.id === "string",
+        ),
     });
     for (const [key, watcher] of watchers) {
       if (targets.has(key)) continue;
@@ -409,6 +415,8 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       stopping = true;
       for (const watcher of watchers.values()) watcher.dispose();
       watchers.clear();
+      // A rescan already queued applies before the kernel stops, not after.
+      await rescans;
       await kernel.stop();
       log.flush();
     },
@@ -425,6 +433,8 @@ interface WatchFilesOptions {
   readonly log: Logger;
   readonly notify: (id: string, files: readonly string[]) => void;
   readonly rescan: () => Promise<PluginsUpdate>;
+  /** Whether the plugin directory at `location` has a watcher of its own (it was discovered). */
+  readonly hasOwnWatcher: (location: string) => boolean;
 }
 
 /** What to watch, by a key that changes when the target must be watched anew. */
@@ -437,6 +447,7 @@ function watchTargets({
   log,
   notify,
   rescan,
+  hasOwnWatcher,
 }: WatchFilesOptions): Map<string, WatchTarget> {
   const rescanQuietly = (reason: string) =>
     rescan().catch((error: unknown) => {
@@ -446,8 +457,9 @@ function watchTargets({
   const reload = (id: string, files: readonly string[], notified = false) => {
     if (!notified) notify(id, files);
     // Client-side plugins are skipped by this kernel; their clients reload them.
+    // A blocked plugin cannot run whatever its code; a failed one is retried.
     const status = kernel.inspect().plugins.find((candidate) => candidate.id === id)?.status;
-    if (status === undefined || status === "skipped") return;
+    if (status === undefined || status === "skipped" || status === "blocked") return;
     log.info("plugin files changed, reloading", { plugin: id, files });
     kernel.reload(id).catch((error: unknown) => {
       log.error("plugin reload failed", { plugin: id, error: toErrorInfo(error) });
@@ -489,7 +501,11 @@ function watchTargets({
         const parts = relative.split(Path.sep);
         // Discovery skips hidden entries.
         if (parts[0]!.startsWith(".")) return false;
-        if (parts.length === 2) return parts[1] === "package.json";
+        // A discovered plugin's own watcher handles its manifest; reacting here
+        // too would rescan twice for one save.
+        if (parts.length === 2) {
+          return parts[1] === "package.json" && !hasOwnWatcher(Path.join(path, parts[0]!));
+        }
         if (parts.length !== 1) return false;
         // A file beside the plugin directories (an editor's temp file) is no plugin;
         // an entry that is gone may have been one.
