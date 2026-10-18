@@ -74,7 +74,14 @@ export default defineConfig({
       {
         // AGENTS.md rule 2: the kernel, the SDK and the test kit run unchanged in
         // Node and in the browser. tsconfig `types: []` enforces the same at typecheck.
-        files: ["packages/kernel/src/**", "packages/sdk/src/**", "packages/testing/src/**"],
+        files: [
+          "packages/kernel/src/**",
+          "packages/sdk/src/**",
+          "packages/testing/src/**",
+          "packages/rpc/src/**",
+          "packages/storage-api/src/**",
+          "packages/host-api/src/**",
+        ],
         rules: {
           "eslint/no-restricted-imports": [
             "error",

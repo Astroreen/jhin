@@ -22,6 +22,9 @@ function homeWith(
   plugins: Record<string, { manifest: Record<string, unknown>; index: string }>,
 ): string {
   const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-cli-"));
+  // The CLI runs with --cwd <home>: a free port, never the user's real node.
+  Fs.mkdirSync(Path.join(home, ".jhin"), { recursive: true });
+  Fs.writeFileSync(Path.join(home, ".jhin", "config.jsonc"), '{ "jhin.http": { "port": 0 } }');
   for (const [dir, plugin] of Object.entries(plugins)) {
     const root = Path.join(home, "plugins", dir);
     Fs.mkdirSync(root, { recursive: true });

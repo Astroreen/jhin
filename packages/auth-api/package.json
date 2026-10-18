@@ -1,0 +1,16 @@
+{
+  "name": "@jhin/auth-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Contract of the auth.verifier@1 capability",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}
