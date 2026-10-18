@@ -9,11 +9,21 @@ import {
 } from "@jhin/http-api";
 import { definePlugin, toDisposable, z } from "@jhin/sdk";
 
+import { clientAddress, trustList } from "./client-address.ts";
+
 const Config = z.object({
   /** Interface to listen on. The default only accepts local connections. */
   host: z.string().default("127.0.0.1"),
   /** 0 picks a free port. */
   port: z.number().int().min(0).max(65_535).default(7777),
+  /**
+   * Reverse proxies (addresses or CIDR ranges, e.g. `["127.0.0.1", "10.0.0.0/8"]`)
+   * whose forwarded header names the real client. Empty by default: the
+   * header is ignored and the socket's peer is the client.
+   */
+  trustProxy: z.array(z.string()).default([]),
+  /** The header the trusted proxies set; the other one is never read. */
+  forwardedHeader: z.enum(["x-forwarded-for", "forwarded"]).default("x-forwarded-for"),
 });
 
 interface Route {
@@ -31,6 +41,7 @@ export default definePlugin({
   async activate(context) {
     context.config.define("jhin.http", Config);
     const config = context.config.get<z.output<typeof Config>>("jhin.http");
+    const trust = trustList(config.trustProxy);
     const routes = new Set<Route>();
     const upgrades = new Map<string, UpgradeHandler>();
 
@@ -103,6 +114,11 @@ export default definePlugin({
           if (upgrades.get(path) === handler) upgrades.delete(path);
         });
       },
+      clientAddress: (request) =>
+        clientAddress(request.socket.remoteAddress, request.headers, {
+          trust,
+          header: config.forwardedHeader,
+        }),
     };
     context.services.provide(HTTP_SERVER_CAPABILITY, api);
     context.commands.register({

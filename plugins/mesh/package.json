@@ -24,6 +24,7 @@
     "ws": "catalog:"
   },
   "devDependencies": {
+    "@jhin/testing": "workspace:*",
     "@types/node": "catalog:",
     "@types/ws": "catalog:"
   },
@@ -35,7 +36,7 @@
     "description": "Nodes of one owner see each other and route calls through each other",
     "side": "server",
     "requires": {
-      "http.server": "^1",
+      "http.server": "^1.1",
       "host.paths": "^1",
       "host.identity": "^1",
       "storage.kv": "^1",

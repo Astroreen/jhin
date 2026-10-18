@@ -137,6 +137,9 @@ describe("settings fan-out (D20, D50)", () => {
         { node: b.nodeId, status: "applied" },
         { node: c.nodeId, status: "queued" },
       ]);
+      expect(await a.client.call("mesh.config.pending")).toMatchObject([
+        { node: c.nodeId, layer: "node", section: "jhin.example" },
+      ]);
 
       // c returns: a delivers the queued change as soon as a route exists.
       const delivered = untilStream(a, "mesh/outbox", (events) =>
@@ -145,6 +148,7 @@ describe("settings fan-out (D20, D50)", () => {
       const back = await serve("c", homeC, running);
       await delivered;
       expect((await greet(back)).message).toBe("Welcome back, x!");
+      expect(await a.client.call("mesh.config.pending")).toEqual([]);
 
       // A change made on c later than a's wins; a hears about the conflict.
       await back.client.call("host.config.patch", {

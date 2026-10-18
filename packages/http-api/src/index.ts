@@ -11,7 +11,7 @@ export type HttpHandler = (
 ) => void | Promise<void>;
 export type UpgradeHandler = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
 
-/** `http.server@1`: the node's single HTTP listener, shared by every plugin. */
+/** `http.server@1` (1.1): the node's single HTTP listener, shared by every plugin. */
 export interface HttpServer {
   /** Base URL, e.g. `http://127.0.0.1:7777`. */
   readonly url: string;
@@ -22,4 +22,11 @@ export interface HttpServer {
   route(method: string, path: string, handler: HttpHandler): Disposable;
   /** Handles WebSocket (or other) upgrades on an exact path. */
   upgrade(path: string, handler: UpgradeHandler): Disposable;
+  /**
+   * Since 1.1: the address `request` comes from, for rate limits and logs.
+   * The socket's peer, unless that peer is one of `jhin.http.trustProxy`;
+   * only then is the forwarded header (`jhin.http.forwardedHeader`) read.
+   * Forwarded headers are never trusted by default.
+   */
+  clientAddress(request: IncomingMessage): string;
 }
