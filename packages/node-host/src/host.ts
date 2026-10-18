@@ -276,7 +276,14 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
   await kernel.start([hostSource, ...discovery.plugins]);
 
   const notifyPlugin = (id: string, files: readonly string[]) => {
-    for (const listener of Array.from(pluginListeners)) listener({ id, files });
+    for (const listener of Array.from(pluginListeners)) {
+      // One failing listener must not stop the others, nor fail the change that was applied.
+      try {
+        listener({ id, files });
+      } catch (error) {
+        log.error("host.plugins listener failed", { plugin: id, error: toErrorInfo(error) });
+      }
+    }
   };
 
   let rescans: Promise<unknown> = Promise.resolve();
@@ -292,9 +299,11 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
   }
 
   async function rescanNow(): Promise<PluginsUpdate> {
-    discovery = discoverPlugins(layers);
-    const found = discovery.plugins;
+    const next = discoverPlugins(layers);
+    const found = next.plugins;
     const update = await kernel.update([hostSource, ...found]);
+    // Only what the kernel applied becomes the discovery the watchers follow.
+    discovery = next;
     rewatch();
     // Client plugins are skipped here; listeners (the web UI) tell their clients.
     for (const id of [...update.added, ...update.changed]) {
