@@ -3,7 +3,7 @@ import * as Path from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
-import { lockedPins, packedManifest } from "./packing.ts";
+import { lockedPackages, lockedPins, packedManifest } from "./packing.ts";
 
 describe("packedManifest", () => {
   it("applies publishConfig.jhin to jhin and keeps the other publishConfig fields", () => {
@@ -89,6 +89,12 @@ describe("lockedPins", () => {
       "@scope/from-tarball@https://example.com/pkg-1.0.0.tgz",
       "same-line (1.32.0, 1.33.0)",
     ]);
+  });
+
+  it("lists the package keys, quoted or not", () => {
+    expect(lockedPackages(LOCKFILE)).toContain("@scope/one@1.2.3");
+    expect(lockedPackages(LOCKFILE)).toContain("plain@4.0.0");
+    expect(lockedPackages(LOCKFILE)).not.toContain("plain@4.0.0: {}");
   });
 
   it("fails loudly when it finds no packages", () => {

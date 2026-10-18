@@ -489,7 +489,9 @@ function watchTargets({
     const filter = buildOutputFilter(
       String((plugin.manifest as { entry?: unknown } | undefined)?.entry ?? ""),
     );
-    targets.set(`plugin:${id}:${plugin.root}`, {
+    // The filter is part of the key: a manifest whose entry switches between
+    // TypeScript and JavaScript gets a fresh watcher with the right filter.
+    targets.set(`plugin:${id}:${plugin.root}:${filter === undefined ? "all" : "source"}`, {
       path: plugin.root,
       ...(filter === undefined ? {} : { filter }),
       onChange: (files) => {

@@ -15,7 +15,7 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { lockedPins } from "./packing.ts";
+import { lockedPackages, lockedPins } from "./packing.ts";
 
 const ROOT = Path.resolve(import.meta.dirname, "..");
 const CLI = "jhin-ai";
@@ -109,6 +109,8 @@ function serve(
 }> {
   const child = ChildProcess.spawn(bin, ["serve", "--ui", "--home", dir, "--cwd", dir], {
     stdio: ["ignore", "inherit", "pipe"],
+    // On Windows the installed jhin is a .cmd shim, which only a shell resolves.
+    shell: process.platform === "win32",
   });
   // Registered before anything else happens, so no exit can be missed.
   const exited = new Promise<number | null>((resolve) => child.once("exit", resolve));
@@ -196,7 +198,8 @@ async function main(): Promise<void> {
     // The workspace packages are not on the registry: every reference goes to its
     // tarball. Third-party packages get the versions the workspace lockfile has, so
     // an upstream release cannot change what this check installs.
-    const locked = lockedPins(Fs.readFileSync(Path.join(ROOT, "pnpm-lock.yaml"), "utf8"));
+    const lockfile = Fs.readFileSync(Path.join(ROOT, "pnpm-lock.yaml"), "utf8");
+    const locked = lockedPins(lockfile);
     process.stdout.write(`${locked.pins.size} third-party versions pinned from pnpm-lock.yaml\n`);
     if (locked.unpinned.length > 0) {
       process.stdout.write(
@@ -217,6 +220,18 @@ async function main(): Promise<void> {
       `overrides:\n${overrides.join("\n")}\n`,
     );
     run("pnpm", ["install"], app);
+    // Everything third-party that got installed is a version the workspace lockfile
+    // has: what floated (the unpinned list) still resolved to a known version.
+    const known = new Set(lockedPackages(lockfile));
+    const strays = lockedPackages(Fs.readFileSync(Path.join(app, "pnpm-lock.yaml"), "utf8")).filter(
+      (key) => !key.startsWith("@jhin/") && !key.startsWith(`${CLI}@`) && !known.has(key),
+    );
+    if (strays.length > 0) {
+      throw new Error(
+        `installed versions the workspace lockfile does not have: ${strays.join(", ")}`,
+      );
+    }
+    process.stdout.write("every installed third-party package is at a workspace-locked version\n");
 
     const bin = Path.join(app, "node_modules", ".bin", "jhin");
     const dir = Path.join(tmp, "node");

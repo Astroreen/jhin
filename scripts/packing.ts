@@ -27,18 +27,23 @@ export interface LockedPins {
 
 const SEMVER = /^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/;
 
+/** The `name@version` keys of a pnpm lockfile's `packages:` section. */
+export function lockedPackages(lockfile: string): string[] {
+  const section = /^packages:\n([\s\S]*?)^snapshots:/m.exec(lockfile)?.[1] ?? "";
+  return [...section.matchAll(/^ {2}'?([^'\s][^'\n]*?)'?:$/gm)].map((match) => match[1]!);
+}
+
 /** Third-party versions a pnpm lockfile resolved, as pnpm overrides. */
 export function lockedPins(lockfile: string): LockedPins {
-  const section = /^packages:\n([\s\S]*?)^snapshots:/m.exec(lockfile)?.[1] ?? "";
   const versions = new Map<string, string[]>();
   const unpinned: string[] = [];
-  for (const [, key] of section.matchAll(/^ {2}'?([^'\s][^'\n]*?)'?:$/gm)) {
-    const at = key!.lastIndexOf("@");
-    const name = key!.slice(0, at);
-    const version = key!.slice(at + 1);
+  for (const key of lockedPackages(lockfile)) {
+    const at = key.lastIndexOf("@");
+    const name = key.slice(0, at);
+    const version = key.slice(at + 1);
     // Git, tarball and other non-registry specifiers cannot be pinned by version.
     if (at <= 0 || !SEMVER.test(version)) {
-      unpinned.push(key!);
+      unpinned.push(key);
       continue;
     }
     versions.set(name, [...(versions.get(name) ?? []), version]);

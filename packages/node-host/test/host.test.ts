@@ -97,6 +97,51 @@ describe("node host", () => {
     expect((await host.execute("acme.view.show")).value).toBe("view:v2");
   });
 
+  it("follows build output once a plugin's entry switches from source to dist/", async () => {
+    const home = tempDir("home");
+    const labelPlugin = (label: string) => `
+import { definePlugin, z } from "@jhin/sdk";
+export default definePlugin({
+  activate(context) {
+    context.commands.register({
+      name: "acme.built.label",
+      description: "Where the code runs from",
+      input: z.object({}),
+      output: z.string(),
+      handler: () => "${label}",
+    });
+  },
+});
+`;
+    const root = writePlugin(
+      Path.join(home, "plugins", "built"),
+      { id: "acme.built" },
+      { "index.ts": labelPlugin("source"), "dist/index.js": labelPlugin("dist-1") },
+    );
+    host = new HostProcess({ home, cwd: tempDir("cwd"), watch: true });
+    await host.ready();
+    expect((await host.execute("acme.built.label")).value).toBe("source");
+
+    const manifest = Path.join(root, "package.json");
+    const packageJson = JSON.parse(Fs.readFileSync(manifest, "utf8"));
+    const update = pluginsUpdated(host, (payload) => payload.changed.includes("acme.built"));
+    packageJson.jhin.entry = "dist/index.js";
+    Fs.writeFileSync(manifest, JSON.stringify(packageJson));
+    await update;
+    expect((await host.execute("acme.built.label")).value).toBe("dist-1");
+
+    // A rebuild of dist/ now reloads the plugin: its watcher follows the new entry.
+    const reloaded = host.next(
+      (message) =>
+        message.type === "event" &&
+        (message["event"] as any).type === "kernel.plugin.reloaded" &&
+        (message["event"] as any).payload.plugin === "acme.built",
+    );
+    Fs.writeFileSync(Path.join(root, "dist", "index.js"), labelPlugin("dist-2"));
+    await reloaded;
+    expect((await host.execute("acme.built.label")).value).toBe("dist-2");
+  });
+
   it("re-resolves the plugin graph when a manifest changes on disk, leaving unrelated plugins running", async () => {
     const home = tempDir("home");
     const counter = writePlugin(
