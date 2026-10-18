@@ -566,8 +566,9 @@ Implementation notes (PR 10):
   reads the stream; an outbox written before this is read once to build the
   pending set (retried if storage fails; a retry keeps the changes a failed
   attempt already took over, so each is pending once). Queueing writes the
-  pending entry before `mesh.config.queued`: when that append fails, the entry
-  is withdrawn and the caller gets the error, so a change is either queued
+  pending entry before `mesh.config.queued`, and no flush delivers it until
+  that append is done; when the append fails, the entry is withdrawn and the
+  caller gets the error, so a change is either queued
   with its history or not at all (a crash between the two writes leaves it
   pending without the `queued` event). A change undelivered
   `jhin.mesh.queueExpiryHours` after it was queued (default 720, `null` =

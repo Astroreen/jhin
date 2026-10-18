@@ -181,11 +181,14 @@ export function createOutbox(options: OutboxOptions): Outbox {
           });
         continue;
       }
-      live.push({ key, change });
+      // Not queued until its `mesh.config.queued` is in the history.
+      if (!enqueuing.has(change.id)) live.push({ key, change });
     }
     return live;
   }
 
+  /** Changes whose pending entry exists but whose `queued` event is still being written. */
+  const enqueuing = new Set<string>();
   let delivering = false;
   let again = false;
   async function flush(): Promise<void> {
@@ -229,21 +232,27 @@ export function createOutbox(options: OutboxOptions): Outbox {
       await ready();
       const change: PendingChange = { id: options.newId(), node, patch, queuedAt: options.now() };
       // Pending first: a crash in between leaves a change that is still delivered.
+      // Until the `queued` event is written no flush sees it, so a change the
+      // caller is told was not queued has not gone out either.
       const key = nextKey(change.id, change.queuedAt);
-      await kv.set(PENDING, key, change as unknown as Json);
+      enqueuing.add(change.id);
       try {
-        await log.append(OUTBOX_STREAM, [
-          { type: "mesh.config.queued", payload: change as unknown as Json },
-        ]);
-      } catch (error) {
-        // The caller hears the change was not queued: then it must not go out either.
-        await kv.delete(PENDING, key).catch((cleanup: unknown) =>
-          options.logger.warn("config outbox could not withdraw a change it failed to queue", {
-            id: change.id,
-            error: String(cleanup),
-          }),
-        );
-        throw error;
+        await kv.set(PENDING, key, change as unknown as Json);
+        try {
+          await log.append(OUTBOX_STREAM, [
+            { type: "mesh.config.queued", payload: change as unknown as Json },
+          ]);
+        } catch (error) {
+          await kv.delete(PENDING, key).catch((cleanup: unknown) =>
+            options.logger.warn("config outbox could not withdraw a change it failed to queue", {
+              id: change.id,
+              error: String(cleanup),
+            }),
+          );
+          throw error;
+        }
+      } finally {
+        enqueuing.delete(change.id);
       }
       return change;
     },

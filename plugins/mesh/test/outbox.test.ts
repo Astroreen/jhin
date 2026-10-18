@@ -39,6 +39,10 @@ function setup(
     kvGet: false,
     // Fails the kv.set after this many more succeed.
     kvSetAfter: undefined as number | undefined,
+    // Holds the next `queued` append until the test settles it.
+    holdQueued: undefined as Promise<void> | undefined,
+    // Called once a held append is waiting (the pending entry is written by then).
+    onHeld: () => undefined as void,
   };
   const log: EventLog = {
     ...storage.log,
@@ -46,7 +50,13 @@ function setup(
       reads.push(stream);
       return storage.log.read(stream, readOptions);
     },
-    append(stream, events, appendOptions) {
+    async append(stream, events, appendOptions) {
+      const held = faults.holdQueued;
+      if (held !== undefined && events.some((event) => event.type === "mesh.config.queued")) {
+        faults.holdQueued = undefined;
+        faults.onHeld();
+        await held;
+      }
       if (events.some((event) => event.type === faults.append)) {
         faults.append = undefined;
         return Promise.reject(new Error("disk full"));
@@ -344,6 +354,31 @@ describe("config outbox (D50)", () => {
     faults.append = "mesh.config.queued";
     await expect(outbox.enqueue("b", patch("x"))).rejects.toThrow("disk full");
     online.add("b");
+    await outbox.flush();
+    expect(delivered).toEqual([]);
+    expect(await history()).toEqual([]);
+  });
+
+  it("does not deliver a change while its queueing is unfinished, nor after it failed", async () => {
+    const { outbox, faults, online, delivered, history, storage } = setup();
+    online.add("b");
+    let release!: () => void;
+    faults.holdQueued = new Promise((resolve) => {
+      release = resolve;
+    });
+    faults.append = "mesh.config.queued";
+    const held = new Promise<void>((resolve) => {
+      faults.onHeld = resolve;
+    });
+    const queueing = outbox.enqueue("b", patch("x"));
+    await held;
+    expect(await storage.kv.list("jhin.mesh.outbox")).toHaveLength(1);
+    // A mesh change flushes while the pending entry exists but `queued` is not written.
+    await outbox.flush();
+    expect(delivered).toEqual([]);
+    expect(await outbox.pending()).toEqual([]);
+    release();
+    await expect(queueing).rejects.toThrow("disk full");
     await outbox.flush();
     expect(delivered).toEqual([]);
     expect(await history()).toEqual([]);
