@@ -15,6 +15,8 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
+import { lockedPins } from "./packing.ts";
+
 const ROOT = Path.resolve(import.meta.dirname, "..");
 const CLI = "jhin-ai";
 const keep = process.argv.includes("--keep");
@@ -70,11 +72,19 @@ function closure(packages: ReadonlyMap<string, string>): string[] {
   return [...found].toSorted();
 }
 
-/** `git status` and contents of every workspace package.json. */
+/**
+ * `git status`, contents and modification time of every workspace package.json.
+ * The time catches a rewrite that was undone before the check, which a node
+ * watching the checkout would still have reloaded on.
+ */
 function manifestState(packages: ReadonlyMap<string, string>): string {
   const files = [...packages.values()].map((dir) => Path.join(dir, "package.json")).toSorted();
   const status = run("git", ["status", "--porcelain", "--", ...files], ROOT);
-  return [status, ...files.map((file) => Fs.readFileSync(file, "utf8"))].join("\0");
+  const states = files.map(
+    (file) =>
+      `${file} ${Fs.statSync(file, { bigint: true }).mtimeNs} ${Fs.readFileSync(file, "utf8")}`,
+  );
+  return [status, ...states].join("\0");
 }
 
 function untouched(before: string, when: string): void {
@@ -84,65 +94,30 @@ function untouched(before: string, when: string): void {
   }
 }
 
-/** Starts `jhin serve --ui` and resolves once it printed its endpoints. */
+/** Starts `jhin serve --ui`; resolves once it printed its endpoints. */
 function serve(
   bin: string,
   dir: string,
-): Promise<{ child: ChildProcess.ChildProcess; output: string }> {
+): Promise<{
+  child: ChildProcess.ChildProcess;
+  output: string;
+  exited: Promise<number | null>;
+}> {
   const child = ChildProcess.spawn(bin, ["serve", "--ui", "--home", dir, "--cwd", dir], {
     stdio: ["ignore", "inherit", "pipe"],
   });
+  // Registered before anything else happens, so no exit can be missed.
+  const exited = new Promise<number | null>((resolve) => child.once("exit", resolve));
   return new Promise((resolve, reject) => {
     let output = "";
-    const exited = (code: number | null) =>
-      reject(new Error(`jhin serve exited with ${code}:\n${output}`));
-    child.once("exit", exited);
     child.stderr.on("data", (chunk) => {
       output += String(chunk);
       process.stderr.write(chunk);
-      if (output.includes("logs:")) {
-        // From here on the caller owns the exit.
-        child.off("exit", exited);
-        resolve({ child, output });
-      }
+      if (output.includes("logs:")) resolve({ child, output, exited });
     });
+    // Before the endpoints are printed an exit is a failure; after, resolve() already won.
+    void exited.then((code) => reject(new Error(`jhin serve exited with ${code}:\n${output}`)));
   });
-}
-
-/** Third-party versions the workspace lockfile resolved, as pnpm overrides (pins the smoke install). */
-function lockedOverrides(): { pins: Map<string, string>; unpinned: string[] } {
-  const lockfile = Fs.readFileSync(Path.join(ROOT, "pnpm-lock.yaml"), "utf8");
-  const section = /^packages:\n([\s\S]*?)^snapshots:/m.exec(lockfile)?.[1] ?? "";
-  const versions = new Map<string, string[]>();
-  for (const [, key] of section.matchAll(/^ {2}'?([^'\s][^'\n]*?)'?:$/gm)) {
-    const at = key!.lastIndexOf("@");
-    const name = key!.slice(0, at);
-    versions.set(name, [...(versions.get(name) ?? []), key!.slice(at + 1)]);
-  }
-  // A lockfile format this parser does not understand must not silently unpin everything.
-  if (versions.size === 0) {
-    throw new Error("pnpm-lock.yaml: found no packages to pin; has the lockfile format changed?");
-  }
-  const overrides = new Map<string, string>();
-  const unpinned: string[] = [];
-  for (const [name, list] of versions) {
-    if (list.length === 1) {
-      overrides.set(name, list[0]!);
-      continue;
-    }
-    // Several versions: pin each by its major (0.x by its minor) when that tells them apart.
-    const line = (version: string) => {
-      const [major, minor] = version.split(".");
-      return major === "0" ? `0.${minor}` : major!;
-    };
-    const lines = list.map(line);
-    if (new Set(lines).size !== lines.length) {
-      unpinned.push(`${name} (${list.join(", ")})`);
-      continue;
-    }
-    list.forEach((version, index) => overrides.set(`${name}@${lines[index]}`, version));
-  }
-  return { pins: overrides, unpinned };
 }
 
 /** Fails unless the tarball holds only dist/, package.json, LICENSE and README.md, and names no source. */
@@ -172,12 +147,6 @@ async function main(): Promise<void> {
     step(`pack ${names.length} packages`);
     // Packing must never rewrite workspace manifests: `serve --watch` reloads on them (D14).
     const manifests = manifestState(packages);
-    // A rewrite that is undone before the pack returns still reaches a watching node.
-    const written: string[] = [];
-    const watchers = [...packages.values()].map((dir) => {
-      const file = Path.join(dir, "package.json");
-      return Fs.watch(file, () => written.push(file));
-    });
     const tarballs = Path.join(tmp, "tarballs");
     const tarball = new Map<string, string>();
     for (const name of names) {
@@ -187,12 +156,6 @@ async function main(): Promise<void> {
       checkTarball(file);
       tarball.set(name, file);
       process.stdout.write(`${Path.basename(file)}\n`);
-    }
-    // Let the watchers deliver what the file system queued while packing blocked the loop.
-    await new Promise((resolve) => setImmediate(resolve));
-    for (const watcher of watchers) watcher.close();
-    if (written.length > 0) {
-      throw new Error(`packing wrote workspace manifests: ${[...new Set(written)].join(", ")}`);
     }
 
     step(`install into ${Path.join(tmp, "app")}`);
@@ -211,7 +174,7 @@ async function main(): Promise<void> {
     // The workspace packages are not on the registry: every reference goes to its
     // tarball. Third-party packages get the versions the workspace lockfile has, so
     // an upstream release cannot change what this check installs.
-    const locked = lockedOverrides();
+    const locked = lockedPins(Fs.readFileSync(Path.join(ROOT, "pnpm-lock.yaml"), "utf8"));
     process.stdout.write(`${locked.pins.size} third-party versions pinned from pnpm-lock.yaml\n`);
     if (locked.unpinned.length > 0) {
       process.stdout.write(
@@ -274,8 +237,7 @@ async function main(): Promise<void> {
     process.stdout.write(run(bin, ["example.greet", "--name", "Ada", ...at], tmp));
 
     step("jhin serve --ui");
-    const { child, output } = await serve(bin, dir);
-    const exited = new Promise<number | null>((resolve) => child.once("exit", resolve));
+    const { child, output, exited } = await serve(bin, dir);
     try {
       if (!output.includes(", 0 with problems")) throw new Error("jhin serve reported problems");
       const rpc = /rpc: (\S+)/.exec(output)?.[1];

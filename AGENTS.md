@@ -49,7 +49,10 @@ Work is done only when it is proven. Prefer the smallest proof:
 - leave the full run (`pnpm verify`) to CI unless you changed shared config;
 - after changing a `package.json`, `tsconfig.build.json` or anything a
   packed package ships, run `pnpm pack:smoke`: it packs the CLI with its
-  workspace packages, installs the tarballs outside the repo and runs them;
+  workspace packages, installs the tarballs outside the repo and runs them.
+  Pack a single package with `node scripts/pack.ts <package-dir> <out.tgz>`;
+  a bare `pnpm pack` or `pnpm publish` of a plugin fails on purpose, because
+  its manifest would still name TypeScript;
 - use the inspector (`jhin inspect`, or the MCP `inspect` tool) to check the
   live state of a node instead of guessing from logs;
 - read structured logs by `traceId` when a request crosses nodes.

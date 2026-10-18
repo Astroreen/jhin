@@ -18,6 +18,8 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
+import { packedManifest, type PackedManifest } from "./packing.ts";
+
 const STAGED = "JHIN_PACK_STAGED";
 
 function run(command: string, args: readonly string[], cwd: string, env = process.env): void {
@@ -30,22 +32,6 @@ function run(command: string, args: readonly string[], cwd: string, env = proces
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} (in ${cwd}) exited with ${result.status}`);
   }
-}
-
-interface PackedManifest {
-  jhin?: Record<string, unknown>;
-  publishConfig?: { jhin?: Record<string, unknown> } & Record<string, unknown>;
-}
-
-/** The manifest the tarball should carry: `publishConfig.jhin` applied to `jhin`. */
-function packedManifest(manifest: PackedManifest): PackedManifest {
-  const { jhin: override, ...publishConfig } = manifest.publishConfig ?? {};
-  if (override === undefined) return manifest;
-  if (manifest.jhin === undefined) throw new Error('"publishConfig.jhin" without "jhin"');
-  const packed: PackedManifest = { ...manifest, jhin: { ...manifest.jhin, ...override } };
-  if (Object.keys(publishConfig).length > 0) packed.publishConfig = publishConfig;
-  else delete packed.publishConfig;
-  return packed;
 }
 
 function pack(dir: string, out: string): void {
