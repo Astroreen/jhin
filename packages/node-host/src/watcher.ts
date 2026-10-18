@@ -10,17 +10,21 @@ export interface WatchTarget {
   readonly filter?: (relative: string) => boolean;
   /** Called once per burst of changes; `files` are absolute paths. */
   readonly onChange: (files: readonly string[]) => void;
+  /** Called for each change `filter` dropped, by path relative to the directory. */
+  readonly onIgnored?: (relative: string) => void;
 }
 
 const IGNORED = /(^|[/\\])(node_modules|\.git)([/\\]|$)/;
 
 /**
- * For a plugin root: ignore its build output (`dist/`) unless the plugin runs
- * from it. A plugin run from source must not reload while `build` or `pack`
- * rewrites dist/; one whose entry is built JavaScript reloads on rebuilds.
+ * For a plugin root: what a change to its build output means depends on the
+ * entry. A plugin run from TypeScript source ignores `dist/`, where
+ * `build` and `pack` write (scripts/build.ts), so building it does not reload
+ * it. A plugin whose entry is JavaScript runs from its build output, wherever
+ * that is, and reloads on every change.
  */
 export function buildOutputFilter(entry: string): ((relative: string) => boolean) | undefined {
-  if (/^(\.\/)?dist\//.test(entry)) return undefined;
+  if (!/\.[cm]?tsx?$/.test(entry)) return undefined;
   return (relative) => relative.split(/[/\\]/)[0] !== "dist";
 }
 
@@ -57,7 +61,11 @@ export function watch(targets: readonly WatchTarget[], log: Logger, debounceMs =
       const file = Path.join(directory, name.toString());
       const relative = Path.relative(directory, file);
       if (isDirectory) {
-        if (IGNORED.test(relative) || target.filter?.(relative) === false) return;
+        if (IGNORED.test(relative)) return;
+        if (target.filter?.(relative) === false) {
+          target.onIgnored?.(relative);
+          return;
+        }
       } else if (file !== target.path) return;
       pending.add(file);
       if (timer !== undefined) clearTimeout(timer);

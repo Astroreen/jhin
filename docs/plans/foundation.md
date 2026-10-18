@@ -69,9 +69,11 @@ and engineering practices.
   the previous one and shows in the inspector. Two sources with one id (a
   kernel host that applies no precedence) stop the running plugin: both copies
   are blocked as duplicates until one goes; the node host never passes
-  duplicates, a later layer shadows an earlier one. A plugin whose entry is
-  not under `dist/` ignores changes there, so building or packing it does not
-  reload it. Known limitation: old modules
+  duplicates, a later layer shadows an earlier one. A plugin run from
+  TypeScript source ignores its `dist/` (where `build` and `pack` write), so
+  building or packing it does not reload it; a plugin whose entry is
+  JavaScript reloads on any change, wherever it is built to. Known
+  limitation: old modules
   stay in Node's memory.
 - **D15. Plugin locations and precedence** (same id → topmost wins, i.e.
   "fork one plugin, not the app"): distribution (npm deps of the CLI package)
