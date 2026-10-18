@@ -6,7 +6,7 @@
 source "$(dirname "$0")/env.sh"
 cd "$JHIN_ROOT" || exit 1
 log="$(mktemp)"
-trap 'bash scripts/t3/stop.sh >/dev/null' EXIT
+trap 'bash scripts/t3/stop.sh >/dev/null; rm -f "$log"' EXIT
 
 bash scripts/t3/serve.sh >"$log" 2>&1 &
 # Wait for the concrete "open" line (or serve.sh exiting), not for a time.
@@ -34,20 +34,22 @@ echo "smoke: stop.sh left no node running"
 # A process that ignores SIGTERM and, when signalled, starts a child that
 # ignores it too: stop.sh must catch the late child and reach SIGKILL.
 stub="$(mktemp -d)"
+mkfifo "$stub/ready"
 cat >"$stub/stubborn.sh" <<'STUB'
 trap 'bash -c "trap \"\" TERM; exec sleep 1000" & echo $! >"$1/child"' TERM
-touch "$1/ready"
+echo ready >"$1/ready"
 while :; do sleep 0.1; done
 STUB
 bash "$stub/stubborn.sh" "$stub" &
 stubborn=$!
-until [ -f "$stub/ready" ]; do sleep 0.1; done
+trap 'kill -9 "$stubborn" $(cat "$stub/child" 2>/dev/null) 2>/dev/null || true; rm -rf "$stub" "$log"; bash scripts/t3/stop.sh >/dev/null' EXIT
+# Blocks until the stub has installed its trap and written to the fifo.
+read -r _ <"$stub/ready"
 echo "$stubborn" >"$JHIN_DEV_DIR/pids/stubborn.pid"
 JHIN_STOP_GRACE=20 bash scripts/t3/stop.sh
 child="$(cat "$stub/child")"
-if kill -0 "$stubborn" 2>/dev/null || kill -0 "$child" 2>/dev/null; then
+if kill -0 "$stubborn" 2>/dev/null && [ "$(ps -o stat= -p "$stubborn" | cut -c1)" != Z ] || kill -0 "$child" 2>/dev/null; then
   echo "smoke: stop.sh left a SIGTERM-ignoring process or its late child running" >&2
   exit 1
 fi
-rm -rf "$stub"
 echo "smoke: stop.sh ended a SIGTERM-ignoring process and its late child"

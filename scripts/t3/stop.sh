@@ -11,11 +11,13 @@ for file in "$JHIN_DEV_DIR"/pids/*.pid; do
   name="$(basename "$file" .pid)"
   pid="$(cat "$file")"
   if is_ours "$pid" "$name"; then
-    if stop_tree "$pid"; then
-      echo "jhin: stopped $name ($pid)"
-    else
+    if ! stop_tree "$pid"; then
+      # Keep the pid file: a retry must still find the survivor, and
+      # record_pid must not start a second instance next to it.
       status=1
+      continue
     fi
+    echo "jhin: stopped $name ($pid)"
   fi
   rm -f "$file"
 done

@@ -226,10 +226,11 @@ stop_tree() {
       return 1
     fi
     sleep 0.1
-    # Pick up children spawned since the last look.
+    # Forget processes that have exited (their pid may be reused by an
+    # unrelated process) and pick up children spawned since the last look.
     pids=""
     for pid in $seen; do
-      pids="$pids $(tree_pids "$pid")"
+      is_running "$pid" && pids="$pids $(tree_pids "$pid")"
     done
     seen="$(printf '%s' "$pids" | tr ' ' '\n' | grep -v '^$' | sort -un)"
   done
