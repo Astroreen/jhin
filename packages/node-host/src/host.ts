@@ -41,7 +41,7 @@ import {
 import { readNodeId, resolveHome, type JhinHome } from "./home.ts";
 import { createFileModuleLoader } from "./loader.ts";
 import { createNodeLogger, type NodeLogger } from "./logger.ts";
-import { watch, type WatchTarget } from "./watcher.ts";
+import { buildOutputFilter, watch, type WatchTarget } from "./watcher.ts";
 
 export interface NodeHostOptions {
   /** Jhin home directory; defaults to `$JHIN_HOME` or `~/.jhin`. */
@@ -486,8 +486,12 @@ function watchTargets({
     const id = (plugin.manifest as { id?: unknown } | undefined)?.id;
     if (typeof id !== "string") continue;
     const manifestFile = Path.join(plugin.root, "package.json");
+    const filter = buildOutputFilter(
+      String((plugin.manifest as { entry?: unknown } | undefined)?.entry ?? ""),
+    );
     targets.set(`plugin:${id}:${plugin.root}`, {
       path: plugin.root,
+      ...(filter === undefined ? {} : { filter }),
       onChange: (files) => {
         if (!files.includes(manifestFile)) {
           reload(id, files);

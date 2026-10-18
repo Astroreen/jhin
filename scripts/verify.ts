@@ -199,8 +199,8 @@ function plan(): { steps: Step[]; skippedSteps: StepResult[] } {
     skippedSteps.push(skip("e2e", "only Markdown changed"));
   }
   const packed = packedDirs(all);
-  // Tests and Markdown never reach a tarball.
-  const NOT_SHIPPED = /\/test\/|\.test\.tsx?$|\.md$/;
+  // Tests never reach a tarball (a package's README.md does).
+  const NOT_SHIPPED = /\/test\/|\.test\.tsx?$/;
   const shipsChange = (file: string) =>
     !NOT_SHIPPED.test(file) && packed.some((dir) => file.startsWith(`${dir}/`));
   if (files.some((file) => PACKING.test(file) || shipsChange(file))) {

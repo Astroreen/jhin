@@ -15,6 +15,16 @@ export interface WatchTarget {
 const IGNORED = /(^|[/\\])(node_modules|\.git)([/\\]|$)/;
 
 /**
+ * For a plugin root: ignore its build output (`dist/`) unless the plugin runs
+ * from it. A plugin run from source must not reload while `build` or `pack`
+ * rewrites dist/; one whose entry is built JavaScript reloads on rebuilds.
+ */
+export function buildOutputFilter(entry: string): ((relative: string) => boolean) | undefined {
+  if (/^(\.\/)?dist\//.test(entry)) return undefined;
+  return (relative) => relative.split(/[/\\]/)[0] !== "dist";
+}
+
+/**
  * Watches directories and files and reports bursts of changes; editors write
  * a file in several steps, so changes are debounced per target.
  *
