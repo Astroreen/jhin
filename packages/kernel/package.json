@@ -11,5 +11,13 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@jhin/sdk": "workspace:*",
+    "jsonc-parser": "catalog:",
+    "semver": "catalog:"
+  },
+  "devDependencies": {
+    "@types/semver": "catalog:"
   }
 }

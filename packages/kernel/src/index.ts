@@ -1,2 +1,16 @@
-/** Version of the plugin API a manifest's `apiVersion` must match. */
-export const PLUGIN_API_VERSION = 1;
+export { parseConfigText, DEFAULT_CONFIG_LAYERS } from "./config.ts";
+export { KernelError, toErrorInfo, type ErrorInfo, type KernelErrorCode } from "./errors.ts";
+export type { KernelEvent } from "./events.ts";
+export type { HookInfo } from "./hooks.ts";
+export {
+  createKernel,
+  type Kernel,
+  type KernelOptions,
+  type KernelSide,
+  type KernelSnapshot,
+  type ModuleLoader,
+  type PluginInfo,
+  type PluginSource,
+  type PluginStatus,
+} from "./kernel.ts";
+export { noopLogger } from "./logger.ts";
