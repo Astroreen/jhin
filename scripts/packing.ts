@@ -21,25 +21,33 @@ export function packedManifest(manifest: PackedManifest): PackedManifest {
 export interface LockedPins {
   /** pnpm `overrides`: `name` or `name@<major>` (`name@0.<minor>`) to an exact version. */
   readonly pins: Map<string, string>;
-  /** Packages with several versions on one major line, left floating. */
+  /** Left floating: several versions on one major line, or a non-registry specifier. */
   readonly unpinned: string[];
 }
+
+const SEMVER = /^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/;
 
 /** Third-party versions a pnpm lockfile resolved, as pnpm overrides. */
 export function lockedPins(lockfile: string): LockedPins {
   const section = /^packages:\n([\s\S]*?)^snapshots:/m.exec(lockfile)?.[1] ?? "";
   const versions = new Map<string, string[]>();
+  const unpinned: string[] = [];
   for (const [, key] of section.matchAll(/^ {2}'?([^'\s][^'\n]*?)'?:$/gm)) {
     const at = key!.lastIndexOf("@");
     const name = key!.slice(0, at);
-    versions.set(name, [...(versions.get(name) ?? []), key!.slice(at + 1)]);
+    const version = key!.slice(at + 1);
+    // Git, tarball and other non-registry specifiers cannot be pinned by version.
+    if (at <= 0 || !SEMVER.test(version)) {
+      unpinned.push(key!);
+      continue;
+    }
+    versions.set(name, [...(versions.get(name) ?? []), version]);
   }
   // A lockfile format this parser does not understand must not silently unpin everything.
   if (versions.size === 0) {
     throw new Error("pnpm-lock.yaml: found no packages to pin; has the lockfile format changed?");
   }
   const pins = new Map<string, string>();
-  const unpinned: string[] = [];
   const line = (version: string) => {
     const [major, minor] = version.split(".");
     return major === "0" ? `0.${minor}` : major!;

@@ -38,6 +38,8 @@ function run(command: string, args: readonly string[], cwd: string): string {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "inherit"],
+    // On Windows pnpm and the installed jhin are .cmd shims, which only a shell resolves.
+    shell: process.platform === "win32",
   });
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} exited with ${result.status}\n${result.stdout}`);
@@ -137,9 +139,21 @@ function checkTarball(file: string): void {
   const manifest = JSON.parse(run("tar", ["-xzOf", file, "package/package.json"], ROOT)) as {
     exports?: unknown;
     bin?: unknown;
+    main?: unknown;
+    module?: unknown;
+    types?: unknown;
+    typings?: unknown;
     jhin?: { entry?: unknown };
   };
-  const pointers = JSON.stringify([manifest.exports, manifest.bin, manifest.jhin?.entry]);
+  const pointers = JSON.stringify([
+    manifest.exports,
+    manifest.bin,
+    manifest.main,
+    manifest.module,
+    manifest.types,
+    manifest.typings,
+    manifest.jhin?.entry,
+  ]);
   // A path that starts in src/ or names TypeScript (declarations are fine).
   if (/"(\.\/)?src\/|\.tsx?"/.test(pointers.replaceAll('.d.ts"', '"'))) {
     throw new Error(`${file} points at source: ${pointers}`);
@@ -186,7 +200,7 @@ async function main(): Promise<void> {
     process.stdout.write(`${locked.pins.size} third-party versions pinned from pnpm-lock.yaml\n`);
     if (locked.unpinned.length > 0) {
       process.stdout.write(
-        `left unpinned (same major, several versions): ${locked.unpinned.join("; ")}\n`,
+        `left unpinned (several versions on one major, or not from the registry): ${locked.unpinned.join("; ")}\n`,
       );
     }
     const pins = new Map<string, string>([

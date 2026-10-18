@@ -28,6 +28,8 @@ function run(command: string, args: readonly string[], cwd: string, env = proces
     env,
     // stdout too: callers may reserve their own stdout for results.
     stdio: ["ignore", process.stderr, process.stderr],
+    // On Windows pnpm is pnpm.cmd, which only a shell resolves.
+    shell: process.platform === "win32",
   });
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} (in ${cwd}) exited with ${result.status}`);

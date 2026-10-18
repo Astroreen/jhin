@@ -62,6 +62,12 @@ packages:
   same-line@1.33.0:
     resolution: {integrity: sha512-h}
 
+  from-git@git+https://github.com/owner/repo.git#abc123:
+    resolution: {tarball: https://codeload.github.com/owner/repo/tar.gz/abc123}
+
+  '@scope/from-tarball@https://example.com/pkg-1.0.0.tgz':
+    resolution: {tarball: https://example.com/pkg-1.0.0.tgz}
+
 snapshots:
 
   plain@4.0.0: {}
@@ -78,7 +84,11 @@ describe("lockedPins", () => {
       "zero@0.3": "0.3.1",
       "zero@0.4": "0.4.0",
     });
-    expect(unpinned).toEqual(["same-line (1.32.0, 1.33.0)"]);
+    expect(unpinned).toEqual([
+      "from-git@git+https://github.com/owner/repo.git#abc123",
+      "@scope/from-tarball@https://example.com/pkg-1.0.0.tgz",
+      "same-line (1.32.0, 1.33.0)",
+    ]);
   });
 
   it("fails loudly when it finds no packages", () => {
