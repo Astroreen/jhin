@@ -11,7 +11,7 @@ import {
   Textarea,
 } from "@jhin/ui";
 import { ClockIcon, SaveIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
@@ -46,6 +46,23 @@ interface Loaded {
   /** The node file's part as read, to tell whether it was edited. */
   readonly original: string;
   readonly text: string;
+}
+
+/**
+ * The editor once a save of `sent` to `section` is read back as `next`: the
+ * file as it is now, and text typed while saving kept as an edit of it.
+ */
+export function readBack(
+  current: Loaded | undefined,
+  section: string,
+  sent: string,
+  next: ConfigRead,
+): Loaded | undefined {
+  if (current?.section !== section) return current;
+  const original = pretty(next.layers.node);
+  return current.text === sent
+    ? { section, read: next, original, text: original }
+    : { ...current, read: next, original };
 }
 
 /**
@@ -93,10 +110,12 @@ export function useLoadedSection(
  * reachable now get it when they return (D50).
  */
 export function NodeConfigSection() {
-  const { connections } = useSettingsServices();
+  const { connections, dialogs } = useSettingsServices();
   const nodes = useExternal(connections, connections.list).filter((node) => node.state === "open");
   const [nodeId, setNodeId] = useState<string | undefined>();
   const node = nodes.find((candidate) => candidate.id === nodeId) ?? nodes[0];
+  /** The editor holds changes not saved yet. */
+  const edited = useRef(false);
   if (node === undefined) {
     return (
       <SettingsSection title="Node config">
@@ -110,7 +129,30 @@ export function NodeConfigSection() {
         <SettingsSection title="Node">
           <SettingsRow
             control={
-              <Select onValueChange={(value) => setNodeId(String(value))} value={node.id}>
+              <Select
+                onValueChange={(value) => {
+                  const next = String(value);
+                  if (next === node.id) return;
+                  // Another node's config, once unsaved edits are given up on purpose.
+                  void (async () => {
+                    if (
+                      edited.current &&
+                      dialogs !== undefined &&
+                      !(await dialogs.confirm({
+                        title: `Discard the changes to ${node.label}'s config?`,
+                        description: "They were not saved.",
+                        confirmLabel: "Discard",
+                        variant: "destructive",
+                      }))
+                    ) {
+                      return;
+                    }
+                    edited.current = false;
+                    setNodeId(next);
+                  })();
+                }}
+                value={node.id}
+              >
                 <SelectTrigger aria-label="Node" className="w-full sm:w-56" size="sm">
                   <SelectValue>{node.label}</SelectValue>
                 </SelectTrigger>
@@ -128,12 +170,25 @@ export function NodeConfigSection() {
           />
         </SettingsSection>
       ) : null}
-      <ConfigEditor connection={node} key={node.id} />
+      <ConfigEditor
+        connection={node}
+        key={node.id}
+        onEdited={(value) => {
+          edited.current = value;
+        }}
+      />
     </>
   );
 }
 
-function ConfigEditor({ connection }: { connection: NodeConnection }) {
+function ConfigEditor({
+  connection,
+  onEdited,
+}: {
+  connection: NodeConnection;
+  /** Whether the text holds changes not saved yet, each time that changes. */
+  onEdited(edited: boolean): void;
+}) {
   const { mesh, toasts, dialogs } = useSettingsServices();
   const client = connection.client;
   const [sections, setSections] = useState<readonly string[] | undefined>();
@@ -147,14 +202,20 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
   const self = members.find((member) => member.self);
 
   useEffect(() => {
+    // Answers for a client this node no longer has are dropped.
+    let current = true;
     void client
       .call<{ properties?: Record<string, unknown> }>("host.config.schema")
       .then((schema) => {
+        if (!current) return;
         const names = Object.keys(schema.properties ?? {}).toSorted();
         setSections(names);
-        setSection((current) => current ?? names[0]);
+        setSection((chosen) =>
+          chosen !== undefined && names.includes(chosen) ? chosen : names[0],
+        );
       })
       .catch((error: unknown) => {
+        if (!current) return;
         setSections([]);
         toasts?.show({
           type: "error",
@@ -164,13 +225,17 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
       });
     void client
       .call<Pending[]>("mesh.config.pending")
-      .then(setPending)
-      .catch(() => setPending([]));
+      .then((next) => current && setPending(next))
+      .catch(() => current && setPending([]));
+    return () => {
+      current = false;
+    };
   }, [client]);
 
   const read = loaded?.read;
   const text = loaded?.text ?? "";
   const edited = loaded !== undefined && loaded.text !== loaded.original;
+  useEffect(() => onEdited(edited), [edited]);
 
   /** Another section, once unsaved edits are given up on purpose. */
   const choose = async (next: string) => {
@@ -207,8 +272,9 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
 
   const save = async () => {
     if (loaded === undefined || parsed === undefined) return;
-    // The section the text was read for, whatever is chosen meanwhile.
-    const { section: saved } = loaded;
+    // The section the text was read for, whatever is chosen meanwhile, and the
+    // text saved, whatever is typed meanwhile.
+    const { section: saved, text: sent } = loaded;
     setSaving(true);
     try {
       const onlySelf = self === undefined || (targets.length === 1 && targets[0] === self.nodeId);
@@ -236,22 +302,26 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
           await client.call<Pending[]>("mesh.config.pending").catch(() => pending as Pending[]),
         );
       }
-      // What the file holds now, if the section is still the one shown.
-      const next = await client.call<ConfigRead>("host.config.get", { section: saved });
-      const original = pretty(next.layers.node);
-      setLoaded((current) =>
-        current?.section === saved
-          ? { section: saved, read: next, original, text: original }
-          : current,
-      );
     } catch (error) {
       toasts?.show({
         type: "error",
         title: "Setting not saved",
         description: (error as Error).message,
       });
+      return;
     } finally {
       setSaving(false);
+    }
+    // What the file holds now, if the section is still the one shown.
+    try {
+      const next = await client.call<ConfigRead>("host.config.get", { section: saved });
+      setLoaded((current) => readBack(current, saved, sent, next));
+    } catch (error) {
+      toasts?.show({
+        type: "warning",
+        title: "Saved, but not read back",
+        description: (error as Error).message,
+      });
     }
   };
 

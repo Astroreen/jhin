@@ -127,6 +127,8 @@ export function createTimeline() {
   const snapshots = new Map<MutableTurn, TimelineTurn>();
   /** The turns the batch being applied changed. */
   const changed = new Set<MutableTurn>();
+  /** The last event folded in: events delivered again are not folded twice. */
+  let sequence = 0;
   let deleted = false;
   let timeline: Timeline = { turns: [], deleted: false };
 
@@ -149,6 +151,8 @@ export function createTimeline() {
     changed.clear();
     const wasDeleted = deleted;
     for (const event of events) {
+      if (event.sequence <= sequence) continue;
+      sequence = event.sequence;
       if (event.type === ThreadEvents.threadDeleted) {
         deleted = true;
         continue;

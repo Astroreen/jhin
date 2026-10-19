@@ -6,9 +6,7 @@ import {
   type NodeTarget,
   type ProjectRecord,
   type ThreadRecord,
-  visitKey,
 } from "@jhin/client-api";
-import type { StoredEvent } from "@jhin/storage-api";
 import { Alert, AlertAction, AlertDescription, Button } from "@jhin/ui";
 import { ArchiveRestoreIcon, ChevronDownIcon, CircleAlertIcon, XIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -16,81 +14,17 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { buildPromptHistory } from "../../lib/composer.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { startThread } from "../../lib/thread-actions.ts";
-import { ENDED_STATUSES } from "../../lib/thread-status.ts";
-import { createTimeline, openRequests, type Timeline } from "../../lib/timeline.ts";
+import { openRequests } from "../../lib/timeline.ts";
 import { Composer, type ComposerHandleApi, type Selection } from "./composer.tsx";
-import { useFollowUps, type SendOutcome } from "./follow-ups.ts";
+import { sendMessage, useFollowUps } from "./follow-ups.ts";
 import { ChatHeader } from "./header.tsx";
 import { useChat } from "./services.ts";
+import { useThreadTimeline } from "./thread-timeline.ts";
 import { TimelineView } from "./timeline.tsx";
 
-interface ThreadTimelineState {
-  readonly timeline: Timeline;
-  /** How many events were folded in: changes whenever the timeline grows. */
-  readonly count: number;
-  readonly error?: string;
-}
-const NO_TIMELINE: ThreadTimelineState = { timeline: { turns: [], deleted: false }, count: 0 };
-
-/**
- * A thread's timeline, kept current from the thread's stream (or this node's
- * copy of a remote one, D26). Events are folded in as they arrive, one batch
- * per frame, never the whole thread again.
- */
-function useThreadTimeline(target: NodeTarget, threadId: string): ThreadTimelineState {
-  const { threads, connections } = useChat();
-  const [state, setState] = useState<ThreadTimelineState>(NO_TIMELINE);
-  useEffect(() => {
-    setState(NO_TIMELINE);
-    let disposed = false;
-    let subscription: { dispose(): void } | undefined;
-    const node = connections.get(target.node);
-    if (node === undefined) return;
-    const fold = createTimeline();
-    let count = 0;
-    // Events arrive one by one; they are batched into one update per frame.
-    let pending: StoredEvent[] = [];
-    let frame: number | undefined;
-    const flush = () => {
-      frame = undefined;
-      const batch = pending;
-      pending = [];
-      count += batch.length;
-      const timeline = fold.apply(batch);
-      setState((previous) => ({ ...previous, timeline, count }));
-    };
-    void threads
-      .open(target, threadId)
-      .then((stream) => {
-        if (disposed) return;
-        subscription = node.client.subscribe(
-          stream,
-          {
-            onError: (error) =>
-              !disposed && setState((previous) => ({ ...previous, error: error.message })),
-          },
-          (event) => {
-            pending.push(event);
-            frame ??= requestAnimationFrame(flush);
-          },
-        );
-      })
-      .catch((failure: unknown) => {
-        if (!disposed) {
-          setState({
-            ...NO_TIMELINE,
-            error: `Cannot open this thread: ${(failure as Error).message}`,
-          });
-        }
-      });
-    return () => {
-      disposed = true;
-      subscription?.dispose();
-      if (frame !== undefined) cancelAnimationFrame(frame);
-    };
-  }, [threads, connections, target.node, target.remote, threadId]);
-  return state;
-}
+/** Where a thread's composer keeps its draft. */
+const threadDraftKey = (target: NodeTarget, threadId: string) =>
+  `${targetKey(target)}|thread|${threadId}`;
 
 /** Stick to the end while the user is there; a pill brings them back otherwise. */
 function useStickToEnd(dependency: unknown) {
@@ -159,7 +93,11 @@ export function ThreadView(props: {
   const { target, threadId, thread } = props;
   const chat = useChat();
   const settings = useSection(chat.context, CHAT_SECTION, ChatSettings);
-  const { timeline, count, error: openError } = useThreadTimeline(target, threadId);
+  const {
+    timeline,
+    count,
+    error: openError,
+  } = useThreadTimeline(chat.threads, chat.connections, target, threadId);
   const lastTurn = timeline.turns.at(-1);
   const running = lastTurn?.state === "running";
   const requests = useMemo(() => openRequests(timeline), [timeline]);
@@ -202,45 +140,16 @@ export function ThreadView(props: {
     };
   }, [chat]);
 
-  const post = async (message: {
-    text: string;
-    attachments: readonly TurnAttachment[];
-  }): Promise<SendOutcome> => {
-    try {
-      await chat.threads.call(target, "threads.send", {
-        threadId,
-        text: message.text,
-        ...(message.attachments.length === 0 ? {} : { attachments: message.attachments }),
-        ...selection,
-      });
-      return { kind: "sent" };
-    } catch (failure) {
-      if ((failure as { code?: unknown }).code === "TURN_IN_PROGRESS") return { kind: "busy" };
-      return { kind: "failed", message: (failure as Error).message };
-    }
-  };
-
-  // Follow-ups typed while a turn runs go out one by one as turns end. The
-  // record says when a turn ended for the node (after it took its last event).
-  const latest = thread?.lastTurn;
-  const followUps = useFollowUps({
-    queues: chat.followUps,
-    key: visitKey(target, threadId),
-    quiet: !running && requests.length === 0,
-    settled:
-      latest === undefined
-        ? "none"
-        : ENDED_STATUSES.has(latest.status)
-          ? `${latest.turnId}:${latest.status}`
-          : undefined,
-    post,
-  });
+  // Follow-ups typed while a turn runs go out one by one as turns end, also
+  // while this thread is not on screen (the chat plugin's queues send them).
+  const followUps = useFollowUps(chat.followUps, target, threadId);
 
   const send = async (text: string, attachments: readonly TurnAttachment[]): Promise<boolean> => {
     setError(undefined);
-    const outcome = await post({ text, attachments });
+    const message = { text, attachments, settings: selection };
+    const outcome = await sendMessage(chat.threads, target, threadId, message);
     if (outcome.kind === "busy") {
-      followUps.add({ id: crypto.randomUUID(), text, attachments });
+      followUps.add({ id: crypto.randomUUID(), ...message });
     } else if (outcome.kind === "failed") {
       setError(outcome.message);
       return false;
@@ -372,7 +281,7 @@ export function ThreadView(props: {
                   />
                 ) : (
                   <Composer
-                    draftKey={`${targetKey(target)}|thread|${threadId}`}
+                    draftKey={threadDraftKey(target, threadId)}
                     handleRef={handle}
                     history={history}
                     onDequeue={followUps.remove}
@@ -450,12 +359,22 @@ export function DraftView(props: {
 
   const send = async (text: string, attachments: readonly TurnAttachment[]): Promise<boolean> => {
     try {
-      const threadId = await startThread(chat.threads, target, {
+      const { threadId, uncertain } = await startThread(chat.threads, target, {
         projectId: project.id,
         text,
         attachments,
         selection,
       });
+      if (uncertain !== undefined) {
+        // The node may have taken it: the thread stays, with the message in its
+        // composer in case it did not arrive.
+        chat.drafts.set(threadDraftKey(target, threadId), { prompt: text, attachments });
+        chat.toasts?.show({
+          type: "warning",
+          title: "Message not confirmed",
+          description: `${uncertain.message}. If it does not show in the thread, send it again.`,
+        });
+      }
       // To the new thread, unless the user went elsewhere meanwhile.
       const route = chat.navigation.current();
       if (

@@ -292,6 +292,17 @@ describe("folding as events arrive", () => {
     expect(second.turns[0]).toBe(first.turns[0]);
     expect(second.turns[1]).not.toBe(first.turns[1]);
     expect(fold.apply([])).toBe(second);
-    expect(fold.apply(stream(["something.else", { turnId: "u1" }]))).toBe(second);
+    const unknown = stream(["something.else", { turnId: "u1" }]).map((event) => ({
+      ...event,
+      sequence: events.length + 1,
+    }));
+    expect(fold.apply(unknown)).toBe(second);
+  });
+
+  it("folds an event once, when its stream delivers it again", () => {
+    const fold = createTimeline();
+    const once = fold.apply(events);
+    expect(fold.apply(events.slice(3))).toBe(once);
+    expect(fold.current()).toEqual(reduceTimeline(events));
   });
 });

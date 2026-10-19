@@ -35,10 +35,17 @@ function nodeIdOf(mesh: MeshMembership, target: NodeTarget): string | undefined 
 }
 
 /**
- * Creates a thread and sends its first message; returns the thread's id. A
- * thread whose first message could not be sent is deleted again, so a failed
- * start leaves no empty thread behind (unless the node is out of reach for
- * that too).
+ * Errors after which a message may still have reached the node, because the
+ * connection or the mesh dropped the call: its turn may be running.
+ */
+const UNCERTAIN = new Set(["DISCONNECTED", "MESH_TIMEOUT", "NODE_UNREACHABLE"]);
+
+/**
+ * Creates a thread and sends its first message. A thread whose first message
+ * the node refused is deleted again, so a failed start leaves no empty thread
+ * behind (unless the node is out of reach for that too). When the message may
+ * have reached the node all the same, the thread stays: the result has its id
+ * and what went wrong.
  */
 export async function startThread(
   threads: Pick<ThreadsCatalog, "call">,
@@ -55,7 +62,7 @@ export async function startThread(
       readonly interactionMode?: string;
     };
   },
-): Promise<string> {
+): Promise<{ readonly threadId: string; readonly uncertain?: Error }> {
   const thread = await threads.call<ThreadRecord>(target, "threads.create", {
     projectId: first.projectId,
     ...first.selection,
@@ -68,11 +75,14 @@ export async function startThread(
       ...first.selection,
     });
   } catch (error) {
+    if (UNCERTAIN.has(String((error as { code?: unknown }).code))) {
+      return { threadId: thread.id, uncertain: error as Error };
+    }
     // The send's error is the one to show; a failed clean-up adds nothing to it.
     await threads.call(target, "threads.delete", { threadId: thread.id }).catch(() => undefined);
     throw error;
   }
-  return thread.id;
+  return { threadId: thread.id };
 }
 
 /** What can be done to a thread from its row, its header or the command palette. */

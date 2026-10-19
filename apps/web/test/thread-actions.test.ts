@@ -28,7 +28,7 @@ const first = {
 describe("startThread", () => {
   it("creates the thread with the chosen agent and sends its first message", async () => {
     const node = fakeNode();
-    expect(await startThread(node, target, first)).toBe("t1");
+    expect(await startThread(node, target, first)).toEqual({ threadId: "t1" });
     expect(node.calls).toEqual([
       ["threads.create", { projectId: "scratch", agentId: "jhin.agent-fake" }],
       ["threads.send", { threadId: "t1", text: "hello", agentId: "jhin.agent-fake" }],
@@ -44,6 +44,15 @@ describe("startThread", () => {
       "threads.delete",
     ]);
     expect(node.calls.at(-1)).toEqual(["threads.delete", { threadId: "t1" }]);
+  });
+
+  it("keeps the thread when the message may have reached the node all the same", async () => {
+    const dropped = Object.assign(new Error("Connection closed before the call completed"), {
+      code: "DISCONNECTED",
+    });
+    const node = fakeNode({ send: dropped });
+    expect(await startThread(node, target, first)).toEqual({ threadId: "t1", uncertain: dropped });
+    expect(node.calls.map(([method]) => method)).toEqual(["threads.create", "threads.send"]);
   });
 
   it("reports the send's failure even when the clean-up fails too", async () => {

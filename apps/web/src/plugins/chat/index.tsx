@@ -51,7 +51,7 @@ import {
   type ComposerHandle,
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
-import { createFollowUpQueues } from "./follow-ups.ts";
+import { createFollowUpQueues, sendMessage } from "./follow-ups.ts";
 
 /** The page header of a view without a thread. */
 function PageHeader({ title }: { title: string }) {
@@ -248,7 +248,12 @@ export const chatPlugin = builtin(
         drafts: context.subscriptions.add(createDrafts()),
         agents: createAgentsCache(threads),
         lastSelection: createLastSelection(),
-        followUps: createFollowUpQueues(),
+        followUps: context.subscriptions.add(
+          createFollowUpQueues({
+            threads,
+            post: (target, threadId, message) => sendMessage(threads, target, threadId, message),
+          }),
+        ),
         composer,
       };
 
