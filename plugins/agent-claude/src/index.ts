@@ -12,8 +12,8 @@ import { definePlugin, z } from "@jhin/sdk";
 import { KV_CAPABILITY, type KeyValueStore } from "@jhin/storage-api";
 import { query as sdkQuery, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
-import { BUNDLED_DEFAULT_MODEL, BUNDLED_MODELS } from "./models.ts";
-import { claudeTurn, type QueryFunction, type SessionStore } from "./turn.ts";
+import { BUNDLED_DEFAULT_MODEL, BUNDLED_MODELS, manifestContextWindow } from "./models.ts";
+import { claudeEnvironment, claudeTurn, type QueryFunction, type SessionStore } from "./turn.ts";
 
 export { claudeTurn, permissionMode, transcript, type QueryFunction } from "./turn.ts";
 export * from "./mapping.ts";
@@ -24,6 +24,8 @@ const NAMESPACE = "jhin.agent-claude";
 
 /** How long a status probe (it starts Claude Code) is reused. */
 const STATUS_TTL_MS = 5 * 60_000;
+/** How long a probe that found Claude Code unavailable is reused: a sign-in shows soon. */
+const UNAVAILABLE_TTL_MS = 10_000;
 /** A probe that takes longer reports Claude Code as unavailable. */
 const PROBE_TIMEOUT_MS = 25_000;
 
@@ -90,7 +92,7 @@ async function probe(query: QueryFunction, config: Config): Promise<Probe> {
         ...(config.binaryPath === undefined
           ? {}
           : { pathToClaudeCodeExecutable: config.binaryPath }),
-        ...(config.env === undefined ? {} : { env: { ...process.env, ...config.env } }),
+        ...(config.env === undefined ? {} : { env: claudeEnvironment(config.env) }),
       },
     }) as Initializing;
     if (running.initializationResult === undefined) return { status: { available: true } };
@@ -105,6 +107,8 @@ async function probe(query: QueryFunction, config: Config): Promise<Probe> {
     ]);
     const account = init.account ?? {};
     // T3's claudeAuthStatus: tokenSource "none" is the one answer that disproves sign-in.
+    // An account without fields (an API key or a third-party provider the CLI does not
+    // describe) is signed in, as in T3; a wrong guess fails the first turn with Claude's error.
     const signedIn =
       (account.apiProvider !== undefined && account.apiProvider !== "firstParty") ||
       account.tokenSource !== "none" ||
@@ -152,6 +156,8 @@ export function createClaudeRuntime(options: {
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
 }): AgentRuntime & { dispose(): void } {
   const turns = new Set<AgentTurn>();
+  /** Context windows Claude Code reported in results, by model. */
+  const windows = new Map<string, number>();
   let probed: { at: number; probe: Probe } | undefined;
   let probing: Promise<Probe> | undefined;
   const models = () => probed?.probe.models ?? BUNDLED_MODELS;
@@ -180,19 +186,24 @@ export function createClaudeRuntime(options: {
           })
           .finally(() => (probing = undefined)));
       if (probed === undefined) return (await refresh()).status;
-      // A stale answer is still given at once while a new probe runs.
-      if (Date.now() - probed.at >= STATUS_TTL_MS) void refresh().catch(() => undefined);
+      const age = Date.now() - probed.at;
+      // "Unavailable" is never answered from a stale probe: it decides the default agent (D96).
+      if (!probed.probe.status.available) {
+        return age < UNAVAILABLE_TTL_MS ? probed.probe.status : (await refresh()).status;
+      }
+      // A stale "available" is still given at once while a new probe runs.
+      if (age >= STATUS_TTL_MS) void refresh().catch(() => undefined);
       return probed.probe.status;
     },
     startTurn(request) {
       const config = options.config();
+      const model = request.model ?? this.defaultModel ?? BUNDLED_DEFAULT_MODEL;
       const turn = claudeTurn(request, {
         query: options.query,
         sessions: options.sessions,
         settings: config,
-        defaultModel: this.defaultModel ?? BUNDLED_DEFAULT_MODEL,
-        contextWindow: (model) =>
-          BUNDLED_MODELS.some((known) => known.id === model) ? 1_000_000 : undefined,
+        defaultModel: model,
+        contextWindow: (name) => windows.get(name) ?? manifestContextWindow(name),
         ...(options.log === undefined ? {} : { log: options.log }),
       });
       turns.add(turn);
@@ -201,7 +212,12 @@ export function createClaudeRuntime(options: {
         ...turn,
         items: (async function* () {
           try {
-            yield* items;
+            for await (const item of items) {
+              if (item.kind === "usage" && item.usage.contextWindow !== undefined) {
+                windows.set(model, item.usage.contextWindow);
+              }
+              yield item;
+            }
           } finally {
             turns.delete(turn);
           }

@@ -28,7 +28,10 @@ specific to Claude: the runtime is a plugin on the public API.
   `sessionId`, later turns `resume`. Which threads have a session is recorded
   in `storage.kv` once Claude Code reports `system/init`. When the record and
   Claude Code disagree (no conversation to resume, or a session id already in
-  use, before anything started), the turn retries once the other way. A turn
+  use, before anything started), the turn retries once the other way, unless
+  it was stopped meanwhile. The two cases are told apart by Claude Code's error
+  text ("No conversation found", "already in use"): a reworded message in a new
+  CLI makes the turn fail with that message instead of retrying. A turn
   owns its query: it ends, is interrupted or fails with it, and nothing
   outlives it. A thread that started on another agent hands its earlier
   messages to Claude as a transcript in the first message of its session.
@@ -61,10 +64,14 @@ specific to Claude: the runtime is a plugin on the public API.
   without a prompt and reads its initialization (nothing reaches the API):
   unavailable when it does not start within 25 s or reports no token (T3's
   rule), otherwise available with the account's models, which replace the
-  bundled list (Fable 5.1 by default, as in T3). A probe is reused for five
-  minutes; a stale one is answered at once while a new one runs, and the
-  distribution probes once at activation so the first model picker does not
-  wait.
+  bundled list (Fable 5.1 by default, as in T3). An account that reports no
+  fields at all counts as signed in, as in T3. An available probe is reused
+  for five minutes, and a stale one is answered at once while a new one runs;
+  an unavailable one only for ten seconds and never stale, since it decides
+  the default agent (D96), so a sign-in shows at once. The distribution probes
+  once at activation so the first model picker does not wait. Context windows
+  come from the manifest for its models and aliases, otherwise from what
+  Claude Code reported for the model in an earlier result, else none.
 - **D96. Claude Code is the node's default agent when it is available.**
   Registered runtimes come first (D55), so a node without
   `jhin.threads.defaultAgent` picks Claude Code when it is signed in and the

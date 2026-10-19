@@ -9,9 +9,6 @@ catalogs:
     '@anthropic-ai/claude-agent-sdk':
       specifier: 0.3.302
       version: 0.3.302
-    '@anthropic-ai/sdk':
-      specifier: 0.134.0
-      version: 0.134.0
     '@base-ui/react':
       specifier: 1.9.0
       version: 1.9.0
@@ -455,9 +452,6 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: 'catalog:'
         version: 0.3.302(@anthropic-ai/sdk@0.134.0(zod@4.6.7))(@modelcontextprotocol/sdk@1.32.1(zod@4.6.7))(zod@4.6.7)
-      '@anthropic-ai/sdk':
-        specifier: 'catalog:'
-        version: 0.134.0(zod@4.6.7)
       '@jhin/agent-api':
         specifier: workspace:*
         version: link:../../packages/agent-api
@@ -467,12 +461,6 @@ importers:
       '@jhin/storage-api':
         specifier: workspace:*
         version: link:../../packages/storage-api
-      '@modelcontextprotocol/sdk':
-        specifier: 'catalog:'
-        version: 1.32.1(zod@4.6.7)
-      zod:
-        specifier: 'catalog:'
-        version: 4.6.7
     devDependencies:
       '@jhin/plugin-threads':
         specifier: workspace:*

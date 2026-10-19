@@ -33,12 +33,9 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "catalog:",
-    "@anthropic-ai/sdk": "catalog:",
     "@jhin/agent-api": "workspace:*",
     "@jhin/sdk": "workspace:*",
-    "@jhin/storage-api": "workspace:*",
-    "@modelcontextprotocol/sdk": "catalog:",
-    "zod": "catalog:"
+    "@jhin/storage-api": "workspace:*"
   },
   "devDependencies": {
     "@jhin/plugin-threads": "workspace:*",

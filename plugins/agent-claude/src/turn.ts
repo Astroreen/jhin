@@ -82,6 +82,13 @@ export interface ClaudeTurnDependencies {
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
 }
 
+/** The environment Claude Code runs with: the node's, plus the config's `env`. */
+export function claudeEnvironment(
+  env: Readonly<Record<string, string>>,
+): Record<string, string | undefined> {
+  return { ...process.env, ...env };
+}
+
 /** Tool output kept in the thread's log; longer output is cut. */
 const MAX_TOOL_OUTPUT = 20_000;
 
@@ -459,7 +466,7 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
     ...(deps.settings.binaryPath === undefined
       ? {}
       : { pathToClaudeCodeExecutable: deps.settings.binaryPath }),
-    ...(deps.settings.env === undefined ? {} : { env: { ...process.env, ...deps.settings.env } }),
+    ...(deps.settings.env === undefined ? {} : { env: claudeEnvironment(deps.settings.env) }),
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
@@ -533,6 +540,8 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
       // first turn stopped before it was recorded): try the other way once.
       deps.log?.("claude session mismatch, retrying", { threadId: request.threadId });
       if (error.resume) await deps.sessions.delete(request.threadId);
+      // A stop that came meanwhile ends the turn: no second query starts.
+      if (interrupted) return;
       const retryText =
         error.resume && transcript(request.history) !== undefined
           ? `${transcript(request.history)}${request.input.text}`

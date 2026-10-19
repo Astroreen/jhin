@@ -10,7 +10,7 @@ import {
   memoryStoragePlugin,
   mockCapability,
 } from "@jhin/testing";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   CLAUDE_AGENT_ID,
@@ -19,6 +19,7 @@ import {
   type QueryFunction,
 } from "../src/index.ts";
 import {
+  drain,
   init,
   memorySessions,
   result,
@@ -153,6 +154,37 @@ describe("jhin.agent-claude: the plugin", () => {
   });
 });
 
+describe("jhin.agent-claude: context window", () => {
+  it("keeps the window Claude Code reported for a model the manifest does not know", async () => {
+    const { query } = scriptedQuery(
+      async function* () {
+        yield init();
+        yield result({ modelUsage: { "claude-new-6": { contextWindow: 400_000 } } });
+      },
+      async function* () {
+        yield init();
+        yield* streamedBlock("m1", 0, "text", ["ok"], { inputTokens: 1_000 });
+        yield result({ modelUsage: {} });
+      },
+    );
+    const claude = createClaudeRuntime({ query, sessions: memorySessions(), config: () => ({}) });
+    const request = {
+      threadId: "0b6c5e5e-0000-4000-8000-000000000002",
+      input: { text: "hi" },
+      history: [],
+      cwd: "/work",
+      model: "claude-new-6",
+    };
+    const first = await drain(claude.startTurn({ ...request, turnId: "t1" }));
+    expect(first.at(-1)).toMatchObject({ kind: "usage", usage: { contextWindow: 400_000 } });
+    const second = await drain(claude.startTurn({ ...request, turnId: "t2" }));
+    expect(second[0]).toEqual({
+      kind: "usage",
+      usage: { inputTokens: 1_000, outputTokens: 0, contextTokens: 1_000, contextWindow: 400_000 },
+    });
+  });
+});
+
 describe("jhin.agent-claude: status", () => {
   /** A query that only initializes, as Claude Code does for the probe. */
   const initializing = (account: Record<string, unknown>, models: unknown[] = []) => {
@@ -183,6 +215,30 @@ describe("jhin.agent-claude: status", () => {
     ]);
     expect(claude.defaultModel).toBe("claude-opus-5-5");
     expect(probe.closed()).toBe(1);
+  });
+
+  it("counts an account without fields as signed in, as T3 Code does", async () => {
+    const claude = runtime(initializing({}).query);
+    expect(await claude.status!()).toEqual({ available: true });
+  });
+
+  it("probes again soon after finding Claude Code unavailable", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      let signedIn = false;
+      const query = ((params: Parameters<QueryFunction>[0]) =>
+        initializing(signedIn ? { email: "ada@example.com" } : { tokenSource: "none" }).query(
+          params,
+        )) as QueryFunction;
+      const claude = runtime(query);
+      expect(await claude.status!()).toMatchObject({ available: false });
+      signedIn = true;
+      expect(await claude.status!()).toMatchObject({ available: false });
+      vi.setSystemTime(Date.now() + 10_000);
+      expect(await claude.status!()).toMatchObject({ available: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("is unavailable when Claude Code finds no token", async () => {

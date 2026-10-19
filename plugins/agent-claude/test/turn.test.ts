@@ -150,6 +150,32 @@ describe("jhin.agent-claude: a turn", () => {
     expect(items).toContainEqual({ kind: "message.completed", itemId: "m1:0", text: "fresh" });
   });
 
+  it("starts no second query when stopped while the first failed on its session", async () => {
+    const sessions = memorySessions([THREAD]);
+    const { turn, calls } = start(
+      [
+        // oxlint-disable-next-line require-yield
+        async function* () {
+          throw new Error("No conversation found with session ID: x");
+        },
+        async function* () {
+          yield init();
+          yield result();
+        },
+      ],
+      {},
+      sessions,
+    );
+    // The stop comes while the turn forgets the session it could not resume.
+    const forget = sessions.delete;
+    sessions.delete = async (threadId) => {
+      turn.interrupt();
+      await forget(threadId);
+    };
+    expect(await drain(turn)).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+
   it("gives Claude the earlier conversation of a thread it joins", async () => {
     const history = [
       { type: "agent.turn.started", payload: { turnId: "a", input: { text: "first question" } } },
