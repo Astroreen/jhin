@@ -62,8 +62,10 @@ contributions. Features of T3 Code that only make sense for its hosted product
   takes its title from its first message (hook `threads.title`); projects can
   be created (the name defaults to the folder's), renamed and deleted (never
   the scratch project; its threads go with it); `projects.browse` lists
-  folders for the project picker, under a permission of its own
-  (`projects.browse`), since it reads any folder the node can.
+  folders for the project picker (links to folders too, without blocking the
+  node on a slow disk), under a permission of its own (`projects.browse`),
+  since it reads any folder the node can. Paths may start with `~` or `~/`
+  for the home directory; `~user` is not expanded.
 - **D68. One turn per thread, and none on a thread going away.** Checking
   that a thread is free and reserving it is one step, so concurrent sends
   start one turn. An archived thread takes no messages until it is unarchived
@@ -78,7 +80,10 @@ contributions. Features of T3 Code that only make sense for its hosted product
   deletions of one thread at once delete it once. A deletion that fails
   before the thread's stream records it leaves the thread as it was; one
   that fails later keeps it closed, and deleting it again finishes the job.
-  A project whose removal fails takes new threads again.
+  Two removals of one project at once remove it once; a removal waits for
+  threads being created in the project, so none is left behind; a project
+  whose removal fails takes new threads again. An answer the agent fails to
+  take stays recorded (`AGENT_FAILED`), and the request takes no second one.
 
 ### Client
 
@@ -212,7 +217,29 @@ picker (D66) and "No project" chats in the UI (D64).
 
 One PR. Its parts depend on each other: the threads plugin names threads
 after their first message and reports requests, which the previous web client
-did not expect, and the new client needs the new commands. The proof:
+did not expect, and the new client needs the new commands.
+
+**Done when:**
+
+- `pnpm verify` and CI pass; `scripts/t3/smoke.sh` passes.
+- Each script of the fake agent shows in the web client as T3 Code shows it:
+  reasoning, tool calls and plans in the work log, an approval and questions
+  answered from the composer, a stopped and a failed turn with their reason
+  (D54–D56, D65).
+- A thread's record says where its latest turn is, and every change reaches
+  every client through the node's index (D57); a node that restarts closes
+  the turns and requests it left open.
+- Concurrent sends, archives, deletions and project removals start one turn
+  per thread and leave nothing behind; an agent that ignores an interrupt
+  holds nothing for more than 5 s (D68).
+- The sidebar, palette, keybindings, settings (with the node config editor
+  and the mesh scope picker) and notifications work against several nodes
+  and mesh members (D59–D64, D66, D67).
+- Every action on a thread, a project or a node is a command, and its menus
+  are slots that a plugin can add to (D69).
+- Every fix made after a review has a test that fails without it.
+
+The proof:
 
 - `plugins/threads` tests: management, titles, projects, agents, tool,
   reasoning and plan items, approvals, questions, interrupts closing requests,
