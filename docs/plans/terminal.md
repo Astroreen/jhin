@@ -97,7 +97,10 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
   process is still being stopped keeps its own stream. An `open` whose
   session is closed while node-pty is still loading fails with
   `TERMINAL_NOT_FOUND` instead of answering with a session that is gone; an
-  `open` after that starts cleanly. A deleted thread
+  `open` after that starts cleanly. An `open` still reading its folder or waiting
+  for node-pty when the plugin deactivates fails with
+  `TERMINAL_UNAVAILABLE` and starts no shell: nothing would be left to stop
+  it. A deleted thread
   closes its terminals (the plugin follows the `threads` index when the node
   has an event log). A client that loses its connection opens the terminal
   again when it is back: after a node restart that starts a new shell.
@@ -181,7 +184,9 @@ stream with a running `sleep` and its label; deactivation ending sessions; a
 deleted thread's terminals closed; no live streams; a terminal reopened while
 the old one is still being closed; the scrollback trimmed with its start kept;
 no subscription without `terminals.read`; an open failing for a terminal
-closed while node-pty loaded; `cwd` kept on a running session), `packages/rpc/test/
+closed while node-pty loaded; no shell for an open caught by deactivation
+while it read its folder or waited for node-pty; `cwd` kept on a running
+session), `packages/rpc/test/
 streams.test.ts` (live streams through `rpc.subscribe`, their permissions, a
 deleted stream starting above its old sequences, resuming after a
 restart, longest prefix), `apps/web/test/terminal-state.test.ts` (T3's tab

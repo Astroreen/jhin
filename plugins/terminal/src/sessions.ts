@@ -53,6 +53,8 @@ export interface SessionOptions {
   readonly processTable?: () => Promise<ProcessTable>;
   readonly config: () => { shell?: string | undefined; scrollback: number };
   readonly log: Logger;
+  /** Reads the working directory; `fs.promises.stat` unless a test controls it. */
+  readonly stat?: (path: string) => Promise<Fs.Stats>;
   readonly now?: () => string;
 }
 
@@ -79,6 +81,9 @@ interface Session {
 }
 
 const key = (threadId: string, terminalId: string) => `${threadId}\u0000${terminalId}`;
+/** Refused once the plugin is going: nothing is left to stop a process started now. */
+const stopping = () =>
+  new TerminalError("TERMINAL_UNAVAILABLE", "Terminals are stopping with their plugin");
 const lines = (data: string) => data.split("\n").length - 1;
 
 function defaultShell(): string {
@@ -185,6 +190,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
 
   async function start(session: Session, size: { cols: number; rows: number }): Promise<void> {
     const pty = await loadPty();
+    if (disposed) throw stopping();
     // Closed while node-pty loaded: no process for it, and the open fails.
     if (session.closed) {
       throw new TerminalError(
@@ -339,10 +345,10 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
 
   return {
     async open(input) {
-      if (disposed) throw new TerminalError("TERMINAL_UNAVAILABLE", "Terminals are stopping");
+      if (disposed) throw stopping();
       let stat: Fs.Stats | undefined;
       try {
-        stat = await Fs.promises.stat(input.cwd);
+        stat = await (options.stat ?? Fs.promises.stat)(input.cwd);
       } catch {
         stat = undefined;
       }
@@ -355,6 +361,9 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
           { cwd: input.cwd },
         );
       }
+      // Disposed while the folder was read: the sessions it closed did not
+      // include this one, so it must not start one now.
+      if (disposed) throw stopping();
       const id = key(input.threadId, input.terminalId);
       const existing = sessions.get(id);
       if (existing?.starting !== undefined) {

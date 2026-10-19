@@ -419,6 +419,75 @@ describe("terminal sessions", () => {
     Fs.rmSync(cwd, { recursive: true, force: true });
   });
 
+  /** A deferred: the test decides when it settles, no timer involved. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((done) => (resolve = done));
+    return { promise, resolve };
+  }
+
+  /** node-pty that only counts the shells it is asked to start. */
+  function countingPty() {
+    const spawned: string[] = [];
+    const pty: PtySpawner = {
+      spawn(options) {
+        spawned.push(options.cwd);
+        throw new Error("no shell in this test");
+      },
+    };
+    return { pty, spawned };
+  }
+
+  it("starts no shell for an open still reading its folder when the plugin stops (D143)", async () => {
+    const { pty, spawned } = countingPty();
+    const folder = deferred<Fs.Stats>();
+    let asked!: () => void;
+    const statAsked = new Promise<void>((resolve) => (asked = resolve));
+    const sessions = createSessions({
+      streams: createMemoryStreams(),
+      pty: async () => pty,
+      stat: () => {
+        asked();
+        return folder.promise;
+      },
+      config: () => ({ shell: "/bin/sh", scrollback: 5000 }),
+      log: quiet,
+    });
+    const opening = sessions.open({ threadId: "t", terminalId: "term-1", cwd: "/work" });
+    await statAsked;
+    await sessions.dispose();
+    folder.resolve(Fs.statSync(Os.tmpdir()));
+
+    await expect(opening).rejects.toMatchObject({ code: "TERMINAL_UNAVAILABLE" });
+    expect(spawned).toEqual([]);
+    expect(sessions.list()).toEqual([]);
+  });
+
+  it("starts no shell for an open waiting for node-pty when the plugin stops (D143)", async () => {
+    const { pty, spawned } = countingPty();
+    const loading = deferred<PtySpawner>();
+    let asked!: () => void;
+    const loadAsked = new Promise<void>((resolve) => (asked = resolve));
+    const sessions = createSessions({
+      streams: createMemoryStreams(),
+      pty: () => {
+        asked();
+        return loading.promise;
+      },
+      config: () => ({ shell: "/bin/sh", scrollback: 5000 }),
+      log: quiet,
+    });
+    const opening = sessions.open({ threadId: "t", terminalId: "term-1", cwd: Os.tmpdir() });
+    await loadAsked;
+    const disposing = sessions.dispose();
+    loading.resolve(pty);
+
+    await expect(opening).rejects.toMatchObject({ code: "TERMINAL_UNAVAILABLE" });
+    await disposing;
+    expect(spawned).toEqual([]);
+    expect(sessions.list()).toEqual([]);
+  });
+
   it("keeps a running terminal's folder: cwd counts when a shell starts (D140)", async () => {
     const { client, cwd } = await node();
     const input = { threadId: "t", terminalId: "term-1", cwd };
