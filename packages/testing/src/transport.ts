@@ -1,5 +1,12 @@
 import type { Kernel } from "@jhin/kernel";
-import { createPeerPair, createRpcClient, serveRpc, type Peer, type RpcClient } from "@jhin/rpc";
+import {
+  createPeerPair,
+  createRpcClient,
+  serveRpc,
+  type LiveStreams,
+  type Peer,
+  type RpcClient,
+} from "@jhin/rpc";
 import { noopLogger } from "@jhin/kernel";
 import type { Invocation } from "@jhin/sdk";
 import type { EventLog } from "@jhin/storage-api";
@@ -16,7 +23,12 @@ export interface InMemoryConnection {
  */
 export function connectInMemory(
   kernel: Pick<Kernel, "commands">,
-  options: { log?: EventLog; caller?: NonNullable<Invocation["caller"]> } = {},
+  options: {
+    log?: EventLog;
+    /** Streams served from memory, as `rpc.streams@1` gives them to the transport. */
+    streams?: Pick<LiveStreams, "sourceOf">;
+    caller?: NonNullable<Invocation["caller"]>;
+  } = {},
 ): InMemoryConnection {
   let current: Peer | undefined;
   let traces = 0;
@@ -29,6 +41,7 @@ export function connectInMemory(
         execute: (name, input, invocation) => kernel.commands.execute(name, input, invocation),
         caller: options.caller ?? { id: "owner", permissions: ["*"] },
         ...(options.log === undefined ? {} : { log: options.log }),
+        ...(options.streams === undefined ? {} : { streams: options.streams }),
         hello: () => ({ protocol: "in-memory" }),
         newTraceId: () => `test-trace-${++traces}`,
         logger: noopLogger,

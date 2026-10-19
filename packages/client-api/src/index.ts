@@ -262,6 +262,16 @@ export interface ChatHeaderActionProps {
 }
 
 /**
+ * What the `chat.drawer` slot gives each contribution: the open thread, shown
+ * under its chat (T3's terminal drawer is one).
+ */
+export interface ChatDrawerProps {
+  readonly target: NodeTarget;
+  readonly thread: ThreadRecord;
+  readonly project: ProjectRecord;
+}
+
+/**
  * What the `sidebar.thread.indicators` slot gives each contribution: a
  * thread card and where its thread lives. Contributions render on the card's
  * last line, between where T3 Code shows the branch and the node's and

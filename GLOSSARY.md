@@ -75,6 +75,14 @@ One word per concept. Use these terms in code, docs, commits and UI.
   shown between its messages and folded once the turn ends.
 - **Event** — an entry in an event log with a per-stream monotonic
   `sequence`. Event types are namespaced per plugin (`agent.turn.started`).
+- **Live stream** — a stream a plugin keeps in memory instead of the event
+  log (`rpc.streams@1`): clients subscribe to it like to any stream, but only
+  what the plugin still keeps is replayed, and nothing survives a restart.
+- **Terminal** — a shell on a node, in a pseudo terminal (PTY), started for
+  a thread in its project's folder under an id the client picks (`term-1`).
+  Its output is a live stream; the node keeps its **scrollback** for clients
+  that open it later. Several terminals of a thread show in the **terminal
+  drawer** under the chat, as tabs and split groups (T3 Code's terms).
 - **Sequence** — the position of an event in its stream; used to catch up
   after a disconnect without gaps or duplicates.
 - **Inspector** — the `inspect` command and dev panel showing the live state

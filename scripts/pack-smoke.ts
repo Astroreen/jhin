@@ -7,8 +7,8 @@
 // (`pnpm pack` builds each package through "prepack"; no workspace file is
 // rewritten, which this checks after every package), installs the tarballs into a fresh
 // directory outside the workspace and runs the installed `jhin`: `help`,
-// `inspect`, a command, then `serve --ui` with a remote `inspect` and a request
-// for the web client.
+// `inspect`, a command, a terminal (node-pty's native addon), then `serve --ui`
+// with a remote `inspect` and a request for the web client.
 //
 // Needs the npm registry for third-party dependencies, and `tar` on PATH (GNU
 // tar or the bsdtar Windows 10+ ships). It waits on process output and exit
@@ -244,9 +244,10 @@ async function main(): Promise<void> {
     const overrides = [...pins].map(
       ([name, spec]) => `  ${JSON.stringify(name)}: ${JSON.stringify(spec)}`,
     );
+    // node-pty checks for its prebuilt addon at install, as in the workspace (pnpm-workspace.yaml).
     Fs.writeFileSync(
       Path.join(app, "pnpm-workspace.yaml"),
-      `overrides:\n${overrides.join("\n")}\n`,
+      `overrides:\n${overrides.join("\n")}\nallowBuilds:\n  node-pty: true\n`,
     );
     run("pnpm", ["install"], app);
     // Everything third-party that got installed is a version the workspace lockfile
@@ -301,6 +302,25 @@ async function main(): Promise<void> {
 
     step("jhin example.greet --name Ada");
     process.stdout.write(run(bin, ["example.greet", "--name", "Ada", ...at], tmp));
+
+    // The terminal plugin loads node-pty, a native addon, from the installed package.
+    step("jhin terminals.open");
+    const terminal = JSON.parse(
+      run(
+        bin,
+        [
+          "terminals.open",
+          "--input",
+          JSON.stringify({ threadId: "smoke", terminalId: "term-1", cwd: dir }),
+          ...at,
+        ],
+        tmp,
+      ),
+    ) as { status?: string; pid?: number };
+    if (terminal.status !== "running" || !(typeof terminal.pid === "number" && terminal.pid > 0)) {
+      throw new Error(`no terminal started: ${JSON.stringify(terminal)}`);
+    }
+    process.stdout.write(`terminal running, pid ${terminal.pid}\n`);
 
     step("jhin serve --ui");
     const { child, output, rpc, ui, exited } = await serve(bin, dir);

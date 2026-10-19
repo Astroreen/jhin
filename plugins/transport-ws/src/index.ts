@@ -5,8 +5,10 @@ import { HOST_TRACE_CAPABILITY, type HostTrace } from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import {
   CLOSE_UNAUTHENTICATED,
+  LIVE_STREAMS_CAPABILITY,
   PROTOCOL,
   TOKEN_PROTOCOL_PREFIX,
+  createLiveStreams,
   serveRpc,
   webSocketPeer,
   type WebSocketLike,
@@ -37,6 +39,9 @@ export default definePlugin({
     const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
     const trace = context.services.tryGet<HostTrace>(HOST_TRACE_CAPABILITY);
     const sockets = new Set<WebSocket>();
+    // Streams other plugins keep in memory (terminal output), next to the event log's.
+    const streams = createLiveStreams();
+    context.services.provide(LIVE_STREAMS_CAPABILITY, streams);
 
     // Only the protocol is echoed back, never the token subprotocol.
     const server = new WebSocketServer({
@@ -58,6 +63,7 @@ export default definePlugin({
         execute: (name, input, invocation) => context.commands.execute(name, input, invocation),
         caller,
         ...(log === undefined ? {} : { log }),
+        streams,
         hello: () => ({ protocol: PROTOCOL }),
         newTraceId: () => Crypto.randomUUID(),
         ...(trace === undefined ? {} : { traced: (traceId, work) => trace.run(traceId, work) }),
