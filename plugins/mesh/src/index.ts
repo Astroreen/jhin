@@ -44,31 +44,50 @@ const NAMESPACE = "jhin.mesh";
 const MAX_BODY = 1024 * 1024;
 const JOIN_ATTEMPTS_PER_MINUTE = 20;
 
-const Config = z.object({
-  /** How other nodes see this one; defaults to the host name. */
-  name: z.string().min(1).optional(),
-  /**
-   * Mesh URLs other nodes dial (`ws://host:port/mesh`). Defaults to this node's
-   * HTTP address; `[]` for a node nobody can reach directly (behind NAT): it
-   * dials out and is reached through those links (D28).
-   */
-  advertise: z.array(z.string()).optional(),
-  /**
-   * D26: "on-open" copies another node's thread here when it is opened
-   * (`mesh.open`); "eager" keeps a copy of every thread of every node.
-   */
-  history: z.enum(["on-open", "eager"]).default("on-open"),
-  /**
-   * D50: a config change for a node that stays away this long ends as
-   * `mesh.config.expired` in `mesh/outbox` instead of waiting forever;
-   * `null` keeps it until the node returns.
-   */
-  queueExpiryHours: z
-    .number()
-    .positive()
-    .nullable()
-    .default(24 * 30),
-});
+// Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
+const Config = z
+  .object({
+    name: z.string().min(1).optional().meta({
+      title: "Name",
+      description: "How other nodes see this one; defaults to the host name.",
+    }),
+    /** D28: `[]` for a node behind NAT, reached through the links it dials. */
+    advertise: z
+      .array(z.string())
+      .optional()
+      .meta({
+        title: "Advertised URLs",
+        description:
+          "Mesh URLs other nodes dial (ws://host:port/mesh). Defaults to this node's HTTP address; none for a node nobody can reach directly: it dials out and is reached through those links.",
+        examples: ["ws://example.com:7777/mesh"],
+        advanced: true,
+      }),
+    /** D26. */
+    history: z
+      .union([
+        z.literal("on-open").meta({ title: "When a thread is opened" }),
+        z.literal("eager").meta({ title: "Every thread, eagerly" }),
+      ])
+      .default("on-open")
+      .meta({
+        title: "Copy threads of other nodes",
+        description:
+          "When this node keeps a copy of another node's thread: once it is opened here, or every thread of every node at once.",
+      }),
+    /** D50: an expired change ends as `mesh.config.expired` in `mesh/outbox`. */
+    queueExpiryHours: z
+      .number()
+      .positive()
+      .nullable()
+      .default(24 * 30)
+      .meta({
+        title: "Keep queued changes for (hours)",
+        description:
+          "A config change for a node that stays away this long is dropped instead of waiting forever. None keeps it until the node returns.",
+        advanced: true,
+      }),
+  })
+  .meta({ title: "Mesh", description: "How this node meets the other nodes of its owner." });
 
 function loadKeys(dir: string): { privateKey: Crypto.KeyObject; publicKey: string } {
   const file = Path.join(dir, "mesh-key.pem");
@@ -405,6 +424,11 @@ export default definePlugin({
         layer: z.enum(["node", "project"]),
         section: z.string().min(1),
         values: z.record(z.string(), z.unknown()),
+        /**
+         * Keys to remove from the section, so they take their default again
+         * (D84); a node older than this ignores them.
+         */
+        unset: z.array(z.string()).optional(),
       }),
       output: z.object({
         at: z.number(),
@@ -418,8 +442,14 @@ export default definePlugin({
         ),
       }),
       permissions: ["mesh.admin", "host.config.write"],
-      handler: async ({ nodes, layer, section, values }) => {
-        const patch: Patch = { layer, section, values, at: Date.now() };
+      handler: async ({ nodes, layer, section, values, unset }) => {
+        const patch: Patch = {
+          layer,
+          section,
+          values,
+          ...(unset === undefined || unset.length === 0 ? {} : { unset }),
+          at: Date.now(),
+        };
         const targets =
           nodes === "all" ? mesh.members().map((member) => member.record.nodeId) : nodes;
         // In parallel: one slow or unreachable node does not hold up the others.

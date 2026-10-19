@@ -80,10 +80,21 @@ export interface Navigation {
 
 /** The `jhin.ui` config section: slot rules (D12), keyed by slot name. */
 export const UI_CONFIG_SECTION = "jhin.ui";
-export const UiConfig = z.object({
-  hide: z.record(z.string(), z.array(z.string())).default({}),
-  order: z.record(z.string(), z.array(z.string())).default({}),
-});
+export const UiConfig = z
+  .object({
+    hide: z.record(z.string(), z.array(z.string())).default({}).meta({
+      title: "Hidden contributions",
+      description: "By slot name (e.g. sidebar.actions): the contribution ids not to render.",
+    }),
+    order: z.record(z.string(), z.array(z.string())).default({}).meta({
+      title: "Contribution order",
+      description: "By slot name: contribution ids to render first, in this order.",
+    }),
+  })
+  .meta({
+    title: "Interface",
+    description: "Hides and reorders what plugins contribute to the web client's slots.",
+  });
 export type UiConfig = z.output<typeof UiConfig>;
 
 /**
@@ -101,9 +112,15 @@ export const KeybindingRule = z.object({
   when: z.string().max(256).optional(),
 });
 export type KeybindingRule = z.output<typeof KeybindingRule>;
-export const KeybindingsConfig = z.object({
-  rules: z.array(KeybindingRule).max(256).default([]),
-});
+export const KeybindingsConfig = z
+  .object({
+    rules: z.array(KeybindingRule).max(256).default([]).meta({
+      title: "Rules",
+      description:
+        'Each { "key", "command", "when" } replaces the defaults of its command; an empty key unbinds it. Settings → Keybindings records them per device.',
+    }),
+  })
+  .meta({ title: "Keybindings", description: "Shortcuts every client of this node starts with." });
 export type KeybindingsConfig = z.output<typeof KeybindingsConfig>;
 
 /** Where projects and threads live: a connected node, or a node of its mesh. */

@@ -151,6 +151,21 @@ describe("config outbox (D50)", () => {
     expect(delivered).toHaveLength(1);
   });
 
+  it("delivers the keys a queued change removes (D84)", async () => {
+    const { outbox, online, delivered } = setup();
+    const reset: Patch = {
+      layer: "node",
+      section: "jhin.example",
+      values: {},
+      unset: ["greeting"],
+      at: 1,
+    };
+    await outbox.enqueue("c", reset);
+    online.add("c");
+    await outbox.flush();
+    expect(delivered).toEqual([{ node: "c", patch: reset }]);
+  });
+
   it("records conflicts and failures, and keeps a change whose node went away mid-delivery", async () => {
     const { outbox, online, answers, history } = setup();
     online.add("b").add("c").add("d");

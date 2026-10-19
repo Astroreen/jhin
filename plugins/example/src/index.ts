@@ -5,9 +5,16 @@ export interface Greeter {
   greet(name: string): string;
 }
 
-const Config = z.object({
-  greeting: z.string().default("Hello"),
-});
+// Titles and descriptions in `.meta()` are what the settings page shows for
+// the section and its fields (docs/plans/config-ui.md, D81).
+const Config = z
+  .object({
+    greeting: z
+      .string()
+      .default("Hello")
+      .meta({ title: "Greeting", description: "The word `example.greet` starts with." }),
+  })
+  .meta({ title: "Example", description: "The template plugin's greeter." });
 
 export default definePlugin({
   activate(context) {

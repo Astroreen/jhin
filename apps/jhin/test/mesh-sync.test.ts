@@ -150,6 +150,20 @@ describe("settings fan-out (D20, D50)", () => {
       expect((await greet(back)).message).toBe("Welcome back, x!");
       expect(await a.client.call("mesh.config.pending")).toEqual([]);
 
+      // A reset removes the key from c's file: it takes its default again (D84).
+      const reset = await a.client.call<{ results: { node: string; status: string }[] }>(
+        "mesh.config.patch",
+        {
+          nodes: [back.nodeId],
+          layer: "node",
+          section: "jhin.example",
+          values: {},
+          unset: ["greeting"],
+        },
+      );
+      expect(reset.results).toEqual([{ node: back.nodeId, status: "applied" }]);
+      expect((await greet(back)).message).toBe("Hello, x!");
+
       // A change made on c later than a's wins; a hears about the conflict.
       await back.client.call("host.config.patch", {
         layer: "node",

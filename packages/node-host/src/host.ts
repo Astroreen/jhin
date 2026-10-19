@@ -3,8 +3,11 @@ import * as Fs from "node:fs";
 import * as Path from "node:path";
 
 import {
+  configComments,
   createKernel,
+  KernelError,
   parseConfigText,
+  type ConfigComment,
   toErrorInfo,
   type Kernel,
   type KernelEvent,
@@ -95,6 +98,15 @@ function readLayer(file: string, log: Logger): Record<string, unknown> | undefin
       error: toErrorInfo(error),
     });
     return undefined;
+  }
+}
+
+/** The comments above the keys of `section` in `file` (D81); none when it is missing or unreadable. */
+function commentsOf(file: string, section: string): ConfigComment[] {
+  try {
+    return Fs.existsSync(file) ? configComments(Fs.readFileSync(file, "utf8"), section) : [];
+  } catch {
+    return [];
   }
 }
 
@@ -199,6 +211,8 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           layer: z.enum(["node", "project"]),
           section: z.string().regex(DOTTED_ID),
           values: z.record(z.string(), z.unknown()),
+          /** Keys to remove from the section in the file, so they take their default again (D84). */
+          unset: z.array(z.string()).optional(),
           /** When the change was made (ms); later changes win. Defaults to now. */
           at: z.number().int().nonnegative().optional(),
         }),
@@ -208,19 +222,26 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           conflict: z.object({ localAt: z.number() }).optional(),
         }),
         permissions: ["host.config.write"],
-        handler: ({ layer, section, values, at }) =>
-          patchConfig(layer, section, values, at ?? Date.now()),
+        handler: ({ layer, section, values, unset, at }) =>
+          patchConfig(layer, section, values, unset ?? [], at ?? Date.now()),
       });
       context.commands.register({
         name: "host.config.get",
         description:
-          "A config section of this node: its effective value and what the node and project files set",
+          "A config section of this node: its effective value, what the node and project files set, and the comments above their keys",
         input: z.object({ section: z.string().regex(DOTTED_ID) }),
         output: z.object({
           /** Absent when the section is not defined or its value is invalid. */
           value: z.unknown().optional(),
           error: z.string().optional(),
+          /** Why the effective value is invalid, by path inside the section (D84). */
+          issues: z.array(z.object({ path: z.string(), message: z.string() })).optional(),
           layers: z.object({ node: z.unknown().optional(), project: z.unknown().optional() }),
+          /**
+           * The comment directly above each key of the section in the node
+           * file, then in the project file; the first for a path counts (D81).
+           */
+          comments: z.array(z.object({ path: z.array(z.string()).readonly(), text: z.string() })),
         }),
         permissions: ["host.config.read"],
         handler: ({ section }) => {
@@ -228,10 +249,29 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
             node: readLayer(home.config, log)?.[section],
             project: readLayer(projectConfig, log)?.[section],
           };
+          const comments: ConfigComment[] = [];
+          const seen = new Set<string>();
+          for (const file of [home.config, projectConfig]) {
+            for (const comment of commentsOf(file, section)) {
+              const key = JSON.stringify(comment.path);
+              if (seen.has(key)) continue;
+              seen.add(key);
+              comments.push(comment);
+            }
+          }
           try {
-            return { value: kernel.config.get(section), layers: files };
+            return { value: kernel.config.get(section), layers: files, comments };
           } catch (error) {
-            return { error: error instanceof Error ? error.message : String(error), layers: files };
+            const issues =
+              error instanceof KernelError && Array.isArray(error.details["issues"])
+                ? (error.details["issues"] as { path: string; message: string }[])
+                : undefined;
+            return {
+              error: error instanceof Error ? error.message : String(error),
+              ...(issues === undefined ? {} : { issues }),
+              layers: files,
+              comments,
+            };
           }
         },
       });
@@ -360,6 +400,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     layer: "node" | "project",
     section: string,
     values: Record<string, unknown>,
+    unset: readonly string[],
     at: number,
   ): { applied: boolean; at: number; conflict?: { localAt: number } } {
     let writes: Record<string, Record<string, number>> = {};
@@ -394,6 +435,19 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           formattingOptions: { insertSpaces: true, tabSize: 2 },
         }),
       );
+    }
+    // Removed only where the section is an object: `modify` would replace anything else.
+    const current = unset.length === 0 ? undefined : parseConfigText(text, file)[section];
+    if (typeof current === "object" && current !== null && !Array.isArray(current)) {
+      for (const key of unset) {
+        if (!Object.hasOwn(current, key) || Object.hasOwn(values, key)) continue;
+        text = applyEdits(
+          text,
+          modify(text, [section, key], undefined, {
+            formattingOptions: { insertSpaces: true, tabSize: 2 },
+          }),
+        );
+      }
     }
     Fs.mkdirSync(Path.dirname(file), { recursive: true });
     // Times first, then the file, each replaced atomically: a crash in between
