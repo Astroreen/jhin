@@ -127,13 +127,12 @@ contributions. Features of T3 Code that only make sense for its hosted product
 
 ### UI
 
-- **D64. Sidebar:** T3's per-project thread tree, the projects of every node
-  the client shows (each connection and each reachable mesh member, D47) in
-  one list, without a section per node (D70). Rows show status
-  pills (pending approval, awaiting input, working, failed, completed since
-  the last visit), relative times, inline rename, archive on hover, a filter
-  and "Show more" per project, and context menus (D69). Visits are kept per
-  device and compared with the node's own times.
+- **D64. Sidebar:** T3's sidebar, since D70 its newer layout: the threads of
+  every node the client shows (each connection and each reachable mesh
+  member, D47) as one list of cards and a Settled shelf, with their status
+  (working, approval, input, failed, done since the last visit), relative
+  times, inline rename, a project filter, search and context menus (D69).
+  Visits are kept per device and compared with the node's own times.
 - **D65. Chat view:** T3's timeline — user bubbles, markdown answers (GFM,
   Shiki highlighting in both themes), a work log per turn with a summary that
   folds behind "Worked for …" once the turn ends, plan cards, failed and
@@ -186,43 +185,62 @@ contributions. Features of T3 Code that only make sense for its hosted product
 
 ### Sidebar follow-up
 
-- **D70. No section per node.** The sidebar lists the projects of every node
-  the client shows, connections and the reachable members of their meshes, in
-  one list, as T3 Code lists its projects: ordered as T3 orders them by
-  default (`updated_at`): the latest activity of a project's threads first, a
-  project without threads by when it was created, ties by name and then by
-  node. A scratch project shows only with threads or while a thread is
-  drafted in it. A node's state moves out of the per-node header into alerts
-  above the projects, as T3 reports its local backends: "Connecting …",
-  "Couldn't connect …" for a connection that is closed, "Couldn't load …" for
-  a catalog that failed. One store (`createShownNodes`) follows the
-  connections, each connection's mesh and each shown node's catalog, and the
-  thread shortcuts (`sidebar.thread.*`) count rows in the same order.
+- **D70. T3's newer sidebar layout, without a section per node.** The
+  sidebar lists threads, not a project tree: the threads of every node the
+  client shows, connections and the reachable members of their meshes, in
+  one list, as T3 Code nightly's default sidebar does. Each active thread is
+  a card (T3's `SidebarThreadRow`, "card" variant): the project's icon and
+  name on top with, at the right, the thread's status ("Working" with its
+  duration, "Approval", "Input", "Failed", or "Done" for a turn that
+  completed since the last visit) or else its relative time; the title
+  below; a last line with the node's and the agent's icons at its right
+  end. A thread that needs nothing from the user fades back, as in T3.
+  Active cards are ordered as T3 orders them: newest created first, not by
+  activity. Below them, at the bottom of the list, the collapsible
+  "Settled" shelf ("Settled (N)" while collapsed, collapsed by default and
+  kept per device) lists settled threads as slim rows by when they settled,
+  10 at first and 25 more per "Show N more"; collapsed, it still shows the
+  open thread. A thread settles as T3 settles one by itself (its default of
+  3 days): no activity for three days and no turn running or waiting; it
+  settles as of its last activity. The header holds the search (results
+  replace the list, arrow keys and Enter pick one), T3's project filter
+  ("All projects" or one project of one node, kept per device), "Add
+  project" and "New thread"; a new thread being drafted shows as a draft
+  card on top. The context menu of a card or row is the `thread.actions`
+  slot, so archiving, renaming and the rest stay commands; a double click
+  or F2 renames in place. A node's state shows as alerts above the list, as
+  T3 reports its local backends: "Connecting …", "Couldn't connect …",
+  "Couldn't load …". One store (`createShownNodes`) follows the
+  connections, each connection's mesh and each shown node's catalog; the
+  thread shortcuts (`sidebar.thread.*`) count rows in the list's order.
+  The "Threads per project" setting goes: no list is per project now.
 - **D71. A row names its node only while several nodes are shown.** With one
-  node no row says where it lives. With more, a thread row ends with the
-  node's icon after its time, where T3 marks a thread's environment with its
-  machine icon (T3's newer layout ends a two-line row with it; Jhin's rows
-  have one line). A project row shows the node's name after its own and the
-  node's icon at its end, as T3 marks a remote project; the icon gives way to
-  the new-thread button on hover. Projects of the same name on two nodes stay
-  two rows, told apart by that name, and their thread lists are named
-  "Threads of <project> on <node>". The icon is T3's "server" machine kind for
-  every node: nodes have no kind to pick yet (Deferred).
-- **D72. The node's actions move where T3 has them.** The sidebar header's
-  "Add project" (`project.add`) asks on which node when several are shown,
-  as T3 asks for the environment first; "New thread" (`chat.new`) starts one
+  node nothing says where a thread lives. With more, a card ends its last
+  line with the node's icon, where T3 puts a thread's environment icon (the
+  bottom-right corner), and a thread without a project names the node on
+  that line, as T3 names the machine of a scratch thread; slim rows end with
+  the icon too, and the hover card names the node. The project filter names
+  the node next to each project, so two projects called "web" stay apart.
+  The icon is T3's "server" machine kind for every node: nodes have no kind
+  to pick yet (Deferred). The agent's icon is Claude's for
+  `jhin.agent-claude` and a generic one for any other runtime.
+- **D72. The node's actions move where T3 has them.** The header's "Add
+  project" (`project.add`) asks on which node when several are shown, as T3
+  asks for the environment first; "New thread" (`chat.new`) starts one
   where the user is, and the palette's "New thread in..." lists the projects
-  of every node, scratch projects included. Both header buttons need an open
-  node. Settings → Nodes gives each connection T3's "More actions" menu,
-  which renders the `node.actions` slot (still `NodeActionProps`): "New
-  thread without a project" and "Add project" join rename, copy address and
+  of every node, scratch projects included. Both need an open node.
+  Settings → Nodes gives each connection T3's "More actions" menu, which
+  renders the `node.actions` slot (still `NodeActionProps`): "New thread
+  without a project" and "Add project" join rename, copy address and
   disconnect, under the ids `jhin.sidebar.node.new-thread`,
   `jhin.sidebar.node.add-project` and `jhin.sidebar.node.separator-new`; the
   existing ids are kept. `chat.new-without-project` takes an optional node
   (and remote member), as `project.add` does (additive). Disconnecting from
   that menu leaves the settings page open.
-- **D73. Settings sits at the right end of the sidebar's footer**, after the
-  palette shortcut: the user's choice over T3's, which puts it first.
+- **D73. Settings leads the sidebar's footer**, as in T3, whose footer starts
+  with its utility items; the palette shortcut stays at the right end, where
+  T3 shows its update button. An earlier request put settings at the right;
+  the user's later reference, T3's sidebar, has it on the left.
 - **D74. A dialog's form keeps the dialog's layout.** `DialogPopup` (from
   T3's dialog) lays out a form that is its direct child as a flex column, as
   T3's CustomSnoozeDialog styles its own form. As a block, the form let the
@@ -230,14 +248,17 @@ contributions. Features of T3 Code that only make sense for its hosted product
   (Cancel / Rename) sat below the popup as a box of its own; every dialog
   whose content is a form had it (the prompt dialog, "Add project").
 
-The proof: `apps/web/test/sidebar-order.test.ts` (one list across nodes, T3's
-order, same names kept apart, the scratch rule) and `apps/web/test/nodes.test.ts`
-(which nodes are shown, host names only with several, the store following and
-releasing meshes and catalogs); Playwright `e2e/tests/sidebar.spec.ts` (no
-indicator with one node, indicators and distinct "web" projects with two, the
-footer's settings on the right, the node picker, the node menu in settings,
-the rename dialog's footer inside its panel) and the mesh specs, which reach
-remote nodes through the palette now.
+The proof: `apps/web/test/sidebar-order.test.ts` (statuses, Done after a
+visit, fading, the settle rule, one list across nodes in T3's order, the
+project filter, the Settled shelf's paging and collapsed state, search) and
+`apps/web/test/nodes.test.ts` (which nodes are shown, node names only with
+several, the store following and releasing meshes and catalogs); Playwright
+`e2e/tests/sidebar.spec.ts` (no node icon with one node, icons with two, the
+project filter keeping two "web" projects apart, search, settings leading the
+footer, the node picker, the node menu in settings, the rename dialog's
+footer inside its panel, and threads settling with the client's clock four
+days on) and the web and mesh specs, which use the cards and their context
+menu.
 
 ## Not ported (out of scope)
 
@@ -260,9 +281,15 @@ remote nodes through the palette now.
   files other than images, image compression and HEIC conversion.
 - Implementing a proposed plan from plan mode with one action.
 - Editing a sent message, regenerating, forking a thread.
-- Searching thread contents (the palette searches titles).
-- Sidebar: drag-and-drop ordering, pinning, snoozing, sort options, T3's
-  newer sidebar layout.
+- Searching thread contents (the palette and the sidebar search titles).
+- Sidebar (T3's layout, D70): settling and un-settling by hand, settling on a
+  merged pull request, and the time a thread came back from the shelf: they
+  need settlement kept on the node, so a thread settles only by itself
+  today and a revived one keeps its place by creation; pinning and its
+  section, snoozing and the Snoozed and Working shelves, drag-and-drop
+  ordering, multi-select, the jump-number hints, discarding a draft from its
+  card, and the card's branch, diff, terminal and pull request indicators
+  (source control and terminals are deferred above).
 - A machine kind per node (T3's environment icon picker), so the node icons
   of D71 differ by machine; every node shows the "server" icon today.
 - Visits and drafts are per device; syncing them, and device settings, across

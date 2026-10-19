@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
+import { threadRow } from "./support/ui.ts";
 
 let node: RunningNode;
 test.beforeAll(async () => {
@@ -30,11 +31,8 @@ test("connects with the token from the URL, sends a message and streams the repl
   await expect(log.getByRole("article", { name: "Agent" })).toHaveText("Echo: hello there");
   await expect(log.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "false");
   // The new thread is listed and selected in the sidebar, titled after its first message.
-  const threads = page.getByRole("list", { name: "Threads of No project" });
-  await expect(threads.getByRole("button", { name: "hello there", exact: true })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(threadRow(page, "hello there")).toHaveAttribute("aria-current", "page");
+  await expect(threadRow(page, "hello there")).toHaveAccessibleName("hello there, No project");
   await expect(page.getByRole("heading", { level: 2 })).toHaveText("hello there");
 
   const shot = info.outputPath("chat.png");
@@ -96,19 +94,18 @@ test("archives a thread, which then takes no messages until it is unarchived", a
   await message.press("Enter");
   await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: to be archived");
 
-  const threads = page.getByRole("list", { name: "Threads of No project" });
-  // The archive button shows while the pointer is over the row.
-  await threads.getByRole("listitem").filter({ hasText: "to be archived" }).hover();
-  await threads.getByRole("button", { name: "Archive to be archived", exact: true }).click();
-  await expect(threads.getByText("to be archived")).toHaveCount(0);
+  // Archived from the row's context menu (the thread.actions slot).
+  await threadRow(page, "to be archived").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Archive thread" }).click();
+  await expect(threadRow(page, "to be archived")).toHaveCount(0);
 
   // Back on the archived thread: no composer, a way back instead.
   await page.goBack();
-  await expect(page.getByRole("status")).toHaveText(/This thread is archived/);
+  await expect(page.getByRole("main").getByRole("status")).toHaveText(/This thread is archived/);
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
   await page.getByRole("button", { name: "Unarchive" }).click();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
-  await expect(threads.getByText("to be archived")).toBeVisible();
+  await expect(threadRow(page, "to be archived")).toBeVisible();
 });
 
 test("finds a thread from the command palette", async ({ page }) => {

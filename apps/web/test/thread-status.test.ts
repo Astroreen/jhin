@@ -1,7 +1,8 @@
 import { visitKey, type ThreadRecord } from "@jhin/client-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createVisits, strongestPill, threadStatusPill } from "../src/lib/thread-status.ts";
+import { isUnread } from "../src/lib/sidebar-order.ts";
+import { createVisits } from "../src/lib/thread-status.ts";
 
 function memoryStorage(initial: Record<string, string> = {}): Storage {
   const values = new Map(Object.entries(initial));
@@ -33,46 +34,6 @@ const turn = (
   extra: Partial<NonNullable<ThreadRecord["lastTurn"]>> = {},
 ): ThreadRecord["lastTurn"] => ({ turnId: "u1", status, at: LATER, agentId: "fake", ...extra });
 
-describe("threadStatusPill", () => {
-  it("shows what a thread waits for, and that it works", () => {
-    expect(threadStatusPill(thread(turn("waiting", { waitingFor: "approval" })), AT)?.label).toBe(
-      "Pending Approval",
-    );
-    expect(threadStatusPill(thread(turn("waiting", { waitingFor: "user-input" })), AT)?.label).toBe(
-      "Awaiting Input",
-    );
-    expect(threadStatusPill(thread(turn("running")), LATER)?.label).toBe("Working");
-  });
-
-  it("shows a completion only when it came after the last visit", () => {
-    expect(threadStatusPill(thread(turn("completed")), AT)?.label).toBe("Completed");
-    expect(threadStatusPill(thread(turn("completed")), LATER)).toBeNull();
-    // Never opened here: nothing to catch up on.
-    expect(threadStatusPill(thread(turn("completed")), undefined)).toBeNull();
-  });
-
-  it("keeps a failure until it is seen", () => {
-    expect(threadStatusPill(thread(turn("failed")), undefined)?.label).toBe("Failed");
-    expect(threadStatusPill(thread(turn("failed")), LATER)).toBeNull();
-  });
-
-  it("shows nothing for an interrupted turn or a thread without turns", () => {
-    expect(threadStatusPill(thread(turn("interrupted")), AT)).toBeNull();
-    expect(threadStatusPill(thread(), AT)).toBeNull();
-  });
-
-  it("lets the most urgent pill stand for a group", () => {
-    const pills = [
-      threadStatusPill(thread(turn("completed")), AT),
-      threadStatusPill(thread(turn("waiting", { waitingFor: "approval" })), AT),
-      threadStatusPill(thread(turn("running")), AT),
-      null,
-    ];
-    expect(strongestPill(pills)?.label).toBe("Pending Approval");
-    expect(strongestPill([null])).toBeNull();
-  });
-});
-
 describe("visits", () => {
   const node = { node: "ws://a/rpc" };
 
@@ -90,9 +51,7 @@ describe("visits", () => {
     const before = visits.snapshot();
     visits.markUnread(node, "t1");
     expect(visits.snapshot()).not.toBe(before);
-    expect(threadStatusPill(thread(turn("completed")), visits.get(node, "t1"))?.label).toBe(
-      "Completed",
-    );
+    expect(isUnread(thread(turn("completed")), visits.get(node, "t1"))).toBe(true);
     // Kept on the device, under the key renders read it by.
     expect(createVisits(storage).get(node, "t1")).toBe(visits.get(node, "t1"));
     expect(visits.snapshot()[visitKey(node, "t1")]).toBe(visits.get(node, "t1"));

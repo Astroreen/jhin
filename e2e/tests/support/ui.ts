@@ -1,6 +1,16 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 const escape = (text: string) => text.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A thread's row in the sidebar: a card, or a slim row on the Settled shelf.
+ * Its name is T3's: the title, then the status shown, then the project.
+ */
+export function threadRow(page: Page, title: string): Locator {
+  return page
+    .getByRole("navigation", { name: "Sidebar" })
+    .getByRole("button", { name: new RegExp(`^${escape(title)}, `) });
+}
 
 /**
  * Starts a new thread without a project on the node named `node`, as a user

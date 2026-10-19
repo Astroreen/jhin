@@ -4,7 +4,7 @@ import * as Path from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
-import { expectOpenConnections, newThreadOn } from "./support/ui.ts";
+import { expectOpenConnections, newThreadOn, threadRow } from "./support/ui.ts";
 
 const running: RunningNode[] = [];
 test.afterEach(async () => {
@@ -24,6 +24,12 @@ async function addProject(node: RunningNode, name: string): Promise<void> {
   await node.client().call("projects.create", { path });
 }
 
+/** A thread with one finished turn, made through the node's API. */
+async function addThread(node: RunningNode, text: string): Promise<void> {
+  const thread = await node.client().call<{ id: string }>("threads.create", {});
+  await node.client().call("threads.send", { threadId: thread.id, text });
+}
+
 async function send(page: Page, text: string): Promise<void> {
   const message = page.getByRole("textbox", { name: "Message" });
   await message.fill(text);
@@ -37,7 +43,7 @@ async function box(locator: Locator) {
   return found;
 }
 
-test("D70: one list of projects; rows name their node only while several nodes are shown", async ({
+test("D70: thread cards in one list; they name their node only while several nodes are shown", async ({
   page,
 }, info) => {
   const x = await start({ mode: "ui" });
@@ -50,20 +56,26 @@ test("D70: one list of projects; rows name their node only while several nodes a
   await page.goto(`${x.ui}#token=${x.token}`);
   await page.getByRole("button", { name: "New thread", exact: true }).click();
   await send(page, "on x");
-  // One node: its rows say nothing about where they live.
-  await expect(page.getByRole("list", { name: "Threads of No project" })).toBeVisible();
-  await expect(page.getByRole("list", { name: "Threads of web" })).toBeVisible();
+  // One node: a card with its project and title, and nothing about where it lives.
+  const onX = threadRow(page, "on x");
+  await expect(onX).toHaveAccessibleName("on x, No project");
+  await expect(onX).toHaveAttribute("aria-current", "page");
   await expect(page.locator("[data-host-indicator]")).toHaveCount(0);
+  // Nothing settled yet: the shelf is there, collapsed.
+  await expect(page.getByRole("button", { name: "Settled (0)" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
   const oneNode = info.outputPath("sidebar-one-node.png");
   await page.screenshot({ path: oneNode });
   await info.attach("sidebar-one-node", { path: oneNode, contentType: "image/png" });
 
-  // D71: settings sits at the right end of the sidebar's footer.
+  // D73: settings leads the footer, as in T3.
   const settings = await box(page.getByRole("button", { name: "Settings", exact: true }));
   const palette = await box(page.getByRole("button", { name: "Command palette" }));
-  const search = await box(page.getByRole("searchbox", { name: "Search threads" }));
-  expect(settings.x).toBeGreaterThan(palette.x);
-  expect(settings.x).toBeGreaterThan(search.x + search.width / 2);
+  const search = await box(page.getByRole("combobox", { name: "Search threads" }));
+  expect(settings.x).toBeLessThan(palette.x);
+  expect(settings.x).toBeLessThan(search.x + search.width / 2);
 
   await page.getByRole("button", { name: "Add node" }).click();
   await page.getByRole("textbox", { name: "Node URL" }).fill(y.rpc);
@@ -73,23 +85,34 @@ test("D70: one list of projects; rows name their node only while several nodes a
   await newThreadOn(page, yHost);
   await send(page, "on y");
 
-  // Two nodes, no section per node: every project and thread row names its node, and the
-  // two projects called "web" stay apart.
-  const onX = page.getByRole("list", { name: `Threads of No project on ${xHost}` });
-  const onY = page.getByRole("list", { name: `Threads of No project on ${yHost}` });
-  await expect(onX.getByRole("button", { name: "on x", exact: true })).toBeVisible();
-  await expect(onY.getByRole("button", { name: "on y", exact: true })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-  await expect(onX.getByLabel(`On ${xHost}`, { exact: true })).toBeVisible();
-  await expect(onY.getByLabel(`On ${yHost}`, { exact: true })).toBeVisible();
-  await expect(page.getByRole("list", { name: `Threads of web on ${xHost}` })).toBeVisible();
-  await expect(page.getByRole("list", { name: `Threads of web on ${yHost}` })).toBeVisible();
+  // Two nodes, no section per node: every card names its node.
+  const onY = threadRow(page, "on y");
+  await expect(onY).toHaveAttribute("aria-current", "page");
+  await expect(onX.getByLabel(`On ${xHost}`, { exact: true })).toBeAttached();
+  await expect(onY.getByLabel(`On ${yHost}`, { exact: true })).toBeAttached();
   await expect(page.getByRole("region", { name: /^Node / })).toHaveCount(0);
   const shot = info.outputPath("sidebar-two-nodes.png");
   await page.screenshot({ path: shot });
   await info.attach("sidebar-two-nodes", { path: shot, contentType: "image/png" });
+
+  // The project filter keeps the two projects called "web" apart by their node.
+  await page.getByRole("combobox", { name: "Filter threads by project" }).click();
+  await expect(page.getByRole("option", { name: new RegExp(`^web.*${xHost}`) })).toHaveCount(1);
+  await page.getByRole("option", { name: new RegExp(`^web.*${yHost}`) }).click();
+  await expect(page.getByText("No threads in web yet")).toBeVisible();
+  await expect(onX).toHaveCount(0);
+  await page.getByRole("combobox", { name: "Filter threads by project: web" }).click();
+  await page.getByRole("option", { name: "All projects" }).click();
+  await expect(onX).toBeVisible();
+
+  // Search lists matching threads; Enter opens the highlighted one.
+  const field = page.getByRole("combobox", { name: "Search threads" });
+  await field.fill("on x");
+  await expect(
+    page.getByRole("listbox", { name: "Thread search results" }).getByRole("option"),
+  ).toHaveCount(1);
+  await field.press("Enter");
+  await expect(onX).toHaveAttribute("aria-current", "page");
 
   // Adding a project asks on which node.
   await page.getByRole("button", { name: "Add project", exact: true }).click();
@@ -99,7 +122,7 @@ test("D70: one list of projects; rows name their node only while several nodes a
   await expect(adding.getByText(`A folder on ${xHost}.`, { exact: false })).toBeVisible();
   await adding.getByRole("button", { name: "Cancel" }).click();
 
-  // The node's actions moved to its menu in settings → Nodes (the `node.actions` slot).
+  // The node's actions live in its menu in settings → Nodes (the `node.actions` slot).
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .getByRole("navigation", { name: "Settings sections" })
@@ -117,19 +140,52 @@ test("D70: one list of projects; rows name their node only while several nodes a
   }
   await page.getByRole("menuitem", { name: "Rename on this device" }).click();
 
-  // D72: the dialog's footer is part of its panel, not a box below it.
+  // D74: the dialog's footer is part of its panel, not a box below it.
   const dialog = page.getByRole("dialog", { name: "Rename node" });
   const panel = await box(dialog);
   const rename = await box(dialog.getByRole("button", { name: "Rename" }));
-  const field = await box(dialog.getByRole("textbox", { name: "Node name" }));
+  const field2 = await box(dialog.getByRole("textbox", { name: "Node name" }));
   expect(rename.y + rename.height).toBeLessThanOrEqual(panel.y + panel.height);
-  expect(rename.y).toBeGreaterThan(field.y + field.height);
+  expect(rename.y).toBeGreaterThan(field2.y + field2.height);
   const dialogShot = info.outputPath("rename-node-dialog.png");
   await page.screenshot({ path: dialogShot });
   await info.attach("rename-node-dialog", { path: dialogShot, contentType: "image/png" });
 
   await dialog.getByRole("textbox", { name: "Node name" }).fill("studio");
   await dialog.getByRole("button", { name: "Rename" }).click();
-  await expect(page.getByRole("list", { name: "Threads of No project on studio" })).toBeVisible();
-  await expect(page.getByLabel("On studio", { exact: true }).first()).toBeVisible();
+  await expect(onY.getByLabel("On studio", { exact: true })).toBeAttached();
+});
+
+test("D71: threads quiet for three days settle onto the Settled shelf", async ({ page }, info) => {
+  const x = await start({ mode: "ui" });
+  await addThread(x, "first quiet thread");
+  await addThread(x, "second quiet thread");
+  // The client's clock four days on: both threads saw no activity for three days.
+  await page.clock.install({ time: Date.now() + 4 * 24 * 60 * 60 * 1000 });
+  await page.clock.resume();
+  await page.goto(`${x.ui}#token=${x.token}`);
+
+  const shelf = page.getByRole("button", { name: "Settled (2)" });
+  await expect(shelf).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("sidebar-row-card")).toHaveCount(0);
+  await expect(page.getByTestId("sidebar-row-slim")).toHaveCount(0);
+
+  await shelf.click();
+  const expanded = page.getByRole("button", { name: "Settled", exact: true });
+  await expect(expanded).toHaveAttribute("aria-expanded", "true");
+  // Most recently settled first, as slim rows.
+  await expect(page.getByTestId("sidebar-row-slim")).toHaveText([
+    /second quiet thread/,
+    /first quiet thread/,
+  ]);
+  await threadRow(page, "first quiet thread").click();
+  await expect(threadRow(page, "first quiet thread")).toHaveAttribute("aria-current", "page");
+  const shot = info.outputPath("sidebar-settled.png");
+  await page.screenshot({ path: shot });
+  await info.attach("sidebar-settled", { path: shot, contentType: "image/png" });
+
+  // Collapsed again, the open thread stays in sight.
+  await expanded.click();
+  await expect(page.getByTestId("sidebar-row-slim")).toHaveCount(1);
+  await expect(threadRow(page, "first quiet thread")).toBeVisible();
 });
