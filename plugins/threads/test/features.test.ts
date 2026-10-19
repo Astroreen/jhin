@@ -452,6 +452,51 @@ describe("jhin.threads: turn items and requests", () => {
     expect(after.lastTurn).toMatchObject({ turnId: "t-1", status: "interrupted" });
   });
 
+  it("closes the requests left open by a turn the node stopped in the middle of", async () => {
+    const first = await node();
+    const thread = await first.client.call<Thread>("threads.create", {});
+    const tool = { name: "Bash", kind: "command", title: "Run command", detail: "make" };
+    // A crash while the turn waited: one request answered, one still open.
+    await first.storage.storage.kv.set("jhin.threads", `thread/${thread.id}`, {
+      ...thread,
+      lastTurn: {
+        turnId: "t-1",
+        status: "waiting",
+        at: thread.id,
+        agentId: "jhin.agent-fake",
+        waitingFor: "approval",
+      },
+    });
+    await first.storage.storage.log.append(`thread/${thread.id}`, [
+      { type: "agent.turn.started", payload: { turnId: "t-1", agentId: "jhin.agent-fake" } },
+      {
+        type: "agent.request.opened",
+        payload: { turnId: "t-1", requestId: "r-1", request: { kind: "approval", tool } },
+      },
+      {
+        type: "agent.request.opened",
+        payload: { turnId: "t-1", requestId: "r-2", request: { kind: "approval", tool } },
+      },
+      {
+        type: "agent.request.resolved",
+        payload: {
+          turnId: "t-1",
+          requestId: "r-2",
+          response: { kind: "approval", decision: "accept" },
+        },
+      },
+    ]);
+    await first.stop();
+
+    const second = await node({ storage: first.storage, data: first.data });
+    const { events, until } = watch(second.client, thread.id);
+    await until("agent.turn.interrupted");
+    expect(events.slice(-2).map((event) => [event.type, event.payload])).toEqual([
+      ["agent.request.resolved", { turnId: "t-1", requestId: "r-1" }],
+      ["agent.turn.interrupted", { turnId: "t-1", reason: "The node stopped while the turn ran" }],
+    ]);
+  });
+
   it("accepts image attachments and refuses empty messages", async () => {
     const { client } = await node();
     const thread = await client.call<Thread>("threads.create", {});

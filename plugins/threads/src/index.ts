@@ -171,6 +171,8 @@ interface Running {
   readonly openRequests: Map<string, AgentRequest["kind"]>;
   /** Answers being recorded; the turn's end waits for them. */
   readonly answering: Map<string, Promise<unknown>>;
+  /** Set once the turn's end is being recorded: the agent takes no more answers. */
+  ending: boolean;
   /**
    * Ends the turn without the agent, for an agent that ignores its interrupt;
    * set once the agent started.
@@ -388,25 +390,38 @@ export default definePlugin({
     }
 
     // A turn still running or waiting when the node stopped without draining
-    // (a crash) never got its last event: it is closed as interrupted now.
+    // (a crash) never got its last event: it is closed as interrupted now,
+    // together with the requests it left open, as a live turn's end does (D56).
     for (const thread of await listThreads()) {
       const last = thread.lastTurn;
       if (last === undefined || (last.status !== "running" && last.status !== "waiting")) continue;
       const stream = threadStream(thread.id);
-      const head = await log.head(stream);
-      const tail = await log.read(stream, { after: Math.max(0, head - 50) });
+      // Read whole: a crash is rare, and the turn may have started long ago.
+      const turnEvents = (await log.read(stream)).filter(
+        (event) => (event.payload as { turnId?: unknown } | null)?.turnId === last.turnId,
+      );
       const endings: Record<string, TurnStatus> = {
         [ThreadEvents.turnCompleted]: "completed",
         [ThreadEvents.turnInterrupted]: "interrupted",
         [ThreadEvents.turnFailed]: "failed",
       };
-      const ended = tail.findLast(
-        (event) =>
-          endings[event.type] !== undefined &&
-          (event.payload as { turnId?: unknown } | null)?.turnId === last.turnId,
-      );
+      const ended = turnEvents.findLast((event) => endings[event.type] !== undefined);
       if (ended === undefined) {
+        const requestOf = (event: { payload: unknown }) =>
+          (event.payload as { requestId?: unknown } | null)?.requestId;
+        const resolved = new Set(
+          turnEvents.filter((event) => event.type === ThreadEvents.requestResolved).map(requestOf),
+        );
+        const open = turnEvents
+          .filter((event) => event.type === ThreadEvents.requestOpened)
+          .map(requestOf)
+          .filter((requestId): requestId is string => typeof requestId === "string")
+          .filter((requestId) => !resolved.has(requestId));
         await log.append(stream, [
+          ...open.map((requestId) => ({
+            type: ThreadEvents.requestResolved,
+            payload: { turnId: last.turnId, requestId },
+          })),
           {
             type: ThreadEvents.turnInterrupted,
             payload: { turnId: last.turnId, reason: "The node stopped while the turn ran" },
@@ -454,6 +469,7 @@ export default definePlugin({
         interrupted: false,
         openRequests: new Map(),
         answering: new Map(),
+        ending: false,
         abandon: undefined,
       };
       active.set(threadId, entry);
@@ -626,7 +642,6 @@ export default definePlugin({
           await recordEnd(ThreadEvents.requestResolved, { turnId, requestId });
         }
       };
-      let ended = false;
       /** Records the end of the turn once, whether the agent ended it or a stop gave up on it. */
       const end = async (ending: {
         type: string;
@@ -634,8 +649,8 @@ export default definePlugin({
         error?: string;
         reason?: string;
       }) => {
-        if (ended) return;
-        ended = true;
+        if (entry.ending) return;
+        entry.ending = true;
         try {
           await closeRequests();
           await recordEnd(ending.type, {
@@ -662,7 +677,7 @@ export default definePlugin({
           let answered = false;
           for await (const item of turn.items) {
             // Given up on (it ignored an interrupt): what the agent still says is dropped.
-            if (ended) break;
+            if (entry.ending) break;
             answered = item.kind === "message.completed";
             if (item.kind === "request.opened") {
               entry.openRequests.set(item.requestId, item.request.kind);
@@ -1206,8 +1221,14 @@ export default definePlugin({
       handler: async ({ threadId, requestId, response }) => {
         const current = active.get(threadId);
         const kind = current?.openRequests.get(requestId);
-        // An answer being recorded makes the request no longer open to another one.
-        if (current === undefined || kind === undefined || current.answering.has(requestId)) {
+        // An answer being recorded makes the request no longer open to another
+        // one, and a turn that is ending takes no more answers.
+        if (
+          current === undefined ||
+          kind === undefined ||
+          current.answering.has(requestId) ||
+          current.ending
+        ) {
           throw new ThreadsError("REQUEST_NOT_FOUND", `No open request ${requestId}`, {
             threadId,
             requestId,
@@ -1243,6 +1264,15 @@ export default definePlugin({
         } finally {
           // A failed record leaves the request open, so the answer can be sent again.
           current.answering.delete(requestId);
+        }
+        if (current.ending) {
+          // The turn ended while the answer was recorded: the agent never gets
+          // it, and the turn's end closes the request after the answer.
+          throw new ThreadsError(
+            "REQUEST_NOT_FOUND",
+            `The turn of request ${requestId} ended before the answer reached the agent`,
+            { threadId, requestId },
+          );
         }
         // Recorded: the request is answered, and the agent hears it.
         current.openRequests.delete(requestId);

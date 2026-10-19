@@ -258,6 +258,59 @@ describe("jhin.threads: answering requests", () => {
     expect(events.filter((event) => event.type === "agent.request.resolved")).toHaveLength(1);
     expect(messages(events)).toEqual(["Approved and ran make"]);
   });
+  it("does not report an answer as delivered when its turn ended while it was recorded", async () => {
+    const { client, storage } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const { events, until } = watch(client, thread.id);
+    await client.call("threads.send", { threadId: thread.id, text: "/approve make" });
+    const { requestId } = (await until("agent.request.opened")).payload as { requestId: string };
+
+    // The record of the answer is held until the turn's end waits for it too:
+    // it is a thenable that counts who waits on it (the answer, then the end).
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    const recording = latch();
+    const endWaits = latch();
+    const release = latch();
+    log.append = (stream, batch, options) => {
+      const answer = batch.some(
+        (event) =>
+          event.type === "agent.request.resolved" &&
+          (event.payload as { response?: unknown }).response !== undefined,
+      );
+      if (!answer) return append(stream, batch, options);
+      recording.resolve();
+      const held = release.promise.then(() => append(stream, batch, options));
+      let waiting = 0;
+      return {
+        then(onFulfilled?: (value: unknown) => unknown, onRejected?: (error: unknown) => unknown) {
+          waiting += 1;
+          if (waiting === 2) endWaits.resolve();
+          return held.then(onFulfilled, onRejected);
+        },
+      } as unknown as ReturnType<typeof append>;
+    };
+
+    const answering = client.call("threads.respond", {
+      threadId: thread.id,
+      requestId,
+      response: { kind: "approval", decision: "accept" },
+    });
+    await recording.promise;
+    await client.call("threads.interrupt", { threadId: thread.id });
+    await endWaits.promise;
+    release.resolve();
+
+    await expect(answering).rejects.toMatchObject({ code: "REQUEST_NOT_FOUND" });
+    await until("agent.turn.interrupted");
+    // Recorded as answered, then closed by the turn's end: the agent never got it.
+    expect(
+      events
+        .filter((event) => event.type === "agent.request.resolved")
+        .map((event) => (event.payload as { response?: unknown }).response),
+    ).toEqual([{ kind: "approval", decision: "accept" }, undefined]);
+    expect(messages(events)).toEqual([]);
+  });
 });
 
 describe("jhin.threads: agents that ignore an interrupt", () => {
