@@ -62,17 +62,18 @@ contributions. Features of T3 Code that only make sense for its hosted product
   that stops in between closes that turn too.
 - **D58. Thread and project management as commands:** rename, archive and
   unarchive, delete (the stream keeps a final deleted event); a new thread
-  takes its title from its first message (hook `threads.title`); projects can
-  be created (the name defaults to the folder's), renamed and deleted (never
-  the scratch project; its threads go with it); `projects.browse` lists
-  folders for the project picker (links to folders too, without blocking the
-  node on a slow disk), under a permission of its own (`projects.browse`),
-  since it reads any folder the node can. Today that permission restricts
-  nothing: every token is the owner's (`*`), and mesh members call each other
-  with `*`. A token already lets its holder run commands on the node through
-  an agent in full-access mode, so listing folders gives it nothing more; the
-  permission is there for scoped tokens (Deferred). Paths may start with `~`
-  or `~/` for the home directory; `~user` is not expanded.
+  takes its title from its first message (hook `threads.title`, run before the
+  thread is taken, so a slow hook holds nothing); projects can be created (the
+  name defaults to the folder's), renamed and deleted (never the scratch
+  project; its threads go with it); `projects.browse` lists folders for the
+  project picker (links to folders too, without blocking the node on a slow
+  disk), under a permission of its own (`projects.browse`), since it reads any
+  folder the node can. Today that permission restricts nothing: every token is
+  the owner's (`*`), and mesh members call each other with `*`. A token
+  already lets its holder run commands on the node through an agent in
+  full-access mode, so listing folders gives it nothing more; the permission
+  is there for scoped tokens (Deferred). Paths may start with `~` or `~/` for
+  the home directory; `~user` is not expanded.
 - **D68. One turn per thread, and none on a thread going away.** Checking that
   a thread is free and reserving it is one step, so concurrent sends start one
   turn. An archived thread takes no messages until it is unarchived
@@ -208,6 +209,10 @@ contributions. Features of T3 Code that only make sense for its hosted product
 - Idempotent thread creation (an id chosen by the client): a
   `threads.create` whose answer the connection dropped can leave an empty
   thread behind.
+- One write for a record and its index event: a thread's or project's record
+  is written, then its event appended to the index. If the append fails, the
+  clients following the index miss that change until they load the catalog
+  again (`threads.catalog` reads the records).
 - Attachments as blobs: images travel as data URLs inside the turn's first
   event, hence the 20 MB per message (D54).
 - Code splitting of the web client: the main chunk is over 500 kB minified.
