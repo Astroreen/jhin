@@ -3,7 +3,15 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { createClaudeRuntime, transcript, type Config } from "../src/index.ts";
+import { createMemoryStorage } from "@jhin/storage-api";
+
+import {
+  createClaudeRuntime,
+  createLiveSessions,
+  sessionRecords,
+  transcript,
+  type Config,
+} from "../src/index.ts";
 import {
   drain,
   init,
@@ -287,6 +295,38 @@ describe("jhin.agent-claude: live sessions", () => {
     expect(calls[0]!.closed).toBe(true);
   });
 
+  it("leaves no Claude Code out of reach when two turns of a thread lease at once", async () => {
+    const { query, calls } = scriptedQuery(answering("one"), answering(), answering());
+    const live = createLiveSessions({
+      query,
+      keepAlive: () => ({ keepAlive: true, idleMs: 0 }),
+    });
+    const lease = (model: string) =>
+      live.lease({
+        threadId: THREAD,
+        options: { model, permissionMode: "default" },
+        message: {
+          type: "user",
+          message: { role: "user", content: model },
+          parent_tool_use_id: null,
+        },
+      });
+    const first = await lease("a");
+    for await (const _ of first.messages) {
+      // Reads the first turn to its result.
+    }
+    first.release(true);
+    // The first waits for setModel on the kept session; the second takes it meanwhile.
+    const racing = await Promise.all([lease("b"), lease("a")]);
+    for (const held of racing) held.release(true);
+
+    const running = calls.filter((call) => !call.closed);
+    expect(running).toHaveLength(1);
+    expect(live.list()).toHaveLength(1);
+    live.dispose();
+    expect(calls.every((call) => call.closed)).toBe(true);
+  });
+
   it("ends every live session when the runtime is disposed", async () => {
     const { claude, turn, calls } = node([answering("one")]);
     await turn();
@@ -327,5 +367,18 @@ describe("jhin.agent-claude: turns Claude missed", () => {
   it("hands nothing when Claude ran the thread's last turn", () => {
     expect(transcript(history.slice(0, 2), "jhin.agent-claude")).toBeUndefined();
     expect(transcript(history, "jhin.agent-claude")).toContain("User: to fake");
+  });
+});
+
+describe("jhin.agent-claude: session records", () => {
+  it("never records a deleted thread's session again", async () => {
+    const records = sessionRecords(createMemoryStorage().kv);
+    await records.set(THREAD);
+    // A turn still letting go of its session writes after the thread was deleted.
+    await records.forget(THREAD);
+    await records.set(THREAD);
+    expect(await records.has(THREAD)).toBe(false);
+    await records.set("another");
+    expect(await records.has("another")).toBe(true);
   });
 });

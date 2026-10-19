@@ -163,6 +163,11 @@ describe("jhin.agent-claude: the plugin", () => {
       expect.objectContaining({ threadId: thread.id, busy: false }),
     ]);
 
+    // A rename is no archive: the session stays.
+    await client.call("threads.update", { threadId: thread.id, title: "Renamed" });
+    expect(await client.call("claude.sessions.list", {})).toHaveLength(1);
+    expect(calls[0]!.closed).toBe(false);
+
     await client.call("threads.archive", { threadId: thread.id });
     await calls[0]!.whenClosed;
     expect(await client.call("claude.sessions.list", {})).toEqual([]);

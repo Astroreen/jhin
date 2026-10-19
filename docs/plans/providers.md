@@ -108,7 +108,8 @@ specific to Claude: the runtime is a plugin on the public API.
   ends it with the turn (D91). A kept Claude Code that waits
   `sessionIdleMinutes` (default 10; 0: no limit) for its thread's next turn
   exits; the next turn resumes. Messages Claude Code sends between turns are
-  dropped. The live sessions of a node are listed by `claude.sessions.list`
+  dropped. A thread never has two: a Claude Code started for a thread ends
+  the one it had, also when two turns of the thread raced for it. The live sessions of a node are listed by `claude.sessions.list`
   and ended by `claude.sessions.close` (one thread or all).
 - **D99. A live session takes a turn's settings when it can.** Everything a
   running Claude Code cannot change — the working directory, effort, binary,
@@ -132,7 +133,9 @@ specific to Claude: the runtime is a plugin on the public API.
   requires `storage.eventlog@1` and follows the `threads` stream: a thread
   archived (`threads.thread.updated` with `archivedAt`) or deleted
   (`threads.thread.deleted`) ends its live session, and a deleted thread's
-  `session/<threadId>` record is forgotten. Deactivating the plugin ends
+  `session/<threadId>` record is forgotten for good: a turn still letting go
+  of the session does not write it back. Only a string `archivedAt` counts
+  as an archive. Deactivating the plugin ends
   every live session.
 - **D102. Turns Claude missed are handed to it.** A thread that ran on
   Claude, went to another agent and came back gives Claude, in front of the

@@ -300,6 +300,32 @@ export function createClaudeRuntime(options: {
   };
 }
 
+/**
+ * Which threads have a Claude session, in `storage.kv`. A forgotten (deleted) thread is
+ * never recorded again: a turn still letting go of its session when the thread was
+ * deleted would otherwise write the record back.
+ */
+export function sessionRecords(kv: KeyValueStore): SessionStore & {
+  forget(threadId: string): Promise<void>;
+} {
+  const forgotten = new Set<string>();
+  const remove = async (threadId: string) => {
+    await kv.delete(NAMESPACE, `session/${threadId}`);
+  };
+  return {
+    has: async (threadId) => (await kv.get(NAMESPACE, `session/${threadId}`)) !== undefined,
+    set: async (threadId) => {
+      if (forgotten.has(threadId)) return;
+      await kv.set(NAMESPACE, `session/${threadId}`, { at: new Date().toISOString() });
+    },
+    delete: remove,
+    forget: (threadId) => {
+      forgotten.add(threadId);
+      return remove(threadId);
+    },
+  };
+}
+
 const LiveSession = z.object({
   threadId: z.string(),
   model: z.string().optional(),
@@ -319,14 +345,7 @@ export function claudePlugin(query: QueryFunction) {
       const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
       const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
       const registry = context.services.get<AgentRegistry>(AGENT_REGISTRY_CAPABILITY);
-      const sessions: SessionStore = {
-        has: async (threadId) => (await kv.get(NAMESPACE, `session/${threadId}`)) !== undefined,
-        set: (threadId) =>
-          kv.set(NAMESPACE, `session/${threadId}`, { at: new Date().toISOString() }),
-        delete: async (threadId) => {
-          await kv.delete(NAMESPACE, `session/${threadId}`);
-        },
-      };
+      const sessions = sessionRecords(kv);
       const runtime = createClaudeRuntime({
         query,
         sessions,
@@ -344,7 +363,7 @@ export function claudePlugin(query: QueryFunction) {
           if (typeof payload?.id !== "string") return;
           if (event.type === ThreadEvents.threadDeleted) {
             runtime.live.close(payload.id);
-            void sessions.delete(payload.id).catch((error: unknown) =>
+            void sessions.forget(payload.id).catch((error: unknown) =>
               context.log.warn("could not forget the claude session", {
                 threadId: payload.id,
                 error: String(error),
@@ -352,7 +371,7 @@ export function claudePlugin(query: QueryFunction) {
             );
           } else if (
             event.type === ThreadEvents.threadUpdated &&
-            payload.archivedAt !== undefined
+            typeof payload.archivedAt === "string"
           ) {
             runtime.live.close(payload.id);
           }

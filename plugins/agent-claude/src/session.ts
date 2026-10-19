@@ -188,6 +188,10 @@ export function createLiveSessions(options: {
   };
 
   const open = (threadId: string, key: string, launch: Options): Live => {
+    // At most one Claude Code per thread: a lease that raced this one (two turns of a
+    // thread at once) loses its session rather than leaving it out of reach.
+    const existing = sessions.get(threadId);
+    if (existing !== undefined) close(existing);
     const input = queue<SDKUserMessage>();
     let live!: Live;
     const query = options.query({
