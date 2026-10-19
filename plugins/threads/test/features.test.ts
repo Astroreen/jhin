@@ -11,6 +11,13 @@ import { fakeTurn } from "../../agent-fake/src/index.ts";
 import { titleFromText } from "../src/index.ts";
 import { node, watch } from "./support.ts";
 
+/** A promise with its resolver: something a test or a fake waits for. */
+function latch<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => (resolve = done));
+  return { promise, resolve };
+}
+
 interface Thread {
   id: string;
   projectId: string;
@@ -510,6 +517,51 @@ describe("jhin.threads: turn items and requests", () => {
       threadId: thread.id,
     });
     expect(after.lastTurn).toMatchObject({ turnId: "t-1", status: "interrupted" });
+  });
+
+  it("records that a turn runs before writing its first event", async () => {
+    const { client, storage } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    // The turn's first event is written once the test says so.
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    const starting = latch();
+    const start = latch();
+    log.append = async (stream, batch, options) => {
+      if (batch.some((event) => event.type === "agent.turn.started")) {
+        starting.resolve();
+        await start.promise;
+      }
+      return append(stream, batch, options);
+    };
+
+    const sending = client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await starting.promise;
+    const { thread: during } = await client.call<{ thread: Thread }>("threads.get", {
+      threadId: thread.id,
+    });
+    expect(during.lastTurn?.status).toBe("running");
+    start.resolve();
+    await sending;
+  });
+
+  it("closes a turn whose start the node stopped in, before its first event", async () => {
+    const first = await node();
+    const thread = await first.client.call<Thread>("threads.create", {});
+    // A crash right after the record said running: the turn has no event at all.
+    await first.storage.storage.kv.set("jhin.threads", `thread/${thread.id}`, {
+      ...thread,
+      lastTurn: { turnId: "t-2", status: "running", at: thread.id, agentId: "jhin.agent-fake" },
+    });
+    await first.stop();
+
+    const second = await node({ storage: first.storage, data: first.data });
+    const { until } = watch(second.client, thread.id);
+    expect((await until("agent.turn.interrupted")).payload).toMatchObject({ turnId: "t-2" });
+    const { thread: after } = await second.client.call<{ thread: Thread }>("threads.get", {
+      threadId: thread.id,
+    });
+    expect(after.lastTurn).toMatchObject({ turnId: "t-2", status: "interrupted" });
   });
 
   it("closes the requests left open by a turn the node stopped in the middle of", async () => {

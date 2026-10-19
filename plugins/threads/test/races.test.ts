@@ -592,6 +592,132 @@ describe("jhin.threads: answering requests", () => {
   });
 });
 
+describe("jhin.threads: answers and what a turn waits for", () => {
+  const approval = {
+    kind: "approval" as const,
+    tool: { name: "Bash", kind: "command" as const, title: "Run command", detail: "make" },
+  };
+  const question = {
+    kind: "user-input" as const,
+    questions: [{ id: "color", header: "Color", question: "Which color?", options: [] }],
+  };
+  /** A runtime that opens `requests` in order, then ends once each one is answered. */
+  function asking(...requests: (typeof approval | typeof question)[]) {
+    const answers = new Map<string, () => void>();
+    const runtime: AgentRuntime = {
+      agentId: "acme.asking",
+      startTurn: ({ turnId }) => ({
+        items: (async function* (): AsyncGenerator<AgentItem> {
+          const waits: Promise<void>[] = [];
+          for (const [index, request] of requests.entries()) {
+            const requestId = `${turnId}:${index}`;
+            waits.push(new Promise<void>((done) => answers.set(requestId, done)));
+            yield { kind: "request.opened", requestId, request };
+          }
+          await Promise.all(waits);
+          yield { kind: "message.completed", itemId: `${turnId}:m`, text: "Done" };
+        })(),
+        interrupt: () => undefined,
+        respond: (requestId) => answers.get(requestId)?.(),
+      }),
+    };
+    return runtime;
+  }
+
+  it("records an answer after the request it answers, even when it comes first", async () => {
+    const { client, storage } = await node({
+      agent: false,
+      plugins: [registering(asking(approval))],
+    });
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    // The request's opened event is written once the test says so. The test
+    // learns when the answer waits for it, or is recorded before it.
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    const recording = latch();
+    const release = latch();
+    const answerWaits = latch();
+    const answeredFirst = latch();
+    let held = false;
+    log.append = (stream, batch, options) => {
+      const types = new Set(batch.map((event) => event.type));
+      if (types.has("agent.request.opened")) {
+        held = true;
+        recording.resolve();
+        const done = release.promise.then(() => append(stream, batch, options));
+        let waiting = 0;
+        return {
+          // oxlint-disable-next-line unicorn/no-thenable -- it stands for the append, counting who awaits it
+          then(
+            onFulfilled?: (value: unknown) => unknown,
+            onRejected?: (error: unknown) => unknown,
+          ) {
+            waiting += 1;
+            if (waiting === 2) answerWaits.resolve();
+            return done.then(onFulfilled, onRejected);
+          },
+        } as unknown as ReturnType<typeof append>;
+      }
+      if (held && types.has("agent.request.resolved")) answeredFirst.resolve();
+      return append(stream, batch, options);
+    };
+
+    const { turnId } = await client.call<{ turnId: string }>("threads.send", {
+      threadId: thread.id,
+      text: "go",
+    });
+    await recording.promise;
+    // The id is known before the request is recorded, e.g. from an agent that numbers them.
+    const answering = client.call("threads.respond", {
+      threadId: thread.id,
+      requestId: `${turnId}:0`,
+      response: { kind: "approval", decision: "accept" },
+    });
+    await Promise.race([answerWaits.promise, answeredFirst.promise]);
+    release.resolve();
+
+    expect(await answering).toEqual({ resolved: true });
+    await until("agent.turn.completed");
+    const recorded = (await log.read(`thread/${thread.id}`))
+      .map((event) => event.type)
+      .filter((type) => type.startsWith("agent.request."));
+    expect(recorded).toEqual(["agent.request.opened", "agent.request.resolved"]);
+  });
+
+  it("says what the turn waits for while several requests are open", async () => {
+    const { client } = await node({
+      agent: false,
+      plugins: [registering(asking(approval, question))],
+    });
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    const { turnId } = await client.call<{ turnId: string }>("threads.send", {
+      threadId: thread.id,
+      text: "go",
+    });
+    await until("agent.request.opened", 1);
+
+    await client.call("threads.respond", {
+      threadId: thread.id,
+      requestId: `${turnId}:0`,
+      response: { kind: "approval", decision: "accept" },
+    });
+    const { thread: waiting } = await client.call<{
+      thread: Thread & { lastTurn?: { waitingFor?: string } };
+    }>("threads.get", { threadId: thread.id });
+    // The approval is answered: only the question is open.
+    expect(waiting.lastTurn).toMatchObject({ status: "waiting", waitingFor: "user-input" });
+
+    await client.call("threads.respond", {
+      threadId: thread.id,
+      requestId: `${turnId}:1`,
+      response: { kind: "user-input", answers: { color: "Blue" } },
+    });
+    await until("agent.turn.completed");
+  });
+});
+
 describe("jhin.threads: agents that fail to take an answer", () => {
   it("records the answer once and takes no second one", async () => {
     const stopped = latch();

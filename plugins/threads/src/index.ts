@@ -186,6 +186,11 @@ interface Running {
   giveUp: string | undefined;
 }
 
+/** What a turn with open requests waits for: an approval, if one is open, else answers. */
+function waitingFor(open: ReadonlyMap<string, AgentRequest["kind"]>): AgentRequest["kind"] {
+  return [...open.values()].includes("approval") ? "approval" : "user-input";
+}
+
 /** The first line of a message, shortened at a word: the title of a new thread. */
 export function titleFromText(text: string): string {
   const line =
@@ -217,8 +222,9 @@ export default definePlugin({
     const paths = context.services.get<HostPaths>(HOST_PATHS_CAPABILITY);
     const active = new Map<string, Running>();
     /**
-     * Threads being deleted, and deleted ones: no turn starts on them. Kept
-     * apart from archives, so an archive never lifts a deletion's mark.
+     * Threads being deleted, and those whose deletion failed after it was
+     * recorded: no turn starts on them. Kept apart from archives, so an archive
+     * never lifts a deletion's mark.
      */
     const deleted = new Set<string>();
     /** Archives under way: no turn starts on their threads; a second archive joins. */
@@ -234,7 +240,7 @@ export default definePlugin({
     /**
      * Projects being removed, and removed ones: no thread is created in them.
      * Kept after a removal, one id each: a creation that read the project just
-     * before it went is refused by this mark.
+     * before it went checks this mark only after its read.
      */
     const removedProjects = new Set<string>();
     /** Project removals under way: a second removal of a project joins the first. */
@@ -622,18 +628,26 @@ export default definePlugin({
       try {
         const project = await getProject(thread.projectId);
         const history = await log.read(stream);
-        await log.append(stream, [
-          {
-            type: ThreadEvents.turnStarted,
-            payload: {
-              turnId,
-              agentId: runtime.agentId,
-              input: input as unknown as Json,
-              ...(settings as Record<string, Json>),
-            },
-          },
-        ]);
+        // The record says the turn runs before its first event is written: a node
+        // that stops in between finds it on restart and closes it.
         await setTurnStatus(thread.id, turnId, runtime.agentId, "running");
+        try {
+          await log.append(stream, [
+            {
+              type: ThreadEvents.turnStarted,
+              payload: {
+                turnId,
+                agentId: runtime.agentId,
+                input: input as unknown as Json,
+                ...(settings as Record<string, Json>),
+              },
+            },
+          ]);
+        } catch (error) {
+          // Never started: the record does not say it runs.
+          await setTurnStatus(thread.id, turnId, runtime.agentId, "failed");
+          throw error;
+        }
         try {
           turn = runtime.startTurn({
             threadId: thread.id,
@@ -753,8 +767,14 @@ export default definePlugin({
             } finally {
               if (entry.recording === recording) entry.recording = undefined;
             }
-            if (item.kind === "request.opened" && entry.openRequests.size === 1) {
-              await setTurnStatus(thread.id, turnId, runtime.agentId, "waiting", item.request.kind);
+            if (item.kind === "request.opened") {
+              await setTurnStatus(
+                thread.id,
+                turnId,
+                runtime.agentId,
+                "waiting",
+                waitingFor(entry.openRequests),
+              );
             }
           }
           ending =
@@ -825,6 +845,8 @@ export default definePlugin({
             { type: ThreadEvents.threadDeleted, payload: { id: thread.id } },
           ]);
           deletions.delete(thread.id);
+          // Gone: its record is, so nothing takes it for a thread any more.
+          deleted.delete(thread.id);
         } catch (error) {
           deletion.running = undefined;
           if (!deletion.recorded) {
@@ -1413,6 +1435,8 @@ export default definePlugin({
       permissions: ["threads.write"],
       handler: async ({ threadId, requestId, response }) => {
         const current = active.get(threadId);
+        // The request may still be being recorded: its answer comes after it.
+        if (current?.recording !== undefined) await Promise.allSettled([current.recording]);
         const kind = current?.openRequests.get(requestId);
         // An answer being recorded makes the request no longer open to another
         // one, and a turn that is ending takes no more answers.
@@ -1476,8 +1500,17 @@ export default definePlugin({
         } catch (error) {
           refused = error;
         }
-        if (current.openRequests.size === 0 && active.get(threadId) === current) {
-          await setTurnStatus(threadId, current.turnId, current.agentId, "running");
+        // What the turn waits for now: the requests still open, or nothing.
+        if (active.get(threadId) === current) {
+          await (current.openRequests.size === 0
+            ? setTurnStatus(threadId, current.turnId, current.agentId, "running")
+            : setTurnStatus(
+                threadId,
+                current.turnId,
+                current.agentId,
+                "waiting",
+                waitingFor(current.openRequests),
+              ));
         }
         if (refused !== undefined) {
           context.log.error("an agent failed to take an answer", {
