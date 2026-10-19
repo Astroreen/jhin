@@ -1360,13 +1360,19 @@ export default definePlugin({
                   .catch(() => titleFromText(text))
               : thread.title;
           const chosen = { agentId: runtime.agentId, ...settings };
+          // The record keeps what this turn runs with: no model of another agent.
+          const dropModel = settings.model === undefined;
           const changed =
             named !== thread.title ||
+            (dropModel && thread.model !== undefined) ||
             Object.entries(chosen).some(
               ([key, value]) => (thread as Record<string, unknown>)[key] !== value,
             );
           if (changed) {
-            await updateThread(threadId, (latest) => ({ ...latest, ...chosen, title: named }));
+            await updateThread(threadId, (latest) => {
+              const { model: _model, ...rest } = latest;
+              return { ...(dropModel ? rest : latest), ...chosen, title: named };
+            });
           }
         } catch (error) {
           reservation.finish();

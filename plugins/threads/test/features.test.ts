@@ -292,6 +292,44 @@ describe("jhin.threads: agents", () => {
     ).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
   });
 
+  it("does not carry a model over to another agent chosen with a message", async () => {
+    seen.length = 0;
+    const other: AgentRuntime = {
+      agentId: "acme.other",
+      startTurn(request) {
+        seen.push(request);
+        return fakeTurn(request);
+      },
+    };
+    const { client } = await node({ plugins: [registering(claude), registering(other)] });
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+
+    await client.call("threads.send", {
+      threadId: thread.id,
+      text: "hi",
+      agentId: "acme.claude",
+      model: "opus",
+    });
+    await until("agent.turn.completed");
+    await client.call("threads.send", {
+      threadId: thread.id,
+      text: "again",
+      agentId: "acme.other",
+    });
+    await until("agent.turn.completed", 1);
+    await client.call("threads.send", { threadId: thread.id, text: "and again" });
+    await until("agent.turn.completed", 2);
+
+    expect(seen.map((request) => request.model)).toEqual(["opus", undefined, undefined]);
+    const { thread: after } = await client.call<{ thread: Thread & { model?: string } }>(
+      "threads.get",
+      { threadId: thread.id },
+    );
+    expect(after.agentId).toBe("acme.other");
+    expect(after.model).toBeUndefined();
+  });
+
   it("keeps a thread's settings consistent when they change", async () => {
     const { client } = await node({ plugins: [registering(claude)] });
     const thread = await client.call<Thread & { updatedAt: string }>("threads.create", {
