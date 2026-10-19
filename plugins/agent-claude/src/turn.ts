@@ -224,7 +224,6 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
   let current: ClaudeQuery | undefined;
   let ended: (() => void) | undefined;
 
-  /** Opens a request and waits for its answer; `undefined` when the turn stops first. */
   /**
    * Opens a request and waits for its answer: `undefined` when the turn stops first or
    * Claude Code withdraws the request (`signal`). The request stays open in the thread
@@ -476,14 +475,13 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
   };
 
   // --- The query ----------------------------------------------------------------
+  const mode = permissionMode(runtimeMode, interactionMode);
   const options = (resume: boolean): Options => ({
     cwd: request.cwd,
     model,
     ...(resume ? { resume: request.threadId } : { sessionId: request.threadId }),
-    permissionMode: permissionMode(runtimeMode, interactionMode),
-    ...(permissionMode(runtimeMode, interactionMode) === "bypassPermissions"
-      ? { allowDangerouslySkipPermissions: true }
-      : {}),
+    permissionMode: mode,
+    ...(mode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
     canUseTool,
     includePartialMessages: true,
     thinking: { type: "adaptive", display: "summarized" },
