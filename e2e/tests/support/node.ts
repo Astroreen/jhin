@@ -33,7 +33,16 @@ export function writeConfig(home: string, config: Record<string, unknown>): void
   Fs.mkdirSync(Path.join(home, ".jhin"), { recursive: true });
   Fs.writeFileSync(
     Path.join(home, ".jhin", "config.jsonc"),
-    JSON.stringify({ "jhin.http": { port: 0 }, ...config }, null, 2),
+    JSON.stringify(
+      {
+        "jhin.http": { port: 0 },
+        // Turns run on the fake agent, never on a real one this machine may have (Claude Code).
+        "jhin.threads": { defaultAgent: "jhin.agent-fake" },
+        ...config,
+      },
+      null,
+      2,
+    ),
   );
 }
 

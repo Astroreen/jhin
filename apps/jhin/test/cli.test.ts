@@ -38,7 +38,10 @@ function homeWith(
   const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-cli-"));
   // The CLI runs with --cwd <home>: a free port, never the user's real node.
   Fs.mkdirSync(Path.join(home, ".jhin"), { recursive: true });
-  Fs.writeFileSync(Path.join(home, ".jhin", "config.jsonc"), '{ "jhin.http": { "port": 0 } }');
+  Fs.writeFileSync(
+    Path.join(home, ".jhin", "config.jsonc"),
+    '{ "jhin.http": { "port": 0 }, "jhin.threads": { "defaultAgent": "jhin.agent-fake" } }',
+  );
   // The first run then keeps stderr clean JSON (no token notice).
   seedToken(home);
   for (const [dir, plugin] of Object.entries(plugins)) {
