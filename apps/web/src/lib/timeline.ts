@@ -260,11 +260,14 @@ export function createTimeline() {
           const key = `request:${payload.requestId}`;
           const existing = find(turn, key);
           if (existing?.kind !== "request") break;
-          put(turn, key, {
-            ...existing,
-            state: payload.response === undefined ? "closed" : "answered",
-            ...(payload.response === undefined ? {} : { response: payload.response }),
-          });
+          if (payload.response !== undefined) {
+            put(turn, key, { ...existing, state: "answered", response: payload.response });
+            break;
+          }
+          // Closed, also after an answer the turn's end overtook: the agent never
+          // got it (D56), so it shows unanswered.
+          const { response: _response, ...unanswered } = existing;
+          put(turn, key, { ...unanswered, state: "closed" });
           break;
         }
         case ThreadEvents.planUpdated: {

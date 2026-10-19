@@ -111,6 +111,27 @@ describe("reduceTimeline", () => {
     expect(turn.usage).toEqual({ inputTokens: 10, outputTokens: 2 });
   });
 
+  it("shows an answer the turn's end overtook as unanswered", () => {
+    const request = { kind: "approval", tool: command("make") };
+    const timeline = reduceTimeline(
+      stream(
+        started(),
+        [ThreadEvents.requestOpened, { turnId: "u1", requestId: "r", request }],
+        // Recorded while the turn ended: the agent never got it.
+        [
+          ThreadEvents.requestResolved,
+          { turnId: "u1", requestId: "r", response: { kind: "approval", decision: "accept" } },
+        ],
+        [ThreadEvents.requestResolved, { turnId: "u1", requestId: "r" }],
+        [ThreadEvents.turnInterrupted, { turnId: "u1" }],
+      ),
+    );
+    const item = timeline.turns[0]!.items[0] as RequestItem;
+    expect(item.state).toBe("closed");
+    expect(item.response).toBeUndefined();
+    expect(workEntryLabel(item)).toBe("Unanswered: make");
+  });
+
   it("closes requests still open when their turn ends", () => {
     const request = { kind: "approval", tool: command("rm -rf build") };
     const running = stream(started(), [
