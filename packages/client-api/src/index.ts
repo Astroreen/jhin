@@ -156,6 +156,49 @@ export interface NodeCatalog {
   readonly threads: readonly ThreadRecord[];
 }
 
+/** `client.visits@1`: when the user last looked at each thread, on this device. */
+export const VISITS_CAPABILITY = "client.visits";
+
+/** The key of a thread in a `ThreadVisits` snapshot. */
+export const visitKey = (target: NodeTarget, threadId: string): string =>
+  `${targetKey(target)}|${threadId}`;
+
+export interface ThreadVisits {
+  /** When the thread was last seen, as a time of the thread's node. */
+  get(target: NodeTarget, threadId: string): string | undefined;
+  /** Records that the thread was seen as of `at` (a time of its node); never moves back. */
+  visit(target: NodeTarget, threadId: string, at: string): void;
+  /** The thread's latest turn shows as new again. */
+  markUnread(target: NodeTarget, threadId: string): void;
+  /** Every visit by `visitKey`: a new object whenever one changes, for renders to read. */
+  snapshot(): Readonly<Record<string, string>>;
+  subscribe(listener: () => void): Disposable;
+}
+
+/**
+ * What the `thread.actions` slot gives each item of a thread's menu (the
+ * sidebar's context menu, the thread view's title menu).
+ */
+export interface ThreadActionProps {
+  readonly target: NodeTarget;
+  readonly thread: ThreadRecord;
+  /** The thread's project, where the menu knows it. */
+  readonly project?: ProjectRecord;
+  /** Starts renaming the thread in place, where the menu's host can. */
+  readonly rename?: () => void;
+}
+
+/** What the `project.actions` slot gives each item of a project's menu. */
+export interface ProjectActionProps {
+  readonly target: NodeTarget;
+  readonly project: ProjectRecord;
+}
+
+/** What the `node.actions` slot gives each item of a connected node's menu. */
+export interface NodeActionProps {
+  readonly connection: NodeConnection;
+}
+
 /**
  * What the `chat.header.actions` slot gives each contribution: the open
  * thread (none while drafting) and where it lives.
