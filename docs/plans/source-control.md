@@ -55,7 +55,9 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   first) and `git.checkout` (a branch, a remote branch as a local one
   following it, or `create` a new one from `HEAD`; `threadId` moves that
   thread to it). Reads need `git.read`, a checkout `git.write`. Errors carry
-  codes: `PROJECT_NOT_FOUND`, `THREAD_NOT_FOUND`, `NOT_A_REPOSITORY`,
+  codes: `PROJECT_NOT_FOUND`, `THREAD_NOT_FOUND`, `THREAD_PROJECT_MISMATCH`
+  (a checkout's `threadId` names a thread of another project; nothing is
+  checked out then), `NOT_A_REPOSITORY`,
   `BRANCH_NOT_FOUND`, `BRANCH_INVALID` (also any name starting with `-`),
   `GIT_FAILED` (git's own refusal, e.g. a checkout that would lose changes,
   with git's message). A status is T3's `VcsStatusResult` shape: branch,
@@ -66,7 +68,10 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   checked out in the thread's project when the thread is created, again when
   one of its turns starts (the agent works on what is checked out) and when it
   ends (the agent may have switched), and whatever `git.checkout` with its
-  `threadId` switched to. The record lives in `storage.kv`, so it survives
+  `threadId` switched to. Each of these reads the repository then, not the
+  last status: a checkout made a moment before, or with the watcher off or
+  past its limit, would otherwise pin the thread to the old branch. The
+  record lives in `storage.kv`, so it survives
   restarts; a deleted thread or project drops it. A thread whose branch is no
   longer checked out keeps it (`checkedOut: false`), as T3 keeps
   `thread.branch`.
@@ -83,7 +88,10 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   the git directory and its `refs` (checkouts, commits, fetches, pushes); new
   directories are watched as they appear, at most 4000 per repository. Changes
   settle for 150 ms (at most 1 s while writes keep coming) before the
-  repository is read again. Reads never take the index lock
+  repository is read again. Untracked files have their lines counted 8 at a
+  time in 64 KiB reads (binary decided from the first 8000 bytes, as git
+  does), so a tree of generated files costs neither memory nor file
+  descriptors. Reads never take the index lock
   (`GIT_OPTIONAL_LOCKS=0`), so they neither fight the user's git nor wake the
   watcher themselves. A turn's end reads the repository too, so a node with
   `watch: false` (or a tree beyond the limit) still shows what a turn changed.
@@ -99,7 +107,10 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   out, or failing, the status says so (`provider.available: false` with the
   reason: "GitHub CLI (gh) is not installed on this node", "GitHub CLI is not
   signed in: run `gh auth login` on this node") and pull requests stay
-  unknown; the rest of the status is unaffected. The `jhin.source-control`
+  unknown; the rest of the status is unaffected. `gh` is asked again once a
+  refresh period has passed (by the timer or the next change of the
+  repository), so a `gh auth login`, or a network that comes back, brings
+  the pull requests back without a forced refresh. The `jhin.source-control`
   config section (`watch`, `pullRequestRefreshSeconds`, `githubHosts`,
   `gitPath`, `ghPath`) is edited on the settings page like any other.
 
@@ -127,7 +138,10 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   connection shares no such stream (only threads are mirrored, D26), so its
   feed reads `git.status` again whenever the member's thread catalog changes
   (a turn that ends, a thread created). A node without the plugin
-  (`COMMAND_NOT_FOUND`) shows nothing.
+  (`COMMAND_NOT_FOUND`) shows nothing. A refused subscription or a failed
+  load shows as an error and the feed starts over (`git.status`, then the
+  stream after its head; answers of the older start are dropped): at once,
+  then backing off up to 30 s while it keeps failing.
 - **D119. The branch toolbar is T3's strip under the composer**, the new
   slot `chat.composer.context` (props `ChatComposerContextProps`: target,
   thread, project; a draft has only its project). `ComposerSurface.ContextStrip`
@@ -164,13 +178,17 @@ ahead/behind against a pushed upstream, a write on disk and a commit
 published on the stream, nothing published when nothing changed, a removed
 project; uncommitted and branch diffs; branches, checkouts, invalid and
 unknown names, git's own refusal; a thread's branch at creation, at a turn,
-through a checkout, and forgotten with the thread; parsing porcelain v2 and
+through a checkout, read afresh with the watcher off, and forgotten with the
+thread; a checkout refusing a thread of another project or none; counting
+large and late-NUL files, at most 8 at once; parsing porcelain v2 and
 numstat), `test/watch.test.ts` (ignored trees unwatched, new directories
 watched, the limit) and `test/github.test.ts` (a fake `gh` on `PATH`: an open
 pull request with its checks, merged, closed and draft ones, none, every
-thread's branch, `gh` missing and signed out, remotes elsewhere; hosts and
+thread's branch, `gh` missing and signed out, `gh` asked again a refresh
+period after it failed, remotes elsewhere; hosts and
 the check rollup); `apps/web/test/source-control.test.ts` (the feed: stream
-after the head, a node without the plugin, a mesh member re-read on catalog
+after the head, starting over after a refused subscription, a node without
+the plugin, a mesh member re-read on catalog
 changes, a refresh; parsing patches; labels) and
 `source-control.browser.test.tsx` (the card's indicators in T3's order, the
 pull request link not opening the thread, no diff for a branch not checked
