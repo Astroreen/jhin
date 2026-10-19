@@ -1,10 +1,11 @@
 import * as Fs from "node:fs";
+import * as Os from "node:os";
 import * as Path from "node:path";
 
 import type { AgentRegistry, AgentRuntime, TurnRequest } from "@jhin/agent-api";
 import { definePlugin } from "@jhin/sdk";
 import { testManifest } from "@jhin/testing";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { fakeTurn } from "../../agent-fake/src/index.ts";
 import { titleFromText } from "../src/index.ts";
@@ -157,6 +158,10 @@ describe("jhin.threads: thread management", () => {
     Fs.mkdirSync(Path.join(data, "plain"));
     Fs.mkdirSync(Path.join(data, ".hidden"));
     Fs.writeFileSync(Path.join(data, "file.txt"), "x");
+    // A link to a folder is one; links to a file or to nothing are not.
+    Fs.symlinkSync(Path.join(data, "plain"), Path.join(data, "linked"));
+    Fs.symlinkSync(Path.join(data, "file.txt"), Path.join(data, "file-link"));
+    Fs.symlinkSync(Path.join(data, "missing"), Path.join(data, "dangling"));
 
     const listing = await client.call<{
       path: string;
@@ -167,12 +172,29 @@ describe("jhin.threads: thread management", () => {
     expect(listing.path).toBe(Path.resolve(data));
     expect(listing.parent).toBe(Path.dirname(Path.resolve(data)));
     expect(listing.entries.filter((entry) => entry.name !== "jhin.threads")).toEqual([
+      { name: "linked", path: Path.join(data, "linked"), git: false },
       { name: "plain", path: Path.join(data, "plain"), git: false },
       { name: "repo", path: Path.join(data, "repo"), git: true },
     ]);
     await expect(client.call("projects.browse", { path: "relative" })).rejects.toMatchObject({
       code: "PATH_INVALID",
     });
+    // `~` is the home directory; `~user` is no path of this node's, even when
+    // the home directory has a folder of that name.
+    const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-home-"));
+    Fs.mkdirSync(Path.join(home, "nobody", "app"), { recursive: true });
+    vi.stubEnv("HOME", home);
+    try {
+      expect(await client.call("projects.browse", { path: "~" })).toMatchObject({ path: home });
+      await expect(client.call("projects.browse", { path: "~nobody" })).rejects.toMatchObject({
+        code: "PATH_INVALID",
+      });
+      await expect(client.call("projects.create", { path: "~nobody/app" })).rejects.toMatchObject({
+        code: "PROJECT_PATH_INVALID",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("browses folders only with a permission of its own", async () => {

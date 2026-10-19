@@ -305,6 +305,50 @@ describe("jhin.threads: deletions that fail or overlap", () => {
     expect(await deletedEvents(log, "threads")).toBe(1);
   });
 
+  it("removes a project once when it is removed twice at once", async () => {
+    const { client, storage, data } = await node();
+    const project = await client.call<{ id: string }>("projects.create", { path: data });
+    await client.call("threads.create", { projectId: project.id });
+
+    const results = await Promise.all([
+      client.call("projects.delete", { projectId: project.id }),
+      client.call("projects.delete", { projectId: project.id }),
+    ]);
+    expect(results).toEqual([{ deletedThreads: 1 }, { deletedThreads: 1 }]);
+    const index = await storage.storage.log.read("threads");
+    expect(index.filter((event) => event.type === "threads.project.deleted")).toHaveLength(1);
+  });
+
+  it("deletes a thread whose creation was under way when its project's removal began", async () => {
+    const { client, storage, data } = await node();
+    const project = await client.call<{ id: string }>("projects.create", { path: data });
+    // The new thread's record is stored once the test says so.
+    const kv = storage.storage.kv;
+    const set = kv.set.bind(kv);
+    const storing = latch();
+    const store = latch();
+    kv.set = async (namespace, key, value) => {
+      if (key.startsWith("thread/")) {
+        storing.resolve();
+        await store.promise;
+      }
+      return set(namespace, key, value);
+    };
+
+    const creating = client.call<Thread>("threads.create", { projectId: project.id });
+    await storing.promise;
+    const removing = client.call("projects.delete", { projectId: project.id });
+    // The removal has begun once a new thread in the project is refused.
+    await expect(client.call("threads.create", { projectId: project.id })).rejects.toMatchObject({
+      code: "PROJECT_NOT_FOUND",
+    });
+    store.resolve();
+
+    await creating;
+    expect(await removing).toEqual({ deletedThreads: 1 });
+    expect(await client.call("threads.list", {})).toEqual([]);
+  });
+
   it("creates threads again in a project whose removal failed", async () => {
     const { kernel, data, storage } = await node();
     const project = (await kernel.commands.execute("projects.create", { path: data })) as {
@@ -434,6 +478,57 @@ describe("jhin.threads: answering requests", () => {
         .map((event) => (event.payload as { response?: unknown }).response),
     ).toEqual([{ kind: "approval", decision: "accept" }, undefined]);
     expect(messages(events)).toEqual([]);
+  });
+});
+
+describe("jhin.threads: agents that fail to take an answer", () => {
+  it("records the answer once and takes no second one", async () => {
+    const stopped = latch();
+    const broken: AgentRuntime = {
+      agentId: "acme.broken",
+      startTurn: ({ turnId }) => ({
+        items: (async function* (): AsyncGenerator<AgentItem> {
+          yield {
+            kind: "request.opened",
+            requestId: `${turnId}:r`,
+            request: {
+              kind: "approval",
+              tool: { name: "Bash", kind: "command", title: "Run command", detail: "make" },
+            },
+          };
+          await stopped.promise;
+        })(),
+        interrupt: () => stopped.resolve(),
+        respond: () => {
+          throw new Error("broken pipe");
+        },
+      }),
+    };
+    const { client, storage } = await node({ agent: false, plugins: [registering(broken)] });
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    await client.call("threads.send", { threadId: thread.id, text: "go" });
+    const { requestId } = (await until("agent.request.opened")).payload as { requestId: string };
+    const answer = {
+      threadId: thread.id,
+      requestId,
+      response: { kind: "approval", decision: "accept" },
+    };
+
+    await expect(client.call("threads.respond", answer)).rejects.toMatchObject({
+      code: "AGENT_FAILED",
+    });
+    await expect(client.call("threads.respond", answer)).rejects.toMatchObject({
+      code: "REQUEST_NOT_FOUND",
+    });
+    await client.call("threads.interrupt", { threadId: thread.id });
+    await until("agent.turn.interrupted");
+    const resolved = (await storage.storage.log.read(`thread/${thread.id}`)).filter(
+      (event) => event.type === "agent.request.resolved",
+    );
+    expect(resolved.map((event) => (event.payload as { response?: unknown }).response)).toEqual([
+      { kind: "approval", decision: "accept" },
+    ]);
   });
 });
 

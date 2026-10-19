@@ -201,6 +201,14 @@ export function titleFromText(text: string): string {
   return `${(space > MAX_TITLE_LENGTH / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
+/** `~` and `~/…` stand for the home directory; any other path is taken as given. */
+function expandHome(path: string): string {
+  if (path === "~") return Os.homedir();
+  return path.startsWith("~/") || path.startsWith(`~${Path.sep}`)
+    ? Path.join(Os.homedir(), path.slice(2))
+    : path;
+}
+
 export default definePlugin({
   async activate(context) {
     context.config.define(CONFIG_SECTION, Config);
@@ -218,8 +226,16 @@ export default definePlugin({
       string,
       { readonly thread: Thread; recorded: boolean; running: Promise<void> | undefined }
     >();
-    /** Projects being removed, and removed ones: no thread is created in them. */
+    /**
+     * Projects being removed, and removed ones: no thread is created in them.
+     * Kept after a removal, one id each: a creation that read the project just
+     * before it went is refused by this mark.
+     */
     const removedProjects = new Set<string>();
+    /** Project removals under way: a second removal of a project joins the first. */
+    const projectRemovals = new Map<string, Promise<{ deletedThreads: number }>>();
+    /** Thread creations under way, by project: a removal of the project waits for them. */
+    const creations = new Map<string, Set<Promise<unknown>>>();
     const archivedError = (threadId: string) =>
       new ThreadsError("THREAD_ARCHIVED", "The thread is archived: unarchive it to continue", {
         threadId,
@@ -823,7 +839,7 @@ export default definePlugin({
       output: Project,
       permissions: ["projects.write"],
       handler: async ({ name, path: given }) => {
-        const expanded = given.startsWith("~") ? Path.join(Os.homedir(), given.slice(1)) : given;
+        const expanded = expandHome(given);
         // Stored normalised: "/a/../b" becomes "/b".
         const path = Path.resolve(expanded);
         if (
@@ -877,30 +893,44 @@ export default definePlugin({
       input: z.object({ projectId: z.string() }),
       output: z.object({ deletedThreads: z.number() }),
       permissions: ["projects.write"],
-      handler: async ({ projectId }) => {
-        const project = await getProject(projectId);
-        if (project.scratch) {
-          throw new ThreadsError("PROJECT_IS_SCRATCH", "The scratch project cannot be removed", {
-            projectId,
-          });
-        }
-        // From here on no thread is created in it, so none is left behind.
-        removedProjects.add(projectId);
-        let removed = false;
-        try {
-          const threads = (await listThreads()).filter((thread) => thread.projectId === projectId);
-          for (const thread of threads) await deleteThread(thread);
-          await kv.delete(NAMESPACE, `project/${projectId}`);
-          removed = true;
-          await projectEvent(ThreadEvents.projectDeleted, { id: projectId });
-          return { deletedThreads: threads.length };
-        } catch (error) {
-          // The project is still there: threads can be created in it again.
-          if (!removed) removedProjects.delete(projectId);
-          throw error;
-        }
+      handler: ({ projectId }) => {
+        const running = projectRemovals.get(projectId);
+        if (running !== undefined) return running;
+        const removal = removeProject(projectId);
+        projectRemovals.set(projectId, removal);
+        void removal.then(
+          () => projectRemovals.delete(projectId),
+          () => projectRemovals.delete(projectId),
+        );
+        return removal;
       },
     });
+
+    async function removeProject(projectId: string): Promise<{ deletedThreads: number }> {
+      const project = await getProject(projectId);
+      if (project.scratch) {
+        throw new ThreadsError("PROJECT_IS_SCRATCH", "The scratch project cannot be removed", {
+          projectId,
+        });
+      }
+      // From here on no thread is created in it, and those being created are
+      // waited for, so none is left behind.
+      removedProjects.add(projectId);
+      let removed = false;
+      try {
+        await Promise.allSettled(creations.get(projectId) ?? []);
+        const threads = (await listThreads()).filter((thread) => thread.projectId === projectId);
+        for (const thread of threads) await deleteThread(thread);
+        await kv.delete(NAMESPACE, `project/${projectId}`);
+        removed = true;
+        await projectEvent(ThreadEvents.projectDeleted, { id: projectId });
+        return { deletedThreads: threads.length };
+      } catch (error) {
+        // The project is still there: threads can be created in it again.
+        if (!removed) removedProjects.delete(projectId);
+        throw error;
+      }
+    }
 
     context.commands.register({
       name: "projects.browse",
@@ -915,29 +945,49 @@ export default definePlugin({
       }),
       // It reads any folder the node can: a permission of its own, granted on purpose.
       permissions: ["projects.browse"],
-      handler: ({ path: given }) => {
+      // Asynchronous throughout: a slow or network mount must not hold the node.
+      handler: async ({ path: given }) => {
         const home = Os.homedir();
         const raw = given === undefined || given.trim() === "" ? home : given.trim();
-        const expanded = raw.startsWith("~") ? Path.join(home, raw.slice(1)) : raw;
+        const expanded = expandHome(raw);
         if (!Path.isAbsolute(expanded)) {
           throw new ThreadsError("PATH_INVALID", `${raw} is not an absolute path`, { path: raw });
         }
         const path = Path.resolve(expanded);
         let names: Fs.Dirent[];
         try {
-          names = Fs.readdirSync(path, { withFileTypes: true });
+          names = await Fs.promises.readdir(path, { withFileTypes: true });
         } catch {
           throw new ThreadsError("PATH_INVALID", `${path} cannot be read`, { path });
         }
-        const entries = names
-          .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
-          .map((entry) => entry.name)
-          .toSorted((a, b) => a.localeCompare(b))
-          .slice(0, MAX_BROWSE_ENTRIES)
-          .map((name) => {
-            const full = Path.join(path, name);
-            return { name, path: full, git: Fs.existsSync(Path.join(full, ".git")) };
-          });
+        const exists = (target: string) =>
+          Fs.promises.access(target).then(
+            () => true,
+            () => false,
+          );
+        // A link to a folder is a folder too; a link that leads nowhere is not.
+        const isFolder = async (entry: Fs.Dirent) =>
+          entry.isDirectory() ||
+          (entry.isSymbolicLink() &&
+            (await Fs.promises.stat(Path.join(path, entry.name)).then(
+              (stat) => stat.isDirectory(),
+              () => false,
+            )));
+        const folders = await Promise.all(
+          names
+            .filter((entry) => !entry.name.startsWith("."))
+            .map(async (entry) => ((await isFolder(entry)) ? entry.name : undefined)),
+        );
+        const entries = await Promise.all(
+          folders
+            .filter((name): name is string => name !== undefined)
+            .toSorted((a, b) => a.localeCompare(b))
+            .slice(0, MAX_BROWSE_ENTRIES)
+            .map(async (name) => {
+              const full = Path.join(path, name);
+              return { name, path: full, git: await exists(Path.join(full, ".git")) };
+            }),
+        );
         const parent = Path.dirname(path);
         return { path, ...(parent === path ? {} : { parent }), home, entries };
       },
@@ -1023,28 +1073,47 @@ export default definePlugin({
         if (removedProjects.has(projectId)) {
           throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
         }
-        const createdAt = now();
-        const thread: Thread = Thread.parse({
-          id: Crypto.randomUUID(),
-          projectId,
-          title,
-          createdAt,
-          updatedAt: createdAt,
-          ...settings,
-        });
-        // The stream's first event comes first: a thread record never exists without it.
-        await log.append(threadStream(thread.id), [
-          { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
-        ]);
-        await kv.set(NAMESPACE, `thread/${thread.id}`, thread as unknown as Json);
-        // Then the node's index of threads, which other nodes follow to mirror new
-        // threads (D26 eager): whoever learns of the thread there can read it.
-        await log.append(THREADS_STREAM, [
-          { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
-        ]);
-        return thread;
+        // A removal of the project that starts meanwhile waits for this thread.
+        const creating = createThread(projectId, title, settings);
+        const underWay = creations.get(projectId) ?? new Set<Promise<unknown>>();
+        creations.set(projectId, underWay.add(creating));
+        try {
+          return await creating;
+        } finally {
+          underWay.delete(creating);
+          if (underWay.size === 0 && creations.get(projectId) === underWay) {
+            creations.delete(projectId);
+          }
+        }
       },
     });
+
+    async function createThread(
+      projectId: string,
+      title: string,
+      settings: Omit<Thread, "id" | "projectId" | "title" | "createdAt" | "updatedAt">,
+    ): Promise<Thread> {
+      const createdAt = now();
+      const thread: Thread = Thread.parse({
+        id: Crypto.randomUUID(),
+        projectId,
+        title,
+        createdAt,
+        updatedAt: createdAt,
+        ...settings,
+      });
+      // The stream's first event comes first: a thread record never exists without it.
+      await log.append(threadStream(thread.id), [
+        { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
+      ]);
+      await kv.set(NAMESPACE, `thread/${thread.id}`, thread as unknown as Json);
+      // Then the node's index of threads, which other nodes follow to mirror new
+      // threads (D26 eager): whoever learns of the thread there can read it.
+      await log.append(THREADS_STREAM, [
+        { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
+      ]);
+      return thread;
+    }
 
     context.commands.register({
       name: "threads.get",
@@ -1348,11 +1417,29 @@ export default definePlugin({
             { threadId, requestId },
           );
         }
-        // Recorded: the request is answered, and the agent hears it.
+        // Recorded: the request is answered, whatever the agent makes of it, so
+        // it takes no second answer.
         current.openRequests.delete(requestId);
-        turn.respond(requestId, response);
+        let refused: unknown;
+        try {
+          turn.respond(requestId, response);
+        } catch (error) {
+          refused = error;
+        }
         if (current.openRequests.size === 0 && active.get(threadId) === current) {
           await setTurnStatus(threadId, current.turnId, current.agentId, "running");
+        }
+        if (refused !== undefined) {
+          context.log.error("an agent failed to take an answer", {
+            threadId,
+            requestId,
+            error: String(refused),
+          });
+          throw new ThreadsError(
+            "AGENT_FAILED",
+            `The agent did not take the answer: ${String(refused)}`,
+            { threadId, requestId },
+          );
         }
         return { resolved: true };
       },
