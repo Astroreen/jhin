@@ -202,7 +202,10 @@ contributions. Features of T3 Code that only make sense for its hosted product
   10 at first and 25 more per "Show N more"; collapsed, it still shows the
   open thread. A thread settles as T3 settles one by itself (its default of
   3 days): no activity for three days and no turn running or waiting; it
-  settles as of its last activity. The header holds the search (results
+  settles as of its last activity, the same time its card shows (the latest
+  turn, else the record's last change). The shelf and the filter are kept per
+  device; a stored value that does not parse or has the wrong type falls
+  back to the default. The header holds the search (results
   replace the list, arrow keys and Enter pick one), T3's project filter
   ("All projects" or one project of one node, kept per device), "Add
   project" and "New thread"; a new thread being drafted shows as a draft
@@ -221,6 +224,8 @@ contributions. Features of T3 Code that only make sense for its hosted product
   that line, as T3 names the machine of a scratch thread; slim rows end with
   the icon too, and the hover card names the node. The project filter names
   the node next to each project, so two projects called "web" stay apart.
+  Accessible names follow: a row is named "title, status, project", and
+  while several nodes are shown "… on <node>"; so is the filter's button.
   The icon is T3's "server" machine kind for every node: nodes have no kind
   to pick yet (Deferred). The agent's icon is Claude's for
   `jhin.agent-claude` and a generic one for any other runtime.
@@ -235,8 +240,13 @@ contributions. Features of T3 Code that only make sense for its hosted product
   disconnect, under the ids `jhin.sidebar.node.new-thread`,
   `jhin.sidebar.node.add-project` and `jhin.sidebar.node.separator-new`; the
   existing ids are kept. `chat.new-without-project` takes an optional node
-  (and remote member), as `project.add` does (additive). Disconnecting from
-  that menu leaves the settings page open.
+  (and remote member), as `project.add` does (additive). In both, `remote`
+  needs `node` (the input is refused otherwise), and a named node must be a
+  shown, open connection or a reachable member of its mesh
+  (`NODE_NOT_FOUND`, `NODE_UNAVAILABLE`); a node whose projects are not
+  loaded yet gets no draft (`PROJECT_NOT_FOUND`). Without input they act on
+  the current place, and do nothing when its node is not open. Disconnecting
+  from that menu leaves the settings page open.
 - **D73. Settings leads the sidebar's footer**, as in T3, whose footer starts
   with its utility items; the palette shortcut stays at the right end, where
   T3 shows its update button. An earlier request put settings at the right;
@@ -249,16 +259,23 @@ contributions. Features of T3 Code that only make sense for its hosted product
   whose content is a form had it (the prompt dialog, "Add project").
 
 The proof: `apps/web/test/sidebar-order.test.ts` (statuses, Done after a
-visit, fading, the settle rule, one list across nodes in T3's order, the
-project filter, the Settled shelf's paging and collapsed state, search) and
+visit, fading, the settle rule and its activity time, one list across nodes
+in T3's order, the project filter, the Settled shelf's paging and collapsed
+state, search, accessible names with and without nodes);
 `apps/web/test/nodes.test.ts` (which nodes are shown, node names only with
-several, the store following and releasing meshes and catalogs); Playwright
-`e2e/tests/sidebar.spec.ts` (no node icon with one node, icons with two, the
-project filter keeping two "web" projects apart, search, settings leading the
-footer, the node picker, the node menu in settings, the rename dialog's
-footer inside its panel, and threads settling with the client's clock four
-days on) and the web and mesh specs, which use the cards and their context
-menu.
+several, the store following and releasing meshes and catalogs, feeds that
+answer while it subscribes, several subscribers, a removed connection);
+`apps/web/test/sidebar-commands.browser.test.ts` (the sidebar plugin in a test
+kernel: `chat.new-without-project` and `project.add` refusing a remote without
+its node and nodes not shown or not open, the `sidebar.thread.*` shortcuts
+following the list, the shelf and filter kept per device, corrupt stored
+values); `apps/web/test/settings.test.ts` (stored chat settings with the
+removed setting still read); Playwright `e2e/tests/sidebar.spec.ts` (no node
+icon with one node, icons and node-named rows with two, the project filter
+keeping two "web" projects apart, search, settings leading the footer, the
+node picker, the node menu in settings, the rename dialog's footer inside its
+panel, and threads settling with the client's clock four days on) and the web
+and mesh specs, which use the cards and their context menu.
 
 ## Not ported (out of scope)
 

@@ -82,7 +82,8 @@ export function settledAt(thread: ThreadRecord, nowMs: number): string | undefin
   if (thread.archivedAt !== undefined) return undefined;
   const turn = thread.lastTurn;
   if (turn?.status === "running" || turn?.status === "waiting") return undefined;
-  const at = turn?.at ?? thread.createdAt;
+  // The activity the card's time shows, so a thread never settles while it reads "5m".
+  const at = threadActivityAt(thread);
   const atMs = Date.parse(at);
   return Number.isNaN(atMs) || atMs >= nowMs - AUTO_SETTLE_AFTER_DAYS * DAY_MS ? undefined : at;
 }
@@ -216,4 +217,14 @@ export function formatWorkingDurationLabel(elapsedMs: number): string {
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/**
+ * A row's accessible name, T3's "title, status, project", and while several
+ * nodes are shown the node too: two projects of one name on two nodes, or
+ * their threads, must not read the same.
+ */
+export function rowLabel(parts: readonly (string | null | undefined)[], node: string | undefined) {
+  const label = parts.filter(Boolean).join(", ");
+  return node === undefined ? label : `${label} on ${node}`;
 }

@@ -6,10 +6,12 @@ import {
   isUnread,
   projectKey,
   projectScopes,
+  rowLabel,
   searchSidebarThreads,
   settledAt,
   shouldRecede,
   shownSettled,
+  threadActivityAt,
   sidebarThreadStatus,
   sidebarThreads,
   sidebarTopStatus,
@@ -108,7 +110,7 @@ describe("a thread's status in the sidebar (D70)", () => {
   });
 });
 
-describe("settling (D71)", () => {
+describe("settling (D70)", () => {
   it("settles a thread after three days without activity, as of its last activity", () => {
     expect(settledAt(thread("t", ago(80)), NOW)).toBe(ago(80));
     expect(settledAt(thread("t", ago(70)), NOW)).toBeUndefined();
@@ -127,6 +129,23 @@ describe("settling (D71)", () => {
     expect(
       settledAt(thread("t", ago(200), { lastTurn: turn("waiting", ago(100), "approval") }), NOW),
     ).toBeUndefined();
+  });
+
+  it("settles by the activity the card shows: a thread without turns changed lately stays", () => {
+    // Renamed an hour ago, created 80 hours ago: the card reads "1h", so it is not settled.
+    const renamed = thread("t", ago(80), { updatedAt: ago(1) });
+    expect(threadActivityAt(renamed)).toBe(ago(1));
+    expect(settledAt(renamed, NOW)).toBeUndefined();
+    expect(settledAt(thread("t", ago(80), { updatedAt: ago(75) }), NOW)).toBe(ago(75));
+  });
+});
+
+describe("accessible names (D71)", () => {
+  it("names a row as T3 does, and its node only while several nodes are shown", () => {
+    expect(rowLabel(["fix it", null, "web"], undefined)).toBe("fix it, web");
+    expect(rowLabel(["fix it", "Done", "web"], "studio")).toBe("fix it, Done, web on studio");
+    // Two projects called "web" on two nodes read apart.
+    expect(rowLabel(["web"], "a")).not.toBe(rowLabel(["web"], "b"));
   });
 });
 

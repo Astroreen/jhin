@@ -43,7 +43,7 @@ async function box(locator: Locator) {
   return found;
 }
 
-test("D70: thread cards in one list; they name their node only while several nodes are shown", async ({
+test("D70–D74: thread cards in one list, named by node only while several are shown", async ({
   page,
 }, info) => {
   const x = await start({ mode: "ui" });
@@ -85,9 +85,10 @@ test("D70: thread cards in one list; they name their node only while several nod
   await newThreadOn(page, yHost);
   await send(page, "on y");
 
-  // Two nodes, no section per node: every card names its node.
+  // D71: two nodes, no section per node: every card names its node, also in its name.
   const onY = threadRow(page, "on y");
   await expect(onY).toHaveAttribute("aria-current", "page");
+  await expect(onY).toHaveAccessibleName(`on y, No project on ${yHost}`);
   await expect(onX.getByLabel(`On ${xHost}`, { exact: true })).toBeAttached();
   await expect(onY.getByLabel(`On ${yHost}`, { exact: true })).toBeAttached();
   await expect(page.getByRole("region", { name: /^Node / })).toHaveCount(0);
@@ -95,13 +96,13 @@ test("D70: thread cards in one list; they name their node only while several nod
   await page.screenshot({ path: shot });
   await info.attach("sidebar-two-nodes", { path: shot, contentType: "image/png" });
 
-  // The project filter keeps the two projects called "web" apart by their node.
+  // D71: the project filter keeps the two projects called "web" apart by their node.
   await page.getByRole("combobox", { name: "Filter threads by project" }).click();
   await expect(page.getByRole("option", { name: new RegExp(`^web.*${xHost}`) })).toHaveCount(1);
   await page.getByRole("option", { name: new RegExp(`^web.*${yHost}`) }).click();
   await expect(page.getByText("No threads in web yet")).toBeVisible();
   await expect(onX).toHaveCount(0);
-  await page.getByRole("combobox", { name: "Filter threads by project: web" }).click();
+  await page.getByRole("combobox", { name: `Filter threads by project: web on ${yHost}` }).click();
   await page.getByRole("option", { name: "All projects" }).click();
   await expect(onX).toBeVisible();
 
@@ -114,7 +115,7 @@ test("D70: thread cards in one list; they name their node only while several nod
   await field.press("Enter");
   await expect(onX).toHaveAttribute("aria-current", "page");
 
-  // Adding a project asks on which node.
+  // D72: adding a project asks on which node.
   await page.getByRole("button", { name: "Add project", exact: true }).click();
   const adding = page.getByRole("dialog", { name: "Add project" });
   await adding.getByRole("combobox", { name: "Node" }).click();
@@ -122,7 +123,7 @@ test("D70: thread cards in one list; they name their node only while several nod
   await expect(adding.getByText(`A folder on ${xHost}.`, { exact: false })).toBeVisible();
   await adding.getByRole("button", { name: "Cancel" }).click();
 
-  // The node's actions live in its menu in settings → Nodes (the `node.actions` slot).
+  // D72: the node's actions live in its menu in settings → Nodes (the `node.actions` slot).
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .getByRole("navigation", { name: "Settings sections" })
@@ -156,7 +157,7 @@ test("D70: thread cards in one list; they name their node only while several nod
   await expect(onY.getByLabel("On studio", { exact: true })).toBeAttached();
 });
 
-test("D71: threads quiet for three days settle onto the Settled shelf", async ({ page }, info) => {
+test("D70: threads quiet for three days settle onto the Settled shelf", async ({ page }, info) => {
   const x = await start({ mode: "ui" });
   await addThread(x, "first quiet thread");
   await addThread(x, "second quiet thread");

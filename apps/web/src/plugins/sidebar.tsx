@@ -106,6 +106,7 @@ import {
   isUnread,
   projectKey,
   projectScopes,
+  rowLabel,
   searchSidebarThreads,
   shouldRecede,
   shownSettled,
@@ -123,13 +124,22 @@ type Entry = SidebarThread<NodeWithCatalog>;
 const SETTLED_EXPANDED_STORAGE_KEY = "jhin.sidebar.settled-expanded";
 const PROJECT_SCOPE_STORAGE_KEY = "jhin.sidebar.project-scope";
 
-/** A value of the sidebar that its commands read too (the search, the shelf). */
-function createValue<T>(initial: T, storageKey?: string) {
+/**
+ * A value of the sidebar that its commands read too (the search, the shelf).
+ * With a storage key it is kept on this device; a stored value that does not
+ * parse, or is not of the value's type, gives way to the default.
+ */
+function createValue<T>(
+  initial: T,
+  stored?: { readonly key: string; readonly valid: (value: unknown) => value is T },
+) {
   let value = initial;
-  if (storageKey !== undefined) {
+  const storageKey = stored?.key;
+  if (stored !== undefined) {
     try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored !== null) value = JSON.parse(stored) as T;
+      const raw = localStorage.getItem(stored.key);
+      const parsed: unknown = raw === null ? undefined : JSON.parse(raw);
+      if (stored.valid(parsed)) value = parsed;
     } catch {
       // Unreadable: the default.
     }
@@ -307,9 +317,15 @@ export const sidebarPlugin = builtin(
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
       const search = createValue("");
-      const settledExpanded = createValue(false, SETTLED_EXPANDED_STORAGE_KEY);
+      const settledExpanded = createValue(false, {
+        key: SETTLED_EXPANDED_STORAGE_KEY,
+        valid: (value): value is boolean => typeof value === "boolean",
+      });
       /** The project the list is narrowed to (a `projectKey`), or "" for all. */
-      const scope = createValue("", PROJECT_SCOPE_STORAGE_KEY);
+      const scope = createValue("", {
+        key: PROJECT_SCOPE_STORAGE_KEY,
+        valid: (value): value is string => typeof value === "string",
+      });
       /** How many settled threads show; back to the first page when the scope changes. */
       const settledCount = createValue(SETTLED_TAIL_INITIAL_COUNT);
       context.subscriptions.add(
@@ -455,9 +471,10 @@ export const sidebarPlugin = builtin(
         const agentId = thread.agentId ?? thread.lastTurn?.agentId;
         // T3 names a scratch thread's machine on its last line instead of a branch.
         const showsScratchNode = hosts && project?.scratch === true;
-        const label = [thread.title, top === null ? null : TOP_STATUS[top].label, project?.name]
-          .filter(Boolean)
-          .join(", ");
+        const label = rowLabel(
+          [thread.title, top === null ? null : TOP_STATUS[top].label, project?.name],
+          hosts ? node.label : undefined,
+        );
 
         const startRename = () => {
           committed.current = false;
@@ -754,13 +771,24 @@ export const sidebarPlugin = builtin(
       }
 
       /** The new thread being written, before its first message (T3's SidebarDraftRow). */
-      function DraftRow({ node, projectId }: { node: NodeWithCatalog; projectId: string }) {
+      function DraftRow({
+        node,
+        projectId,
+        hosts,
+      }: {
+        node: NodeWithCatalog;
+        projectId: string;
+        hosts: boolean;
+      }) {
         const project = node.catalog.projects.find((item) => item.id === projectId);
         return (
           <li className="list-none py-0.5">
             <div
               aria-current="page"
-              aria-label={["New thread", "Unsent draft", project?.name].filter(Boolean).join(", ")}
+              aria-label={rowLabel(
+                ["New thread", "Unsent draft", project?.name],
+                hosts ? node.label : undefined,
+              )}
               className="group/sidebar-row relative w-full overflow-hidden rounded-md bg-sidebar-row-active text-left text-sidebar-foreground select-none"
               data-testid="sidebar-draft-row"
               role="button"
@@ -793,6 +821,7 @@ export const sidebarPlugin = builtin(
         highlighted: boolean;
         active: boolean;
         now: number;
+        hosts: boolean;
       }) {
         const { entry, highlighted, active, now } = props;
         const settled = entry.settledAt !== undefined;
@@ -800,7 +829,10 @@ export const sidebarPlugin = builtin(
           <li className="list-none" role="presentation">
             <button
               aria-current={active ? "page" : undefined}
-              aria-label={[entry.thread.title, entry.project?.name].filter(Boolean).join(", ")}
+              aria-label={rowLabel(
+                [entry.thread.title, entry.project?.name],
+                props.hosts ? entry.node.label : undefined,
+              )}
               aria-selected={highlighted}
               className={cn(
                 "group/sidebar-row flex min-h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1 text-left text-sm outline-none",
@@ -926,7 +958,7 @@ export const sidebarPlugin = builtin(
                   label={
                     current === undefined
                       ? "Filter threads by project"
-                      : `Filter threads by project: ${current.project.name}`
+                      : `Filter threads by project: ${rowLabel([current.project.name], hosts ? current.node.label : undefined)}`
                   }
                 />
               }
@@ -1108,8 +1140,62 @@ export const sidebarPlugin = builtin(
         const first = nodes.find((node) => node.state === "open") ?? nodes[0];
         return first === undefined ? undefined : { target: { node: first.id } };
       };
-      const scratchOf = (target: NodeTarget) =>
-        threads.catalog(target).projects.find((project) => project.scratch)?.id ?? "scratch";
+      /** The scratch project of a node, once its catalog is loaded. */
+      const scratchIn = (target: NodeTarget) =>
+        threads.catalog(target).projects.find((project) => project.scratch)?.id;
+
+      const failure = (message: string, code: string) =>
+        Object.assign(new Error(message), { code });
+
+      /** A connection that is open, or a reachable member of an open connection's mesh. */
+      const isOpen = (target: NodeTarget): boolean => {
+        if (connections.get(target.node)?.state !== "open") return false;
+        return (
+          target.remote === undefined ||
+          (mesh.members(target.node) ?? []).some(
+            (member) => !member.self && member.reachable && member.nodeId === target.remote,
+          )
+        );
+      };
+
+      /**
+       * Where a command's `{ node?, remote? }` points: the named node, which must
+       * be shown and open, else an error says why; without a node, the current
+       * place when its node is open, else nothing (the command does nothing).
+       */
+      const placeOf = (input: {
+        node?: string | undefined;
+        remote?: string | undefined;
+      }): { target: NodeTarget; projectId?: string } | undefined => {
+        if (input.node === undefined) {
+          const place = currentPlace();
+          return place !== undefined && isOpen(place.target) ? place : undefined;
+        }
+        const target: NodeTarget = {
+          node: input.node,
+          ...(input.remote === undefined ? {} : { remote: input.remote }),
+        };
+        if (connections.get(input.node) === undefined) {
+          throw failure(`Not connected to ${input.node}`, "NODE_NOT_FOUND");
+        }
+        if (!isOpen(target)) {
+          throw failure(
+            input.remote === undefined
+              ? `${input.node} is not connected now`
+              : `${input.remote} is not reachable through ${input.node}`,
+            "NODE_UNAVAILABLE",
+          );
+        }
+        return { target };
+      };
+
+      /** A node named by a command: `remote` is a member of `node`'s mesh, so it needs `node`. */
+      const NodeInput = z
+        .object({ node: z.string().optional(), remote: z.string().optional() })
+        .refine((input) => input.remote === undefined || input.node !== undefined, {
+          message: "remote needs node: the connection whose mesh reaches it",
+          path: ["remote"],
+        });
 
       /** The thread list, or the search's results while a search is typed (T3's sidebar body). */
       function ThreadList({ nodes, hosts }: { nodes: readonly NodeWithCatalog[]; hosts: boolean }) {
@@ -1136,6 +1222,7 @@ export const sidebarPlugin = builtin(
                 <SearchResult
                   active={entry.key === current}
                   entry={entry}
+                  hosts={hosts}
                   highlighted={index === Math.min(highlighted, list.results.length - 1)}
                   index={index}
                   key={entry.key}
@@ -1186,7 +1273,9 @@ export const sidebarPlugin = builtin(
               className={cn("relative flex flex-col gap-px", (total > 0 || drafting) && "flex-1")}
               role="presentation"
             >
-              {drafting ? <DraftRow node={draftNode} projectId={route.project!} /> : null}
+              {drafting ? (
+                <DraftRow hosts={hosts} node={draftNode} projectId={route.project!} />
+              ) : null}
               {list.active.map((entry) => (
                 <ThreadRow
                   active={entry.key === current}
@@ -1538,14 +1627,11 @@ export const sidebarPlugin = builtin(
         title: "Add project",
         description:
           "Opens the dialog that adds a folder of a node as a project: the given node, or the current one",
-        input: z.object({ node: z.string().optional(), remote: z.string().optional() }),
+        input: NodeInput,
         output: z.object({}),
-        handler: ({ node, remote }) => {
-          const target =
-            node === undefined
-              ? currentPlace()?.target
-              : { node, ...(remote === undefined ? {} : { remote }) };
-          if (target !== undefined) addProjectRequests.open(target);
+        handler: (input) => {
+          const place = placeOf(input);
+          if (place !== undefined) addProjectRequests.open(place.target);
           return {};
         },
       });
@@ -1556,9 +1642,10 @@ export const sidebarPlugin = builtin(
         input: z.object({}),
         output: z.object({}),
         handler: () => {
-          const place = currentPlace();
-          if (place !== undefined)
-            newThread(place.target, place.projectId ?? scratchOf(place.target));
+          const place = placeOf({});
+          const projectId =
+            place === undefined ? undefined : (place.projectId ?? scratchIn(place.target));
+          if (place !== undefined && projectId !== undefined) newThread(place.target, projectId);
           return {};
         },
       });
@@ -1567,14 +1654,19 @@ export const sidebarPlugin = builtin(
         title: "New thread without a project",
         description:
           "Starts a new thread in a node's scratch project: the given node, or the current one",
-        input: z.object({ node: z.string().optional(), remote: z.string().optional() }),
+        input: NodeInput,
         output: z.object({}),
-        handler: ({ node, remote }) => {
-          const target =
-            node === undefined
-              ? currentPlace()?.target
-              : { node, ...(remote === undefined ? {} : { remote }) };
-          if (target !== undefined) newThread(target, scratchOf(target));
+        handler: (input) => {
+          const place = placeOf(input);
+          if (place === undefined) return {};
+          const scratch = scratchIn(place.target);
+          if (scratch !== undefined) newThread(place.target, scratch);
+          else if (input.node !== undefined) {
+            throw failure(
+              `The projects of ${input.remote ?? input.node} are not loaded yet`,
+              "PROJECT_NOT_FOUND",
+            );
+          }
           return {};
         },
       });

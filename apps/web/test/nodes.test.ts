@@ -55,8 +55,10 @@ describe("the nodes the client shows (D70)", () => {
 });
 
 /** Connections, mesh and catalogs a test changes by hand; each counts its open subscriptions. */
-function world() {
+function world(options: { sync?: boolean } = {}) {
   const listeners = new Set<() => void>();
+  /** How many times each feed was subscribed to, over the whole test. */
+  const subscribed = { mesh: 0, catalogs: 0 };
   let list: readonly NodeConnection[] = [];
   const meshListeners = new Map<string, Set<() => void>>();
   const members = new Map<string, readonly MeshMember[]>();
@@ -78,12 +80,22 @@ function world() {
   } as unknown as Connections;
   const mesh: MeshMembership = {
     members: (id) => members.get(id),
-    subscribe: (id, listener) => add(meshListeners, id, listener),
+    subscribe: (id, listener) => {
+      subscribed.mesh += 1;
+      const subscription = add(meshListeners, id, listener);
+      // Like a feed that already has an answer: it tells the subscriber at once.
+      if (options.sync === true) listener();
+      return subscription;
+    },
   };
   const threads = {
     catalog: (target: NodeTarget) => catalogs.get(targetKey(target)) ?? loading,
-    subscribe: (target: NodeTarget, listener: () => void) =>
-      add(catalogListeners, targetKey(target), listener),
+    subscribe: (target: NodeTarget, listener: () => void) => {
+      subscribed.catalogs += 1;
+      const subscription = add(catalogListeners, targetKey(target), listener);
+      if (options.sync === true) listener();
+      return subscription;
+    },
   } as unknown as ThreadsCatalog;
   const open = (map: Map<string, Set<() => void>>) =>
     [...map].filter(([, set]) => set.size > 0).map(([key]) => key);
@@ -104,6 +116,7 @@ function world() {
       fire(catalogListeners.get(targetKey(target)));
     },
     following: () => ({ mesh: open(meshListeners), catalogs: open(catalogListeners) }),
+    subscribed: () => ({ ...subscribed }),
   };
 }
 
@@ -144,6 +157,48 @@ describe("the sidebar's view of every shown node (D70)", () => {
     expect(view.snapshot()).toBe(first);
     w.setCatalog({ node: "a" }, { status: "ready", projects: [], threads: [] });
     expect(view.snapshot()).not.toBe(first);
+    subscription.dispose();
+  });
+
+  it("takes feeds that answer while it subscribes, once each", () => {
+    const w = world({ sync: true });
+    w.setConnections([connection("a")]);
+    w.setMembers("a", [member("a", { self: true }), member("b")]);
+    const view = createShownNodes(w.connections, w.mesh, w.threads);
+    let changes = 0;
+    const subscription = view.subscribe(() => (changes += 1));
+    // b came from a's mesh while the store subscribed to it, and was followed too.
+    expect(w.following()).toEqual({ mesh: ["a"], catalogs: ["a", "a|id-b"] });
+    expect(w.subscribed()).toEqual({ mesh: 1, catalogs: 2 });
+    expect(changes).toBe(1);
+    expect(view.snapshot().map((node) => node.label)).toEqual(["label a", "b"]);
+    subscription.dispose();
+    expect(w.following()).toEqual({ mesh: [], catalogs: [] });
+  });
+
+  it("keeps its feeds until the last subscriber leaves", () => {
+    const w = world();
+    w.setConnections([connection("a")]);
+    const view = createShownNodes(w.connections, w.mesh, w.threads);
+    const first = view.subscribe(() => undefined);
+    const second = view.subscribe(() => undefined);
+    expect(w.subscribed()).toEqual({ mesh: 1, catalogs: 1 });
+    first.dispose();
+    expect(w.following()).toEqual({ mesh: ["a"], catalogs: ["a"] });
+    second.dispose();
+    expect(w.following()).toEqual({ mesh: [], catalogs: [] });
+  });
+
+  it("lets go of a removed connection's mesh and of the catalogs reached through it", () => {
+    const w = world();
+    w.setConnections([connection("a"), connection("x")]);
+    w.setMembers("a", [member("a", { self: true }), member("b")]);
+    const view = createShownNodes(w.connections, w.mesh, w.threads);
+    const subscription = view.subscribe(() => undefined);
+    expect(w.following()).toEqual({ mesh: ["a", "x"], catalogs: ["a", "a|id-b", "x"] });
+    w.setConnections([connection("x")]);
+    expect(w.following()).toEqual({ mesh: ["x"], catalogs: ["x"] });
+    expect(view.snapshot().map((node) => node.label)).toEqual(["label x"]);
     subscription.dispose();
   });
 });
