@@ -1,5 +1,7 @@
 import type { NodeConnection } from "@jhin/client-api";
 import {
+  Alert,
+  AlertDescription,
   Button,
   Checkbox,
   Select,
@@ -8,20 +10,35 @@ import {
   SelectTrigger,
   SelectValue,
   Spinner,
-  Textarea,
 } from "@jhin/ui";
-import { ClockIcon, SaveIcon } from "lucide-react";
+import { BracesIcon, ClockIcon, ListIcon, SaveIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import {
+  changesOf,
+  equal,
+  getAt,
+  hasUnparsed,
+  sectionForm,
+  setAt,
+  validate,
+  type ConfigComment,
+  type JsonSchema,
+} from "../../lib/config-form.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import { SettingsEmpty, SettingsRow, SettingsSection } from "../../lib/settings-layout.tsx";
+import { Fields, SectionJson, type FieldsContext } from "./config-fields.tsx";
 import { useSettingsServices } from "./index.tsx";
 
 interface ConfigRead {
   readonly value?: unknown;
   readonly error?: string;
+  /** Why the effective value is invalid, by dotted path (D84). */
+  readonly issues?: readonly { readonly path: string; readonly message: string }[];
   readonly layers: { readonly node?: unknown; readonly project?: unknown };
+  /** Comments above the section's keys in the config files (D81); older nodes send none. */
+  readonly comments?: readonly ConfigComment[];
 }
 
 interface Outcome {
@@ -38,37 +55,47 @@ interface Pending {
 }
 
 const pretty = (value: unknown) => JSON.stringify(value ?? {}, null, 2);
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** A section as read, with its text being edited: the text always belongs to it. */
-interface Loaded {
+/** A section as read, with its node file part being edited: the edit always belongs to it. */
+export interface Loaded {
   readonly section: string;
   readonly read: ConfigRead;
-  /** The node file's part as read, to tell whether it was edited. */
-  readonly original: string;
-  readonly text: string;
+  /** The node file's part as read, to tell whether it was edited and what changed. */
+  readonly original: unknown;
+  /** The node file's part as edited; text that is no value yet stays `Unparsed`. */
+  readonly value: unknown;
 }
+
+const loadedFrom = (section: string, read: ConfigRead): Loaded => ({
+  section,
+  read,
+  original: read.layers.node ?? {},
+  value: read.layers.node ?? {},
+});
 
 /**
  * The editor once a save of `sent` to `section` is read back as `next`: the
- * file as it is now, and text typed while saving kept as an edit of it.
+ * file as it is now, and what was changed while saving kept as an edit of it.
  */
 export function readBack(
   current: Loaded | undefined,
   section: string,
-  sent: string,
+  sent: unknown,
   next: ConfigRead,
 ): Loaded | undefined {
   if (current?.section !== section) return current;
-  const original = pretty(next.layers.node);
-  return current.text === sent
-    ? { section, read: next, original, text: original }
+  const original = next.layers.node ?? {};
+  return equal(current.value, sent)
+    ? { section, read: next, original, value: original }
     : { ...current, read: next, original };
 }
 
 /**
- * The chosen section as the node has it, and its text being edited. An answer
- * for a section no longer chosen is dropped, so the text always belongs to the
- * section it names.
+ * The chosen section as the node has it, and its node file part being edited.
+ * An answer for a section no longer chosen is dropped, so the edit always
+ * belongs to the section it names.
  */
 export function useLoadedSection(
   client: Pick<NodeConnection["client"], "call">,
@@ -82,19 +109,11 @@ export function useLoadedSection(
     void client
       .call<ConfigRead>("host.config.get", { section })
       .then((next) => {
-        if (!current) return;
-        const original = pretty(next.layers.node);
-        setLoaded({ section, read: next, original, text: original });
+        if (current) setLoaded(loadedFrom(section, next));
       })
       .catch((error: unknown) => {
         if (current) {
-          const original = pretty(undefined);
-          setLoaded({
-            section,
-            read: { error: (error as Error).message, layers: {} },
-            original,
-            text: original,
-          });
+          setLoaded(loadedFrom(section, { error: (error as Error).message, layers: {} }));
         }
       });
     return () => {
@@ -105,9 +124,35 @@ export function useLoadedSection(
 }
 
 /**
- * A node's config, section by section (D18–D20): the effective value, the node
- * file's part to edit, and the nodes of the mesh to apply it to — the ones not
- * reachable now get it when they return (D50).
+ * The errors of a section as edited, by dotted path: what the schema refuses
+ * as typed, and what the node reported for values not changed since (D84).
+ */
+export function errorsOf(schema: unknown, loaded: Loaded): Map<string, string[]> {
+  const errors = new Map<string, string[]>();
+  const add = (path: string, message: string) =>
+    errors.set(path, [...(errors.get(path) ?? []), message]);
+  for (const issue of validate(schema, loaded.value)) add(issue.path, issue.message);
+  for (const issue of loaded.read.issues ?? []) {
+    const path = issue.path === "" ? [] : issue.path.split(".");
+    if (equal(getAt(loaded.value, path), getAt(loaded.original, path))) {
+      add(issue.path, issue.message);
+    }
+  }
+  return errors;
+}
+
+/** The sections of a node's schema with their titles, in the order the picker lists them. */
+function byTitle(schemas: Readonly<Record<string, JsonSchema>>) {
+  return Object.keys(schemas)
+    .map((name) => ({ name, title: sectionForm(name, schemas[name]).title }))
+    .toSorted((a, b) => a.title.localeCompare(b.title));
+}
+
+/**
+ * A node's config, section by section (D18–D20, D80): a form generated from
+ * the section's schema, or its node file part as JSON, and the nodes of the
+ * mesh to apply the change to — the ones not reachable now get it when they
+ * return (D50).
  */
 export function NodeConfigSection() {
   const { connections, dialogs } = useSettingsServices();
@@ -186,14 +231,15 @@ function ConfigEditor({
   onEdited,
 }: {
   connection: NodeConnection;
-  /** Whether the text holds changes not saved yet, each time that changes. */
+  /** Whether the editor holds changes not saved yet, each time that changes. */
   onEdited(edited: boolean): void;
 }) {
   const { mesh, toasts, dialogs } = useSettingsServices();
   const client = connection.client;
-  const [sections, setSections] = useState<readonly string[] | undefined>();
+  const [schemas, setSchemas] = useState<Readonly<Record<string, JsonSchema>> | undefined>();
   const [section, setSection] = useState<string | undefined>();
   const [loaded, setLoaded] = useLoadedSection(client, section);
+  const [asJson, setAsJson] = useState(false);
   const [scope, setScope] = useState<readonly string[] | undefined>();
   const [saving, setSaving] = useState(false);
   const [outcomes, setOutcomes] = useState<readonly Outcome[]>([]);
@@ -205,18 +251,19 @@ function ConfigEditor({
     // Answers for a client this node no longer has are dropped.
     let current = true;
     void client
-      .call<{ properties?: Record<string, unknown> }>("host.config.schema")
+      .call<{ properties?: Record<string, JsonSchema> }>("host.config.schema")
       .then((schema) => {
         if (!current) return;
-        const names = Object.keys(schema.properties ?? {}).toSorted();
-        setSections(names);
+        const next = schema.properties ?? {};
+        const names = byTitle(next).map((item) => item.name);
+        setSchemas(next);
         setSection((chosen) =>
           chosen !== undefined && names.includes(chosen) ? chosen : names[0],
         );
       })
       .catch((error: unknown) => {
         if (!current) return;
-        setSections([]);
+        setSchemas({});
         toasts?.show({
           type: "error",
           title: "Cannot read the config",
@@ -233,11 +280,23 @@ function ConfigEditor({
   }, [client]);
 
   const read = loaded?.read;
-  const text = loaded?.text ?? "";
-  const edited = loaded !== undefined && loaded.text !== loaded.original;
+  const edited = loaded !== undefined && !equal(loaded.value, loaded.original);
   useEffect(() => onEdited(edited), [edited]);
   // Gone (another node chosen, or this one disconnected): nothing of it is unsaved.
   useEffect(() => () => onEdited(false), []);
+
+  const names = schemas === undefined ? undefined : byTitle(schemas);
+  const schema = section === undefined ? undefined : schemas?.[section];
+  const form =
+    loaded === undefined ? undefined : sectionForm(loaded.section, schema, read?.comments);
+  const errors = loaded === undefined ? new Map<string, string[]>() : errorsOf(schema, loaded);
+  // Only JSON can edit a section without keys, or a node file part that is no object.
+  const formFits = form !== undefined && form.fields.length > 0 && isObject(loaded?.value);
+  const showJson = asJson || !formFits;
+  const unknownKeys =
+    form === undefined || !isObject(loaded?.value)
+      ? []
+      : Object.keys(loaded.value).filter((key) => !form.fields.some((field) => field.key === key));
 
   /** Another section, once unsaved edits are given up on purpose. */
   const choose = async (next: string) => {
@@ -255,37 +314,37 @@ function ConfigEditor({
       return;
     }
     setOutcomes([]);
+    setAsJson(false);
     setSection(next);
   };
 
   const targets = scope ?? (self === undefined ? [] : [self.nodeId]);
-  let parsed: Record<string, unknown> | undefined;
-  let parseError: string | undefined;
-  try {
-    const value: unknown = JSON.parse(text === "" ? "{}" : text);
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      parsed = value as Record<string, unknown>;
-    } else {
-      parseError = "The section's values must be a JSON object";
-    }
-  } catch (error) {
-    parseError = (error as Error).message;
-  }
+  const blocked =
+    loaded === undefined ||
+    !isObject(loaded.value) ||
+    hasUnparsed(loaded.value) ||
+    validate(schema, loaded.value).length > 0;
 
   const save = async () => {
-    if (loaded === undefined || parsed === undefined) return;
-    // The section the text was read for, whatever is chosen meanwhile, and the
-    // text saved, whatever is typed meanwhile.
-    const { section: saved, text: sent } = loaded;
+    if (loaded === undefined || blocked || !isObject(loaded.value)) return;
+    // The section the edit was read for, whatever is chosen meanwhile, and the
+    // value saved, whatever is changed meanwhile.
+    const { section: saved, value: sent, original } = loaded;
+    // Only what changed is written, so a reset key goes and the rest keeps its comments (D84).
+    const { values, unset } = changesOf(original, sent);
+    const change = {
+      layer: "node" as const,
+      section: saved,
+      values,
+      ...(unset.length === 0 ? {} : { unset }),
+    };
     setSaving(true);
+    // The previous save's outcome is not this one's.
+    setOutcomes([]);
     try {
       const onlySelf = self === undefined || (targets.length === 1 && targets[0] === self.nodeId);
       if (onlySelf) {
-        const result = await client.call<{ applied: boolean }>("host.config.patch", {
-          layer: "node",
-          section: saved,
-          values: parsed,
-        });
+        const result = await client.call<{ applied: boolean }>("host.config.patch", change);
         setOutcomes([
           {
             node: self?.nodeId ?? connection.label,
@@ -295,9 +354,7 @@ function ConfigEditor({
       } else {
         const result = await client.call<{ results: Outcome[] }>("mesh.config.patch", {
           nodes: targets,
-          layer: "node",
-          section: saved,
-          values: parsed,
+          ...change,
         });
         setOutcomes(result.results);
         setPending(
@@ -330,30 +387,46 @@ function ConfigEditor({
   const nameOf = (nodeId: string) =>
     members.find((member) => member.nodeId === nodeId)?.name ?? nodeId;
 
+  const context: FieldsContext | undefined =
+    loaded === undefined
+      ? undefined
+      : {
+          value: loaded.value,
+          project: read?.layers.project,
+          errors,
+          set: (path, next) =>
+            setLoaded((current) =>
+              current === undefined
+                ? current
+                : { ...current, value: setAt(current.value, path, next) ?? {} },
+            ),
+        };
+
   return (
     <>
       <SettingsSection title={`Config of ${connection.label}`}>
-        {sections === undefined ? (
+        {names === undefined ? (
           <SettingsEmpty>
             <Spinner size="sm" tone="muted" />
           </SettingsEmpty>
-        ) : sections.length === 0 ? (
+        ) : names.length === 0 ? (
           <SettingsEmpty>This node shares no config sections.</SettingsEmpty>
         ) : (
           <SettingsRow
             control={
               <Select onValueChange={(value) => void choose(String(value))} value={section ?? ""}>
-                <SelectTrigger
-                  aria-label="Config section"
-                  className="w-full font-mono sm:w-56"
-                  size="sm"
-                >
-                  <SelectValue>{section}</SelectValue>
+                <SelectTrigger aria-label="Config section" className="w-full sm:w-64" size="sm">
+                  <SelectValue>{names.find((item) => item.name === section)?.title}</SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
-                  {sections.map((name) => (
-                    <SelectItem className="font-mono" key={name} value={name}>
-                      {name}
+                  {names.map((item) => (
+                    <SelectItem key={item.name} value={item.name}>
+                      {item.title}
+                      {item.title === item.name ? null : (
+                        <span className="ms-2 font-mono text-xs text-muted-foreground">
+                          {item.name}
+                        </span>
+                      )}
                     </SelectItem>
                   ))}
                 </SelectPopup>
@@ -363,78 +436,123 @@ function ConfigEditor({
             title="Section"
           />
         )}
-        {read === undefined ? null : (
-          <SettingsRow
-            description="What the plugins see now: every layer merged, defaults filled in."
-            title="Effective value"
-          >
-            <pre className="mt-2 mb-2 max-h-56 overflow-auto rounded-lg bg-muted/60 p-3 font-mono text-xs">
-              {read.error ?? pretty(read.value)}
-            </pre>
-          </SettingsRow>
-        )}
-        {loaded === undefined ? null : (
-          <SettingsRow
-            description="This section in the node's config.jsonc. Saving keeps the file's comments; a key left out keeps its value."
-            title="Node file"
-          >
-            <Textarea
-              aria-label={`${loaded.section} in the node file`}
-              className="mt-2 mb-2 font-mono text-xs"
-              onChange={(event) => {
-                const value = event.target.value;
-                setLoaded((current) =>
-                  current === undefined ? current : { ...current, text: value },
-                );
-              }}
-              rows={8}
-              value={text}
-            />
-            {parseError === undefined ? null : (
-              <p className="mb-2 text-xs text-destructive-foreground" role="alert">
-                {parseError}
+      </SettingsSection>
+      {loaded === undefined || form === undefined || context === undefined ? null : (
+        <SettingsSection
+          headerAction={
+            formFits ? (
+              <Button
+                aria-pressed={asJson}
+                onClick={() => setAsJson((current) => !current)}
+                size="xs"
+                variant="ghost-muted"
+              >
+                {asJson ? <ListIcon /> : <BracesIcon />}
+                {asJson ? "Edit as form" : "Edit as JSON"}
+              </Button>
+            ) : null
+          }
+          title={form.title}
+        >
+          <div className="space-y-1 px-3 py-3 sm:px-4">
+            <p className="font-mono text-xs text-muted-foreground">{loaded.section}</p>
+            {form.description === undefined ? null : (
+              <p className="max-w-xl text-xs leading-normal text-muted-foreground/80">
+                {form.description}
               </p>
             )}
-          </SettingsRow>
-        )}
-        {members.length > 1 && read !== undefined ? (
-          <SettingsRow
-            description="Every node of the mesh can take the same change; one that is offline gets it when it returns."
-            title="Apply to"
-          >
-            <div
-              aria-label="Apply to nodes"
-              className="mt-2 mb-2 flex flex-wrap gap-x-4 gap-y-2"
-              role="group"
-            >
-              {members.map((member) => (
-                <label
-                  className="flex cursor-pointer items-center gap-2 text-sm"
-                  key={member.nodeId}
-                >
-                  <Checkbox
-                    checked={targets.includes(member.nodeId)}
-                    onCheckedChange={(checked) =>
-                      setScope(
-                        checked
-                          ? [...targets, member.nodeId]
-                          : targets.filter((target) => target !== member.nodeId),
-                      )
-                    }
-                  />
-                  {member.name}
-                  {member.self ? (
-                    <span className="text-xs text-muted-foreground">(this node)</span>
-                  ) : null}
-                  {!member.reachable && !member.self ? (
-                    <span className="text-xs text-muted-foreground">offline</span>
-                  ) : null}
-                </label>
-              ))}
+            <p className="text-xs text-muted-foreground/80">
+              Changes go to this section of the node's config.jsonc, keeping its comments; a key
+              left unset takes its default.
+            </p>
+          </div>
+          {read?.error === undefined ? null : (
+            <div className="px-3 py-3 sm:px-4">
+              <Alert variant="error">
+                <AlertDescription>{read.error}</AlertDescription>
+              </Alert>
             </div>
-          </SettingsRow>
-        ) : null}
-        {read === undefined ? null : (
+          )}
+          {showJson ? (
+            <>
+              <SettingsRow
+                description="What the plugins see now: every layer merged, defaults filled in."
+                title="Effective value"
+              >
+                <pre className="mt-2 mb-2 max-h-56 overflow-auto rounded-lg bg-muted/60 p-3 font-mono text-xs">
+                  {read?.error ?? pretty(read?.value)}
+                </pre>
+              </SettingsRow>
+              <SettingsRow
+                description={
+                  formFits
+                    ? "This section in the node's config.jsonc."
+                    : "This section in the node's config.jsonc. Its schema has no keys a form can show."
+                }
+                title="Node file"
+              >
+                <SectionJson
+                  messages={[...errors.entries()].flatMap(([path, messages]) =>
+                    messages.map((message) => (path === "" ? message : `${path}: ${message}`)),
+                  )}
+                  onChange={(next) =>
+                    setLoaded((current) =>
+                      current === undefined ? current : { ...current, value: next },
+                    )
+                  }
+                  section={loaded.section}
+                  value={loaded.value}
+                />
+              </SettingsRow>
+            </>
+          ) : (
+            <>
+              <Fields context={context} fields={form.fields} path={[]} />
+              {unknownKeys.length === 0 ? null : (
+                <SettingsRow
+                  description={`The node file also sets ${unknownKeys.join(", ")}, which the schema does not know. Saving keeps them; edit them as JSON.`}
+                  title="Other keys"
+                />
+              )}
+            </>
+          )}
+          {members.length > 1 ? (
+            <SettingsRow
+              description="Every node of the mesh can take the same change; one that is offline gets it when it returns."
+              title="Apply to"
+            >
+              <div
+                aria-label="Apply to nodes"
+                className="mt-2 mb-2 flex flex-wrap gap-x-4 gap-y-2"
+                role="group"
+              >
+                {members.map((member) => (
+                  <label
+                    className="flex cursor-pointer items-center gap-2 text-sm"
+                    key={member.nodeId}
+                  >
+                    <Checkbox
+                      checked={targets.includes(member.nodeId)}
+                      onCheckedChange={(checked) =>
+                        setScope(
+                          checked
+                            ? [...targets, member.nodeId]
+                            : targets.filter((target) => target !== member.nodeId),
+                        )
+                      }
+                    />
+                    {member.name}
+                    {member.self ? (
+                      <span className="text-xs text-muted-foreground">(this node)</span>
+                    ) : null}
+                    {!member.reachable && !member.self ? (
+                      <span className="text-xs text-muted-foreground">offline</span>
+                    ) : null}
+                  </label>
+                ))}
+              </div>
+            </SettingsRow>
+          ) : null}
           <div className="flex items-center justify-end gap-2 px-3 py-3 sm:px-4">
             {/* Announced when a save ends, for screen readers too. */}
             <div aria-live="polite" className="me-auto" role="status">
@@ -459,9 +577,21 @@ function ConfigEditor({
               )}
             </div>
             <Button
+              disabled={!edited}
+              onClick={() =>
+                setLoaded((current) =>
+                  current === undefined ? current : { ...current, value: current.original },
+                )
+              }
+              size="sm"
+              variant="ghost"
+            >
+              Discard
+            </Button>
+            <Button
               // Without the mesh (or before it answers) the change is this node's alone.
               disabled={
-                saving || parsed === undefined || (self !== undefined && targets.length === 0)
+                saving || !edited || blocked || (self !== undefined && targets.length === 0)
               }
               onClick={() => void save()}
               size="sm"
@@ -470,8 +600,8 @@ function ConfigEditor({
               Save
             </Button>
           </div>
-        )}
-      </SettingsSection>
+        </SettingsSection>
+      )}
       {pending.length === 0 ? null : (
         <SettingsSection icon={<ClockIcon className="size-4" />} title="Waiting for their node">
           {pending.map((change) => (
