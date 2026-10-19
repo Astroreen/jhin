@@ -67,8 +67,12 @@ contributions. Features of T3 Code that only make sense for its hosted product
   the scratch project; its threads go with it); `projects.browse` lists
   folders for the project picker (links to folders too, without blocking the
   node on a slow disk), under a permission of its own (`projects.browse`),
-  since it reads any folder the node can. Paths may start with `~` or `~/`
-  for the home directory; `~user` is not expanded.
+  since it reads any folder the node can. Today that permission restricts
+  nothing: every token is the owner's (`*`), and mesh members call each other
+  with `*`. A token already lets its holder run commands on the node through
+  an agent in full-access mode, so listing folders gives it nothing more; the
+  permission is there for scoped tokens (Deferred). Paths may start with `~`
+  or `~/` for the home directory; `~user` is not expanded.
 - **D68. One turn per thread, and none on a thread going away.** Checking that
   a thread is free and reserving it is one step, so concurrent sends start one
   turn. An archived thread takes no messages until it is unarchived
@@ -209,10 +213,11 @@ contributions. Features of T3 Code that only make sense for its hosted product
 - Code splitting of the web client: the main chunk is over 500 kB minified.
 - Scoped tokens: `projects.browse` has a permission of its own, but every
   token today holds every permission (`*`), so whoever holds a node's token
-  can list the names of folders the node process can read. Grant it on
-  purpose once tokens carry scopes. The same goes for `host.config.read`
-  (D66): `host.config.get` returns the node's and project's config files as
-  written, so it reads any secret a section keeps there.
+  can list the names of folders the node process can read. Mesh members call
+  each other with every permission too. Grant it on purpose once tokens carry
+  scopes, and give mesh calls a scope of their own. The same goes for
+  `host.config.read` (D66): `host.config.get` returns the node's and project's
+  config files as written, so it reads any secret a section keeps there.
 - Secret config values: no first-party section holds one today. A section
   that does needs a way to mark those values, so that `host.config.get`
   redacts them and the editor keeps them when it saves, before
