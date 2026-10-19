@@ -235,7 +235,7 @@ function ConfigEditor({
   /** Whether the editor holds changes not saved yet, each time that changes. */
   onEdited(edited: boolean): void;
 }) {
-  const { mesh, toasts, dialogs } = useSettingsServices();
+  const { context: plugin, mesh, toasts, dialogs } = useSettingsServices();
   const client = connection.client;
   const [schemas, setSchemas] = useState<Readonly<Record<string, JsonSchema>> | undefined>();
   const [section, setSection] = useState<string | undefined>();
@@ -372,6 +372,11 @@ function ConfigEditor({
     } finally {
       setSaving(false);
     }
+    // Other plugins follow what the section means (the node icons, `jhin.host`).
+    plugin.events.emit("settings.node-config.saved", {
+      connection: connection.id,
+      section: saved,
+    });
     // What the file holds now, if the section is still the one shown.
     try {
       const next = await client.call<ConfigRead>("host.config.get", { section: saved });

@@ -1,8 +1,9 @@
 // The palette follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/CommandPalette.tsx,
-// CommandPaletteContent.tsx and CommandPaletteResults.tsx.
+// CommandPaletteContent.tsx, CommandPaletteResults.tsx and EnvironmentMachineIcon.tsx.
 import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
+  MACHINES_CAPABILITY,
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   THREADS_CAPABILITY,
@@ -11,6 +12,7 @@ import {
   type Keybindings,
   type MeshMembership,
   type Navigation,
+  type NodeMachines,
   type NodeTarget,
   type ThreadsCatalog,
 } from "@jhin/client-api";
@@ -65,6 +67,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { builtin } from "../lib/builtin.ts";
 import { formatRelativeTimeLabel } from "../lib/format.ts";
 import { useExternal, useNow } from "../lib/hooks.ts";
+import { MachineIcon } from "../lib/machine-icon.tsx";
+import { useMachineKind } from "../lib/machines.ts";
 import { filterSearchGroups, type SearchGroup } from "../lib/palette-search.ts";
 import { ProjectIcon } from "../lib/project-icon.tsx";
 
@@ -72,6 +76,8 @@ interface PaletteItem {
   readonly value: string;
   readonly title: ReactNode;
   readonly description?: string;
+  /** Leads the description, e.g. the machine icon of the node it names. */
+  readonly descriptionIcon?: ReactNode;
   readonly icon: ReactNode;
   readonly shortcut?: string;
   readonly timestamp?: string;
@@ -85,6 +91,17 @@ interface PaletteItem {
 }
 
 const ITEM_ICON_CLASS = "size-4 text-icon-muted";
+
+/** The machine icon of a node a result names, as T3 marks a project's environment. */
+function NodeIcon(props: { machines: NodeMachines | undefined; target: NodeTarget }) {
+  return (
+    <MachineIcon
+      aria-hidden
+      className="size-3 shrink-0"
+      kind={useMachineKind(props.machines, props.target)}
+    />
+  );
+}
 const RECENT_THREADS = 12;
 
 const COMMAND_ICONS: Record<string, LucideIcon> = {
@@ -135,7 +152,11 @@ export const commandPalettePlugin = builtin(
       [MESH_CAPABILITY]: "^1",
       [THREADS_CAPABILITY]: "^1",
     },
-    optional: { [KEYBINDINGS_CAPABILITY]: "^1", [UI_TOASTS_CAPABILITY]: "^1" },
+    optional: {
+      [KEYBINDINGS_CAPABILITY]: "^1",
+      [UI_TOASTS_CAPABILITY]: "^1",
+      [MACHINES_CAPABILITY]: "^1",
+    },
   },
   definePlugin({
     activate(context) {
@@ -146,6 +167,7 @@ export const commandPalettePlugin = builtin(
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
+      const machines = context.services.tryGet<NodeMachines>(MACHINES_CAPABILITY);
       const open = createOpenState();
 
       /** Every node this client reaches: connections and the reachable members of their meshes. */
@@ -186,17 +208,22 @@ export const commandPalettePlugin = builtin(
             };
           });
 
-      const projectItems = (): PaletteItem[] =>
-        targets().flatMap(({ target, label }) =>
+      const projectItems = (): PaletteItem[] => {
+        const all = targets();
+        // As in the sidebar (D71), a node's icon shows only while several are reachable.
+        const hosts = all.length > 1;
+        return all.flatMap(({ target, label }) =>
           threads.catalog(target).projects.map((project) => ({
             value: `project:${target.node}|${target.remote ?? ""}:${project.id}`,
             title: project.name,
-            description: project.scratch ? label : `${project.path} · ${label}`,
+            description: project.scratch ? label : `${label} · ${project.path}`,
+            ...(hosts ? { descriptionIcon: <NodeIcon machines={machines} target={target} /> } : {}),
             icon: <ProjectIcon className="size-4" project={project} />,
             searchTerms: [project.name, project.path, label],
             run: () => navigation.navigate({ ...route(target), project: project.id }),
           })),
         );
+      };
 
       const threadItems = (now: number): PaletteItem[] => {
         const current = navigation.current();
@@ -436,8 +463,9 @@ export const commandPalettePlugin = builtin(
                                 <span className="flex min-w-0 items-center gap-1.5 text-sm text-foreground">
                                   <span className="truncate">{item.title}</span>
                                 </span>
-                                <span className="min-w-0 truncate text-muted-foreground/70 text-xs">
-                                  {item.description}
+                                <span className="flex min-w-0 items-center gap-1 text-muted-foreground/70 text-xs">
+                                  {item.descriptionIcon}
+                                  <span className="min-w-0 truncate">{item.description}</span>
                                 </span>
                               </span>
                             )}

@@ -25,6 +25,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
+  MACHINES_CAPABILITY,
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   THREADS_CAPABILITY,
@@ -33,6 +34,7 @@ import {
   type MeshMembership,
   type Navigation,
   type NodeConnection,
+  type NodeMachines,
   type NodeTarget,
   THREAD_PARK_HOOK,
   type ThreadParkInput,
@@ -109,7 +111,6 @@ import {
   PinOffIcon,
   PlusIcon,
   SearchIcon,
-  ServerIcon,
   SettingsIcon,
   ShieldQuestionIcon,
   SquarePenIcon,
@@ -133,6 +134,8 @@ import { builtin } from "../lib/builtin.ts";
 import { createClock } from "../lib/clock.ts";
 import { formatCompactRelativeTime } from "../lib/format.ts";
 import { useExternal, useNow, useShortcutLabels } from "../lib/hooks.ts";
+import { MachineIcon } from "../lib/machine-icon.tsx";
+import { useMachineKind } from "../lib/machines.ts";
 import { createShownNodes, showsHosts, type NodeWithCatalog } from "../lib/nodes.ts";
 import { ProjectIcon } from "../lib/project-icon.tsx";
 import {
@@ -230,12 +233,33 @@ const NO_VISITS: Pick<ThreadVisits, "snapshot" | "subscribe"> = {
 };
 const NO_SEEN: Readonly<Record<string, string>> = {};
 
+/** A node's machine icon (`client.machines`); a server's until the node says otherwise. */
+function NodeIcon({
+  machines,
+  target,
+  className,
+}: {
+  machines: NodeMachines | undefined;
+  target: NodeTarget;
+  className?: string;
+}) {
+  return <MachineIcon aria-hidden className={className} kind={useMachineKind(machines, target)} />;
+}
+
 /**
  * The node a row lives on, while the sidebar shows several: T3 Code marks a
- * thread's environment with its machine icon (EnvironmentMachineIcon, the
- * "server" kind; nodes have no kind to pick yet).
+ * thread's environment with its machine icon (EnvironmentMachineIcon).
  */
-function HostIcon({ label, className }: { label: string; className?: string }) {
+function HostIcon({
+  label,
+  className,
+  ...node
+}: {
+  label: string;
+  className?: string;
+  machines: NodeMachines | undefined;
+  target: NodeTarget;
+}) {
   return (
     <span
       aria-label={`On ${label}`}
@@ -243,7 +267,7 @@ function HostIcon({ label, className }: { label: string; className?: string }) {
       data-host-indicator
       role="img"
     >
-      <ServerIcon aria-hidden className="size-3.5" />
+      <NodeIcon {...node} className="size-3.5" />
     </span>
   );
 }
@@ -410,6 +434,7 @@ export const sidebarPlugin = builtin(
       [UI_DIALOGS_CAPABILITY]: "^1",
       [KEYBINDINGS_CAPABILITY]: "^1",
       [VISITS_CAPABILITY]: "^1",
+      [MACHINES_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -423,6 +448,7 @@ export const sidebarPlugin = builtin(
       const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
+      const machines = context.services.tryGet<NodeMachines>(MACHINES_CAPABILITY);
       const search = createValue("");
       const settledExpanded = createValue(false, {
         key: SETTLED_EXPANDED_STORAGE_KEY,
@@ -604,7 +630,11 @@ export const sidebarPlugin = builtin(
               )}
               {hosts ? (
                 <div className="flex min-w-0 items-center gap-2">
-                  <ServerIcon className="size-3 shrink-0 stroke-muted-foreground" />
+                  <NodeIcon
+                    className="size-3 shrink-0 stroke-muted-foreground"
+                    machines={machines}
+                    target={node.target}
+                  />
                   <div className="min-w-0 truncate text-foreground/75">{node.label}</div>
                 </div>
               ) : null}
@@ -1005,6 +1035,8 @@ export const sidebarPlugin = builtin(
                     <HostIcon
                       className="text-sidebar-muted-foreground/70 [&>svg]:size-3"
                       label={node.label}
+                      machines={machines}
+                      target={node.target}
                     />
                   ) : null}
                 </span>
@@ -1098,9 +1130,10 @@ export const sidebarPlugin = builtin(
                   >
                     {showsScratchNode ? (
                       <>
-                        <ServerIcon
-                          aria-hidden
+                        <NodeIcon
                           className="size-3 shrink-0 text-muted-foreground/40"
+                          machines={machines}
+                          target={node.target}
                         />
                         <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
                           {node.label}
@@ -1128,6 +1161,8 @@ export const sidebarPlugin = builtin(
                           showsScratchNode && "sr-only",
                         )}
                         label={node.label}
+                        machines={machines}
+                        target={node.target}
                       />
                     ) : null}
                     {agentId === undefined ? null : (
@@ -1530,7 +1565,11 @@ export const sidebarPlugin = builtin(
                       {/* T3 marks a project of another environment; here its node is named. */}
                       {choice !== undefined && hosts ? (
                         <span className="ml-2 inline-flex max-w-28 shrink-0 items-center gap-1 text-xs text-muted-foreground">
-                          <ServerIcon aria-hidden className="size-3 shrink-0" />
+                          <NodeIcon
+                            className="size-3 shrink-0"
+                            machines={machines}
+                            target={choice.node.target}
+                          />
                           <span className="truncate">{choice.node.label}</span>
                         </span>
                       ) : null}
@@ -2253,6 +2292,7 @@ export const sidebarPlugin = builtin(
         return (
           <AddProjectDialog
             connections={connections}
+            machines={machines}
             navigation={navigation}
             nodes={nodeView}
             requests={addProjectRequests}

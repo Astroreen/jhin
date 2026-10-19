@@ -226,8 +226,7 @@ contributions. Features of T3 Code that only make sense for its hosted product
   the node next to each project, so two projects called "web" stay apart.
   Accessible names follow: a row is named "title, status, project", and
   while several nodes are shown "… on <node>"; so is the filter's button.
-  The icon is T3's "server" machine kind for every node: nodes have no kind
-  to pick yet (Deferred). The agent's icon is Claude's for the Claude Code
+  The icon is the node's machine kind (D130–D133). The agent's icon is Claude's for the Claude Code
   runtime (`jhin.agent-claude`, `providers.md`), as T3 draws its claudeAgent
   provider, and a generic one for any other runtime.
 - **D72. The node's actions move where T3 has them.** The header's "Add
@@ -383,7 +382,7 @@ contributions. Features of T3 Code that only make sense for its hosted product
   `until` against its own clock; a minute-old time would wake a thread up
   to a minute early.
 
-The proof: `apps/web/test/sidebar-order.test.ts` (statuses, Done after a
+The proof of D70–D74: `apps/web/test/sidebar-order.test.ts` (statuses, Done after a
 visit, fading, the settle rule and its activity time, one list across nodes
 in T3's order, the project filter, the Settled shelf's paging and collapsed
 state, search, accessible names with and without nodes);
@@ -433,6 +432,81 @@ threads back; a custom snooze, the clock an hour on, "Woke" dismissed or
 cleared by opening; dragging pinned and active rows and onto the shelf, kept
 after a reload), with screenshots.
 
+### Node machine icons
+
+- **D130. A node says what it is: `host.identity`.** The node host's
+  `jhin.host` plugin answers with the node's id, host name, platform and
+  architecture (Node's `process.platform` and `process.arch`) and the
+  machine kind clients show it as (`machine`), with the kind it detected
+  (`detectedMachine`, absent when it cannot tell). It needs no permission,
+  as `host.commands.list`. The kinds are T3 Code's seven, with T3's labels:
+  `server` (Server), `cloud` (Cloud VM), `linux` (Linux/WSL), `desktop`,
+  `laptop`, `mac-mini` (Mini PC) and `mac-studio` (Workstation); they live in
+  `@jhin/host-api` (`MACHINE_KINDS`, `MACHINE_KIND_LABELS`) and
+  `@jhin/client-api` re-exports them for client plugins. Detection is T3's
+  (ServerEnvironmentMachine): on Linux the DMI chassis type, any hypervisor
+  or cloud vendor in the DMI strings reading as `cloud` whatever chassis it
+  fakes, and WSL (its kernel release) as `linux` before that; on macOS the
+  IOKit product name, then `hw.model`; on other platforms nothing. A node
+  detects once, on the first ask. A client shows a kind it does not know as a
+  server, so a later kind never breaks an older client.
+- **D131. The owner's choice is kept on the node, as T3 keeps its
+  `environmentIcon` in the server's settings,** not per device: every client
+  of a node shows the same icon. It is the `machine` key of a config section
+  of its own, `jhin.host` ("Host"), with a title and description, so the
+  node config form renders it as a select of the titled kinds (D80, D81).
+  The kind shown is the choice, else the detected kind, else `server`; a
+  value the schema refuses chooses nothing. The choice is written to the
+  node file like every node config edit (D84), so a project file that sets
+  the key wins over it.
+- **D132. `client.machines@1`, provided by the builtin `jhin.node-machines`,
+  tells views each node's kind.** It asks `host.identity` once per followed
+  node, a connection or a mesh member (through `mesh.call`), however many
+  views follow it, and asks again when the connection opens again, when a
+  new view follows a node whose kind is not known yet (an earlier answer
+  failed), after `node.set-machine`, and after the node config page saved
+  the `jhin.host` section: the page emits the client event
+  `settings.node-config.saved` (`{ connection, section }`) after each save.
+  Only the newest answer counts; a node that cannot answer (older than
+  `host.identity`) shows as a server. The command `node.set-machine`
+  (`{ node, remote?, machine }`, "Change node icon") writes the choice to
+  the node's `jhin.host` through `host.config.patch`; `machine: null`
+  removes it, so the node follows its detection again. A node's menu in
+  settings → Nodes gets T3's "Icon" submenu (contribution
+  `jhin.node-machines.icon` in `node.actions`): the kinds as radio items,
+  the detected one marked "detected" (or "default" when nothing was
+  detected); picking the detected kind removes the choice, as T3 does.
+- **D133. The node icon is the node's machine wherever it appears**
+  (T3's EnvironmentMachineIcon, ported as `MachineIcon` with T3's Mini PC,
+  Workstation and Linux icons): the bottom-right icon of a card and of a
+  slim row, the hover card and a scratch thread's node line (all only while
+  several nodes are shown, D71), the project filter, the add-project node
+  picker, settings → Nodes (each connection leads with its machine, as T3's
+  EnvironmentRow does, with the connection's state as a dot on its corner,
+  and each member of its mesh) and the palette's projects. In the palette a
+  project names its node first, then its path (`node · path`), as T3 does,
+  with the icon before the node while several nodes are reachable. Every
+  icon carries `data-machine` with its kind.
+
+The proof: `packages/node-host/test/machine.test.ts` (chassis types, VMs as
+cloud VMs whatever their chassis, WSL before DMI, Macs by product name then
+model, nothing on other platforms or unreadable machines);
+`packages/node-host/test/host.test.ts` ("reports what the node is": the
+owner's kind over the detected one, the section's titled select, unset and
+invalid values falling back); `apps/web/test/machines.test.ts` (one request
+per node however many follow it, asking again on reconnect, the newest
+answer winning, keeping what is known when a node cannot answer, refreshing
+a connection or one remote, unknown kinds as servers, a throwing listener);
+`apps/web/test/machines.browser.test.tsx` (every kind's own icon, unknown
+ones as a server, a view re-rendering when the kind changes,
+`node.set-machine` writing and removing `jhin.host.machine` on a node and on
+a mesh member, refusing unknown nodes and kinds, asking again after the node
+config page saved `jhin.host` and only then, the Icon submenu in
+`node.actions`); Playwright `e2e/tests/machines.spec.ts` (a laptop node and
+a cloud node: different icons on their cards, in the project filter, the
+palette and the add-project picker, none with one node; the Icon menu and
+the node config form each changing a node's icon, kept in its node file).
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted pairing and hosted environments.
@@ -469,8 +543,10 @@ after a reload), with screenshots.
   card. The card's branch, diff and pull request are `source-control.md`'s
   D117 and its terminal indicator `terminal.md`'s D148, all in the
   `sidebar.thread.indicators` slot.
-- A machine kind per node (T3's environment icon picker), so the node icons
-  of D71 differ by machine; every node shows the "server" icon today.
+- Pushing a node's config changes to its clients: a change of
+  `jhin.host.machine` made by hand in the file, from another client, or with
+  the mesh scope picker from another node's page reaches a client when its
+  connection opens again or the page reloads (D132).
 - Visits and drafts are per device; syncing them, and device settings, across
   devices.
 - Warnings for conflicting keybindings in the settings page.

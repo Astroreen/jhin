@@ -2,19 +2,27 @@
 // apps/web/src/components/settings/EnvironmentRow.tsx and ConnectionsSettings.tsx.
 import type { AgentInfo, NodeActionProps, NodeConnection, NodeTarget } from "@jhin/client-api";
 import { Badge, Button, Menu, MenuPopup, MenuTrigger, Slot, Spinner, cn } from "@jhin/ui";
-import { BotIcon, EllipsisIcon, PlusIcon, RefreshCwIcon, ServerIcon } from "lucide-react";
+import { BotIcon, EllipsisIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
+import { MachineIcon } from "../../lib/machine-icon.tsx";
+import { useMachineKind } from "../../lib/machines.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import { SettingsEmpty, SettingsSection } from "../../lib/settings-layout.tsx";
 import { useSettingsServices } from "./index.tsx";
+
+/** A node's machine icon, as T3's EnvironmentRow leads with it. */
+function NodeMachineIcon({ target, className }: { target: NodeTarget; className: string }) {
+  const { machines } = useSettingsServices();
+  return <MachineIcon aria-hidden className={className} kind={useMachineKind(machines, target)} />;
+}
 
 function StateDot({ state }: { state: NodeConnection["state"] }) {
   return (
     <span
       aria-label={`Connection ${state}`}
-      className="relative flex size-3 shrink-0 items-center justify-center"
+      className="absolute -right-1 -bottom-1 flex size-3 shrink-0 items-center justify-center rounded-full bg-background"
       role="img"
     >
       <span
@@ -95,7 +103,10 @@ function MeshMembers({ connection }: { connection: NodeConnection }) {
       <span className="text-2xs font-medium text-muted-foreground/80 uppercase">Its mesh</span>
       {others.map((member) => (
         <div className="flex items-center gap-2 text-xs" key={member.nodeId}>
-          <ServerIcon className="size-3.5 text-icon-muted" />
+          <NodeMachineIcon
+            className="size-3.5 text-icon-muted"
+            target={{ node: connection.id, remote: member.nodeId }}
+          />
           <span className="font-medium">{member.name}</span>
           <span className={member.reachable ? "text-success-foreground" : "text-muted-foreground"}>
             {member.reachable ? "reachable" : "unreachable"}
@@ -129,7 +140,8 @@ export function NodesSection() {
           className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 px-3 py-2.5 sm:px-4"
           key={node.id}
         >
-          <div className="pt-1">
+          <div className="relative mt-0.5">
+            <NodeMachineIcon className="size-4 text-muted-foreground" target={{ node: node.id }} />
             <StateDot state={node.state} />
           </div>
           <div className="min-w-0">

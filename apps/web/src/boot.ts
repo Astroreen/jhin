@@ -8,6 +8,7 @@ import { commandPalettePlugin } from "./plugins/command-palette.tsx";
 import { connectionsPlugin } from "./plugins/connections.ts";
 import { inspectorPlugin } from "./plugins/inspector.tsx";
 import { keybindingsPlugin } from "./plugins/keybindings.ts";
+import { machinesPlugin } from "./plugins/machines.tsx";
 import { meshPlugin } from "./plugins/mesh.ts";
 import { navigationPlugin } from "./plugins/navigation.ts";
 import { notificationsPlugin } from "./plugins/notifications.tsx";
@@ -98,6 +99,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     navigationPlugin,
     meshPlugin,
     threadsStorePlugin,
+    machinesPlugin,
     visitsPlugin,
     threadActionsPlugin,
     sidebarPlugin,

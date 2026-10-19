@@ -35,6 +35,9 @@ One word per concept. Use these terms in code, docs, commits and UI.
   that schema.
 - **Node** — one running Jhin server, identified by a stable `nodeId` and an
   Ed25519 key pair. T3 Code calls this an environment.
+- **Machine kind** — what a node runs on (`laptop`, `desktop`, `server`,
+  `cloud`, …), shown as its icon: what the node detects, unless its owner
+  chose one (`jhin.host.machine`). T3 Code's environment icon.
 - **Mesh** — the set of nodes of one owner that know about each other and
   route requests between themselves. There is no primary node.
 - **Catalog** — the replicated mesh metadata: nodes, status, capabilities,

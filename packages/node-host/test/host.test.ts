@@ -1,5 +1,8 @@
 import * as Fs from "node:fs";
+import * as Os from "node:os";
 import * as Path from "node:path";
+
+import { MACHINE_KINDS } from "@jhin/host-api";
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
@@ -656,5 +659,56 @@ export default definePlugin({
     expect(text).not.toContain('"greeting"');
     // Back to the schema's default.
     expect((await host.execute("example.greet", { name: "A" })).value.message).toBe("Hello, A!");
+  });
+  it("reports what the node is, with the owner's machine kind over the detected one", async () => {
+    const home = tempDir("home");
+    Fs.writeFileSync(
+      Path.join(home, "config.jsonc"),
+      '{\n  "jhin.host": { "machine": "laptop" }\n}\n',
+    );
+    host = new HostProcess({ home, cwd: tempDir("cwd") });
+    await host.ready();
+
+    const chosen = (await host.execute("host.identity", {})).value;
+    expect(chosen).toMatchObject({
+      nodeId: expect.any(String),
+      hostname: Os.hostname(),
+      platform: process.platform,
+      arch: process.arch,
+      machine: "laptop",
+    });
+    // Detection says what this machine is, or nothing; never something else.
+    const detected: unknown = chosen.detectedMachine;
+    expect(detected === undefined || MACHINE_KINDS.includes(detected as never)).toBe(true);
+
+    // The settings page renders the section as a form: a select of titled kinds (D80, D81).
+    const schema = (await host.execute("host.config.schema", {})).value;
+    expect(schema.properties["jhin.host"]).toMatchObject({
+      title: "Host",
+      properties: {
+        machine: {
+          title: "Machine",
+          anyOf: expect.arrayContaining([{ type: "string", const: "laptop", title: "Laptop" }]),
+        },
+      },
+    });
+
+    // Unset, the node shows what it detects, else a server.
+    await host.execute("host.config.patch", {
+      layer: "node",
+      section: "jhin.host",
+      values: {},
+      unset: ["machine"],
+    });
+    const unset = (await host.execute("host.identity", {})).value;
+    expect(unset.machine).toBe(detected ?? "server");
+
+    // A kind the schema does not know chooses nothing.
+    await host.execute("host.config.patch", {
+      layer: "node",
+      section: "jhin.host",
+      values: { machine: "toaster" },
+    });
+    expect((await host.execute("host.identity", {})).value.machine).toBe(detected ?? "server");
   });
 });

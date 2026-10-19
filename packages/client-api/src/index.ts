@@ -1,3 +1,4 @@
+import type { MachineKind } from "@jhin/host-api";
 import type { ConnectionState, RpcClient } from "@jhin/rpc";
 import { z, type Disposable } from "@jhin/sdk";
 
@@ -6,6 +7,16 @@ export const NAVIGATION_CAPABILITY = "client.navigation";
 export const MESH_CAPABILITY = "client.mesh";
 export const THREADS_CAPABILITY = "client.threads";
 export const SETTINGS_CAPABILITY = "client.settings";
+export const MACHINES_CAPABILITY = "client.machines";
+
+// The machine kinds a node reports, for client plugins (they import this package, not the host's).
+export {
+  HOST_CONFIG_SECTION,
+  isMachineKind,
+  MACHINE_KIND_LABELS,
+  MACHINE_KINDS,
+  type MachineKind,
+} from "@jhin/host-api";
 
 /** One node this client talks to (D8: a client holds N connections). */
 export interface NodeConnection {
@@ -312,6 +323,34 @@ export interface ThreadsCatalog {
   call<T = unknown>(target: NodeTarget, method: string, params?: unknown): Promise<T>;
   /** The stream to read a thread from on the connection: the thread, or this node's copy of it (D26). */
   open(target: NodeTarget, threadId: string): Promise<string>;
+}
+
+/** What a node says it is (`host.identity`). */
+export interface NodeMachine {
+  /** The kind its icon shows: the owner's choice, else what the node detects, else `server`. */
+  readonly kind: MachineKind;
+  /** What the node tells by itself; absent when it cannot. */
+  readonly detected?: MachineKind;
+  readonly hostname: string;
+  /** Node's `process.platform` there, e.g. `linux`, `darwin`, `win32`. */
+  readonly platform: string;
+}
+
+/**
+ * `client.machines@1`: what kind of machine each node runs on, for its icon.
+ * A node is asked once somebody follows it, again when its connection opens
+ * again and whenever the node config of a node behind that connection is
+ * saved from this client.
+ */
+export interface NodeMachines {
+  /**
+   * What the node reported; `undefined` while nobody follows it, until it
+   * answers, and when it cannot (a node older than `host.identity`): show
+   * it as a `server`. The same object until it changes.
+   */
+  get(target: NodeTarget): NodeMachine | undefined;
+  /** Follows the target; `listener` fires whenever `get` changes. */
+  subscribe(target: NodeTarget, listener: () => void): Disposable;
 }
 
 /** A stable key for a target, e.g. for maps and storage. */

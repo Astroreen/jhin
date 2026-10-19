@@ -1,5 +1,6 @@
 import * as AsyncHooks from "node:async_hooks";
 import * as Fs from "node:fs";
+import * as Os from "node:os";
 import * as Path from "node:path";
 
 import {
@@ -17,6 +18,7 @@ import {
   type PluginsUpdate,
 } from "@jhin/kernel";
 import {
+  HOST_CONFIG_SECTION,
   HOST_IDENTITY_CAPABILITY,
   HOST_PATHS_CAPABILITY,
   HOST_PLUGINS_CAPABILITY,
@@ -24,6 +26,9 @@ import {
   type HostPaths,
   type HostPlugins,
   type HostTrace,
+  MACHINE_KIND_LABELS,
+  MACHINE_KINDS,
+  type MachineKind,
 } from "@jhin/host-api";
 import {
   definePlugin,
@@ -44,6 +49,7 @@ import {
 import { readNodeId, resolveHome, type JhinHome } from "./home.ts";
 import { createFileModuleLoader } from "./loader.ts";
 import { createNodeLogger, type NodeLogger } from "./logger.ts";
+import { detectMachineKind, systemProbe } from "./machine.ts";
 import { buildOutputFilter, watch, type WatchTarget } from "./watcher.ts";
 
 export interface NodeHostOptions {
@@ -86,6 +92,26 @@ const HOST_PLUGIN = "jhin.host";
 const MAX_CONFIG_SKEW_MS = 60 * 60 * 1000;
 const HOST_LOCATION = "host://jhin.host";
 const RECENT_EVENTS = 100;
+
+const Machine = z.enum(MACHINE_KINDS);
+// Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
+const HostConfig = z
+  .object({
+    machine: z
+      .union(
+        MACHINE_KINDS.map((kind) => z.literal(kind).meta({ title: MACHINE_KIND_LABELS[kind] })) as [
+          z.ZodLiteral<MachineKind>,
+          ...z.ZodLiteral<MachineKind>[],
+        ],
+      )
+      .optional()
+      .meta({
+        title: "Machine",
+        description:
+          "What this node runs on; clients show its icon next to the node. Unset, the node tells by itself, and shows as a server when it cannot.",
+      }),
+  })
+  .meta({ title: "Host", description: "What this node says about itself." });
 
 /** The layer in `file`; `undefined` when it cannot be parsed (the caller keeps the previous layer). */
 function readLayer(file: string, log: Logger): Record<string, unknown> | undefined {
@@ -173,6 +199,9 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       context.services.provide(HOST_PATHS_CAPABILITY, paths);
       context.services.provide(HOST_TRACE_CAPABILITY, trace);
       context.services.provide(HOST_IDENTITY_CAPABILITY, { nodeId });
+      context.config.define(HOST_CONFIG_SECTION, HostConfig);
+      // Detected once, on first ask: on macOS it runs a process.
+      let detection: Promise<MachineKind | null> | undefined;
       const plugins: HostPlugins = {
         list: () =>
           discovery.plugins.flatMap((plugin) => {
@@ -195,6 +224,39 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         output: z.unknown(),
         permissions: ["host.inspect"],
         handler: () => inspect(),
+      });
+      context.commands.register({
+        name: "host.identity",
+        description:
+          "What this node is: its id, host name, platform and the machine kind clients show it as (the owner's choice in jhin.host, else what the node detects, else a server)",
+        input: z.object({}),
+        output: z.object({
+          nodeId: z.string(),
+          hostname: z.string(),
+          /** Node's `process.platform` and `process.arch`. */
+          platform: z.string(),
+          arch: z.string(),
+          machine: Machine,
+          /** What the node tells by itself; absent when it cannot. */
+          detectedMachine: Machine.optional(),
+        }),
+        handler: async () => {
+          const detected = await (detection ??= detectMachineKind(systemProbe));
+          let chosen: MachineKind | undefined;
+          try {
+            chosen = context.config.get<z.output<typeof HostConfig>>(HOST_CONFIG_SECTION).machine;
+          } catch {
+            // An invalid section chooses nothing; `host.config.get` says what is wrong.
+          }
+          return {
+            nodeId,
+            hostname: Os.hostname(),
+            platform: process.platform,
+            arch: process.arch,
+            machine: chosen ?? detected ?? "server",
+            ...(detected === null ? {} : { detectedMachine: detected }),
+          };
+        },
       });
       context.commands.register({
         name: "host.commands.list",
