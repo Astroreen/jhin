@@ -119,11 +119,15 @@ contributions. Features of T3 Code that only make sense for its hosted product
   the model picker, access mode, plan/build toggle, image attachments, a
   context meter from token usage, prompt history (↑/↓), drafts per thread,
   approval and question banners, and a queue of follow-ups sent while a turn
-  runs (client side, see Deferred): a thread's queue outlives its view, and a
-  follow-up that fails waits for the user instead of being retried. An
-  archived thread shows a way to unarchive it instead of the composer. The
-  header has a breadcrumb, title actions and the slot `chat.header.actions`
-  (props: `ChatHeaderActionProps`).
+  runs (client side, see Deferred). The chat plugin keeps the queues: each
+  follows its thread's record and sends its next message when the record
+  shows the turn ended, whether the thread is on screen or not, with the
+  agent, model and modes it was typed with; one that fails waits for the user
+  instead of being retried. A new thread whose first message the node refused
+  is deleted again; when the connection dropped the call, the thread stays,
+  with the message in its composer. An archived thread shows a way to
+  unarchive it instead of the composer. The header has a breadcrumb, title
+  actions and the slot `chat.header.actions` (props: `ChatHeaderActionProps`).
 - **D66. Settings page** with sections as contributions: General, Appearance
   (system/light/dark, chat width), Notifications, Keybindings (record, reset,
   search), Nodes (connections, agents, mesh members), Node config (edit any
@@ -164,7 +168,8 @@ contributions. Features of T3 Code that only make sense for its hosted product
 - Real agent adapters (Claude Code, Codex, OpenCode): the API (D54) and UI
   are ready; only the fake agent implements them.
 - A server-side message queue and steering: follow-ups wait in the client
-  while a turn runs and are lost if the page closes.
+  while a turn runs, go out only while the page is open, and are lost if it
+  closes.
 - Terminal drawer (`node-pty` + xterm) and the `terminalFocus` context key.
 - Git and source control: branch toolbar, diff panel, checkpoints and
   reverting to a turn, worktrees, pull requests.
@@ -210,9 +215,10 @@ did not expect, and the new client needs the new commands. The proof:
 - `apps/web/test`: keybindings, the timeline (folded at once and as events
   arrive), palette search, prompt history, drafts across tabs, attachment
   limits, status pills and visits, sidebar ordering and filtering, routes, the
-  threads store, notifications, starting a thread, and (browser mode) the
-  follow-up queue; `packages/ui` dialogs; the kernel's disposal of
-  registrations disposed early.
+  threads store, notifications, starting a thread, the follow-up queues, and
+  (browser mode) the node config editor and a thread's timeline following its
+  node's client; `packages/ui` dialogs and the clipboard fallback; the
+  kernel's disposal of registrations disposed early.
 - Playwright: send and stream, stop, approval, questions, archiving, the
-  palette, the inspector, mesh and client plugins, with screenshots in the
-  report.
+  palette, the inspector, mesh and client plugins, the node config editor
+  keeping unsaved edits, with screenshots in the report.
