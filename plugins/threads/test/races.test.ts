@@ -283,6 +283,7 @@ describe("jhin.threads: answering requests", () => {
       const held = release.promise.then(() => append(stream, batch, options));
       let waiting = 0;
       return {
+        // oxlint-disable-next-line unicorn/no-thenable -- it stands for the append, counting who awaits it
         then(onFulfilled?: (value: unknown) => unknown, onRejected?: (error: unknown) => unknown) {
           waiting += 1;
           if (waiting === 2) endWaits.resolve();
