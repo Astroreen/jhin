@@ -184,8 +184,9 @@ One PR. Public API it changes, all additive: `host.config.get` returns
 `mesh.config.patch` take `unset`; `@jhin/kernel` exports `configComments`.
 First-party sections (`jhin.example`, `jhin.http`, `jhin.mesh`,
 `jhin.threads`, `jhin.storage-sqlite`, `jhin.web-ui`, `jhin.ui`,
-`jhin.keybindings`) carry titles and descriptions; `jhin.mesh`'s `history`
-is a union of titled literals instead of an enum (same values).
+`jhin.keybindings`, `jhin.agent-claude`) carry titles and descriptions;
+`jhin.mesh`'s `history` is a union of titled literals instead of an enum
+(same values), and `jhin.agent-claude`'s `env` is marked `writeOnly` (D83).
 
 **Done when:** every first-party section renders as a form with titles and
 descriptions; a boolean, a string and an enum edited and saved land in the
