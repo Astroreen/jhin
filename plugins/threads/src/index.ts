@@ -173,6 +173,8 @@ interface Running {
   readonly openRequests: Map<string, AgentRequest["kind"]>;
   /** Answers being recorded; the turn's end waits for them. */
   readonly answering: Map<string, Promise<unknown>>;
+  /** The agent's item being recorded; the turn's end waits for it too. */
+  recording: Promise<unknown> | undefined;
   /** Set once the turn's end is being recorded: the agent takes no more answers. */
   ending: boolean;
   /**
@@ -180,6 +182,8 @@ interface Running {
    * set once the agent started.
    */
   abandon: ((reason: string) => Promise<void>) | undefined;
+  /** Why a stop gave up on the agent before it started: it is ended as soon as it starts. */
+  giveUp: string | undefined;
 }
 
 /** The first line of a message, shortened at a word: the title of a new thread. */
@@ -479,8 +483,10 @@ export default definePlugin({
         interrupted: false,
         openRequests: new Map(),
         answering: new Map(),
+        recording: undefined,
         ending: false,
         abandon: undefined,
+        giveUp: undefined,
       };
       active.set(threadId, entry);
       const release = () => {
@@ -644,8 +650,9 @@ export default definePlugin({
         );
       /** Requests left open when the turn ends are closed without an answer. */
       const closeRequests = async () => {
-        // Answers already being recorded go first.
-        await Promise.allSettled(entry.answering.values());
+        // The item and the answers being recorded go first: a request is
+        // recorded opened (and maybe answered) before it is closed.
+        await Promise.allSettled([entry.recording, ...entry.answering.values()]);
         const open = [...entry.openRequests.keys()];
         entry.openRequests.clear();
         for (const requestId of open) {
@@ -680,6 +687,11 @@ export default definePlugin({
       };
       entry.abandon = (reason) =>
         end({ type: ThreadEvents.turnInterrupted, status: "interrupted", reason });
+      if (entry.giveUp !== undefined) {
+        // A stop gave up on it while it was starting: it ends now.
+        void entry.abandon(entry.giveUp);
+        return;
+      }
       void (async () => {
         let ending: { type: string; status: TurnStatus; error?: string };
         try {
@@ -692,8 +704,17 @@ export default definePlugin({
             if (item.kind === "request.opened") {
               entry.openRequests.set(item.requestId, item.request.kind);
             }
-            const event = eventOf(turnId, item);
-            await log.append(stream, [event]);
+            const recording = log.append(stream, [eventOf(turnId, item)]);
+            entry.recording = recording;
+            try {
+              await recording;
+            } catch (error) {
+              // Never recorded, so never asked: there is nothing to close.
+              if (item.kind === "request.opened") entry.openRequests.delete(item.requestId);
+              throw error;
+            } finally {
+              if (entry.recording === recording) entry.recording = undefined;
+            }
             if (item.kind === "request.opened" && entry.openRequests.size === 1) {
               await setTurnStatus(thread.id, turnId, runtime.agentId, "waiting", item.request.kind);
             }
@@ -713,7 +734,9 @@ export default definePlugin({
     /**
      * Stops a thread's running turn, if any, and waits until it has ended. An
      * agent that ignores the interrupt for STOP_TIMEOUT_MS is given up on: its
-     * turn is recorded as interrupted and the thread released.
+     * turn is recorded as interrupted and the thread released. A turn still
+     * starting then is given up on as soon as it has started; its start only
+     * waits on storage, as recording its end would.
      */
     async function stopTurn(threadId: string): Promise<void> {
       const current = active.get(threadId);
@@ -729,10 +752,12 @@ export default definePlugin({
       ]);
       clearTimeout(timer);
       if (stopped) return;
-      // An agent still starting has no turn to give up on yet: it applies the
-      // interrupt once it starts. Either way the turn's last events are recorded
-      // once it is done, also when the agent ended it just now.
-      await current.abandon?.("The agent did not stop when interrupted");
+      const reason = "The agent did not stop when interrupted";
+      // An agent still starting has no turn to give up on yet: it is given up
+      // on once it starts. Either way the turn's last events are recorded once
+      // it is done, also when the agent ended it just now.
+      if (current.abandon === undefined) current.giveUp = reason;
+      else await current.abandon(reason);
       await current.done;
     }
 

@@ -438,20 +438,155 @@ describe("jhin.threads: answering requests", () => {
 });
 
 describe("jhin.threads: agents that ignore an interrupt", () => {
-  it("archives the thread anyway, recording the turn as interrupted", async () => {
+  /** A runtime that opens `request` (if given), then never ends, whatever it is told. */
+  function stubbornRuntime(request?: Extract<AgentItem, { kind: "request.opened" }>["request"]) {
     const interrupted = latch();
-    const stubborn: AgentRuntime = {
+    const runtime: AgentRuntime = {
       agentId: "acme.stubborn",
       startTurn: ({ turnId }) => ({
         items: (async function* (): AsyncGenerator<AgentItem> {
-          yield { kind: "message.delta", itemId: `${turnId}:1`, text: "Working" };
-          // Never ends, whatever happens.
+          if (request !== undefined)
+            yield { kind: "request.opened", requestId: `${turnId}:r`, request };
+          else yield { kind: "message.delta", itemId: `${turnId}:1`, text: "Working" };
           await new Promise(() => undefined);
         })(),
         interrupt: () => interrupted.resolve(),
       }),
     };
-    const { kernel, client } = await node({ agent: false, plugins: [registering(stubborn)] });
+    return { runtime, interrupted };
+  }
+
+  it("records a request opened before the stop that gave up on its agent closes it", async () => {
+    const stubborn = stubbornRuntime({
+      kind: "approval",
+      tool: { name: "Bash", kind: "command", title: "Run command", detail: "make" },
+    });
+    const { kernel, client, storage } = await node({
+      agent: false,
+      plugins: [registering(stubborn.runtime)],
+    });
+    const thread = await client.call<Thread>("threads.create", {});
+    // The request's opened event is recorded once the test says so. The test
+    // learns when the turn's end waits for it, or closes the request first.
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    const recording = latch();
+    const release = latch();
+    const endWaits = latch();
+    const closedFirst = latch();
+    let held = false;
+    log.append = (stream, batch, options) => {
+      const types = new Set(batch.map((event) => event.type));
+      if (types.has("agent.request.opened")) {
+        held = true;
+        recording.resolve();
+        const done = release.promise.then(() => append(stream, batch, options));
+        let waiting = 0;
+        return {
+          // oxlint-disable-next-line unicorn/no-thenable -- it stands for the append, counting who awaits it
+          then(
+            onFulfilled?: (value: unknown) => unknown,
+            onRejected?: (error: unknown) => unknown,
+          ) {
+            waiting += 1;
+            if (waiting === 2) endWaits.resolve();
+            return done.then(onFulfilled, onRejected);
+          },
+        } as unknown as ReturnType<typeof append>;
+      }
+      if (held && types.has("agent.request.resolved")) closedFirst.resolve();
+      return append(stream, batch, options);
+    };
+
+    await client.call("threads.send", { threadId: thread.id, text: "go" });
+    await recording.promise;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const archiving = kernel.commands.execute("threads.archive", { threadId: thread.id });
+    await stubborn.interrupted.promise;
+    vi.advanceTimersByTime(STOP_TIMEOUT_MS);
+    await Promise.race([endWaits.promise, closedFirst.promise]);
+    release.resolve();
+    await archiving;
+
+    const recorded = (await log.read(`thread/${thread.id}`))
+      .map((event) => event.type)
+      .filter((type) => type.startsWith("agent.request.") || type === "agent.turn.interrupted");
+    expect(recorded).toEqual([
+      "agent.request.opened",
+      "agent.request.resolved",
+      "agent.turn.interrupted",
+    ]);
+  });
+
+  it("closes no request whose opened event could not be recorded", async () => {
+    const stubborn = stubbornRuntime({
+      kind: "approval",
+      tool: { name: "Bash", kind: "command", title: "Run command", detail: "make" },
+    });
+    const { client, storage } = await node({
+      agent: false,
+      plugins: [registering(stubborn.runtime)],
+    });
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    log.append = (stream, batch, options) =>
+      batch.some((event) => event.type === "agent.request.opened")
+        ? Promise.reject(new Error("disk full"))
+        : append(stream, batch, options);
+
+    await client.call("threads.send", { threadId: thread.id, text: "go" });
+    expect((await until("agent.turn.failed")).payload).toMatchObject({ error: "Error: disk full" });
+    const types = (await log.read(`thread/${thread.id}`)).map((event) => event.type);
+    expect(types.filter((type) => type.startsWith("agent.request."))).toEqual([]);
+  });
+
+  it("gives up on an agent that starts after the stop's deadline", async () => {
+    const stubborn = stubbornRuntime();
+    const { kernel, client, storage } = await node({
+      agent: false,
+      plugins: [registering(stubborn.runtime)],
+    });
+    const thread = await client.call<Thread>("threads.create", {});
+    // The turn's start is recorded once the test says so.
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    const starting = latch();
+    const start = latch();
+    log.append = async (stream, batch, options) => {
+      if (batch.some((event) => event.type === "agent.turn.started")) {
+        starting.resolve();
+        await start.promise;
+      }
+      return append(stream, batch, options);
+    };
+
+    const sending = client.call("threads.send", { threadId: thread.id, text: "go" });
+    await starting.promise;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const archiving = kernel.commands.execute("threads.archive", { threadId: thread.id });
+    // The stop's deadline passes while the turn is still starting.
+    await vi.advanceTimersByTimeAsync(STOP_TIMEOUT_MS);
+    start.resolve();
+    await sending;
+
+    expect(await archiving).toMatchObject({
+      archivedAt: expect.any(String),
+      lastTurn: { status: "interrupted" },
+    });
+    expect((await log.read(`thread/${thread.id}`)).at(-1)).toMatchObject({
+      type: "agent.turn.interrupted",
+      payload: { reason: "The agent did not stop when interrupted" },
+    });
+  });
+
+  it("archives the thread anyway, recording the turn as interrupted", async () => {
+    const stubborn = stubbornRuntime();
+    const { kernel, client } = await node({
+      agent: false,
+      plugins: [registering(stubborn.runtime)],
+    });
     const thread = await client.call<Thread>("threads.create", {});
     const { events, until } = watch(client, thread.id);
     await client.call("threads.send", { threadId: thread.id, text: "go" });
@@ -460,7 +595,7 @@ describe("jhin.threads: agents that ignore an interrupt", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const archiving = kernel.commands.execute("threads.archive", { threadId: thread.id });
     // The interrupt and the stop's deadline are set in the same step.
-    await interrupted.promise;
+    await stubborn.interrupted.promise;
     vi.advanceTimersByTime(STOP_TIMEOUT_MS);
 
     expect(await archiving).toMatchObject({

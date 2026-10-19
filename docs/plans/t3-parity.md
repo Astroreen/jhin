@@ -71,7 +71,10 @@ contributions. Features of T3 Code that only make sense for its hosted product
   or deleted, so nothing is written after its deleted event, and no thread is
   created in a project being removed. Archiving and deleting stop a running
   turn; an agent that ignores the interrupt for `STOP_TIMEOUT_MS` (5 s) is
-  given up on: its turn is recorded as interrupted and the thread freed. Two
+  given up on: its turn is recorded as interrupted and the thread freed. A
+  turn still starting at that deadline is given up on as soon as it has
+  started; a request is always recorded opened before its turn's end closes
+  it. Two
   deletions of one thread at once delete it once. A deletion that fails
   before the thread's stream records it leaves the thread as it was; one
   that fails later keeps it closed, and deleting it again finishes the job.
