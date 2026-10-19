@@ -32,6 +32,8 @@ function mountQueue(
       ...thread,
       post: async (queued) => {
         posts.push(queued.text);
+        // A loop of sends stops here: the test then fails on what was sent instead of hanging.
+        if (posts.length > 10) return new Promise<SendOutcome>(() => undefined);
         return state.answer();
       },
     });
