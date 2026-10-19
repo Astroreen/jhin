@@ -63,6 +63,8 @@ One word per concept. Use these terms in code, docs, commits and UI.
 - **Request** — something a running turn asks the user: an **approval** of a
   tool call or **questions**. Answered with `threads.respond`; closed when its
   turn ends.
+- **Follow-up** — a message sent while its thread runs a turn: it waits in
+  the client's queue and goes out once the thread is free.
 - **Work log** — the reasoning, tool calls and answered requests of a turn,
   shown between its messages and folded once the turn ends.
 - **Event** — an entry in an event log with a per-stream monotonic
@@ -75,3 +77,5 @@ One word per concept. Use these terms in code, docs, commits and UI.
   shortcut; `when` tests **context keys** that plugins set (`composerFocus`).
 - **Command palette** — the searchable list of titled commands, projects and
   threads (⌘/Ctrl+K).
+- **Visit** — when a thread was last seen on this device, in its node's own
+  time; a turn that ended after it shows the thread as unread.

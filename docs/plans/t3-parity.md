@@ -29,7 +29,9 @@ contributions. Features of T3 Code that only make sense for its hosted product
 - **D54. `agent.runtime@1.1` (additive):** a turn request carries an optional
   model, runtime mode (`approval-required`, `auto-accept-edits`,
   `full-access`; T3's three access modes), interaction mode (`default`,
-  `plan`) and image attachments. Besides message deltas a turn yields
+  `plan`) and image attachments (as data URLs: up to 10 per message, 8 MB
+  each and 20 MB together, since they are stored in the turn's first event).
+  Besides message deltas a turn yields
   reasoning, tool calls (`kind`, `title`, `detail`, output, status), plan
   updates and token usage, and it can open **requests**: an approval of a tool
   call or questions for the user. A runtime describes itself (`name`,
@@ -45,14 +47,16 @@ contributions. Features of T3 Code that only make sense for its hosted product
   While a request is open the thread's last turn is `waiting` with
   `waitingFor` (`approval` or `user-input`). An answer must be of the
   request's kind, and it counts once it is recorded: only then does the agent
-  get it, and an answer that could not be recorded can be sent again.
+  get it, and an answer that could not be recorded can be sent again. An
+  answer to a turn that is ending is refused (`REQUEST_NOT_FOUND`), never
+  reported as delivered.
 - **D57. The thread record says where its latest turn is** (`lastTurn`:
   running, waiting, completed, interrupted, failed, with its time) and when it
   changed (`updatedAt`, `archivedAt`). Every change appends
   `threads.thread.updated` to the `threads` index, so a client follows a
   node's whole catalog from one stream: `threads.catalog` returns projects,
   threads and the index head they reflect. After a restart, turns that were
-  running are recorded as interrupted.
+  running are recorded as interrupted, and their open requests closed.
 - **D58. Thread and project management as commands:** rename, archive and
   unarchive, delete (the stream keeps a final deleted event); a new thread
   takes its title from its first message (hook `threads.title`); projects can
@@ -75,7 +79,8 @@ contributions. Features of T3 Code that only make sense for its hosted product
   replaceable: `client.threads@1` (the catalogs of every node and mesh member
   the client reaches, kept current from their indexes), `client.settings@1`
   (the device config layer), `ui.keybindings@1`, `ui.toasts@1`,
-  `ui.dialogs@1` and `ui.settings@1` (settings sections are contributions).
+  `ui.dialogs@1`, `ui.settings@1` (settings sections are contributions) and
+  `client.visits@1` (when each thread was last seen on this device).
 - **D60. Config layers on the client:** distribution → node → **device**.
   The node layer is what the node serves (`jhin.ui`, `jhin.keybindings`);
   the device layer is this browser's settings (appearance, chat behaviour,
@@ -100,9 +105,9 @@ contributions. Features of T3 Code that only make sense for its hosted product
 - **D64. Sidebar:** T3's per-project thread tree, under one section per node
   (each connection and each reachable mesh member, D47). Rows show status
   pills (pending approval, awaiting input, working, failed, completed since
-  the last visit), relative times, inline rename, archive on hover and a
-  context menu (rename, mark unread, copy id, copy `jhin://` address, archive,
-  delete). Visits are kept per device and compared with the node's own times.
+  the last visit), relative times, inline rename, archive on hover, a filter
+  and "Show more" per project, and context menus (D69). Visits are kept per
+  device and compared with the node's own times.
 - **D65. Chat view:** T3's timeline — user bubbles, markdown answers
   (GFM, Shiki highlighting in both themes), a work log per turn with a
   summary that folds behind "Worked for …" once the turn ends, plan cards,
@@ -110,9 +115,11 @@ contributions. Features of T3 Code that only make sense for its hosted product
   the model picker, access mode, plan/build toggle, image attachments, a
   context meter from token usage, prompt history (↑/↓), drafts per thread,
   approval and question banners, and a queue of follow-ups sent while a turn
-  runs (client side, see Deferred). An archived thread shows a way to
-  unarchive it instead of the composer. The header has a breadcrumb, title actions
-  and the slot `chat.header.actions` (props: `ChatHeaderActionProps`).
+  runs (client side, see Deferred): a thread's queue outlives its view, and a
+  follow-up that fails waits for the user instead of being retried. An
+  archived thread shows a way to unarchive it instead of the composer. The
+  header has a breadcrumb, title actions and the slot `chat.header.actions`
+  (props: `ChatHeaderActionProps`).
 - **D66. Settings page** with sections as contributions: General, Appearance
   (system/light/dark, chat width), Notifications, Keybindings (record, reset,
   search), Nodes (connections, agents, mesh members), Node config (edit any
@@ -124,6 +131,20 @@ contributions. Features of T3 Code that only make sense for its hosted product
   open thread); otherwise a browser notification and/or a sound, as the
   device setting says, and the tab title counts the notifications not yet
   seen.
+- **D69. Actions are commands; their menus are slots.** What can be done to
+  a thread, a project or a node is a client command taking the node (and the
+  remote member) and the id: `thread.rename`, `thread.mark-unread`,
+  `thread.copy-id`, `thread.copy-address`, `thread.archive`,
+  `thread.unarchive`, `thread.delete`, `project.new-thread`,
+  `project.rename`, `project.copy-path`, `project.remove` (the builtin
+  `jhin.thread-actions`), `node.rename`, `node.copy-address`,
+  `node.disconnect` (the connections plugin) and `project.add`. The menus
+  that run them are the slots `thread.actions` (props `ThreadActionProps`;
+  the sidebar's context menu and the thread title's menu), `project.actions`
+  (`ProjectActionProps`) and `node.actions` (`NodeActionProps`): the sidebar
+  and the header render the slots, so a plugin adds an item, a shortcut or a
+  palette entry the same way the builtins do. Saved connections, drafts and
+  visits follow the other tabs of the same browser.
 
 ## Not ported (out of scope)
 
@@ -151,6 +172,8 @@ contributions. Features of T3 Code that only make sense for its hosted product
 - Visits and drafts are per device; syncing them, and device settings, across
   devices.
 - Warnings for conflicting keybindings in the settings page.
+- Attachments as blobs: images travel as data URLs inside the turn's first
+  event, hence the 20 MB per message (D54).
 - Code splitting of the web client: the main chunk is over 500 kB minified.
 - Scoped tokens: `projects.browse` has a permission of its own, but every
   token today holds every permission (`*`), so whoever holds a node's token
@@ -172,8 +195,12 @@ did not expect, and the new client needs the new commands. The proof:
   project removals, answers of the wrong kind or not recorded, agents that
   ignore an interrupt (D68); kernel and MCP tests of command titles; the
   node-host test of `host.config.get` and `host.config.schema`.
-- `apps/web/test`: keybindings, timeline, palette search, prompt history and
-  drafts, status pills and visits, routes, the threads store, notifications.
+- `apps/web/test`: keybindings, the timeline (folded at once and as events
+  arrive), palette search, prompt history, drafts across tabs, attachment
+  limits, status pills and visits, sidebar ordering and filtering, routes, the
+  threads store, notifications, starting a thread, and (browser mode) the
+  follow-up queue; `packages/ui` dialogs; the kernel's disposal of
+  registrations disposed early.
 - Playwright: send and stream, stop, approval, questions, archiving, the
   palette, the inspector, mesh and client plugins, with screenshots in the
   report.
