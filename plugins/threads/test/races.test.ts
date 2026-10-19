@@ -155,6 +155,54 @@ describe("jhin.threads: concurrent changes", () => {
     expect(events.map((event) => event.type)).toEqual(["threads.thread.created"]);
   });
 
+  it("keeps a thread being deleted closed, though an archive came meanwhile", async () => {
+    const { client, storage } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    // The thread's deleted event is written once the test says so.
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    const deleting = latch();
+    const write = latch();
+    log.append = async (stream, batch, options) => {
+      if (
+        stream === `thread/${thread.id}` &&
+        batch.some((event) => event.type === "threads.thread.deleted")
+      ) {
+        deleting.resolve();
+        await write.promise;
+      }
+      return append(stream, batch, options);
+    };
+
+    const deletion = client.call("threads.delete", { threadId: thread.id });
+    await deleting.promise;
+    await expect(client.call("threads.archive", { threadId: thread.id })).rejects.toMatchObject({
+      code: "THREAD_NOT_FOUND",
+    });
+    await expect(
+      client.call("threads.send", { threadId: thread.id, text: "hi" }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
+    write.resolve();
+    expect(await deletion).toEqual({ deleted: true });
+  });
+
+  it("archives a thread once when it is archived twice at once", async () => {
+    const { client, storage } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+
+    const [first, second] = await Promise.all([
+      client.call<Thread>("threads.archive", { threadId: thread.id }),
+      client.call<Thread>("threads.archive", { threadId: thread.id }),
+    ]);
+    expect(second).toEqual(first);
+    const updates = (await storage.storage.log.read("threads")).filter(
+      (event) =>
+        event.type === "threads.thread.updated" &&
+        (event.payload as { id?: string }).id === thread.id,
+    );
+    expect(updates).toHaveLength(1);
+  });
+
   it("starts no turn on a thread archived while a message was on its way", async () => {
     const slow = slowToAnswer();
     const { client } = await node({ agent: false, plugins: [registering(slow.runtime)] });

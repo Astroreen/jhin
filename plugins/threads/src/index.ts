@@ -216,8 +216,13 @@ export default definePlugin({
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
     const paths = context.services.get<HostPaths>(HOST_PATHS_CAPABILITY);
     const active = new Map<string, Running>();
-    /** Threads being archived, and deleted ones: no turn starts on them. */
-    const closing = new Map<string, "archived" | "deleted">();
+    /**
+     * Threads being deleted, and deleted ones: no turn starts on them. Kept
+     * apart from archives, so an archive never lifts a deletion's mark.
+     */
+    const deleted = new Set<string>();
+    /** Archives under way: no turn starts on their threads; a second archive joins. */
+    const archiving = new Map<string, Promise<Thread>>();
     /**
      * Deletions under way, by thread, and those that failed after the thread's
      * stream recorded it deleted: deleting the thread again finishes them.
@@ -485,11 +490,10 @@ export default definePlugin({
           turnId: current.turnId,
         });
       }
-      const closed = closing.get(threadId);
-      if (closed === "deleted") {
+      if (deleted.has(threadId)) {
         throw new ThreadsError("THREAD_NOT_FOUND", `No thread ${threadId}`, { threadId });
       }
-      if (closed === "archived") throw archivedError(threadId);
+      if (archiving.has(threadId)) throw archivedError(threadId);
       let resolve!: () => void;
       const entry: Running = {
         turnId,
@@ -797,7 +801,7 @@ export default definePlugin({
       if (deletion.running !== undefined) return deletion.running;
       deletions.set(thread.id, deletion);
       // From here on no turn starts on it, so none writes after its deleted event.
-      closing.set(thread.id, "deleted");
+      deleted.add(thread.id);
       deletion.running = (async () => {
         try {
           if (!deletion.recorded) {
@@ -818,7 +822,7 @@ export default definePlugin({
           if (!deletion.recorded) {
             // Not deleted after all: the thread is as it was and takes messages again.
             deletions.delete(thread.id);
-            if (closing.get(thread.id) === "deleted") closing.delete(thread.id);
+            deleted.delete(thread.id);
           }
           throw error;
         }
@@ -1196,23 +1200,35 @@ export default definePlugin({
       input: z.object({ threadId: z.string() }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: async ({ threadId }) => {
-        const thread = await getThread(threadId);
-        if (thread.archivedAt !== undefined) return thread;
-        // From here on no turn starts on it; an archived thread takes no messages.
-        closing.set(threadId, "archived");
-        try {
-          await stopTurn(threadId);
-          return await updateThread(threadId, (latest) => ({
-            ...latest,
-            archivedAt: now(),
-            updatedAt: now(),
-          }));
-        } finally {
-          if (closing.get(threadId) === "archived") closing.delete(threadId);
-        }
+      handler: ({ threadId }) => {
+        // From here on no turn starts on it, until it is archived (and then
+        // takes no messages) or the archive failed. A second archive joins.
+        const running = archiving.get(threadId);
+        if (running !== undefined) return running;
+        const archive = archiveThread(threadId);
+        archiving.set(threadId, archive);
+        void archive.then(
+          () => archiving.delete(threadId),
+          () => archiving.delete(threadId),
+        );
+        return archive;
       },
     });
+
+    async function archiveThread(threadId: string): Promise<Thread> {
+      // A thread being deleted is gone already, as far as an archive goes.
+      if (deleted.has(threadId)) {
+        throw new ThreadsError("THREAD_NOT_FOUND", `No thread ${threadId}`, { threadId });
+      }
+      const thread = await getThread(threadId);
+      if (thread.archivedAt !== undefined) return thread;
+      await stopTurn(threadId);
+      return updateThread(threadId, (latest) => ({
+        ...latest,
+        archivedAt: now(),
+        updatedAt: now(),
+      }));
+    }
 
     context.commands.register({
       name: "threads.unarchive",
