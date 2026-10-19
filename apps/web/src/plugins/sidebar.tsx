@@ -1,40 +1,46 @@
-// The design follows T3 Code's per-project sidebar (MIT, see THIRD_PARTY_NOTICES.md):
-// apps/web/src/components/LegacySidebar.tsx, sidebar/SidebarChrome.tsx and ThreadStatusIndicators.tsx.
+// The design follows T3 Code's sidebar (MIT, see THIRD_PARTY_NOTICES.md):
+// apps/web/src/components/Sidebar.tsx (thread cards, the Settled shelf, search results),
+// sidebar/SidebarThreadHeader.tsx, sidebar/SidebarChrome.tsx, ThreadHoverCard.tsx,
+// ui/collapsible-section-header.tsx, EnvironmentMachineIcon.tsx and, for the node alerts,
+// LegacySidebar.tsx (LocalSecondaryStatus).
 import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   THREADS_CAPABILITY,
-  targetKey,
   type Connections,
   type Keybindings,
   type MeshMembership,
   type Navigation,
   type NodeConnection,
   type NodeTarget,
-  type ProjectRecord,
-  type ThreadRecord,
   type ThreadsCatalog,
   VISITS_CAPABILITY,
   visitKey,
   type ThreadVisits,
   type NodeActionProps,
-  type ProjectActionProps,
   type ThreadActionProps,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
+  Combobox,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxPopup,
+  ComboboxSearchInput,
+  ComboboxTrigger,
   ContextMenu,
   ContextMenuPopup,
   ContextMenuTrigger,
   Kbd,
-  Menu,
   MenuItem,
-  MenuPopup,
   MenuSeparator,
-  MenuTrigger,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
@@ -42,9 +48,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarTrigger,
   Skeleton,
   Slot,
@@ -60,69 +63,102 @@ import {
   type Toasts,
 } from "@jhin/ui";
 import {
-  ArchiveIcon,
-  ChevronRightIcon,
+  ChevronDownIcon,
+  CircleAlertIcon,
+  CircleCheckIcon,
+  CircleDashedIcon,
   CopyIcon,
-  EllipsisIcon,
+  FolderIcon,
   FolderPlusIcon,
+  ListFilterIcon,
+  MessageCircleQuestionIcon,
+  MessageSquareDashedIcon,
   PencilIcon,
   PlusIcon,
   SearchIcon,
   ServerIcon,
   SettingsIcon,
+  ShieldQuestionIcon,
   SquarePenIcon,
+  TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
-import { useRef, useState, type ComponentType, type ReactNode } from "react";
+import {
+  useRef,
+  useState,
+  type ComponentProps,
+  type ComponentType,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import { AddProjectDialog, createAddProjectRequests } from "../lib/add-project.tsx";
+import { AgentIcon } from "../lib/agent-icon.tsx";
 import { builtin } from "../lib/builtin.ts";
-import { formatRelativeTimeLabel } from "../lib/format.ts";
-import { useCatalog, useExternal, useNow, useShortcutLabels } from "../lib/hooks.ts";
-import { useMeshMembers } from "../lib/mesh.ts";
+import { formatCompactRelativeTime } from "../lib/format.ts";
+import { useExternal, useNow, useShortcutLabels } from "../lib/hooks.ts";
+import { createShownNodes, showsHosts, type NodeWithCatalog } from "../lib/nodes.ts";
 import { ProjectIcon } from "../lib/project-icon.tsx";
-import { CHAT_SECTION, ChatSettings, readSection, useSection } from "../lib/settings.ts";
-import { listedThreads, shownThreads, threadActivityAt } from "../lib/sidebar-order.ts";
-import { strongestPill, threadStatusPill, type ThreadStatusPill } from "../lib/thread-status.ts";
+import {
+  SETTLED_TAIL_INITIAL_COUNT,
+  SETTLED_TAIL_PAGE_COUNT,
+  formatWorkingDurationLabel,
+  isUnread,
+  projectKey,
+  projectScopes,
+  rowLabel,
+  searchSidebarThreads,
+  shouldRecede,
+  shownSettled,
+  sidebarThreadStatus,
+  sidebarThreads,
+  sidebarTopStatus,
+  threadActivityAt,
+  threadKey,
+  type SidebarThread,
+  type SidebarTopStatus,
+} from "../lib/sidebar-order.ts";
 
-const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
-  "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-0.75 text-icon-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
+type Entry = SidebarThread<NodeWithCatalog>;
 
-const COLLAPSED_STORAGE_KEY = "jhin.sidebar.collapsed";
+const SETTLED_EXPANDED_STORAGE_KEY = "jhin.sidebar.settled-expanded";
+const PROJECT_SCOPE_STORAGE_KEY = "jhin.sidebar.project-scope";
 
-/** The time a thread last moved: its last turn, then its last change. */
-/** A value of the sidebar that its commands read too (the search). */
-function createValue<T>(initial: T) {
+/**
+ * A value of the sidebar that its commands read too (the search, the shelf).
+ * With a storage key it is kept on this device; a stored value that does not
+ * parse, or is not of the value's type, gives way to the default.
+ */
+function createValue<T>(
+  initial: T,
+  stored?: { readonly key: string; readonly valid: (value: unknown) => value is T },
+) {
   let value = initial;
+  const storageKey = stored?.key;
+  if (stored !== undefined) {
+    try {
+      const raw = localStorage.getItem(stored.key);
+      const parsed: unknown = raw === null ? undefined : JSON.parse(raw);
+      if (stored.valid(parsed)) value = parsed;
+    } catch {
+      // Unreadable: the default.
+    }
+  }
   const listeners = new Set<() => void>();
   return {
     get: () => value,
     set(next: T) {
       if (Object.is(next, value)) return;
       value = next;
+      if (storageKey !== undefined) {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(next));
+        } catch {
+          // Not kept; still applied.
+        }
+      }
       for (const listener of Array.from(listeners)) listener();
     },
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return { dispose: () => listeners.delete(listener) };
-    },
-  };
-}
-
-/** The projects that show all their threads, not only the first few. */
-function createShowingAll() {
-  let keys: ReadonlySet<string> = new Set();
-  const listeners = new Set<() => void>();
-  return {
-    has: (key: string) => keys.has(key),
-    toggle(key: string) {
-      const next = new Set(keys);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      keys = next;
-      for (const listener of Array.from(listeners)) listener();
-    },
-    snapshot: () => keys,
     subscribe(listener: () => void) {
       listeners.add(listener);
       return { dispose: () => listeners.delete(listener) };
@@ -137,93 +173,28 @@ const NO_VISITS: Pick<ThreadVisits, "snapshot" | "subscribe"> = {
 };
 const NO_SEEN: Readonly<Record<string, string>> = {};
 
-/** Which projects the user collapsed, kept on this device. */
-function createCollapsed() {
-  const listeners = new Set<() => void>();
-  let collapsed = new Set<string>();
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(COLLAPSED_STORAGE_KEY) ?? "[]");
-    if (Array.isArray(value)) collapsed = new Set(value.filter((key) => typeof key === "string"));
-  } catch {
-    // Unreadable: everything expanded.
-  }
-  return {
-    has: (key: string) => collapsed.has(key),
-    toggle(key: string) {
-      collapsed = new Set(collapsed);
-      if (collapsed.has(key)) collapsed.delete(key);
-      else collapsed.add(key);
-      try {
-        localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...collapsed]));
-      } catch {
-        // Not kept; still applied.
-      }
-      for (const listener of Array.from(listeners)) listener();
-    },
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return { dispose: () => listeners.delete(listener) };
-    },
-    snapshot: () => collapsed,
-  };
-}
-
-function ThreadStatusLabel({
-  status,
-  compact = false,
-}: {
-  status: ThreadStatusPill;
-  compact?: boolean;
-}) {
-  if (compact) {
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span
-              aria-label={status.label}
-              className={`inline-flex size-3.5 shrink-0 items-center justify-center ${status.colorClass}`}
-              role="img"
-            />
-          }
-        >
-          <span
-            className={`size-[9px] rounded-full ${status.dotClass} ${status.pulse ? "animate-status-pulse" : ""}`}
-          />
-        </TooltipTrigger>
-        <TooltipPopup side="top">{status.label}</TooltipPopup>
-      </Tooltip>
-    );
-  }
+/**
+ * The node a row lives on, while the sidebar shows several: T3 Code marks a
+ * thread's environment with its machine icon (EnvironmentMachineIcon, the
+ * "server" kind; nodes have no kind to pick yet).
+ */
+function HostIcon({ label, className }: { label: string; className?: string }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            aria-label={status.label}
-            className={`inline-flex items-center gap-1 text-3xs ${status.colorClass}`}
-            role="img"
-          />
-        }
-      >
-        <span
-          className={`h-1.5 w-1.5 rounded-full ${status.dotClass} ${status.pulse ? "animate-status-pulse" : ""}`}
-        />
-        <span className="hidden md:inline">{status.label}</span>
-      </TooltipTrigger>
-      <TooltipPopup side="top">{status.label}</TooltipPopup>
-    </Tooltip>
+    <span
+      aria-label={`On ${label}`}
+      className={cn("inline-flex shrink-0 items-center justify-center", className)}
+      data-host-indicator
+      role="img"
+    >
+      <ServerIcon aria-hidden className="size-3.5" />
+    </span>
   );
 }
 
 /** A connection's state as a dot (T3 Code's ConnectionStatusDot). */
 function ConnectionDot({ state }: { state: NodeConnection["state"] }) {
   return (
-    <span
-      aria-label={`Connection ${state}`}
-      className="relative flex size-3 shrink-0 items-center justify-center"
-      role="img"
-    >
+    <span aria-hidden className="relative flex size-3 shrink-0 items-center justify-center">
       {state === "connecting" ? (
         <span className="absolute inline-flex size-2 animate-status-ping rounded-full bg-warning/60" />
       ) : null}
@@ -241,34 +212,80 @@ function ConnectionDot({ state }: { state: NodeConnection["state"] }) {
   );
 }
 
-function SidebarHeaderIconButton(props: {
+function SidebarHeaderIconButton({
+  label,
+  tooltip = label,
+  className,
+  children,
+  ...rest
+}: {
   label: string;
-  shortcut?: string | undefined;
-  onClick(): void;
-  disabled?: boolean;
-  children: ReactNode;
-}) {
+  tooltip?: ReactNode;
+  className?: string | undefined;
+  children?: ReactNode;
+} & Omit<ComponentProps<typeof SidebarMenuButton>, "children" | "className" | "aria-label">) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <SidebarMenuButton
-            aria-label={props.label}
-            className="relative size-7 shrink-0"
-            disabled={props.disabled}
-            onClick={props.onClick}
+            aria-label={label}
             size="icon"
+            type="button"
+            {...rest}
+            className={cn("relative size-7 shrink-0", className)}
           />
         }
       >
-        {props.children}
+        {children}
       </TooltipTrigger>
-      <TooltipPopup side="top">
-        {props.label}
-        {props.shortcut === undefined ? "" : ` (${props.shortcut})`}
-      </TooltipPopup>
+      <TooltipPopup side="top">{tooltip}</TooltipPopup>
     </Tooltip>
   );
+}
+
+/** T3's section header with a rule and a chevron (CollapsibleSectionHeader, muted tone). */
+function SectionHeader(props: { label: string; expanded: boolean; onToggle(): void }) {
+  return (
+    <li className="mx-0.5 mt-auto h-8 list-none">
+      <button
+        aria-expanded={props.expanded}
+        className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left text-xs font-medium text-sidebar-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+        onClick={props.onToggle}
+        type="button"
+      >
+        <span className="shrink-0">{props.label}</span>
+        <span aria-hidden className="h-px min-w-2 flex-1 bg-sidebar-border/60" />
+        <ChevronDownIcon
+          aria-hidden
+          className={cn("size-3 shrink-0 transition-transform", !props.expanded && "rotate-180")}
+        />
+      </button>
+    </li>
+  );
+}
+
+const TOP_STATUS: Record<
+  SidebarTopStatus,
+  { label: string; className: string; icon: ComponentType<{ className?: string }> }
+> = {
+  working: { label: "Working", className: "text-info", icon: CircleDashedIcon },
+  approval: { label: "Approval", className: "text-warning-foreground", icon: ShieldQuestionIcon },
+  input: {
+    label: "Input",
+    className: "text-indigo-600 dark:text-indigo-300",
+    icon: MessageCircleQuestionIcon,
+  },
+  failed: { label: "Failed", className: "text-error", icon: CircleAlertIcon },
+  done: { label: "Done", className: "text-success", icon: CircleCheckIcon },
+};
+
+/** How long a turn has worked, ticking each second (T3's WorkingDuration). */
+function WorkingDuration({ startedAt }: { startedAt: string }) {
+  const now = useNow(1000);
+  const started = Date.parse(startedAt);
+  if (Number.isNaN(started)) return null;
+  return <span className="tabular-nums">{formatWorkingDurationLabel(now - started)}</span>;
 }
 
 export const sidebarPlugin = builtin(
@@ -299,18 +316,38 @@ export const sidebarPlugin = builtin(
       const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
-      const collapsed = createCollapsed();
-      const showingAll = createShowingAll();
       const search = createValue("");
+      const settledExpanded = createValue(false, {
+        key: SETTLED_EXPANDED_STORAGE_KEY,
+        valid: (value): value is boolean => typeof value === "boolean",
+      });
+      /** The project the list is narrowed to (a `projectKey`), or "" for all. */
+      const scope = createValue("", {
+        key: PROJECT_SCOPE_STORAGE_KEY,
+        valid: (value): value is string => typeof value === "string",
+      });
+      /** How many settled threads show; back to the first page when the scope changes. */
+      const settledCount = createValue(SETTLED_TAIL_INITIAL_COUNT);
+      context.subscriptions.add(
+        scope.subscribe(() => settledCount.set(SETTLED_TAIL_INITIAL_COUNT)),
+      );
+      /** The highlighted search result. */
+      const highlight = createValue(0);
+      context.subscriptions.add(search.subscribe(() => highlight.set(0)));
       const addProjectRequests = createAddProjectRequests();
       const visitStore = visits ?? NO_VISITS;
+      const nodeView = createShownNodes(connections, mesh, threads);
 
       const targetOf = (route: { node?: string; remote?: string }): NodeTarget | undefined =>
         route.node === undefined
           ? undefined
           : { node: route.node, ...(route.remote === undefined ? {} : { remote: route.remote }) };
-      const sameTarget = (a: NodeTarget | undefined, b: NodeTarget) =>
-        a !== undefined && a.node === b.node && a.remote === b.remote;
+      const routeThreadKey = (route: { node?: string; remote?: string; thread?: string }) => {
+        const target = targetOf(route);
+        return target === undefined || route.thread === undefined
+          ? undefined
+          : threadKey(target, route.thread);
+      };
 
       /** Opens a new thread (a draft until its first message) in a project. */
       const newThread = (target: NodeTarget, projectId: string) =>
@@ -336,20 +373,108 @@ export const sidebarPlugin = builtin(
           }),
         );
 
+      /** The sidebar's own state, read once per render or command and passed on (D63). */
+      const stateNow = () => ({
+        query: search.get(),
+        scoped: scope.get(),
+        count: settledCount.get(),
+        expanded: settledExpanded.get(),
+        current: routeThreadKey(navigation.current()),
+      });
+
+      /** What the list shows: the threads of the scoped projects, and the search's matches. */
+      const listOf = (
+        nodes: readonly NodeWithCatalog[],
+        nowMs: number,
+        state: ReturnType<typeof stateNow>,
+      ) => {
+        const scopes = projectScopes(nodes);
+        // A project that went away no longer narrows the list.
+        const scopeKey = scopes.some((item) => item.key === state.scoped)
+          ? state.scoped
+          : undefined;
+        const { active, settled } = sidebarThreads(nodes, { nowMs, scope: scopeKey });
+        const { shown, hidden } = shownSettled(settled, {
+          count: state.count,
+          expanded: state.expanded,
+          ...(state.current === undefined ? {} : { current: state.current }),
+        });
+        const results = searchSidebarThreads([...active, ...settled], state.query);
+        return { scopes, scopeKey, active, settled, shown, hidden, results };
+      };
+
+      /** The details T3 shows when the pointer rests on a thread (SidebarThreadTooltip). */
+      function ThreadDetails({ entry, hosts }: { entry: Entry; hosts: boolean }) {
+        const { thread, project, node } = entry;
+        const agentId = thread.agentId ?? thread.lastTurn?.agentId;
+        return (
+          <div className="flex min-w-0 max-w-80 flex-col gap-2 px-1 py-2">
+            <div className="min-w-0 truncate text-xs leading-tight font-medium text-foreground">
+              {thread.title}
+            </div>
+            <div className="grid gap-1.5 pl-0.5 text-xs text-muted-foreground">
+              {project === undefined ? null : (
+                <div className="flex min-w-0 items-center gap-2">
+                  <ProjectIcon className="size-3 shrink-0" project={project} />
+                  <div className="min-w-0 truncate text-foreground/75">{project.name}</div>
+                </div>
+              )}
+              {hosts ? (
+                <div className="flex min-w-0 items-center gap-2">
+                  <ServerIcon className="size-3 shrink-0 stroke-muted-foreground" />
+                  <div className="min-w-0 truncate text-foreground/75">{node.label}</div>
+                </div>
+              ) : null}
+              {agentId === undefined ? null : (
+                <div className="flex min-w-0 items-center gap-2">
+                  <AgentIcon agentId={agentId} className="size-3 shrink-0 opacity-60 grayscale" />
+                  <div className="min-w-0 truncate text-foreground/75">
+                    {thread.model ?? agentId}
+                  </div>
+                </div>
+              )}
+              {thread.lastTurn?.status === "failed" ? (
+                <div className="flex min-w-0 items-center gap-2 text-error">
+                  <CircleAlertIcon className="size-3 shrink-0 stroke-current" />
+                  <div className="min-w-0 truncate">Error occurred</div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        );
+      }
+
+      /**
+       * One thread: a card in the active list, a slim row on the Settled shelf
+       * (T3's SidebarThreadRow). Its context menu is the `thread.actions` slot;
+       * a double click renames it in place.
+       */
       function ThreadRow(props: {
-        target: NodeTarget;
-        thread: ThreadRecord;
-        project: ProjectRecord;
+        entry: Entry;
+        variant: "card" | "slim";
         active: boolean;
+        /** Whether rows name their node: the sidebar shows several. */
+        hosts: boolean;
         now: number;
       }) {
-        const { target, thread, active, now } = props;
+        const { entry, variant, active, hosts, now } = props;
+        const { thread, project, node } = entry;
+        const target = node.target;
         const seen = useExternal(visitStore, visitStore.snapshot);
         const [renaming, setRenaming] = useState<string | undefined>();
         const committed = useRef(false);
-        const status = threadStatusPill(thread, seen[visitKey(target, thread.id)]);
-        const running =
-          thread.lastTurn?.status === "running" || thread.lastTurn?.status === "waiting";
+        const status = sidebarThreadStatus(thread);
+        const unread = isUnread(thread, seen[visitKey(target, thread.id)]);
+        const top = sidebarTopStatus(status, unread);
+        const recede = shouldRecede({ status, unread, active });
+        const settled = variant === "slim";
+        const agentId = thread.agentId ?? thread.lastTurn?.agentId;
+        // T3 names a scratch thread's machine on its last line instead of a branch.
+        const showsScratchNode = hosts && project?.scratch === true;
+        const label = rowLabel(
+          [thread.title, top === null ? null : TOP_STATUS[top].label, project?.name],
+          hosts ? node.label : undefined,
+        );
 
         const startRename = () => {
           committed.current = false;
@@ -363,121 +488,248 @@ export const sidebarPlugin = builtin(
             run("thread.rename", { ...target, threadId: thread.id, title });
           }
         };
+        const onKeyDown = (event: ReactKeyboardEvent) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openThread(target, thread.id);
+          } else if (event.key === "F2") {
+            event.preventDefault();
+            startRename();
+          }
+        };
 
-        return (
-          <SidebarMenuSubItem className="w-full" data-thread-item>
-            <ContextMenu>
-              {/* The row, and next to it (not inside) its archive button. */}
-              <ContextMenuTrigger render={<div className="relative isolate w-full min-w-0" />}>
-                {renaming === undefined ? (
-                  <div
-                    aria-current={active ? "page" : undefined}
-                    aria-label={
-                      status === null ? thread.title : `${thread.title} (${status.label})`
-                    }
-                    className={cn(
-                      "flex h-8 w-full min-w-0 cursor-pointer select-none items-center gap-2 overflow-hidden rounded-md px-2 text-left text-xs outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
-                      active
-                        ? "bg-sidebar-row-active font-medium text-sidebar-foreground hover:bg-sidebar-row-active"
-                        : "text-sidebar-muted-foreground/80 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-                    )}
-                    data-active={active}
-                    onClick={() => openThread(target, thread.id)}
-                    onDoubleClick={(event) => {
-                      if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-                      startRename();
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.target !== event.currentTarget) return;
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        openThread(target, thread.id);
-                      } else if (event.key === "F2") {
-                        event.preventDefault();
-                        startRename();
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-                      {status === null ? null : <ThreadStatusLabel status={status} />}
-                      <span className="min-w-0 flex-1 truncate text-sm" data-thread-title>
-                        {thread.title}
-                      </span>
-                    </div>
+        const title =
+          renaming !== undefined ? (
+            <input
+              aria-label="Thread title"
+              autoFocus
+              className="min-w-0 flex-1 rounded-sm border border-input bg-card px-1 text-sm font-medium text-card-foreground outline-none focus:border-foreground"
+              onBlur={() => {
+                if (!committed.current) commit();
+              }}
+              onChange={(event) => setRenaming(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              onDoubleClick={(event) => event.stopPropagation()}
+              onFocus={(event) => event.currentTarget.select()}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.nativeEvent.isComposing) return;
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  committed.current = true;
+                  commit();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  committed.current = true;
+                  setRenaming(undefined);
+                }
+              }}
+              value={renaming}
+            />
+          ) : (
+            <span
+              aria-hidden
+              className={cn(
+                "min-w-0 flex-1 text-sm transition-opacity motion-reduce:transition-none",
+                recede ? "font-normal" : "font-medium",
+                variant === "card"
+                  ? cn(
+                      "truncate",
+                      recede
+                        ? "text-secondary-label"
+                        : unread || status === "input"
+                          ? "text-foreground"
+                          : status === "failed"
+                            ? "text-foreground/95"
+                            : "text-foreground/90",
+                    )
+                  : cn(
+                      "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
+                      recede
+                        ? "text-secondary-label/70"
+                        : active || status === "input"
+                          ? "text-foreground"
+                          : unread
+                            ? "text-muted-foreground"
+                            : "text-secondary-label/70",
+                    ),
+              )}
+              data-thread-title
+            >
+              {thread.title}
+            </span>
+          );
+
+        const rowClassName = cn(
+          "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+          settled && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
+          active
+            ? "bg-sidebar-row-active text-sidebar-foreground"
+            : recede
+              ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+              : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
+          recede &&
+            status === "working" &&
+            "opacity-70 transition-opacity hover:opacity-100 focus-within:opacity-100 motion-reduce:transition-none",
+          variant === "slim" && "flex h-9 items-center gap-2.5 px-2.5",
+        );
+
+        const body =
+          variant === "slim" ? (
+            <>
+              <span className="sr-only">{thread.title}</span>
+              <span
+                className={cn(
+                  "flex shrink-0 items-center transition-opacity",
+                  !active &&
+                    "opacity-40 grayscale group-focus-within/sidebar-row:opacity-100 group-focus-within/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
+                )}
+              >
+                {project === undefined ? null : (
+                  <ProjectIcon className="size-4" project={project} />
+                )}
+              </span>
+              {title}
+              <span className="relative ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1">
+                <span className="inline-flex justify-end text-secondary-label tabular-nums">
+                  <span className="text-xs">
+                    {formatCompactRelativeTime(entry.settledAt ?? threadActivityAt(thread), now)}
+                  </span>
+                </span>
+                {hosts ? (
+                  <HostIcon
+                    className="text-sidebar-muted-foreground/70 [&>svg]:size-3"
+                    label={node.label}
+                  />
+                ) : null}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="sr-only">{thread.title}</span>
+              <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
+                <div className="flex h-5 min-w-0 items-center gap-1.5">
+                  {project === undefined ? null : (
+                    <ProjectIcon className="size-4 shrink-0" project={project} />
+                  )}
+                  {project === undefined ? (
+                    <span className="flex-1" />
+                  ) : (
                     <span
                       className={cn(
-                        "pointer-events-none ml-auto flex min-w-12 shrink-0 justify-end max-sm:min-w-20",
-                        !running &&
-                          "transition-opacity duration-150 max-sm:pr-6 group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0",
+                        "min-w-0 flex-1 truncate text-secondary-label text-xs",
+                        recede ? "font-normal" : "font-medium",
                       )}
                     >
-                      <span
-                        className={cn(
-                          "text-3xs tabular-nums",
-                          active ? "text-foreground" : "text-secondary-label",
-                        )}
-                      >
-                        {formatRelativeTimeLabel(threadActivityAt(thread), now)}
-                      </span>
+                      {project.name}
                     </span>
-                  </div>
-                ) : (
-                  <div
-                    className={cn(
-                      "flex h-8 w-full min-w-0 items-center gap-1.5 rounded-md px-2",
-                      active && "bg-sidebar-row-active",
+                  )}
+                  <span className="relative ml-auto flex h-5 min-w-8 shrink-0 items-stretch justify-end text-xs">
+                    <span className="flex items-center self-center justify-self-end text-secondary-label tabular-nums">
+                      {top === null ? (
+                        formatCompactRelativeTime(threadActivityAt(thread), now)
+                      ) : (
+                        <TopStatus kind={top} startedAt={thread.lastTurn?.at} />
+                      )}
+                    </span>
+                  </span>
+                </div>
+                <div className="mt-1 flex min-w-0">{title}</div>
+                <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+                  {showsScratchNode ? (
+                    <>
+                      <ServerIcon
+                        aria-hidden
+                        className="size-3 shrink-0 text-muted-foreground/40"
+                      />
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
+                        {node.label}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="flex-1" />
+                  )}
+                  <span className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1">
+                    {hosts ? (
+                      <HostIcon
+                        className={cn(
+                          "text-sidebar-muted-foreground/70",
+                          // Named on the line already: the icon stays for finding it.
+                          showsScratchNode && "sr-only",
+                        )}
+                        label={node.label}
+                      />
+                    ) : null}
+                    {agentId === undefined ? null : (
+                      <span aria-hidden className="inline-flex shrink-0 items-center">
+                        <AgentIcon agentId={agentId} className="size-3.5 opacity-60" />
+                      </span>
                     )}
-                  >
-                    {status === null ? null : <ThreadStatusLabel status={status} />}
-                    <input
-                      aria-label="Thread title"
-                      autoFocus
-                      className="min-w-0 flex-1 truncate rounded border border-ring bg-transparent px-0.5 text-sm outline-none"
-                      onBlur={() => {
-                        if (!committed.current) commit();
-                      }}
-                      onChange={(event) => setRenaming(event.target.value)}
-                      onFocus={(event) => event.currentTarget.select()}
-                      onKeyDown={(event) => {
-                        if (event.nativeEvent.isComposing) return;
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          committed.current = true;
-                          commit();
-                        } else if (event.key === "Escape") {
-                          event.preventDefault();
-                          committed.current = true;
-                          setRenaming(undefined);
-                        }
-                      }}
-                      value={renaming}
-                    />
-                  </div>
-                )}
-                {!running && renaming === undefined ? (
-                  <div className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            aria-label={`Archive ${thread.title}`}
-                            className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
-                            onClick={() =>
-                              run("thread.archive", { ...target, threadId: thread.id })
+                  </span>
+                </div>
+              </div>
+            </>
+          );
+
+        return (
+          <li
+            className={cn(
+              "list-none",
+              variant === "card" &&
+                "py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
+              variant === "slim" && "[content-visibility:auto] [contain-intrinsic-size:auto_36px]",
+            )}
+            data-thread-item
+          >
+            <ContextMenu>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <ContextMenuTrigger
+                      render={
+                        <div
+                          aria-current={active ? "page" : undefined}
+                          aria-label={label}
+                          className={rowClassName}
+                          data-active={active}
+                          data-testid={variant === "card" ? "sidebar-row-card" : "sidebar-row-slim"}
+                          onClick={() => {
+                            if (renaming === undefined) openThread(target, thread.id);
+                          }}
+                          onDoubleClick={(event) => {
+                            if (
+                              event.metaKey ||
+                              event.ctrlKey ||
+                              event.shiftKey ||
+                              event.altKey ||
+                              renaming !== undefined
+                            ) {
+                              return;
                             }
-                            type="button"
-                          />
-                        }
-                      >
-                        <ArchiveIcon className="size-3.5" />
-                      </TooltipTrigger>
-                      <TooltipPopup side="top">Archive</TooltipPopup>
-                    </Tooltip>
-                  </div>
-                ) : null}
-              </ContextMenuTrigger>
+                            event.preventDefault();
+                            startRename();
+                          }}
+                          onKeyDown={onKeyDown}
+                          role="button"
+                          tabIndex={0}
+                        />
+                      }
+                    />
+                  }
+                >
+                  {body}
+                </TooltipTrigger>
+                <TooltipPopup
+                  align="start"
+                  className="max-w-80 text-left whitespace-normal"
+                  side="right"
+                  sideOffset={4}
+                  variant="glass"
+                >
+                  <ThreadDetails entry={entry} hosts={hosts} />
+                </TooltipPopup>
+              </Tooltip>
               <ContextMenuPopup>
                 <Slot
                   name="thread.actions"
@@ -485,315 +737,303 @@ export const sidebarPlugin = builtin(
                     {
                       target,
                       thread,
-                      project: props.project,
+                      ...(project === undefined ? {} : { project }),
                       rename: startRename,
                     } satisfies ThreadActionProps
                   }
                 />
               </ContextMenuPopup>
             </ContextMenu>
-          </SidebarMenuSubItem>
+          </li>
         );
       }
 
-      /** The new thread being written in a project, before its first message. */
-      function DraftRow() {
-        return (
-          <SidebarMenuSubItem aria-current="page" className="w-full">
-            <div
-              className="relative isolate flex h-8 w-full min-w-0 select-none items-center gap-2 overflow-hidden rounded-md bg-sidebar-row-active px-2 text-left text-xs font-medium text-sidebar-foreground"
-              data-active
-            >
-              <SquarePenIcon aria-hidden className="size-3 shrink-0 text-warning-foreground" />
-              <span className="min-w-0 flex-1 truncate text-sm">New thread</span>
-            </div>
-          </SidebarMenuSubItem>
-        );
-      }
-
-      function ProjectGroup(props: {
-        target: NodeTarget;
-        project: ProjectRecord;
-        threads: readonly ThreadRecord[];
-        query: string;
-        now: number;
+      function TopStatus({
+        kind,
+        startedAt,
+      }: {
+        kind: SidebarTopStatus;
+        startedAt: string | undefined;
       }) {
-        const { target, project, query, now } = props;
-        const route = useExternal(navigation, navigation.current);
-        const settings = useSection(context, CHAT_SECTION, ChatSettings);
-        const seen = useExternal(visitStore, visitStore.snapshot);
-        const key = `${targetKey(target)}|${project.id}`;
-        const collapsedNow = useExternal(collapsed, collapsed.snapshot).has(key);
-        const showAll = useExternal(showingAll, showingAll.snapshot).has(key);
-        const here = sameTarget(targetOf(route), target);
-        const drafting = here && route.thread === undefined && route.project === project.id;
-        const { matching, shown } = shownThreads(props.threads, {
-          query,
-          limit: settings.threadPreviewCount,
-          showAll,
-          current: here ? route.thread : undefined,
-        });
-        if (query !== "" && matching.length === 0) return null;
-        const expanded = query !== "" || !collapsedNow;
-        const overflowing = matching.length > settings.threadPreviewCount;
-        const hiddenStatus = strongestPill(
-          matching
-            .filter((thread) => !shown.includes(thread))
-            .map((thread) => threadStatusPill(thread, seen[visitKey(target, thread.id)])),
-        );
-        const collapsedStatus = expanded
-          ? null
-          : strongestPill(
-              matching.map((thread) => threadStatusPill(thread, seen[visitKey(target, thread.id)])),
-            );
-
+        const { label, className, icon: Icon } = TOP_STATUS[kind];
         return (
-          <SidebarMenuItem>
-            <div className="group/project-header relative">
-              <ContextMenu>
-                <ContextMenuTrigger
-                  render={
-                    <SidebarMenuButton
-                      aria-expanded={expanded}
-                      onClick={() => collapsed.toggle(key)}
-                    />
-                  }
-                >
-                  {collapsedStatus !== null ? (
-                    <span
-                      aria-label={collapsedStatus.label}
-                      className={`-ml-0.5 relative inline-flex size-3.5 shrink-0 items-center justify-center ${collapsedStatus.colorClass}`}
-                    >
-                      <span className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover/project-header:opacity-0">
-                        <span
-                          className={`size-[9px] rounded-full ${collapsedStatus.dotClass} ${collapsedStatus.pulse ? "animate-status-pulse" : ""}`}
-                        />
-                      </span>
-                      <ChevronRightIcon className="absolute inset-0 m-auto size-3.5 text-icon-muted opacity-0 transition-opacity duration-150 group-hover/project-header:opacity-100" />
-                    </span>
-                  ) : (
-                    <ChevronRightIcon
-                      className={cn(
-                        "-ml-0.5 size-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-150",
-                        expanded && "rotate-90",
-                      )}
-                    />
-                  )}
-                  <span className="flex shrink-0">
-                    <ProjectIcon project={project} />
-                  </span>
-                  <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="truncate text-sm font-medium text-sidebar-foreground/90">
-                      {project.name}
-                    </span>
-                  </span>
-                  <span aria-hidden className="w-4 shrink-0 max-sm:w-10" />
-                </ContextMenuTrigger>
-                <ContextMenuPopup>
-                  <Slot
-                    name="project.actions"
-                    props={{ target, project } satisfies ProjectActionProps}
-                  />
-                </ContextMenuPopup>
-              </ContextMenu>
-              <div className="pointer-events-none absolute top-[calc(50%+1px)] right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/project-header:pointer-events-auto group-hover/project-header:opacity-100 group-focus-within/project-header:pointer-events-auto group-focus-within/project-header:opacity-100">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        aria-label={`Create new thread in ${project.name}`}
-                        className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
-                        onClick={() => newThread(target, project.id)}
-                        type="button"
-                      />
-                    }
-                  >
-                    <SquarePenIcon className="size-3.5" />
-                  </TooltipTrigger>
-                  <TooltipPopup side="top">New thread in {project.name}</TooltipPopup>
-                </Tooltip>
-              </div>
-            </div>
-            {expanded ? (
-              <SidebarMenuSub
-                aria-label={`Threads of ${project.name}`}
-                className="mx-0.5 my-0 w-full translate-x-0 overflow-hidden empty:hidden sm:mx-1"
-              >
-                {drafting ? <DraftRow /> : null}
-                {matching.length === 0 && !drafting ? (
-                  <SidebarMenuSubItem className="w-full">
-                    <div className="flex h-8 w-full translate-x-0 items-center px-2 text-left text-xs text-sidebar-muted-foreground/75">
-                      <span>No threads yet</span>
-                    </div>
-                  </SidebarMenuSubItem>
-                ) : null}
-                {shown.map((thread) => (
-                  <ThreadRow
-                    active={here && route.thread === thread.id}
-                    key={thread.id}
-                    now={now}
-                    project={project}
-                    target={target}
-                    thread={thread}
-                  />
-                ))}
-                {overflowing && query === "" ? (
-                  <SidebarMenuSubItem className="w-full">
-                    <SidebarMenuSubButton
-                      onClick={() => showingAll.toggle(key)}
-                      render={<button type="button" />}
-                      size="sm"
-                    >
-                      <span className="flex min-w-0 flex-1 items-center gap-2">
-                        {!showAll && hiddenStatus !== null ? (
-                          <ThreadStatusLabel compact status={hiddenStatus} />
-                        ) : null}
-                        <span>{showAll ? "Show less" : "Show more"}</span>
-                      </span>
-                    </SidebarMenuSubButton>
-                  </SidebarMenuSubItem>
-                ) : null}
-              </SidebarMenuSub>
-            ) : null}
-          </SidebarMenuItem>
-        );
-      }
-
-      /** One node's projects and threads: a connected node, or one of its mesh. */
-      function NodeSection(props: {
-        target: NodeTarget;
-        label: string;
-        state: NodeConnection["state"];
-        query: string;
-        connection?: NodeConnection;
-      }) {
-        const { target, label, state, query } = props;
-        const catalog = useCatalog(threads, target)!;
-        const route = useExternal(navigation, navigation.current);
-        const now = useNow();
-        const here = sameTarget(targetOf(route), target);
-        const scratch = catalog.projects.find((project) => project.scratch);
-        const projects = catalog.projects.filter(
-          (project) =>
-            !project.scratch ||
-            listedThreads(catalog.threads, project.id).length > 0 ||
-            (here && route.project === project.id),
-        );
-
-        return (
-          <section aria-label={`Node ${label}`} className="flex flex-col">
-            <div className="group/node-header flex h-8 items-center gap-2 pr-1.5 pl-2">
-              {target.remote === undefined ? (
-                <ConnectionDot state={state} />
-              ) : (
-                <ServerIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/60" />
-              )}
-              <span className="min-w-0 flex-1 truncate text-xs font-medium text-sidebar-muted-foreground/80">
-                {label}
+          <span className={cn("inline-flex items-center gap-1 font-medium", className)}>
+            <Icon className="size-4 shrink-0" />
+            {/* The label alone is the live region, not the ticking duration. */}
+            <span role="status">{label}</span>
+            {kind === "working" && startedAt !== undefined ? (
+              <span aria-hidden>
+                <WorkingDuration startedAt={startedAt} />
               </span>
-              <div className="flex shrink-0 items-center gap-0.5">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        aria-label="New thread"
-                        disabled={state !== "open" || scratch === undefined}
-                        onClick={() => scratch !== undefined && newThread(target, scratch.id)}
-                        size="icon-xs"
-                        variant="ghost-muted"
-                      />
-                    }
-                  >
-                    <SquarePenIcon className="size-3.5" />
-                  </TooltipTrigger>
-                  <TooltipPopup side="top">New thread without a project on {label}</TooltipPopup>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        aria-label={`Add project on ${label}`}
-                        disabled={state !== "open"}
-                        onClick={() => addProjectRequests.open(target)}
-                        size="icon-xs"
-                        variant="ghost-muted"
-                      />
-                    }
-                  >
-                    <FolderPlusIcon className="size-3.5" />
-                  </TooltipTrigger>
-                  <TooltipPopup side="top">Add project</TooltipPopup>
-                </Tooltip>
-                {props.connection === undefined ? null : <NodeMenu connection={props.connection} />}
-              </div>
-            </div>
-            {catalog.status === "loading" && state === "open" ? (
-              <div className="flex flex-col gap-1.5 px-2 py-1" aria-hidden>
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-1/2" />
-              </div>
             ) : null}
-            {catalog.status === "error" ? (
-              <p className="px-2 py-1 text-2xs text-destructive-foreground" role="alert">
-                {catalog.error ?? "Cannot reach this node"}
-              </p>
-            ) : null}
-            <SidebarMenu className="gap-0.5">
-              {projects.map((project) => (
-                <ProjectGroup
-                  key={project.id}
-                  now={now}
-                  project={project}
-                  query={query}
-                  target={target}
-                  threads={listedThreads(catalog.threads, project.id)}
-                />
-              ))}
-            </SidebarMenu>
-            {catalog.status === "ready" &&
-            catalog.projects.every((p) => p.scratch) &&
-            query === "" &&
-            !(here && route.project !== undefined) &&
-            listedThreads(catalog.threads, scratch?.id ?? "").length === 0 ? (
-              <div className="flex flex-col items-center gap-2 px-2 py-4 text-center text-xs text-muted-foreground/60">
-                <span>No projects yet</span>
-                <button
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                  onClick={() => addProjectRequests.open(target)}
-                  type="button"
-                >
-                  <PlusIcon className="-mx-0.5 size-3" />
-                  Add project
-                </button>
-              </div>
-            ) : null}
-          </section>
+          </span>
         );
       }
 
-      function NodeMenu({ connection }: { connection: NodeConnection }) {
+      /** The new thread being written, before its first message (T3's SidebarDraftRow). */
+      function DraftRow({
+        node,
+        projectId,
+        hosts,
+      }: {
+        node: NodeWithCatalog;
+        projectId: string;
+        hosts: boolean;
+      }) {
+        const project = node.catalog.projects.find((item) => item.id === projectId);
         return (
-          <Menu>
-            <MenuTrigger
+          <li className="list-none py-0.5">
+            <div
+              aria-current="page"
+              aria-label={rowLabel(
+                ["New thread", "Unsent draft", project?.name],
+                hosts ? node.label : undefined,
+              )}
+              className="group/sidebar-row relative w-full overflow-hidden rounded-md bg-sidebar-row-active text-left text-sidebar-foreground select-none"
+              data-testid="sidebar-draft-row"
+              role="button"
+              tabIndex={0}
+            >
+              <span className="sr-only">New thread</span>
+              <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
+                <div className="flex h-5 min-w-0 items-center gap-1.5">
+                  <SquarePenIcon aria-hidden className="size-3 shrink-0 text-warning-foreground" />
+                  {project === undefined ? null : (
+                    <ProjectIcon className="size-4 shrink-0" project={project} />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-secondary-label">
+                    {project?.name}
+                  </span>
+                </div>
+                <div aria-hidden className="mt-0.5 truncate text-sm font-medium text-foreground/90">
+                  New thread
+                </div>
+              </div>
+            </div>
+          </li>
+        );
+      }
+
+      /** One search result (T3's SidebarSearchResultRow). */
+      function SearchResult(props: {
+        entry: Entry;
+        index: number;
+        highlighted: boolean;
+        active: boolean;
+        now: number;
+        hosts: boolean;
+      }) {
+        const { entry, highlighted, active, now } = props;
+        const settled = entry.settledAt !== undefined;
+        return (
+          <li className="list-none" role="presentation">
+            <button
+              aria-current={active ? "page" : undefined}
+              aria-label={rowLabel(
+                [entry.thread.title, entry.project?.name],
+                props.hosts ? entry.node.label : undefined,
+              )}
+              aria-selected={highlighted}
+              className={cn(
+                "group/sidebar-row flex min-h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1 text-left text-sm outline-none",
+                highlighted || active
+                  ? "bg-sidebar-row-active text-sidebar-foreground"
+                  : "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+              )}
+              id={`sidebar-thread-search-result-${props.index}`}
+              onClick={() => {
+                search.set("");
+                openThread(entry.node.target, entry.thread.id);
+              }}
+              onMouseMove={() => highlight.set(props.index)}
+              role="option"
+              tabIndex={-1}
+              type="button"
+            >
+              {entry.project === undefined ? null : (
+                <ProjectIcon
+                  className={cn(
+                    "size-4 shrink-0 transition-opacity",
+                    settled &&
+                      !active &&
+                      !highlighted &&
+                      "opacity-40 grayscale group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
+                  )}
+                  project={entry.project}
+                />
+              )}
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate",
+                      settled
+                        ? "font-normal text-secondary-label/70 group-hover/sidebar-row:text-foreground"
+                        : "font-medium text-foreground",
+                      (highlighted || active) && "text-foreground",
+                    )}
+                  >
+                    {entry.thread.title}
+                  </span>
+                  <span className="w-8 shrink-0 text-right text-xs text-muted-foreground/55 tabular-nums">
+                    {formatCompactRelativeTime(threadActivityAt(entry.thread), now)}
+                  </span>
+                </span>
+              </span>
+            </button>
+          </li>
+        );
+      }
+
+      /**
+       * Connections that are not open and nodes whose catalog failed, above the
+       * threads: T3 Code's LocalSecondaryStatus (LegacySidebar.tsx) for every node.
+       */
+      function NodeStatus({ nodes }: { nodes: readonly NodeWithCatalog[] }) {
+        const connecting = nodes.filter((node) => node.state === "connecting");
+        const closed = nodes.filter((node) => node.state === "closed");
+        const failed = nodes.filter(
+          (node) => node.state === "open" && node.catalog.status === "error",
+        );
+        if (connecting.length + closed.length + failed.length === 0) return null;
+        const labels = (list: readonly NodeWithCatalog[]) =>
+          list.map((node) => node.label).join(", ");
+        return (
+          <SidebarGroup aria-label="Nodes" className="gap-1.5 py-0" role="group">
+            {connecting.length > 0 ? (
+              <Alert variant="sidebar">
+                <ConnectionDot state="connecting" />
+                <AlertTitle>Connecting {labels(connecting)}</AlertTitle>
+              </Alert>
+            ) : null}
+            {closed.length > 0 ? (
+              <Alert variant="warning">
+                <TriangleAlertIcon />
+                <AlertTitle>Couldn't connect {labels(closed)}</AlertTitle>
+                <AlertDescription>The node didn't answer.</AlertDescription>
+              </Alert>
+            ) : null}
+            {failed.length > 0 ? (
+              <Alert variant="warning">
+                <TriangleAlertIcon />
+                <AlertTitle>Couldn't load {labels(failed)}</AlertTitle>
+                <AlertDescription>
+                  {failed.map((node) => node.catalog.error ?? "Cannot reach this node").join("; ")}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+          </SidebarGroup>
+        );
+      }
+
+      /** The project filter of the header (T3's project scope combobox). */
+      function ProjectScope({
+        nodes,
+        hosts,
+      }: {
+        nodes: readonly NodeWithCatalog[];
+        hosts: boolean;
+      }) {
+        const scoped = useExternal(scope, scope.get);
+        const scopes = projectScopes(nodes);
+        const items = [
+          { value: "", label: "All projects" },
+          ...scopes.map((item) => ({ value: item.key, label: item.project.name })),
+        ];
+        const current = scopes.find((item) => item.key === scoped);
+        return (
+          <Combobox
+            autoHighlight
+            isItemEqualToValue={(a, b) => a.value === b.value}
+            itemToStringLabel={(item) => item.label}
+            items={items}
+            onValueChange={(item) => {
+              if (item !== null) scope.set(item.value);
+            }}
+            value={items.find((item) => item.value === (current?.key ?? "")) ?? items[0]!}
+          >
+            <ComboboxTrigger
               render={
-                <Button
-                  aria-label={`More for ${connection.label}`}
-                  size="icon-xs"
-                  variant="ghost-muted"
+                <SidebarHeaderIconButton
+                  label={
+                    current === undefined
+                      ? "Filter threads by project"
+                      : `Filter threads by project: ${rowLabel([current.project.name], hosts ? current.node.label : undefined)}`
+                  }
                 />
               }
             >
-              <EllipsisIcon className="size-3.5" />
-            </MenuTrigger>
-            <MenuPopup align="end">
-              <Slot name="node.actions" props={{ connection } satisfies NodeActionProps} />
-            </MenuPopup>
-          </Menu>
+              {current === undefined ? (
+                <ListFilterIcon className="size-4" />
+              ) : (
+                <span className="flex shrink-0">
+                  <ProjectIcon className="size-4" project={current.project} />
+                </span>
+              )}
+            </ComboboxTrigger>
+            <ComboboxPopup
+              align="start"
+              className="max-w-[min(18rem,var(--available-width))] overflow-hidden"
+            >
+              <ComboboxSearchInput aria-label="Search projects" placeholder="Search projects..." />
+              <ComboboxEmpty>No matching projects.</ComboboxEmpty>
+              <ComboboxList>
+                {(item: (typeof items)[number]) => {
+                  const choice = scopes.find((entry) => entry.key === item.value);
+                  return (
+                    <ComboboxItem hideIndicator key={item.value} value={item}>
+                      {choice === undefined ? (
+                        <FolderIcon className="size-4 shrink-0" />
+                      ) : (
+                        <ProjectIcon className="size-4 shrink-0" project={choice.project} />
+                      )}
+                      <span className="ml-2 min-w-0 flex-1 truncate text-sm">{item.label}</span>
+                      {/* T3 marks a project of another environment; here its node is named. */}
+                      {choice !== undefined && hosts ? (
+                        <span className="ml-2 inline-flex max-w-28 shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                          <ServerIcon aria-hidden className="size-3 shrink-0" />
+                          <span className="truncate">{choice.node.label}</span>
+                        </span>
+                      ) : null}
+                    </ComboboxItem>
+                  );
+                }}
+              </ComboboxList>
+            </ComboboxPopup>
+          </Combobox>
         );
       }
 
-      // The node menu's own items; they run the connections plugin's `node.*` commands.
+      // The node menu's own items (settings → Nodes renders the menu): what the node's
+      // sidebar section offered, then the connections plugin's `node.*` commands.
       const nodeItems: [string, number, ComponentType<NodeActionProps>][] = [
+        [
+          "new-thread",
+          1,
+          ({ connection }) => (
+            <MenuItem
+              disabled={connection.state !== "open"}
+              onClick={() => run("chat.new-without-project", { node: connection.id })}
+            >
+              <MessageSquareDashedIcon />
+              New thread without a project
+            </MenuItem>
+          ),
+        ],
+        [
+          "add-project",
+          2,
+          ({ connection }) => (
+            <MenuItem
+              disabled={connection.state !== "open"}
+              onClick={() => run("project.add", { node: connection.id })}
+            >
+              <FolderPlusIcon />
+              Add project
+            </MenuItem>
+          ),
+        ],
+        ["separator-new", 5, () => <MenuSeparator />],
         [
           "rename",
           10,
@@ -860,9 +1100,14 @@ export const sidebarPlugin = builtin(
                       })
                 ).then((confirmed) => {
                   if (!confirmed) return;
-                  const here = navigation.current().node === connection.id;
+                  const { node, panel, section } = navigation.current();
                   run("node.disconnect", { node: connection.id });
-                  if (here) navigation.navigate({});
+                  // Away from the node's thread; the open panel (settings) stays.
+                  if (node === connection.id)
+                    navigation.navigate({
+                      ...(panel === undefined ? {} : { panel }),
+                      ...(section === undefined ? {} : { section }),
+                    });
                 })
               }
               variant="destructive"
@@ -876,26 +1121,6 @@ export const sidebarPlugin = builtin(
       for (const [id, order, component] of nodeItems) {
         context.subscriptions.add(
           slots.contribute("node.actions", { id: `jhin.sidebar.node.${id}`, order, component }),
-        );
-      }
-
-      /** The other nodes of a connected node's mesh, reached through it. */
-      function MeshNodes({ node, query }: { node: NodeConnection; query: string }) {
-        const members = useMeshMembers(mesh, node.id) ?? [];
-        return (
-          <>
-            {members
-              .filter((member) => !member.self && member.reachable)
-              .map((member) => (
-                <NodeSection
-                  key={member.nodeId}
-                  label={member.name}
-                  query={query}
-                  state="open"
-                  target={{ node: node.id, remote: member.nodeId }}
-                />
-              ))}
-          </>
         );
       }
 
@@ -915,14 +1140,243 @@ export const sidebarPlugin = builtin(
         const first = nodes.find((node) => node.state === "open") ?? nodes[0];
         return first === undefined ? undefined : { target: { node: first.id } };
       };
-      const scratchOf = (target: NodeTarget) =>
-        threads.catalog(target).projects.find((project) => project.scratch)?.id ?? "scratch";
+      /** The scratch project of a node, once its catalog is loaded. */
+      const scratchIn = (target: NodeTarget) =>
+        threads.catalog(target).projects.find((project) => project.scratch)?.id;
+
+      const failure = (message: string, code: string) =>
+        Object.assign(new Error(message), { code });
+
+      /** A connection that is open, or a reachable member of an open connection's mesh. */
+      const isOpen = (target: NodeTarget): boolean => {
+        if (connections.get(target.node)?.state !== "open") return false;
+        return (
+          target.remote === undefined ||
+          (mesh.members(target.node) ?? []).some(
+            (member) => !member.self && member.reachable && member.nodeId === target.remote,
+          )
+        );
+      };
+
+      /**
+       * Where a command's `{ node?, remote? }` points: the named node, which must
+       * be shown and open, else an error says why; without a node, the current
+       * place when its node is open, else nothing (the command does nothing).
+       */
+      const placeOf = (input: {
+        node?: string | undefined;
+        remote?: string | undefined;
+      }): { target: NodeTarget; projectId?: string } | undefined => {
+        if (input.node === undefined) {
+          const place = currentPlace();
+          return place !== undefined && isOpen(place.target) ? place : undefined;
+        }
+        const target: NodeTarget = {
+          node: input.node,
+          ...(input.remote === undefined ? {} : { remote: input.remote }),
+        };
+        if (connections.get(input.node) === undefined) {
+          throw failure(`Not connected to ${input.node}`, "NODE_NOT_FOUND");
+        }
+        if (!isOpen(target)) {
+          throw failure(
+            input.remote === undefined
+              ? `${input.node} is not connected now`
+              : `${input.remote} is not reachable through ${input.node}`,
+            "NODE_UNAVAILABLE",
+          );
+        }
+        return { target };
+      };
+
+      /** A node named by a command: `remote` is a member of `node`'s mesh, so it needs `node`. */
+      const NodeInput = z
+        .object({ node: z.string().optional(), remote: z.string().optional() })
+        .refine((input) => input.remote === undefined || input.node !== undefined, {
+          message: "remote needs node: the connection whose mesh reaches it",
+          path: ["remote"],
+        });
+
+      /** The thread list, or the search's results while a search is typed (T3's sidebar body). */
+      function ThreadList({ nodes, hosts }: { nodes: readonly NodeWithCatalog[]; hosts: boolean }) {
+        const route = useExternal(navigation, navigation.current);
+        const query = useExternal(search, search.get);
+        const expanded = useExternal(settledExpanded, settledExpanded.get);
+        const count = useExternal(settledCount, settledCount.get);
+        const scoped = useExternal(scope, scope.get);
+        const highlighted = useExternal(highlight, highlight.get);
+        const now = useNow();
+        const current = routeThreadKey(route);
+        const list = listOf(nodes, now, { query, scoped, count, expanded, current });
+        const routeTarget = targetOf(route);
+
+        if (query.trim() !== "") {
+          return list.results.length > 0 ? (
+            <ul
+              aria-label="Thread search results"
+              className="flex flex-col gap-px"
+              id="sidebar-thread-search-results"
+              role="listbox"
+            >
+              {list.results.map((entry, index) => (
+                <SearchResult
+                  active={entry.key === current}
+                  entry={entry}
+                  hosts={hosts}
+                  highlighted={index === Math.min(highlighted, list.results.length - 1)}
+                  index={index}
+                  key={entry.key}
+                  now={now}
+                />
+              ))}
+            </ul>
+          ) : (
+            <p
+              className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
+              role="status"
+            >
+              No threads found
+            </p>
+          );
+        }
+
+        const draftNode =
+          routeTarget !== undefined && route.thread === undefined && route.project !== undefined
+            ? nodes.find(
+                (node) =>
+                  node.target.node === routeTarget.node &&
+                  node.target.remote === routeTarget.remote,
+              )
+            : undefined;
+        const drafting =
+          draftNode !== undefined &&
+          (list.scopeKey === undefined ||
+            list.scopeKey === projectKey(draftNode.target, route.project!));
+        const loading = nodes.some(
+          (node) => node.state === "open" && node.catalog.status === "loading",
+        );
+        const total = list.active.length + list.settled.length;
+        const scopedProject = list.scopes.find((item) => item.key === list.scopeKey)?.project;
+        const anyProject = nodes.some((node) =>
+          node.catalog.projects.some((project) => !project.scratch),
+        );
+        return (
+          <>
+            {total === 0 && !drafting && loading ? (
+              <div aria-hidden className="flex flex-col gap-1.5 px-2 py-1">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ) : null}
+            {/* Presentational, as in T3: a list is an interaction boundary for VoiceOver. */}
+            <ul
+              className={cn("relative flex flex-col gap-px", (total > 0 || drafting) && "flex-1")}
+              role="presentation"
+            >
+              {drafting ? (
+                <DraftRow hosts={hosts} node={draftNode} projectId={route.project!} />
+              ) : null}
+              {list.active.map((entry) => (
+                <ThreadRow
+                  active={entry.key === current}
+                  entry={entry}
+                  hosts={hosts}
+                  key={entry.key}
+                  now={now}
+                  variant="card"
+                />
+              ))}
+              {total > 0 ? (
+                <SectionHeader
+                  expanded={expanded}
+                  label={expanded ? "Settled" : `Settled (${list.settled.length})`}
+                  onToggle={() => settledExpanded.set(!expanded)}
+                />
+              ) : null}
+              {list.shown.map((entry) => (
+                <ThreadRow
+                  active={entry.key === current}
+                  entry={entry}
+                  hosts={hosts}
+                  key={entry.key}
+                  now={now}
+                  variant="slim"
+                />
+              ))}
+              {expanded && list.hidden > 0 ? (
+                <li className="list-none">
+                  <button
+                    className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-sidebar-muted-foreground/55 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                    onClick={() => settledCount.set(settledCount.get() + SETTLED_TAIL_PAGE_COUNT)}
+                    type="button"
+                  >
+                    <PlusIcon aria-hidden className="size-4 shrink-0" />
+                    Show {Math.min(list.hidden, SETTLED_TAIL_PAGE_COUNT)} more
+                  </button>
+                </li>
+              ) : null}
+            </ul>
+            {total === 0 && !drafting && !loading && nodes.some((node) => node.state === "open") ? (
+              <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
+                {!anyProject ? (
+                  <>
+                    <span>No projects yet</span>
+                    <button
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+                      onClick={() => void context.commands.execute("project.add", {})}
+                      type="button"
+                    >
+                      <PlusIcon className="-mx-0.5 size-3" />
+                      Add project
+                    </button>
+                  </>
+                ) : scopedProject !== undefined ? (
+                  `No threads in ${scopedProject.name} yet`
+                ) : (
+                  "No threads yet"
+                )}
+              </div>
+            ) : null}
+          </>
+        );
+      }
+
+      /** Arrow keys walk the search results, Enter opens one, Escape clears (T3's search keys). */
+      const onSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+        if (event.key === "Escape") {
+          search.set("");
+          return;
+        }
+        if (search.get().trim() === "") return;
+        const { results } = listOf(nodeView.snapshot(), Date.now(), stateNow());
+        if (results.length === 0) return;
+        const index = Math.min(highlight.get(), results.length - 1);
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          highlight.set(Math.min(index + 1, results.length - 1));
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          highlight.set(Math.max(index - 1, 0));
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          const entry = results[index]!;
+          search.set("");
+          openThread(entry.node.target, entry.thread.id);
+        }
+      };
 
       function SidebarRoot() {
-        const nodes = useExternal(connections, connections.list);
+        const nodes = useExternal(nodeView, nodeView.snapshot);
+        const anyOpen = nodes.some((node) => node.state === "open");
+        const hosts = showsHosts(nodes);
         const query = useExternal(search, search.get);
-        const setQuery = search.set;
+        const highlighted = useExternal(highlight, highlight.get);
         const shortcut = useShortcutLabels(keybindings);
+        const searching = query.trim() !== "";
+        const newThreadLabel =
+          shortcut("chat.new") === undefined
+            ? "New thread"
+            : `New thread (${shortcut("chat.new")})`;
         return (
           <>
             <div className="relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2 pr-3">
@@ -954,27 +1408,33 @@ export const sidebarPlugin = builtin(
               </div>
             </div>
             <SidebarContent
+              className="min-h-full"
               fixedHeader={
                 <SidebarGroup className="z-[1]">
                   <div className="flex items-center gap-1">
                     <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
                       <SearchIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
                       <SidebarInput
+                        aria-activedescendant={
+                          searching ? `sidebar-thread-search-result-${highlighted}` : undefined
+                        }
+                        aria-autocomplete="list"
+                        aria-controls={searching ? "sidebar-thread-search-results" : undefined}
+                        aria-expanded={searching}
                         aria-label="Search threads"
                         className="min-w-0 flex-1"
-                        onChange={(event) => setQuery(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Escape") setQuery("");
-                        }}
+                        onChange={(event) => search.set(event.target.value)}
+                        onKeyDown={onSearchKeyDown}
                         placeholder="Search"
+                        role="combobox"
                         type="search"
                         value={query}
                       />
-                      {query !== "" ? (
+                      {searching ? (
                         <Button
                           aria-label="Clear thread search"
                           className="shrink-0"
-                          onClick={() => setQuery("")}
+                          onClick={() => search.set("")}
                           size="icon-micro"
                           variant="ghost-muted"
                         >
@@ -983,22 +1443,27 @@ export const sidebarPlugin = builtin(
                       ) : null}
                     </div>
                     <div className="flex shrink-0 items-center">
+                      {anyOpen ? (
+                        <>
+                          <ProjectScope hosts={hosts} nodes={nodes} />
+                          <SidebarHeaderIconButton
+                            label="Add project"
+                            onClick={() => void context.commands.execute("project.add", {})}
+                            tooltip={
+                              shortcut("project.add") === undefined
+                                ? "Add project"
+                                : `Add project (${shortcut("project.add")})`
+                            }
+                          >
+                            <FolderPlusIcon />
+                          </SidebarHeaderIconButton>
+                        </>
+                      ) : null}
                       <SidebarHeaderIconButton
-                        disabled={nodes.length === 0}
-                        label="Add project"
-                        onClick={() => {
-                          const place = currentPlace();
-                          if (place !== undefined) addProjectRequests.open(place.target);
-                        }}
-                        shortcut={shortcut("project.add")}
-                      >
-                        <FolderPlusIcon />
-                      </SidebarHeaderIconButton>
-                      <SidebarHeaderIconButton
-                        disabled={nodes.length === 0}
+                        disabled={!anyOpen}
                         label="New thread"
                         onClick={() => void context.commands.execute("chat.new", {})}
-                        shortcut={shortcut("chat.new")}
+                        tooltip={newThreadLabel}
                       >
                         <SquarePenIcon />
                       </SidebarHeaderIconButton>
@@ -1007,28 +1472,21 @@ export const sidebarPlugin = builtin(
                 </SidebarGroup>
               }
             >
-              <SidebarGroup className="gap-2 pt-0">
+              <SidebarGroup className="flex-1" role="presentation">
                 {nodes.length === 0 ? (
                   <p className="px-2 py-4 text-center text-xs text-sidebar-muted-foreground/70">
                     No node connected.
                   </p>
                 ) : (
-                  nodes.map((node) => (
-                    <div className="flex flex-col gap-2" key={node.id}>
-                      <NodeSection
-                        connection={node}
-                        label={node.label}
-                        query={query}
-                        state={node.state}
-                        target={{ node: node.id }}
-                      />
-                      {node.state === "open" ? <MeshNodes node={node} query={query} /> : null}
-                    </div>
-                  ))
+                  <>
+                    <NodeStatus nodes={nodes} />
+                    <ThreadList hosts={hosts} nodes={nodes} />
+                  </>
                 )}
               </SidebarGroup>
             </SidebarContent>
             <SidebarFooter>
+              {/* T3's footer: its utility items on the left. */}
               <SidebarMenu className="flex-row items-center">
                 <SidebarMenuItem className="shrink-0">
                   <Tooltip>
@@ -1057,6 +1515,7 @@ export const sidebarPlugin = builtin(
                     <TooltipTrigger
                       render={
                         <button
+                          aria-label="Command palette"
                           className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md px-1.5 text-2xs text-sidebar-muted-foreground hover:text-sidebar-foreground"
                           onClick={() => void context.commands.execute("palette.toggle", {})}
                           type="button"
@@ -1080,6 +1539,7 @@ export const sidebarPlugin = builtin(
           <AddProjectDialog
             connections={connections}
             navigation={navigation}
+            nodes={nodeView}
             requests={addProjectRequests}
             threads={threads}
             toasts={toasts}
@@ -1109,51 +1569,23 @@ export const sidebarPlugin = builtin(
       }
 
       // --- Commands ------------------------------------------------------------
-      /** The threads the sidebar shows, in its order: nodes, projects, then recency. */
-      const orderedThreads = (): { target: NodeTarget; thread: ThreadRecord }[] => {
-        const result: { target: NodeTarget; thread: ThreadRecord }[] = [];
-        const query = search.get();
-        const route = navigation.current();
-        const limit = readSection(context, CHAT_SECTION, ChatSettings).threadPreviewCount;
-        for (const node of connections.list()) {
-          const targets: NodeTarget[] = [
-            { node: node.id },
-            ...(mesh.members(node.id) ?? [])
-              .filter((member) => !member.self && member.reachable)
-              .map((member) => ({ node: node.id, remote: member.nodeId })),
-          ];
-          for (const target of targets) {
-            const catalog = threads.catalog(target);
-            for (const project of catalog.projects) {
-              const key = `${targetKey(target)}|${project.id}`;
-              // A search shows the matches of collapsed projects too.
-              if (query === "" && collapsed.has(key)) continue;
-              const { shown } = shownThreads(listedThreads(catalog.threads, project.id), {
-                query,
-                limit,
-                showAll: showingAll.has(key),
-                current: sameTarget(targetOf(route), target) ? route.thread : undefined,
-              });
-              for (const thread of shown) result.push({ target, thread });
-            }
-          }
-        }
-        return result;
+      /** The threads the sidebar shows, in its order: the search's results, else active then settled. */
+      const orderedThreads = (): Entry[] => {
+        const list = listOf(nodeView.snapshot(), Date.now(), stateNow());
+        return search.get().trim() !== "" ? list.results : [...list.active, ...list.shown];
       };
       const step = (delta: number) => {
         const list = orderedThreads();
         if (list.length === 0) return;
-        const route = navigation.current();
-        const index = list.findIndex(
-          (entry) => entry.thread.id === route.thread && sameTarget(targetOf(route), entry.target),
-        );
+        const current = routeThreadKey(navigation.current());
+        const index = list.findIndex((entry) => entry.key === current);
         const next =
           index < 0
             ? delta > 0
               ? list[0]
               : list.at(-1)
             : list[Math.min(list.length - 1, Math.max(0, index + delta))];
-        if (next !== undefined) openThread(next.target, next.thread.id);
+        if (next !== undefined) openThread(next.node.target, next.thread.id);
       };
       context.commands.register({
         name: "sidebar.thread.previous",
@@ -1185,7 +1617,7 @@ export const sidebarPlugin = builtin(
           output: z.object({}),
           handler: () => {
             const entry = orderedThreads()[jump - 1];
-            if (entry !== undefined) openThread(entry.target, entry.thread.id);
+            if (entry !== undefined) openThread(entry.node.target, entry.thread.id);
             return {};
           },
         });
@@ -1195,14 +1627,11 @@ export const sidebarPlugin = builtin(
         title: "Add project",
         description:
           "Opens the dialog that adds a folder of a node as a project: the given node, or the current one",
-        input: z.object({ node: z.string().optional(), remote: z.string().optional() }),
+        input: NodeInput,
         output: z.object({}),
-        handler: ({ node, remote }) => {
-          const target =
-            node === undefined
-              ? currentPlace()?.target
-              : { node, ...(remote === undefined ? {} : { remote }) };
-          if (target !== undefined) addProjectRequests.open(target);
+        handler: (input) => {
+          const place = placeOf(input);
+          if (place !== undefined) addProjectRequests.open(place.target);
           return {};
         },
       });
@@ -1213,21 +1642,31 @@ export const sidebarPlugin = builtin(
         input: z.object({}),
         output: z.object({}),
         handler: () => {
-          const place = currentPlace();
-          if (place !== undefined)
-            newThread(place.target, place.projectId ?? scratchOf(place.target));
+          const place = placeOf({});
+          const projectId =
+            place === undefined ? undefined : (place.projectId ?? scratchIn(place.target));
+          if (place !== undefined && projectId !== undefined) newThread(place.target, projectId);
           return {};
         },
       });
       context.commands.register({
         name: "chat.new-without-project",
         title: "New thread without a project",
-        description: "Starts a new thread in the node's scratch project",
-        input: z.object({}),
+        description:
+          "Starts a new thread in a node's scratch project: the given node, or the current one",
+        input: NodeInput,
         output: z.object({}),
-        handler: () => {
-          const place = currentPlace();
-          if (place !== undefined) newThread(place.target, scratchOf(place.target));
+        handler: (input) => {
+          const place = placeOf(input);
+          if (place === undefined) return {};
+          const scratch = scratchIn(place.target);
+          if (scratch !== undefined) newThread(place.target, scratch);
+          else if (input.node !== undefined) {
+            throw failure(
+              `The projects of ${input.remote ?? input.node} are not loaded yet`,
+              "PROJECT_NOT_FOUND",
+            );
+          }
           return {};
         },
       });

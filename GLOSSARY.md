@@ -85,3 +85,6 @@ One word per concept. Use these terms in code, docs, commits and UI.
   threads (⌘/Ctrl+K).
 - **Visit** — when a thread was last seen on this device, in its node's own
   time; a turn that ended after it shows the thread as unread.
+- **Settled** — a thread that needs nothing more: no activity for three days
+  and no turn running or waiting for the user. The sidebar lists it on its
+  Settled shelf instead of among the active threads (T3 Code's term).

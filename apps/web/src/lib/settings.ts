@@ -25,8 +25,6 @@ export const ChatSettings = z.object({
   confirmArchive: z.boolean().default(false),
   /** Ask before deleting a thread or removing a project. */
   confirmDelete: z.boolean().default(true),
-  /** Threads listed per project before "Show more". */
-  threadPreviewCount: z.number().int().min(1).max(15).default(6),
 });
 export type ChatSettings = z.output<typeof ChatSettings>;
 

@@ -86,22 +86,6 @@ export function GeneralSection() {
           resetAction={reset("sendShortcut", "send shortcut")}
           title="Send shortcut"
         />
-        <SettingsRow
-          control={
-            <Choice
-              label="Threads per project"
-              onChange={(value) => set({ threadPreviewCount: Number(value) })}
-              options={[3, 6, 10, 15].map((count) => ({
-                value: String(count),
-                label: String(count),
-              }))}
-              value={String(chat.threadPreviewCount)}
-            />
-          }
-          description="Threads the sidebar lists per project before “Show more”."
-          resetAction={reset("threadPreviewCount", "threads per project")}
-          title="Threads per project"
-        />
       </SettingsSection>
       <SettingsSection title="Confirmations">
         <SettingsRow

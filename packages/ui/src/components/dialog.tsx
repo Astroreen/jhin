@@ -84,6 +84,11 @@ function DialogPopup({
           className={cn(
             variant === "media" ? DIALOG_MEDIA_POPUP_CLASS : DIALOG_POPUP_CLASS,
             "row-start-2 text-popover-foreground",
+            // A form around the header, panel and footer lays them out as the popup does
+            // (T3 Code's CustomSnoozeDialog gives its form these classes itself). As a block,
+            // the form let the panel's full-height scroll area grow to the form's own height
+            // and pushed the footer out below the popup.
+            "[&>form]:flex [&>form]:min-h-0 [&>form]:flex-col",
             variant === "default" && "max-h-full max-w-lg",
             bottomStickOnMobile && DIALOG_MOBILE_SHEET_CLASS,
             className,
