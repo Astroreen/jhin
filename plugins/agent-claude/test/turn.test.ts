@@ -109,6 +109,50 @@ describe("jhin.agent-claude: a turn", () => {
     ]);
   });
 
+  it("sends images and says which attachments Claude Code cannot take", async () => {
+    const logged: unknown[] = [];
+    const { query, calls } = scriptedQuery(async function* () {
+      yield init();
+      yield result();
+    });
+    const turn = claudeTurn(
+      request({
+        input: {
+          text: "look",
+          attachments: [
+            {
+              kind: "image",
+              name: "a.png",
+              mimeType: "image/png",
+              dataUrl: "data:image/png;base64,AAAA",
+            },
+            {
+              kind: "image",
+              name: "b.bmp",
+              mimeType: "image/bmp",
+              dataUrl: "data:image/bmp;base64,BBBB",
+            },
+          ],
+        },
+      }),
+      {
+        query,
+        sessions: memorySessions(),
+        settings: {},
+        defaultModel: "claude-fable-5-1",
+        log: (message, data) => logged.push([message, data]),
+      },
+    );
+    await drain(turn);
+    expect(calls[0]!.prompt[0]!.message.content).toEqual([
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } },
+      { type: "text", text: "look" },
+    ]);
+    expect(logged).toEqual([
+      ["claude takes no such attachment, skipped", { name: "b.bmp", mimeType: "image/bmp" }],
+    ]);
+  });
+
   it("resumes the thread's session on a later turn", async () => {
     const { turn, calls } = start(
       [

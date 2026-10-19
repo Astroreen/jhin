@@ -16,6 +16,7 @@ import {
   CLAUDE_AGENT_ID,
   claudePlugin,
   createClaudeRuntime,
+  type Config,
   type QueryFunction,
 } from "../src/index.ts";
 import {
@@ -270,6 +271,22 @@ describe("jhin.agent-claude: status", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("probes again when the binary or the environment changes", async () => {
+    let probes = 0;
+    const query = ((params: Parameters<QueryFunction>[0]) => {
+      probes++;
+      return initializing({ email: "ada@example.com" }).query(params);
+    }) as QueryFunction;
+    let config: Config = {};
+    const claude = createClaudeRuntime({ query, sessions: memorySessions(), config: () => config });
+    await claude.status!();
+    await claude.status!();
+    expect(probes).toBe(1);
+    config = { env: { CLAUDE_CONFIG_DIR: "/other" } };
+    await claude.status!();
+    expect(probes).toBe(2);
   });
 
   it("is unavailable when Claude Code does not initialize in time", async () => {

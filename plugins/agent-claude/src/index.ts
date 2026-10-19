@@ -162,7 +162,12 @@ export function createClaudeRuntime(options: {
   const turns = new Set<AgentTurn>();
   /** Context windows Claude Code reported in results, by model. */
   const windows = new Map<string, number>();
-  let probed: { at: number; probe: Probe } | undefined;
+  /** The last probe and the config it ran with: another binary or environment probes again. */
+  let probed: { at: number; key: string; probe: Probe } | undefined;
+  const probeKey = () => {
+    const { binaryPath, env } = options.config();
+    return JSON.stringify({ binaryPath, env });
+  };
   let probing: Promise<Probe> | undefined;
   const models = () => probed?.probe.models ?? BUNDLED_MODELS;
   const defaultModel = () => {
@@ -185,14 +190,15 @@ export function createClaudeRuntime(options: {
     runtimeModes: ["approval-required", "auto-accept-edits", "full-access"],
     interactionModes: ["default", "plan"],
     async status() {
+      const key = probeKey();
       const refresh = () =>
         (probing ??= probe(options.query, options.config())
           .then((result) => {
-            probed = { at: Date.now(), probe: result };
+            probed = { at: Date.now(), key, probe: result };
             return result;
           })
           .finally(() => (probing = undefined)));
-      if (probed === undefined) return (await refresh()).status;
+      if (probed === undefined || probed.key !== key) return (await refresh()).status;
       // A stale answer is given at once while a new probe runs: picking the default agent
       // (D96) never waits for Claude Code to start. "Unavailable" goes stale sooner, so a
       // sign-in shows on the next look.
@@ -212,19 +218,18 @@ export function createClaudeRuntime(options: {
         ...(options.log === undefined ? {} : { log: options.log }),
       });
       turns.add(turn);
+      // Forgotten once its query ended, whether or not anyone read its items.
+      void turn.done.then(() => turns.delete(turn));
       const items = turn.items;
       return {
-        ...turn,
+        interrupt: () => turn.interrupt(),
+        ...(turn.respond === undefined ? {} : { respond: turn.respond }),
         items: (async function* () {
-          try {
-            for await (const item of items) {
-              if (item.kind === "usage" && item.usage.contextWindow !== undefined) {
-                windows.set(model, item.usage.contextWindow);
-              }
-              yield item;
+          for await (const item of items) {
+            if (item.kind === "usage" && item.usage.contextWindow !== undefined) {
+              windows.set(model, item.usage.contextWindow);
             }
-          } finally {
-            turns.delete(turn);
+            yield item;
           }
         })(),
       };

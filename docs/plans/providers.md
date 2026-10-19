@@ -113,6 +113,13 @@ specific to Claude: the runtime is a plugin on the public API.
   composer.
 - Subagent transcripts inside their tool call; today only the result shows.
 - Codex and OpenCode runtimes.
+- Forgetting a deleted thread's session: its `session/<threadId>` record in
+  `storage.kv` and Claude Code's session file stay. It needs an event from
+  the threads plugin when a thread is deleted.
+- The node's first look at the agents waits for Claude Code to start (up to
+  25 s when it hangs); later looks are answered from the last probe.
+- Two identical text or reasoning blocks in one API message show as one item
+  (blocks complete once per text of a message, D94).
 - Secrets in `env`: config is readable by anyone holding the node's token
   (config commands, RPC, MCP), so the field's description says to keep
   `ANTHROPIC_API_KEY` and the like in the node's own environment. Marking the

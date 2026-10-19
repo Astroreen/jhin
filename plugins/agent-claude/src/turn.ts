@@ -118,10 +118,17 @@ const asksForApproval = (runtimeMode: RuntimeMode, interactionMode: InteractionM
 
 const IMAGE_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
 
-function userMessage(text: string, attachments: readonly TurnAttachment[] = []): SDKUserMessage {
+function userMessage(
+  text: string,
+  attachments: readonly TurnAttachment[] = [],
+  skipped: (attachment: TurnAttachment) => void = () => {},
+): SDKUserMessage {
   const images = attachments.flatMap((attachment) => {
     const match = /^data:([^;,]+);base64,(.*)$/s.exec(attachment.dataUrl);
-    if (match === null || !IMAGE_TYPES.has(match[1]!)) return [];
+    if (match === null || !IMAGE_TYPES.has(match[1]!)) {
+      skipped(attachment);
+      return [];
+    }
     return [
       {
         type: "image" as const,
@@ -218,8 +225,11 @@ class SessionMismatch extends Error {
   }
 }
 
-/** Runs one turn of a thread on Claude Code. */
-export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): AgentTurn {
+/** Runs one turn of a thread on Claude Code; `done` settles once its query has ended. */
+export function claudeTurn(
+  request: TurnRequest,
+  deps: ClaudeTurnDependencies,
+): AgentTurn & { readonly done: Promise<void> } {
   let interrupted = false;
   const out = channel<AgentItem>(() => interrupted);
   const runtimeMode = request.runtimeMode ?? DEFAULT_RUNTIME_MODE;
@@ -514,7 +524,12 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
     // The prompt stays open until the turn ends: Claude Code reads permission answers
     // and control requests through the same process.
     async function* prompt(): AsyncGenerator<SDKUserMessage> {
-      yield userMessage(text, request.input.attachments);
+      yield userMessage(text, request.input.attachments, (attachment) =>
+        deps.log?.("claude takes no such attachment, skipped", {
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+        }),
+      );
       await finished;
     }
     const query = deps.query({ prompt: prompt(), options: options(resume) });
@@ -584,7 +599,7 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
     if (error !== undefined) throw new Error(error);
   };
 
-  void run().then(
+  const done = run().then(
     () => out.end(),
     (error: unknown) => {
       // A stop that tears the process down is an interrupt, not a failure.
@@ -594,6 +609,7 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
   );
 
   return {
+    done,
     items: out.read(),
     interrupt() {
       if (interrupted) return;
