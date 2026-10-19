@@ -260,11 +260,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     return repo;
   };
 
-  const untrack = (repo: Repo) => {
-    repo.disposed = true;
+  /** Stops following the repository on disk, a read already waiting for changes to settle included. */
+  const stopWatching = (repo: Repo) => {
     repo.watcher?.dispose();
     repo.watcher = undefined;
     if (repo.settle !== undefined) clearTimeout(repo.settle);
+    repo.settle = undefined;
+    repo.firstChangeAt = undefined;
+  };
+
+  const untrack = (repo: Repo) => {
+    repo.disposed = true;
+    stopWatching(repo);
     if (repos.get(repo.project.id) === repo) repos.delete(repo.project.id);
   };
 
@@ -299,7 +306,12 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const changed = (repo: Repo) => {
     if (repo.disposed || stopped) return;
     const now = Date.now();
-    repo.firstChangeAt ??= now;
+    if (repo.firstChangeAt === undefined) {
+      repo.firstChangeAt = now;
+      context.log.debug("repository changed, reading it once changes settle", {
+        projectId: repo.project.id,
+      });
+    }
     if (repo.settle !== undefined) clearTimeout(repo.settle);
     const wait = Math.max(0, Math.min(SETTLE_MS, repo.firstChangeAt + MAX_SETTLE_MS - now));
     repo.settle = setTimeout(() => {
@@ -481,7 +493,6 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     return repo.status!;
   };
 
-  /** The status as last read (the first read is awaited). */
   /**
    * The status as last read. Until one was read, the first read is awaited;
    * if that failed (a git hiccup, a repository being rewritten), it is read
@@ -616,10 +627,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       schedulePullRequests();
       for (const repo of repos.values()) {
         if (config().watch) startWatching(repo);
-        else {
-          repo.watcher?.dispose();
-          repo.watcher = undefined;
-        }
+        else stopWatching(repo);
       }
     }),
   );

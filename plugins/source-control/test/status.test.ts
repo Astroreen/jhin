@@ -2,11 +2,15 @@ import * as Fs from "node:fs";
 import * as Path from "node:path";
 
 import type { Branch, Diff, ProjectStatus } from "@jhin/source-control-api";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { countLines, mapLimited, parseNameStatus } from "../src/git.ts";
 import { parseNumstat, parseStatus } from "../src/index.ts";
 import { git, node, repository, statusEvent, temp, threadEvent, write } from "./support.ts";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const only = (snapshot: { projects: ProjectStatus[] }) => snapshot.projects[0]!;
 
@@ -147,6 +151,27 @@ describe("jhin.source-control: reading a repository", () => {
     await expect(sc.client.call("git.diff", { projectId: brokenId })).resolves.toMatchObject({
       files: [],
     });
+  });
+
+  it("turning watching off drops a read still waiting for changes to settle", async () => {
+    const dir = repository();
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    await sc.status(projectId);
+    // Only the settle timer is faked: git's own processes keep running for real.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const seen = sc.logged("repository changed, reading it once changes settle");
+    write(dir, "notes.md", "x\n");
+    await seen;
+    expect(vi.getTimerCount()).toBe(1);
+    sc.configure({ watch: false });
+    expect(vi.getTimerCount()).toBe(0);
+    const before = sc.events.length;
+    vi.runAllTimers();
+    // Nothing was read: the change waits for the next request.
+    expect(sc.events.length).toBe(before);
+    vi.useRealTimers();
+    expect((await sc.status(projectId, true)).projects[0]?.workingTree.fileCount).toBe(1);
   });
 
   it("publishes a status only when it changed", async () => {
