@@ -541,7 +541,14 @@ export function claudeTurn(
       for await (const message of query) {
         if (message.type === "system" && message.subtype === "init") {
           started = true;
-          await deps.sessions.set(request.threadId);
+          // A record that could not be written costs one retry on the next turn (D91),
+          // never this turn.
+          await deps.sessions.set(request.threadId).catch((error: unknown) =>
+            deps.log?.("could not record the claude session", {
+              threadId: request.threadId,
+              error: String(error),
+            }),
+          );
           continue;
         }
         if (message.type === "result") {
@@ -596,7 +603,10 @@ export function claudeTurn(
     if (interrupted) return;
     // Claude Code exited (or its stream closed) mid-turn without a result: not an answer.
     if (result === undefined) throw new Error("Claude Code ended the turn without a result.");
-    if (isAbortedResult(result)) return;
+    // Aborted without our interrupt (that returned above): Claude Code stopped on its own.
+    if (isAbortedResult(result)) {
+      throw new Error(resultError(result) ?? "Claude Code stopped the turn.");
+    }
     out.push({ kind: "usage", usage: resultUsage(result, contextTokens) });
     const error = resultError(result);
     if (error !== undefined) throw new Error(error);

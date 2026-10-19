@@ -483,6 +483,42 @@ describe("jhin.agent-claude: a turn", () => {
     await expect(drain(turn)).rejects.toThrow("Claude Code ended the turn without a result.");
   });
 
+  it("fails a turn Claude Code aborts on its own", async () => {
+    const { turn } = start([
+      async function* () {
+        yield init();
+        yield result({
+          subtype: "error_during_execution",
+          errors: ["Request interrupted by hook"],
+        });
+      },
+    ]);
+    await expect(drain(turn)).rejects.toThrow("Request interrupted by hook");
+  });
+
+  it("keeps a turn going when its session cannot be recorded", async () => {
+    const sessions = memorySessions();
+    sessions.set = async () => {
+      throw new Error("disk full");
+    };
+    const { turn } = start(
+      [
+        async function* () {
+          yield init();
+          yield* streamedBlock("m1", 0, "text", ["fine"]);
+          yield result();
+        },
+      ],
+      {},
+      sessions,
+    );
+    expect(await drain(turn)).toContainEqual({
+      kind: "message.completed",
+      itemId: "m1:0",
+      text: "fine",
+    });
+  });
+
   it("fails with Claude Code's error", async () => {
     const { turn } = start([
       async function* () {
