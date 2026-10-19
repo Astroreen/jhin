@@ -85,6 +85,13 @@ export async function startThread(
   return { threadId: thread.id };
 }
 
+/** A change to where the sidebar keeps a thread, as the threads plugin's commands take it. */
+export type ThreadArrangement =
+  | { readonly method: "settle" | "unsettle" | "unpin" | "unsnooze" }
+  | { readonly method: "pin"; readonly orderKey?: string }
+  | { readonly method: "snooze"; readonly until: string }
+  | { readonly method: "reorder"; readonly list: "pinned" | "active"; readonly orderKey: string };
+
 /** What can be done to a thread from its row, its header or the command palette. */
 export function threadActions(services: ThreadActionServices) {
   const { threads, toasts, dialogs, navigation, context } = services;
@@ -109,6 +116,26 @@ export function threadActions(services: ThreadActionServices) {
         ...(target.remote === undefined ? {} : { remote: target.remote }),
         project: thread.projectId,
       });
+    }
+  };
+
+  /**
+   * Settles, un-settles, pins, unpins, snoozes or wakes a thread on its node
+   * (D75–D77); true when the node did it, else the failure shows as a toast.
+   */
+  const arrange = async (
+    target: NodeTarget,
+    thread: ThreadRecord,
+    change: ThreadArrangement,
+    failure: string,
+  ): Promise<boolean> => {
+    const { method, ...input } = change;
+    try {
+      await threads.call(target, `threads.${method}`, { threadId: thread.id, ...input });
+      return true;
+    } catch (error) {
+      fail(failure, error);
+      return false;
     }
   };
 
@@ -186,6 +213,22 @@ export function threadActions(services: ThreadActionServices) {
       } catch (error) {
         fail("Failed to delete thread", error);
       }
+    },
+    arrange,
+    /** Unpins a thread, after asking when the settings say so (T3's confirmThreadUnpin). */
+    async unpin(target: NodeTarget, thread: ThreadRecord): Promise<boolean> {
+      if (
+        settings().confirmUnpin &&
+        dialogs !== undefined &&
+        !(await dialogs.confirm({
+          title: `Unpin thread "${thread.title}"?`,
+          description: "This will move the thread out of your pinned section.",
+          confirmLabel: "Unpin",
+        }))
+      ) {
+        return false;
+      }
+      return arrange(target, thread, { method: "unpin" }, "Failed to unpin thread");
     },
     markUnread(target: NodeTarget, thread: ThreadRecord): void {
       services.visits?.markUnread(target, thread.id);

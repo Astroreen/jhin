@@ -259,6 +259,109 @@ contributions. Features of T3 Code that only make sense for its hosted product
   (Cancel / Rename) sat below the popup as a box of its own; every dialog
   whose content is a form had it (the prompt dialog, "Add project").
 
+- **D75. Settling by hand, kept on the node.** As T3 nightly does, a thread
+  is settled and un-settled by hand and the choice is part of its record, so
+  every client and device follows it through the `threads` index (D57):
+  `threads.settle` and `threads.unsettle` set `settledOverride` (`settled`,
+  `active`) with `settledAt` or `unsettledAt`. Settling unpins the thread and
+  drops its place among the active threads; a thread running a turn or
+  waiting for an answer is refused (`TURN_IN_PROGRESS`, T3's "Stop it before
+  settling" and "Answer it before settling"), and so is an archived one
+  (`THREAD_ARCHIVED`). D70's automatic rule stays as the fallback, computed
+  by the client: it never settles a thread pinned, snoozed or kept active by
+  hand, and it counts a snooze that ended as activity. A new turn clears the
+  choice made by hand (T3's turn start), so the rule applies again; a thread
+  that was settled, by hand or by the rule (the node runs the same rule, as
+  T3's server twin does), comes back with `unsettledAt` set to the turn's
+  start, and an active thread sorts by the later of its creation and its
+  return, so it is on top of the active cards. A request or a failure always
+  belongs to a turn, which brought the thread back when it started. A thread
+  whose last turn completed unseen ("Done") settles too, as in T3: its rule
+  runs on the server and knows no visits, and here visits are per device,
+  where devices must agree. A time that does not parse is no activity to
+  settle on: the thread stays active. These fields are the user's
+  arrangement, not activity: they leave `updatedAt`, and so the card's time
+  and the rule, alone (T3 bumps it, but T3's card shows message times). In
+  the client, `thread.settle` and `thread.unsettle` (the builtin
+  `jhin.thread-actions`) run them; the `thread.actions` slot gets "Settle
+  thread" / "Un-settle thread" (`jhin.thread-actions.settle`), a card offers
+  "Settle" and a slim settled row "Un-settle thread" while the pointer rests
+  on it, and `sidebar.thread.toggle-settled` (⌘/Ctrl+Shift+S, T3's
+  `thread.settle` key) settles the open thread or brings it back. Settling
+  and snoozing run through the hook `thread.park` (`THREAD_PARK_HOOK`,
+  `ThreadParkInput` in `@jhin/client-api`): the sidebar wraps it to open the
+  next card below the thread, else above it, else a new thread in its
+  project, when the open thread leaves the cards (T3's settle-and-advance).
+  `ThreadActionProps` gets an optional `section`: where the menu's host lists
+  the thread, so an item agrees with the list it was opened from (additive).
+- **D76. Pinning.** `threads.pin` (with an optional `orderKey`) and
+  `threads.unpin` keep `pinnedAt` and `pinOrderKey` on the record. Pinned
+  threads are cards on top of the list, by key and then newest first, with
+  T3's pin icon on the card's top line; on hover it turns into an "Unpin
+  thread" button. As in T3 the pinned block has no header except while a row
+  is dragged ("Pinned", "Active"). Pinning a settled thread keeps it active
+  by hand (`settledOverride: active`, also for one the rule settled), and
+  wakes a snoozed one. The menu's "Pin thread" / "Unpin thread"
+  (`jhin.thread-actions.pin`) and ⌘/Ctrl+Shift+P
+  (`sidebar.thread.toggle-pinned`, T3's `thread.pin`) run `thread.pin` and
+  `thread.unpin`; the latter asks first when the device setting "Unpin"
+  (Confirmations, `confirmUnpin`, T3's `confirmThreadUnpin`, off by default)
+  says so.
+- **D77. Snoozing.** `threads.snooze` takes `until` (an ISO time with its
+  offset) and keeps `snoozedUntil` and `snoozedAt`; a time not in the future
+  is refused (`SNOOZE_IN_PAST`), as is a thread waiting for an answer
+  (`TURN_IN_PROGRESS`); a running one may snooze. `threads.unsnooze` wakes it
+  and records `lastSnoozeWakeAt`; a new turn wakes it too. A snoozed thread
+  leaves the cards for the "Snoozed" shelf (collapsed by default, kept per
+  device, T3's info tone, soonest wake first, each row saying how long is
+  left: "45m", "3h", "2d") until its time, or until it raises its hand,
+  T3's rule exactly: its turn waits for an answer, or fails or completes
+  after it was snoozed (an interrupted turn does not wake it). The node keeps
+  the times, the client decides what is awake, as T3 splits it. A thread
+  that woke says "Woke" on its card (between "Failed" and "Done") until a
+  visit after its wake: the card's "Dismiss Woke notification" records that
+  visit, and so does opening the thread. The menu's "Snooze" submenu (T3's
+  presets: in 1 hour, in 3 hours, this evening while more than an hour away,
+  tomorrow and next week at 9:00, with their times, then "Custom…"),
+  disabled while the thread waits for an answer, and the card's clock button
+  run `thread.snooze`; without `until` it asks with T3's "Custom snooze"
+  dialog (date and time, or a duration), whose date and amount are the
+  browser's date and number inputs instead of T3's calendar popover and
+  number field. "Wake thread" (menu) and "Wake thread now" (snoozed row) run
+  `thread.unsnooze`.
+- **D78. Dragging, as T3 nightly drags.** T3's newer sidebar reorders
+  threads, not projects (projects keep their manual order only in the
+  legacy sidebar): the pinned threads among themselves, the active ones
+  among themselves, and a row dropped into another section pins, unpins,
+  settles, un-settles or wakes it; nothing drops into the Snoozed shelf,
+  since snoozing needs a time. The order is T3's fractional keys
+  (`pinOrderKey`, `activeOrderKey`, lowercase letters compared as text), set
+  with `threads.reorder` (`list`: pinned or active; refused for a thread
+  not pinned, `THREAD_NOT_PINNED`, or pinned or settled,
+  `THREAD_NOT_ACTIVE`, so a reorder racing an unpin brings no pin back). A
+  drop writes one key between its neighbours, or new keys for the shown
+  rows when a neighbour has none, kept clear of the keys of threads not
+  shown. Active threads never dragged stay on top, newest first; the
+  dragged ones follow by key. A drop runs `sidebar.thread.move` (node,
+  thread, section and its index there), so dragging is a command too, and
+  the row stays where it was dropped until the nodes have it. Rows drag
+  with dnd-kit, T3's library, once the pointer moved 6 px; the badge on the
+  dragged row says what the drop does ("Pin", "Unpin", "Settle",
+  "Un-settle", "Wake"). As in T3 there is no keyboard dragging: the menu and
+  the shortcuts do the same. Collision is dnd-kit's closest centre, not
+  T3's own detection around the pinned boundary (Deferred).
+- **D79. One clock for the sidebar and its commands.** The list was drawn
+  with a minute tick while the shortcuts and `sidebar.thread.*` read
+  `Date.now()`, so near a threshold (three days, a snooze's end) a shortcut
+  could count rows the user did not see. The sidebar now has one clock
+  (`createClock`): renders read its value, commands read the same value
+  while the list is shown and the time afresh when nothing shows it. It
+  ticks every minute while the page is visible, once more at the next
+  snooze's end (T3 schedules that wake too), and reads the time again when
+  the threads change, so a thread snoozed "in 1 hour" reads "60m", not a
+  minute-old "2h". Menu items take the section from their host (D75); the
+  thread title's menu, which has no list, uses the time it opens at.
+
 The proof: `apps/web/test/sidebar-order.test.ts` (statuses, Done after a
 visit, fading, the settle rule and its activity time, one list across nodes
 in T3's order, the project filter, the Settled shelf's paging and collapsed
@@ -278,6 +381,33 @@ keeping two "web" projects apart, search, settings leading the footer, the
 node picker, the node menu in settings, the rename dialog's footer inside its
 panel, and threads settling with the client's clock four days on) and the web
 and mesh specs, which use the cards and their context menu.
+
+The proof of D75–D79: `plugins/threads/test/arrangement.test.ts` (settling
+and un-settling in the index without touching `updatedAt`, refusals for a
+running, waiting or archived thread, a turn bringing a settled thread back
+on top and out of the dragged order, a choice by hand giving way to the rule
+after a turn, a thread the rule settled after three days coming back, pin,
+reorder and unpin with their refusals and key validation, settling
+unpinning, pinning un-settling and waking, snoozing in the future only, not
+while waiting, waking by hand or by a turn);
+`apps/web/test/sidebar-order.test.ts` (sections and their order, settled by
+hand, kept active, pinned, a Done thread settling, an activity time that does
+not parse, a snooze's end as activity, waking by time and by a raised hand,
+Woke until a visit); `thread-order.test.ts` (fractional keys, rewrites, the
+pinned and active order); `sidebar-drag.test.ts` (where a drop lands, nothing
+into Snoozed, the drop verbs and plans); `clock.test.ts` (one time for
+renders and commands, the wake tick, a hidden page, refreshing);
+`snooze.test.ts` (presets, wake labels, custom times);
+`sidebar-arrange.browser.test.ts` (in a test kernel with both plugins:
+settling the open thread through `thread.park` opens the card below, else
+above, else a new thread; the toggles; `sidebar.thread.move` pinning between
+keys, un-settling with keys for the list, settling); Playwright
+`e2e/tests/sidebar.spec.ts` (settle from a card and the next card opens, a
+second browser context seeing it, pin from the menu, snooze from a card, the
+shortcut settling a pinned thread, un-settle from the shelf, turns bringing
+threads back; a custom snooze, the clock an hour on, "Woke" dismissed or
+cleared by opening; dragging pinned and active rows and onto the shelf, kept
+after a reload), with screenshots.
 
 ## Not ported (out of scope)
 
@@ -304,13 +434,16 @@ and mesh specs, which use the cards and their context menu.
 - Implementing a proposed plan from plan mode with one action.
 - Editing a sent message, regenerating, forking a thread.
 - Searching thread contents (the palette and the sidebar search titles).
-- Sidebar (T3's layout, D70): settling and un-settling by hand, settling on a
-  merged pull request, and the time a thread came back from the shelf: they
-  need settlement kept on the node, so a thread settles only by itself
-  today and a revived one keeps its place by creation; pinning and its
-  section, snoozing and the Snoozed and Working shelves, drag-and-drop
-  ordering, multi-select, the jump-number hints, discarding a draft from its
-  card, and the card's terminal indicator (terminals are deferred above; the
+- Sidebar (T3's layout, D70, D75–D79): settling on a merged pull request,
+  T3's per-thread "Auto-settle behavior" and its configurable number of days
+  (here always 3), the automatic rule applied by the node (T3 sweeps every
+  minute; here the client applies it, and the node only at a turn's start),
+  one write per drop (a drop is a command per thread it orders, so two
+  devices dragging at once, or a failure partway, leave the steps done
+  before it; D78), the Working shelf, multi-select and sweeping actions over
+  several rows, undo of a pin, T3's own collision detection around the
+  pinned boundary, the jump-number hints, discarding a draft from its card,
+  and the card's terminal indicator (terminals are deferred above; the
   card's branch, diff and pull request are `source-control.md`'s D117, in
   the `sidebar.thread.indicators` slot a terminal plugin contributes to).
 - A machine kind per node (T3's environment icon picker), so the node icons

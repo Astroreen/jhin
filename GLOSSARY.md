@@ -85,9 +85,16 @@ One word per concept. Use these terms in code, docs, commits and UI.
   threads (⌘/Ctrl+K).
 - **Visit** — when a thread was last seen on this device, in its node's own
   time; a turn that ended after it shows the thread as unread.
-- **Settled** — a thread that needs nothing more: no activity for three days
-  and no turn running or waiting for the user. The sidebar lists it on its
-  Settled shelf instead of among the active threads (T3 Code's term).
+- **Settled** — a thread that needs nothing more, settled by hand or by
+  itself after three days without activity and with no turn running or
+  waiting for the user. The sidebar lists it on its Settled shelf instead of
+  among the active threads until it is un-settled or runs again (T3 Code's
+  term).
+- **Pinned** — a thread kept on top of the sidebar's list, in an order the
+  user drags it into.
+- **Snoozed** — a thread hidden on the sidebar's Snoozed shelf until a time;
+  it wakes earlier when it asks for something, fails or completes, and then
+  says "Woke".
 - **Source control** — what a node reads of its projects' git repositories
   (`source-control.git@1`): the checked-out branch, ahead/behind, uncommitted
   changes, diffs, branches and the pull request of a branch.

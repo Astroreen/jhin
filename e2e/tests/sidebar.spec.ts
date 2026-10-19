@@ -190,3 +190,168 @@ test("D70: threads quiet for three days settle onto the Settled shelf", async ({
   await expect(page.getByTestId("sidebar-row-slim")).toHaveCount(1);
   await expect(threadRow(page, "first quiet thread")).toBeVisible();
 });
+
+/** The cards' titles, top to bottom. */
+const cardTitles = (page: Page) =>
+  page.getByTestId("sidebar-row-card").locator("[data-thread-title]");
+
+/** Drags a row onto another one with small pointer steps, as a hand does (dnd-kit waits for 6 px). */
+async function drag(page: Page, from: Locator, to: Locator, offset = 0): Promise<void> {
+  const source = await box(from);
+  const end = await box(to);
+  const x = source.x + source.width / 2;
+  await page.mouse.move(x, source.y + source.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x, source.y + source.height / 2 + 10, { steps: 4 });
+  await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2 + offset, { steps: 20 });
+  await page.mouse.up();
+}
+
+test("D75–D77: settle, pin and snooze from the sidebar, kept on the node for every device", async ({
+  page,
+  browser,
+}, info) => {
+  const x = await start({ mode: "ui" });
+  await addThread(x, "alpha");
+  await addThread(x, "beta");
+  await addThread(x, "gamma");
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["gamma", "beta", "alpha"]);
+
+  // Settle from the card: it goes to the shelf and the next card opens (T3's settle-and-advance).
+  await threadRow(page, "beta").click();
+  await threadRow(page, "beta").hover();
+  await threadRow(page, "beta").getByRole("button", { name: "Settle thread" }).click();
+  await expect(page.getByRole("button", { name: "Settled (1)" })).toBeVisible();
+  await expect(cardTitles(page)).toHaveText(["gamma", "alpha"]);
+  await expect(threadRow(page, "alpha")).toHaveAttribute("aria-current", "page");
+
+  // Another device sees it: settlement lives on the node.
+  const other = await browser.newContext();
+  const second = await other.newPage();
+  await second.goto(`${x.ui}#token=${x.token}`);
+  await expect(second.getByRole("button", { name: "Settled (1)" })).toBeVisible();
+  await expect(cardTitles(second)).toHaveText(["gamma", "alpha"]);
+
+  // Pin from the context menu (the thread.actions slot): on top, with its pin.
+  await threadRow(page, "alpha").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Pin thread" }).click();
+  await expect(cardTitles(page)).toHaveText(["alpha", "gamma"]);
+  await expect(
+    threadRow(page, "alpha").getByRole("button", { name: "Unpin thread" }),
+  ).toBeVisible();
+  await expect(cardTitles(second)).toHaveText(["alpha", "gamma"]);
+  const pinned = info.outputPath("sidebar-pinned.png");
+  await page.screenshot({ path: pinned });
+  await info.attach("sidebar-pinned", { path: pinned, contentType: "image/png" });
+
+  // Snooze with a preset: the Snoozed shelf counts it, and its row says when it wakes.
+  await threadRow(page, "gamma").hover();
+  await threadRow(page, "gamma").getByRole("button", { name: "Snooze thread" }).click();
+  await page.getByRole("menuitem", { name: /^In 1 hour/ }).click();
+  const snoozedShelf = page.getByRole("button", { name: "Snoozed (1)" });
+  await expect(snoozedShelf).toBeVisible();
+  await snoozedShelf.click();
+  await expect(threadRow(page, "gamma")).toHaveAttribute("data-section", "snoozed");
+  // Drawn as of the change, rounded up as T3 does: just under an hour is "60m".
+  await expect(threadRow(page, "gamma")).toContainText(/(60m|1h)$/);
+  await page.getByRole("button", { name: "Settled (1)" }).click();
+  const shelves = info.outputPath("sidebar-shelves.png");
+  await page.screenshot({ path: shelves });
+  await info.attach("sidebar-shelves", { path: shelves, contentType: "image/png" });
+
+  // The shortcut settles the open pinned thread, which unpins it.
+  await threadRow(page, "alpha").click();
+  await page.keyboard.press("Control+Shift+S");
+  await expect(threadRow(page, "alpha")).toHaveAttribute("data-section", "settled");
+  await expect(page.getByRole("button", { name: "Settled", exact: true })).toBeVisible();
+
+  // Un-settle from the shelf: back on top of the active threads.
+  await threadRow(page, "beta").hover();
+  await threadRow(page, "beta").getByRole("button", { name: "Un-settle thread" }).click();
+  await expect(cardTitles(page)).toHaveText(["beta"]);
+
+  // A new turn brings a settled thread back to the top; it wakes a snoozed one, which
+  // takes its place by creation (the threads back from the shelf are newer there).
+  const threads = await x.client().call<{ id: string; title: string }[]>("threads.list", {});
+  const id = (title: string) => threads.find((thread) => thread.title === title)!.id;
+  await x.client().call("threads.send", { threadId: id("alpha"), text: "again" });
+  await expect(cardTitles(page)).toHaveText(["alpha", "beta"]);
+  await x.client().call("threads.send", { threadId: id("gamma"), text: "again" });
+  await expect(cardTitles(page)).toHaveText(["alpha", "beta", "gamma"]);
+  await expect(page.getByRole("button", { name: /^Snoozed/ })).toHaveCount(0);
+  await expect(cardTitles(second)).toHaveText(["alpha", "beta", "gamma"]);
+  await other.close();
+});
+
+test("D77: a custom snooze hides a thread until its time, and its card says it woke", async ({
+  page,
+}, info) => {
+  const x = await start({ mode: "ui" });
+  await addThread(x, "later please");
+  await addThread(x, "keep going");
+  await page.clock.install();
+  await page.goto(`${x.ui}#token=${x.token}`);
+
+  await threadRow(page, "later please").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Snooze" }).hover();
+  await page.getByRole("menuitem", { name: "Custom…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Custom snooze" });
+  await dialog.getByRole("button", { name: "Duration" }).click();
+  await dialog.getByRole("spinbutton", { name: "Snooze for" }).fill("1");
+  const custom = info.outputPath("custom-snooze.png");
+  await page.screenshot({ path: custom });
+  await info.attach("custom-snooze", { path: custom, contentType: "image/png" });
+  await dialog.getByRole("button", { name: "Snooze" }).click();
+  await expect(page.getByRole("button", { name: "Snoozed (1)" })).toBeVisible();
+  await expect(cardTitles(page)).toHaveText(["keep going"]);
+  await threadRow(page, "keep going").hover();
+  await threadRow(page, "keep going").getByRole("button", { name: "Snooze thread" }).click();
+  await page.getByRole("menuitem", { name: /^In 1 hour/ }).click();
+  await expect(page.getByRole("button", { name: "Snoozed (2)" })).toBeVisible();
+
+  // An hour on, the snooze's own tick brings them back, saying they woke.
+  await page.clock.fastForward("01:00:30");
+  await expect(cardTitles(page)).toHaveText(["keep going", "later please"]);
+  const woke = threadRow(page, "later please");
+  await expect(woke).toHaveAccessibleName(/^later please, Woke, /);
+  await expect(threadRow(page, "keep going")).toHaveAccessibleName(/^keep going, Woke, /);
+  const shot = info.outputPath("sidebar-woke.png");
+  await page.screenshot({ path: shot });
+  await info.attach("sidebar-woke", { path: shot, contentType: "image/png" });
+  // Dismissed from the card, or seen by opening the thread.
+  await woke.getByRole("button", { name: "Dismiss Woke notification" }).click();
+  await expect(woke).toHaveAccessibleName("later please, No project");
+  await threadRow(page, "keep going").click();
+  await expect(threadRow(page, "keep going")).toHaveAccessibleName("keep going, No project");
+});
+
+test("D78: dragging reorders the pinned and active threads and settles onto the shelf", async ({
+  page,
+}, info) => {
+  const x = await start({ mode: "ui" });
+  for (const title of ["one", "two", "three", "pin a", "pin b"]) await addThread(x, title);
+  const threads = await x.client().call<{ id: string; title: string }[]>("threads.list", {});
+  const id = (title: string) => threads.find((thread) => thread.title === title)!.id;
+  await x.client().call("threads.pin", { threadId: id("pin a"), orderKey: "c" });
+  await x.client().call("threads.pin", { threadId: id("pin b"), orderKey: "n" });
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["pin a", "pin b", "three", "two", "one"]);
+
+  // Within the pinned threads.
+  await drag(page, threadRow(page, "pin b"), threadRow(page, "pin a"), -20);
+  await expect(cardTitles(page)).toHaveText(["pin b", "pin a", "three", "two", "one"]);
+  // Within the active ones: the order is kept on the node.
+  await drag(page, threadRow(page, "one"), threadRow(page, "three"), -20);
+  await expect(cardTitles(page)).toHaveText(["pin b", "pin a", "one", "three", "two"]);
+  // Onto the Settled shelf.
+  await drag(page, threadRow(page, "two"), page.getByRole("button", { name: "Settled (0)" }));
+  await expect(page.getByRole("button", { name: "Settled (1)" })).toBeVisible();
+  await expect(cardTitles(page)).toHaveText(["pin b", "pin a", "one", "three"]);
+
+  await page.reload();
+  await expect(cardTitles(page)).toHaveText(["pin b", "pin a", "one", "three"]);
+  const shot = info.outputPath("sidebar-dragged.png");
+  await page.screenshot({ path: shot });
+  await info.attach("sidebar-dragged", { path: shot, contentType: "image/png" });
+});

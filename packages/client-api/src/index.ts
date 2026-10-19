@@ -162,7 +162,27 @@ export interface ThreadRecord {
     /** What a waiting turn asks the user for. */
     readonly waitingFor?: "approval" | "user-input";
   };
+  // Where the sidebar keeps the thread, kept on its node (D75–D78).
+  /** Settled or kept active by hand, until the thread's next turn. */
+  readonly settledOverride?: "settled" | "active";
+  /** When it was settled by hand. */
+  readonly settledAt?: string;
+  /** When it last came back from the Settled shelf. */
+  readonly unsettledAt?: string;
+  readonly pinnedAt?: string;
+  /** Its place among the pinned threads: a fractional key, compared as text. */
+  readonly pinOrderKey?: string;
+  /** Its place among the active threads, once dragged there. */
+  readonly activeOrderKey?: string;
+  /** Hidden until then, unless it asks for something, fails or completes. */
+  readonly snoozedUntil?: string;
+  readonly snoozedAt?: string;
+  /** When a snooze last ended by hand. */
+  readonly lastSnoozeWakeAt?: string;
 }
+
+/** Where the sidebar lists a thread (D75–D77). */
+export type ThreadSection = "pinned" | "active" | "snoozed" | "settled";
 
 /** What a client knows of one node's projects and threads. */
 export interface NodeCatalog {
@@ -203,6 +223,21 @@ export interface ThreadActionProps {
   readonly project?: ProjectRecord;
   /** Starts renaming the thread in place, where the menu's host can. */
   readonly rename?: () => void;
+  /** Where the menu's host lists the thread, as of the host's clock (the sidebar's). */
+  readonly section?: ThreadSection;
+}
+
+/**
+ * The hook `thread.settle` and `thread.snooze` run through (D75, D77): a host
+ * that lists threads, such as the sidebar, moves on from the open thread when
+ * it leaves the list (T3 Code's settle-and-advance). The output says whether
+ * the node did it.
+ */
+export const THREAD_PARK_HOOK = "thread.park";
+export interface ThreadParkInput {
+  readonly target: NodeTarget;
+  readonly threadId: string;
+  readonly action: "settle" | "snooze";
 }
 
 /** What the `project.actions` slot gives each item of a project's menu. */

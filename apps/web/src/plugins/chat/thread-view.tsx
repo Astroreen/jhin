@@ -14,6 +14,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 
 import { buildPromptHistory } from "../../lib/composer.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
+import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread } from "../../lib/thread-actions.ts";
 import { openRequests } from "../../lib/timeline.ts";
 import { Composer, type ComposerHandleApi, type Selection } from "./composer.tsx";
@@ -123,10 +124,16 @@ export function ThreadView(props: {
 
   // Seen while open: a turn that ends here is not "unread". Visits are the
   // node's own times (the thread's last change), so clocks never disagree.
+  // A snoozed thread that woke is seen as of its wake too, so its card stops
+  // saying "Woke" (D77).
   const seenAt = thread?.lastTurn?.at ?? thread?.updatedAt ?? thread?.createdAt;
+  const snooze = thread === undefined ? undefined : `${thread.snoozedUntil}|${thread.snoozedAt}`;
   useEffect(() => {
-    if (seenAt !== undefined) chat.visits?.visit(target, threadId, seenAt);
-  }, [seenAt, targetKey(target), threadId]);
+    if (seenAt === undefined || thread === undefined) return;
+    chat.visits?.visit(target, threadId, seenAt);
+    const woke = wokeAt(thread, Date.now());
+    if (woke !== undefined) chat.visits?.visit(target, threadId, woke);
+  }, [seenAt, snooze, targetKey(target), threadId]);
 
   // Commands reach this composer, which has focus when the thread opens (as in T3 Code).
   useEffect(() => {

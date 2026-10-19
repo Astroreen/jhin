@@ -1,14 +1,18 @@
 // What the sidebar lists and in which order follows T3 Code's sidebar (MIT, see
 // THIRD_PARTY_NOTICES.md): apps/web/src/components/Sidebar.tsx (partitionSidebarThreads),
-// Sidebar.logic.ts (statuses, search, project scope), packages/client-runtime/src/state/threadSort.ts
-// (active and settled order) and apps/server/src/orchestration-v2/ThreadSettlementService.ts
-// (when a thread settles by itself).
+// Sidebar.logic.ts (statuses, sections, search, project scope),
+// packages/client-runtime/src/state/threadSort.ts (pinned, active and settled order),
+// threadSettled.ts (snoozing and waking) and
+// apps/server/src/orchestration-v2/ThreadSettlementService.ts (when a thread settles by itself).
 import {
   targetKey,
   type NodeTarget,
   type ProjectRecord,
   type ThreadRecord,
+  type ThreadSection,
 } from "@jhin/client-api";
+
+import { sortActive, sortPinned } from "./thread-order.ts";
 
 /** T3's default for settling a thread by itself: this many days without activity. */
 const AUTO_SETTLE_AFTER_DAYS = 3;
@@ -50,14 +54,16 @@ export function isUnread(thread: ThreadRecord, lastVisitedAt: string | undefined
   return turn?.status === "completed" && lastVisitedAt !== undefined && lastVisitedAt < turn.at;
 }
 
-export type SidebarTopStatus = "working" | "approval" | "input" | "failed" | "done";
+export type SidebarTopStatus = "working" | "approval" | "input" | "failed" | "woke" | "done";
 
 /** What the top line of a thread's card says instead of its time (T3's resolveSidebarV2TopStatus). */
 export function sidebarTopStatus(
   status: SidebarThreadStatus,
   unread: boolean,
+  woke = false,
 ): SidebarTopStatus | null {
   if (status !== "ready") return status;
+  if (woke) return "woke";
   return unread ? "done" : null;
 }
 
@@ -66,26 +72,108 @@ export function shouldRecede(input: {
   status: SidebarThreadStatus;
   unread: boolean;
   active: boolean;
+  woke?: boolean;
 }): boolean {
   if (input.active || input.status === "input") return false;
   if (input.status === "working") return true;
-  if (input.status === "ready" || input.status === "approval") return !input.unread;
+  if (input.status === "ready" || input.status === "approval") {
+    return !input.unread && input.woke !== true;
+  }
   return false;
 }
 
 /**
- * When the thread settled, if it has: T3 settles a thread by itself once it saw
- * no activity for `AUTO_SETTLE_AFTER_DAYS`, unless a turn runs or waits for
- * the user; it settles as of its last activity.
+ * Whether a thread's card says it woke: it woke after the last visit (or was
+ * never visited on this device), and is not settled by hand (T3's isWoke).
+ */
+export function isWoke(
+  thread: ThreadRecord,
+  lastVisitedAt: string | undefined,
+  nowMs: number,
+): boolean {
+  const at = wokeAt(thread, nowMs);
+  if (at === undefined || thread.settledOverride === "settled") return false;
+  const visited = lastVisitedAt === undefined ? Number.NaN : Date.parse(lastVisitedAt);
+  return Number.isNaN(visited) || visited < Date.parse(at);
+}
+
+const parse = (at: string | undefined) => (at === undefined ? Number.NaN : Date.parse(at));
+
+/**
+ * A snoozed thread that asked for something, failed or completed since it was
+ * snoozed is awake before its time (T3's threadRaisedHandWhileSnoozed).
+ */
+function raisedHand(thread: ThreadRecord): boolean {
+  const turn = thread.lastTurn;
+  if (turn === undefined) return false;
+  if (turn.status === "waiting") return true;
+  if (turn.status !== "failed" && turn.status !== "completed") return false;
+  const snoozedAt = parse(thread.snoozedAt);
+  return Number.isNaN(snoozedAt) ? turn.status === "failed" : parse(turn.at) > snoozedAt;
+}
+
+/** On the Snoozed shelf now: snoozed until later, and nothing woke it (T3's effectiveSnoozed). */
+export function isSnoozed(thread: ThreadRecord, nowMs: number): boolean {
+  const until = parse(thread.snoozedUntil);
+  return !Number.isNaN(until) && until > nowMs && !raisedHand(thread);
+}
+
+/** A thread waiting for an answer cannot be snoozed (T3's canSnooze). */
+export const canSnooze = (thread: ThreadRecord) => thread.lastTurn?.status !== "waiting";
+
+/**
+ * When a snoozed thread woke, if it did: when it raised its hand, else when
+ * its time came (T3's threadWokeAt). Its card says "Woke" until a visit after that.
+ */
+export function wokeAt(thread: ThreadRecord, nowMs: number): string | undefined {
+  const until = parse(thread.snoozedUntil);
+  if (Number.isNaN(until)) return undefined;
+  if (raisedHand(thread)) return thread.lastTurn?.at;
+  return until <= nowMs ? thread.snoozedUntil : undefined;
+}
+
+/**
+ * When the thread settled, if it has. By hand (D75): when it was settled. Else
+ * by itself, as T3 settles one (its default of 3 days): no activity for
+ * `AUTO_SETTLE_AFTER_DAYS`, nothing running or waiting, and not pinned, snoozed
+ * or kept active by hand; it settles as of its last activity, where a snooze
+ * that ended counts as activity. Whether its last turn was seen does not
+ * matter: a "Done" thread settles too, as in T3, whose rule runs on the server
+ * and knows no visits (here they are per device, and devices must agree).
  */
 export function settledAt(thread: ThreadRecord, nowMs: number): string | undefined {
   if (thread.archivedAt !== undefined) return undefined;
+  if (thread.settledOverride === "settled") {
+    return Number.isNaN(parse(thread.settledAt)) ? threadActivityAt(thread) : thread.settledAt;
+  }
+  if (thread.settledOverride === "active" || thread.pinnedAt !== undefined) return undefined;
+  if (isSnoozed(thread, nowMs)) return undefined;
   const turn = thread.lastTurn;
   if (turn?.status === "running" || turn?.status === "waiting") return undefined;
   // The activity the card's time shows, so a thread never settles while it reads "5m".
-  const at = threadActivityAt(thread);
-  const atMs = Date.parse(at);
+  let at = threadActivityAt(thread);
+  let atMs = parse(at);
+  const until = parse(thread.snoozedUntil);
+  const wakes: [string | undefined, number][] = [
+    [thread.lastSnoozeWakeAt, parse(thread.lastSnoozeWakeAt)],
+    [thread.snoozedUntil, until <= nowMs ? until : Number.NaN],
+  ];
+  for (const [candidate, ms] of wakes) {
+    if (candidate !== undefined && !Number.isNaN(ms) && !(ms <= atMs)) {
+      at = candidate;
+      atMs = ms;
+    }
+  }
+  // A time that does not parse is no activity to settle on: the thread stays.
   return Number.isNaN(atMs) || atMs >= nowMs - AUTO_SETTLE_AFTER_DAYS * DAY_MS ? undefined : at;
+}
+
+/** Where the sidebar lists a thread now (T3's resolveSidebarThreadSection). */
+export function threadSection(thread: ThreadRecord, nowMs: number): ThreadSection {
+  if (isSnoozed(thread, nowMs)) return "snoozed";
+  if (settledAt(thread, nowMs) !== undefined) return "settled";
+  if (thread.pinnedAt !== undefined) return "pinned";
+  return "active";
 }
 
 /** A thread as the sidebar lists it, with its node and its project. */
@@ -94,6 +182,7 @@ export interface SidebarThread<Node extends { readonly target: NodeTarget }> {
   readonly node: Node;
   readonly thread: ThreadRecord;
   readonly project: ProjectRecord | undefined;
+  readonly section: ThreadSection;
   /** For a settled thread: when it settled. */
   readonly settledAt?: string;
 }
@@ -106,21 +195,30 @@ type CatalogNode = {
   };
 };
 
-const byId = (a: ThreadRecord, b: ThreadRecord) => a.id.localeCompare(b.id);
+const byKey = <T extends { readonly key: string }>(a: T, b: T) => a.key.localeCompare(b.key);
+const sortable = (value: string | undefined) => {
+  const ms = parse(value);
+  return Number.isNaN(ms) ? 0 : ms;
+};
 
 /**
  * The threads of every shown node in one list, without a section per node or
- * project, split as T3 splits them: the active ones first, newest first (T3
- * orders them by when they were created, not by activity), then the settled
- * ones by when they settled. Archived threads are not listed; `scope` (a
- * `projectKey`) keeps one project's threads.
+ * project, split as T3 splits them: the pinned ones on top in their order,
+ * then the active ones (newest first by when they were created or came back
+ * from the shelf, then those dragged into place), the snoozed ones by when
+ * they wake and the settled ones by when they settled. Archived threads are
+ * not listed; `scope` (a `projectKey`) keeps one project's threads.
  */
 export function sidebarThreads<Node extends CatalogNode>(
   nodes: readonly Node[],
   options: { readonly nowMs: number; readonly scope?: string | undefined },
-): { active: SidebarThread<Node>[]; settled: SidebarThread<Node>[] } {
-  const active: SidebarThread<Node>[] = [];
-  const settled: SidebarThread<Node>[] = [];
+): Record<ThreadSection, SidebarThread<Node>[]> {
+  const lists: Record<ThreadSection, SidebarThread<Node>[]> = {
+    pinned: [],
+    active: [],
+    snoozed: [],
+    settled: [],
+  };
   for (const node of nodes) {
     const projects = new Map(node.catalog.projects.map((project) => [project.id, project]));
     for (const thread of node.catalog.threads) {
@@ -131,30 +229,37 @@ export function sidebarThreads<Node extends CatalogNode>(
       ) {
         continue;
       }
-      const entry = {
+      const section = threadSection(thread, options.nowMs);
+      const at = section === "settled" ? settledAt(thread, options.nowMs) : undefined;
+      lists[section].push({
         key: threadKey(node.target, thread.id),
         node,
         thread,
         project: projects.get(thread.projectId),
-      };
-      const at = settledAt(thread, options.nowMs);
-      if (at === undefined) active.push(entry);
-      else settled.push({ ...entry, settledAt: at });
+        section,
+        ...(at === undefined ? {} : { settledAt: at }),
+      });
     }
   }
-  active.sort(
-    (a, b) =>
-      b.thread.createdAt.localeCompare(a.thread.createdAt) ||
-      byId(a.thread, b.thread) ||
-      a.key.localeCompare(b.key),
-  );
-  settled.sort(
-    (a, b) =>
-      b.settledAt!.localeCompare(a.settledAt!) ||
-      byId(a.thread, b.thread) ||
-      a.key.localeCompare(b.key),
-  );
-  return { active, settled };
+  return {
+    pinned: sortPinned(lists.pinned, (entry) => ({
+      key: entry.key,
+      createdAt: entry.thread.createdAt,
+      orderKey: entry.thread.pinOrderKey,
+    })),
+    active: sortActive(lists.active, (entry) => ({
+      key: entry.key,
+      createdAt: entry.thread.createdAt,
+      unsettledAt: entry.thread.unsettledAt,
+      orderKey: entry.thread.activeOrderKey,
+    })),
+    snoozed: lists.snoozed.toSorted(
+      (a, b) => sortable(a.thread.snoozedUntil) - sortable(b.thread.snoozedUntil) || byKey(a, b),
+    ),
+    settled: lists.settled.toSorted(
+      (a, b) => sortable(b.settledAt) - sortable(a.settledAt) || byKey(a, b),
+    ),
+  };
 }
 
 /**

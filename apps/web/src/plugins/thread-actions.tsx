@@ -1,8 +1,10 @@
 // The actions and their wording follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
-// apps/web/src/hooks/useThreadActionMenu.ts and apps/web/src/components/Sidebar.tsx.
+// apps/web/src/hooks/useThreadActionMenu.ts, apps/web/src/components/threadActionMenu.logic.ts
+// and apps/web/src/components/Sidebar.tsx.
 import {
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  THREAD_PARK_HOOK,
   THREADS_CAPABILITY,
   VISITS_CAPABILITY,
   type MeshMembership,
@@ -10,6 +12,9 @@ import {
   type NodeTarget,
   type ProjectActionProps,
   type ThreadActionProps,
+  type ThreadParkInput,
+  type ThreadRecord,
+  type ThreadSection,
   type ThreadsCatalog,
   type ThreadVisits,
 } from "@jhin/client-api";
@@ -17,6 +22,10 @@ import { definePlugin, z } from "@jhin/sdk";
 import {
   MenuItem,
   MenuSeparator,
+  MenuShortcut,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
   UI_DIALOGS_CAPABILITY,
   UI_SLOTS_CAPABILITY,
   UI_TOASTS_CAPABILITY,
@@ -26,11 +35,15 @@ import {
 } from "@jhin/ui";
 import {
   ArchiveIcon,
+  CircleCheckIcon,
+  ClockIcon,
   CopyIcon,
   HashIcon,
   LinkIcon,
   MailOpenIcon,
   PencilIcon,
+  PinIcon,
+  PinOffIcon,
   SquarePenIcon,
   Trash2Icon,
   type LucideIcon,
@@ -38,7 +51,10 @@ import {
 import type { ComponentType } from "react";
 
 import { builtin } from "../lib/builtin.ts";
-import { threadActions } from "../lib/thread-actions.ts";
+import { CustomSnoozeDialogHost, createCustomSnoozeRequests } from "../lib/custom-snooze.tsx";
+import { canSnooze, threadSection } from "../lib/sidebar-order.ts";
+import { snoozePresets } from "../lib/snooze.ts";
+import { threadActions, type ThreadArrangement } from "../lib/thread-actions.ts";
 
 const At = { node: z.string(), remote: z.string().optional() };
 const ThreadRef = z.object({ ...At, threadId: z.string() });
@@ -214,6 +230,85 @@ export const threadActionsPlugin = builtin(
           return actions.remove(target, thread);
         },
       );
+      // Where the sidebar keeps a thread (D75–D77): kept on its node.
+      const customSnooze = createCustomSnoozeRequests();
+      const arrangeThread = (
+        input: z.infer<typeof ThreadRef>,
+        change: ThreadArrangement,
+        failure: string,
+      ) => {
+        const { target, thread } = threadOf(input);
+        return actions.arrange(target, thread, change, failure);
+      };
+      /** Settling and snoozing go through `thread.park`, so a host can move on from the thread. */
+      const park = (
+        input: z.infer<typeof ThreadRef>,
+        action: ThreadParkInput["action"],
+        perform: () => Promise<boolean>,
+      ) =>
+        context.hooks.run<ThreadParkInput, boolean>(
+          THREAD_PARK_HOOK,
+          { target: targetOf(input), threadId: input.threadId, action },
+          perform,
+        );
+      register(
+        "thread.settle",
+        "Settle thread",
+        "Moves a thread to the Settled shelf until it is un-settled or runs again",
+        ThreadRef,
+        (input) =>
+          park(input, "settle", () =>
+            arrangeThread(input, { method: "settle" }, "Failed to settle thread"),
+          ),
+      );
+      register(
+        "thread.unsettle",
+        "Un-settle thread",
+        "Brings a thread back from the Settled shelf to the top of the active threads",
+        ThreadRef,
+        (input) => arrangeThread(input, { method: "unsettle" }, "Failed to un-settle thread"),
+      );
+      register(
+        "thread.pin",
+        "Pin thread",
+        "Pins a thread above the active ones",
+        ThreadRef,
+        (input) => arrangeThread(input, { method: "pin" }, "Failed to pin thread"),
+      );
+      register(
+        "thread.unpin",
+        "Unpin thread",
+        "Unpins a thread, after asking when the settings say so",
+        ThreadRef,
+        (input) => {
+          const { target, thread } = threadOf(input);
+          return actions.unpin(target, thread);
+        },
+      );
+      register(
+        "thread.snooze",
+        "Snooze thread",
+        "Hides a thread until `until`, or a time asked for in the custom snooze dialog; it wakes earlier when it asks for something, fails or completes",
+        ThreadRef.extend({ until: z.iso.datetime({ offset: true }).optional() }),
+        async (input) => {
+          threadOf(input);
+          const until = input.until ?? (await customSnooze.request());
+          if (until === undefined) return;
+          await park(input, "snooze", () =>
+            arrangeThread(input, { method: "snooze", until }, "Failed to snooze thread"),
+          );
+        },
+      );
+      register("thread.unsnooze", "Wake thread", "Wakes a snoozed thread now", ThreadRef, (input) =>
+        arrangeThread(input, { method: "unsnooze" }, "Failed to wake thread"),
+      );
+      context.subscriptions.add(
+        slots.contribute("app.global", {
+          id: "jhin.thread-actions.custom-snooze",
+          component: () => <CustomSnoozeDialogHost requests={customSnooze} />,
+        }),
+      );
+
       register(
         "project.new-thread",
         "New thread in project",
@@ -263,6 +358,51 @@ export const threadActionsPlugin = builtin(
           }),
         );
       const threadRef = (target: NodeTarget, threadId: string) => ({ ...target, threadId });
+      /** Where the menu's host lists the thread, else where the sidebar would now. */
+      const sectionOf = (thread: ThreadRecord, section: ThreadSection | undefined) =>
+        section ?? threadSection(thread, Date.now());
+
+      /** T3's "Snooze" submenu: its presets and "Custom…"; "Wake thread" for a snoozed thread. */
+      function SnoozeItem({ target, thread, section }: ThreadActionProps) {
+        if (sectionOf(thread, section) === "snoozed") {
+          return (
+            <ActionItem
+              icon={ClockIcon}
+              label="Wake thread"
+              onClick={() => run("thread.unsnooze", threadRef(target, thread.id))}
+            />
+          );
+        }
+        const disabled = !canSnooze(thread);
+        return (
+          <MenuSub>
+            <MenuSubTrigger disabled={disabled}>
+              <ClockIcon />
+              Snooze
+            </MenuSubTrigger>
+            <MenuSubPopup>
+              {snoozePresets(new Date()).map((preset) => (
+                <MenuItem
+                  key={preset.id}
+                  onClick={() =>
+                    run("thread.snooze", {
+                      ...threadRef(target, thread.id),
+                      until: preset.snoozedUntil,
+                    })
+                  }
+                >
+                  {preset.label}
+                  <MenuShortcut>{preset.whenLabel}</MenuShortcut>
+                </MenuItem>
+              ))}
+              <MenuSeparator />
+              <MenuItem onClick={() => run("thread.snooze", threadRef(target, thread.id))}>
+                Custom…
+              </MenuItem>
+            </MenuSubPopup>
+          </MenuSub>
+        );
+      }
       const projectRef = (target: NodeTarget, projectId: string) => ({ ...target, projectId });
 
       const threadItems: [string, number, ComponentType<ThreadActionProps>][] = [
@@ -278,6 +418,44 @@ export const threadActionsPlugin = builtin(
               />
             ),
         ],
+        [
+          "pin",
+          2,
+          ({ target, thread }) =>
+            thread.pinnedAt === undefined ? (
+              <ActionItem
+                icon={PinIcon}
+                label="Pin thread"
+                onClick={() => run("thread.pin", threadRef(target, thread.id))}
+              />
+            ) : (
+              <ActionItem
+                icon={PinOffIcon}
+                label="Unpin thread"
+                onClick={() => run("thread.unpin", threadRef(target, thread.id))}
+              />
+            ),
+        ],
+        [
+          "settle",
+          3,
+          ({ target, thread, section }) =>
+            sectionOf(thread, section) === "settled" ? (
+              <ActionItem
+                icon={CircleCheckIcon}
+                label="Un-settle thread"
+                onClick={() => run("thread.unsettle", threadRef(target, thread.id))}
+              />
+            ) : (
+              <ActionItem
+                icon={CircleCheckIcon}
+                label="Settle thread"
+                onClick={() => run("thread.settle", threadRef(target, thread.id))}
+              />
+            ),
+        ],
+        ["snooze", 4, SnoozeItem],
+        ["separator-arrange", 5, () => <MenuSeparator />],
         [
           "rename",
           10,
