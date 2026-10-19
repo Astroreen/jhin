@@ -235,6 +235,11 @@ defect of the dev scripts found while proving it with `scripts/t3/smoke.sh`:
 `stop.sh` gave up 2 s after it started instead of 2 s after its first
 SIGKILL, so on a slow machine it reported processes it had just killed.
 
+Public API it changes beyond the client capabilities (D59): `title` on
+`CommandDefinition` and `CommandInfo` (D62, additive); `DisposableStore`
+gets `delete(item)` and keeps its items in a set, so an item added twice is
+now disposed once; `agent.runtime@1.1` (D54, additive).
+
 **Done when:**
 
 - `pnpm verify` and CI pass; `scripts/t3/smoke.sh` passes.
