@@ -197,13 +197,14 @@ is_running() {
 
 # Ends a process tree and returns once every process in it has exited.
 # SIGTERM first; whatever still runs after JHIN_STOP_GRACE tenths of a second
-# (default 100 = 10 s, one budget for the whole tree) gets SIGKILL; after 2 s
-# more it gives up and returns 1. Descendants that appear while it shuts down
-# are found on the next round (every 0.1 s) and signalled too, also once they
-# are reparented. Best effort: a child whose parent starts it and exits
-# within one round is not seen.
+# (default 100 = 10 s, one budget for the whole tree) gets SIGKILL; 2 s after
+# the first SIGKILL went out it gives up and returns 1 (counted from the
+# signal, not the deadline: on a slow machine one round can take a second).
+# Descendants that appear while it shuts down are found on the next round
+# (every 0.1 s) and signalled too, also once they are reparented. Best effort:
+# a child whose parent starts it and exits within one round is not seen.
 stop_tree() {
-  local grace="${JHIN_STOP_GRACE:-100}" signal=TERM start elapsed
+  local grace="${JHIN_STOP_GRACE:-100}" signal=TERM start elapsed killed_at=""
   local seen signalled="" pid pids alive
   # A positive number of tenths, or the default: 0 or text would never escalate.
   [[ "$grace" =~ ^[1-9][0-9]*$ ]] || grace=100
@@ -225,9 +226,12 @@ stop_tree() {
     [ "$alive" = 0 ] && return 0
     # Wall-clock tenths of a second since the start, however slow a round is.
     elapsed=$(((${EPOCHREALTIME/[.,]/} - start) / 100000))
-    if [ "$elapsed" -ge $((grace + 20)) ]; then
-      echo "jhin: processes still running after SIGKILL:$(for pid in $seen; do is_running "$pid" && printf ' %s' "$pid"; done)" >&2
-      return 1
+    if [ "$signal" = KILL ]; then
+      killed_at="${killed_at:-$elapsed}"
+      if [ "$elapsed" -ge $((killed_at + 20)) ]; then
+        echo "jhin: processes still running after SIGKILL:$(for pid in $seen; do is_running "$pid" && printf ' %s' "$pid"; done)" >&2
+        return 1
+      fi
     elif [ "$elapsed" -ge "$grace" ]; then
       signal=KILL
     fi
