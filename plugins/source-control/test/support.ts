@@ -10,6 +10,7 @@ import {
   type StatusSnapshot,
   type ThreadBranch,
 } from "@jhin/source-control-api";
+import type { Logger } from "@jhin/sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import {
   connectInMemory,
@@ -120,6 +121,23 @@ export interface Node {
   until(match: (event: StoredEvent) => boolean): Promise<StoredEvent>;
   status(projectId?: string, refresh?: boolean): Promise<StatusSnapshot>;
   project(path: string): Promise<string>;
+  /** Sets the node's `jhin.source-control` config while it runs. */
+  configure(values: Record<string, unknown>): void;
+  /** Resolves when the node next logs `message` (at any level). */
+  logged(message: string): Promise<void>;
+}
+
+/** A logger that tells `listen` every message, at any level and from any child. */
+function recordingLogger(listen: (message: string) => void): Logger {
+  const log = (message: string) => listen(message);
+  const logger: Logger = {
+    debug: log,
+    info: log,
+    warn: log,
+    error: log,
+    child: () => logger,
+  };
+  return logger;
 }
 
 export async function node(
@@ -128,7 +146,12 @@ export async function node(
 ): Promise<Node> {
   const data = options.data ?? temp("jhin-sc-node-");
   const storage = memoryStoragePlugin();
+  const logWaiters = new Map<string, (() => void)[]>();
+  const logger = recordingLogger((message) => {
+    for (const resolve of logWaiters.get(message)?.splice(0) ?? []) resolve();
+  });
   const kernel = await createTestKernel({
+    logger,
     plugins: [
       mockCapability("host.paths", {
         home: data,
@@ -166,6 +189,14 @@ export async function node(
   return {
     client,
     events,
+    configure: (values) =>
+      kernel.config.setLayer("node", { "jhin.source-control": { ...config, ...values } }),
+    logged: (message) =>
+      new Promise((resolve) => {
+        const list = logWaiters.get(message) ?? [];
+        list.push(resolve);
+        logWaiters.set(message, list);
+      }),
     until: (match) =>
       new Promise((resolve) => {
         const seen = events.find(match);

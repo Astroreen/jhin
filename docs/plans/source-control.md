@@ -102,6 +102,8 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   (`GIT_OPTIONAL_LOCKS=0`), so they neither fight the user's git nor wake the
   watcher themselves. A turn's end reads the repository too, so a node with
   `watch: false` (or a tree beyond the limit) still shows what a turn changed.
+  Turning `watch` off stops the watchers and drops a read still waiting for
+  changes to settle; the next request or turn end reads the repository.
 - **D116. Pull requests through the GitHub CLI**, as T3's
   source-control-github reads them: `gh pr list --head <branch> --state all
   --limit 1 --json number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,statusCheckRollup`
