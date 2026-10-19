@@ -229,8 +229,13 @@ test("the node config editor asks before another node's config replaces unsaved 
     .click();
   const nodeSelect = page.getByRole("combobox", { name: "Node", exact: true });
   await expect(nodeSelect).toHaveText(new URL(x.ui).host);
-  const file = page.getByRole("textbox", { name: /in the node file$/ });
-  await file.fill('{ "edited": true }');
+  // A section as a form (D80).
+  const sectionSelect = page.getByRole("combobox", { name: "Config section" });
+  await sectionSelect.click();
+  await page.getByRole("option", { name: /^Example/ }).click();
+  await expect(sectionSelect).toHaveText("Example");
+  const greeting = page.getByRole("textbox", { name: "Greeting" });
+  await greeting.fill("Edited");
 
   const chooseY = async () => {
     await nodeSelect.click();
@@ -240,7 +245,7 @@ test("the node config editor asks before another node's config replaces unsaved 
   // Kept on purpose: still x, with the edit.
   await (await chooseY()).getByRole("button", { name: "Cancel" }).click();
   await expect(nodeSelect).toHaveText(new URL(x.ui).host);
-  await expect(file).toHaveValue('{ "edited": true }');
+  await expect(greeting).toHaveValue("Edited");
   // Given up on purpose: y's config shows.
   await (await chooseY()).getByRole("button", { name: "Discard" }).click();
   await expect(nodeSelect).toHaveText(new URL(y.rpc).host);

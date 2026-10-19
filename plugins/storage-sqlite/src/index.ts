@@ -7,10 +7,24 @@ import { EVENTLOG_CAPABILITY, KV_CAPABILITY } from "@jhin/storage-api";
 
 import { openSqliteStorage } from "./sqlite.ts";
 
-const Config = z.object({
-  /** Database file, absolute or relative to the Jhin home; defaults to `<home>/data/jhin.storage-sqlite/jhin.db`. */
-  path: z.string().optional(),
-});
+// Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
+const Config = z
+  .object({
+    path: z
+      .string()
+      .optional()
+      .meta({
+        title: "Database file",
+        description:
+          "Absolute or relative to the Jhin home; defaults to <home>/data/jhin.storage-sqlite/jhin.db. Read when the node starts.",
+        examples: ["data/jhin.db"],
+        advanced: true,
+      }),
+  })
+  .meta({
+    title: "Storage (SQLite)",
+    description: "Where this node keeps its event logs and settings.",
+  });
 
 export default definePlugin({
   activate(context) {

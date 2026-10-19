@@ -122,9 +122,9 @@ specific to Claude: the runtime is a plugin on the public API.
   (blocks complete once per text of a message, D94).
 - Secrets in `env`: config is readable by anyone holding the node's token
   (config commands, RPC, MCP), so the field's description says to keep
-  `ANTHROPIC_API_KEY` and the like in the node's own environment. Marking the
-  field `writeOnly` (the secret marker of `docs/plans/config-ui.md`) and
-  redacting it in `host.config.get` waits for that work.
+  `ANTHROPIC_API_KEY` and the like in the node's own environment. The field
+  is marked `writeOnly` (`docs/plans/config-ui.md`, D83): the settings page
+  hides its values; redacting them in `host.config.get` is still to do.
 - The SDK prints a Node warning on every full-access query
   (`CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`): `canUseTool` stays installed because
   `AskUserQuestion` still goes through it in that mode.

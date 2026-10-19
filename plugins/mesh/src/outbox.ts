@@ -12,6 +12,8 @@ export interface Patch {
   readonly layer: "node" | "project";
   readonly section: string;
   readonly values: Record<string, unknown>;
+  /** Keys removed from the section, so they take their default again (D84). */
+  readonly unset?: readonly string[];
   readonly at: number;
 }
 

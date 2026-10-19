@@ -590,12 +590,12 @@ export default definePlugin({
     const cwd = tempDir("cwd");
     Fs.writeFileSync(
       Path.join(home, "config.jsonc"),
-      '{ "jhin.example": { "greeting": "Hello" } }\n',
+      '{\n  // Mine.\n  "jhin.example": {\n    // Said first.\n    "greeting": "Hello"\n  }\n}\n',
     );
     Fs.mkdirSync(Path.join(cwd, ".jhin"));
     Fs.writeFileSync(
       Path.join(cwd, ".jhin", "config.jsonc"),
-      '{ "jhin.example": { "greeting": "Howdy" } }\n',
+      '{\n  "jhin.example": {\n    // Not read: the node file has one.\n    "greeting": "Howdy"\n  }\n}\n',
     );
     host = new HostProcess({ home, cwd, distribution: [EXAMPLE] });
     await host.ready();
@@ -604,13 +604,57 @@ export default definePlugin({
     expect(read.value).toEqual({
       value: { greeting: "Howdy" },
       layers: { node: { greeting: "Hello" }, project: { greeting: "Howdy" } },
+      // The node file's comment above a key wins over the project file's.
+      comments: [
+        { path: [], text: "Mine." },
+        { path: ["greeting"], text: "Said first." },
+      ],
     });
     // A section no plugin defines has no value, and says why.
     const unknown = await host.execute("host.config.get", { section: "acme.none" });
     expect(unknown.value.value).toBeUndefined();
     expect(unknown.value.error).toEqual(expect.any(String));
 
+    // A value the schema refuses says where.
+    await host.execute("host.config.patch", {
+      layer: "project",
+      section: "jhin.example",
+      values: { greeting: 1 },
+    });
+    const invalid = await host.execute("host.config.get", { section: "jhin.example" });
+    expect(invalid.value.value).toBeUndefined();
+    expect(invalid.value.issues).toEqual([{ path: "greeting", message: expect.any(String) }]);
+
     const schema = await host.execute("host.config.schema", {});
-    expect(schema.value.properties).toHaveProperty(["jhin.example"]);
+    // Titles and descriptions come with the schema (D81).
+    expect(schema.value.properties["jhin.example"]).toMatchObject({
+      title: "Example",
+      properties: { greeting: { title: "Greeting", default: "Hello" } },
+    });
+  });
+
+  it("removes the keys a patch unsets, keeping the file's comments", async () => {
+    const home = tempDir("home");
+    const config = Path.join(home, "config.jsonc");
+    Fs.writeFileSync(
+      config,
+      '{\n  // mine\n  "jhin.example": {\n    // the greeting\n    "greeting": "Hey"\n  }\n}\n',
+    );
+    host = new HostProcess({ home, cwd: tempDir("cwd"), distribution: [EXAMPLE] });
+    await host.ready();
+    expect((await host.execute("example.greet", { name: "A" })).value.message).toBe("Hey, A!");
+
+    const reset = await host.execute("host.config.patch", {
+      layer: "node",
+      section: "jhin.example",
+      values: {},
+      unset: ["greeting", "absent"],
+    });
+    expect(reset.value.applied).toBe(true);
+    const text = Fs.readFileSync(config, "utf8");
+    expect(text).toContain("// mine");
+    expect(text).not.toContain('"greeting"');
+    // Back to the schema's default.
+    expect((await host.execute("example.greet", { name: "A" })).value.message).toBe("Hello, A!");
   });
 });

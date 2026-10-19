@@ -55,10 +55,23 @@ const MAX_BROWSE_ENTRIES = 500;
 /** Every node has this project for chats without a project (D51). */
 export const SCRATCH_PROJECT = "scratch";
 
-const Config = z.object({
-  /** Agent of new threads; the first available runtime when unset. */
-  defaultAgent: z.string().optional(),
-});
+// Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
+const Config = z
+  .object({
+    defaultAgent: z
+      .string()
+      .optional()
+      .meta({
+        title: "Default agent",
+        description:
+          "The agent runtime of new threads, by id (see agents.list); the first available one when unset.",
+        examples: ["fake"],
+      }),
+  })
+  .meta({
+    title: "Threads",
+    description: "Projects, threads and the agents that run their turns.",
+  });
 type Config = z.output<typeof Config>;
 
 const Project = z.object({

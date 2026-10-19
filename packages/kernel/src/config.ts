@@ -1,5 +1,5 @@
 import { toDisposable, z, type Disposable, type Logger } from "@jhin/sdk";
-import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
+import { parse, printParseErrorCode, visit, type ParseError } from "jsonc-parser";
 
 import { KernelError } from "./errors.ts";
 
@@ -56,6 +56,80 @@ export function parseConfigText(text: string, source = "config"): Values {
     throw new KernelError("CONFIG_INVALID", `${source} must contain a JSON object`, { source });
   }
   return value;
+}
+
+/** A comment written directly above a key of a config file. */
+export interface ConfigComment {
+  /** The key's path inside its section; `[]` for the section's own key. */
+  readonly path: readonly string[];
+  readonly text: string;
+}
+
+/** The words of a `//` or `/* *\/` comment: markers and JSDoc stars gone, lines of a paragraph joined. */
+function commentText(raw: string): string {
+  const lines = raw.startsWith("//")
+    ? [raw.slice(2)]
+    : raw
+        .slice(2, -2)
+        .split("\n")
+        .map((line) => line.replace(/^\s*\*(?!\/)/, ""));
+  return lines.map((line) => line.trim()).join("\n");
+}
+
+/**
+ * The comments directly above the keys of `section` in a JSONC config file
+ * (D81): a run of comments that ends on the line before the key, with nothing
+ * but the key after it. A comment after a value on the same line belongs to
+ * that value and describes nothing; keys inside arrays are skipped. Lines of a
+ * paragraph are joined with spaces; an empty comment line starts a new
+ * paragraph. A file that does not parse gives what was read before the error.
+ */
+export function configComments(text: string, section: string): ConfigComment[] {
+  const found: ConfigComment[] = [];
+  /** Comment lines read since the last token, with the line each ends on. */
+  let pending: { text: string; endLine: number }[] = [];
+  let lastTokenLine = -1;
+  const token = (line: number) => {
+    pending = [];
+    lastTokenLine = line;
+  };
+  visit(
+    text,
+    {
+      onObjectBegin: (_offset, _length, line) => token(line),
+      onObjectEnd: (_offset, _length, line) => token(line),
+      onArrayBegin: (_offset, _length, line) => token(line),
+      onArrayEnd: (_offset, _length, line) => token(line),
+      onLiteralValue: (_value, _offset, _length, line) => token(line),
+      onSeparator: (_character, _offset, _length, line) => token(line),
+      onComment: (offset, length, line) => {
+        const raw = text.slice(offset, offset + length);
+        // After a token on its line: it belongs to that token.
+        if (line === lastTokenLine) return;
+        const endLine = line + (raw.match(/\n/g)?.length ?? 0);
+        // A blank line between two comments: only the later run is "above".
+        const previous = pending.at(-1);
+        if (previous !== undefined && previous.endLine < line - 1) pending = [];
+        pending.push({ text: commentText(raw), endLine });
+      },
+      onObjectProperty: (property, _offset, _length, line, _character, pathSupplier) => {
+        const above = pending.at(-1)?.endLine === line - 1 ? pending : [];
+        token(line);
+        const path = [...pathSupplier(), property];
+        if (path[0] !== section || path.some((part) => typeof part !== "string")) return;
+        const words = above
+          .map((comment) => comment.text)
+          .join("\n")
+          .split(/\n\s*\n/)
+          .map((paragraph) => paragraph.split("\n").join(" ").replaceAll(/\s+/g, " ").trim())
+          .filter((paragraph) => paragraph !== "")
+          .join("\n\n");
+        if (words !== "") found.push({ path: path.slice(1) as string[], text: words });
+      },
+    },
+    { allowTrailingComma: true, disallowComments: false },
+  );
+  return found;
 }
 
 /**

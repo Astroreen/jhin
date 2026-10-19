@@ -29,29 +29,37 @@ const UNAVAILABLE_TTL_MS = 10_000;
 /** A probe that takes longer reports Claude Code as unavailable. */
 const PROBE_TIMEOUT_MS = 25_000;
 
-export const Config = z.object({
-  binaryPath: z
-    .string()
-    .optional()
-    .describe(
-      "Path to the `claude` executable; the one bundled with the Claude Agent SDK when unset",
-    ),
-  defaultModel: z.string().optional().describe("Model of turns that name none"),
-  effort: z
-    .enum(["low", "medium", "high", "xhigh", "max"])
-    .optional()
-    .describe("Reasoning effort; Claude Code's default when unset"),
-  env: z
-    .record(z.string(), z.string())
-    .optional()
-    .describe(
-      "Environment variables for Claude Code, e.g. CLAUDE_CONFIG_DIR. Config is readable by anyone holding the node's token: keep secrets such as ANTHROPIC_API_KEY in the node's own environment",
-    ),
-  appendSystemPrompt: z
-    .string()
-    .optional()
-    .describe("Instructions appended to Claude Code's system prompt"),
-});
+// Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
+export const Config = z
+  .object({
+    binaryPath: z.string().optional().meta({
+      title: "Claude Code executable",
+      description:
+        "Path to the `claude` executable; the one bundled with the Claude Agent SDK when unset",
+      advanced: true,
+    }),
+    defaultModel: z
+      .string()
+      .optional()
+      .meta({ title: "Default model", description: "Model of turns that name none" }),
+    effort: z
+      .enum(["low", "medium", "high", "xhigh", "max"])
+      .optional()
+      .meta({ title: "Effort", description: "Reasoning effort; Claude Code's default when unset" }),
+    env: z.record(z.string(), z.string()).optional().meta({
+      title: "Environment",
+      description:
+        "Environment variables for Claude Code, e.g. CLAUDE_CONFIG_DIR. Config is readable by anyone holding the node's token: keep secrets such as ANTHROPIC_API_KEY in the node's own environment",
+      // The settings page hides the values (D83); host.config.get still returns them.
+      writeOnly: true,
+      advanced: true,
+    }),
+    appendSystemPrompt: z.string().optional().meta({
+      title: "Appended system prompt",
+      description: "Instructions appended to Claude Code's system prompt",
+    }),
+  })
+  .meta({ title: "Claude Code", description: "The Claude Code agent runtime of this node." });
 export type Config = z.output<typeof Config>;
 
 /** What a status probe learnt: whether Claude Code runs and is signed in, and its models. */

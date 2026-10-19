@@ -30,6 +30,9 @@ One word per concept. Use these terms in code, docs, commits and UI.
 - **Config layer** — one level of JSONC config: distribution → node →
   project on a node; distribution → node → **device** on a client. Later
   layers win.
+- **Config section** — one plugin's part of the config (`jhin.http`),
+  declared with a Zod schema; the settings page renders it as a form from
+  that schema.
 - **Node** — one running Jhin server, identified by a stable `nodeId` and an
   Ed25519 key pair. T3 Code calls this an environment.
 - **Mesh** — the set of nodes of one owner that know about each other and

@@ -26,10 +26,16 @@ const TYPES: Record<string, string> = {
   ".webmanifest": "application/manifest+json",
 };
 
-const Config = z.object({
-  /** Directory of the built web client; defaults to the @jhin/web package's dist/. */
-  dir: z.string().optional(),
-});
+// Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
+const Config = z
+  .object({
+    dir: z.string().optional().meta({
+      title: "Web client directory",
+      description: "Directory of the built web client; defaults to the @jhin/web package's dist/.",
+      advanced: true,
+    }),
+  })
+  .meta({ title: "Web client", description: "The web client this node serves." });
 
 const CLIENT = "/client";
 

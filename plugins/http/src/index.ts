@@ -11,20 +11,34 @@ import { definePlugin, toDisposable, z } from "@jhin/sdk";
 
 import { clientAddress, trustList } from "./client-address.ts";
 
-const Config = z.object({
-  /** Interface to listen on. The default only accepts local connections. */
-  host: z.string().default("127.0.0.1"),
-  /** 0 picks a free port. */
-  port: z.number().int().min(0).max(65_535).default(7777),
-  /**
-   * Reverse proxies (addresses or CIDR ranges, e.g. `["127.0.0.1", "10.0.0.0/8"]`)
-   * whose forwarded header names the real client. Empty by default: the
-   * header is ignored and the socket's peer is the client.
-   */
-  trustProxy: z.array(z.string()).default([]),
-  /** The header the trusted proxies set; the other one is never read. */
-  forwardedHeader: z.enum(["x-forwarded-for", "forwarded"]).default("x-forwarded-for"),
-});
+// Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
+const Config = z
+  .object({
+    host: z.string().default("127.0.0.1").meta({
+      title: "Host",
+      description:
+        "Interface to listen on. The default only accepts local connections; 0.0.0.0 accepts any.",
+    }),
+    port: z.number().int().min(0).max(65_535).default(7777).meta({
+      title: "Port",
+      description: "0 picks a free port.",
+    }),
+    trustProxy: z.array(z.string()).default([]).meta({
+      title: "Trusted proxies",
+      description:
+        "Reverse proxies (addresses or CIDR ranges, e.g. 127.0.0.1, 10.0.0.0/8) whose forwarded header names the real client. Empty: the header is ignored and the socket's peer is the client.",
+      advanced: true,
+    }),
+    forwardedHeader: z.enum(["x-forwarded-for", "forwarded"]).default("x-forwarded-for").meta({
+      title: "Forwarded header",
+      description: "The header the trusted proxies set; the other one is never read.",
+      advanced: true,
+    }),
+  })
+  .meta({
+    title: "HTTP server",
+    description: "Where this node listens for the web client, RPC and the mesh.",
+  });
 
 interface Route {
   readonly method: string;

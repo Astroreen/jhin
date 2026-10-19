@@ -94,7 +94,12 @@ export interface Hooks {
 }
 
 export interface Config {
-  /** Declares a config section; values are validated and defaulted by the schema. */
+  /**
+   * Declares a config section; values are validated and defaulted by the
+   * schema. The settings page renders it as a form from the same schema:
+   * `.meta({ title, description })` on the section and its fields, key order
+   * and nested objects as groups (docs/plans/config-ui.md).
+   */
   define<S extends z.ZodType>(section: string, schema: S): Disposable;
   get<T = unknown>(section: string): T;
   /**

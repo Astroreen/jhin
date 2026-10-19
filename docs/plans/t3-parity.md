@@ -159,6 +159,9 @@ contributions. Features of T3 Code that only make sense for its hosted product
   Archived threads. The editor reads through `host.config.get` (a section's
   effective value and what the node and project files set) and
   `host.config.schema`, under the permission `host.config.read`.
+  `config-ui.md` (D80–D84) supersedes the JSON editor part: a section is
+  edited as a form generated from its schema, with JSON kept as an escape
+  hatch.
 - **D67. Notifications** when a thread completes, fails, or waits for
   approval or input: with the page in focus, an in-app toast (never for the
   open thread); otherwise a browser notification and/or a sound, as the
@@ -226,7 +229,9 @@ contributions. Features of T3 Code that only make sense for its hosted product
 - Secret config values: no first-party section holds one today. A section
   that does needs a way to mark those values, so that `host.config.get`
   redacts them and the editor keeps them when it saves, before
-  `host.config.read` can go to a caller that may not see them.
+  `host.config.read` can go to a caller that may not see them. The marker
+  exists now (`writeOnly`, `config-ui.md` D83) and the form masks such
+  values; the redaction is still to do.
 
 Done here from the foundation's Deferred list: the settings UI with the scope
 picker (D66) and "No project" chats in the UI (D64).

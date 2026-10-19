@@ -1,4 +1,9 @@
-export { parseConfigText, DEFAULT_CONFIG_LAYERS } from "./config.ts";
+export {
+  configComments,
+  parseConfigText,
+  DEFAULT_CONFIG_LAYERS,
+  type ConfigComment,
+} from "./config.ts";
 export { KernelError, toErrorInfo, type ErrorInfo, type KernelErrorCode } from "./errors.ts";
 export type { KernelEvent } from "./events.ts";
 export type { HookInfo } from "./hooks.ts";
