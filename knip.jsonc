@@ -22,6 +22,7 @@
         "@jhin/plugin-transport-ws",
         "@jhin/plugin-threads",
         "@jhin/plugin-source-control",
+        "@jhin/plugin-terminal",
         "@jhin/plugin-agent-claude",
         "@jhin/plugin-agent-fake",
         "@jhin/plugin-mcp-server",

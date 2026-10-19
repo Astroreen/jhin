@@ -20,10 +20,13 @@ catalog:
   "@types/ws": 8.18.2
   "@vitejs/plugin-react": 6.1.2
   "@vitest/browser-playwright": 5.0.5
+  "@xterm/addon-fit": 0.11.0
+  "@xterm/xterm": 6.0.0
   class-variance-authority: 0.7.1
   jsonc-parser: 3.3.1
   knip: 6.41.0
   lucide-react: 1.59.0
+  node-pty: 1.2.0-beta.15
   oxc-transform-react: 0.152.0
   pino: 10.4.0
   playwright: 1.61.1
@@ -52,3 +55,8 @@ peerDependencyRules:
     - vite
   allowedVersions:
     vite: "*"
+
+# node-pty (the terminal plugin) checks for a prebuilt addon at install and
+# builds one with node-gyp only where none ships (docs/plans/terminal.md).
+allowBuilds:
+  node-pty: true

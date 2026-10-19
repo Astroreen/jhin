@@ -52,6 +52,9 @@
     "name": "WebSocket transport",
     "description": "Clients and other nodes reach this node's commands and event streams over WebSocket",
     "side": "server",
+    "provides": {
+      "rpc.streams": "1.0.0"
+    },
     "requires": {
       "http.server": "^1",
       "auth.verifier": "^1"

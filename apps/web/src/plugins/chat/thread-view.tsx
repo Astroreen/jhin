@@ -4,11 +4,12 @@ import type { AgentResponse, TurnAttachment } from "@jhin/agent-api";
 import {
   targetKey,
   visitKey,
+  type ChatDrawerProps,
   type NodeTarget,
   type ProjectRecord,
   type ThreadRecord,
 } from "@jhin/client-api";
-import { Alert, AlertAction, AlertDescription, Button } from "@jhin/ui";
+import { Alert, AlertAction, AlertDescription, Button, Slot } from "@jhin/ui";
 import { ArchiveRestoreIcon, ChevronDownIcon, CircleAlertIcon, XIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
@@ -368,6 +369,13 @@ export function ThreadView(props: {
           </div>
         </div>
       </div>
+      {/* Under the chat, as T3 puts its terminal drawer. */}
+      {thread === undefined || props.project === undefined || timeline.deleted ? null : (
+        <Slot
+          name="chat.drawer"
+          props={{ target, thread, project: props.project } satisfies ChatDrawerProps}
+        />
+      )}
     </div>
   );
 }

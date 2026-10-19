@@ -21,4 +21,13 @@ export {
   type ErrorObject,
 } from "./protocol.ts";
 export { serveRpc, type RpcServerOptions } from "./server.ts";
+export {
+  LIVE_STREAMS_CAPABILITY,
+  createLiveStreams,
+  createMemoryStreams,
+  type LiveStreams,
+  type MemoryStreams,
+  type ServedStream,
+  type StreamSource,
+} from "./streams.ts";
 export { CLOSE_UNAUTHENTICATED, connectWebSocket } from "./websocket.ts";

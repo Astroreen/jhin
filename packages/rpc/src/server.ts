@@ -2,6 +2,7 @@ import { DisposableStore, type Disposable, type Invocation, type Logger } from "
 import type { EventLog, StoredEvent } from "@jhin/storage-api";
 
 import type { Peer } from "./peer.ts";
+import type { LiveStreams, StreamSource } from "./streams.ts";
 import {
   ErrorCodes,
   RPC_EVENT,
@@ -26,6 +27,8 @@ export interface RpcServerOptions {
   readonly caller: NonNullable<Invocation["caller"]>;
   /** Streams clients may subscribe to; subscriptions fail without it. */
   readonly log?: EventLog;
+  /** Streams served from memory (`rpc.streams@1`); a stream they serve is not read from `log`. */
+  readonly streams?: Pick<LiveStreams, "sourceOf">;
   /** Payload of `rpc.hello`. */
   hello(): unknown;
   newTraceId(): string;
@@ -58,10 +61,22 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
         code: "INVALID",
       });
     }
-    if (options.log === undefined) {
+    const served = options.streams?.sourceOf(stream);
+    if (served !== undefined && !options.caller.permissions.includes("*")) {
+      const missing = served.permissions.filter(
+        (permission) => !options.caller.permissions.includes(permission),
+      );
+      if (missing.length > 0) {
+        throw Object.assign(new Error(`Reading ${stream} needs ${missing.join(", ")}`), {
+          code: "PERMISSION_DENIED",
+          details: { stream, missing },
+        });
+      }
+    }
+    const log: StreamSource | undefined = served?.source ?? options.log;
+    if (log === undefined) {
       throw Object.assign(new Error("This node has no event log"), { code: "UNAVAILABLE" });
     }
-    const log = options.log;
     let lastSent = after;
     let live = false;
     const buffered: StoredEvent[] = [];

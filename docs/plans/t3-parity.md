@@ -447,7 +447,6 @@ after a reload), with screenshots.
 - A server-side message queue and steering: follow-ups wait in the client
   while a turn runs, go out only while the page is open, and are lost if it
   closes.
-- Terminal drawer (`node-pty` + xterm) and the `terminalFocus` context key.
 - Git and source control: done in `source-control.md` (D110–D120) for the
   branch, diff and pull request on the cards, the branch toolbar and the diff
   panel; checkpoints and reverting to a turn, worktrees, git actions
@@ -466,10 +465,10 @@ after a reload), with screenshots.
   devices dragging at once, or a failure partway, leave the steps done
   before it; D78), the Working shelf, multi-select and sweeping actions over
   several rows, undo of a pin, T3's own collision detection around the
-  pinned boundary, the jump-number hints, discarding a draft from its card,
-  and the card's terminal indicator (terminals are deferred above; the
-  card's branch, diff and pull request are `source-control.md`'s D117, in
-  the `sidebar.thread.indicators` slot a terminal plugin contributes to).
+  pinned boundary, the jump-number hints and discarding a draft from its
+  card. The card's branch, diff and pull request are `source-control.md`'s
+  D117 and its terminal indicator `terminal.md`'s D148, all in the
+  `sidebar.thread.indicators` slot.
 - A machine kind per node (T3's environment icon picker), so the node icons
   of D71 differ by machine; every node shows the "server" icon today.
 - Visits and drafts are per device; syncing them, and device settings, across
@@ -498,6 +497,9 @@ after a reload), with screenshots.
   `host.config.read` can go to a caller that may not see them. The marker
   exists now (`writeOnly`, `config-ui.md` D83) and the form masks such
   values; the redaction is still to do.
+
+Done since in `terminal.md` (D140–D148): the terminal drawer (node-pty and
+xterm.js), the `terminalFocus` context key and the card's terminal indicator.
 
 Done here from the foundation's Deferred list: the settings UI with the scope
 picker (D66) and "No project" chats in the UI (D64).
