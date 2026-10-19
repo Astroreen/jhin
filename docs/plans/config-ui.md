@@ -161,6 +161,11 @@ context.config.define("acme.http", Config);
 
 ## Deferred
 
+- `unset` in a mixed-version mesh: a node from before this change drops the
+  unknown field and answers `applied`, so a reset sent to it reports success
+  while the key stays in its file. It needs a version or capability check
+  before the patch goes out. `unset` of a section the file does not hold
+  reports `applied` too (nothing to remove).
 - Redacting secrets in `host.config.get` (see `t3-parity.md`): the page
   hides them (D83), but they still reach the browser. A secret list item
   moved in the JSON view takes the stored value of its new position.
