@@ -4,13 +4,12 @@ import type {
   ChatHeaderActionProps,
   NodeTarget,
   ProjectRecord,
+  ThreadActionProps,
   ThreadRecord,
 } from "@jhin/client-api";
 import {
   Menu,
-  MenuItem,
   MenuPopup,
-  MenuSeparator,
   MenuTrigger,
   Slot,
   Tooltip,
@@ -18,16 +17,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@jhin/ui";
-import {
-  ArchiveIcon,
-  ChevronDownIcon,
-  HashIcon,
-  LinkIcon,
-  MailOpenIcon,
-  PencilIcon,
-  SquarePenIcon,
-  Trash2Icon,
-} from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
 import { ProjectIcon } from "../../lib/project-icon.tsx";
@@ -55,16 +45,29 @@ export function ChatHeader(props: {
   nodeLabel: string;
 }) {
   const { target, project, thread } = props;
-  const { actions, navigation } = useChat();
+  const { context, navigation, toasts } = useChat();
   const [renaming, setRenaming] = useState<string | undefined>();
   const committed = useRef(false);
-  const running = thread?.lastTurn?.status === "running" || thread?.lastTurn?.status === "waiting";
 
+  const startRename = () => {
+    if (thread === undefined) return;
+    committed.current = false;
+    setRenaming(thread.title);
+  };
   const commit = () => {
     if (renaming === undefined || thread === undefined) return;
     const title = renaming;
     setRenaming(undefined);
-    void actions.rename(target, thread, title);
+    if (title.trim() === thread.title) return;
+    void context.commands
+      .execute("thread.rename", { ...target, threadId: thread.id, title })
+      .catch((error: unknown) =>
+        toasts?.show({
+          type: "error",
+          title: "Failed to rename thread",
+          description: (error as Error).message,
+        }),
+      );
   };
   const newThreadInProject = () => {
     if (project === undefined) return;
@@ -148,69 +151,35 @@ export function ChatHeader(props: {
                   value={renaming}
                 />
               ) : (
-                <Menu>
-                  <MenuTrigger
-                    render={
-                      <button
-                        className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                        onDoubleClick={() => {
-                          committed.current = false;
-                          setRenaming(thread.title);
-                        }}
-                        type="button"
-                      />
-                    }
-                  >
-                    <h2 className="min-w-0">
+                <h2 className="flex min-w-0">
+                  <Menu>
+                    <MenuTrigger
+                      render={
+                        <button
+                          className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                          onDoubleClick={startRename}
+                          type="button"
+                        />
+                      }
+                    >
                       <BreadcrumbText>{thread.title}</BreadcrumbText>
-                    </h2>
-                    <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100 group-focus-visible/thread-title:opacity-100" />
-                  </MenuTrigger>
-                  <MenuPopup align="start">
-                    {project === undefined ? null : (
-                      <MenuItem onClick={newThreadInProject}>
-                        <SquarePenIcon />
-                        New thread in {project.name}
-                      </MenuItem>
-                    )}
-                    <MenuItem
-                      onClick={() => {
-                        committed.current = false;
-                        setRenaming(thread.title);
-                      }}
-                    >
-                      <PencilIcon />
-                      Rename thread
-                    </MenuItem>
-                    <MenuItem onClick={() => actions.markUnread(target, thread)}>
-                      <MailOpenIcon />
-                      Mark unread
-                    </MenuItem>
-                    <MenuItem onClick={() => actions.copyId(thread)}>
-                      <HashIcon />
-                      Copy thread ID
-                    </MenuItem>
-                    <MenuItem onClick={() => actions.copyAddress(target, thread)}>
-                      <LinkIcon />
-                      Copy thread address
-                    </MenuItem>
-                    <MenuSeparator />
-                    <MenuItem
-                      disabled={running}
-                      onClick={() => void actions.archive(target, thread)}
-                    >
-                      <ArchiveIcon />
-                      Archive thread
-                    </MenuItem>
-                    <MenuItem
-                      onClick={() => void actions.remove(target, thread)}
-                      variant="destructive"
-                    >
-                      <Trash2Icon />
-                      Delete
-                    </MenuItem>
-                  </MenuPopup>
-                </Menu>
+                      <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100 group-focus-visible/thread-title:opacity-100" />
+                    </MenuTrigger>
+                    <MenuPopup align="start">
+                      <Slot
+                        name="thread.actions"
+                        props={
+                          {
+                            target,
+                            thread,
+                            ...(project === undefined ? {} : { project }),
+                            rename: startRename,
+                          } satisfies ThreadActionProps
+                        }
+                      />
+                    </MenuPopup>
+                  </Menu>
+                </h2>
               )}
             </li>
           </ol>

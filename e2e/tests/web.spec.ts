@@ -30,7 +30,10 @@ test("connects with the token from the URL, sends a message and streams the repl
   await expect(log.getByRole("article", { name: "Agent" })).toHaveAttribute("aria-busy", "false");
   // The new thread is listed and selected in the sidebar, titled after its first message.
   const threads = page.getByRole("list", { name: "Threads of No project" });
-  await expect(threads.locator("[aria-current=page]")).toContainText("hello there");
+  await expect(threads.getByRole("button", { name: "hello there", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   await expect(page.getByRole("heading", { level: 2 })).toHaveText("hello there");
 
   const shot = info.outputPath("chat.png");

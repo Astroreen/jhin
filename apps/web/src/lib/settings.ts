@@ -2,6 +2,8 @@
 import { z, type PluginContext } from "@jhin/sdk";
 import { useSyncExternalStore } from "react";
 
+import { configSubscriber } from "./hooks.ts";
+
 /** Colors and widths of the page; defined by the UI host. */
 export const APPEARANCE_SECTION = "jhin.appearance";
 export const Appearance = z.object({
@@ -49,23 +51,17 @@ export function useSection<S extends z.ZodType>(
   section: string,
   schema: S,
 ): z.output<S> {
-  return useSyncExternalStore(
-    (listener) => {
-      const subscription = context.config.onDidChange(section, listener);
-      return () => subscription.dispose();
-    },
-    () => {
-      const value = readSection(context, section, schema);
-      const raw = JSON.stringify(value);
-      let sections = cache.get(context);
-      if (sections === undefined) {
-        sections = new Map();
-        cache.set(context, sections);
-      }
-      const cached = sections.get(section);
-      if (cached !== undefined && cached.raw === raw) return cached.value as z.output<S>;
-      sections.set(section, { raw, value });
-      return value;
-    },
-  );
+  return useSyncExternalStore(configSubscriber(context, section), () => {
+    const value = readSection(context, section, schema);
+    const raw = JSON.stringify(value);
+    let sections = cache.get(context);
+    if (sections === undefined) {
+      sections = new Map();
+      cache.set(context, sections);
+    }
+    const cached = sections.get(section);
+    if (cached !== undefined && cached.raw === raw) return cached.value as z.output<S>;
+    sections.set(section, { raw, value });
+    return value;
+  });
 }

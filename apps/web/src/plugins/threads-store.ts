@@ -184,7 +184,14 @@ export const threadsStorePlugin = builtin(
                 pending = true;
                 queueMicrotask(() => {
                   pending = false;
-                  void reload(feed, generation).catch(() => undefined);
+                  void reload(feed, generation).catch((error: unknown) => {
+                    if (!current()) return;
+                    set(feed, {
+                      ...feed.catalog,
+                      status: "error",
+                      error: (error as Error).message ?? String(error),
+                    });
+                  });
                 });
               },
             );
@@ -272,12 +279,16 @@ export const threadsStorePlugin = builtin(
           current.listeners.add(entry);
           return toDisposable(() => {
             current.listeners.delete(entry);
-            if (current.listeners.size > 0 || feeds.get(key) !== current) return;
-            current.stop?.();
-            current.generation += 1;
-            feeds.delete(key);
-            meshFollowers.get(key)?.dispose();
-            meshFollowers.delete(key);
+            // A subscriber back within the same tick (a re-render, a view moved by a
+            // route change) keeps the feed and its catalog: no refetch.
+            queueMicrotask(() => {
+              if (current.listeners.size > 0 || feeds.get(key) !== current) return;
+              current.stop?.();
+              current.generation += 1;
+              feeds.delete(key);
+              meshFollowers.get(key)?.dispose();
+              meshFollowers.delete(key);
+            });
           });
         },
         call,

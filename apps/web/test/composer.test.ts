@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildPromptHistory,
   createDrafts,
+  fitAttachments,
   stepPromptHistory,
   type PromptHistoryPosition,
 } from "../src/lib/composer.ts";
@@ -95,6 +96,26 @@ describe("drafts", () => {
     expect(createDrafts(memoryStorage({ "jhin.drafts.v1": "{nope" })).get("t1")).toBeUndefined();
   });
 
+  it("merges the drafts of two tabs instead of one overwriting the other", () => {
+    const storage = memoryStorage();
+    const a = createDrafts(storage);
+    const b = createDrafts(storage);
+    a.set("t1", { prompt: "from a", attachments: [] });
+    b.set("t2", { prompt: "from b", attachments: [] });
+    a.flush();
+    b.flush();
+
+    const later = createDrafts(storage);
+    expect(later.get("t1")?.prompt).toBe("from a");
+    expect(later.get("t2")?.prompt).toBe("from b");
+
+    // A draft emptied in a tab that has it is removed for all.
+    a.set("t1", { prompt: "", attachments: [] });
+    a.flush();
+    expect(createDrafts(storage).get("t1")).toBeUndefined();
+    expect(createDrafts(storage).get("t2")?.prompt).toBe("from b");
+  });
+
   it("keeps text and images per key and forgets empty drafts", () => {
     const drafts = createDrafts(memoryStorage());
     drafts.set("t1", { prompt: "", attachments: [attachment] });
@@ -103,5 +124,26 @@ describe("drafts", () => {
     drafts.set("t1", { prompt: "", attachments: [] });
     expect(drafts.get("t1")).toBeUndefined();
     expect(drafts.get("t2")?.prompt).toBe("other");
+  });
+});
+
+describe("attachments of one message", () => {
+  /** An image whose data URL is `length` characters long. */
+  const image = (name: string, length: number) => ({
+    kind: "image" as const,
+    name,
+    mimeType: "image/png",
+    dataUrl: "data:image/png;base64,".padEnd(length, "A"),
+  });
+
+  it("keeps what fits in count and size, in order, and names the rest", () => {
+    const limit = { count: 3, total: 100 };
+    const kept = [image("a", 30)];
+    const result = fitAttachments(kept, [image("b", 40), image("c", 60), image("d", 25)], limit);
+    expect(result.kept.map((item) => item.name)).toEqual(["a", "b", "d"]);
+    expect(result.dropped.map((item) => item.name)).toEqual(["c"]);
+
+    const full = fitAttachments(result.kept, [image("e", 25)], limit);
+    expect(full.dropped.map((item) => item.name)).toEqual(["e"]);
   });
 });

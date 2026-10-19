@@ -1,6 +1,7 @@
 // The timeline's design follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/MessagesTimeline.tsx, WorkLog.tsx, TimelineSystemDivider.tsx,
 // MessageCopyButton.tsx and ProposedPlanCard.tsx.
+import type { TurnAttachment } from "@jhin/agent-api";
 import { Badge, Button, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
 import {
   BotIcon,
@@ -26,7 +27,7 @@ import {
   XIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   formatDayAwareTimestamp,
@@ -35,7 +36,7 @@ import {
   formatWorkingTimer,
   type TimestampFormat,
 } from "../../lib/format.ts";
-import { useCopy } from "../../lib/hooks.ts";
+import { useCopy, useNow } from "../../lib/hooks.ts";
 import {
   answerPreview,
   foldsBeforeFinal,
@@ -72,6 +73,9 @@ function MessageCopyButton({ text, label = "Copy message" }: { text: string; lab
   );
 }
 
+/** The clock of the timeline: "today" and "yesterday" labels roll over with it. */
+const NowContext = createContext(Date.now());
+
 function Timestamp({
   at,
   format,
@@ -81,12 +85,13 @@ function Timestamp({
   format: TimestampFormat;
   className?: string;
 }) {
+  const now = useContext(NowContext);
   return (
     <Tooltip>
       <TooltipTrigger
         render={<p className={cn("text-muted-foreground text-xs tabular-nums", className)} />}
       >
-        {formatDayAwareTimestamp(at, format)}
+        {formatDayAwareTimestamp(at, format, now)}
       </TooltipTrigger>
       <TooltipPopup side="top">{formatFullTimestamp(at, format)}</TooltipPopup>
     </Tooltip>
@@ -221,29 +226,34 @@ function WorkLine(props: {
   const interactive = props.expandable === true;
   return (
     <div
-      aria-expanded={interactive ? props.expanded : undefined}
       className={cn(
         "group/timeline-row relative w-full min-w-0 rounded-md px-0.5 py-0.5 text-left transition-colors",
-        interactive &&
-          "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
         props.className,
       )}
-      onClick={interactive ? props.onToggle : undefined}
-      onKeyDown={
-        interactive
-          ? (event) => {
-              if (event.target !== event.currentTarget) return;
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                props.onToggle?.();
-              }
-            }
-          : undefined
-      }
-      role={interactive ? "button" : undefined}
-      tabIndex={interactive ? 0 : undefined}
     >
-      <div className="flex min-h-6 min-w-0 items-center gap-1.5 text-sm leading-relaxed select-none [&_*]:select-none">
+      {/* The toggle is the line itself; what it shows sits below it, outside the button. */}
+      <div
+        aria-expanded={interactive ? props.expanded : undefined}
+        className={cn(
+          "flex min-h-6 min-w-0 items-center gap-1.5 rounded-md text-sm leading-relaxed select-none [&_*]:select-none",
+          interactive &&
+            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70",
+        )}
+        onClick={interactive ? props.onToggle : undefined}
+        onKeyDown={
+          interactive
+            ? (event) => {
+                if (event.target !== event.currentTarget) return;
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  props.onToggle?.();
+                }
+              }
+            : undefined
+        }
+        role={interactive ? "button" : undefined}
+        tabIndex={interactive ? 0 : undefined}
+      >
         <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
           <span className="relative w-6 shrink-0 leading-0">
             <span className="inline-block size-6 overflow-hidden align-[calc(0.5cap_-_0.75rem)]">
@@ -486,10 +496,13 @@ function TurnView(props: {
   turn: TimelineTurn;
   latest: boolean;
   format: TimestampFormat;
-  onRetry?(): void;
+  onRetry?(): Promise<unknown>;
 }) {
   const { turn, format } = props;
+  const now = useContext(NowContext);
   const [unfolded, setUnfolded] = useState(false);
+  /** One retry at a time: a second click while it goes would send the message twice. */
+  const [retrying, setRetrying] = useState(false);
   const running = turn.state === "running";
   const blocks = turnBlocks(turn);
   const folds = foldsBeforeFinal(turn);
@@ -542,7 +555,7 @@ function TurnView(props: {
               ) : null}
             </button>
             <span className="ms-auto text-muted-foreground text-xs tabular-nums opacity-0 group-hover/timeline-row:opacity-100">
-              {formatDayAwareTimestamp(turn.startedAt, format)}
+              {formatDayAwareTimestamp(turn.startedAt, format, now)}
             </span>
           </div>
         </div>
@@ -582,7 +595,15 @@ function TurnView(props: {
             )}
             {props.latest && props.onRetry !== undefined ? (
               <div className="ms-7 pb-1">
-                <Button onClick={props.onRetry} size="xs" variant="outline">
+                <Button
+                  disabled={retrying}
+                  onClick={() => {
+                    setRetrying(true);
+                    void props.onRetry?.().finally(() => setRetrying(false));
+                  }}
+                  size="xs"
+                  variant="outline"
+                >
                   <RotateCcwIcon />
                   Retry
                 </Button>
@@ -602,9 +623,11 @@ function TurnView(props: {
 export function TimelineView(props: {
   timeline: Timeline;
   format: TimestampFormat;
-  onRetry?(text: string): void;
+  /** Sends a failed turn's message again, with its images. */
+  onRetry?(text: string, attachments: readonly TurnAttachment[]): Promise<unknown>;
 }) {
   const { turns } = props.timeline;
+  const now = useNow();
   if (turns.length === 0) {
     return (
       <div className="flex h-full items-center justify-center py-24">
@@ -615,16 +638,18 @@ export function TimelineView(props: {
     );
   }
   return (
-    <>
+    <NowContext.Provider value={now}>
       {turns.map((turn, index) => (
         <TurnView
           format={props.format}
           key={turn.turnId}
           latest={index === turns.length - 1}
           turn={turn}
-          {...(props.onRetry === undefined ? {} : { onRetry: () => props.onRetry?.(turn.text) })}
+          {...(props.onRetry === undefined
+            ? {}
+            : { onRetry: () => props.onRetry!(turn.text, turn.attachments) })}
         />
       ))}
-    </>
+    </NowContext.Provider>
   );
 }

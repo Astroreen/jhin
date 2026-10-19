@@ -71,20 +71,39 @@ const DRAFTS_STORAGE_KEY = "jhin.drafts.v1";
 /** Drafts with images can be large; beyond this the images are not kept. */
 const MAX_STORED_BYTES = 2_000_000;
 
-/** Composer drafts per thread (or per project for a new thread), kept on this device. */
+/**
+ * Composer drafts per thread (or per project for a new thread), kept on this
+ * device. Several tabs share them: a save merges this tab's changes into what
+ * is stored, and a change saved by another tab is taken in.
+ */
 export function createDrafts(storage: Storage = localStorage) {
-  let drafts: Record<string, ComposerDraft> = {};
-  try {
-    const value: unknown = JSON.parse(storage.getItem(DRAFTS_STORAGE_KEY) ?? "{}");
-    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      drafts = value as Record<string, ComposerDraft>;
+  const read = (): Record<string, ComposerDraft> => {
+    try {
+      const value: unknown = JSON.parse(storage.getItem(DRAFTS_STORAGE_KEY) ?? "{}");
+      return typeof value === "object" && value !== null && !Array.isArray(value)
+        ? (value as Record<string, ComposerDraft>)
+        : {};
+    } catch {
+      return {};
     }
-  } catch {
-    drafts = {};
-  }
+  };
+  let drafts = read();
+  /** Keys changed here since the last save: they win over what another tab stored. */
+  const changed = new Set<string>();
+  const mine = () =>
+    Object.fromEntries([...changed].flatMap((key) => (drafts[key] ? [[key, drafts[key]]] : [])));
+  const merged = () => {
+    const next = { ...read(), ...mine() };
+    for (const key of changed) if (drafts[key] === undefined) delete next[key];
+    return next;
+  };
   let timer: ReturnType<typeof setTimeout> | undefined;
   const flush = () => {
+    if (timer !== undefined) clearTimeout(timer);
     timer = undefined;
+    if (changed.size === 0) return;
+    drafts = merged();
+    changed.clear();
     let text = JSON.stringify(drafts);
     if (text.length > MAX_STORED_BYTES) {
       text = JSON.stringify(
@@ -99,13 +118,12 @@ export function createDrafts(storage: Storage = localStorage) {
       // Full or blocked storage: drafts last for this page only.
     }
   };
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === DRAFTS_STORAGE_KEY) drafts = merged();
+  };
   if (typeof window !== "undefined") {
-    window.addEventListener("beforeunload", () => {
-      if (timer !== undefined) {
-        clearTimeout(timer);
-        flush();
-      }
-    });
+    window.addEventListener("beforeunload", flush);
+    window.addEventListener("storage", onStorage);
   }
   return {
     get: (key: string): ComposerDraft | undefined => drafts[key],
@@ -116,8 +134,19 @@ export function createDrafts(storage: Storage = localStorage) {
       if (empty) delete next[key];
       else next[key] = draft;
       drafts = next;
+      changed.add(key);
       if (timer !== undefined) clearTimeout(timer);
       timer = setTimeout(flush, 300);
+    },
+    /** Saves what changed now instead of shortly after. */
+    flush,
+    /** Saves what changed and stops following other tabs. */
+    dispose() {
+      flush();
+      if (typeof window !== "undefined") {
+        window.removeEventListener("beforeunload", flush);
+        window.removeEventListener("storage", onStorage);
+      }
     },
   };
 }
@@ -128,6 +157,28 @@ export type Drafts = ReturnType<typeof createDrafts>;
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
 /** Per image; the node takes data URLs up to 8 MB, and base64 adds a third. */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** All images of one message, as data URLs; the node takes no more. */
+const MAX_ATTACHMENTS_TOTAL = 20 * 1024 * 1024;
+
+/** The attachments that fit together in one message, and those that do not. */
+export function fitAttachments(
+  current: readonly TurnAttachment[],
+  added: readonly TurnAttachment[],
+  limit = { count: 10, total: MAX_ATTACHMENTS_TOTAL },
+): { kept: TurnAttachment[]; dropped: TurnAttachment[] } {
+  const kept = [...current];
+  const dropped: TurnAttachment[] = [];
+  let total = current.reduce((sum, item) => sum + item.dataUrl.length, 0);
+  for (const item of added) {
+    if (kept.length >= limit.count || total + item.dataUrl.length > limit.total) {
+      dropped.push(item);
+      continue;
+    }
+    kept.push(item);
+    total += item.dataUrl.length;
+  }
+  return { kept, dropped };
+}
 
 export function readImage(file: File): Promise<TurnAttachment> {
   return new Promise((resolve, reject) => {

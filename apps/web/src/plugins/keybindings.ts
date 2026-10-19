@@ -56,6 +56,16 @@ export const keybindingsPlugin = builtin(
           return [];
         }
       };
+      /** Tells every subscriber; one that throws does not keep the others from hearing. */
+      const notify = () => {
+        for (const listener of Array.from(listeners)) {
+          try {
+            listener();
+          } catch (error) {
+            context.log.error("a ui.keybindings listener failed", { error: String(error) });
+          }
+        }
+      };
       const rebuild = () => {
         const rules = custom();
         const all = defaults.flat();
@@ -67,7 +77,7 @@ export const keybindingsPlugin = builtin(
           ...(rule.when === undefined ? {} : { when: rule.when }),
           source: fromConfig.has(rule.command) ? "config" : "default",
         }));
-        for (const listener of Array.from(listeners)) listener();
+        notify();
       };
       context.config.onDidChange(KEYBINDINGS_CONFIG_SECTION, rebuild);
 
@@ -88,9 +98,19 @@ export const keybindingsPlugin = builtin(
           });
         },
         setContext(key, value) {
+          // Labels depend on context keys (a rule's `when`): subscribers hear of a
+          // change, with a new list so snapshots taken for labels change too.
+          const contextChanged = () => {
+            active = [...active];
+            notify();
+          };
+          const changed = contextKeys.get(key) !== value;
           contextKeys.set(key, value);
+          if (changed) contextChanged();
           return toDisposable(() => {
-            if (contextKeys.get(key) === value) contextKeys.delete(key);
+            if (contextKeys.get(key) !== value) return;
+            contextKeys.delete(key);
+            contextChanged();
           });
         },
         labelFor: (command) =>

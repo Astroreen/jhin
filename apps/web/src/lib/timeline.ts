@@ -109,175 +109,212 @@ type MutableTurn = { -readonly [K in keyof TimelineTurn]: TimelineTurn[K] } & {
 
 /** Folds a thread's events into turns, in order. Unknown event types are ignored. */
 export function reduceTimeline(events: readonly StoredEvent[]): Timeline {
+  return createTimeline().apply(events);
+}
+
+/**
+ * A thread's timeline, folded as its events arrive: each batch costs what it
+ * holds, not the whole thread again. Every `apply` returns a new timeline in
+ * which only the turns the batch changed are new objects, so views of the
+ * others need not render again.
+ */
+export function createTimeline() {
   const turns: MutableTurn[] = [];
   const byId = new Map<string, MutableTurn>();
+  /** Where each item of a turn is, by item id (requests by request id). */
+  const positions = new Map<MutableTurn, Map<string, number>>();
+  /** The last snapshot of each turn, kept while it does not change. */
+  const snapshots = new Map<MutableTurn, TimelineTurn>();
+  /** The turns the batch being applied changed. */
+  const changed = new Set<MutableTurn>();
   let deleted = false;
+  let timeline: Timeline = { turns: [], deleted: false };
 
-  const replaceItem = (
-    turn: MutableTurn,
-    match: (item: TimelineItem) => boolean,
-    next: TimelineItem,
-  ) => {
-    const index = turn.items.findIndex(match);
-    if (index >= 0) turn.items[index] = next;
-    else turn.items.push(next);
+  const find = (turn: MutableTurn, key: string): TimelineItem | undefined => {
+    const index = positions.get(turn)?.get(key);
+    return index === undefined ? undefined : turn.items[index];
+  };
+  const put = (turn: MutableTurn, key: string | undefined, item: TimelineItem) => {
+    changed.add(turn);
+    const index = key === undefined ? undefined : positions.get(turn)?.get(key);
+    if (index !== undefined) {
+      turn.items[index] = item;
+      return;
+    }
+    turn.items.push(item);
+    if (key !== undefined) positions.get(turn)?.set(key, turn.items.length - 1);
   };
 
-  for (const event of events) {
-    if (event.type === ThreadEvents.threadDeleted) {
-      deleted = true;
-      continue;
-    }
-    const payload = (event.payload ?? {}) as Payload;
-    if (event.type === ThreadEvents.turnStarted) {
-      if (payload.turnId === undefined) continue;
-      const turn: MutableTurn = {
-        turnId: payload.turnId,
-        agentId: payload.agentId ?? "",
-        ...(payload.model === undefined ? {} : { model: payload.model }),
-        ...(payload.runtimeMode === undefined ? {} : { runtimeMode: payload.runtimeMode }),
-        ...(payload.interactionMode === undefined
-          ? {}
-          : { interactionMode: payload.interactionMode }),
-        text: payload.input?.text ?? "",
-        attachments: payload.input?.attachments ?? [],
-        startedAt: event.at,
-        state: "running",
-        items: [],
-      };
-      byId.set(turn.turnId, turn);
-      turns.push(turn);
-      continue;
-    }
-    const turn = payload.turnId === undefined ? undefined : byId.get(payload.turnId);
-    if (turn === undefined) continue;
-    const itemId = payload.itemId;
-    switch (event.type) {
-      case ThreadEvents.itemStarted: {
-        if (itemId === undefined || payload.tool === undefined) break;
-        turn.items.push({
-          kind: "tool",
-          itemId,
-          tool: payload.tool,
-          output: "",
-          status: "running",
-          at: event.at,
-        });
-        break;
+  function apply(events: readonly StoredEvent[]): Timeline {
+    changed.clear();
+    const wasDeleted = deleted;
+    for (const event of events) {
+      if (event.type === ThreadEvents.threadDeleted) {
+        deleted = true;
+        continue;
       }
-      case ThreadEvents.itemDelta: {
-        if (itemId === undefined) break;
-        const text = payload.text ?? "";
-        const existing = turn.items.find((item) => "itemId" in item && item.itemId === itemId);
-        if (payload.kind === "tool") {
-          if (existing?.kind === "tool") {
-            replaceItem(turn, (item) => item === existing, {
-              ...existing,
-              output: existing.output + text,
-            });
+      const payload = (event.payload ?? {}) as Payload;
+      if (event.type === ThreadEvents.turnStarted) {
+        if (payload.turnId === undefined) continue;
+        const turn: MutableTurn = {
+          turnId: payload.turnId,
+          agentId: payload.agentId ?? "",
+          ...(payload.model === undefined ? {} : { model: payload.model }),
+          ...(payload.runtimeMode === undefined ? {} : { runtimeMode: payload.runtimeMode }),
+          ...(payload.interactionMode === undefined
+            ? {}
+            : { interactionMode: payload.interactionMode }),
+          text: payload.input?.text ?? "",
+          attachments: payload.input?.attachments ?? [],
+          startedAt: event.at,
+          state: "running",
+          items: [],
+        };
+        byId.set(turn.turnId, turn);
+        positions.set(turn, new Map());
+        turns.push(turn);
+        changed.add(turn);
+        continue;
+      }
+      const turn = payload.turnId === undefined ? undefined : byId.get(payload.turnId);
+      if (turn === undefined) continue;
+      const itemId = payload.itemId;
+      switch (event.type) {
+        case ThreadEvents.itemStarted: {
+          if (itemId === undefined || payload.tool === undefined) break;
+          put(turn, itemId, {
+            kind: "tool",
+            itemId,
+            tool: payload.tool,
+            output: "",
+            status: "running",
+            at: event.at,
+          });
+          break;
+        }
+        case ThreadEvents.itemDelta: {
+          if (itemId === undefined) break;
+          const text = payload.text ?? "";
+          const existing = find(turn, itemId);
+          if (payload.kind === "tool") {
+            if (existing?.kind === "tool") {
+              put(turn, itemId, { ...existing, output: existing.output + text });
+            }
+            break;
+          }
+          const kind = payload.kind === "reasoning" ? "reasoning" : "message";
+          if (existing !== undefined && existing.kind === kind) {
+            put(turn, itemId, { ...existing, text: existing.text + text });
+          } else if (existing === undefined) {
+            put(turn, itemId, { kind, itemId, text, completed: false, at: event.at });
           }
           break;
         }
-        const kind = payload.kind === "reasoning" ? "reasoning" : "message";
-        if (existing !== undefined && existing.kind === kind) {
-          replaceItem(turn, (item) => item === existing, {
-            ...existing,
-            text: existing.text + text,
-          });
-        } else if (existing === undefined) {
-          turn.items.push({ kind, itemId, text, completed: false, at: event.at });
+        case ThreadEvents.itemCompleted: {
+          if (itemId === undefined) break;
+          const existing = find(turn, itemId);
+          if (payload.kind === "tool") {
+            if (existing?.kind !== "tool") break;
+            const status =
+              payload.status === "failed" || payload.status === "declined"
+                ? payload.status
+                : "completed";
+            put(turn, itemId, {
+              ...existing,
+              status,
+              output: payload.output ?? existing.output,
+              ...(payload.error === undefined ? {} : { error: payload.error }),
+              endedAt: event.at,
+            });
+            break;
+          }
+          const kind = payload.kind === "reasoning" ? "reasoning" : "message";
+          put(turn, itemId, {
+            kind,
+            itemId,
+            text:
+              payload.text ??
+              (existing !== undefined && existing.kind === kind ? existing.text : ""),
+            completed: true,
+            at: existing?.at ?? event.at,
+          } as MessageItem | ReasoningItem);
+          break;
         }
-        break;
-      }
-      case ThreadEvents.itemCompleted: {
-        if (itemId === undefined) break;
-        const existing = turn.items.find((item) => "itemId" in item && item.itemId === itemId);
-        if (payload.kind === "tool") {
-          if (existing?.kind !== "tool") break;
-          const status =
-            payload.status === "failed" || payload.status === "declined"
-              ? payload.status
-              : "completed";
-          replaceItem(turn, (item) => item === existing, {
-            ...existing,
-            status,
-            output: payload.output ?? existing.output,
-            ...(payload.error === undefined ? {} : { error: payload.error }),
-            endedAt: event.at,
+        case ThreadEvents.requestOpened: {
+          if (payload.requestId === undefined || payload.request === undefined) break;
+          put(turn, `request:${payload.requestId}`, {
+            kind: "request",
+            requestId: payload.requestId,
+            request: payload.request,
+            state: "open",
+            at: event.at,
           });
           break;
         }
-        const kind = payload.kind === "reasoning" ? "reasoning" : "message";
-        const next = {
-          kind,
-          itemId,
-          text:
-            payload.text ?? (existing !== undefined && existing.kind === kind ? existing.text : ""),
-          completed: true,
-          at: existing?.at ?? event.at,
-        } as MessageItem | ReasoningItem;
-        replaceItem(turn, (item) => item === existing, next);
-        break;
+        case ThreadEvents.requestResolved: {
+          if (payload.requestId === undefined) break;
+          const key = `request:${payload.requestId}`;
+          const existing = find(turn, key);
+          if (existing?.kind !== "request") break;
+          put(turn, key, {
+            ...existing,
+            state: payload.response === undefined ? "closed" : "answered",
+            ...(payload.response === undefined ? {} : { response: payload.response }),
+          });
+          break;
+        }
+        case ThreadEvents.planUpdated: {
+          const existing = find(turn, "plan");
+          put(turn, "plan", {
+            kind: "plan",
+            steps: payload.steps ?? [],
+            at: existing?.at ?? event.at,
+          });
+          break;
+        }
+        case ThreadEvents.usageUpdated:
+          if (payload.usage === undefined) break;
+          turn.usage = payload.usage;
+          changed.add(turn);
+          break;
+        case ThreadEvents.turnCompleted:
+          turn.state = "completed";
+          turn.endedAt = event.at;
+          changed.add(turn);
+          break;
+        case ThreadEvents.turnInterrupted:
+          turn.state = "interrupted";
+          turn.endedAt = event.at;
+          if (payload.reason !== undefined) turn.error = payload.reason;
+          changed.add(turn);
+          break;
+        case ThreadEvents.turnFailed:
+          turn.state = "failed";
+          turn.endedAt = event.at;
+          if (payload.error !== undefined) turn.error = payload.error;
+          changed.add(turn);
+          break;
       }
-      case ThreadEvents.requestOpened: {
-        if (payload.requestId === undefined || payload.request === undefined) break;
-        turn.items.push({
-          kind: "request",
-          requestId: payload.requestId,
-          request: payload.request,
-          state: "open",
-          at: event.at,
-        });
-        break;
-      }
-      case ThreadEvents.requestResolved: {
-        const existing = turn.items.find(
-          (item) => item.kind === "request" && item.requestId === payload.requestId,
-        );
-        if (existing?.kind !== "request") break;
-        replaceItem(turn, (item) => item === existing, {
-          ...existing,
-          state: payload.response === undefined ? "closed" : "answered",
-          ...(payload.response === undefined ? {} : { response: payload.response }),
-        });
-        break;
-      }
-      case ThreadEvents.planUpdated: {
-        const steps = payload.steps ?? [];
-        replaceItem(turn, (item) => item.kind === "plan", {
-          kind: "plan",
-          steps,
-          at: turn.items.find((item) => item.kind === "plan")?.at ?? event.at,
-        });
-        break;
-      }
-      case ThreadEvents.usageUpdated:
-        if (payload.usage !== undefined) turn.usage = payload.usage;
-        break;
-      case ThreadEvents.turnCompleted:
-        turn.state = "completed";
-        turn.endedAt = event.at;
-        break;
-      case ThreadEvents.turnInterrupted:
-        turn.state = "interrupted";
-        turn.endedAt = event.at;
-        if (payload.reason !== undefined) turn.error = payload.reason;
-        break;
-      case ThreadEvents.turnFailed:
-        turn.state = "failed";
-        turn.endedAt = event.at;
-        if (payload.error !== undefined) turn.error = payload.error;
-        break;
     }
+    // Nothing this batch held changed anything: the same timeline.
+    if (changed.size === 0 && deleted === wasDeleted) return timeline;
+    for (const turn of changed) {
+      // A turn that ended with a request still open never got it answered.
+      const items =
+        turn.state === "running"
+          ? [...turn.items]
+          : turn.items.map((item) =>
+              item.kind === "request" && item.state === "open"
+                ? { ...item, state: "closed" as const }
+                : item,
+            );
+      snapshots.set(turn, { ...turn, items });
+    }
+    timeline = { turns: turns.map((turn) => snapshots.get(turn)!), deleted };
+    return timeline;
   }
-  // A turn that ended with a request still open never got it answered.
-  for (const turn of turns) {
-    if (turn.state === "running") continue;
-    turn.items = turn.items.map((item) =>
-      item.kind === "request" && item.state === "open" ? { ...item, state: "closed" } : item,
-    );
-  }
-  return { turns, deleted };
+
+  return { apply, current: () => timeline };
 }
 
 /** The open requests of the running turn: what the composer asks the user to answer. */

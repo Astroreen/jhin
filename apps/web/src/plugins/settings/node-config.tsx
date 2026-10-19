@@ -39,6 +39,15 @@ interface Pending {
 
 const pretty = (value: unknown) => JSON.stringify(value ?? {}, null, 2);
 
+/** A section as read, with its text being edited: the text always belongs to it. */
+interface Loaded {
+  readonly section: string;
+  readonly read: ConfigRead;
+  /** The node file's part as read, to tell whether it was edited. */
+  readonly original: string;
+  readonly text: string;
+}
+
 /**
  * A node's config, section by section (D18–D20): the effective value, the node
  * file's part to edit, and the nodes of the mesh to apply it to — the ones not
@@ -86,12 +95,11 @@ export function NodeConfigSection() {
 }
 
 function ConfigEditor({ connection }: { connection: NodeConnection }) {
-  const { mesh, toasts } = useSettingsServices();
+  const { mesh, toasts, dialogs } = useSettingsServices();
   const client = connection.client;
   const [sections, setSections] = useState<readonly string[] | undefined>();
   const [section, setSection] = useState<string | undefined>();
-  const [read, setRead] = useState<ConfigRead | undefined>();
-  const [text, setText] = useState("");
+  const [loaded, setLoaded] = useState<Loaded | undefined>();
   const [scope, setScope] = useState<readonly string[] | undefined>();
   const [saving, setSaving] = useState(false);
   const [outcomes, setOutcomes] = useState<readonly Outcome[]>([]);
@@ -123,16 +131,53 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
 
   useEffect(() => {
     if (section === undefined) return;
-    setRead(undefined);
+    // An answer for a section no longer chosen is dropped.
+    let current = true;
+    setLoaded(undefined);
     setOutcomes([]);
     void client
       .call<ConfigRead>("host.config.get", { section })
       .then((next) => {
-        setRead(next);
-        setText(pretty(next.layers.node));
+        if (!current) return;
+        const original = pretty(next.layers.node);
+        setLoaded({ section, read: next, original, text: original });
       })
-      .catch((error: unknown) => setRead({ error: (error as Error).message, layers: {} }));
+      .catch((error: unknown) => {
+        if (current) {
+          const original = pretty(undefined);
+          setLoaded({
+            section,
+            read: { error: (error as Error).message, layers: {} },
+            original,
+            text: original,
+          });
+        }
+      });
+    return () => {
+      current = false;
+    };
   }, [client, section]);
+  const read = loaded?.read;
+  const text = loaded?.text ?? "";
+  const edited = loaded !== undefined && loaded.text !== loaded.original;
+
+  /** Another section, once unsaved edits are given up on purpose. */
+  const choose = async (next: string) => {
+    if (next === section) return;
+    if (
+      edited &&
+      dialogs !== undefined &&
+      !(await dialogs.confirm({
+        title: `Discard the changes to ${loaded.section}?`,
+        description: "They were not saved.",
+        confirmLabel: "Discard",
+        variant: "destructive",
+      }))
+    ) {
+      return;
+    }
+    setSection(next);
+  };
 
   const targets = scope ?? (self === undefined ? [] : [self.nodeId]);
   let parsed: Record<string, unknown> | undefined;
@@ -149,14 +194,16 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
   }
 
   const save = async () => {
-    if (section === undefined || parsed === undefined) return;
+    if (loaded === undefined || parsed === undefined) return;
+    // The section the text was read for, whatever is chosen meanwhile.
+    const { section: saved } = loaded;
     setSaving(true);
     try {
       const onlySelf = self === undefined || (targets.length === 1 && targets[0] === self.nodeId);
       if (onlySelf) {
         const result = await client.call<{ applied: boolean }>("host.config.patch", {
           layer: "node",
-          section,
+          section: saved,
           values: parsed,
         });
         setOutcomes([
@@ -169,7 +216,7 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
         const result = await client.call<{ results: Outcome[] }>("mesh.config.patch", {
           nodes: targets,
           layer: "node",
-          section,
+          section: saved,
           values: parsed,
         });
         setOutcomes(result.results);
@@ -177,7 +224,14 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
           await client.call<Pending[]>("mesh.config.pending").catch(() => pending as Pending[]),
         );
       }
-      setRead(await client.call<ConfigRead>("host.config.get", { section }));
+      // What the file holds now, if the section is still the one shown.
+      const next = await client.call<ConfigRead>("host.config.get", { section: saved });
+      const original = pretty(next.layers.node);
+      setLoaded((current) =>
+        current?.section === saved
+          ? { section: saved, read: next, original, text: original }
+          : current,
+      );
     } catch (error) {
       toasts?.show({
         type: "error",
@@ -204,7 +258,7 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
         ) : (
           <SettingsRow
             control={
-              <Select onValueChange={(value) => setSection(String(value))} value={section ?? ""}>
+              <Select onValueChange={(value) => void choose(String(value))} value={section ?? ""}>
                 <SelectTrigger
                   aria-label="Config section"
                   className="w-full font-mono sm:w-56"
@@ -225,7 +279,7 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
             title="Section"
           />
         )}
-        {read === undefined || section === undefined ? null : (
+        {read === undefined ? null : (
           <SettingsRow
             description="What the plugins see now: every layer merged, defaults filled in."
             title="Effective value"
@@ -235,15 +289,20 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
             </pre>
           </SettingsRow>
         )}
-        {read === undefined || section === undefined ? null : (
+        {loaded === undefined ? null : (
           <SettingsRow
             description="This section in the node's config.jsonc. Saving keeps the file's comments; a key left out keeps its value."
             title="Node file"
           >
             <Textarea
-              aria-label={`${section} in the node file`}
+              aria-label={`${loaded.section} in the node file`}
               className="mt-2 mb-2 font-mono text-xs"
-              onChange={(event) => setText(event.target.value)}
+              onChange={(event) => {
+                const value = event.target.value;
+                setLoaded((current) =>
+                  current === undefined ? current : { ...current, text: value },
+                );
+              }}
               rows={8}
               value={text}
             />
@@ -293,27 +352,33 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
         ) : null}
         {read === undefined ? null : (
           <div className="flex items-center justify-end gap-2 px-3 py-3 sm:px-4">
-            {outcomes.length === 0 ? null : (
-              <ul aria-label="Outcome" className="me-auto flex flex-wrap gap-x-3 text-xs">
-                {outcomes.map((outcome) => (
-                  <li
-                    className={
-                      outcome.status === "applied"
-                        ? "text-success-foreground"
-                        : outcome.status === "queued"
-                          ? "text-info-foreground"
-                          : "text-destructive-foreground"
-                    }
-                    key={outcome.node}
-                  >
-                    {nameOf(outcome.node)}: {outcome.status}
-                    {outcome.error === undefined ? "" : ` (${outcome.error})`}
-                  </li>
-                ))}
-              </ul>
-            )}
+            {/* Announced when a save ends, for screen readers too. */}
+            <div aria-live="polite" className="me-auto" role="status">
+              {outcomes.length === 0 ? null : (
+                <ul aria-label="Outcome" className="flex flex-wrap gap-x-3 text-xs">
+                  {outcomes.map((outcome) => (
+                    <li
+                      className={
+                        outcome.status === "applied"
+                          ? "text-success-foreground"
+                          : outcome.status === "queued"
+                            ? "text-info-foreground"
+                            : "text-destructive-foreground"
+                      }
+                      key={outcome.node}
+                    >
+                      {nameOf(outcome.node)}: {outcome.status}
+                      {outcome.error === undefined ? "" : ` (${outcome.error})`}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <Button
-              disabled={saving || parsed === undefined || targets.length === 0}
+              // Without the mesh (or before it answers) the change is this node's alone.
+              disabled={
+                saving || parsed === undefined || (self !== undefined && targets.length === 0)
+              }
               onClick={() => void save()}
               size="sm"
             >

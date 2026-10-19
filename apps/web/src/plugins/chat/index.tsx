@@ -14,9 +14,12 @@ import {
   type Navigation,
   type NodeTarget,
   type ThreadsCatalog,
+  VISITS_CAPABILITY,
+  type ThreadVisits,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
+  copyText,
   Button,
   Empty,
   EmptyDescription,
@@ -32,15 +35,13 @@ import {
   type Toasts,
 } from "@jhin/ui";
 import { MessageSquareDashedIcon, PlusIcon } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 
-import { addProjectRequests } from "../../lib/add-project.tsx";
 import { builtin } from "../../lib/builtin.ts";
 import { createDrafts } from "../../lib/composer.ts";
-import { useExternal } from "../../lib/hooks.ts";
+import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import { CHAT_SECTION, ChatSettings } from "../../lib/settings.ts";
-import { threadActions } from "../../lib/thread-actions.ts";
 import {
   ChatContext,
   createAgentsCache,
@@ -50,6 +51,7 @@ import {
   type ComposerHandle,
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
+import { createFollowUpQueues } from "./follow-ups.ts";
 
 /** The page header of a view without a thread. */
 function PageHeader({ title }: { title: string }) {
@@ -146,18 +148,12 @@ function Centered({ children, status }: { children: React.ReactNode; status?: bo
 }
 
 function NoActiveThread() {
-  const { connections, threads, navigation } = useChat();
+  const { context, connections, threads, navigation, toasts } = useChat();
   const nodes = useExternal(connections, connections.list);
   const first = nodes.find((node) => node.state === "open") ?? nodes[0]!;
-  const catalog = useSyncExternalStore(
-    (listener) => {
-      const subscription = threads.subscribe({ node: first.id }, listener);
-      return () => subscription.dispose();
-    },
-    () => threads.catalog({ node: first.id }),
-  );
-  const scratch = catalog.projects.find((project) => project.scratch);
-  const hasProjects = catalog.projects.some((project) => !project.scratch);
+  const catalog = useCatalog(threads, { node: first.id });
+  const scratch = catalog?.projects.find((project) => project.scratch);
+  const hasProjects = catalog?.projects.some((project) => !project.scratch) === true;
   const start = () => navigation.navigate({ node: first.id, project: scratch?.id ?? "scratch" });
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -177,7 +173,17 @@ function NoActiveThread() {
           <div className="mt-6 flex justify-center gap-2">
             <Button
               disabled={first.state !== "open"}
-              onClick={() => addProjectRequests.open({ node: first.id })}
+              onClick={() =>
+                void context.commands
+                  .execute("project.add", { node: first.id })
+                  .catch((error: unknown) =>
+                    toasts?.show({
+                      type: "error",
+                      title: "Cannot add a project here",
+                      description: (error as Error).message,
+                    }),
+                  )
+              }
               size="sm"
               variant={hasProjects ? "outline" : "default"}
             >
@@ -210,6 +216,7 @@ export const chatPlugin = builtin(
       [UI_TOASTS_CAPABILITY]: "^1",
       [UI_DIALOGS_CAPABILITY]: "^1",
       [KEYBINDINGS_CAPABILITY]: "^1",
+      [VISITS_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -224,6 +231,7 @@ export const chatPlugin = builtin(
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
+      const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
       const composer: ComposerHandle = { current: undefined };
       const services: ChatServices = {
         context,
@@ -236,10 +244,11 @@ export const chatPlugin = builtin(
         toasts,
         dialogs,
         keybindings,
-        actions: threadActions({ context, threads, navigation, mesh, toasts, dialogs }),
-        drafts: createDrafts(),
+        visits,
+        drafts: context.subscriptions.add(createDrafts()),
         agents: createAgentsCache(threads),
         lastSelection: createLastSelection(),
+        followUps: createFollowUpQueues(),
         composer,
       };
 
@@ -256,14 +265,7 @@ export const chatPlugin = builtin(
           node === undefined
             ? undefined
             : { node: node.id, ...(route.remote === undefined ? {} : { remote: route.remote }) };
-        const catalog = useSyncExternalStore(
-          (listener) => {
-            if (target === undefined) return () => undefined;
-            const subscription = threads.subscribe(target, listener);
-            return () => subscription.dispose();
-          },
-          () => (target === undefined ? undefined : threads.catalog(target)),
-        );
+        const catalog = useCatalog(threads, target);
 
         if (route.panel === "settings") return null;
         if (nodes.length === 0 || route.panel === "connect")
@@ -346,15 +348,21 @@ export const chatPlugin = builtin(
       }
 
       // --- Commands -------------------------------------------------------------
-      const register = (name: string, title: string, description: string, run: () => void) =>
+      /** A failure reaches whoever ran the command (the palette shows it, a shortcut logs it). */
+      const register = (
+        name: string,
+        title: string,
+        description: string,
+        run: () => void | Promise<unknown>,
+      ) =>
         context.commands.register({
           name,
           title,
           description,
           input: z.object({}),
           output: z.object({}),
-          handler: () => {
-            run();
+          handler: async () => {
+            await run();
             return {};
           },
         });
@@ -383,19 +391,21 @@ export const chatPlugin = builtin(
         "chat.stop",
         "Stop the running turn",
         "Interrupts the agent in the open thread",
-        () => {
+        async () => {
           const route = navigation.current();
           if (route.node === undefined || route.thread === undefined) return;
-          void threads.call(
+          await threads.call(
             { node: route.node, ...(route.remote === undefined ? {} : { remote: route.remote }) },
             "threads.interrupt",
             { threadId: route.thread },
           );
         },
       );
-      register("chat.thread.copy-id", "Copy thread ID", "Copies the open thread's id", () => {
+      register("chat.thread.copy-id", "Copy thread ID", "Copies the open thread's id", async () => {
         const route = navigation.current();
-        if (route.thread !== undefined) void navigator.clipboard?.writeText(route.thread);
+        if (route.thread === undefined) return;
+        await copyText(route.thread);
+        toasts?.show({ type: "success", title: "Thread ID copied", timeout: 1500 });
       });
       if (keybindings !== undefined) {
         context.subscriptions.add(

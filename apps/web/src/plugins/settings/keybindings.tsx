@@ -8,7 +8,7 @@ import {
 import { Badge, Button, Input, Kbd, KbdGroup } from "@jhin/ui";
 import { useState } from "react";
 
-import { useExternal } from "../../lib/hooks.ts";
+import { useCommands, useExternal } from "../../lib/hooks.ts";
 import { formatShortcutLabel, keyFromEvent, parseShortcut } from "../../lib/keybindings.ts";
 import { readSection } from "../../lib/settings.ts";
 import { SettingsEmpty, SettingsRow, SettingsSection } from "../../lib/settings-layout.tsx";
@@ -43,15 +43,14 @@ function ShortcutPill({ shortcutKey }: { shortcutKey: string }) {
   );
 }
 
-/** A stable empty snapshot when no keybindings plugin is active. */
+/** A stable empty snapshot and source when no keybindings plugin is active. */
 const NONE: readonly ActiveKeybinding[] = [];
+const NO_KEYBINDINGS = { subscribe: () => ({ dispose() {} }) };
 
 export function KeybindingsSection() {
   const { context, keybindings, settings } = useSettingsServices();
-  const active = useExternal(
-    keybindings ?? { subscribe: () => ({ dispose() {} }) },
-    () => keybindings?.list() ?? NONE,
-  );
+  const active = useExternal(keybindings ?? NO_KEYBINDINGS, () => keybindings?.list() ?? NONE);
+  const commands = useCommands(context);
   const [query, setQuery] = useState("");
   const [recording, setRecording] = useState<string | undefined>();
   if (keybindings === undefined) {
@@ -61,7 +60,7 @@ export function KeybindingsSection() {
       </SettingsSection>
     );
   }
-  const titles = new Map(context.commands.list().map((command) => [command.name, command.title]));
+  const titles = new Map(commands.map((command) => [command.name, command.title]));
   const custom = (): KeybindingRule[] => [
     ...readSection(context, KEYBINDINGS_CONFIG_SECTION, KeybindingsConfig).rules,
   ];

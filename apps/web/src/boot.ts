@@ -15,6 +15,8 @@ import { settingsPlugin } from "./plugins/settings/index.tsx";
 import { sidebarPlugin } from "./plugins/sidebar.tsx";
 import { threadsStorePlugin } from "./plugins/threads-store.ts";
 import { uiHostPlugin } from "./plugins/ui-host.tsx";
+import { visitsPlugin } from "./plugins/visits.ts";
+import { threadActionsPlugin } from "./plugins/thread-actions.tsx";
 
 /** The client's config layers: the node's (served with the page), then this device's. */
 const CONFIG_LAYERS = ["distribution", "node", "device"] as const;
@@ -94,6 +96,8 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     navigationPlugin,
     meshPlugin,
     threadsStorePlugin,
+    visitsPlugin,
+    threadActionsPlugin,
     sidebarPlugin,
     chatPlugin,
     commandPalettePlugin,

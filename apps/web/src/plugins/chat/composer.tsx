@@ -51,6 +51,7 @@ import {
 } from "react";
 
 import {
+  fitAttachments,
   readImage,
   stepPromptHistory,
   type PromptHistoryEntry,
@@ -68,6 +69,7 @@ import {
   ComposerControlSeparator,
   ComposerSelectControl,
 } from "./controls.tsx";
+import type { QueuedMessage } from "./follow-ups.ts";
 import { useAgents, useChat } from "./services.ts";
 import { ComposerSurface } from "./surface.tsx";
 
@@ -96,12 +98,6 @@ const RUNTIME_MODES: Record<string, { label: string; description: string; icon: 
     icon: LockOpenIcon,
   },
 };
-
-export interface QueuedMessage {
-  readonly id: string;
-  readonly text: string;
-  readonly attachments: readonly TurnAttachment[];
-}
 
 export interface ComposerHandleApi {
   focus(): void;
@@ -299,7 +295,13 @@ function QuestionsBanner(props: {
   );
 }
 
-function QueueBanner(props: { queue: readonly QueuedMessage[]; onRemove(id: string): void }) {
+function QueueBanner(props: {
+  queue: readonly QueuedMessage[];
+  /** Why the first message was not sent, if it was not. */
+  paused: string | undefined;
+  onRemove(id: string): void;
+  onResume(): void;
+}) {
   const [expanded, setExpanded] = useState(true);
   return (
     <ComposerBanner.Attachment>
@@ -323,6 +325,21 @@ function QueueBanner(props: { queue: readonly QueuedMessage[]; onRemove(id: stri
             <ComposerBanner.ToggleIcon expanded={expanded} />
           </ComposerBanner.Actions>
         </ComposerBanner.Row>
+        {props.paused === undefined ? null : (
+          <ComposerBanner.Row className="relative">
+            <ComposerBanner.Icon />
+            <ComposerBanner.Content>
+              <span className="min-w-0 flex-1 truncate text-destructive-foreground" role="alert">
+                Not sent: {props.paused}
+              </span>
+            </ComposerBanner.Content>
+            <ComposerBanner.Actions>
+              <Button onClick={props.onResume} size="xs" variant="outline">
+                Retry
+              </Button>
+            </ComposerBanner.Actions>
+          </ComposerBanner.Row>
+        )}
         {expanded ? (
           <ComposerBanner.Scroll className="max-h-32">
             <ComposerBanner.Children render={<ol />}>
@@ -606,13 +623,17 @@ export interface ComposerProps {
   readonly history: readonly PromptHistoryEntry[];
   readonly usage?: TokenUsage | undefined;
   readonly queue: readonly QueuedMessage[];
+  /** Why the queue stopped, if it did. */
+  readonly queuePaused?: string | undefined;
   onDequeue(id: string): void;
+  onResumeQueue?(): void;
   /** Why sending is not possible now (a disconnected node), if it is not. */
   readonly unavailable?: string | undefined;
   /** False when sending failed: the draft is restored. */
   onSend(text: string, attachments: readonly TurnAttachment[]): Promise<boolean>;
   onStop(): void;
-  onRespond(requestId: string, response: AgentResponse): Promise<void>;
+  /** False when the answer was not delivered: what was typed stays. */
+  onRespond(requestId: string, response: AgentResponse): Promise<boolean>;
   readonly handleRef?: Ref<ComposerHandleApi>;
 }
 
@@ -631,6 +652,8 @@ export function Composer(props: ComposerProps) {
   const [dragging, setDragging] = useState(false);
   const [answers, setAnswers] = useState<Record<string, readonly string[]>>({});
   const [questionIndex, setQuestionIndex] = useState(0);
+  /** The question an option was just picked on: the next one shows shortly after. */
+  const [picked, setPicked] = useState<number | undefined>();
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const historyPosition = useRef<PromptHistoryPosition | null>(null);
@@ -656,7 +679,16 @@ export function Composer(props: ComposerProps) {
   useEffect(() => {
     setAnswers({});
     setQuestionIndex(0);
+    setPicked(undefined);
   }, [question?.requestId]);
+  useEffect(() => {
+    if (picked === undefined) return;
+    const timer = setTimeout(() => {
+      setPicked(undefined);
+      setQuestionIndex((index) => (index === picked ? index + 1 : index));
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [picked]);
 
   const focus = () => textarea.current?.focus();
   const cycleRuntimeMode = () => {
@@ -682,6 +714,10 @@ export function Composer(props: ComposerProps) {
 
   // Context keys for shortcuts: whether the composer has focus and a turn runs.
   const [focused, setFocused] = useState(false);
+  // A disabled field may lose focus without a blur event.
+  useEffect(() => {
+    if (approval !== undefined) setFocused(false);
+  }, [approval?.requestId]);
   useEffect(() => {
     if (keybindings === undefined || !focused) return;
     const subscription = keybindings.setContext("composerFocus", true);
@@ -710,7 +746,20 @@ export function Composer(props: ComposerProps) {
           description: String(result.reason?.message ?? result.reason),
         });
     }
-    setAttachments((current) => [...current, ...added].slice(0, 10));
+    // What fits in one message (the node takes no more); the state is updated
+    // from its latest value, the warning from the one this drop started with.
+    const { dropped } = fitAttachments(attachments, added);
+    setAttachments((current) => fitAttachments(current, added).kept);
+    if (dropped.length > 0) {
+      toasts?.show({
+        type: "warning",
+        title:
+          dropped.length === 1
+            ? "An image was not attached"
+            : `${dropped.length} images were not attached`,
+        description: "A message takes up to 10 images, 20 MB together.",
+      });
+    }
   };
 
   const hasContent = prompt.trim() !== "" || attachments.length > 0;
@@ -749,12 +798,17 @@ export function Composer(props: ComposerProps) {
         : [label];
       return { ...current, [questionId]: next };
     });
-    if (!multi && questionIndex < questions.length - 1) {
-      setTimeout(() => setQuestionIndex((index) => Math.min(index + 1, questions.length - 1)), 200);
-    }
+    if (!multi && questionIndex < questions.length - 1) setPicked(questionIndex);
   };
   const currentQuestion = questions[questionIndex];
   const custom = prompt.trim();
+  /** A question's answer with the typed one: added to a multi-select's options, else instead. */
+  const withCustom = (item: UserQuestion): readonly string[] => {
+    const chosen = answers[item.id] ?? [];
+    if (item.id !== currentQuestion?.id || custom === "") return chosen;
+    if (item.multiSelect !== true) return [custom];
+    return chosen.includes(custom) ? chosen : [...chosen, custom];
+  };
   const canAdvance =
     currentQuestion !== undefined &&
     (custom !== "" || (answers[currentQuestion.id] ?? []).length > 0);
@@ -762,7 +816,10 @@ export function Composer(props: ComposerProps) {
     if (question === undefined || currentQuestion === undefined || !canAdvance) return;
     if (questionIndex < questions.length - 1) {
       if (custom !== "") {
-        setAnswers((current) => ({ ...current, [currentQuestion.id]: [custom] }));
+        setAnswers((current) => ({
+          ...current,
+          [currentQuestion.id]: withCustom(currentQuestion),
+        }));
         setPrompt("");
       }
       setQuestionIndex(questionIndex + 1);
@@ -770,14 +827,16 @@ export function Composer(props: ComposerProps) {
     }
     const final: Record<string, string | readonly string[]> = {};
     for (const item of questions) {
-      const chosen =
-        item.id === currentQuestion.id && custom !== "" ? [custom] : (answers[item.id] ?? []);
+      const chosen = withCustom(item);
       final[item.id] = item.multiSelect === true ? chosen : (chosen[0] ?? "");
     }
     setBusy(true);
     try {
-      await props.onRespond(question.requestId, { kind: "user-input", answers: final });
-      setPrompt("");
+      const answered = await props.onRespond(question.requestId, {
+        kind: "user-input",
+        answers: final,
+      });
+      if (answered) setPrompt("");
     } finally {
       setBusy(false);
     }
@@ -871,7 +930,7 @@ export function Composer(props: ComposerProps) {
         : props.unavailable !== undefined
           ? props.unavailable
           : "Ask anything, or attach images";
-  const disabled = approval !== undefined || (busy && question === undefined);
+  const disabled = approval !== undefined;
   const mode = RUNTIME_MODES[runtimeMode] ?? RUNTIME_MODES["full-access"]!;
 
   return (
@@ -895,7 +954,12 @@ export function Composer(props: ComposerProps) {
             selected={answers}
           />
         ) : props.queue.length > 0 ? (
-          <QueueBanner onRemove={props.onDequeue} queue={props.queue} />
+          <QueueBanner
+            onRemove={props.onDequeue}
+            onResume={() => props.onResumeQueue?.()}
+            paused={props.queuePaused}
+            queue={props.queue}
+          />
         ) : null}
         <ComposerSurface.Host>
           <div className="relative z-10">
@@ -967,6 +1031,7 @@ export function Composer(props: ComposerProps) {
                         )}
                         disabled={disabled}
                         onBlur={() => setFocused(false)}
+                        readOnly={busy && question === undefined}
                         onChange={(event) => {
                           setPrompt(event.target.value);
                         }}

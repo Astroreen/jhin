@@ -1,16 +1,70 @@
-import type { Keybindings } from "@jhin/client-api";
-import type { Disposable, PluginContext } from "@jhin/sdk";
+import {
+  targetKey,
+  type Keybindings,
+  type NodeCatalog,
+  type NodeTarget,
+  type ThreadsCatalog,
+} from "@jhin/client-api";
+import type { CommandInfo, Disposable, PluginContext } from "@jhin/sdk";
+import { copyText } from "@jhin/ui";
 import { useEffect, useState, useSyncExternalStore } from "react";
+
+type Subscribe = (listener: () => void) => () => void;
+
+/**
+ * One subscribe function per source, as React wants it: a new one each render
+ * would unsubscribe and subscribe again every time (with or without the
+ * React Compiler memoizing the caller).
+ */
+const subscribers = new WeakMap<object, Subscribe>();
+function subscriberOf(source: { subscribe(listener: () => void): Disposable }): Subscribe {
+  let subscribe = subscribers.get(source);
+  if (subscribe === undefined) {
+    subscribe = (listener) => {
+      const subscription = source.subscribe(listener);
+      return () => subscription.dispose();
+    };
+    subscribers.set(source, subscribe);
+  }
+  return subscribe;
+}
 
 /** Subscribes a component to anything with `subscribe` + a snapshot getter. */
 export function useExternal<T>(
   source: { subscribe(listener: () => void): Disposable },
   get: () => T,
 ): T {
-  return useSyncExternalStore((listener) => {
-    const subscription = source.subscribe(listener);
-    return () => subscription.dispose();
-  }, get);
+  return useSyncExternalStore(subscriberOf(source), get);
+}
+
+const catalogSubscribers = new WeakMap<ThreadsCatalog, Map<string, Subscribe>>();
+const noSubscription: Subscribe = () => () => undefined;
+
+/** A node's catalog, kept current: one subscription per target however often the caller renders. */
+export function useCatalog(
+  threads: ThreadsCatalog,
+  target: NodeTarget | undefined,
+): NodeCatalog | undefined {
+  let subscribe = noSubscription;
+  if (target !== undefined) {
+    const byTarget = catalogSubscribers.get(threads) ?? new Map<string, Subscribe>();
+    catalogSubscribers.set(threads, byTarget);
+    const key = targetKey(target);
+    const known = byTarget.get(key);
+    if (known === undefined) {
+      const fixed = { ...target };
+      subscribe = (listener) => {
+        const subscription = threads.subscribe(fixed, listener);
+        return () => subscription.dispose();
+      };
+      byTarget.set(key, subscribe);
+    } else {
+      subscribe = known;
+    }
+  }
+  return useSyncExternalStore(subscribe, () =>
+    target === undefined ? undefined : threads.catalog(target),
+  );
 }
 
 /**
@@ -18,13 +72,25 @@ export function useExternal<T>(
  * The section must be defined (by this plugin or another).
  */
 export function useConfig<T>(context: PluginContext, section: string): T {
-  return useSyncExternalStore(
-    (listener) => {
+  return useSyncExternalStore(configSubscriber(context, section), () =>
+    cachedConfig<T>(context, section),
+  );
+}
+
+const configSubscribers = new WeakMap<PluginContext, Map<string, Subscribe>>();
+/** One subscribe function per plugin and config section (see `subscriberOf`). */
+export function configSubscriber(context: PluginContext, section: string): Subscribe {
+  const bySection = configSubscribers.get(context) ?? new Map<string, Subscribe>();
+  configSubscribers.set(context, bySection);
+  let subscribe = bySection.get(section);
+  if (subscribe === undefined) {
+    subscribe = (listener) => {
       const subscription = context.config.onDidChange(section, listener);
       return () => subscription.dispose();
-    },
-    () => cachedConfig<T>(context, section),
-  );
+    };
+    bySection.set(section, subscribe);
+  }
+  return subscribe;
 }
 
 /** `config.get` parses on every call; snapshots must be stable between changes. */
@@ -84,7 +150,7 @@ export function useCopy(resetMs = 1200): { copied: boolean; copy(text: string): 
   return {
     copied,
     copy(text) {
-      void navigator.clipboard?.writeText(text).then(
+      void copyText(text).then(
         () => setCopied(true),
         () => setCopied(false),
       );
@@ -103,4 +169,19 @@ export function useShortcutLabels(
 ): (command: string) => string | undefined {
   const active = useExternal(keybindings ?? noKeybindings, () => keybindings?.list());
   return (command) => (active === undefined ? undefined : keybindings?.labelFor(command));
+}
+
+/** The commands registered now, following plugins as they come and go (with their commands). */
+export function useCommands(context: PluginContext): readonly CommandInfo[] {
+  const [commands, setCommands] = useState(() => context.commands.list());
+  useEffect(() => {
+    const refresh = () => setCommands(context.commands.list());
+    const subscriptions = [
+      context.events.on("kernel.plugin.activated", refresh),
+      context.events.on("kernel.plugin.deactivated", refresh),
+    ];
+    refresh();
+    return () => subscriptions.forEach((subscription) => subscription.dispose());
+  }, [context]);
+  return commands;
 }

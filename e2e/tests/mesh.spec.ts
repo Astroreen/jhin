@@ -136,7 +136,10 @@ test("D47: a client connected to a creates a thread on c, two hops away, and get
   await expect(agent).toHaveAttribute("aria-busy", "false");
   // The thread lives on c: it is listed (and selected) under c, titled after its first
   // message, and c's own node has it.
-  await expect(nodeC.locator("[aria-current=page]")).toContainText("across the mesh");
+  await expect(nodeC.getByRole("button", { name: "across the mesh", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   const onC = await c.client().call<{ title: string }[]>("threads.list");
   expect(onC.map((thread) => thread.title)).toEqual(["across the mesh"]);
 
@@ -219,7 +222,11 @@ test("D47: a thread a reachable remote cannot share says why and leaves the remo
   await page.goto(`${a.ui}#token=${a.token}`);
   const nodeB = page.getByRole("region", { name: "Node b" });
   await nodeB.getByRole("button", { name: "New thread", exact: true }).click();
-  await expect(nodeB.locator("[aria-current=page]")).toHaveText("New thread");
+  // The new thread's draft is the current item of b's list.
+  await expect(nodeB.getByRole("listitem").filter({ hasText: "New thread" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   // The same reachable remote, but a thread `mesh.open` refuses to copy.
   await page.evaluate(() => {
     const params = new URLSearchParams(location.hash.slice(1));

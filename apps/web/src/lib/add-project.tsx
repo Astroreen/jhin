@@ -35,7 +35,7 @@ interface Listing {
 }
 
 /** Who asked for the dialog; one at a time. */
-function createRequests() {
+export function createAddProjectRequests() {
   let target: NodeTarget | undefined;
   const listeners = new Set<() => void>();
   const changed = () => {
@@ -58,8 +58,7 @@ function createRequests() {
   };
 }
 
-/** Opens the "Add project" dialog for a node; the sidebar mounts the dialog. */
-export const addProjectRequests = createRequests();
+export type AddProjectRequests = ReturnType<typeof createAddProjectRequests>;
 
 const separator = (path: string) => (path.includes("\\") && !path.includes("/") ? "\\" : "/");
 
@@ -72,16 +71,18 @@ function splitPath(path: string): { dir: string; prefix: string } {
 }
 
 export function AddProjectDialog(props: {
+  requests: AddProjectRequests;
   connections: Connections;
   navigation: Navigation;
   threads: ThreadsCatalog;
   toasts: Toasts | undefined;
 }) {
-  const target = useSyncExternalStore(addProjectRequests.subscribe, addProjectRequests.current);
+  const { requests } = props;
+  const target = useSyncExternalStore(requests.subscribe, requests.current);
   return (
     <Dialog
       onOpenChange={(open) => {
-        if (!open) addProjectRequests.close();
+        if (!open) requests.close();
       }}
       open={target !== undefined}
     >
@@ -99,6 +100,7 @@ export function AddProjectDialog(props: {
 }
 
 function AddProjectForm(props: {
+  requests: AddProjectRequests;
   target: NodeTarget;
   connections: Connections;
   navigation: Navigation;
@@ -154,7 +156,7 @@ function AddProjectForm(props: {
         path: trimmed,
         ...(name.trim() === "" ? {} : { name: name.trim() }),
       });
-      addProjectRequests.close();
+      props.requests.close();
       props.toasts?.show({ type: "success", title: "Project added", description: project.name });
       props.navigation.navigate({
         node: target.node,
@@ -265,7 +267,7 @@ function AddProjectForm(props: {
         </div>
       </DialogPanel>
       <DialogFooter>
-        <Button onClick={() => addProjectRequests.close()} type="button" variant="outline">
+        <Button onClick={() => props.requests.close()} type="button" variant="outline">
           Cancel
         </Button>
         <Button disabled={busy || path.trim() === ""} type="submit">

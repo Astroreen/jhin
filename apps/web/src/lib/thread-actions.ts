@@ -1,5 +1,6 @@
 // The actions and their wording follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/hooks/useThreadActionMenu.ts and apps/web/src/components/Sidebar.tsx.
+import type { TurnAttachment } from "@jhin/agent-api";
 import type {
   MeshMembership,
   Navigation,
@@ -7,16 +8,17 @@ import type {
   ProjectRecord,
   ThreadRecord,
   ThreadsCatalog,
+  ThreadVisits,
 } from "@jhin/client-api";
-import { targetKey } from "@jhin/client-api";
 import type { PluginContext } from "@jhin/sdk";
-import type { Dialogs, Toasts } from "@jhin/ui";
+import { copyText, type Dialogs, type Toasts } from "@jhin/ui";
 
 import { CHAT_SECTION, ChatSettings, readSection } from "./settings.ts";
-import { visits } from "./thread-status.ts";
 
 export interface ThreadActionServices {
   readonly context: PluginContext;
+  /** Absent without a `client.visits` provider: nothing then shows as unread. */
+  readonly visits: ThreadVisits | undefined;
   readonly threads: ThreadsCatalog;
   readonly navigation: Navigation;
   readonly mesh: MeshMembership;
@@ -32,8 +34,46 @@ function nodeIdOf(mesh: MeshMembership, target: NodeTarget): string | undefined 
   return mesh.members(target.node)?.find((member) => member.self)?.nodeId;
 }
 
-export const visitKey = (target: NodeTarget, threadId: string) =>
-  `${targetKey(target)}|${threadId}`;
+/**
+ * Creates a thread and sends its first message; returns the thread's id. A
+ * thread whose first message could not be sent is deleted again, so a failed
+ * start leaves no empty thread behind (unless the node is out of reach for
+ * that too).
+ */
+export async function startThread(
+  threads: Pick<ThreadsCatalog, "call">,
+  target: NodeTarget,
+  first: {
+    readonly projectId: string;
+    readonly text: string;
+    readonly attachments: readonly TurnAttachment[];
+    /** The agent, model and modes the thread runs with. */
+    readonly selection: {
+      readonly agentId?: string;
+      readonly model?: string;
+      readonly runtimeMode?: string;
+      readonly interactionMode?: string;
+    };
+  },
+): Promise<string> {
+  const thread = await threads.call<ThreadRecord>(target, "threads.create", {
+    projectId: first.projectId,
+    ...first.selection,
+  });
+  try {
+    await threads.call(target, "threads.send", {
+      threadId: thread.id,
+      text: first.text,
+      ...(first.attachments.length === 0 ? {} : { attachments: first.attachments }),
+      ...first.selection,
+    });
+  } catch (error) {
+    // The send's error is the one to show; a failed clean-up adds nothing to it.
+    await threads.call(target, "threads.delete", { threadId: thread.id }).catch(() => undefined);
+    throw error;
+  }
+  return thread.id;
+}
 
 /** What can be done to a thread from its row, its header or the command palette. */
 export function threadActions(services: ThreadActionServices) {
@@ -42,7 +82,7 @@ export function threadActions(services: ThreadActionServices) {
     toasts?.show({ type: "error", title, description: errorText(error) });
   const settings = () => readSection(context, CHAT_SECTION, ChatSettings);
   const copy = (text: string, title: string) =>
-    void navigator.clipboard?.writeText(text).then(
+    void copyText(text).then(
       () => toasts?.show({ type: "success", title, timeout: 1500 }),
       (error: unknown) => fail("Could not copy", error),
     );
@@ -138,7 +178,7 @@ export function threadActions(services: ThreadActionServices) {
       }
     },
     markUnread(target: NodeTarget, thread: ThreadRecord): void {
-      visits().markUnread(visitKey(target, thread.id));
+      services.visits?.markUnread(target, thread.id);
     },
     copyId(thread: ThreadRecord): void {
       copy(thread.id, "Thread ID copied");
@@ -201,5 +241,3 @@ export function threadActions(services: ThreadActionServices) {
     },
   };
 }
-
-export type ThreadActions = ReturnType<typeof threadActions>;

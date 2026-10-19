@@ -41,7 +41,6 @@ import { createContext, useContext, useEffect, useSyncExternalStore } from "reac
 
 import { builtin } from "../../lib/builtin.ts";
 import { useExternal } from "../../lib/hooks.ts";
-import { threadActions } from "../../lib/thread-actions.ts";
 import { ArchivedSection } from "./archived.tsx";
 import { AppearanceSection, GeneralSection } from "./general.tsx";
 import { KeybindingsSection } from "./keybindings.tsx";
@@ -58,7 +57,6 @@ export interface SettingsServices {
   readonly keybindings: Keybindings | undefined;
   readonly toasts: Toasts | undefined;
   readonly dialogs: Dialogs | undefined;
-  readonly actions: ReturnType<typeof threadActions>;
 }
 
 const SettingsContext = createContext<SettingsServices | undefined>(undefined);
@@ -135,7 +133,6 @@ export const settingsPlugin = builtin(
         keybindings,
         toasts,
         dialogs,
-        actions: threadActions({ context, threads, navigation, mesh, toasts, dialogs }),
       };
       const sections = createSections();
 

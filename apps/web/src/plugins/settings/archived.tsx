@@ -3,10 +3,10 @@
 import { targetKey, type NodeTarget } from "@jhin/client-api";
 import { Button } from "@jhin/ui";
 import { ArchiveXIcon, Trash2Icon } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 import { formatRelativeTimeLabel } from "../../lib/format.ts";
-import { useExternal } from "../../lib/hooks.ts";
+import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import { ProjectIcon } from "../../lib/project-icon.tsx";
 import { SettingsEmpty, SettingsRow, SettingsSection } from "../../lib/settings-layout.tsx";
@@ -17,14 +17,16 @@ type Report = (key: string, count: number) => void;
 
 function NodeArchive(props: { target: NodeTarget; label: string; report: Report }) {
   const { target, label, report } = props;
-  const { threads, actions } = useSettingsServices();
-  const catalog = useSyncExternalStore(
-    (listener) => {
-      const subscription = threads.subscribe(target, listener);
-      return () => subscription.dispose();
-    },
-    () => threads.catalog(target),
-  );
+  const { threads, context, toasts } = useSettingsServices();
+  const run = (name: string, threadId: string) =>
+    void context.commands.execute(name, { ...target, threadId }).catch((error: unknown) =>
+      toasts?.show({
+        type: "error",
+        title: "Could not do that",
+        description: (error as Error).message,
+      }),
+    );
+  const catalog = useCatalog(threads, target)!;
   const archived = catalog.threads
     .filter((thread) => thread.archivedAt !== undefined)
     .toSorted((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? ""));
@@ -50,7 +52,7 @@ function NodeArchive(props: { target: NodeTarget; label: string; report: Report 
                 control={
                   <div className="flex items-center gap-1.5">
                     <Button
-                      onClick={() => void actions.unarchive(target, thread)}
+                      onClick={() => run("thread.unarchive", thread.id)}
                       size="xs"
                       variant="outline"
                     >
@@ -59,7 +61,7 @@ function NodeArchive(props: { target: NodeTarget; label: string; report: Report 
                     </Button>
                     <Button
                       aria-label={`Delete ${thread.title}`}
-                      onClick={() => void actions.remove(target, thread)}
+                      onClick={() => run("thread.delete", thread.id)}
                       size="icon-xs"
                       variant="ghost-muted"
                     >

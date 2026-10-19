@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   answerPreview,
+  createTimeline,
   foldsBeforeFinal,
   openRequests,
   reduceTimeline,
@@ -259,5 +260,38 @@ describe("work summaries", () => {
         at: "2026-10-18T12:00:00.000Z",
       }),
     ).toBe("Approved: rm -rf build");
+  });
+});
+
+describe("folding as events arrive", () => {
+  const events = stream(
+    started("u1", "first"),
+    [ThreadEvents.itemDelta, { turnId: "u1", itemId: "m1", kind: "message", text: "Hel" }],
+    [ThreadEvents.itemDelta, { turnId: "u1", itemId: "m1", kind: "message", text: "lo" }],
+    [ThreadEvents.itemCompleted, { turnId: "u1", itemId: "m1", kind: "message", text: "Hello" }],
+    [ThreadEvents.turnCompleted, { turnId: "u1" }],
+    started("u2", "second"),
+    [ThreadEvents.itemStarted, { turnId: "u2", itemId: "t", kind: "tool", tool: command("ls") }],
+    [
+      ThreadEvents.requestOpened,
+      { turnId: "u2", requestId: "r", request: { kind: "approval", tool: command("rm") } },
+    ],
+    [ThreadEvents.turnInterrupted, { turnId: "u2" }],
+  );
+
+  it("gives the same timeline event by event as all at once", () => {
+    const fold = createTimeline();
+    for (const event of events) fold.apply([event]);
+    expect(fold.current()).toEqual(reduceTimeline(events));
+  });
+
+  it("keeps the turns a batch did not touch, and the whole timeline when nothing changed", () => {
+    const fold = createTimeline();
+    const first = fold.apply(events.slice(0, 5));
+    const second = fold.apply(events.slice(5));
+    expect(second.turns[0]).toBe(first.turns[0]);
+    expect(second.turns[1]).not.toBe(first.turns[1]);
+    expect(fold.apply([])).toBe(second);
+    expect(fold.apply(stream(["something.else", { turnId: "u1" }]))).toBe(second);
   });
 });

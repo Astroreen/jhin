@@ -6,6 +6,7 @@ import {
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   THREADS_CAPABILITY,
+  targetKey,
   type Connections,
   type Keybindings,
   type MeshMembership,
@@ -59,10 +60,11 @@ import {
   TextCursorInputIcon,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { builtin } from "../lib/builtin.ts";
 import { formatRelativeTimeLabel } from "../lib/format.ts";
+import { useExternal, useNow } from "../lib/hooks.ts";
 import { filterSearchGroups, type SearchGroup } from "../lib/palette-search.ts";
 import { ProjectIcon } from "../lib/project-icon.tsx";
 
@@ -98,7 +100,7 @@ const COMMAND_ICONS: Record<string, LucideIcon> = {
   "navigation.back": ArrowLeftIcon,
   "navigation.forward": ArrowRightIcon,
   "settings.open": SettingsIcon,
-  "sidebar.add-project": FolderPlusIcon,
+  "project.add": FolderPlusIcon,
   "sidebar.thread.next": ArrowDownIcon,
   "sidebar.thread.previous": ArrowUpIcon,
   "ui.appearance.cycle": MonitorIcon,
@@ -196,8 +198,7 @@ export const commandPalettePlugin = builtin(
           })),
         );
 
-      const threadItems = (): PaletteItem[] => {
-        const now = Date.now();
+      const threadItems = (now: number): PaletteItem[] => {
         const current = navigation.current();
         return targets()
           .flatMap(({ target, label }) => {
@@ -268,7 +269,11 @@ export const commandPalettePlugin = builtin(
        * directly; `revision` changes with those stores (see `useRevision`),
        * so a memoized render rebuilds them instead of showing stale items.
        */
-      const rootGroups = (query: string, _revision: number): SearchGroup<PaletteItem>[] => {
+      const rootGroups = (
+        query: string,
+        _revision: number,
+        now: number,
+      ): SearchGroup<PaletteItem>[] => {
         const actions: SearchGroup<PaletteItem> = {
           value: "actions",
           label: "Actions",
@@ -280,40 +285,59 @@ export const commandPalettePlugin = builtin(
             {
               value: "recent-threads",
               label: "Recent Threads",
-              items: threadItems().slice(0, RECENT_THREADS),
+              items: threadItems(now).slice(0, RECENT_THREADS),
             },
           ];
         }
         return [
           actions,
           { value: "projects-search", label: "Projects", items: projectItems() },
-          { value: "threads-search", label: "Threads", items: threadItems() },
+          { value: "threads-search", label: "Threads", items: threadItems(now) },
         ];
       };
 
-      /** Re-renders while open when any catalog changes. */
-      /** Changes whenever the nodes, their catalogs or the shortcuts do. */
+      const reached = () =>
+        targets()
+          .map(({ target }) => targetKey(target))
+          .join("\n");
+
+      /**
+       * Changes whenever what the items are built from does: the nodes reached
+       * (connections and their meshes) and their catalogs, the place, the
+       * shortcuts, and plugins coming and going with their commands. A change
+       * of the nodes reached follows the new ones.
+       */
       function useRevision(): number {
         const [revision, setRevision] = useState(0);
+        const [nodes, setNodes] = useState(reached);
         useEffect(() => {
           const bump = () => setRevision((value) => value + 1);
+          const follow = () => {
+            setNodes(reached());
+            bump();
+          };
           const subscriptions = [
-            connections.subscribe(bump),
+            connections.subscribe(follow),
+            ...connections.list().map((node) => mesh.subscribe(node.id, follow)),
             ...targets().map(({ target }) => threads.subscribe(target, bump)),
+            navigation.subscribe(bump),
             ...(keybindings === undefined ? [] : [keybindings.subscribe(bump)]),
+            context.events.on("kernel.plugin.activated", bump),
+            context.events.on("kernel.plugin.deactivated", bump),
           ];
           return () => subscriptions.forEach((subscription) => subscription.dispose());
-        }, []);
+        }, [nodes]);
         return revision;
       }
 
       function PaletteBody() {
         const revision = useRevision();
+        const now = useNow();
         const [query, setQuery] = useState("");
         const [stack, setStack] = useState<readonly PaletteItem[]>([]);
         const [highlighted, setHighlighted] = useState<string | null>(null);
         const submenu = stack.at(-1);
-        const base = submenu?.groups ?? rootGroups(query, revision);
+        const base = submenu?.groups ?? rootGroups(query, revision, now);
         const groups = filterSearchGroups(base, query);
         const items = groups.flatMap((group) => group.items);
 
@@ -469,10 +493,7 @@ export const commandPalettePlugin = builtin(
       }
 
       function Palette() {
-        const isOpen = useSyncExternalStore((listener) => {
-          const subscription = open.subscribe(listener);
-          return () => subscription.dispose();
-        }, open.get);
+        const isOpen = useExternal(open, open.get);
         return (
           <CommandDialog onOpenChange={(next) => open.set(next)} open={isOpen}>
             {isOpen ? (

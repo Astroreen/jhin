@@ -1,4 +1,4 @@
-import type { ThreadRecord } from "@jhin/client-api";
+import { visitKey, type ThreadRecord } from "@jhin/client-api";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createVisits, strongestPill, threadStatusPill } from "../src/lib/thread-status.ts";
@@ -74,24 +74,30 @@ describe("threadStatusPill", () => {
 });
 
 describe("visits", () => {
+  const node = { node: "ws://a/rpc" };
+
   it("only moves forward, and marking unread brings the last turn back", () => {
     const storage = memoryStorage();
     const visits = createVisits(storage);
     let changes = 0;
     visits.subscribe(() => (changes += 1));
 
-    visits.visit("n|t1", LATER);
-    visits.visit("n|t1", AT);
-    expect(visits.get("n|t1")).toBe(LATER);
+    visits.visit(node, "t1", LATER);
+    visits.visit(node, "t1", AT);
+    expect(visits.get(node, "t1")).toBe(LATER);
     expect(changes).toBe(1);
 
     const before = visits.snapshot();
-    visits.markUnread("n|t1");
+    visits.markUnread(node, "t1");
     expect(visits.snapshot()).not.toBe(before);
-    expect(threadStatusPill(thread(turn("completed")), visits.get("n|t1"))?.label).toBe(
+    expect(threadStatusPill(thread(turn("completed")), visits.get(node, "t1"))?.label).toBe(
       "Completed",
     );
-    expect(createVisits(storage).get("n|t1")).toBe(visits.get("n|t1"));
+    // Kept on the device, under the key renders read it by.
+    expect(createVisits(storage).get(node, "t1")).toBe(visits.get(node, "t1"));
+    expect(visits.snapshot()[visitKey(node, "t1")]).toBe(visits.get(node, "t1"));
+    // A thread of the same id on another node is another thread.
+    expect(visits.get({ node: "ws://a/rpc", remote: "b" }, "t1")).toBeUndefined();
   });
 
   it("starts empty from unreadable storage", () => {

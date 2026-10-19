@@ -139,13 +139,24 @@ const COMPONENTS: Components = {
       </div>
     );
   },
-  img({ node: _node, alt, ...props }: ComponentProps<"img"> & { node?: unknown }) {
+  img({ node: _node, alt, src, ...props }: ComponentProps<"img"> & { node?: unknown }) {
+    // An agent's reply may carry text injected from elsewhere: an image from
+    // another server would be fetched as it renders and could leak what its URL
+    // holds. Only images inside the message show; others are links to open.
+    if (typeof src !== "string" || !src.startsWith("data:image/")) {
+      return (
+        <a href={src} rel="noopener noreferrer" target="_blank">
+          {alt === undefined || alt === "" ? "Image" : alt}
+        </a>
+      );
+    }
     return (
       <img
         {...props}
         alt={alt ?? ""}
         className="h-auto max-h-[30rem] w-auto max-w-[min(100%,30rem)] rounded-lg border border-border/40 object-contain"
         loading="lazy"
+        src={src}
       />
     );
   },

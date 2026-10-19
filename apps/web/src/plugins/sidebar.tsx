@@ -16,6 +16,12 @@ import {
   type ProjectRecord,
   type ThreadRecord,
   type ThreadsCatalog,
+  VISITS_CAPABILITY,
+  visitKey,
+  type ThreadVisits,
+  type NodeActionProps,
+  type ProjectActionProps,
+  type ThreadActionProps,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
@@ -59,34 +65,25 @@ import {
   CopyIcon,
   EllipsisIcon,
   FolderPlusIcon,
-  HashIcon,
-  LinkIcon,
-  MailOpenIcon,
   PencilIcon,
   PlusIcon,
   SearchIcon,
   ServerIcon,
   SettingsIcon,
   SquarePenIcon,
-  Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useRef, useState, type ComponentType, type ReactNode } from "react";
 
-import { AddProjectDialog, addProjectRequests } from "../lib/add-project.tsx";
+import { AddProjectDialog, createAddProjectRequests } from "../lib/add-project.tsx";
 import { builtin } from "../lib/builtin.ts";
 import { formatRelativeTimeLabel } from "../lib/format.ts";
-import { useExternal, useNow, useShortcutLabels } from "../lib/hooks.ts";
+import { useCatalog, useExternal, useNow, useShortcutLabels } from "../lib/hooks.ts";
 import { useMeshMembers } from "../lib/mesh.ts";
 import { ProjectIcon } from "../lib/project-icon.tsx";
-import { CHAT_SECTION, ChatSettings, useSection } from "../lib/settings.ts";
-import { threadActions, visitKey, type ThreadActions } from "../lib/thread-actions.ts";
-import {
-  strongestPill,
-  threadStatusPill,
-  visits,
-  type ThreadStatusPill,
-} from "../lib/thread-status.ts";
+import { CHAT_SECTION, ChatSettings, readSection, useSection } from "../lib/settings.ts";
+import { listedThreads, shownThreads, threadActivityAt } from "../lib/sidebar-order.ts";
+import { strongestPill, threadStatusPill, type ThreadStatusPill } from "../lib/thread-status.ts";
 
 const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
   "inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-md px-0.75 text-icon-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
@@ -94,18 +91,51 @@ const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
 const COLLAPSED_STORAGE_KEY = "jhin.sidebar.collapsed";
 
 /** The time a thread last moved: its last turn, then its last change. */
-const threadActivityAt = (thread: ThreadRecord) =>
-  thread.lastTurn?.at ?? thread.updatedAt ?? thread.createdAt;
-
-/** Threads as the sidebar lists them: not archived, most recent first. */
-function listedThreads(threads: readonly ThreadRecord[], projectId: string): ThreadRecord[] {
-  return threads
-    .filter((thread) => thread.projectId === projectId && thread.archivedAt === undefined)
-    .toSorted((a, b) => threadActivityAt(b).localeCompare(threadActivityAt(a)));
+/** A value of the sidebar that its commands read too (the search). */
+function createValue<T>(initial: T) {
+  let value = initial;
+  const listeners = new Set<() => void>();
+  return {
+    get: () => value,
+    set(next: T) {
+      if (Object.is(next, value)) return;
+      value = next;
+      for (const listener of Array.from(listeners)) listener();
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return { dispose: () => listeners.delete(listener) };
+    },
+  };
 }
 
-const normalize = (value: string) =>
-  value.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
+/** The projects that show all their threads, not only the first few. */
+function createShowingAll() {
+  let keys: ReadonlySet<string> = new Set();
+  const listeners = new Set<() => void>();
+  return {
+    has: (key: string) => keys.has(key),
+    toggle(key: string) {
+      const next = new Set(keys);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      keys = next;
+      for (const listener of Array.from(listeners)) listener();
+    },
+    snapshot: () => keys,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return { dispose: () => listeners.delete(listener) };
+    },
+  };
+}
+
+/** Without `client.visits`: nothing was seen, so nothing shows as unread. */
+const NO_VISITS: Pick<ThreadVisits, "snapshot" | "subscribe"> = {
+  snapshot: () => NO_SEEN,
+  subscribe: () => ({ dispose() {} }),
+};
+const NO_SEEN: Readonly<Record<string, string>> = {};
 
 /** Which projects the user collapsed, kept on this device. */
 function createCollapsed() {
@@ -255,6 +285,7 @@ export const sidebarPlugin = builtin(
       [UI_TOASTS_CAPABILITY]: "^1",
       [UI_DIALOGS_CAPABILITY]: "^1",
       [KEYBINDINGS_CAPABILITY]: "^1",
+      [VISITS_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -267,25 +298,12 @@ export const sidebarPlugin = builtin(
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
-      const actions: ThreadActions = threadActions({
-        context,
-        threads,
-        navigation,
-        mesh,
-        toasts,
-        dialogs,
-      });
+      const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
       const collapsed = createCollapsed();
-      const visitStore = visits();
-
-      const useCatalog = (target: NodeTarget) =>
-        useSyncExternalStore(
-          (listener) => {
-            const subscription = threads.subscribe(target, listener);
-            return () => subscription.dispose();
-          },
-          () => threads.catalog(target),
-        );
+      const showingAll = createShowingAll();
+      const search = createValue("");
+      const addProjectRequests = createAddProjectRequests();
+      const visitStore = visits ?? NO_VISITS;
 
       const targetOf = (route: { node?: string; remote?: string }): NodeTarget | undefined =>
         route.node === undefined
@@ -308,9 +326,20 @@ export const sidebarPlugin = builtin(
           thread: threadId,
         });
 
+      /** Runs a command for the sidebar; what fails shows as a toast. */
+      const run = (name: string, input: unknown) =>
+        void context.commands.execute(name, input).catch((error: unknown) =>
+          toasts?.show({
+            type: "error",
+            title: "Could not do that",
+            description: (error as Error).message,
+          }),
+        );
+
       function ThreadRow(props: {
         target: NodeTarget;
         thread: ThreadRecord;
+        project: ProjectRecord;
         active: boolean;
         now: number;
       }) {
@@ -330,32 +359,36 @@ export const sidebarPlugin = builtin(
           if (renaming === undefined) return;
           const title = renaming;
           setRenaming(undefined);
-          void actions.rename(target, thread, title);
+          if (title.trim() !== thread.title) {
+            run("thread.rename", { ...target, threadId: thread.id, title });
+          }
         };
 
         return (
           <SidebarMenuSubItem className="w-full" data-thread-item>
             <ContextMenu>
-              <ContextMenuTrigger
-                render={
+              {/* The row, and next to it (not inside) its archive button. */}
+              <ContextMenuTrigger render={<div className="relative isolate w-full min-w-0" />}>
+                {renaming === undefined ? (
                   <div
                     aria-current={active ? "page" : undefined}
+                    aria-label={
+                      status === null ? thread.title : `${thread.title} (${status.label})`
+                    }
                     className={cn(
-                      "relative isolate flex h-8 w-full min-w-0 cursor-pointer select-none items-center gap-2 overflow-hidden rounded-md px-2 text-left text-xs outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
+                      "flex h-8 w-full min-w-0 cursor-pointer select-none items-center gap-2 overflow-hidden rounded-md px-2 text-left text-xs outline-hidden focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
                       active
                         ? "bg-sidebar-row-active font-medium text-sidebar-foreground hover:bg-sidebar-row-active"
                         : "text-sidebar-muted-foreground/80 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
                     )}
                     data-active={active}
-                    onClick={() => {
-                      if (renaming === undefined) openThread(target, thread.id);
-                    }}
+                    onClick={() => openThread(target, thread.id)}
                     onDoubleClick={(event) => {
                       if (event.metaKey || event.ctrlKey || event.shiftKey) return;
                       startRename();
                     }}
                     onKeyDown={(event) => {
-                      if (renaming !== undefined || event.target !== event.currentTarget) return;
+                      if (event.target !== event.currentTarget) return;
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
                         openThread(target, thread.id);
@@ -366,73 +399,16 @@ export const sidebarPlugin = builtin(
                     }}
                     role="button"
                     tabIndex={0}
-                  />
-                }
-              >
-                <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
-                  {status === null ? null : <ThreadStatusLabel status={status} />}
-                  {renaming === undefined ? (
-                    <span className="min-w-0 flex-1 truncate text-sm" data-thread-title>
-                      {thread.title}
-                    </span>
-                  ) : (
-                    <input
-                      aria-label="Thread title"
-                      autoFocus
-                      className="min-w-0 flex-1 truncate rounded border border-ring bg-transparent px-0.5 text-sm outline-none"
-                      onBlur={() => {
-                        if (!committed.current) commit();
-                      }}
-                      onChange={(event) => setRenaming(event.target.value)}
-                      onClick={(event) => event.stopPropagation()}
-                      onDoubleClick={(event) => event.stopPropagation()}
-                      onFocus={(event) => event.currentTarget.select()}
-                      onKeyDown={(event) => {
-                        event.stopPropagation();
-                        if (event.nativeEvent.isComposing) return;
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          committed.current = true;
-                          commit();
-                        } else if (event.key === "Escape") {
-                          event.preventDefault();
-                          committed.current = true;
-                          setRenaming(undefined);
-                        }
-                      }}
-                      value={renaming}
-                    />
-                  )}
-                </div>
-                <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                  <div className="flex min-w-12 justify-end max-sm:min-w-20">
-                    {!running && renaming === undefined ? (
-                      <div className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <button
-                                aria-label={`Archive ${thread.title}`}
-                                className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  void actions.archive(target, thread);
-                                }}
-                                onPointerDown={(event) => event.stopPropagation()}
-                                type="button"
-                              />
-                            }
-                          >
-                            <ArchiveIcon className="size-3.5" />
-                          </TooltipTrigger>
-                          <TooltipPopup side="top">Archive</TooltipPopup>
-                        </Tooltip>
-                      </div>
-                    ) : null}
+                  >
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+                      {status === null ? null : <ThreadStatusLabel status={status} />}
+                      <span className="min-w-0 flex-1 truncate text-sm" data-thread-title>
+                        {thread.title}
+                      </span>
+                    </div>
                     <span
                       className={cn(
-                        "pointer-events-none",
+                        "pointer-events-none ml-auto flex min-w-12 shrink-0 justify-end max-sm:min-w-20",
                         !running &&
                           "transition-opacity duration-150 max-sm:pr-6 group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0",
                       )}
@@ -447,34 +423,73 @@ export const sidebarPlugin = builtin(
                       </span>
                     </span>
                   </div>
-                </div>
+                ) : (
+                  <div
+                    className={cn(
+                      "flex h-8 w-full min-w-0 items-center gap-1.5 rounded-md px-2",
+                      active && "bg-sidebar-row-active",
+                    )}
+                  >
+                    {status === null ? null : <ThreadStatusLabel status={status} />}
+                    <input
+                      aria-label="Thread title"
+                      autoFocus
+                      className="min-w-0 flex-1 truncate rounded border border-ring bg-transparent px-0.5 text-sm outline-none"
+                      onBlur={() => {
+                        if (!committed.current) commit();
+                      }}
+                      onChange={(event) => setRenaming(event.target.value)}
+                      onFocus={(event) => event.currentTarget.select()}
+                      onKeyDown={(event) => {
+                        if (event.nativeEvent.isComposing) return;
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          committed.current = true;
+                          commit();
+                        } else if (event.key === "Escape") {
+                          event.preventDefault();
+                          committed.current = true;
+                          setRenaming(undefined);
+                        }
+                      }}
+                      value={renaming}
+                    />
+                  </div>
+                )}
+                {!running && renaming === undefined ? (
+                  <div className="pointer-events-none absolute top-1/2 right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/menu-sub-item:pointer-events-auto group-hover/menu-sub-item:opacity-100 group-focus-within/menu-sub-item:pointer-events-auto group-focus-within/menu-sub-item:opacity-100">
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <button
+                            aria-label={`Archive ${thread.title}`}
+                            className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
+                            onClick={() =>
+                              run("thread.archive", { ...target, threadId: thread.id })
+                            }
+                            type="button"
+                          />
+                        }
+                      >
+                        <ArchiveIcon className="size-3.5" />
+                      </TooltipTrigger>
+                      <TooltipPopup side="top">Archive</TooltipPopup>
+                    </Tooltip>
+                  </div>
+                ) : null}
               </ContextMenuTrigger>
               <ContextMenuPopup>
-                <MenuItem onClick={startRename}>
-                  <PencilIcon />
-                  Rename thread
-                </MenuItem>
-                <MenuItem onClick={() => actions.markUnread(target, thread)}>
-                  <MailOpenIcon />
-                  Mark unread
-                </MenuItem>
-                <MenuItem onClick={() => actions.copyId(thread)}>
-                  <HashIcon />
-                  Copy thread ID
-                </MenuItem>
-                <MenuItem onClick={() => actions.copyAddress(target, thread)}>
-                  <LinkIcon />
-                  Copy thread address
-                </MenuItem>
-                <MenuSeparator />
-                <MenuItem disabled={running} onClick={() => void actions.archive(target, thread)}>
-                  <ArchiveIcon />
-                  Archive thread
-                </MenuItem>
-                <MenuItem onClick={() => void actions.remove(target, thread)} variant="destructive">
-                  <Trash2Icon />
-                  Delete
-                </MenuItem>
+                <Slot
+                  name="thread.actions"
+                  props={
+                    {
+                      target,
+                      thread,
+                      project: props.project,
+                      rename: startRename,
+                    } satisfies ThreadActionProps
+                  }
+                />
               </ContextMenuPopup>
             </ContextMenu>
           </SidebarMenuSubItem>
@@ -484,9 +499,8 @@ export const sidebarPlugin = builtin(
       /** The new thread being written in a project, before its first message. */
       function DraftRow() {
         return (
-          <SidebarMenuSubItem className="w-full">
+          <SidebarMenuSubItem aria-current="page" className="w-full">
             <div
-              aria-current="page"
               className="relative isolate flex h-8 w-full min-w-0 select-none items-center gap-2 overflow-hidden rounded-md bg-sidebar-row-active px-2 text-left text-xs font-medium text-sidebar-foreground"
               data-active
             >
@@ -510,23 +524,18 @@ export const sidebarPlugin = builtin(
         const seen = useExternal(visitStore, visitStore.snapshot);
         const key = `${targetKey(target)}|${project.id}`;
         const collapsedNow = useExternal(collapsed, collapsed.snapshot).has(key);
-        const [showAll, setShowAll] = useState(false);
+        const showAll = useExternal(showingAll, showingAll.snapshot).has(key);
         const here = sameTarget(targetOf(route), target);
         const drafting = here && route.thread === undefined && route.project === project.id;
-        const matching =
-          query === ""
-            ? props.threads
-            : props.threads.filter((thread) => normalize(thread.title).includes(normalize(query)));
+        const { matching, shown } = shownThreads(props.threads, {
+          query,
+          limit: settings.threadPreviewCount,
+          showAll,
+          current: here ? route.thread : undefined,
+        });
         if (query !== "" && matching.length === 0) return null;
         const expanded = query !== "" || !collapsedNow;
-        const limit = settings.threadPreviewCount;
-        const overflowing = matching.length > limit;
-        const shown =
-          showAll || !overflowing || query !== ""
-            ? matching
-            : matching.filter(
-                (thread, index) => index < limit || (here && route.thread === thread.id),
-              );
+        const overflowing = matching.length > settings.threadPreviewCount;
         const hiddenStatus = strongestPill(
           matching
             .filter((thread) => !shown.includes(thread))
@@ -581,32 +590,10 @@ export const sidebarPlugin = builtin(
                   <span aria-hidden className="w-4 shrink-0 max-sm:w-10" />
                 </ContextMenuTrigger>
                 <ContextMenuPopup>
-                  <MenuItem onClick={() => newThread(target, project.id)}>
-                    <SquarePenIcon />
-                    New thread
-                  </MenuItem>
-                  {project.scratch ? null : (
-                    <>
-                      <MenuItem onClick={() => void actions.renameProject(target, project)}>
-                        <PencilIcon />
-                        Rename project
-                      </MenuItem>
-                      <MenuItem onClick={() => actions.copyPath(project)}>
-                        <CopyIcon />
-                        Copy path
-                      </MenuItem>
-                      <MenuSeparator />
-                      <MenuItem
-                        onClick={() =>
-                          void actions.removeProject(target, project, props.threads.length)
-                        }
-                        variant="destructive"
-                      >
-                        <Trash2Icon />
-                        Remove project
-                      </MenuItem>
-                    </>
-                  )}
+                  <Slot
+                    name="project.actions"
+                    props={{ target, project } satisfies ProjectActionProps}
+                  />
                 </ContextMenuPopup>
               </ContextMenu>
               <div className="pointer-events-none absolute top-[calc(50%+1px)] right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/project-header:pointer-events-auto group-hover/project-header:opacity-100 group-focus-within/project-header:pointer-events-auto group-focus-within/project-header:opacity-100">
@@ -645,6 +632,7 @@ export const sidebarPlugin = builtin(
                     active={here && route.thread === thread.id}
                     key={thread.id}
                     now={now}
+                    project={project}
                     target={target}
                     thread={thread}
                   />
@@ -652,7 +640,7 @@ export const sidebarPlugin = builtin(
                 {overflowing && query === "" ? (
                   <SidebarMenuSubItem className="w-full">
                     <SidebarMenuSubButton
-                      onClick={() => setShowAll(!showAll)}
+                      onClick={() => showingAll.toggle(key)}
                       render={<button type="button" />}
                       size="sm"
                     >
@@ -680,7 +668,7 @@ export const sidebarPlugin = builtin(
         connection?: NodeConnection;
       }) {
         const { target, label, state, query } = props;
-        const catalog = useCatalog(target);
+        const catalog = useCatalog(threads, target)!;
         const route = useExternal(navigation, navigation.current);
         const now = useNow();
         const here = sameTarget(targetOf(route), target);
@@ -798,64 +786,96 @@ export const sidebarPlugin = builtin(
               <EllipsisIcon className="size-3.5" />
             </MenuTrigger>
             <MenuPopup align="end">
-              <MenuItem
-                onClick={() =>
-                  void dialogs
-                    ?.prompt({
-                      title: "Rename node",
-                      description: "The name this device shows for the node.",
-                      label: "Node name",
-                      value: connection.label,
-                      confirmLabel: "Rename",
-                      validate: (value) =>
-                        value.trim() === "" ? "A node needs a name" : undefined,
-                    })
-                    .then((label) => {
-                      if (label !== undefined) connections.rename?.(connection.id, label);
-                    })
-                }
-              >
-                <PencilIcon />
-                Rename on this device
-              </MenuItem>
-              <MenuItem
-                onClick={() =>
-                  void navigator.clipboard
-                    ?.writeText(connection.url)
-                    .then(() =>
-                      toasts?.show({ type: "success", title: "Address copied", timeout: 1500 }),
-                    )
-                }
-              >
-                <CopyIcon />
-                Copy address
-              </MenuItem>
-              <MenuSeparator />
-              <MenuItem
-                onClick={() =>
-                  void (
-                    dialogs === undefined
-                      ? Promise.resolve(true)
-                      : dialogs.confirm({
-                          title: `Disconnect ${connection.label}?`,
-                          description:
-                            "This device forgets the node and its token. The node keeps running.",
-                          confirmLabel: "Disconnect",
-                          variant: "destructive",
-                        })
-                  ).then((confirmed) => {
-                    if (!confirmed) return;
-                    connections.remove(connection.id);
-                    if (navigation.current().node === connection.id) navigation.navigate({});
-                  })
-                }
-                variant="destructive"
-              >
-                <XIcon />
-                Disconnect
-              </MenuItem>
+              <Slot name="node.actions" props={{ connection } satisfies NodeActionProps} />
             </MenuPopup>
           </Menu>
+        );
+      }
+
+      // The node menu's own items; they run the connections plugin's `node.*` commands.
+      const nodeItems: [string, number, ComponentType<NodeActionProps>][] = [
+        [
+          "rename",
+          10,
+          ({ connection }) => (
+            <MenuItem
+              onClick={() =>
+                void dialogs
+                  ?.prompt({
+                    title: "Rename node",
+                    description: "The name this device shows for the node.",
+                    label: "Node name",
+                    value: connection.label,
+                    confirmLabel: "Rename",
+                    validate: (value) => (value.trim() === "" ? "A node needs a name" : undefined),
+                  })
+                  .then((label) => {
+                    if (label !== undefined) run("node.rename", { node: connection.id, label });
+                  })
+              }
+            >
+              <PencilIcon />
+              Rename on this device
+            </MenuItem>
+          ),
+        ],
+        [
+          "copy-address",
+          20,
+          ({ connection }) => (
+            <MenuItem
+              onClick={() =>
+                void context.commands.execute("node.copy-address", { node: connection.id }).then(
+                  () => toasts?.show({ type: "success", title: "Address copied", timeout: 1500 }),
+                  (error: unknown) =>
+                    toasts?.show({
+                      type: "error",
+                      title: "Could not copy",
+                      description: (error as Error).message,
+                    }),
+                )
+              }
+            >
+              <CopyIcon />
+              Copy address
+            </MenuItem>
+          ),
+        ],
+        ["separator", 30, () => <MenuSeparator />],
+        [
+          "disconnect",
+          40,
+          ({ connection }) => (
+            <MenuItem
+              onClick={() =>
+                void (
+                  dialogs === undefined
+                    ? Promise.resolve(true)
+                    : dialogs.confirm({
+                        title: `Disconnect ${connection.label}?`,
+                        description:
+                          "This device forgets the node and its token. The node keeps running.",
+                        confirmLabel: "Disconnect",
+                        variant: "destructive",
+                      })
+                ).then((confirmed) => {
+                  if (!confirmed) return;
+                  const here = navigation.current().node === connection.id;
+                  run("node.disconnect", { node: connection.id });
+                  if (here) navigation.navigate({});
+                })
+              }
+              variant="destructive"
+            >
+              <XIcon />
+              Disconnect
+            </MenuItem>
+          ),
+        ],
+      ];
+      for (const [id, order, component] of nodeItems) {
+        context.subscriptions.add(
+          slots.contribute("node.actions", { id: `jhin.sidebar.node.${id}`, order, component }),
         );
       }
 
@@ -900,7 +920,8 @@ export const sidebarPlugin = builtin(
 
       function SidebarRoot() {
         const nodes = useExternal(connections, connections.list);
-        const [query, setQuery] = useState("");
+        const query = useExternal(search, search.get);
+        const setQuery = search.set;
         const shortcut = useShortcutLabels(keybindings);
         return (
           <>
@@ -969,7 +990,7 @@ export const sidebarPlugin = builtin(
                           const place = currentPlace();
                           if (place !== undefined) addProjectRequests.open(place.target);
                         }}
-                        shortcut={shortcut("sidebar.add-project")}
+                        shortcut={shortcut("project.add")}
                       >
                         <FolderPlusIcon />
                       </SidebarHeaderIconButton>
@@ -1049,13 +1070,20 @@ export const sidebarPlugin = builtin(
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarFooter>
-            <AddProjectDialog
-              connections={connections}
-              navigation={navigation}
-              threads={threads}
-              toasts={toasts}
-            />
           </>
+        );
+      }
+
+      /** Mounted in `app.global`: it opens wherever the request comes from, sidebar shown or not. */
+      function AddProject() {
+        return (
+          <AddProjectDialog
+            connections={connections}
+            navigation={navigation}
+            requests={addProjectRequests}
+            threads={threads}
+            toasts={toasts}
+          />
         );
       }
 
@@ -1081,9 +1109,12 @@ export const sidebarPlugin = builtin(
       }
 
       // --- Commands ------------------------------------------------------------
-      /** Every listed thread in sidebar order: nodes, projects, then recency. */
+      /** The threads the sidebar shows, in its order: nodes, projects, then recency. */
       const orderedThreads = (): { target: NodeTarget; thread: ThreadRecord }[] => {
         const result: { target: NodeTarget; thread: ThreadRecord }[] = [];
+        const query = search.get();
+        const route = navigation.current();
+        const limit = readSection(context, CHAT_SECTION, ChatSettings).threadPreviewCount;
         for (const node of connections.list()) {
           const targets: NodeTarget[] = [
             { node: node.id },
@@ -1094,10 +1125,16 @@ export const sidebarPlugin = builtin(
           for (const target of targets) {
             const catalog = threads.catalog(target);
             for (const project of catalog.projects) {
-              if (collapsed.has(`${targetKey(target)}|${project.id}`)) continue;
-              for (const thread of listedThreads(catalog.threads, project.id)) {
-                result.push({ target, thread });
-              }
+              const key = `${targetKey(target)}|${project.id}`;
+              // A search shows the matches of collapsed projects too.
+              if (query === "" && collapsed.has(key)) continue;
+              const { shown } = shownThreads(listedThreads(catalog.threads, project.id), {
+                query,
+                limit,
+                showAll: showingAll.has(key),
+                current: sameTarget(targetOf(route), target) ? route.thread : undefined,
+              });
+              for (const thread of shown) result.push({ target, thread });
             }
           }
         }
@@ -1154,14 +1191,18 @@ export const sidebarPlugin = builtin(
         });
       }
       context.commands.register({
-        name: "sidebar.add-project",
+        name: "project.add",
         title: "Add project",
-        description: "Adds a folder of a node as a project",
-        input: z.object({}),
+        description:
+          "Opens the dialog that adds a folder of a node as a project: the given node, or the current one",
+        input: z.object({ node: z.string().optional(), remote: z.string().optional() }),
         output: z.object({}),
-        handler: () => {
-          const place = currentPlace();
-          if (place !== undefined) addProjectRequests.open(place.target);
+        handler: ({ node, remote }) => {
+          const target =
+            node === undefined
+              ? currentPlace()?.target
+              : { node, ...(remote === undefined ? {} : { remote }) };
+          if (target !== undefined) addProjectRequests.open(target);
           return {};
         },
       });
@@ -1208,6 +1249,9 @@ export const sidebarPlugin = builtin(
 
       context.subscriptions.add(
         slots.contribute("app.sidebar", { id: "jhin.sidebar.nodes", component: SidebarRoot }),
+      );
+      context.subscriptions.add(
+        slots.contribute("app.global", { id: "jhin.sidebar.add-project", component: AddProject }),
       );
       context.subscriptions.add(
         slots.contribute("sidebar.actions", {

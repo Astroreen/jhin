@@ -1,7 +1,14 @@
 // Status pills follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/Sidebar.logic.ts
 // (legacy sidebar pills).
-import type { ThreadRecord } from "@jhin/client-api";
+import { visitKey, type ThreadRecord, type ThreadVisits, type TurnStatus } from "@jhin/client-api";
 import type { Disposable } from "@jhin/sdk";
+
+/** The statuses of a turn that ended. */
+export const ENDED_STATUSES: ReadonlySet<TurnStatus> = new Set([
+  "completed",
+  "interrupted",
+  "failed",
+]);
 
 export interface ThreadStatusPill {
   readonly label: string;
@@ -88,24 +95,10 @@ export function strongestPill(
 const STORAGE_KEY = "jhin.visits";
 
 /**
- * When the user last looked at each thread (on this device), so finished
- * turns can show as unread. Keys are `<target>|<thread>`.
+ * The visits of this device (`client.visits@1`), so finished turns can show as
+ * unread. Kept in `storage`; a change made in another tab is taken in.
  */
-export interface Visits {
-  get(key: string): string | undefined;
-  /** Records that the thread was seen as of `at` (a time of the thread's node). */
-  visit(key: string, at: string): void;
-  /** Marks the thread unread: its latest turn shows as new again. */
-  markUnread(key: string): void;
-  subscribe(listener: () => void): Disposable;
-  /**
-   * Every visit by key; a new object whenever one changes, so renders that
-   * read it (memoized or not) see the change.
-   */
-  snapshot(): Readonly<Record<string, string>>;
-}
-
-export function createVisits(storage: Storage = localStorage): Visits {
+export function createVisits(storage: Storage = localStorage): ThreadVisits & Disposable {
   const listeners = new Set<() => void>();
   let seen: Readonly<Record<string, string>> = {};
   const load = () => {
@@ -130,23 +123,23 @@ export function createVisits(storage: Storage = localStorage): Visits {
     }
     changed();
   };
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== STORAGE_KEY) return;
+    load();
+    changed();
+  };
   load();
-  if (typeof window !== "undefined") {
-    window.addEventListener("storage", (event) => {
-      if (event.key !== STORAGE_KEY) return;
-      load();
-      changed();
-    });
-  }
+  if (typeof window !== "undefined") window.addEventListener("storage", onStorage);
   return {
-    get: (key) => seen[key],
-    visit(key, at) {
+    get: (target, threadId) => seen[visitKey(target, threadId)],
+    visit(target, threadId, at) {
+      const key = visitKey(target, threadId);
       if (seen[key] !== undefined && seen[key] >= at) return;
       seen = { ...seen, [key]: at };
       save();
     },
-    markUnread(key) {
-      seen = { ...seen, [key]: "1970-01-01T00:00:00.000Z" };
+    markUnread(target, threadId) {
+      seen = { ...seen, [visitKey(target, threadId)]: "1970-01-01T00:00:00.000Z" };
       save();
     },
     subscribe(listener) {
@@ -154,12 +147,8 @@ export function createVisits(storage: Storage = localStorage): Visits {
       return { dispose: () => listeners.delete(listener) };
     },
     snapshot: () => seen,
+    dispose() {
+      if (typeof window !== "undefined") window.removeEventListener("storage", onStorage);
+    },
   };
-}
-
-/** The visits of this page, shared by the sidebar, the chat and notifications. */
-let shared: Visits | undefined;
-export function visits(): Visits {
-  shared ??= createVisits();
-  return shared;
 }

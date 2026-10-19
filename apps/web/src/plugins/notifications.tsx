@@ -219,18 +219,19 @@ export const notificationsPlugin = builtin(
         const check = () => {
           const catalog = threads.catalog(target);
           if (catalog.status !== "ready") return;
-          let last = seen.get(key);
+          const last = seen.get(key);
           const first = last === undefined;
-          last ??= new Map();
-          seen.set(key, last);
+          // Rebuilt from the catalog each time, so deleted threads leave it.
+          const next = new Map<string, ThreadRecord["lastTurn"]>();
           for (const thread of catalog.threads) {
-            const previous = last.get(thread.id);
-            const known = last.has(thread.id);
-            last.set(thread.id, thread.lastTurn);
+            const previous = last?.get(thread.id);
+            const known = last?.has(thread.id) === true;
+            next.set(thread.id, thread.lastTurn);
             if (first || !known || thread.archivedAt !== undefined) continue;
             const kind = notificationKind(previous, thread.lastTurn);
             if (kind !== undefined) notify(target, thread, kind);
           }
+          seen.set(key, next);
         };
         watchers.set(key, threads.subscribe(target, check));
         check();
@@ -360,6 +361,10 @@ export const notificationsPlugin = builtin(
               description="Show a toast when another thread finishes, fails, or needs input or approval while this page has focus."
               title="In-app notifications"
             />
+            {/* What a choice came to, for screen readers too. */}
+            <p aria-live="polite" className="sr-only" role="status">
+              {message ?? ""}
+            </p>
           </SettingsSection>
         );
       }

@@ -226,7 +226,37 @@ describe("client.threads@1", () => {
     expect((await changed).threads.map((item) => item.id)).toEqual(["t1", "t2"]);
     expect(node.subscriptions.map((entry) => entry.after)).toEqual([7]);
 
+    // The feed stops once nobody is back within the tick.
     feed.subscription.dispose();
+    await Promise.resolve();
+    expect(node.open()).toBe(0);
+    await kernel.stop();
+  });
+
+  it("keeps a feed whose subscriber comes back within the tick, without loading it again", async () => {
+    let loads = 0;
+    const node = fakeNode({
+      "threads.catalog": async () => {
+        loads += 1;
+        return { head: 0, projects: [scratch], threads: [] };
+      },
+    });
+    const { kernel, store } = await start(node.client);
+    const target = { node: "ws://a/rpc" };
+    const first = follow(store);
+    await first.next();
+    await node.subscribed();
+
+    // A re-render or a route change: unsubscribed and subscribed again at once.
+    first.subscription.dispose();
+    const second = store.subscribe(target, () => undefined);
+    await Promise.resolve();
+    expect(store.catalog(target).status).toBe("ready");
+    expect(loads).toBe(1);
+    expect(node.open()).toBe(1);
+
+    second.dispose();
+    await Promise.resolve();
     expect(node.open()).toBe(0);
     await kernel.stop();
   });

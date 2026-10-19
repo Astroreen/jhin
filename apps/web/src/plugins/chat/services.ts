@@ -8,13 +8,13 @@ import type {
   NodeTarget,
   ThreadsCatalog,
 } from "@jhin/client-api";
-import { targetKey } from "@jhin/client-api";
+import { targetKey, type ThreadVisits } from "@jhin/client-api";
 import type { PluginContext } from "@jhin/sdk";
 import type { Dialogs, SlotRegistry, Toasts } from "@jhin/ui";
 import { createContext, useContext, useEffect, useSyncExternalStore } from "react";
 
 import type { Drafts } from "../../lib/composer.ts";
-import type { ThreadActions } from "../../lib/thread-actions.ts";
+import type { FollowUpQueues } from "./follow-ups.ts";
 
 /** Agents of each node, from `agents.list`, refreshed when a picker opens or after a while. */
 export function createAgentsCache(threads: ThreadsCatalog) {
@@ -110,10 +110,13 @@ export interface ChatServices {
   readonly toasts: Toasts | undefined;
   readonly dialogs: Dialogs | undefined;
   readonly keybindings: Keybindings | undefined;
-  readonly actions: ThreadActions;
   readonly drafts: Drafts;
   readonly agents: AgentsCache;
   readonly lastSelection: ReturnType<typeof createLastSelection>;
+  /** When threads were seen on this device; absent without a `client.visits` provider. */
+  readonly visits: ThreadVisits | undefined;
+  /** Follow-ups queued per thread; they outlive the thread's view. */
+  readonly followUps: FollowUpQueues;
   /** What commands can do to the composer on screen. */
   readonly composer: ComposerHandle;
 }
