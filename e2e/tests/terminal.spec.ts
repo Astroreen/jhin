@@ -47,7 +47,8 @@ test("D140–D146: the terminal drawer opens under the chat, runs a command and 
   await page.keyboard.type("sleep 60");
   await page.keyboard.press("Enter");
   const card = threadRow(page, "terminal please");
-  const indicator = card.getByRole("button", {
+  // In the card's row of indicators (sidebar.thread.indicators), with the branch and the PR.
+  const indicator = card.locator("[data-thread-indicators]").getByRole("button", {
     name: "1 terminal process running. Open terminal",
   });
   await expect(indicator).toBeVisible();
