@@ -53,7 +53,10 @@ One word per concept. Use these terms in code, docs, commits and UI.
 - **Agent** — the actor executing turns. Reserved as a separate entity with
   the address `jhin://<nodeId>/agents/<id>`.
 - **Agent runtime** — the capability that executes turns: an own agent loop
-  or a wrapper over an existing agent. The foundation ships only a fake one.
+  or a wrapper over an existing agent. The distribution ships Claude Code
+  (`jhin.agent-claude`) and a fake one for tests and demos.
+- **Session** — an agent's own conversation state for a thread (Claude Code
+  keeps it in a session named after the thread); a turn resumes it.
 - **Agent registry** — the runtimes of a node (`agent.registry@1`); a thread
   records which one, with which model, runs its turns.
 - **Runtime mode** — how freely an agent acts: `approval-required`,

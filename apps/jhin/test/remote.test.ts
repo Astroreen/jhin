@@ -48,7 +48,10 @@ describe("a running node", () => {
     async () => {
       const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-remote-"));
       Fs.mkdirSync(Path.join(home, ".jhin"));
-      Fs.writeFileSync(Path.join(home, ".jhin", "config.jsonc"), '{ "jhin.http": { "port": 0 } }');
+      Fs.writeFileSync(
+        Path.join(home, ".jhin", "config.jsonc"),
+        '{ "jhin.http": { "port": 0 }, "jhin.threads": { "defaultAgent": "jhin.agent-fake" } }',
+      );
       const url = await startServe(home);
       const token = readToken(home);
 

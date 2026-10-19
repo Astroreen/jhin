@@ -188,8 +188,8 @@ contributions. Features of T3 Code that only make sense for its hosted product
 
 ## Deferred
 
-- Real agent adapters (Claude Code, Codex, OpenCode): the API (D54) and UI
-  are ready; only the fake agent implements them.
+- Real agent adapters for Codex and OpenCode. Claude Code is done
+  (`docs/plans/providers.md`).
 - A server-side message queue and steering: follow-ups wait in the client
   while a turn runs, go out only while the page is open, and are lost if it
   closes.

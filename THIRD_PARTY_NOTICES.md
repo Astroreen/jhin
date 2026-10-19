@@ -10,8 +10,10 @@ Source: https://github.com/pingdotgg/t3code
 
 Used for: the web client's visual layer (components, layout, styles) and
 parts of its logic (keybindings, command palette search, work-log summaries,
-prompt history, timestamps, thread status). Files derived from T3 Code say so
-in a header comment.
+prompt history, timestamps, thread status), and the Claude Code agent runtime
+(`plugins/agent-claude`: query options, permission modes, tool, question and
+plan mapping, result errors, the model catalog). Files derived from T3 Code
+say so in a header comment.
 
 ```
 MIT License

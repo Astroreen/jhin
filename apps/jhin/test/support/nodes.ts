@@ -29,7 +29,13 @@ export function makeHome(
   Fs.mkdirSync(Path.join(dir, ".jhin"));
   Fs.writeFileSync(
     Path.join(dir, ".jhin", "config.jsonc"),
-    JSON.stringify({ "jhin.http": { port: 0 }, "jhin.mesh": { name, ...mesh }, ...extra }),
+    JSON.stringify({
+      "jhin.http": { port: 0 },
+      // Turns run on the fake agent, never on a real one this machine may have (Claude Code).
+      "jhin.threads": { defaultAgent: "jhin.agent-fake" },
+      "jhin.mesh": { name, ...mesh },
+      ...extra,
+    }),
   );
   return dir;
 }

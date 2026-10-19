@@ -21,6 +21,7 @@
         "@jhin/plugin-auth-token",
         "@jhin/plugin-transport-ws",
         "@jhin/plugin-threads",
+        "@jhin/plugin-agent-claude",
         "@jhin/plugin-agent-fake",
         "@jhin/plugin-mcp-server",
         "@jhin/plugin-web-ui",

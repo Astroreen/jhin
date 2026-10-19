@@ -14,7 +14,10 @@ describe("jhin mcp", () => {
   it("serves every command as an MCP tool over stdio", async () => {
     const home = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-mcp-cli-"));
     Fs.mkdirSync(Path.join(home, ".jhin"));
-    Fs.writeFileSync(Path.join(home, ".jhin", "config.jsonc"), '{ "jhin.http": { "port": 0 } }');
+    Fs.writeFileSync(
+      Path.join(home, ".jhin", "config.jsonc"),
+      '{ "jhin.http": { "port": 0 }, "jhin.threads": { "defaultAgent": "jhin.agent-fake" } }',
+    );
     const client = new Client({ name: "jhin-test", version: "0.0.0" });
     await client.connect(
       new StdioClientTransport({
