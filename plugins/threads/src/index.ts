@@ -701,21 +701,32 @@ export default definePlugin({
           finish();
         }
       };
-      entry.abandon = (reason) =>
-        end({ type: ThreadEvents.turnInterrupted, status: "interrupted", reason });
-      if (entry.giveUp !== undefined) {
-        // A stop gave up on it while it was starting: it ends now.
-        void entry.abandon(entry.giveUp);
-        return;
-      }
+      const items = turn.items[Symbol.asyncIterator]();
+      /** Stops the wait for the agent's next item, once the turn is given up on. */
+      let wake: (() => void) | undefined;
+      const nextItem = () =>
+        new Promise<IteratorResult<AgentItem> | undefined>((resolve, reject) => {
+          wake = () => resolve(undefined);
+          items.next().then(resolve, reject);
+        });
+      entry.abandon = (reason) => {
+        const ended = end({ type: ThreadEvents.turnInterrupted, status: "interrupted", reason });
+        // Given up on: the loop stops waiting for an agent that may never answer.
+        wake?.();
+        return ended;
+      };
+      // A stop gave up on it while it was starting: it ends now.
+      if (entry.giveUp !== undefined) void entry.abandon(entry.giveUp);
       void (async () => {
         let ending: { type: string; status: TurnStatus; error?: string };
         try {
           // A turn that delivered its answer is complete even if an interrupt came late.
           let answered = false;
-          for await (const item of turn.items) {
+          while (!entry.ending) {
+            const next = await nextItem();
             // Given up on (it ignored an interrupt): what the agent still says is dropped.
-            if (entry.ending) break;
+            if (next === undefined || next.done === true || entry.ending) break;
+            const item = next.value;
             answered = item.kind === "message.completed";
             if (item.kind === "request.opened") {
               entry.openRequests.set(item.requestId, item.request.kind);
@@ -742,6 +753,9 @@ export default definePlugin({
         } catch (error) {
           context.log.warn("turn failed", { threadId: thread.id, turnId, error: String(error) });
           ending = { type: ThreadEvents.turnFailed, status: "failed", error: String(error) };
+        } finally {
+          // Its items are closed, so an agent still going may clean up; it is not waited for.
+          void Promise.resolve(items.return?.()).catch(() => undefined);
         }
         await end(ending);
       })();

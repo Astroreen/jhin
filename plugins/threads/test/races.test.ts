@@ -551,6 +551,54 @@ describe("jhin.threads: agents that ignore an interrupt", () => {
     return { runtime, interrupted };
   }
 
+  it("stops waiting for an agent it gave up on, and closes the agent's items", async () => {
+    const interrupted = latch();
+    const closed = latch();
+    let asked = 0;
+    // Items that never come after the first: the agent neither ends nor answers.
+    const silent: AgentRuntime = {
+      agentId: "acme.silent",
+      startTurn: ({ turnId }) => ({
+        items: {
+          [Symbol.asyncIterator]: () => ({
+            next: () => {
+              asked += 1;
+              return asked === 1
+                ? Promise.resolve({
+                    done: false as const,
+                    value: {
+                      kind: "message.delta" as const,
+                      itemId: `${turnId}:1`,
+                      text: "Working",
+                    },
+                  })
+                : new Promise<IteratorResult<AgentItem>>(() => undefined);
+            },
+            return: () => {
+              closed.resolve();
+              return Promise.resolve({ done: true as const, value: undefined });
+            },
+          }),
+        },
+        interrupt: () => interrupted.resolve(),
+      }),
+    };
+    const { kernel, client } = await node({ agent: false, plugins: [registering(silent)] });
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    await client.call("threads.send", { threadId: thread.id, text: "go" });
+    await until("agent.item.delta");
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const archiving = kernel.commands.execute("threads.archive", { threadId: thread.id });
+    await interrupted.promise;
+    vi.advanceTimersByTime(STOP_TIMEOUT_MS);
+    await archiving;
+    // The loop let go of the agent: it closed the items it was waiting on.
+    await closed.promise;
+    expect(asked).toBe(2);
+  });
+
   it("records a request opened before the stop that gave up on its agent closes it", async () => {
     const stubborn = stubbornRuntime({
       kind: "approval",
