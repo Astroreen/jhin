@@ -157,15 +157,16 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
   the focus is inside an element with `data-terminal-owner` (T3's rule), so
   the existing `!terminalFocus` rules (⌘K, ⌘N for a new thread, …) give way
   in a terminal. A browser keeps some of these keys for itself (Ctrl+N,
-  Ctrl+W in Chrome): there the toolbar buttons do the same.
+  Ctrl+W in Chrome): there the toolbar buttons do the same. ⌘/Ctrl+D is
+  also source control's `diff.toggle`, bound `when: "!terminalFocus"`: in a
+  terminal it splits, elsewhere it toggles the diff panel.
 
 - **D148. A card's terminal indicator is the `sidebar.thread.indicators`
-  slot's `jhin.terminal.indicator`.** The sidebar renders the new slot at the
-  right end of a card's last line, before the node and agent icons (props
-  `ThreadIndicatorProps`: target, thread, project, whether it is the open
-  thread; the same shape the source-control plan gives it), where T3 puts its
-  terminal, pull request and diff indicators; source control can contribute
-  to the same slot. The indicator is T3's `ThreadTerminalStatusButton`: a
+  slot's `jhin.terminal.indicator`**, the slot source control added
+  (`source-control.md`, D117; props `ThreadIndicatorProps`). It comes at
+  order 0, where T3 puts a running terminal: after the branch
+  (`jhin.source-control.branch`, -100), before the pull request (100) and the
+  diff (200). The indicator is T3's `ThreadTerminalStatusButton`: a
   teal, pulsing terminal icon while a program runs in one of the thread's
   terminals, named "1 terminal process running. Open terminal" (or "N
   terminal processes…"), which opens the thread with that terminal shown.

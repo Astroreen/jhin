@@ -5,7 +5,9 @@ import {
   type Navigation,
   type NodeConnection,
   type Route,
+  THREADS_CAPABILITY,
   type ChatDrawerProps,
+  type ThreadsCatalog,
   type ThreadIndicatorProps,
 } from "@jhin/client-api";
 import { toDisposable } from "@jhin/sdk";
@@ -15,7 +17,7 @@ import {
   terminalStream,
   type TerminalSummary,
 } from "@jhin/terminal-api";
-import { createTestKernel, mockCapability, type TestKernel } from "@jhin/testing";
+import { createTestKernel, mockCapability, type TestKernel, type TestPlugin } from "@jhin/testing";
 import { Slot, SlotsProvider, UI_SLOTS_CAPABILITY, createSlotRegistry } from "@jhin/ui";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -23,6 +25,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { currentPlatform, isMacPlatform } from "../src/lib/keybindings.ts";
 import { keybindingsPlugin } from "../src/plugins/keybindings.ts";
+import { sourceControlPlugin } from "../src/plugins/source-control/index.tsx";
 import { terminalPlugin } from "../src/plugins/terminal/index.tsx";
 
 const A = "ws://a/rpc";
@@ -53,7 +56,10 @@ afterEach(async () => {
 });
 
 /** A node whose `terminals` stream says `terminals`; the route is thread t1 on it. */
-async function start(terminals: TerminalSummary[], options: { endsWith?: string } = {}) {
+async function start(
+  terminals: TerminalSummary[],
+  options: { endsWith?: string; plugins?: readonly TestPlugin[] } = {},
+) {
   const calls: { method: string; params: unknown }[] = [];
   const client = {
     state: "open",
@@ -90,11 +96,13 @@ async function start(terminals: TerminalSummary[], options: { endsWith?: string 
   };
   let route: Route = { node: A, thread: "t1" };
   const visited: Route[] = [];
+  const navigated = new Set<() => void>();
   const navigation: Navigation = {
     current: () => route,
     navigate(next) {
       route = next;
       visited.push(next);
+      for (const listener of Array.from(navigated)) listener();
     },
     subscribe: () => toDisposable(() => undefined),
   };
@@ -107,6 +115,7 @@ async function start(terminals: TerminalSummary[], options: { endsWith?: string 
       mockCapability(NAVIGATION_CAPABILITY, navigation),
       keybindingsPlugin,
       terminalPlugin,
+      ...(options.plugins ?? []),
     ],
   });
   const stored = () =>
@@ -114,7 +123,16 @@ async function start(terminals: TerminalSummary[], options: { endsWith?: string 
       string,
       { terminalOpen: boolean; terminalIds: string[]; activeTerminalId: string }
     >;
-  return { slots, visited, calls, stored, client };
+  /** Resolves on the next navigation. */
+  const nextNavigation = () =>
+    new Promise<void>((resolve) => {
+      const listener = () => {
+        navigated.delete(listener);
+        resolve();
+      };
+      navigated.add(listener);
+    });
+  return { slots, visited, calls, stored, client, nextNavigation };
 }
 
 function renderIndicator(slots: ReturnType<typeof createSlotRegistry>) {
@@ -263,5 +281,55 @@ describe("a terminal that ends under the drawer", () => {
   it("only drops the tab of a terminal closed elsewhere, never closing its id again", async () => {
     // Another client closed it, and may have opened a new term-1 since.
     expect(await drawerEndingWith(TerminalEvents.closed)).not.toContain("terminals.close");
+  });
+});
+
+describe("mod+d with source control (D147)", () => {
+  it("toggles the diff outside a terminal and splits inside one", async () => {
+    const threads = {
+      catalog: () => ({ status: "loading", projects: [], threads: [] }),
+      subscribe: () => toDisposable(() => undefined),
+      call: async () => ({}),
+      open: async () => "",
+    } as unknown as ThreadsCatalog;
+    const { stored, visited, nextNavigation } = await start([], {
+      plugins: [mockCapability(THREADS_CAPABILITY, threads), sourceControlPlugin],
+    });
+    await kernel!.commands.execute("terminal.toggle", {});
+    const mac = isMacPlatform(currentPlatform());
+    const press = (target: HTMLElement) =>
+      target.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "d",
+          ctrlKey: !mac,
+          metaKey: mac,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    const outside = document.createElement("textarea");
+    const drawer = document.createElement("aside");
+    drawer.dataset["terminalOwner"] = "drawer";
+    const input = document.createElement("textarea");
+    drawer.append(input);
+    document.body.append(outside, drawer);
+    cleanups.push(() => {
+      outside.remove();
+      drawer.remove();
+    });
+
+    outside.focus();
+    const diff = nextNavigation();
+    press(outside);
+    await diff;
+    expect(visited.at(-1)).toMatchObject({ node: A, thread: "t1", panel: "diff" });
+    expect(stored()[`${A}|t1`]?.terminalIds).toEqual(["term-1"]);
+
+    input.focus();
+    const split = nextWrite();
+    press(input);
+    await split;
+    expect(stored()[`${A}|t1`]?.terminalIds).toEqual(["term-1", "term-2"]);
+    expect(visited).toHaveLength(1);
   });
 });
