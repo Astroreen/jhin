@@ -21,6 +21,7 @@ interface Player {
     toolName: string,
     input: Record<string, unknown>,
     toolUseID: string,
+    signal?: AbortSignal,
   ): ReturnType<NonNullable<Options["canUseTool"]>>;
 }
 
@@ -39,9 +40,9 @@ export function scriptedQuery(...scripts: Script[]) {
     const player: Player = {
       call,
       interrupted,
-      canUseTool: (toolName, input, toolUseID) =>
+      canUseTool: (toolName, input, toolUseID, signal = new AbortController().signal) =>
         options.canUseTool!(toolName, input, {
-          signal: new AbortController().signal,
+          signal,
           toolUseID,
         } as Parameters<NonNullable<Options["canUseTool"]>>[2]),
     };

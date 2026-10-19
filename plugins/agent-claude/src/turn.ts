@@ -225,11 +225,28 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
   let ended: (() => void) | undefined;
 
   /** Opens a request and waits for its answer; `undefined` when the turn stops first. */
-  const ask = (requestId: string, item: Extract<AgentItem, { kind: "request.opened" }>) =>
+  /**
+   * Opens a request and waits for its answer: `undefined` when the turn stops first or
+   * Claude Code withdraws the request (`signal`). The request stays open in the thread
+   * until its turn ends; an answer that comes after a withdrawal is dropped.
+   */
+  const ask = (
+    requestId: string,
+    item: Extract<AgentItem, { kind: "request.opened" }>,
+    signal: AbortSignal,
+  ) =>
     new Promise<AgentResponse | undefined>((resolve) => {
-      if (interrupted) return resolve(undefined);
+      if (interrupted || signal.aborted) return resolve(undefined);
+      const withdraw = () => {
+        answers.delete(requestId);
+        resolve(undefined);
+      };
+      signal.addEventListener("abort", withdraw, { once: true });
       // Listening before the request goes out: an answer may come before the next pull.
-      answers.set(requestId, resolve);
+      answers.set(requestId, (response) => {
+        signal.removeEventListener("abort", withdraw);
+        resolve(response);
+      });
       out.push(item);
     });
 
@@ -395,11 +412,15 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
     const toolUseID = options.toolUseID;
     if (toolName === QUESTION_TOOL) {
       const questions = userQuestions(toolInput);
-      const response = await ask(toolUseID, {
-        kind: "request.opened",
-        requestId: toolUseID,
-        request: { kind: "user-input", questions },
-      });
+      const response = await ask(
+        toolUseID,
+        {
+          kind: "request.opened",
+          requestId: toolUseID,
+          request: { kind: "user-input", questions },
+        },
+        options.signal,
+      );
       if (response?.kind !== "user-input" || options.signal.aborted) {
         return { behavior: "deny", message: "User cancelled tool execution.", toolUseID };
       }
@@ -425,15 +446,19 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
       return { behavior: "allow", updatedInput: toolInput, toolUseID };
     }
     startTool(toolUseID, toolName, toolInput);
-    const response = await ask(`${toolUseID}:approval`, {
-      kind: "request.opened",
-      requestId: `${toolUseID}:approval`,
-      request: {
-        kind: "approval",
-        tool: toolCall(toolName, toolInput, true),
-        ...(options.decisionReason === undefined ? {} : { reason: options.decisionReason }),
+    const response = await ask(
+      `${toolUseID}:approval`,
+      {
+        kind: "request.opened",
+        requestId: `${toolUseID}:approval`,
+        request: {
+          kind: "approval",
+          tool: toolCall(toolName, toolInput, true),
+          ...(options.decisionReason === undefined ? {} : { reason: options.decisionReason }),
+        },
       },
-    });
+      options.signal,
+    );
     const decision =
       response === undefined || options.signal.aborted
         ? "cancel"

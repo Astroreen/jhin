@@ -443,6 +443,26 @@ describe("jhin.agent-claude: a turn", () => {
     expect(items.at(-1)).toEqual({ kind: "message.completed", itemId: "m1:0", text: "1\n2\n" });
   });
 
+  it("stops waiting for an approval Claude Code withdraws", async () => {
+    const withdrawn = new AbortController();
+    let decision: unknown;
+    const { turn } = start(
+      [
+        async function* (player) {
+          yield init();
+          const asking = player.canUseTool("Bash", { command: "ls" }, "t-1", withdrawn.signal);
+          withdrawn.abort();
+          decision = await asking;
+          yield result();
+        },
+      ],
+      { runtimeMode: "approval-required" },
+    );
+    const items = await drain(turn);
+    expect(items).toContainEqual(expect.objectContaining({ kind: "request.opened" }));
+    expect(decision).toMatchObject({ behavior: "deny", interrupt: true });
+  });
+
   it("cancels an open approval when interrupted", async () => {
     let decision: unknown;
     const { turn } = start(
