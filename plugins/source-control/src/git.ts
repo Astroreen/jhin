@@ -312,22 +312,64 @@ export function parseNumstat(output: string): NumstatEntry[] {
   return entries;
 }
 
-/** Lines of an untracked file, or `binary` when it is not text (or too large to count). */
-async function countLines(file: string): Promise<{ lines: number; binary: boolean }> {
+/** Untracked files counted at the same time: each holds one file descriptor and one buffer. */
+export const COUNT_CONCURRENCY = 8;
+/** The read buffer of a count; git decides "binary" from the first 8000 bytes too. */
+const COUNT_CHUNK_BYTES = 64 * 1024;
+
+/**
+ * Lines of an untracked file, read in chunks so memory stays at one chunk;
+ * `binary` when its first 8000 bytes hold a NUL (as git decides) or it is too
+ * large to count.
+ */
+export async function countLines(file: string): Promise<{ lines: number; binary: boolean }> {
+  let handle: Fs.FileHandle | undefined;
   try {
     const stat = await Fs.stat(file);
     if (!stat.isFile()) return { lines: 0, binary: false };
     if (stat.size > MAX_COUNTED_BYTES) return { lines: 0, binary: true };
-    const content = await Fs.readFile(file);
-    if (content.subarray(0, 8000).includes(0)) return { lines: 0, binary: true };
-    if (content.length === 0) return { lines: 0, binary: false };
+    if (stat.size === 0) return { lines: 0, binary: false };
+    handle = await Fs.open(file, "r");
+    const chunk = Buffer.alloc(COUNT_CHUNK_BYTES);
     let lines = 0;
-    for (const byte of content) if (byte === 10) lines++;
-    if (content[content.length - 1] !== 10) lines++;
+    let position = 0;
+    let last = 10;
+    for (;;) {
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, position);
+      if (bytesRead === 0) break;
+      const read = chunk.subarray(0, bytesRead);
+      if (position < 8000 && read.subarray(0, 8000 - position).includes(0)) {
+        return { lines: 0, binary: true };
+      }
+      for (const byte of read) if (byte === 10) lines++;
+      last = read[bytesRead - 1]!;
+      position += bytesRead;
+    }
+    if (position > 0 && last !== 10) lines++;
     return { lines, binary: false };
   } catch {
     return { lines: 0, binary: false };
+  } finally {
+    await handle?.close();
   }
+}
+
+/** Maps `items` with at most `limit` calls of `map` running at once, keeping their order. */
+export async function mapLimited<T, R>(
+  items: readonly T[],
+  limit: number,
+  map: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = Array.from({ length: items.length });
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await map(items[index]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }
 
 /** Joins status entries with their line counts into changed files, sorted by path. */
@@ -337,30 +379,38 @@ async function changedFiles(
   numstat: readonly NumstatEntry[],
 ): Promise<ChangedFile[]> {
   const counts = new Map(numstat.map((entry) => [entry.path, entry]));
-  let counted = 0;
-  const files = await Promise.all(
-    entries.map(async (entry): Promise<ChangedFile> => {
-      const base = {
-        path: entry.path,
-        ...(entry.previousPath === undefined ? {} : { previousPath: entry.previousPath }),
-        status: entry.status,
-      };
-      if (entry.status === "untracked") {
-        if (counted++ >= MAX_COUNTED_UNTRACKED) {
-          return { ...base, insertions: 0, deletions: 0, binary: false };
-        }
-        const { lines, binary } = await countLines(Path.join(root, entry.path));
-        return { ...base, insertions: lines, deletions: 0, binary };
-      }
-      const stat = counts.get(entry.path);
+  // Only the first untracked files have their lines counted; the rest count as changed.
+  const untracked = entries.filter((entry) => entry.status === "untracked");
+  const lines = new Map(
+    await mapLimited(
+      untracked.slice(0, MAX_COUNTED_UNTRACKED),
+      COUNT_CONCURRENCY,
+      async (entry) => [entry.path, await countLines(Path.join(root, entry.path))] as const,
+    ),
+  );
+  const files = entries.map((entry): ChangedFile => {
+    const base = {
+      path: entry.path,
+      ...(entry.previousPath === undefined ? {} : { previousPath: entry.previousPath }),
+      status: entry.status,
+    };
+    if (entry.status === "untracked") {
+      const counted = lines.get(entry.path);
       return {
         ...base,
-        insertions: stat?.insertions ?? 0,
-        deletions: stat?.deletions ?? 0,
-        binary: stat?.binary ?? false,
+        insertions: counted?.lines ?? 0,
+        deletions: 0,
+        binary: counted?.binary ?? false,
       };
-    }),
-  );
+    }
+    const stat = counts.get(entry.path);
+    return {
+      ...base,
+      insertions: stat?.insertions ?? 0,
+      deletions: stat?.deletions ?? 0,
+      binary: stat?.binary ?? false,
+    };
+  });
   return files.toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 

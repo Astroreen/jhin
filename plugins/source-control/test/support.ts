@@ -75,6 +75,8 @@ export function fakeGh(): {
   dir: string;
   pullRequest(branch: string, value: unknown[]): void;
   fail(code: number, stderr: string): void;
+  /** Answers again after `fail`. */
+  recover(): void;
   calls(): string[];
 } {
   const dir = temp("jhin-fake-gh-");
@@ -102,6 +104,7 @@ exit 1
       Fs.writeFileSync(Path.join(dir, "stderr"), stderr);
       Fs.writeFileSync(Path.join(dir, "exit"), String(code));
     },
+    recover: () => Fs.rmSync(Path.join(dir, "exit")),
     calls: () =>
       Fs.existsSync(Path.join(dir, "calls"))
         ? Fs.readFileSync(Path.join(dir, "calls"), "utf8").trim().split("\n")

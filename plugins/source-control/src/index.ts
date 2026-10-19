@@ -118,6 +118,8 @@ interface Repo {
   pullRequests: Map<string, CachedPullRequest>;
   prChain: Promise<unknown>;
   provider: PullRequestProvider | null;
+  /** When `gh` last could not answer; it is asked again once a refresh period has passed. */
+  unavailableAt: number | undefined;
   disposed: boolean;
 }
 
@@ -243,6 +245,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       pullRequests: new Map(),
       prChain: Promise.resolve(),
       provider: null,
+      unavailableAt: undefined,
       disposed: false,
     };
     repos.set(project.id, repo);
@@ -405,8 +408,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       const status = await read(repo);
       startWatching(repo);
       await publish(repo, status);
-      // A branch seen for the first time gets its pull request looked up.
-      if (repo.provider?.available === true) void lookUpPullRequests(repo, { force: false });
+      // A branch seen for the first time gets its pull request looked up; a `gh` that
+      // could not answer is asked again once its refresh period has passed.
+      if (repo.provider !== null) void lookUpPullRequests(repo, { force: false });
       return status;
     });
     repo.queued = next;
@@ -419,11 +423,16 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     const next = repo.prChain.then(async () => {
       const status = repo.status;
       if (status === undefined || repo.disposed || repo.provider === null) return;
-      if (repo.provider.available === false && !options.force) return;
       const location = repo.location;
       if (location?.isRepo !== true) return;
       const { ghPath, pullRequestRefreshSeconds } = config();
       const ttl = pullRequestRefreshSeconds * 1000;
+      // Missing, signed out or failing: asked again once per refresh period, not on every
+      // change in between (with a period of 0, only when asked).
+      if (repo.provider.available === false && !options.force) {
+        const since = Date.now() - (repo.unavailableAt ?? 0);
+        if (ttl === 0 || since < ttl) return;
+      }
       let provider: PullRequestProvider = { kind: "github", available: true };
       for (const branch of branchesOfInterest(repo, status)) {
         const cached = repo.pullRequests.get(branch);
@@ -447,6 +456,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         }
       }
       repo.provider = provider;
+      repo.unavailableAt = provider.available ? undefined : Date.now();
       const current = repo.status ?? status;
       await publish(repo, {
         ...current,
@@ -492,15 +502,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
 
   // --- Following the threads index ------------------------------------------------------
 
-  /** The branch a thread works on is the one checked out in its project now. */
-  const recordThread = async (
-    threadId: string,
-    projectId: string,
-    options: { reread: boolean },
-  ) => {
+  /**
+   * The branch a thread works on is the one checked out in its project now,
+   * read again rather than taken from the last status: the watcher may not
+   * have seen a checkout yet, or be off.
+   */
+  const recordThread = async (threadId: string, projectId: string) => {
     const repo = repos.get(projectId) ?? (await repoOf(projectId).catch(() => undefined));
     if (repo === undefined) return;
-    const status = options.reread ? await refresh(repo) : await statusOf(repo);
+    const status = await refresh(repo);
     await setThreadBranch(threadId, projectId, status.isRepo ? status.branch : null);
   };
 
@@ -531,7 +541,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       }
       case ThreadEvents.threadCreated: {
         if (typeof payload?.projectId === "string") {
-          await recordThread(id, payload.projectId, { reread: false });
+          await recordThread(id, payload.projectId);
         }
         return;
       }
@@ -543,11 +553,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         if (lastTurns.get(id) === key) return;
         lastTurns.set(id, key);
         // A turn runs on what is checked out when it starts; what it changed shows when it ends.
-        if (lastTurn.status === "running") {
-          await recordThread(id, projectId, { reread: false });
-        } else if (lastTurn.status !== "waiting") {
-          await recordThread(id, projectId, { reread: true });
-        }
+        if (lastTurn.status !== "waiting") await recordThread(id, projectId);
         return;
       }
       case ThreadEvents.threadDeleted:
@@ -578,7 +584,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     if (seconds === 0) return;
     prTimer = setInterval(() => {
       for (const repo of repos.values()) {
-        if (repo.provider?.available === true) void lookUpPullRequests(repo, { force: false });
+        if (repo.provider !== null) void lookUpPullRequests(repo, { force: false });
       }
     }, seconds * 1000);
     prTimer.unref?.();
@@ -666,6 +672,17 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     },
     checkout: async (projectId, branch, options = {}) => {
       const repo = await repoOf(projectId);
+      // A thread moves with the checkout only within its own project.
+      if (options.threadId !== undefined) {
+        const owner = await threadProject(options.threadId);
+        if (owner !== projectId) {
+          throw new SourceControlError(
+            "THREAD_PROJECT_MISMATCH",
+            `Thread ${options.threadId} belongs to another project`,
+            { threadId: options.threadId, projectId, threadProjectId: owner },
+          );
+        }
+      }
       const { git } = await gitOf(repo);
       const remotes = (await git(["remote"])).stdout.split("\n").filter((line) => line !== "");
       await checkout(git, branch, { create: options.create === true, remotes });

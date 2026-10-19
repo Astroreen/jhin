@@ -189,6 +189,8 @@ export type Branch = z.output<typeof Branch>;
 export type SourceControlErrorCode =
   | "PROJECT_NOT_FOUND"
   | "THREAD_NOT_FOUND"
+  /** `git.checkout` named a thread of another project. */
+  | "THREAD_PROJECT_MISMATCH"
   | "NOT_A_REPOSITORY"
   | "BRANCH_NOT_FOUND"
   | "BRANCH_INVALID"

@@ -86,13 +86,21 @@ describe("applySourceControlEvent", () => {
 
 /** A node: answers `git.status` from `answer`, records subscriptions to its stream. */
 function fakeNode(answer: (params: unknown) => Promise<unknown>) {
-  const subscriptions: { after: number | undefined; onEvent: (event: StoredEvent) => void }[] = [];
+  const subscriptions: {
+    after: number | undefined;
+    onEvent: (event: StoredEvent) => void;
+    onError: ((error: unknown) => void) | undefined;
+  }[] = [];
   const waiting: (() => void)[] = [];
   const client = {
     state: "open",
-    subscribe(stream: string, options: { after?: number }, onEvent: (event: StoredEvent) => void) {
+    subscribe(
+      stream: string,
+      options: { after?: number; onError?: (error: unknown) => void },
+      onEvent: (event: StoredEvent) => void,
+    ) {
       if (stream !== SOURCE_CONTROL_STREAM) throw new Error(`unexpected stream ${stream}`);
-      subscriptions.push({ after: options.after, onEvent });
+      subscriptions.push({ after: options.after, onEvent, onError: options.onError });
       for (const resolve of waiting.splice(0)) resolve();
       return { lastSequence: 0, dispose: () => undefined };
     },
@@ -134,10 +142,14 @@ function fakeNode(answer: (params: unknown) => Promise<unknown>) {
     threads,
     calls,
     subscriptions,
-    subscribed: () =>
-      subscriptions.length > 0
+    /** Resolves once the stream was subscribed to `count` times. */
+    subscribed: (count = 1) =>
+      subscriptions.length >= count
         ? Promise.resolve()
-        : new Promise<void>((resolve) => waiting.push(resolve)),
+        : new Promise<void>((resolve) => {
+            const check = () => (subscriptions.length >= count ? resolve() : waiting.push(check));
+            waiting.push(check);
+          }),
     append(type: string, payload: unknown) {
       sequence += 1;
       for (const { onEvent } of subscriptions) {
@@ -191,6 +203,28 @@ describe("the source control store", () => {
       }),
     );
     expect((await changed).projects.get("app")?.workingTree.insertions).toBe(3);
+    feed.subscription.dispose();
+    store.dispose();
+  });
+
+  it("starts over after the node refuses its stream: git.status again, then the stream", async () => {
+    let head = 0;
+    const node = fakeNode(async () => snapshot((head += 4)));
+    const store = createSourceControlStore(node.connections, node.threads, quiet);
+    const target = { node: "ws://a/rpc" };
+    const feed = follow(store, target);
+    await feed.next();
+    await node.subscribed();
+    const failed = feed.next();
+    node.subscriptions[0]!.onError?.(Object.assign(new Error("refused"), { code: "INVALID" }));
+    expect(await failed).toMatchObject({ status: "error", error: "refused" });
+    // Loaded again (head 8) and following from there; events reach the view again.
+    expect((await feed.next()).status).toBe("ready");
+    await node.subscribed(2);
+    expect(node.subscriptions.map((entry) => entry.after)).toEqual([4, 8]);
+    const changed = feed.next();
+    node.append(SourceControlEvents.statusChanged, status({ ahead: 5 }));
+    expect((await changed).projects.get("app")?.ahead).toBe(5);
     feed.subscription.dispose();
     store.dispose();
   });

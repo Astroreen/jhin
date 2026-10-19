@@ -1,5 +1,5 @@
 import type { ProjectStatus } from "@jhin/source-control-api";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { remoteHost, rollupChecks } from "../src/index.ts";
 import {
@@ -10,6 +10,7 @@ import {
   repository,
   statusEvent,
   threadEvent,
+  write,
 } from "./support.ts";
 
 /** A repository on `feature` whose origin is on GitHub (never contacted: `gh` is fake). */
@@ -19,6 +20,10 @@ function githubRepository(branch = "feature") {
   git(dir, "switch", "--quiet", "--create", branch);
   return dir;
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const only = (snapshot: { projects: ProjectStatus[] }) => snapshot.projects[0]!;
 
@@ -132,6 +137,28 @@ describe("jhin.source-control: pull requests through the GitHub CLI", () => {
       },
       pullRequests: {},
     });
+  });
+
+  it("asks gh again once its refresh period has passed, without a forced refresh", async () => {
+    const gh = fakeGh();
+    gh.pullRequest("feature", [ghPullRequest()]);
+    gh.fail(4, "To get started with GitHub CLI, please run:  gh auth login\n");
+    const dir = githubRepository();
+    const sc = await node({ pullRequestRefreshSeconds: 60 });
+    const projectId = await sc.project(dir);
+    expect(only(await sc.status(projectId, true)).provider?.available).toBe(false);
+    // Signed in meanwhile; a minute later the next change of the tree asks gh again.
+    gh.recover();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 61_000);
+    write(dir, "notes.md", "x\n");
+    await sc.until(
+      statusEvent(
+        projectId,
+        (status) =>
+          status.provider?.available === true && status.pullRequests["feature"]?.number === 7,
+      ),
+    );
   });
 
   it("does not ask gh about remotes elsewhere", async () => {

@@ -1,6 +1,7 @@
 import type { Branch, Diff, ProjectStatus } from "@jhin/source-control-api";
 import { describe, expect, it } from "vite-plus/test";
 
+import { countLines, mapLimited } from "../src/git.ts";
 import { parseNumstat, parseStatus } from "../src/index.ts";
 import { git, node, repository, statusEvent, temp, threadEvent, write } from "./support.ts";
 
@@ -298,6 +299,61 @@ describe("jhin.source-control: a thread's branch", () => {
     ).toMatchObject({ checkedOut: false, thread: { branch: "work" } });
   });
 
+  it("reads the checkout when a thread is created, not a status the watcher has not caught up with", async () => {
+    const dir = repository();
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(dir);
+    expect((await sc.status(projectId)).projects[0]?.branch).toBe("main");
+    git(dir, "switch", "--quiet", "--create", "other");
+    const thread = await sc.client.call<{ id: string }>("threads.create", { projectId });
+    await sc.until(threadEvent(thread.id, (record) => record.branch === "other"));
+  });
+
+  it("records the checkout when a turn starts, while it still runs", async () => {
+    const dir = repository();
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(dir);
+    const thread = await sc.client.call<{ id: string }>("threads.create", { projectId });
+    await sc.until(threadEvent(thread.id, (record) => record.branch === "main"));
+    git(dir, "switch", "--quiet", "--create", "work");
+    // The fake agent holds this turn until it is interrupted: only its start can record "work".
+    await sc.client.call("threads.send", { threadId: thread.id, text: "/hold on" });
+    await sc.until(threadEvent(thread.id, (record) => record.branch === "work"));
+    await sc.client.call("threads.interrupt", { threadId: thread.id });
+  });
+
+  it("refuses to move a thread of another project, or one that does not exist", async () => {
+    const first = repository();
+    const second = repository();
+    const sc = await node();
+    const firstId = await sc.project(first);
+    const secondId = await sc.project(second);
+    const thread = await sc.client.call<{ id: string }>("threads.create", { projectId: firstId });
+    await sc.until(threadEvent(thread.id, () => true));
+    await expect(
+      sc.client.call("git.checkout", {
+        projectId: secondId,
+        branch: "topic",
+        create: true,
+        threadId: thread.id,
+      }),
+    ).rejects.toMatchObject({ code: "THREAD_PROJECT_MISMATCH" });
+    await expect(
+      sc.client.call("git.checkout", {
+        projectId: firstId,
+        branch: "topic",
+        create: true,
+        threadId: "no-such-thread",
+      }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
+    // Neither repository moved, and the thread kept its project.
+    expect(git(second, "branch", "--show-current").trim()).toBe("main");
+    expect(git(first, "branch", "--show-current").trim()).toBe("main");
+    expect((await sc.status(firstId)).threads).toMatchObject([
+      { threadId: thread.id, projectId: firstId, branch: "main" },
+    ]);
+  });
+
   it("moves a thread with the branch it checks out", async () => {
     const dir = repository();
     const sc = await node();
@@ -326,6 +382,41 @@ describe("jhin.source-control: a thread's branch", () => {
         (event.payload as { threadId: string }).threadId === thread.id,
     );
     expect((await sc.status(projectId)).threads).toEqual([]);
+  });
+});
+
+describe("jhin.source-control: counting untracked lines", () => {
+  it("counts a file larger than one read, and decides binary from the first 8000 bytes", async () => {
+    const dir = temp("jhin-sc-count-");
+    write(dir, "big.txt", "line\n".repeat(50_000));
+    write(dir, "late-nul.txt", `${"a".repeat(9000)}\0\nlast`);
+    write(dir, "early-nul.bin", "ab\0cd\n");
+    write(dir, "no-newline.txt", "one\ntwo");
+    expect(await countLines(`${dir}/big.txt`)).toEqual({ lines: 50_000, binary: false });
+    expect(await countLines(`${dir}/late-nul.txt`)).toEqual({ lines: 2, binary: false });
+    expect(await countLines(`${dir}/early-nul.bin`)).toEqual({ lines: 0, binary: true });
+    expect(await countLines(`${dir}/no-newline.txt`)).toEqual({ lines: 2, binary: false });
+  });
+
+  it("never runs more than its limit at once, and keeps the order", async () => {
+    let running = 0;
+    let most = 0;
+    const waiting: (() => void)[] = [];
+    const done = mapLimited([1, 2, 3, 4, 5, 6, 7], 3, async (item) => {
+      running++;
+      most = Math.max(most, running);
+      await new Promise<void>((resolve) => waiting.push(resolve));
+      running--;
+      return item * 10;
+    });
+    // Release the calls one by one as they start.
+    const busy = () => waiting.length > 0 || running > 0;
+    while (busy()) {
+      await Promise.resolve();
+      waiting.shift()?.();
+    }
+    expect(await done).toEqual([10, 20, 30, 40, 50, 60, 70]);
+    expect(most).toBe(3);
   });
 });
 

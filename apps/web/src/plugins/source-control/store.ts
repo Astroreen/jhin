@@ -84,7 +84,12 @@ interface Feed {
   stop: (() => void) | undefined;
   /** Bumped on every (re)start, so answers of an older start are dropped. */
   generation: number;
+  /** Starts over since the last load that worked: the first is immediate, later ones back off. */
+  retries: number;
 }
+
+/** The longest wait before a feed that keeps failing starts over. */
+const MAX_RETRY_MS = 30_000;
 
 /**
  * The source control of every node a view looks at: `git.status`, then the
@@ -123,10 +128,33 @@ export function createSourceControlStore(
     const current = () => feed.generation === generation;
     let subscription: Disposable | undefined;
     let catalog: Disposable | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
     const load = async () => {
       const snapshot = await threads.call<StatusSnapshot>(feed.target, "git.status");
-      if (current()) set(feed, viewOf(snapshot));
+      if (current()) {
+        feed.retries = 0;
+        set(feed, viewOf(snapshot));
+      }
       return snapshot;
+    };
+    /**
+     * A refused subscription or a failed load: shown, then the feed starts
+     * over (`git.status`, then the stream after its head), at once the first
+     * time and backing off while it keeps failing. A node without the plugin
+     * is not asked again.
+     */
+    const failed = (error: unknown) => {
+      if (!current()) return;
+      fail(feed, error);
+      if ((error as { code?: unknown }).code === "COMMAND_NOT_FOUND") return;
+      const again = () => {
+        if (!current() || feed.client !== client) return;
+        feed.stop?.();
+        feed.stop = start(feed, client);
+      };
+      const attempt = feed.retries++;
+      if (attempt === 0) queueMicrotask(again);
+      else retry = setTimeout(again, Math.min(MAX_RETRY_MS, 1000 * 2 ** (attempt - 1)));
     };
     if (feed.target.remote === undefined) {
       void load()
@@ -134,13 +162,13 @@ export function createSourceControlStore(
           if (!current()) return;
           subscription = client.subscribe(
             SOURCE_CONTROL_STREAM,
-            { after: snapshot.head, onError: (error) => current() && fail(feed, error) },
+            { after: snapshot.head, onError: failed },
             (event) => {
               if (current()) set(feed, applySourceControlEvent(feed.view, event));
             },
           );
         })
-        .catch((error: unknown) => current() && fail(feed, error));
+        .catch(failed);
     } else {
       // Read again on every change of the member's catalog; one read at a time, the last wins.
       let running = false;
@@ -172,6 +200,7 @@ export function createSourceControlStore(
     }
     return () => {
       feed.generation += 1;
+      if (retry !== undefined) clearTimeout(retry);
       subscription?.dispose();
       catalog?.dispose();
     };
@@ -208,6 +237,7 @@ export function createSourceControlStore(
           client: undefined,
           stop: undefined,
           generation: 0,
+          retries: 0,
         };
         feeds.set(key, feed);
         sync(feed);
