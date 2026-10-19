@@ -14,6 +14,9 @@ export default defineConfig({
   // a store read during render without one is memoized and never sees the store change.
   plugins: [react({ compiler: true }), tailwindcss(), sharedModules()],
   server: {
+    // Tailscale names, so `tailscale serve` can share the dev server with the tailnet while
+    // it still listens on 127.0.0.1 only; Vite rejects any other Host header.
+    allowedHosts: [".ts.net"],
     proxy: {
       "/rpc": { target: node, ws: true },
       "/client/": { target: node },
