@@ -86,7 +86,9 @@ contributions. Features of T3 Code that only make sense for its hosted product
   of one project at once remove it once; a removal waits for threads being
   created in the project, so none is left behind; a project whose removal
   fails takes new threads again. An answer the agent fails to take stays
-  recorded (`AGENT_FAILED`), and the request takes no second one.
+  recorded (`AGENT_FAILED`), and the request takes no second one. Changes to
+  a thread's or a project's record run one at a time, its removal included,
+  so none writes back a record removed meanwhile.
 
 ### Client
 
