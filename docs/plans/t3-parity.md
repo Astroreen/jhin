@@ -43,20 +43,23 @@ contributions. Features of T3 Code that only make sense for its hosted product
   `jhin.threads.defaultAgent`, else the first available runtime.
 - **D56. Requests are answered through `threads.respond`.** A request is an
   event (`agent.request.opened`/`resolved`); a turn that ends closes its open
-  requests without a response, so a client never shows a stale question.
-  While a request is open the thread's last turn is `waiting` with
-  `waitingFor` (`approval` or `user-input`). An answer must be of the
+  requests without a response, so a client never shows a stale question. While
+  a request is open the thread's last turn is `waiting` with `waitingFor`
+  (`approval` while one is open, else `user-input`). An answer must be of the
   request's kind, and it counts once it is recorded: only then does the agent
   get it, and an answer that could not be recorded can be sent again. An
   answer to a turn that is ending is refused (`REQUEST_NOT_FOUND`), never
-  reported as delivered.
+  reported as delivered. An answer that comes while its request is still being
+  recorded waits for it, so the log never holds an answer before its request.
 - **D57. The thread record says where its latest turn is** (`lastTurn`:
   running, waiting, completed, interrupted, failed, with its time) and when it
   changed (`updatedAt`, `archivedAt`). Every change appends
   `threads.thread.updated` to the `threads` index, so a client follows a
   node's whole catalog from one stream: `threads.catalog` returns projects,
   threads and the index head they reflect. After a restart, turns that were
-  running are recorded as interrupted, and their open requests closed.
+  running are recorded as interrupted, and their open requests closed. The
+  record says a turn runs before the turn's first event is written, so a node
+  that stops in between closes that turn too.
 - **D58. Thread and project management as commands:** rename, archive and
   unarchive, delete (the stream keeps a final deleted event); a new thread
   takes its title from its first message (hook `threads.title`); projects can
