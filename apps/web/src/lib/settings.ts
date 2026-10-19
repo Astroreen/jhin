@@ -25,6 +25,8 @@ export const ChatSettings = z.object({
   confirmArchive: z.boolean().default(false),
   /** Ask before deleting a thread or removing a project. */
   confirmDelete: z.boolean().default(true),
+  /** Ask before unpinning a thread (T3's confirmThreadUnpin). */
+  confirmUnpin: z.boolean().default(false),
 });
 export type ChatSettings = z.output<typeof ChatSettings>;
 

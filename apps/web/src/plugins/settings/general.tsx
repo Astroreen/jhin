@@ -110,6 +110,17 @@ export function GeneralSection() {
           description="Ask before a thread is deleted or a project removed."
           title="Delete"
         />
+        <SettingsRow
+          control={
+            <Switch
+              aria-label="Confirm thread unpinning"
+              checked={chat.confirmUnpin}
+              onCheckedChange={(confirmUnpin) => set({ confirmUnpin })}
+            />
+          }
+          description="Ask before unpinning a thread from the pinned section."
+          title="Unpin"
+        />
       </SettingsSection>
     </>
   );

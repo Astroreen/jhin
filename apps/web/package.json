@@ -18,6 +18,9 @@
   },
   "devDependencies": {
     "@base-ui/react": "catalog:",
+    "@dnd-kit/core": "catalog:",
+    "@dnd-kit/sortable": "catalog:",
+    "@dnd-kit/utilities": "catalog:",
     "@jhin/agent-api": "workspace:*",
     "@jhin/client-api": "workspace:*",
     "@jhin/kernel": "workspace:*",

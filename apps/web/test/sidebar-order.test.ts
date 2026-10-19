@@ -2,8 +2,11 @@ import type { NodeTarget, ProjectRecord, ThreadRecord } from "@jhin/client-api";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  canSnooze,
   formatWorkingDurationLabel,
+  isSnoozed,
   isUnread,
+  isWoke,
   projectKey,
   projectScopes,
   rowLabel,
@@ -15,6 +18,8 @@ import {
   sidebarThreadStatus,
   sidebarThreads,
   sidebarTopStatus,
+  threadSection,
+  wokeAt,
 } from "../src/lib/sidebar-order.ts";
 
 const NOW = Date.parse("2026-10-19T12:00:00.000Z");
@@ -140,6 +145,122 @@ describe("settling (D70)", () => {
   });
 });
 
+describe("settling by hand, and what the automatic rule leaves alone (D75)", () => {
+  it("lists a thread settled by hand as of when it was settled, whatever its activity", () => {
+    const settled = thread("t", ago(2), {
+      lastTurn: turn("completed", ago(1)),
+      settledOverride: "settled",
+      settledAt: ago(0.5),
+    });
+    expect(settledAt(settled, NOW)).toBe(ago(0.5));
+    expect(threadSection(settled, NOW)).toBe("settled");
+    // A settle time that does not parse: as of the thread's activity.
+    expect(settledAt({ ...settled, settledAt: "soon" }, NOW)).toBe(ago(1));
+  });
+
+  it("keeps a thread active by hand, and a pinned one, however long it was quiet", () => {
+    expect(settledAt(thread("t", ago(200), { settledOverride: "active" }), NOW)).toBeUndefined();
+    const pinned = thread("t", ago(200), { pinnedAt: ago(150) });
+    expect(settledAt(pinned, NOW)).toBeUndefined();
+    expect(threadSection(pinned, NOW)).toBe("pinned");
+  });
+
+  it("settles a completed thread nobody looked at (Done), as T3 does", () => {
+    const done = thread("t", ago(200), { lastTurn: turn("completed", ago(100)) });
+    expect(isUnread(done, ago(150))).toBe(true);
+    expect(settledAt(done, NOW)).toBe(ago(100));
+  });
+
+  it("does not settle a thread whose activity time does not parse", () => {
+    const garbled = thread("t", "not a time", { lastTurn: turn("completed", "yesterday") });
+    expect(threadActivityAt(garbled)).toBe("yesterday");
+    expect(settledAt(garbled, NOW)).toBeUndefined();
+    expect(threadSection(garbled, NOW)).toBe("active");
+    expect(settledAt(thread("t", "not a time"), NOW)).toBeUndefined();
+  });
+
+  it("counts a snooze that ended, by hand or by its time, as activity", () => {
+    const quiet = { lastTurn: turn("completed", ago(100)) };
+    expect(settledAt(thread("t", ago(200), { ...quiet, lastSnoozeWakeAt: ago(10) }), NOW)).toBe(
+      undefined,
+    );
+    expect(settledAt(thread("t", ago(200), { ...quiet, lastSnoozeWakeAt: ago(80) }), NOW)).toBe(
+      ago(80),
+    );
+    // Woke by its time 75 hours ago: settled as of then.
+    expect(
+      settledAt(
+        thread("t", ago(200), { ...quiet, snoozedAt: ago(99), snoozedUntil: ago(75) }),
+        NOW,
+      ),
+    ).toBe(ago(75));
+  });
+});
+
+describe("snoozing (D77)", () => {
+  const snoozed = (extra: Partial<ThreadRecord> = {}) =>
+    thread("t", ago(10), {
+      lastTurn: turn("completed", ago(5)),
+      snoozedAt: ago(4),
+      snoozedUntil: ago(-2),
+      ...extra,
+    });
+
+  it("hides a thread until its time, then wakes it", () => {
+    expect(isSnoozed(snoozed(), NOW)).toBe(true);
+    expect(threadSection(snoozed(), NOW)).toBe("snoozed");
+    expect(wokeAt(snoozed(), NOW)).toBeUndefined();
+    const later = NOW + 3 * HOUR;
+    expect(isSnoozed(snoozed(), later)).toBe(false);
+    expect(wokeAt(snoozed(), later)).toBe(ago(-2));
+    expect(threadSection(snoozed(), later)).toBe("active");
+  });
+
+  it("wakes early when it asks for something, fails or completes after it was snoozed", () => {
+    for (const lastTurn of [
+      turn("waiting", ago(3), "approval"),
+      turn("failed", ago(3)),
+      turn("completed", ago(3)),
+    ]) {
+      const woke = snoozed({ lastTurn });
+      expect(isSnoozed(woke, NOW)).toBe(false);
+      expect(wokeAt(woke, NOW)).toBe(ago(3));
+    }
+    // A turn that ended before the snooze, or was stopped, does not wake it.
+    expect(isSnoozed(snoozed({ lastTurn: turn("failed", ago(5)) }), NOW)).toBe(true);
+    expect(isSnoozed(snoozed({ lastTurn: turn("interrupted", ago(3)) }), NOW)).toBe(true);
+    expect(isSnoozed(snoozed({ lastTurn: turn("running", ago(3)) }), NOW)).toBe(true);
+  });
+
+  it("shows a snoozed thread on the Snoozed shelf first, then back where it was pinned or settled", () => {
+    const later = NOW + 3 * HOUR;
+    const pinned = snoozed({ pinnedAt: ago(6), pinOrderKey: "n" });
+    expect(threadSection(pinned, NOW)).toBe("snoozed");
+    expect(threadSection(pinned, later)).toBe("pinned");
+    const settled = snoozed({ settledOverride: "settled", settledAt: ago(6) });
+    expect(threadSection(settled, NOW)).toBe("snoozed");
+    expect(threadSection(settled, later)).toBe("settled");
+  });
+
+  it("refuses to snooze a thread waiting for an answer", () => {
+    expect(
+      canSnooze(thread("t", ago(1), { lastTurn: turn("waiting", ago(1), "user-input") })),
+    ).toBe(false);
+    expect(canSnooze(thread("t", ago(1), { lastTurn: turn("running", ago(1)) }))).toBe(true);
+  });
+
+  it("says Woke until a visit after the wake, and not on a thread settled by hand", () => {
+    const woke = snoozed({ lastTurn: turn("completed", ago(3)) });
+    expect(isWoke(woke, undefined, NOW)).toBe(true);
+    expect(isWoke(woke, ago(3.5), NOW)).toBe(true);
+    expect(isWoke(woke, ago(3), NOW)).toBe(false);
+    expect(isWoke({ ...woke, settledOverride: "settled" }, undefined, NOW)).toBe(false);
+    expect(sidebarTopStatus("ready", true, true)).toBe("woke");
+    expect(sidebarTopStatus("failed", false, true)).toBe("failed");
+    expect(shouldRecede({ status: "ready", unread: false, active: false, woke: true })).toBe(false);
+  });
+});
+
 describe("accessible names (D71)", () => {
   it("names a row as T3 does, and its node only while several nodes are shown", () => {
     expect(rowLabel(["fix it", null, "web"], undefined)).toBe("fix it, web");
@@ -177,6 +298,29 @@ describe("the sidebar's list (D70)", () => {
     expect(ids(settled)).toEqual(["settled-later", "settled-earlier"]);
     expect(active.map((entry) => entry.key)).toEqual(["a|new", "a|b|middle", "a|old-active"]);
     expect(active.map((entry) => entry.project?.name)).toEqual(["No project", "web", "web"]);
+  });
+
+  it("puts pinned threads on top in their order and a thread back from the shelf on top of the active ones", () => {
+    const c = node(
+      { node: "c" },
+      [scratch],
+      [
+        thread("pinned-b", ago(50), { pinnedAt: ago(1), pinOrderKey: "n" }),
+        thread("pinned-a", ago(40), { pinnedAt: ago(1), pinOrderKey: "c" }),
+        thread("pinned-unkeyed", ago(30), { pinnedAt: ago(1) }),
+        thread("fresh", ago(5)),
+        thread("returned", ago(60), { unsettledAt: ago(1) }),
+        thread("dragged", ago(0.5), { activeOrderKey: "m" }),
+        thread("snoozed-late", ago(20), { snoozedUntil: ago(-5), snoozedAt: ago(1) }),
+        thread("snoozed-soon", ago(20), { snoozedUntil: ago(-1), snoozedAt: ago(1) }),
+      ],
+    );
+    const lists = sidebarThreads([c], { nowMs: NOW });
+    expect(ids(lists.pinned)).toEqual(["pinned-a", "pinned-b", "pinned-unkeyed"]);
+    // Never dragged first, newest by creation or return; then the dragged ones by key.
+    expect(ids(lists.active)).toEqual(["returned", "fresh", "dragged"]);
+    expect(ids(lists.snoozed)).toEqual(["snoozed-soon", "snoozed-late"]);
+    expect(lists.active.map((entry) => entry.section)).toEqual(["active", "active", "active"]);
   });
 
   it("narrows to one project of one node", () => {

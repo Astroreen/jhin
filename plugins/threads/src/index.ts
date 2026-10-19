@@ -1,3 +1,8 @@
+// Settling, pinning, snoozing and ordering threads (the "Arrangement" commands and
+// the rules they share with the web client) follow T3 Code (MIT, see
+// THIRD_PARTY_NOTICES.md): apps/server/src/orchestration-v2/Orchestrator.ts
+// (dispatchThreadMutation, a turn start unsettling and waking its thread) and
+// ThreadSettlementService.ts (isAutoSettlementCandidate, isSnoozed).
 import * as Crypto from "node:crypto";
 import * as Fs from "node:fs";
 import * as Os from "node:os";
@@ -112,8 +117,110 @@ const Thread = z.object({
       waitingFor: z.enum(["approval", "user-input"]).optional(),
     })
     .optional(),
+  // Where the sidebar keeps the thread (D75–D78). These are the user's
+  // arrangement, not activity: changing them leaves `updatedAt` alone.
+  /** Settled or kept active by hand; overrides the automatic rule until the next turn. */
+  settledOverride: z.enum(["settled", "active"]).optional(),
+  /** When the thread was settled by hand. */
+  settledAt: z.string().optional(),
+  /** When it last came back from the Settled shelf: it sorts as if created then. */
+  unsettledAt: z.string().optional(),
+  pinnedAt: z.string().optional(),
+  /** The pinned thread's place among the pinned ones (a fractional key, T3 Code's). */
+  pinOrderKey: z.string().optional(),
+  /** The thread's place among the active ones once dragged there. */
+  activeOrderKey: z.string().optional(),
+  /** Hidden until then, unless it asks for something, fails or completes meanwhile. */
+  snoozedUntil: z.string().optional(),
+  snoozedAt: z.string().optional(),
+  /** When a snooze last ended by hand: the automatic rule counts it as activity. */
+  lastSnoozeWakeAt: z.string().optional(),
 });
 type Thread = z.infer<typeof Thread>;
+
+/** T3 Code's default for settling a thread by itself; the web client's rule (D70) twins this one. */
+const AUTO_SETTLE_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
+/** A fractional order key: lowercase letters, compared as strings (T3 Code's pin order keys). */
+const OrderKey = z
+  .string()
+  .regex(/^[a-z]*[b-z]$/, "must be lowercase letters, not ending in a")
+  .max(64);
+
+/** A time in milliseconds; NaN when absent or unreadable. */
+const millis = (at: string | undefined) => (at === undefined ? Number.NaN : Date.parse(at));
+
+/**
+ * A snoozed thread that asked for something, failed or completed since it was
+ * snoozed is awake again before its time (T3 Code's threadRaisedHandWhileSnoozed).
+ */
+function raisedHand(thread: Thread): boolean {
+  const turn = thread.lastTurn;
+  if (turn === undefined) return false;
+  if (turn.status === "waiting") return true;
+  if (turn.status !== "failed" && turn.status !== "completed") return false;
+  const snoozedAt = millis(thread.snoozedAt);
+  return Number.isNaN(snoozedAt) ? turn.status === "failed" : millis(turn.at) > snoozedAt;
+}
+
+/** Hidden on the Snoozed shelf now. */
+function isSnoozed(thread: Thread, nowMs: number): boolean {
+  const until = millis(thread.snoozedUntil);
+  return !Number.isNaN(until) && until > nowMs && !raisedHand(thread);
+}
+
+/**
+ * Whether the sidebar shows the thread on its Settled shelf now: settled by
+ * hand, or by T3 Code's automatic rule (no activity for three days, nothing
+ * running or waiting, not pinned, not snoozed, not kept active by hand).
+ */
+function isSettled(thread: Thread, nowMs: number): boolean {
+  if (thread.settledOverride !== undefined) return thread.settledOverride === "settled";
+  return autoSettledAt(thread, nowMs) !== undefined;
+}
+
+/**
+ * When the automatic rule settled the thread, if it did: as of its last
+ * activity, a snooze that ended counting as activity (the web client's twin).
+ */
+function autoSettledAt(thread: Thread, nowMs: number): string | undefined {
+  if (thread.pinnedAt !== undefined || isSnoozed(thread, nowMs)) return undefined;
+  const status = thread.lastTurn?.status;
+  if (status === "running" || status === "waiting") return undefined;
+  const until = millis(thread.snoozedUntil);
+  const activity = Math.max(
+    ...[thread.lastTurn?.at ?? thread.updatedAt ?? thread.createdAt, thread.lastSnoozeWakeAt]
+      .map(millis)
+      .filter((value) => !Number.isNaN(value)),
+    until <= nowMs ? until : Number.NEGATIVE_INFINITY,
+  );
+  return Number.isFinite(activity) && activity < nowMs - AUTO_SETTLE_AFTER_MS
+    ? new Date(activity).toISOString()
+    : undefined;
+}
+
+/**
+ * What a new turn changes in the thread's arrangement, as T3 Code's turn start
+ * does: a settled thread comes back to the top of the active ones, a snoozed
+ * one wakes, and a choice made by hand gives way to the automatic rule again.
+ */
+function revived(thread: Thread, at: string): Thread {
+  const nowMs = Date.parse(at);
+  const settled = isSettled(thread, nowMs);
+  if (!settled && thread.settledOverride === undefined && thread.snoozedUntil === undefined) {
+    return thread;
+  }
+  const {
+    settledOverride: _override,
+    settledAt: _settledAt,
+    snoozedUntil: _until,
+    snoozedAt: _snoozedAt,
+    ...rest
+  } = thread;
+  if (!settled) return rest;
+  // Back from the shelf: on top of the active threads, out of any dragged order.
+  const { activeOrderKey: _key, ...unordered } = rest;
+  return { ...unordered, unsettledAt: at };
+}
 
 const StoredEventSchema = z.object({
   stream: z.string(),
@@ -1293,6 +1400,207 @@ export default definePlugin({
         }),
     });
 
+    // --- Arrangement (D75–D78) --------------------------------------------------
+    // Where the sidebar keeps a thread: settled, pinned, snoozed, and its place
+    // in a list. Kept on the node, so every client and device follows it.
+    /** Changes a thread's arrangement; an archived thread has none. */
+    const arrange = (threadId: string, change: (thread: Thread, at: string) => Thread) =>
+      updateThread(threadId, (thread) => {
+        if (thread.archivedAt !== undefined) throw archivedError(threadId);
+        return change(thread, now());
+      });
+    const ThreadId = z.object({ threadId: z.string() });
+
+    context.commands.register({
+      name: "threads.settle",
+      description:
+        "Moves a thread to the Settled shelf until it is un-settled or its next turn; unpins it and wakes it if snoozed. A thread running a turn or waiting for an answer cannot settle",
+      input: ThreadId,
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: ({ threadId }) =>
+        arrange(threadId, (thread, at) => {
+          if (thread.lastTurn?.status === "waiting") {
+            throw new ThreadsError(
+              "TURN_IN_PROGRESS",
+              "The thread is waiting on an approval or question: answer it before settling",
+              { threadId },
+            );
+          }
+          if (active.has(threadId) || thread.lastTurn?.status === "running") {
+            throw new ThreadsError(
+              "TURN_IN_PROGRESS",
+              "The thread is still running: stop it before settling",
+              { threadId },
+            );
+          }
+          const snoozed = thread.snoozedUntil !== undefined;
+          if (thread.settledOverride === "settled" && thread.pinnedAt === undefined && !snoozed) {
+            return thread;
+          }
+          const {
+            unsettledAt: _unsettledAt,
+            pinnedAt: _pinnedAt,
+            pinOrderKey: _pinOrderKey,
+            activeOrderKey: _activeOrderKey,
+            snoozedUntil: _until,
+            snoozedAt: _snoozedAt,
+            ...rest
+          } = thread;
+          // A thread on the shelf already keeps its place there: settled by hand
+          // as of then, by the rule as of its last activity (T3 keeps settledAt).
+          const since =
+            thread.settledOverride === "settled"
+              ? thread.settledAt
+              : autoSettledAt(thread, Date.parse(at));
+          return {
+            ...rest,
+            settledOverride: "settled",
+            settledAt: since ?? at,
+            // Settling wakes a snoozed thread, as T3's drop onto the shelf does:
+            // the Snoozed shelf would otherwise keep showing it.
+            ...(snoozed ? { lastSnoozeWakeAt: at } : {}),
+          };
+        }),
+    });
+
+    context.commands.register({
+      name: "threads.unsettle",
+      description:
+        "Brings a thread back from the Settled shelf to the top of the active threads; it stays active until its next turn. A thread not settled is left as it is",
+      input: ThreadId,
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: ({ threadId }) =>
+        arrange(threadId, (thread, at) => {
+          // Only a thread on the shelf comes back: T3's command would also move an
+          // active one to the top and switch the automatic rule off for it. A
+          // snooze stays; it still hides the thread until it wakes.
+          if (!isSettled(thread, Date.parse(at))) return thread;
+          const { settledAt: _settledAt, ...rest } = thread;
+          return { ...rest, settledOverride: "active", unsettledAt: at };
+        }),
+    });
+
+    context.commands.register({
+      name: "threads.pin",
+      description:
+        "Pins a thread above the active ones, at `orderKey` among the pinned (else after the ordered ones); a settled thread comes back, a snoozed one wakes",
+      input: ThreadId.extend({ orderKey: OrderKey.optional() }),
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: ({ threadId, orderKey }) =>
+        arrange(threadId, (thread, at) => {
+          const settled = isSettled(thread, Date.parse(at));
+          if (thread.pinnedAt !== undefined && !settled && thread.snoozedUntil === undefined) {
+            return thread;
+          }
+          const {
+            settledAt: _settledAt,
+            snoozedUntil: _until,
+            snoozedAt: _snoozedAt,
+            ...rest
+          } = thread;
+          return {
+            ...rest,
+            pinnedAt: thread.pinnedAt ?? at,
+            ...(thread.pinnedAt === undefined && orderKey !== undefined
+              ? { pinOrderKey: orderKey }
+              : {}),
+            ...(settled ? { settledOverride: "active" as const } : {}),
+            ...(thread.snoozedUntil === undefined ? {} : { lastSnoozeWakeAt: at }),
+          };
+        }),
+    });
+
+    context.commands.register({
+      name: "threads.unpin",
+      description: "Unpins a thread: it goes back among the active ones",
+      input: ThreadId,
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: ({ threadId }) =>
+        arrange(threadId, (thread) => {
+          if (thread.pinnedAt === undefined) return thread;
+          const { pinnedAt: _pinnedAt, pinOrderKey: _pinOrderKey, ...rest } = thread;
+          return rest;
+        }),
+    });
+
+    context.commands.register({
+      name: "threads.reorder",
+      description:
+        "Gives a thread its place among the pinned or the active threads: a fractional `orderKey`, compared as text with the others' keys",
+      input: ThreadId.extend({ list: z.enum(["pinned", "active"]), orderKey: OrderKey }),
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: ({ threadId, list, orderKey }) =>
+        arrange(threadId, (thread, at) => {
+          // Refused rather than pinning, un-settling or waking in passing: a
+          // reorder that races an unpin must not bring the pin back, and a key
+          // written on a shelf would place the thread when it comes back.
+          if (list === "pinned" && thread.pinnedAt === undefined) {
+            throw new ThreadsError("THREAD_NOT_PINNED", "The thread is not pinned", { threadId });
+          }
+          const nowMs = Date.parse(at);
+          if (
+            list === "active" &&
+            (thread.pinnedAt !== undefined || isSettled(thread, nowMs) || isSnoozed(thread, nowMs))
+          ) {
+            throw new ThreadsError(
+              "THREAD_NOT_ACTIVE",
+              "The thread is pinned, settled or snoozed",
+              { threadId },
+            );
+          }
+          const key = list === "pinned" ? "pinOrderKey" : "activeOrderKey";
+          return thread[key] === orderKey ? thread : { ...thread, [key]: orderKey };
+        }),
+    });
+
+    context.commands.register({
+      name: "threads.snooze",
+      description:
+        "Hides a thread on the Snoozed shelf until `until`; it wakes earlier when it asks for something, fails or completes. A thread waiting for an answer cannot snooze",
+      input: ThreadId.extend({ until: z.iso.datetime({ offset: true }) }),
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: ({ threadId, until }) =>
+        arrange(threadId, (thread, at) => {
+          const wakeMs = Date.parse(until);
+          if (!(wakeMs > Date.parse(at))) {
+            throw new ThreadsError("SNOOZE_IN_PAST", `${until} is not in the future`, {
+              threadId,
+              until,
+            });
+          }
+          if (thread.lastTurn?.status === "waiting") {
+            throw new ThreadsError(
+              "TURN_IN_PROGRESS",
+              "The thread is waiting on an approval or question: answer it before snoozing",
+              { threadId },
+            );
+          }
+          // Stamped again even for the same time: snoozing a thread that woke
+          // means "seen, not now".
+          return { ...thread, snoozedUntil: new Date(wakeMs).toISOString(), snoozedAt: at };
+        }),
+    });
+
+    context.commands.register({
+      name: "threads.unsnooze",
+      description: "Wakes a snoozed thread now",
+      input: ThreadId,
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: ({ threadId }) =>
+        arrange(threadId, (thread, at) => {
+          if (thread.snoozedUntil === undefined) return thread;
+          const { snoozedUntil: _until, snoozedAt: _snoozedAt, ...rest } = thread;
+          return { ...rest, lastSnoozeWakeAt: at };
+        }),
+    });
+
     context.commands.register({
       name: "threads.delete",
       description:
@@ -1397,28 +1705,31 @@ export default definePlugin({
             ...(runtimeMode === undefined ? {} : { runtimeMode }),
             ...(interactionMode === undefined ? {} : { interactionMode }),
           };
-          // The first message names a thread that still has the default title.
-          const named =
-            firstTitle !== undefined &&
-            thread.lastTurn === undefined &&
-            thread.title === DEFAULT_THREAD_TITLE
-              ? firstTitle
-              : thread.title;
           const chosen = { agentId: runtime.agentId, ...settings };
           // The record keeps what this turn runs with: no model of another agent.
           const dropModel = settings.model === undefined;
-          const changed =
-            named !== thread.title ||
-            (dropModel && thread.model !== undefined) ||
-            Object.entries(chosen).some(
-              ([key, value]) => (thread as Record<string, unknown>)[key] !== value,
+          // A new turn also brings a settled thread back and wakes a snoozed one.
+          const at = now();
+          await updateThread(threadId, (latest) => {
+            const back = revived(latest, at);
+            const { model: _model, ...rest } = back;
+            const next: Thread = {
+              ...(dropModel ? rest : back),
+              ...chosen,
+              // Only the first message names the thread, and only while it has the
+              // default title: a rename that landed since it was read stays.
+              title:
+                firstTitle !== undefined &&
+                latest.lastTurn === undefined &&
+                latest.title === DEFAULT_THREAD_TITLE
+                  ? firstTitle
+                  : latest.title,
+            };
+            const changed = (Object.keys({ ...latest, ...next }) as (keyof Thread)[]).some(
+              (key) => next[key] !== latest[key],
             );
-          if (changed) {
-            await updateThread(threadId, (latest) => {
-              const { model: _model, ...rest } = latest;
-              return { ...(dropModel ? rest : latest), ...chosen, title: named };
-            });
-          }
+            return changed ? next : latest;
+          });
         } catch (error) {
           reservation.finish();
           throw error;
