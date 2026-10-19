@@ -51,7 +51,7 @@ export default definePlugin({
     context.config.define(CONFIG_SECTION, Config);
     const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
     const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
-    const streams = createMemoryStreams();
+    const streams = createMemoryStreams({ log: context.log });
     const sessions = createSessions({
       streams,
       pty: loadNodePty,

@@ -1,4 +1,4 @@
-import { toDisposable, type Disposable } from "@jhin/sdk";
+import { toDisposable, type Disposable, type Logger } from "@jhin/sdk";
 import type { Json, StoredEvent } from "@jhin/storage-api";
 
 /** `rpc.streams@1`: streams served from memory instead of the event log. */
@@ -94,7 +94,12 @@ export interface MemoryStreams extends StreamSource {
 }
 
 export function createMemoryStreams(
-  options: { firstSequence?: number; now?: () => string } = {},
+  options: {
+    firstSequence?: number;
+    now?: () => string;
+    /** Where a listener that throws is reported; it never reaches `append`'s caller. */
+    log?: Pick<Logger, "warn">;
+  } = {},
 ): MemoryStreams {
   /** The highest sequence handed out: a stream that starts (again) starts above it. */
   let highest = 0;
@@ -114,7 +119,19 @@ export function createMemoryStreams(
       const list = kept.get(stream);
       if (list === undefined) kept.set(stream, [event]);
       else list.push(event);
-      for (const listener of Array.from(listeners.get(stream) ?? [])) listener(event);
+      // Each listener on its own: one that throws (a subscriber whose peer just
+      // closed) neither keeps the others from the event nor fails the append.
+      for (const listener of Array.from(listeners.get(stream) ?? [])) {
+        try {
+          listener(event);
+        } catch (error) {
+          options.log?.warn("a live stream listener failed", {
+            stream,
+            sequence,
+            error: String(error),
+          });
+        }
+      }
       return event;
     },
     events: (stream) => kept.get(stream) ?? [],

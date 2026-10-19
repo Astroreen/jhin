@@ -127,6 +127,31 @@ describe("live streams", () => {
     expect(memory.append("s", "app.n", 2).sequence).toBeGreaterThan(before);
   });
 
+  it("delivers to every listener and keeps the event when one listener throws", () => {
+    const warnings: unknown[] = [];
+    const memory = createMemoryStreams({
+      firstSequence: 1,
+      log: { warn: (message, fields) => warnings.push({ message, fields }) },
+    });
+    const seen: number[] = [];
+    // A subscriber whose peer just closed: its send throws.
+    memory.subscribe("s", () => {
+      throw new Error("peer closed");
+    });
+    memory.subscribe("s", (event) => seen.push(event.sequence));
+
+    const event = memory.append("s", "app.n", 1);
+    expect(event.sequence).toBe(1);
+    expect(seen).toEqual([1]);
+    expect(memory.events("s")).toEqual([event]);
+    expect(warnings).toEqual([
+      {
+        message: "a live stream listener failed",
+        fields: { stream: "s", sequence: 1, error: "Error: peer closed" },
+      },
+    ]);
+  });
+
   it("keeps counting after a stream is cleared", () => {
     const memory = createMemoryStreams({ firstSequence: 5 });
     memory.append("s", "app.n", 1);

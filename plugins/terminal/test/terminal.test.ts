@@ -488,6 +488,43 @@ describe("terminal sessions", () => {
     expect(sessions.list()).toEqual([]);
   });
 
+  it("keeps its output, scrollback and close whole past a subscriber that throws", async () => {
+    const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-terminal-"));
+    const streams = createMemoryStreams({ log: quiet });
+    const sessions = createSessions({
+      streams,
+      pty: loadNodePty,
+      config: () => ({ shell: "/bin/sh", scrollback: 5000 }),
+      log: quiet,
+    });
+    const input = { threadId: "t", terminalId: "term-1", cwd };
+    const stream = terminalStream("t", "term-1");
+    // A subscriber whose peer just closed, ahead of one that follows the output.
+    streams.subscribe(stream, () => {
+      throw new Error("peer closed");
+    });
+    let printed = "";
+    let shown!: () => void;
+    const answered = new Promise<void>((resolve) => (shown = resolve));
+    streams.subscribe(stream, (event) => {
+      if (event.type !== TerminalEvents.output) return;
+      printed += (event.payload as { data: string }).data;
+      if (printed.includes("whole-21")) shown();
+    });
+
+    await sessions.open(input);
+    sessions.write({ ...input, data: "echo whole-$((3*7))\r" });
+    await answered;
+    expect(sessions.get("t", "term-1")?.history).toContain("whole-21");
+
+    expect(await sessions.close(input)).toBe(1);
+    // Closed for good: its stream is gone, not left behind by the failing listener.
+    expect(streams.events(stream)).toEqual([]);
+    expect(await streams.head(stream)).toBe(0);
+    await sessions.dispose();
+    Fs.rmSync(cwd, { recursive: true, force: true });
+  });
+
   it("keeps a running terminal's folder: cwd counts when a shell starts (D140)", async () => {
     const { client, cwd } = await node();
     const input = { threadId: "t", terminalId: "term-1", cwd };

@@ -62,7 +62,9 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
   above every sequence handed out before, so a client that resumes after a
   node restart (with the last sequence it saw) gets the new events instead of
   waiting for old numbers, and the instance keeps no head for a stream that
-  is gone. A session's stream `terminal/<threadId>/<terminalId>`
+  is gone. Each listener of an append runs on its own: one that throws (a
+  subscriber whose peer just closed) is logged and keeps neither the other
+  listeners from the event nor the append from completing. A session's stream `terminal/<threadId>/<terminalId>`
   has `terminal.started {terminal}` (a process started; what came before
   belongs to an earlier one), `terminal.output {data}`, `terminal.exited
   {exitCode, signal}` and `terminal.closed`. The node's `terminals` stream
@@ -223,10 +225,24 @@ installed package).
   `terminal.closed` twice and stop its process twice; the scrollback drops
   whole output events, so with a chunk larger than the limit fewer lines
   than `jhin.terminal.scrollback` are kept (the setting is approximate until
-  an event is split at a line); and the shell gets the node's whole
-  environment but T3's three ports (D140, as T3 does), so a node secret in
-  the environment is readable from a terminal: an allowlist or blocklist in
-  `jhin.terminal` would narrow it.
+  an event is split at a line).
+- The shell gets the node's whole environment but T3's three ports (D140,
+  as T3 does), so a secret in the node's environment (provider API keys,
+  tokens) is readable from every terminal. `terminals.write` is in effect
+  shell access as the node's user, whoever holds it (an MCP client
+  included); grant it only where that is meant. A list of variables to
+  strip (or keep) in `jhin.terminal` would narrow it.
+- `ps` output is read into at most 512 KiB: on a host with many thousands
+  of processes the read fails every time, the poll backs off to a minute,
+  and the indicator and tab labels stop, with only a debug log line to say
+  why. A larger limit or a warning once the table keeps failing.
+- A resize changes a session's size without sending the `terminals` stream
+  again, so the streamed list carries the size from the last other change
+  while `terminals.list` has the current one.
+- Trimming the scrollback finds and removes one event at a time, so a
+  chatty process at the line limit costs O(n²) per flush in the number of
+  kept events; dropping a counted run of the oldest output events at once
+  would do.
 - Flow control: T3 acknowledges output windows so a slow client does not
   queue unbounded output; Jhin sends every event as it comes.
 - Terminal history across node restarts (T3 writes it to files), a limit on
