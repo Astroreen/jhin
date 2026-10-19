@@ -71,7 +71,11 @@ contributions. Features of T3 Code that only make sense for its hosted product
   or deleted, so nothing is written after its deleted event, and no thread is
   created in a project being removed. Archiving and deleting stop a running
   turn; an agent that ignores the interrupt for `STOP_TIMEOUT_MS` (5 s) is
-  given up on: its turn is recorded as interrupted and the thread freed.
+  given up on: its turn is recorded as interrupted and the thread freed. Two
+  deletions of one thread at once delete it once. A deletion that fails
+  before the thread's stream records it leaves the thread as it was; one
+  that fails later keeps it closed, and deleting it again finishes the job.
+  A project whose removal fails takes new threads again.
 
 ### Client
 
@@ -125,7 +129,9 @@ contributions. Features of T3 Code that only make sense for its hosted product
   search), Nodes (connections, agents, mesh members), Node config (edit any
   section of the node layer with its JSON Schema; save to several nodes
   through the mesh scope picker, D20, with pending targets, D50) and
-  Archived threads.
+  Archived threads. The editor reads through `host.config.get` (a section's
+  effective value and what the node and project files set) and
+  `host.config.schema`, under the permission `host.config.read`.
 - **D67. Notifications** when a thread completes, fails, or waits for
   approval or input: with the page in focus, an in-app toast (never for the
   open thread); otherwise a browser notification and/or a sound, as the
@@ -178,7 +184,13 @@ contributions. Features of T3 Code that only make sense for its hosted product
 - Scoped tokens: `projects.browse` has a permission of its own, but every
   token today holds every permission (`*`), so whoever holds a node's token
   can list the names of folders the node process can read. Grant it on
-  purpose once tokens carry scopes.
+  purpose once tokens carry scopes. The same goes for `host.config.read`
+  (D66): `host.config.get` returns the node's and project's config files as
+  written, so it reads any secret a section keeps there.
+- Secret config values: no first-party section holds one today. A section
+  that does needs a way to mark those values, so that `host.config.get`
+  redacts them and the editor keeps them when it saves, before
+  `host.config.read` can go to a caller that may not see them.
 
 Done here from the foundation's Deferred list: the settings UI with the scope
 picker (D66) and "No project" chats in the UI (D64).

@@ -225,6 +225,8 @@ stop_tree() {
     done
     [ "$alive" = 0 ] && return 0
     # Wall-clock tenths of a second since the start, however slow a round is.
+    # Read after this round's signals went out: in the round that first sends
+    # SIGKILL (the one after it was chosen), killed_at is when it was sent.
     elapsed=$(((${EPOCHREALTIME/[.,]/} - start) / 100000))
     if [ "$signal" = KILL ]; then
       killed_at="${killed_at:-$elapsed}"
