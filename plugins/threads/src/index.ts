@@ -206,6 +206,14 @@ export default definePlugin({
     const active = new Map<string, Running>();
     /** Threads being archived, and deleted ones: no turn starts on them. */
     const closing = new Map<string, "archived" | "deleted">();
+    /**
+     * Deletions under way, by thread, and those that failed after the thread's
+     * stream recorded it deleted: deleting the thread again finishes them.
+     */
+    const deletions = new Map<
+      string,
+      { readonly thread: Thread; recorded: boolean; running: Promise<void> | undefined }
+    >();
     /** Projects being removed, and removed ones: no thread is created in them. */
     const removedProjects = new Set<string>();
     const archivedError = (threadId: string) =>
@@ -728,17 +736,39 @@ export default definePlugin({
       await current.done;
     }
 
-    async function deleteThread(thread: Thread): Promise<void> {
+    /** Deletes a thread once: a deletion already under way is joined, not repeated. */
+    function deleteThread(thread: Thread): Promise<void> {
+      const deletion = deletions.get(thread.id) ?? { thread, recorded: false, running: undefined };
+      if (deletion.running !== undefined) return deletion.running;
+      deletions.set(thread.id, deletion);
       // From here on no turn starts on it, so none writes after its deleted event.
       closing.set(thread.id, "deleted");
-      await stopTurn(thread.id);
-      await log.append(threadStream(thread.id), [
-        { type: ThreadEvents.threadDeleted, payload: { id: thread.id } },
-      ]);
-      await kv.delete(NAMESPACE, `thread/${thread.id}`);
-      await log.append(THREADS_STREAM, [
-        { type: ThreadEvents.threadDeleted, payload: { id: thread.id } },
-      ]);
+      deletion.running = (async () => {
+        try {
+          if (!deletion.recorded) {
+            await stopTurn(thread.id);
+            await log.append(threadStream(thread.id), [
+              { type: ThreadEvents.threadDeleted, payload: { id: thread.id } },
+            ]);
+            // Its stream says deleted: it stays closed to turns, whatever fails next.
+            deletion.recorded = true;
+          }
+          await kv.delete(NAMESPACE, `thread/${thread.id}`);
+          await log.append(THREADS_STREAM, [
+            { type: ThreadEvents.threadDeleted, payload: { id: thread.id } },
+          ]);
+          deletions.delete(thread.id);
+        } catch (error) {
+          deletion.running = undefined;
+          if (!deletion.recorded) {
+            // Not deleted after all: the thread is as it was and takes messages again.
+            deletions.delete(thread.id);
+            if (closing.get(thread.id) === "deleted") closing.delete(thread.id);
+          }
+          throw error;
+        }
+      })();
+      return deletion.running;
     }
 
     const projectEvent = (type: string, payload: Json) =>
@@ -831,11 +861,19 @@ export default definePlugin({
         }
         // From here on no thread is created in it, so none is left behind.
         removedProjects.add(projectId);
-        const threads = (await listThreads()).filter((thread) => thread.projectId === projectId);
-        for (const thread of threads) await deleteThread(thread);
-        await kv.delete(NAMESPACE, `project/${projectId}`);
-        await projectEvent(ThreadEvents.projectDeleted, { id: projectId });
-        return { deletedThreads: threads.length };
+        let removed = false;
+        try {
+          const threads = (await listThreads()).filter((thread) => thread.projectId === projectId);
+          for (const thread of threads) await deleteThread(thread);
+          await kv.delete(NAMESPACE, `project/${projectId}`);
+          removed = true;
+          await projectEvent(ThreadEvents.projectDeleted, { id: projectId });
+          return { deletedThreads: threads.length };
+        } catch (error) {
+          // The project is still there: threads can be created in it again.
+          if (!removed) removedProjects.delete(projectId);
+          throw error;
+        }
       },
     });
 
@@ -1090,7 +1128,8 @@ export default definePlugin({
       output: z.object({ deleted: z.boolean() }),
       permissions: ["threads.write"],
       handler: async ({ threadId }) => {
-        await deleteThread(await getThread(threadId));
+        // A deletion left half done is finished, even once the record is gone.
+        await deleteThread(deletions.get(threadId)?.thread ?? (await getThread(threadId)));
         return { deleted: true };
       },
     });

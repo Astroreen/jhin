@@ -1,6 +1,6 @@
 import type { AgentItem, AgentRegistry, AgentRuntime } from "@jhin/agent-api";
 import { definePlugin } from "@jhin/sdk";
-import type { StoredEvent } from "@jhin/storage-api";
+import type { EventLog, StoredEvent } from "@jhin/storage-api";
 import { testManifest } from "@jhin/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -195,6 +195,129 @@ describe("jhin.threads: concurrent changes", () => {
 
     const thread = await client.call<Thread>("threads.create", {});
     expect(await Promise.all(read)).toEqual([expect.objectContaining({ id: thread.id })]);
+  });
+});
+
+describe("jhin.threads: deletions that fail or overlap", () => {
+  /** Makes storage fail the first append of a thread's deleted event (to `only` that stream). */
+  function failFirstDeletedEvent(log: EventLog, only?: string) {
+    const append = log.append.bind(log);
+    let failed = false;
+    log.append = (stream, batch, options) => {
+      if (
+        !failed &&
+        (only === undefined || stream === only) &&
+        batch.some((event) => event.type === "threads.thread.deleted")
+      ) {
+        failed = true;
+        return Promise.reject(new Error("disk full"));
+      }
+      return append(stream, batch, options);
+    };
+  }
+  const deletedEvents = async (log: EventLog, stream: string) =>
+    (await log.read(stream)).filter((event) => event.type === "threads.thread.deleted").length;
+
+  it("leaves a thread as it was when its deletion fails before it is recorded", async () => {
+    const { client, storage } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    failFirstDeletedEvent(storage.storage.log);
+
+    await expect(client.call("threads.delete", { threadId: thread.id })).rejects.toThrow(
+      "disk full",
+    );
+    // Still listed, and it takes messages.
+    expect((await client.call<Thread[]>("threads.list", {})).map((item) => item.id)).toEqual([
+      thread.id,
+    ]);
+    await client.call("threads.send", { threadId: thread.id, text: "still here" });
+    await until("agent.turn.completed");
+  });
+
+  it("finishes a deletion that failed after it was recorded, with one deleted event", async () => {
+    const { client, storage } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const kv = storage.storage.kv;
+    const remove = kv.delete.bind(kv);
+    let failed = false;
+    kv.delete = async (namespace, key) => {
+      if (!failed && key === `thread/${thread.id}`) {
+        failed = true;
+        throw new Error("disk full");
+      }
+      return remove(namespace, key);
+    };
+
+    await expect(client.call("threads.delete", { threadId: thread.id })).rejects.toThrow(
+      "disk full",
+    );
+    // Its stream says deleted: it takes no more messages.
+    await expect(
+      client.call("threads.send", { threadId: thread.id, text: "hi" }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
+
+    expect(await client.call("threads.delete", { threadId: thread.id })).toEqual({ deleted: true });
+    expect(await client.call<Thread[]>("threads.list", {})).toEqual([]);
+    expect(await deletedEvents(storage.storage.log, `thread/${thread.id}`)).toBe(1);
+    expect(await deletedEvents(storage.storage.log, "threads")).toBe(1);
+  });
+
+  it("finishes a deletion whose announcement failed, though its record is gone", async () => {
+    const { client, storage } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    failFirstDeletedEvent(storage.storage.log, "threads");
+
+    await expect(client.call("threads.delete", { threadId: thread.id })).rejects.toThrow(
+      "disk full",
+    );
+    expect(await client.call<Thread[]>("threads.list", {})).toEqual([]);
+    expect(await client.call("threads.delete", { threadId: thread.id })).toEqual({ deleted: true });
+    expect(await deletedEvents(storage.storage.log, `thread/${thread.id}`)).toBe(1);
+    expect(await deletedEvents(storage.storage.log, "threads")).toBe(1);
+  });
+
+  it("deletes a thread once when it is deleted twice at once", async () => {
+    const { client, storage } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    // The deleted event is written once the test says so.
+    const recording = latch();
+    const write = latch();
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    log.append = async (stream, batch, options) => {
+      if (stream === `thread/${thread.id}`) {
+        recording.resolve();
+        await write.promise;
+      }
+      return append(stream, batch, options);
+    };
+
+    const deleting = Promise.all([
+      client.call("threads.delete", { threadId: thread.id }),
+      client.call("threads.delete", { threadId: thread.id }),
+    ]);
+    await recording.promise;
+    write.resolve();
+
+    expect(await deleting).toEqual([{ deleted: true }, { deleted: true }]);
+    expect(await deletedEvents(log, `thread/${thread.id}`)).toBe(1);
+    expect(await deletedEvents(log, "threads")).toBe(1);
+  });
+
+  it("creates threads again in a project whose removal failed", async () => {
+    const { kernel, data, storage } = await node();
+    const project = (await kernel.commands.execute("projects.create", { path: data })) as {
+      id: string;
+    };
+    await kernel.commands.execute("threads.create", { projectId: project.id });
+    failFirstDeletedEvent(storage.storage.log);
+
+    await expect(
+      kernel.commands.execute("projects.delete", { projectId: project.id }),
+    ).rejects.toThrow("disk full");
+    await kernel.commands.execute("threads.create", { projectId: project.id });
+    expect((await kernel.commands.execute("threads.list", {})) as Thread[]).toHaveLength(2);
   });
 });
 
