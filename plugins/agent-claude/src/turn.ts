@@ -593,7 +593,10 @@ export function claudeTurn(
           : request.input.text;
       result = await attempt(!error.resume, retryText);
     }
-    if (result === undefined || interrupted || isAbortedResult(result)) return;
+    if (interrupted) return;
+    // Claude Code exited (or its stream closed) mid-turn without a result: not an answer.
+    if (result === undefined) throw new Error("Claude Code ended the turn without a result.");
+    if (isAbortedResult(result)) return;
     out.push({ kind: "usage", usage: resultUsage(result, contextTokens) });
     const error = resultError(result);
     if (error !== undefined) throw new Error(error);

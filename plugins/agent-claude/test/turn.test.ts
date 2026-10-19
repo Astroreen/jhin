@@ -473,6 +473,16 @@ describe("jhin.agent-claude: a turn", () => {
     ]);
   });
 
+  it("fails when Claude Code ends the turn without a result", async () => {
+    const { turn } = start([
+      async function* () {
+        yield init();
+        yield* streamedBlock("m1", 0, "text", ["Half"]);
+      },
+    ]);
+    await expect(drain(turn)).rejects.toThrow("Claude Code ended the turn without a result.");
+  });
+
   it("fails with Claude Code's error", async () => {
     const { turn } = start([
       async function* () {
