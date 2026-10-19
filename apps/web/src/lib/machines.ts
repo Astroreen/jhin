@@ -62,6 +62,8 @@ export function createNodeMachines(
   connections: Pick<Connections, "list" | "subscribe">,
   threads: Pick<ThreadsCatalog, "call">,
   onListenerError: (error: unknown) => void = () => undefined,
+  /** A node did not answer `host.identity`: older than it, out of reach, or not permitted. */
+  onIdentityError: (target: NodeTarget, error: unknown) => void = () => undefined,
 ): NodeMachineStore & Disposable {
   const feeds = new Map<string, Feed>();
   const states = new Map<string, NodeConnection["state"]>();
@@ -88,8 +90,10 @@ export function createNodeMachines(
         feed.machine = machine;
         notify(feed);
       },
-      // An older node, or one out of reach: what is known stays, else it shows as a server.
-      () => undefined,
+      // What is known stays, else the node shows as a server; the caller logs why.
+      (error: unknown) => {
+        if (feeds.get(key) === feed && request === feed.latest) onIdentityError(feed.target, error);
+      },
     );
   };
 

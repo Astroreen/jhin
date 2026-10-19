@@ -165,6 +165,25 @@ describe("client.machines", () => {
     expect(machines.get({ node: A })?.kind).toBe("desktop");
   });
 
+  it("reports why a node did not answer, but not for a request already superseded", async () => {
+    const w = world();
+    const failures: { target: NodeTarget; error: unknown }[] = [];
+    const machines = createNodeMachines(
+      w.connections,
+      w.threads,
+      () => undefined,
+      (target, error) => failures.push({ target, error }),
+    );
+    const remote = { node: A, remote: "b" };
+    machines.subscribe(remote, () => undefined);
+    machines.refresh(remote);
+    // The first request's failure is old news: the second one is on its way.
+    await w.calls[0]!.fail();
+    expect(failures).toEqual([]);
+    await w.calls[1]!.fail();
+    expect(failures).toEqual([{ target: remote, error: expect.any(Error) }]);
+  });
+
   it("does not ask a node that could not answer again for every new view, only on reconnect or refresh", async () => {
     const w = world();
     const machines = createNodeMachines(w.connections, w.threads);

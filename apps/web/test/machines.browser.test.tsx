@@ -10,7 +10,7 @@ import {
   type NodeTarget,
   type ThreadsCatalog,
 } from "@jhin/client-api";
-import { definePlugin, toDisposable } from "@jhin/sdk";
+import { definePlugin, toDisposable, type Logger } from "@jhin/sdk";
 import { createTestKernel, mockCapability, testManifest, type TestKernel } from "@jhin/testing";
 import { UI_SLOTS_CAPABILITY, createSlotRegistry, type SlotRegistry } from "@jhin/ui";
 import { act } from "react";
@@ -72,6 +72,8 @@ function markupOf(kind: string): string {
 /** Node a and its mesh member b; each answers `host.identity` with its file's `jhin.host`. */
 function world() {
   const files = new Map<string, Record<string, unknown>>();
+  /** Nodes whose `host.identity` refuses this client, as a token without the permission would. */
+  const denied = new Set<string>();
   const calls: { target: NodeTarget; method: string; params: unknown }[] = [];
   const connections: Connections = {
     list: () => [
@@ -88,6 +90,10 @@ function world() {
     async call(target: NodeTarget, method: string, params?: unknown) {
       calls.push({ target, method, params });
       const key = targetKey(target);
+      if (method === "host.identity" && denied.has(key))
+        throw Object.assign(new Error("Missing permission host.identity"), {
+          code: "PERMISSION_DENIED",
+        });
       if (method === "host.identity")
         return {
           nodeId: key,
@@ -107,7 +113,7 @@ function world() {
       throw new Error(`unexpected ${method}`);
     },
   } as unknown as ThreadsCatalog;
-  return { connections, threads, files, calls };
+  return { connections, threads, files, calls, denied };
 }
 
 let kernel: TestKernel | undefined;
@@ -116,12 +122,28 @@ afterEach(async () => {
   kernel = undefined;
 });
 
-async function start() {
+async function start(setup: (w: ReturnType<typeof world>) => void = () => undefined) {
   const w = world();
+  setup(w);
   const slots = createSlotRegistry();
   let machines!: NodeMachines;
+  // Warnings of the plugins, and a way to wait for the next one.
+  const warnings: { message: string; fields: unknown }[] = [];
+  let warned: (() => void) | undefined;
+  const logger: Logger = {
+    debug: () => undefined,
+    info: () => undefined,
+    warn(message, fields) {
+      warnings.push({ message, fields });
+      warned?.();
+    },
+    error: () => undefined,
+    child: () => logger,
+  };
+  const nextWarning = () => new Promise<void>((resolve) => (warned = resolve));
   kernel = await createTestKernel({
     side: "client",
+    logger,
     plugins: [
       mockCapability(UI_SLOTS_CAPABILITY, slots),
       mockCapability(CONNECTIONS_CAPABILITY, w.connections),
@@ -152,7 +174,15 @@ async function start() {
       waiting.get(key)!.push(resolve);
     });
   const run = (input: unknown) => kernel!.commands.execute("node.set-machine", input);
-  return { ...w, slots: slots as SlotRegistry, machines: () => machines, changed, run };
+  return {
+    ...w,
+    warnings,
+    nextWarning,
+    slots: slots as SlotRegistry,
+    machines: () => machines,
+    changed,
+    run,
+  };
 }
 
 describe("the node-machines plugin", () => {
@@ -235,6 +265,24 @@ describe("the node-machines plugin", () => {
     const studio = t.changed({ node: A });
     kernel!.events.emit("settings.node-config.saved", { connection: A, section: "jhin.host" });
     expect(await studio).toBe("mac-studio");
+  });
+
+  it("logs why a node shows as a server when it refuses host.identity", async () => {
+    const t = await start((w) => w.denied.add(A));
+    const warning = t.nextWarning();
+    t.machines().subscribe({ node: A }, () => undefined);
+    await warning;
+    expect(t.machines().get({ node: A })).toBeUndefined();
+    expect(t.warnings).toEqual([
+      {
+        message: expect.stringContaining("host.identity failed"),
+        fields: expect.objectContaining({
+          node: A,
+          code: "PERMISSION_DENIED",
+          error: "Missing permission host.identity",
+        }),
+      },
+    ]);
   });
 
   it("puts T3's Icon submenu into each node's menu", async () => {

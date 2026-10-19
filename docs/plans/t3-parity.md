@@ -440,8 +440,12 @@ after a reload), with screenshots.
   machine kind clients show it as (`machine`), with the kind it detected
   (`detectedMachine`, absent when it cannot tell). It has a permission of its
   own, `host.identity`, as `host.inspect` has, since the host name says
-  something about the machine; every token holds it today (`*`, see Scoped
-  tokens in Deferred). The kinds are T3 Code's seven, with T3's labels:
+  something about the machine. How a client holds it: the web client and the
+  CLI connect with the node's owner token, which holds every permission
+  (`*`), and a call relayed through the mesh runs with `*` too, so a client
+  reaches a mesh member's `host.identity` through its connection. A token
+  without it (once tokens carry scopes, see Scoped tokens in Deferred) shows
+  the node as a server, and the client logs why (D132). The kinds are T3 Code's seven, with T3's labels:
   `server` (Server), `cloud` (Cloud VM), `linux` (Linux/WSL), `desktop`,
   `laptop`, `mac-mini` (Mini PC) and `mac-studio` (Workstation); they live in
   `@jhin/host-api` (`MACHINE_KINDS`, `MACHINE_KIND_LABELS`) and
@@ -473,8 +477,10 @@ after a reload), with screenshots.
   the `jhin.host` section: the page emits the client event
   `settings.node-config.saved` (`{ connection, section }`) after each save.
   Only the newest answer counts; a node that cannot answer (older than
-  `host.identity`) shows as a server, and the views that follow it later do
-  not ask it again. The command `node.set-machine`
+  `host.identity`), refuses it, or is out of reach shows as a server, or
+  keeps the kind it showed, and the views that follow it later do not ask it
+  again; the plugin logs each failure of the newest request as a warning
+  with the node, the error and its code. The command `node.set-machine`
   (`{ node, remote?, machine }`, "Change node icon") writes the choice to
   the node's `jhin.host` through `host.config.patch`; `machine: null`
   removes it, so the node follows its detection again. A node's menu in
@@ -504,13 +510,17 @@ invalid values falling back); `apps/web/test/machines.test.ts` (one request
 per node however many follow it, asking again on reconnect (also of a
 connection removed and added again), not again for every view of a node
 that cannot answer, the newest answer winning, keeping what is known when a node cannot answer, refreshing
-a connection or one remote, unknown kinds as servers, a throwing listener);
+a connection or one remote, unknown kinds as servers, a throwing listener,
+reporting why the newest request failed);
 `apps/web/test/machines.browser.test.tsx` (every kind's own icon, unknown
 ones as a server, a view re-rendering when the kind changes,
 `node.set-machine` writing and removing `jhin.host.machine` on a node and on
 a mesh member, refusing unknown nodes and kinds, asking again after the node
-config page saved `jhin.host` and only then, the Icon submenu in
-`node.actions`); Playwright `e2e/tests/machines.spec.ts` (a laptop node and
+config page saved `jhin.host` and only then, a warning in the log when a
+node refuses `host.identity`, the Icon submenu in `node.actions`);
+`apps/jhin/test/remote.test.ts` (the owner token the web client uses gets
+`host.identity`) and `apps/jhin/test/mesh-nodes.test.ts` (a member's
+`host.identity` relayed through the mesh); Playwright `e2e/tests/machines.spec.ts` (a laptop node and
 a cloud node: different icons on their cards, in the project filter, the
 palette and the add-project picker, none with one node; the Icon menu and
 the node config form each changing a node's icon, kept in its node file).
@@ -551,6 +561,12 @@ the node config form each changing a node's icon, kept in its node file).
   card. The card's branch, diff and pull request are `source-control.md`'s
   D117 and its terminal indicator `terminal.md`'s D148, all in the
   `sidebar.thread.indicators` slot.
+- The Icon submenu for mesh members: settings → Nodes lists the members of a
+  connection's mesh with their icons, but only a connection has a menu
+  (`node.actions` gets `NodeActionProps`, a connection). `node.set-machine`
+  takes `remote` already, so a member's kind can be set by command, or in
+  the member's node config form; the menu waits for a member menu in
+  settings.
 - Pushing a node's config changes to its clients: a change of
   `jhin.host.machine` made by hand in the file, from another client, or with
   the mesh scope picker from another node's page reaches a client when its

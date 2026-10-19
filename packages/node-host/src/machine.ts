@@ -42,7 +42,9 @@ const DMI_CHASSIS_KINDS: Readonly<Record<string, MachineKind>> = {
 // product strings; any hit means the box is a VM, and a VM reads as "cloud"
 // regardless of the chassis type the hypervisor fakes. Hyper-V is matched on
 // its "Virtual Machine" product, not the "Microsoft Corporation" vendor that
-// physical Surface devices share.
+// physical Surface devices share. The markers are bare substrings, as in T3:
+// a physical box whose vendor or product names one ("CloudBox") reads as
+// "cloud" too. `jhin.host.machine` is the escape hatch: the owner's kind wins.
 const VIRTUALIZATION_MARKERS = [
   "qemu",
   "kvm",

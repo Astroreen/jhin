@@ -49,10 +49,23 @@ export const machinesPlugin = builtin(
       const slots = context.services.tryGet<SlotRegistry>(UI_SLOTS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const machines = context.subscriptions.add(
-        createNodeMachines(connections, threads, (error) =>
-          context.log.error("a client.machines listener failed", {
-            error: error instanceof Error ? error.message : String(error),
-          }),
+        createNodeMachines(
+          connections,
+          threads,
+          (error) =>
+            context.log.error("a client.machines listener failed", {
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          // Not an error of this client: a node older than host.identity never answers it.
+          (target, error) =>
+            context.log.warn("host.identity failed; the node keeps its icon, else a server's", {
+              node: target.node,
+              ...(target.remote === undefined ? {} : { remote: target.remote }),
+              error: error instanceof Error ? error.message : String(error),
+              ...(typeof (error as { code?: unknown })?.code === "string"
+                ? { code: (error as { code: string }).code }
+                : {}),
+            }),
         ),
       );
       const service: NodeMachines = {

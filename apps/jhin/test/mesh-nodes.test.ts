@@ -47,6 +47,11 @@ describe("a mesh of real nodes", () => {
         message: "Hello, Ada!",
         count: 1,
       });
+      // A relayed call runs with the mesh's rights (`*`), so a client reaches a member's
+      // host.identity through its connection (D130, D132).
+      expect(
+        await a.client.call("mesh.call", { node: c.nodeId, method: "host.identity", params: {} }),
+      ).toMatchObject({ nodeId: c.nodeId, machine: expect.any(String) });
       expect(
         await a.client.call("mesh.resolve", { address: `jhin://${c.nodeId}/threads/42` }),
       ).toMatchObject({
