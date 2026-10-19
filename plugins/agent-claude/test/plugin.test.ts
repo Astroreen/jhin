@@ -175,7 +175,9 @@ describe("jhin.agent-claude: context window", () => {
       cwd: "/work",
       model: "claude-new-6",
     };
-    const first = await drain(claude.startTurn({ ...request, turnId: "t1" }));
+    // `startTurn` works detached from its runtime, as a registry may call it.
+    const { startTurn } = claude;
+    const first = await drain(startTurn({ ...request, turnId: "t1" }));
     expect(first.at(-1)).toMatchObject({ kind: "usage", usage: { contextWindow: 400_000 } });
     const second = await drain(claude.startTurn({ ...request, turnId: "t2" }));
     expect(second[0]).toEqual({

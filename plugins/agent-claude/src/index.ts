@@ -165,6 +165,14 @@ export function createClaudeRuntime(options: {
   let probed: { at: number; probe: Probe } | undefined;
   let probing: Promise<Probe> | undefined;
   const models = () => probed?.probe.models ?? BUNDLED_MODELS;
+  const defaultModel = () => {
+    const configured = options.config().defaultModel;
+    if (configured !== undefined) return configured;
+    const all = models();
+    return all.some((model) => model.id === BUNDLED_DEFAULT_MODEL)
+      ? BUNDLED_DEFAULT_MODEL
+      : (all[0]?.id ?? BUNDLED_DEFAULT_MODEL);
+  };
   return {
     agentId: CLAUDE_AGENT_ID,
     name: "Claude Code",
@@ -172,12 +180,7 @@ export function createClaudeRuntime(options: {
       return models();
     },
     get defaultModel() {
-      const configured = options.config().defaultModel;
-      if (configured !== undefined) return configured;
-      const all = models();
-      return all.some((model) => model.id === BUNDLED_DEFAULT_MODEL)
-        ? BUNDLED_DEFAULT_MODEL
-        : (all[0]?.id ?? BUNDLED_DEFAULT_MODEL);
+      return defaultModel();
     },
     runtimeModes: ["approval-required", "auto-accept-edits", "full-access"],
     interactionModes: ["default", "plan"],
@@ -199,7 +202,7 @@ export function createClaudeRuntime(options: {
     },
     startTurn(request) {
       const config = options.config();
-      const model = request.model ?? this.defaultModel ?? BUNDLED_DEFAULT_MODEL;
+      const model = request.model ?? defaultModel();
       const turn = claudeTurn(request, {
         query: options.query,
         sessions: options.sessions,
