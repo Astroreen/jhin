@@ -69,7 +69,7 @@ import {
   ComposerControlSeparator,
   ComposerSelectControl,
 } from "./controls.tsx";
-import type { QueuedMessage } from "./follow-ups.ts";
+import type { QueuedMessage, QueuePause } from "./follow-ups.ts";
 import { useAgents, useChat } from "./services.ts";
 import { ComposerSurface } from "./surface.tsx";
 
@@ -297,8 +297,10 @@ function QuestionsBanner(props: {
 
 function QueueBanner(props: {
   queue: readonly QueuedMessage[];
-  /** Why the first message was not sent, if it was not. */
-  paused: string | undefined;
+  /** Why the queue waits for the user, if it does. */
+  paused: QueuePause | undefined;
+  /** The first message is on its way. */
+  sending: boolean;
   onRemove(id: string): void;
   onResume(): void;
 }) {
@@ -330,12 +332,14 @@ function QueueBanner(props: {
             <ComposerBanner.Icon />
             <ComposerBanner.Content>
               <span className="min-w-0 flex-1 truncate text-destructive-foreground" role="alert">
-                Not sent: {props.paused}
+                {props.paused.kind === "failed"
+                  ? `Not sent: ${props.paused.message}`
+                  : `${props.paused.message}: the queue waits`}
               </span>
             </ComposerBanner.Content>
             <ComposerBanner.Actions>
               <Button onClick={props.onResume} size="xs" variant="outline">
-                Retry
+                {props.paused.kind === "failed" ? "Retry" : "Resume"}
               </Button>
             </ComposerBanner.Actions>
           </ComposerBanner.Row>
@@ -343,26 +347,34 @@ function QueueBanner(props: {
         {expanded ? (
           <ComposerBanner.Scroll className="max-h-32">
             <ComposerBanner.Children render={<ol />}>
-              {props.queue.map((message) => (
-                <ComposerBanner.Row
-                  className="relative rounded-sm"
-                  key={message.id}
-                  render={<li />}
-                >
-                  <ComposerBanner.Icon />
-                  <ComposerBanner.Content className="text-foreground/80">
-                    <span className="min-w-0 flex-1 truncate">
-                      {message.text || `${message.attachments.length} image(s)`}
-                    </span>
-                  </ComposerBanner.Content>
-                  <ComposerBanner.Actions>
-                    <ComposerBanner.Dismiss
-                      aria-label="Remove queued message"
-                      onClick={() => props.onRemove(message.id)}
-                    />
-                  </ComposerBanner.Actions>
-                </ComposerBanner.Row>
-              ))}
+              {props.queue.map((message, index) => {
+                // The first message on its way can no longer be taken back.
+                const sending = props.sending && index === 0;
+                return (
+                  <ComposerBanner.Row
+                    className="relative rounded-sm"
+                    key={message.id}
+                    render={<li />}
+                  >
+                    <ComposerBanner.Icon>
+                      {sending ? <Spinner aria-label="Sending" size="sm" /> : null}
+                    </ComposerBanner.Icon>
+                    <ComposerBanner.Content className="text-foreground/80">
+                      <span className="min-w-0 flex-1 truncate">
+                        {message.text || `${message.attachments.length} image(s)`}
+                      </span>
+                    </ComposerBanner.Content>
+                    <ComposerBanner.Actions>
+                      {sending ? null : (
+                        <ComposerBanner.Dismiss
+                          aria-label="Remove queued message"
+                          onClick={() => props.onRemove(message.id)}
+                        />
+                      )}
+                    </ComposerBanner.Actions>
+                  </ComposerBanner.Row>
+                );
+              })}
             </ComposerBanner.Children>
           </ComposerBanner.Scroll>
         ) : null}
@@ -623,8 +635,10 @@ export interface ComposerProps {
   readonly history: readonly PromptHistoryEntry[];
   readonly usage?: TokenUsage | undefined;
   readonly queue: readonly QueuedMessage[];
-  /** Why the queue stopped, if it did. */
-  readonly queuePaused?: string | undefined;
+  /** Why the queue waits for the user, if it does. */
+  readonly queuePaused?: QueuePause | undefined;
+  /** The queue's first message is on its way. */
+  readonly queueSending?: boolean;
   onDequeue(id: string): void;
   onResumeQueue?(): void;
   /** Why sending is not possible now (a disconnected node), if it is not. */
@@ -959,6 +973,7 @@ export function Composer(props: ComposerProps) {
             onResume={() => props.onResumeQueue?.()}
             paused={props.queuePaused}
             queue={props.queue}
+            sending={props.queueSending === true}
           />
         ) : null}
         <ComposerSurface.Host>

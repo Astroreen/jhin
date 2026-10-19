@@ -236,6 +236,8 @@ function ConfigEditor({
   const text = loaded?.text ?? "";
   const edited = loaded !== undefined && loaded.text !== loaded.original;
   useEffect(() => onEdited(edited), [edited]);
+  // Gone (another node chosen, or this one disconnected): nothing of it is unsaved.
+  useEffect(() => () => onEdited(false), []);
 
   /** Another section, once unsaved edits are given up on purpose. */
   const choose = async (next: string) => {

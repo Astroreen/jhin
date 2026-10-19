@@ -1,7 +1,14 @@
 // The queue follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/chat/QueuedRunsControl.tsx
-// (queued follow-ups), kept in this page instead of on the server.
+// (queued follow-ups) and apps/server/src/orchestration-v2/Orchestrator.ts (a queue held after a stop
+// or a failure), kept in this page instead of on the server.
 import type { TurnAttachment } from "@jhin/agent-api";
-import { targetKey, visitKey, type NodeTarget, type ThreadsCatalog } from "@jhin/client-api";
+import {
+  targetKey,
+  visitKey,
+  type NodeTarget,
+  type ThreadsCatalog,
+  type TurnStatus,
+} from "@jhin/client-api";
 import type { Disposable } from "@jhin/sdk";
 import { useSyncExternalStore } from "react";
 
@@ -52,47 +59,68 @@ export async function sendMessage(
   }
 }
 
+/** Why a queue waits for the user. */
+export interface QueuePause {
+  /** "failed": its first message was refused; "held": the turn before it was stopped or failed. */
+  readonly kind: "failed" | "held";
+  readonly message: string;
+}
+
 /** A thread's queue as its view shows it. */
 export interface FollowUpQueue {
   readonly queue: readonly QueuedMessage[];
-  /** Why the first message was not sent; the queue waits for the user. */
-  readonly paused?: string;
+  readonly paused?: QueuePause;
+  /** The first message is on its way: it can no longer be taken back. */
+  readonly sending: boolean;
 }
 
 interface QueueState extends FollowUpQueue {
   readonly target: NodeTarget;
   readonly threadId: string;
-  readonly sending: boolean;
   /** The ending a send (or a busy answer) happened after: the next one must be another. */
   readonly after?: string;
+  /** The ending the record showed when the queue began: it came before the messages. */
+  readonly since?: string;
+  /** A stopped or failed ending the user resumed the queue past. */
+  readonly released?: string;
 }
 
-const EMPTY: FollowUpQueue = { queue: [] };
+const EMPTY: FollowUpQueue = { queue: [], sending: false };
 
 /**
- * Where a thread's latest turn is, by its record: a key of the ending it
- * reached ("none" before its first turn), or undefined while a turn runs or
- * waits for an answer, and while the record is not known.
+ * Where a thread's latest turn is, by its record: the ending it reached (with
+ * a key, "none" before its first turn), "running" while a turn runs or waits
+ * for an answer or the record is not known yet, and "gone" once the node's
+ * catalog has no such thread.
  */
-function settledOf(
+function endingOf(
   threads: Pick<ThreadsCatalog, "catalog">,
   target: NodeTarget,
   threadId: string,
-): string | undefined {
-  const thread = threads.catalog(target).threads.find((item) => item.id === threadId);
-  const latest = thread?.lastTurn;
-  if (thread === undefined) return undefined;
-  if (latest === undefined) return "none";
-  return ENDED_STATUSES.has(latest.status) ? `${latest.turnId}:${latest.status}` : undefined;
+): { readonly key: string; readonly status?: TurnStatus } | "running" | "gone" {
+  const catalog = threads.catalog(target);
+  const thread = catalog.threads.find((item) => item.id === threadId);
+  if (thread === undefined) return catalog.status === "ready" ? "gone" : "running";
+  const latest = thread.lastTurn;
+  if (latest === undefined) return { key: "none" };
+  return ENDED_STATUSES.has(latest.status)
+    ? { key: `${latest.turnId}:${latest.status}`, status: latest.status }
+    : "running";
 }
+
+/** The key of the ending a thread's record shows, if any. */
+const endingKey = (ending: ReturnType<typeof endingOf>) =>
+  typeof ending === "string" ? undefined : ending.key;
 
 /**
  * The follow-up queues of the threads of this page. A queue goes on whether
  * its thread is on screen or not: it follows the thread's record in its node's
  * catalog, and sends its first message once each time the record says the
  * latest turn ended. After a send, or when the thread turned out busy, it
- * waits until the record shows another ending; after a failure it waits for
- * `resume`. So a failing or busy thread never gets a loop of sends.
+ * waits until the record shows another ending. A message refused, or a turn
+ * that was stopped or failed after the queue began, holds it until `resume`,
+ * as in T3 Code. So a failing or busy thread never gets a loop of sends. The
+ * queue of a thread gone from its node is dropped.
  */
 export function createFollowUpQueues(options: {
   readonly threads: Pick<ThreadsCatalog, "catalog" | "subscribe">;
@@ -138,9 +166,28 @@ export function createFollowUpQueues(options: {
     const state = states.get(key);
     if (disposed || state === undefined || state.sending || state.paused !== undefined) return;
     const head = state.queue[0];
-    const settled = settledOf(threads, state.target, state.threadId);
-    if (head === undefined || settled === undefined || settled === state.after) return;
-    set(key, { ...state, sending: true, after: settled });
+    const ending = endingOf(threads, state.target, state.threadId);
+    if (ending === "gone") {
+      // Nothing can be sent to it any more.
+      set(key, { ...state, queue: [] });
+      return;
+    }
+    if (head === undefined || ending === "running" || ending.key === state.after) return;
+    if (
+      (ending.status === "interrupted" || ending.status === "failed") &&
+      ending.key !== state.since &&
+      ending.key !== state.released
+    ) {
+      set(key, {
+        ...state,
+        paused: {
+          kind: "held",
+          message: ending.status === "interrupted" ? "The turn was stopped" : "The turn failed",
+        },
+      });
+      return;
+    }
+    set(key, { ...state, sending: true, after: ending.key });
     void options.post(state.target, state.threadId, head).then((outcome) => {
       const current = states.get(key);
       if (current === undefined) return;
@@ -152,7 +199,11 @@ export function createFollowUpQueues(options: {
         // waits for the user, unless the message that failed was removed meanwhile.
         const { after: _after, ...rest } = current;
         const first = current.queue[0]?.id === head.id;
-        set(key, { ...rest, sending: false, ...(first ? { paused: outcome.message } : {}) });
+        set(key, {
+          ...rest,
+          sending: false,
+          ...(first ? { paused: { kind: "failed" as const, message: outcome.message } } : {}),
+        });
       } else {
         set(key, { ...current, sending: false });
       }
@@ -165,7 +216,14 @@ export function createFollowUpQueues(options: {
     get: (key: string): FollowUpQueue => states.get(key) ?? EMPTY,
     add(target: NodeTarget, threadId: string, message: QueuedMessage) {
       const key = visitKey(target, threadId);
-      const current = states.get(key) ?? { target, threadId, queue: [], sending: false };
+      const since = endingKey(endingOf(threads, target, threadId));
+      const current = states.get(key) ?? {
+        target,
+        threadId,
+        queue: [],
+        sending: false,
+        ...(since === undefined ? {} : { since }),
+      };
       set(key, { ...current, queue: [...current.queue, message] });
       pump(key);
     },
@@ -181,12 +239,13 @@ export function createFollowUpQueues(options: {
       }
       pump(key);
     },
-    /** Tries the first message again. */
+    /** Sends the first message again, or past the turn that was stopped or failed. */
     resume(key: string) {
       const current = states.get(key);
       if (current === undefined) return;
-      const { paused: _paused, after: _after, ...rest } = current;
-      set(key, rest);
+      const { paused: _paused, after: _after, released: _released, ...rest } = current;
+      const released = endingKey(endingOf(threads, current.target, current.threadId));
+      set(key, { ...rest, ...(released === undefined ? {} : { released }) });
       pump(key);
     },
     watch(listener: () => void) {
@@ -212,6 +271,7 @@ export function useFollowUps(queues: FollowUpQueues, target: NodeTarget, threadI
   return {
     queue: state.queue,
     paused: state.paused,
+    sending: state.sending,
     add: (message: QueuedMessage) => queues.add(target, threadId, message),
     remove: (id: string) => queues.remove(key, id),
     resume: () => queues.resume(key),

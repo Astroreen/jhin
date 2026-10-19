@@ -15,6 +15,7 @@ import { createContext, useContext, useEffect, useSyncExternalStore } from "reac
 
 import type { Drafts } from "../../lib/composer.ts";
 import type { FollowUpQueues } from "./follow-ups.ts";
+import type { Unconfirmed } from "./unconfirmed.ts";
 
 /** Agents of each node, from `agents.list`, refreshed when a picker opens or after a while. */
 export function createAgentsCache(threads: ThreadsCatalog) {
@@ -117,6 +118,8 @@ export interface ChatServices {
   readonly visits: ThreadVisits | undefined;
   /** Follow-ups queued per thread; they outlive the thread's view. */
   readonly followUps: FollowUpQueues;
+  /** First messages that may not have reached their new thread. */
+  readonly unconfirmed: Unconfirmed;
   /** What commands can do to the composer on screen. */
   readonly composer: ComposerHandle;
 }

@@ -7,7 +7,10 @@ import { createTimeline, type Timeline } from "../../lib/timeline.ts";
 
 export interface ThreadTimelineState {
   readonly timeline: Timeline;
-  /** How many events were folded in: changes whenever the timeline grows. */
+  /**
+   * How many events arrived, also ones delivered again: a marker that changes
+   * whenever the timeline may have grown, not a count of its events.
+   */
   readonly count: number;
   readonly error?: string;
 }
@@ -33,8 +36,11 @@ export function useThreadTimeline(
   )?.client;
   const [state, setState] = useState<ThreadTimelineState>(NO_TIMELINE);
   useEffect(() => {
+    if (client === undefined) {
+      setState({ ...NO_TIMELINE, error: "Not connected to this thread's node" });
+      return;
+    }
     setState(NO_TIMELINE);
-    if (client === undefined) return;
     let disposed = false;
     let subscription: { dispose(): void } | undefined;
     const fold = createTimeline();
@@ -47,8 +53,8 @@ export function useThreadTimeline(
       const batch = pending;
       pending = [];
       count += batch.length;
-      const timeline = fold.apply(batch);
-      setState((previous) => ({ ...previous, timeline, count }));
+      // Events again: whatever went wrong with the stream is over.
+      setState({ timeline: fold.apply(batch), count });
     };
     void threads
       .open(target, threadId)

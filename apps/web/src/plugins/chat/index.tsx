@@ -52,6 +52,7 @@ import {
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
 import { createFollowUpQueues, sendMessage } from "./follow-ups.ts";
+import { createUnconfirmed } from "./unconfirmed.ts";
 
 /** The page header of a view without a thread. */
 function PageHeader({ title }: { title: string }) {
@@ -254,6 +255,7 @@ export const chatPlugin = builtin(
             post: (target, threadId, message) => sendMessage(threads, target, threadId, message),
           }),
         ),
+        unconfirmed: createUnconfirmed(),
         composer,
       };
 

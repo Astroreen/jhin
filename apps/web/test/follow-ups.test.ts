@@ -18,16 +18,23 @@ const message = (text: string): QueuedMessage => ({
 
 /** A node's catalog with thread `th1`, whose latest turn the test moves along. */
 function fakeNode() {
-  let thread: ThreadRecord = {
+  let thread: ThreadRecord | undefined = {
     id: "th1",
     projectId: "scratch",
     title: "Thread",
     createdAt: "2026-10-19T00:00:00.000Z",
   };
   const listeners = new Set<() => void>();
+  const changed = () => {
+    for (const listener of Array.from(listeners)) listener();
+  };
   return {
     threads: {
-      catalog: (): NodeCatalog => ({ status: "ready", projects: [], threads: [thread] }),
+      catalog: (): NodeCatalog => ({
+        status: "ready",
+        projects: [],
+        threads: thread === undefined ? [] : [thread],
+      }),
       subscribe: (_target: unknown, listener: () => void) => {
         listeners.add(listener);
         return { dispose: () => listeners.delete(listener) };
@@ -36,10 +43,15 @@ function fakeNode() {
     /** The node records where the thread's latest turn is. */
     turn(turnId: string, status: TurnStatus) {
       thread = {
-        ...thread,
+        ...thread!,
         lastTurn: { turnId, status, at: "2026-10-19T00:00:01.000Z", agentId: "jhin.agent-fake" },
       };
-      for (const listener of Array.from(listeners)) listener();
+      changed();
+    },
+    /** The thread is deleted on its node. */
+    remove() {
+      thread = undefined;
+      changed();
     },
     get followers() {
       return listeners.size;
@@ -112,7 +124,10 @@ describe("follow-up queues", () => {
     page.queues.add(target, "th1", message("hello"));
     await page.settled();
     expect(page.texts()).toEqual(["hello"]);
-    expect(page.queues.get(key).paused).toBe("No agent runtime is installed on this node");
+    expect(page.queues.get(key).paused).toEqual({
+      kind: "failed",
+      message: "No agent runtime is installed on this node",
+    });
 
     // Another ending: still no retry.
     node.turn("u9", "completed");
@@ -122,7 +137,7 @@ describe("follow-up queues", () => {
     page.queues.resume(key);
     await page.settled();
     expect(page.texts()).toEqual(["hello", "hello"]);
-    expect(page.queues.get(key)).toEqual({ queue: [] });
+    expect(page.queues.get(key)).toEqual({ queue: [], sending: false });
   });
 
   it("let the rest go when the message that failed is removed", async () => {
@@ -159,10 +174,67 @@ describe("follow-up queues", () => {
     // The turn that kept it busy runs and ends.
     page.answer({ kind: "sent" });
     node.turn("u2", "running");
-    node.turn("u2", "interrupted");
+    node.turn("u2", "completed");
     await page.settled();
     expect(page.texts()).toEqual(["later", "later"]);
     expect(page.queued()).toEqual([]);
+  });
+
+  it("hold after a turn that was stopped or failed, until resumed", async () => {
+    for (const status of ["interrupted", "failed"] as const) {
+      const node = fakeNode();
+      node.turn("u1", "running");
+      const page = queuesOf(node);
+      page.queues.add(target, "th1", message("later"));
+
+      node.turn("u1", status);
+      expect(page.texts()).toEqual([]);
+      expect(page.queues.get(key).paused).toEqual({
+        kind: "held",
+        message: status === "interrupted" ? "The turn was stopped" : "The turn failed",
+      });
+
+      page.queues.resume(key);
+      await page.settled();
+      expect(page.texts()).toEqual(["later"]);
+      expect(page.queued()).toEqual([]);
+    }
+  });
+
+  it("are not held by a stop that came before them", async () => {
+    const node = fakeNode();
+    // Stopped before: the record still shows it while a turn started elsewhere runs.
+    node.turn("u1", "interrupted");
+    const page = queuesOf(node);
+    page.answer({ kind: "busy" });
+    page.queues.add(target, "th1", message("later"));
+    await page.settled();
+    expect(page.queues.get(key).paused).toBeUndefined();
+
+    page.answer({ kind: "sent" });
+    node.turn("u2", "running");
+    node.turn("u2", "completed");
+    await page.settled();
+    expect(page.texts()).toEqual(["later", "later"]);
+  });
+
+  it("tell while the first message is on its way", () => {
+    const node = fakeNode();
+    node.turn("u1", "completed");
+    const page = queuesOf(node);
+    page.queues.add(target, "th1", message("now"));
+    expect(page.queues.get(key)).toMatchObject({ queue: [message("now")], sending: true });
+  });
+
+  it("drop the queue of a thread gone from its node", () => {
+    const node = fakeNode();
+    node.turn("u1", "running");
+    const page = queuesOf(node);
+    page.queues.add(target, "th1", message("later"));
+    node.remove();
+    expect(page.queues.get(key)).toEqual({ queue: [], sending: false });
+    expect(node.followers).toBe(0);
+    expect(page.texts()).toEqual([]);
   });
 
   it("follow a node's catalog only while they hold messages for it, with no view needed", async () => {

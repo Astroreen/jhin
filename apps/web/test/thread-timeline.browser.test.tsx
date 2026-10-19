@@ -15,10 +15,16 @@ const target = { node: "ws://a/rpc" };
 /** An RPC client that hands the test what it subscribes to. */
 function fakeClient() {
   const subscribers: ((event: StoredEvent) => void)[] = [];
+  const failures: ((error: Error) => void)[] = [];
   let disposed = 0;
   const client = {
-    subscribe(_stream: string, _options: unknown, onEvent: (event: StoredEvent) => void) {
+    subscribe(
+      _stream: string,
+      options: { onError?: (error: Error) => void },
+      onEvent: (event: StoredEvent) => void,
+    ) {
       subscribers.push(onEvent);
+      if (options.onError !== undefined) failures.push(options.onError);
       return { lastSequence: 0, dispose: () => (disposed += 1) };
     },
   } as unknown as NodeConnection["client"];
@@ -33,6 +39,10 @@ function fakeClient() {
         payload: { turnId, agentId: "jhin.agent-fake", input: { text } },
         at: "2026-10-19T00:00:00.000Z",
       });
+    },
+    /** The stream fails, e.g. the node refused it after a reconnect. */
+    fail(message: string) {
+      failures.at(-1)!(new Error(message));
     },
     get subscriptions() {
       return subscribers.length;
@@ -97,6 +107,43 @@ describe("a thread's timeline", () => {
     second.turn(2, "u2", "again");
     await nextFrame();
     expect(texts()).toEqual(["hello", "again"]);
+    act(() => root.unmount());
+  });
+});
+
+describe("a thread's timeline errors", () => {
+  it("clear once the stream delivers again", async () => {
+    const node = fakeClient();
+    const nodes = fakeConnections(node.client);
+    const threads = { open: async (_target: unknown, threadId: string) => `thread/${threadId}` };
+    const seen: { state?: ThreadTimelineState } = {};
+    function View() {
+      seen.state = useThreadTimeline(threads, nodes.connections, target, "t1");
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<View />));
+
+    await act(async () => node.fail("Connection closed before the call completed"));
+    expect(seen.state?.error).toBe("Connection closed before the call completed");
+    node.turn(1, "u1", "hello");
+    await nextFrame();
+    expect(seen.state?.error).toBeUndefined();
+    expect(seen.state?.timeline.turns.map((turn) => turn.text)).toEqual(["hello"]);
+    act(() => root.unmount());
+  });
+
+  it("say so when the thread's node is not connected", async () => {
+    const nodes = fakeConnections(fakeClient().client);
+    const threads = { open: async (_target: unknown, threadId: string) => `thread/${threadId}` };
+    const seen: { state?: ThreadTimelineState } = {};
+    function View() {
+      seen.state = useThreadTimeline(threads, nodes.connections, { node: "ws://other/rpc" }, "t1");
+      return null;
+    }
+    const root = createRoot(document.createElement("div"));
+    await act(async () => root.render(<View />));
+    expect(seen.state?.error).toBe("Not connected to this thread's node");
     act(() => root.unmount());
   });
 });

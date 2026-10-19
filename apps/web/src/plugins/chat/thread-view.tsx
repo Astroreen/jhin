@@ -3,6 +3,7 @@
 import type { AgentResponse, TurnAttachment } from "@jhin/agent-api";
 import {
   targetKey,
+  visitKey,
   type NodeTarget,
   type ProjectRecord,
   type ThreadRecord,
@@ -20,6 +21,7 @@ import { sendMessage, useFollowUps } from "./follow-ups.ts";
 import { ChatHeader } from "./header.tsx";
 import { useChat } from "./services.ts";
 import { useThreadTimeline } from "./thread-timeline.ts";
+import { useUnconfirmed } from "./unconfirmed.ts";
 import { TimelineView } from "./timeline.tsx";
 
 /** Where a thread's composer keeps its draft. */
@@ -143,6 +145,13 @@ export function ThreadView(props: {
   // Follow-ups typed while a turn runs go out one by one as turns end, also
   // while this thread is not on screen (the chat plugin's queues send them).
   const followUps = useFollowUps(chat.followUps, target, threadId);
+  // A first message the connection dropped: offered again until the thread shows it.
+  const unconfirmed = useUnconfirmed(
+    chat.unconfirmed,
+    visitKey(target, threadId),
+    timeline.turns.length > 0,
+    (message) => sendMessage(chat.threads, target, threadId, message),
+  );
 
   const send = async (text: string, attachments: readonly TurnAttachment[]): Promise<boolean> => {
     setError(undefined);
@@ -199,26 +208,63 @@ export function ThreadView(props: {
       />
       <div className="relative flex min-h-0 min-w-0 flex-1">
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          {shownError === undefined ? null : (
-            <div className="pointer-events-none absolute top-0 inset-x-0 z-20 flex flex-col">
-              <div className="pointer-events-auto mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))] pt-3">
-                <Alert variant="error">
-                  <CircleAlertIcon />
-                  <AlertDescription>
-                    <div className="line-clamp-3">{shownError}</div>
-                  </AlertDescription>
-                  <AlertAction>
-                    <Button
-                      aria-label="Dismiss error"
-                      onClick={() => setError(undefined)}
-                      size="icon-xs"
-                      variant="ghost"
-                    >
-                      <XIcon />
-                    </Button>
-                  </AlertAction>
-                </Alert>
-              </div>
+          {(unconfirmed.message === undefined || count === 0) && shownError === undefined ? null : (
+            <div className="pointer-events-none absolute top-0 inset-x-0 z-20 flex flex-col gap-2 pt-3">
+              {/* Shown once the thread's stream has answered: until then nothing is known. */}
+              {unconfirmed.message === undefined || count === 0 ? null : (
+                <div className="pointer-events-auto mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))]">
+                  <Alert variant="warning">
+                    <CircleAlertIcon />
+                    <AlertDescription>
+                      <div className="line-clamp-3">
+                        Your message may not have reached the node: &ldquo;
+                        {unconfirmed.message.text}&rdquo;
+                      </div>
+                    </AlertDescription>
+                    <AlertAction>
+                      <Button
+                        onClick={() =>
+                          void unconfirmed.resend().then((outcome) => {
+                            if (outcome?.kind === "failed") setError(outcome.message);
+                          })
+                        }
+                        size="xs"
+                        variant="outline"
+                      >
+                        Send again
+                      </Button>
+                      <Button
+                        aria-label="Dismiss"
+                        onClick={unconfirmed.dismiss}
+                        size="icon-xs"
+                        variant="ghost"
+                      >
+                        <XIcon />
+                      </Button>
+                    </AlertAction>
+                  </Alert>
+                </div>
+              )}
+              {shownError === undefined ? null : (
+                <div className="pointer-events-auto mx-auto w-fit max-w-[min(48rem,calc(100%-2rem))]">
+                  <Alert variant="error">
+                    <CircleAlertIcon />
+                    <AlertDescription>
+                      <div className="line-clamp-3">{shownError}</div>
+                    </AlertDescription>
+                    <AlertAction>
+                      <Button
+                        aria-label="Dismiss error"
+                        onClick={() => setError(undefined)}
+                        size="icon-xs"
+                        variant="ghost"
+                      >
+                        <XIcon />
+                      </Button>
+                    </AlertAction>
+                  </Alert>
+                </div>
+              )}
             </div>
           )}
           <div
@@ -296,6 +342,7 @@ export function ThreadView(props: {
                     }
                     queue={followUps.queue}
                     queuePaused={followUps.paused}
+                    queueSending={followUps.sending}
                     requests={requests}
                     running={running}
                     selection={selection}
@@ -366,13 +413,17 @@ export function DraftView(props: {
         selection,
       });
       if (uncertain !== undefined) {
-        // The node may have taken it: the thread stays, with the message in its
-        // composer in case it did not arrive.
-        chat.drafts.set(threadDraftKey(target, threadId), { prompt: text, attachments });
+        // The node may have taken it: the thread stays, and offers to send it
+        // again until it shows the message.
+        chat.unconfirmed.set(visitKey(target, threadId), {
+          text,
+          attachments,
+          settings: selection,
+        });
         chat.toasts?.show({
           type: "warning",
           title: "Message not confirmed",
-          description: `${uncertain.message}. If it does not show in the thread, send it again.`,
+          description: `${uncertain.message}. The thread shows whether it arrived.`,
         });
       }
       // To the new thread, unless the user went elsewhere meanwhile.
