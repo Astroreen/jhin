@@ -45,8 +45,6 @@ interface Feed {
   machine: NodeMachine | undefined;
   /** The newest request; only its answer may update the feed. */
   latest: number;
-  /** The newest request has not answered yet. */
-  asking: boolean;
 }
 
 export interface NodeMachineStore extends NodeMachines {
@@ -56,7 +54,9 @@ export interface NodeMachineStore extends NodeMachines {
 
 /**
  * `client.machines@1` over `host.identity`: one request per followed node,
- * shared by every subscriber, asked again when its connection opens again.
+ * shared by every subscriber, asked again only when its connection opens
+ * again or on `refresh`. A node that could not answer (older than
+ * `host.identity`) is not asked again by every view that follows it.
  */
 export function createNodeMachines(
   connections: Pick<Connections, "list" | "subscribe">,
@@ -80,32 +80,30 @@ export function createNodeMachines(
 
   const load = (key: string, feed: Feed) => {
     const request = ++feed.latest;
-    feed.asking = true;
-    const answered = () => {
-      const newest = feeds.get(key) === feed && request === feed.latest;
-      if (newest) feed.asking = false;
-      return newest;
-    };
     threads.call(feed.target, "host.identity").then(
       (answer) => {
-        if (!answered()) return;
+        if (feeds.get(key) !== feed || request !== feed.latest) return;
         const machine = parseIdentity(answer);
         if (machine === undefined || sameMachine(feed.machine, machine)) return;
         feed.machine = machine;
         notify(feed);
       },
       // An older node, or one out of reach: what is known stays, else it shows as a server.
-      () => void answered(),
+      () => undefined,
     );
   };
 
   const reconnected = () => {
     const reopened = new Set<string>();
-    for (const connection of connections.list()) {
+    const listed = connections.list();
+    for (const connection of listed) {
       if (connection.state === "open" && states.get(connection.id) !== "open")
         reopened.add(connection.id);
       states.set(connection.id, connection.state);
     }
+    // A removed connection is forgotten: added again, it opens as a new one.
+    for (const id of states.keys())
+      if (!listed.some((connection) => connection.id === id)) states.delete(id);
     for (const [key, feed] of feeds) if (reopened.has(feed.target.node)) load(key, feed);
   };
 
@@ -123,16 +121,14 @@ export function createNodeMachines(
           listeners: new Set(),
           machine: undefined,
           latest: 0,
-          asking: false,
         };
         feeds.set(key, feed);
+        load(key, feed);
       }
       if (connectionFeed === undefined) {
         for (const connection of connections.list()) states.set(connection.id, connection.state);
         connectionFeed = connections.subscribe(reconnected);
       }
-      // A new view of a node not known yet asks again: an earlier request may have failed.
-      if (feed.machine === undefined && !feed.asking) load(key, feed);
       const current = feed;
       // A wrapper per subscription: the same listener may subscribe twice.
       const entry = () => listener();

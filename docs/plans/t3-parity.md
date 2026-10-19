@@ -438,8 +438,10 @@ after a reload), with screenshots.
   `jhin.host` plugin answers with the node's id, host name, platform and
   architecture (Node's `process.platform` and `process.arch`) and the
   machine kind clients show it as (`machine`), with the kind it detected
-  (`detectedMachine`, absent when it cannot tell). It needs no permission,
-  as `host.commands.list`. The kinds are T3 Code's seven, with T3's labels:
+  (`detectedMachine`, absent when it cannot tell). It has a permission of its
+  own, `host.identity`, as `host.inspect` has, since the host name says
+  something about the machine; every token holds it today (`*`, see Scoped
+  tokens in Deferred). The kinds are T3 Code's seven, with T3's labels:
   `server` (Server), `cloud` (Cloud VM), `linux` (Linux/WSL), `desktop`,
   `laptop`, `mac-mini` (Mini PC) and `mac-studio` (Workstation); they live in
   `@jhin/host-api` (`MACHINE_KINDS`, `MACHINE_KIND_LABELS`) and
@@ -447,7 +449,10 @@ after a reload), with screenshots.
   (ServerEnvironmentMachine): on Linux the DMI chassis type, any hypervisor
   or cloud vendor in the DMI strings reading as `cloud` whatever chassis it
   fakes, and WSL (its kernel release) as `linux` before that; on macOS the
-  IOKit product name, then `hw.model`; on other platforms nothing. A node
+  IOKit product name, then `hw.model`; on other platforms nothing. T3's
+  markers are substrings, kept as broad on purpose: a physical box whose
+  vendor or product names a hypervisor or "cloud" reads as a cloud VM, and
+  its owner picks the kind (D131). A node
   detects once, on the first ask. A client shows a kind it does not know as a
   server, so a later kind never breaks an older client.
 - **D131. The owner's choice is kept on the node, as T3 keeps its
@@ -462,13 +467,14 @@ after a reload), with screenshots.
 - **D132. `client.machines@1`, provided by the builtin `jhin.node-machines`,
   tells views each node's kind.** It asks `host.identity` once per followed
   node, a connection or a mesh member (through `mesh.call`), however many
-  views follow it, and asks again when the connection opens again, when a
-  new view follows a node whose kind is not known yet (an earlier answer
-  failed), after `node.set-machine`, and after the node config page saved
+  views follow it, and asks again only when the connection opens again (a
+  connection removed and added again counts as opened again), after
+  `node.set-machine`, and after the node config page saved
   the `jhin.host` section: the page emits the client event
   `settings.node-config.saved` (`{ connection, section }`) after each save.
   Only the newest answer counts; a node that cannot answer (older than
-  `host.identity`) shows as a server. The command `node.set-machine`
+  `host.identity`) shows as a server, and the views that follow it later do
+  not ask it again. The command `node.set-machine`
   (`{ node, remote?, machine }`, "Change node icon") writes the choice to
   the node's `jhin.host` through `host.config.patch`; `machine: null`
   removes it, so the node follows its detection again. A node's menu in
@@ -490,12 +496,14 @@ after a reload), with screenshots.
 
 The proof: `packages/node-host/test/machine.test.ts` (chassis types, VMs as
 cloud VMs whatever their chassis, WSL before DMI, Macs by product name then
-model, nothing on other platforms or unreadable machines);
-`packages/node-host/test/host.test.ts` ("reports what the node is": the
-owner's kind over the detected one, the section's titled select, unset and
+model, the broad hypervisor and cloud markers pinned, nothing on other
+platforms or unreadable machines);
+`packages/node-host/test/host.test.ts` ("reports what the node is": its own
+permission, the owner's kind over the detected one, the section's titled select, unset and
 invalid values falling back); `apps/web/test/machines.test.ts` (one request
-per node however many follow it, asking again on reconnect, the newest
-answer winning, keeping what is known when a node cannot answer, refreshing
+per node however many follow it, asking again on reconnect (also of a
+connection removed and added again), not again for every view of a node
+that cannot answer, the newest answer winning, keeping what is known when a node cannot answer, refreshing
 a connection or one remote, unknown kinds as servers, a throwing listener);
 `apps/web/test/machines.browser.test.tsx` (every kind's own icon, unknown
 ones as a server, a view re-rendering when the kind changes,
@@ -567,6 +575,7 @@ the node config form each changing a node's icon, kept in its node file).
   scopes, and give mesh calls a scope of their own. The same goes for
   `host.config.read` (D66): `host.config.get` returns the node's and project's
   config files as written, so it reads any secret a section keeps there.
+  And for `host.identity` (D130), which tells the node's host name.
 - Secret config values: no first-party section holds one today. A section
   that does needs a way to mark those values, so that `host.config.get`
   redacts them and the editor keeps them when it saves, before

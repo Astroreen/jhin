@@ -67,6 +67,11 @@ function world() {
       states = { ...states, [id]: state };
       for (const listener of Array.from(listeners)) listener();
     },
+    remove(id: string) {
+      const { [id]: _removed, ...rest } = states;
+      states = rest;
+      for (const listener of Array.from(listeners)) listener();
+    },
     listeners,
   };
 }
@@ -160,20 +165,41 @@ describe("client.machines", () => {
     expect(machines.get({ node: A })?.kind).toBe("desktop");
   });
 
-  it("asks a node it knows nothing about again when a new view follows it", async () => {
+  it("does not ask a node that could not answer again for every new view, only on reconnect or refresh", async () => {
     const w = world();
     const machines = createNodeMachines(w.connections, w.threads);
-    const first = machines.subscribe({ node: A }, () => undefined);
+    machines.subscribe({ node: A }, () => undefined);
     // An older node: no host.identity. It shows as a server.
     await w.calls[0]!.fail();
     expect(machines.get({ node: A })).toBeUndefined();
+    // Cards and rows that mount later do not send a request that cannot succeed.
     machines.subscribe({ node: A }, () => undefined);
-    expect(w.calls).toHaveLength(2);
-    await w.calls[1]!.answer(identity("server"));
-    // Known now: another view does not ask.
     machines.subscribe({ node: A }, () => undefined);
+    expect(w.calls).toHaveLength(1);
+
+    machines.refresh({ node: A });
     expect(w.calls).toHaveLength(2);
-    first.dispose();
+    await w.calls[1]!.fail();
+    w.setState(A, "connecting");
+    w.setState(A, "open");
+    expect(w.calls).toHaveLength(3);
+    await w.calls[2]!.answer(identity("server"));
+    expect(machines.get({ node: A })?.kind).toBe("server");
+  });
+
+  it("forgets a removed connection, so one added again under its id counts as reopened", async () => {
+    const w = world();
+    const machines = createNodeMachines(w.connections, w.threads);
+    machines.subscribe({ node: A }, () => undefined);
+    machines.subscribe({ node: B }, () => undefined);
+    await w.calls[0]!.answer(identity("laptop"));
+    await w.calls[1]!.answer(identity("desktop"));
+    w.remove(B);
+    // Added again, already open: its node may be another machine now.
+    w.setState(B, "open");
+    expect(w.calls.map((call) => call.target)).toEqual([{ node: A }, { node: B }, { node: B }]);
+    await w.calls[2]!.answer(identity("mac-studio"));
+    expect(machines.get({ node: B })?.kind).toBe("mac-studio");
   });
 
   it("refreshes every followed node behind a connection, or one remote of it", async () => {

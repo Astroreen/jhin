@@ -240,6 +240,8 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           /** What the node tells by itself; absent when it cannot. */
           detectedMachine: Machine.optional(),
         }),
+        // Its own permission, as `host.inspect` has: the host name says something about the machine.
+        permissions: ["host.identity"],
         handler: async () => {
           const detected = await (detection ??= detectMachineKind(systemProbe));
           let chosen: MachineKind | undefined;

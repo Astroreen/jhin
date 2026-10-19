@@ -51,6 +51,14 @@ describe("machine kind detection", () => {
     ).toBe("laptop");
   });
 
+  it("reads any product or vendor naming a hypervisor or cloud as a cloud VM, as T3 Code does", async () => {
+    // Deliberately broad (T3's markers are substrings): a physical box sold as a "Cloud"
+    // appliance reads as a cloud VM too, whatever its chassis. Its owner picks the kind then.
+    expect(await detectMachineKind(probe("linux", dmi("3", "Acme", "CloudBox 500")))).toBe("cloud");
+    expect(await detectMachineKind(probe("linux", dmi("17", "Xen", "HVM domU")))).toBe("cloud");
+    expect(await detectMachineKind(probe("linux", dmi("10", "Acme", "KVM Laptop")))).toBe("cloud");
+  });
+
   it("tells WSL by its kernel release before DMI, which says Hyper-V", async () => {
     const wsl = {
       ...dmi("3", "Microsoft Corporation", "Virtual Machine"),

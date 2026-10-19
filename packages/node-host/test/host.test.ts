@@ -669,6 +669,15 @@ export default definePlugin({
     host = new HostProcess({ home, cwd: tempDir("cwd") });
     await host.ready();
 
+    // Gated like host.inspect: a scoped token needs host.identity to learn the host name.
+    const commands = (await host.execute("host.commands.list", {})).value as {
+      name: string;
+      permissions: string[];
+    }[];
+    expect(commands.find((command) => command.name === "host.identity")?.permissions).toEqual([
+      "host.identity",
+    ]);
+
     const chosen = (await host.execute("host.identity", {})).value;
     expect(chosen).toMatchObject({
       nodeId: expect.any(String),
