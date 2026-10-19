@@ -313,7 +313,7 @@ export function parseNumstat(output: string): NumstatEntry[] {
 }
 
 /** Untracked files counted at the same time: each holds one file descriptor and one buffer. */
-export const COUNT_CONCURRENCY = 8;
+const COUNT_CONCURRENCY = 8;
 /** The read buffer of a count; git decides "binary" from the first 8000 bytes too. */
 const COUNT_CHUNK_BYTES = 64 * 1024;
 
