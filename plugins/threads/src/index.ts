@@ -1355,6 +1355,16 @@ export default definePlugin({
         if (runtime === undefined) {
           throw new ThreadsError("NO_AGENT", "No agent runtime is installed on this node");
         }
+        // A first message names its thread. The hook runs before the thread is
+        // taken: one that is slow, or never answers, holds nothing.
+        const firstTitle =
+          read.lastTurn === undefined && read.title === DEFAULT_THREAD_TITLE
+            ? await context.hooks
+                .run("threads.title", { thread: read, text }, ({ text: input }) =>
+                  titleFromText(input),
+                )
+                .catch(() => titleFromText(text))
+            : undefined;
         const turnId = Crypto.randomUUID();
         // Nothing is awaited between checking that the thread is free and taking it.
         const reservation = reserve(threadId, turnId, runtime.agentId);
@@ -1376,10 +1386,10 @@ export default definePlugin({
           };
           // The first message names a thread that still has the default title.
           const named =
-            thread.lastTurn === undefined && thread.title === DEFAULT_THREAD_TITLE
-              ? await context.hooks
-                  .run("threads.title", { thread, text }, ({ text: input }) => titleFromText(input))
-                  .catch(() => titleFromText(text))
+            firstTitle !== undefined &&
+            thread.lastTurn === undefined &&
+            thread.title === DEFAULT_THREAD_TITLE
+              ? firstTitle
               : thread.title;
           const chosen = { agentId: runtime.agentId, ...settings };
           // The record keeps what this turn runs with: no model of another agent.

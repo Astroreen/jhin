@@ -718,6 +718,32 @@ describe("jhin.threads: answers and what a turn waits for", () => {
   });
 });
 
+describe("jhin.threads: hooks that never answer", () => {
+  it("holds no thread while its title hook never answers", async () => {
+    const called = latch();
+    const titles = {
+      manifest: testManifest("acme.titles", { side: "server" }),
+      definition: definePlugin({
+        activate(context) {
+          context.hooks.around("threads.title", () => {
+            called.resolve();
+            return new Promise(() => undefined);
+          });
+        },
+      }),
+    };
+    const { client } = await node({ plugins: [titles] });
+    const thread = await client.call<Thread>("threads.create", {});
+
+    void client.call("threads.send", { threadId: thread.id, text: "hi" }).catch(() => undefined);
+    await called.promise;
+    // The message waits for its title, but the thread is not taken meanwhile.
+    expect(await client.call<Thread>("threads.archive", { threadId: thread.id })).toMatchObject({
+      archivedAt: expect.any(String),
+    });
+  });
+});
+
 describe("jhin.threads: agents that fail to take an answer", () => {
   it("records the answer once and takes no second one", async () => {
     const stopped = latch();
