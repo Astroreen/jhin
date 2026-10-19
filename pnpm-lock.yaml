@@ -158,6 +158,9 @@ importers:
       '@jhin/plugin-mesh':
         specifier: workspace:*
         version: link:../../plugins/mesh
+      '@jhin/plugin-source-control':
+        specifier: workspace:*
+        version: link:../../plugins/source-control
       '@jhin/plugin-storage-sqlite':
         specifier: workspace:*
         version: link:../../plugins/storage-sqlite
@@ -207,6 +210,9 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@jhin/source-control-api':
+        specifier: workspace:*
+        version: link:../../packages/source-control-api
       '@jhin/storage-api':
         specifier: workspace:*
         version: link:../../packages/storage-api
@@ -391,6 +397,12 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.6.7
+
+  packages/source-control-api:
+    dependencies:
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../sdk
 
   packages/storage-api:
     dependencies:
@@ -586,6 +598,37 @@ importers:
       '@types/ws':
         specifier: 'catalog:'
         version: 8.18.2
+
+  plugins/source-control:
+    dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../../packages/agent-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/source-control-api':
+        specifier: workspace:*
+        version: link:../../packages/source-control-api
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
+    devDependencies:
+      '@jhin/plugin-agent-fake':
+        specifier: workspace:*
+        version: link:../agent-fake
+      '@jhin/plugin-threads':
+        specifier: workspace:*
+        version: link:../threads
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
 
   plugins/storage-sqlite:
     dependencies:

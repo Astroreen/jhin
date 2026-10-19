@@ -227,6 +227,33 @@ export interface ChatHeaderActionProps {
 }
 
 /**
+ * What the `sidebar.thread.indicators` slot gives each contribution: a
+ * thread card and where its thread lives. Contributions render on the card's
+ * last line, between where T3 Code shows the branch and the node's and
+ * agent's icons at its right end (the branch, a running terminal, the pull
+ * request, the diff); one that takes the free width (`flex-1`) pushes the
+ * ones after it to the right.
+ */
+export interface ThreadIndicatorProps {
+  readonly target: NodeTarget;
+  readonly thread: ThreadRecord;
+  readonly project?: ProjectRecord;
+  /** The card is the open thread. */
+  readonly active: boolean;
+}
+
+/**
+ * What the `chat.composer.context` slot gives each contribution: the strip
+ * under the composer (T3 Code's branch toolbar) for the open thread, or the
+ * project of a thread being drafted.
+ */
+export interface ChatComposerContextProps {
+  readonly target: NodeTarget;
+  readonly thread?: ThreadRecord;
+  readonly project?: ProjectRecord;
+}
+
+/**
  * `client.threads@1`: the projects and threads of every node this client
  * reaches, kept current from each node's `threads` index while somebody
  * subscribes, and the way to run commands there.

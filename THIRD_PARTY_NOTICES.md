@@ -11,7 +11,10 @@ Source: https://github.com/pingdotgg/t3code
 Used for: the web client's visual layer (components, layout, styles) and
 parts of its logic (keybindings, command palette search, work-log summaries,
 prompt history, timestamps, thread status, settings forms, the sidebar's
-thread order and settling), and the Claude Code agent runtime
+thread order and settling, the thread cards' branch, pull request and diff
+indicators, the branch toolbar and the diff panel), source control
+(`plugins/source-control`: reading git status and diffs, pull requests and
+their checks through the GitHub CLI), and the Claude Code agent runtime
 (`plugins/agent-claude`: query options, permission modes, tool, question and
 plan mapping, result errors, the model catalog). Files derived from T3 Code
 say so in a header comment.

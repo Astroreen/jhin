@@ -21,6 +21,7 @@ import {
   type ThreadVisits,
   type NodeActionProps,
   type ThreadActionProps,
+  type ThreadIndicatorProps,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
@@ -637,19 +638,35 @@ export const sidebarPlugin = builtin(
                 </div>
                 <div className="mt-1 flex min-w-0">{title}</div>
                 <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
-                  {showsScratchNode ? (
-                    <>
-                      <ServerIcon
-                        aria-hidden
-                        className="size-3 shrink-0 text-muted-foreground/40"
-                      />
-                      <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
-                        {node.label}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="flex-1" />
-                  )}
+                  {/* T3's branch, terminal, pull request and diff: contributions, right-aligned
+                      unless one of them (the branch) takes the free width. */}
+                  <span
+                    className="flex min-w-0 flex-1 items-center justify-end gap-1.5"
+                    data-thread-indicators
+                  >
+                    {showsScratchNode ? (
+                      <>
+                        <ServerIcon
+                          aria-hidden
+                          className="size-3 shrink-0 text-muted-foreground/40"
+                        />
+                        <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
+                          {node.label}
+                        </span>
+                      </>
+                    ) : null}
+                    <Slot
+                      name="sidebar.thread.indicators"
+                      props={
+                        {
+                          target,
+                          thread,
+                          ...(project === undefined ? {} : { project }),
+                          active,
+                        } satisfies ThreadIndicatorProps
+                      }
+                    />
+                  </span>
                   <span className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1">
                     {hosts ? (
                       <HostIcon

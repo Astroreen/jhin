@@ -1,0 +1,234 @@
+import type {
+  Navigation,
+  NodeCatalog,
+  Route,
+  ThreadRecord,
+  ThreadsCatalog,
+} from "@jhin/client-api";
+import { toDisposable, type PluginContext } from "@jhin/sdk";
+import type { Diff, ProjectStatus, PullRequest } from "@jhin/source-control-api";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { describe, expect, it } from "vite-plus/test";
+
+import { createDiffPanel } from "../src/plugins/source-control/diff-panel.tsx";
+import { createCardIndicators } from "../src/plugins/source-control/indicators.tsx";
+import type { SourceControlServices } from "../src/plugins/source-control/services.ts";
+import type { SourceControlStore, SourceControlView } from "../src/plugins/source-control/store.ts";
+
+const target = { node: "ws://a/rpc" };
+const thread: ThreadRecord = {
+  id: "t1",
+  projectId: "app",
+  title: "Port the toolbar",
+  createdAt: "2026-10-19T10:00:00.000Z",
+};
+const pr: PullRequest = {
+  number: 42,
+  title: "Port the toolbar",
+  url: "https://github.com/acme/app/pull/42",
+  state: "merged",
+  isDraft: false,
+  headBranch: "feature/toolbar",
+  baseBranch: "main",
+  checks: { state: "passing", passed: 3, failed: 0, pending: 0, total: 3 },
+};
+const status = (fields: Partial<ProjectStatus> = {}): ProjectStatus => ({
+  projectId: "app",
+  isRepo: true,
+  root: "/src/app",
+  branch: "feature/toolbar",
+  upstream: null,
+  ahead: 0,
+  behind: 0,
+  defaultBranch: "main",
+  remoteUrl: null,
+  workingTree: { files: [], fileCount: 2, insertions: 1234, deletions: 5, truncated: false },
+  provider: { kind: "github", available: true },
+  pullRequests: { "feature/toolbar": pr },
+  checkedAt: "2026-10-19T10:00:00.000Z",
+  ...fields,
+});
+
+function services(view: SourceControlView, answers: Record<string, unknown> = {}) {
+  const calls: { method: string; params: unknown }[] = [];
+  const store: SourceControlStore = {
+    view: () => view,
+    subscribe: () => toDisposable(() => undefined),
+    refresh: async () => undefined,
+  };
+  const catalog: NodeCatalog = { status: "ready", projects: [], threads: [thread] };
+  const threads: ThreadsCatalog = {
+    catalog: () => catalog,
+    subscribe: () => toDisposable(() => undefined),
+    call: async <T,>(_target: unknown, method: string, params?: unknown) => {
+      calls.push({ method, params });
+      return answers[method] as T;
+    },
+    open: async () => "",
+  };
+  let route: Route = { node: target.node, thread: "t1", panel: "diff" };
+  const navigation: Navigation = {
+    current: () => route,
+    navigate: (next) => {
+      route = next;
+    },
+    subscribe: () => toDisposable(() => undefined),
+  };
+  const value: SourceControlServices = {
+    context: {} as PluginContext,
+    store,
+    threads,
+    navigation,
+    toasts: undefined,
+    shortcut: () => undefined,
+  };
+  return { value, calls };
+}
+
+function mount(element: React.ReactNode) {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  act(() => root.render(element));
+  return {
+    container,
+    unmount: () => {
+      act(() => root.unmount());
+      container.remove();
+    },
+  };
+}
+
+const viewWith = (project: ProjectStatus, branch: string | null = "feature/toolbar") => ({
+  status: "ready" as const,
+  projects: new Map([["app", project]]),
+  threads: new Map([["t1", { threadId: "t1", projectId: "app", branch, at: "" }]]),
+});
+
+describe("a thread card's source control indicators", () => {
+  it("shows the branch, the pull request and the diff, in T3's order", () => {
+    const { Branch, PullRequestIndicator, DiffCount } = createCardIndicators(
+      services(viewWith(status())).value,
+    );
+    let clicks = 0;
+    const props = { target, thread, active: false };
+    const card = mount(
+      <div onClick={() => clicks++}>
+        <Branch {...props} />
+        <PullRequestIndicator {...props} />
+        <DiffCount {...props} />
+      </div>,
+    );
+    const row = card.container.firstElementChild!;
+    expect(row.children[0]!.getAttribute("aria-label")).toBe("Branch feature/toolbar");
+    expect(row.children[0]!.textContent).toBe("feature/toolbar");
+    const link = row.querySelector("a")!;
+    expect(link.getAttribute("href")).toBe(pr.url);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("aria-label")).toBe(
+      "PR #42 - Merged: Port the toolbar. All checks have passed",
+    );
+    expect(link.textContent).toBe("42");
+    expect(link.querySelector("span")!.className).toContain("text-violet-600");
+    const diff = row.querySelector("[data-thread-diff]")!;
+    expect(diff.textContent).toBe("+1,234 −5");
+    expect(diff.getAttribute("aria-label")).toBe("1234 additions, 5 deletions");
+    // Opening the pull request does not open the thread.
+    link.addEventListener("click", (event) => event.preventDefault());
+    act(() => link.click());
+    expect(clicks).toBe(0);
+    card.unmount();
+  });
+
+  it("shows no diff for a thread whose branch is not checked out, and nothing without a branch", () => {
+    const elsewhere = createCardIndicators(services(viewWith(status({ branch: "main" }))).value);
+    const props = { target, thread, active: false };
+    const card = mount(
+      <div>
+        <elsewhere.Branch {...props} />
+        <elsewhere.DiffCount {...props} />
+      </div>,
+    );
+    expect(card.container.textContent).toBe("feature/toolbar");
+    card.unmount();
+
+    const none = createCardIndicators(services(viewWith(status(), null)).value);
+    const empty = mount(
+      <div>
+        <none.Branch {...props} />
+        <none.PullRequestIndicator {...props} />
+        <none.DiffCount {...props} />
+      </div>,
+    );
+    expect(empty.container.firstElementChild!.childElementCount).toBe(0);
+    empty.unmount();
+  });
+});
+
+describe("the diff panel", () => {
+  const diff: Diff = {
+    projectId: "app",
+    scope: "uncommitted",
+    baseRef: null,
+    headRef: null,
+    patch: [
+      "diff --git a/README.md b/README.md",
+      "--- a/README.md",
+      "+++ b/README.md",
+      "@@ -1,2 +1,2 @@",
+      " one",
+      "-two",
+      "+TWO",
+      "",
+    ].join("\n"),
+    truncated: false,
+    files: [{ path: "README.md", status: "modified", insertions: 1, deletions: 1, binary: false }],
+    insertions: 1,
+    deletions: 1,
+  };
+
+  it("shows the thread's project diff, file by file, and folds a file", async () => {
+    const { value, calls } = services(viewWith(status()), { "git.diff": diff });
+    const Panel = createDiffPanel(value);
+    const panel = mount(<Panel />);
+    await act(async () => undefined);
+    expect(calls).toEqual([
+      {
+        method: "git.diff",
+        params: { projectId: "app", scope: "uncommitted", ignoreWhitespace: false },
+      },
+    ]);
+    const aside = panel.container.querySelector("aside")!;
+    expect(aside.getAttribute("aria-label")).toBe("Diff panel");
+    const file = aside.querySelector('[data-diff-file="README.md"]')!;
+    expect(
+      [...file.querySelectorAll("[data-line]")].map((row) => row.getAttribute("data-line")),
+    ).toEqual(["context", "delete", "add"]);
+    expect(file.textContent).toContain("TWO");
+    const toggle = file.querySelector("button")!;
+    expect(toggle.getAttribute("aria-label")).toBe("Collapse README.md");
+    act(() => toggle.click());
+    expect(file.querySelectorAll("[data-line]")).toHaveLength(0);
+    panel.unmount();
+  });
+
+  it("says so when the project is no repository or has no changes", async () => {
+    const Plain = createDiffPanel(
+      services(viewWith(status({ isRepo: false, branch: null }))).value,
+    );
+    const first = mount(<Plain />);
+    expect(first.container.textContent).toContain(
+      "Turn diffs are unavailable because this project is not a git repository.",
+    );
+    first.unmount();
+
+    const Clean = createDiffPanel(
+      services(viewWith(status()), { "git.diff": { ...diff, patch: "", files: [] } }).value,
+    );
+    const second = mount(<Clean />);
+    await act(async () => undefined);
+    expect(second.container.textContent).toContain("No net changes in this selection.");
+    second.unmount();
+  });
+});

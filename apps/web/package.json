@@ -23,6 +23,7 @@
     "@jhin/kernel": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
+    "@jhin/source-control-api": "workspace:*",
     "@jhin/storage-api": "workspace:*",
     "@jhin/testing": "workspace:*",
     "@jhin/ui": "workspace:*",
