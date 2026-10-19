@@ -65,22 +65,28 @@ specific to Claude: the runtime is a plugin on the public API.
   unavailable when it does not start within 25 s or reports no token (T3's
   rule), otherwise available with the account's models, which replace the
   bundled list (Fable 5.1 by default, as in T3). An account that reports no
-  fields at all counts as signed in, as in T3. An available probe is reused
-  for five minutes, and a stale one is answered at once while a new one runs;
-  an unavailable one only for ten seconds and never stale, since it decides
-  the default agent (D96), so a sign-in shows at once. The distribution probes
-  once at activation so the first model picker does not wait. Context windows
-  come from the manifest for its models and aliases, otherwise from what
+  fields at all counts as signed in, as in T3. A probe is reused for five
+  minutes when it found Claude Code available and for ten seconds when not, so
+  a sign-in shows soon. A stale answer is given at once while a new probe runs:
+  only the node's first look waits for Claude Code to start, and picking the
+  default agent (D96) never waits after that. Nothing probes at activation,
+  since one-shot CLI commands boot the same plugins and would start Claude
+  Code for nothing. Context windows come from the manifest for its models and aliases, otherwise from what
   Claude Code reported for the model in an earlier result, else none.
 - **D96. Claude Code is the node's default agent when it is available.**
   Registered runtimes come first (D55), so a node without
   `jhin.threads.defaultAgent` picks Claude Code when it is signed in and the
   fake agent otherwise. Tests and end-to-end tests pin
   `jhin.threads.defaultAgent` to the fake agent, so they never start a real
-  one on a machine that has Claude Code.
+  one on a machine that has Claude Code. The pin sits in the helpers that
+  write a test node's home (`apps/jhin/test`, `e2e/tests/support`), since
+  those tests run the real CLI with the distribution; `@jhin/testing` kernels
+  load only the plugins a test names. Listing agents there still probes Claude
+  Code (it starts and exits; nothing reaches the API).
 - **D97. Config section `jhin.agent-claude`:** `binaryPath`, `defaultModel`,
   `effort` (`low` … `max`), `env` (extra environment, e.g.
-  `ANTHROPIC_API_KEY`, `CLAUDE_CONFIG_DIR`) and `appendSystemPrompt`. Claude
+  `CLAUDE_CONFIG_DIR`; secrets such as `ANTHROPIC_API_KEY` belong in the
+  node's own environment, see Deferred) and `appendSystemPrompt`. Claude
   Code loads its usual settings, `CLAUDE.md` files and MCP servers.
 
 ## Not ported
@@ -105,9 +111,11 @@ specific to Claude: the runtime is a plugin on the public API.
   composer.
 - Subagent transcripts inside their tool call; today only the result shows.
 - Codex and OpenCode runtimes.
-- `env` can hold an API key: it needs the secret config values deferred in
-  `t3-parity.md` before `host.config.get` reaches a caller that may not see
-  them.
+- Secrets in `env`: config is readable by anyone holding the node's token
+  (config commands, RPC, MCP), so the field's description says to keep
+  `ANTHROPIC_API_KEY` and the like in the node's own environment. Marking the
+  field `writeOnly` (the secret marker of `docs/plans/config-ui.md`) and
+  redacting it in `host.config.get` waits for that work.
 - The SDK prints a Node warning on every full-access query
   (`CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`): `canUseTool` stays installed because
   `AskUserQuestion` still goes through it in that mode.
@@ -132,4 +140,5 @@ Claude Code's binary for the platform, about 270 MB, as T3 Code ships it).
   status probe (signed in, signed out, not starting); and through the threads
   plugin, a thread's two turns on one session and a failed turn.
 - Against the real Claude Code in the web client: a supervised turn asks
-  before a command, runs it once approved and answers.
+  before a command, runs it once approved and answers. This check is manual
+  (it needs a signed-in Claude Code); CI covers the scripted cases.

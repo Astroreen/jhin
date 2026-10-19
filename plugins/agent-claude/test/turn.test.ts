@@ -176,6 +176,30 @@ describe("jhin.agent-claude: a turn", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("never starts Claude Code when stopped before the session lookup ends", async () => {
+    const sessions = memorySessions();
+    let stop = () => {};
+    const lookup = sessions.has;
+    sessions.has = async (threadId) => {
+      const found = await lookup(threadId);
+      stop();
+      return found;
+    };
+    const { turn, calls } = start(
+      [
+        async function* () {
+          yield init();
+          yield result();
+        },
+      ],
+      {},
+      sessions,
+    );
+    stop = () => turn.interrupt();
+    expect(await drain(turn)).toEqual([]);
+    expect(calls).toHaveLength(0);
+  });
+
   it("gives Claude the earlier conversation of a thread it joins", async () => {
     const history = [
       { type: "agent.turn.started", payload: { turnId: "a", input: { text: "first question" } } },

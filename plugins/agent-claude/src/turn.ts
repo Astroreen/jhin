@@ -529,6 +529,8 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
 
   const run = async () => {
     const hasSession = await deps.sessions.has(request.threadId);
+    // Stopped before Claude Code started: it never starts.
+    if (interrupted) return;
     const preface = hasSession ? undefined : transcript(request.history);
     const text = preface === undefined ? request.input.text : `${preface}${request.input.text}`;
     let result: SDKResultMessage | undefined;

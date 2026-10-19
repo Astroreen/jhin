@@ -44,7 +44,9 @@ export const Config = z.object({
   env: z
     .record(z.string(), z.string())
     .optional()
-    .describe("Environment variables for Claude Code, e.g. ANTHROPIC_API_KEY or CLAUDE_CONFIG_DIR"),
+    .describe(
+      "Environment variables for Claude Code, e.g. CLAUDE_CONFIG_DIR. Config is readable by anyone holding the node's token: keep secrets such as ANTHROPIC_API_KEY in the node's own environment",
+    ),
   appendSystemPrompt: z
     .string()
     .optional()
@@ -96,6 +98,8 @@ async function probe(query: QueryFunction, config: Config): Promise<Probe> {
       },
     }) as Initializing;
     if (running.initializationResult === undefined) return { status: { available: true } };
+    // Closing the query after a timeout rejects initializationResult(); the race already
+    // listens to it, so that rejection is handled.
     const init = await Promise.race([
       running.initializationResult(),
       new Promise<never>((_, reject) => {
@@ -186,13 +190,11 @@ export function createClaudeRuntime(options: {
           })
           .finally(() => (probing = undefined)));
       if (probed === undefined) return (await refresh()).status;
-      const age = Date.now() - probed.at;
-      // "Unavailable" is never answered from a stale probe: it decides the default agent (D96).
-      if (!probed.probe.status.available) {
-        return age < UNAVAILABLE_TTL_MS ? probed.probe.status : (await refresh()).status;
-      }
-      // A stale "available" is still given at once while a new probe runs.
-      if (age >= STATUS_TTL_MS) void refresh().catch(() => undefined);
+      // A stale answer is given at once while a new probe runs: picking the default agent
+      // (D96) never waits for Claude Code to start. "Unavailable" goes stale sooner, so a
+      // sign-in shows on the next look.
+      const ttl = probed.probe.status.available ? STATUS_TTL_MS : UNAVAILABLE_TTL_MS;
+      if (Date.now() - probed.at >= ttl) void refresh().catch(() => undefined);
       return probed.probe.status;
     },
     startTurn(request) {
@@ -232,9 +234,9 @@ export function createClaudeRuntime(options: {
 
 /**
  * The plugin, running Claude Code through `query` (the SDK's in the distribution).
- * `warm` probes Claude Code once at activation, so the first model picker does not wait.
+ * Nothing starts Claude Code at activation: a one-shot CLI command boots the same plugins.
  */
-export function claudePlugin(query: QueryFunction, { warm = false }: { warm?: boolean } = {}) {
+export function claudePlugin(query: QueryFunction) {
   return definePlugin({
     activate(context) {
       context.config.define(CONFIG_SECTION, Config);
@@ -256,9 +258,8 @@ export function claudePlugin(query: QueryFunction, { warm = false }: { warm?: bo
       });
       context.subscriptions.add(registry.register(runtime));
       context.onDeactivate(() => runtime.dispose());
-      if (warm) void runtime.status?.().catch(() => undefined);
     },
   });
 }
 
-export default claudePlugin(sdkQuery as unknown as QueryFunction, { warm: true });
+export default claudePlugin(sdkQuery as unknown as QueryFunction);

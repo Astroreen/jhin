@@ -222,20 +222,79 @@ describe("jhin.agent-claude: status", () => {
     expect(await claude.status!()).toEqual({ available: true });
   });
 
-  it("probes again soon after finding Claude Code unavailable", async () => {
+  it("answers a stale status at once and probes again behind it", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       let signedIn = false;
-      const query = ((params: Parameters<QueryFunction>[0]) =>
-        initializing(signedIn ? { email: "ada@example.com" } : { tokenSource: "none" }).query(
-          params,
-        )) as QueryFunction;
+      let probes = 0;
+      let probed = Promise.resolve();
+      const query = ((params: Parameters<QueryFunction>[0]) => {
+        probes++;
+        const running = initializing(
+          signedIn ? { email: "ada@example.com" } : { tokenSource: "none" },
+        ).query(params);
+        // Settles once the probe closed its query and the runtime took its answer.
+        probed = new Promise((resolve) => {
+          const close = running.close.bind(running);
+          running.close = () => {
+            close();
+            setImmediate(resolve);
+          };
+        });
+        return running;
+      }) as QueryFunction;
       const claude = runtime(query);
       expect(await claude.status!()).toMatchObject({ available: false });
       signedIn = true;
+      // Fresh: reused as is.
       expect(await claude.status!()).toMatchObject({ available: false });
+      expect(probes).toBe(1);
+      // "Unavailable" is stale after 10 s: answered once more while the new probe runs.
       vi.setSystemTime(Date.now() + 10_000);
+      expect(await claude.status!()).toMatchObject({ available: false });
+      expect(probes).toBe(2);
+      await probed;
       expect(await claude.status!()).toMatchObject({ available: true });
+      // "Available" stays fresh for five minutes.
+      vi.setSystemTime(Date.now() + 60_000);
+      expect(await claude.status!()).toMatchObject({ available: true });
+      expect(probes).toBe(2);
+      vi.setSystemTime(Date.now() + 5 * 60_000);
+      signedIn = false;
+      expect(await claude.status!()).toMatchObject({ available: true });
+      expect(probes).toBe(3);
+      await probed;
+      expect(await claude.status!()).toMatchObject({ available: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is unavailable when Claude Code does not initialize in time", async () => {
+    vi.useFakeTimers();
+    try {
+      let closed = 0;
+      const query = (() => {
+        // Like the SDK: closing the query rejects an initialization still waited for.
+        let reject!: (error: Error) => void;
+        const initialization = new Promise((_, fail) => (reject = fail));
+        return {
+          [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }),
+          interrupt: async () => undefined,
+          close: () => {
+            closed++;
+            reject(new Error("Query closed before response received"));
+          },
+          initializationResult: () => initialization,
+        };
+      }) as unknown as QueryFunction;
+      const status = runtime(query).status!();
+      await vi.advanceTimersByTimeAsync(25_000);
+      expect(await status).toEqual({
+        available: false,
+        message: "Claude Code could not start: Claude Code did not start in time",
+      });
+      expect(closed).toBe(1);
     } finally {
       vi.useRealTimers();
     }
