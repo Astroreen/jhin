@@ -1,10 +1,12 @@
-import type {
-  Connections,
-  Navigation,
-  NodeTarget,
-  ProjectRecord,
-  ThreadsCatalog,
+import {
+  targetKey,
+  type Connections,
+  type Navigation,
+  type NodeTarget,
+  type ProjectRecord,
+  type ThreadsCatalog,
 } from "@jhin/client-api";
+import type { Disposable } from "@jhin/sdk";
 import {
   Button,
   Dialog,
@@ -16,12 +18,19 @@ import {
   DialogTitle,
   Input,
   ScrollArea,
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
   Spinner,
   cn,
   type Toasts,
 } from "@jhin/ui";
 import { CornerLeftUpIcon, FolderGit2Icon, FolderIcon } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
+
+import type { ShownNode } from "./nodes.ts";
 
 interface Listing {
   readonly path: string;
@@ -60,6 +69,26 @@ export function createAddProjectRequests() {
 
 export type AddProjectRequests = ReturnType<typeof createAddProjectRequests>;
 
+/** The nodes the client shows, to pick where the project goes (`createShownNodes`). */
+export interface NodeChoices {
+  snapshot(): readonly ShownNode[];
+  subscribe(listener: () => void): Disposable;
+}
+
+const noNodes: NodeChoices = { snapshot: () => [], subscribe: () => ({ dispose() {} }) };
+const subscribers = new WeakMap<NodeChoices, (listener: () => void) => () => void>();
+const subscriberOf = (nodes: NodeChoices) => {
+  let subscribe = subscribers.get(nodes);
+  if (subscribe === undefined) {
+    subscribe = (listener) => {
+      const subscription = nodes.subscribe(listener);
+      return () => subscription.dispose();
+    };
+    subscribers.set(nodes, subscribe);
+  }
+  return subscribe;
+};
+
 const separator = (path: string) => (path.includes("\\") && !path.includes("/") ? "\\" : "/");
 
 /** The folder whose children complete `path`, and the typed beginning of the child's name. */
@@ -72,6 +101,8 @@ function splitPath(path: string): { dir: string; prefix: string } {
 
 export function AddProjectDialog(props: {
   requests: AddProjectRequests;
+  /** With several, the dialog asks on which node (T3 Code asks for the environment). */
+  nodes?: NodeChoices;
   connections: Connections;
   navigation: Navigation;
   threads: ThreadsCatalog;
@@ -101,6 +132,7 @@ export function AddProjectDialog(props: {
 
 function AddProjectForm(props: {
   requests: AddProjectRequests;
+  nodes?: NodeChoices;
   target: NodeTarget;
   connections: Connections;
   navigation: Navigation;
@@ -114,10 +146,16 @@ function AddProjectForm(props: {
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [highlight, setHighlight] = useState(0);
+  const nodes = props.nodes ?? noNodes;
+  const choices = useSyncExternalStore(subscriberOf(nodes), nodes.snapshot).filter(
+    (node) => node.state === "open",
+  );
+  const chosen = choices.find((node) => targetKey(node.target) === targetKey(target));
   const label =
-    target.remote === undefined
+    chosen?.label ??
+    (target.remote === undefined
       ? (props.connections.get(target.node)?.label ?? target.node)
-      : target.remote;
+      : target.remote);
 
   // The home folder first, then the folder the typed path is in.
   const { dir, prefix } = splitPath(path);
@@ -186,6 +224,27 @@ function AddProjectForm(props: {
       </DialogHeader>
       <DialogPanel>
         <div className="flex flex-col gap-2">
+          {choices.length > 1 ? (
+            <Select
+              onValueChange={(value) => {
+                const next = choices.find((node) => targetKey(node.target) === value);
+                if (next !== undefined && targetKey(next.target) !== targetKey(target))
+                  props.requests.open(next.target);
+              }}
+              value={targetKey(target)}
+            >
+              <SelectTrigger aria-label="Node" className="w-full">
+                <SelectValue>{label}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup>
+                {choices.map((node) => (
+                  <SelectItem key={targetKey(node.target)} value={targetKey(node.target)}>
+                    {node.label}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          ) : null}
           <Input
             aria-label="Project folder"
             autoFocus

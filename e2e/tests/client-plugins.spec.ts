@@ -209,7 +209,7 @@ test("under vp dev, a user plugin loads with the app's shared modules and hot re
   await page.goto(`${await dev.ready()}#token=${node.token}`);
   const actions = page.getByRole("toolbar", { name: "Sidebar actions" });
   await expect(actions.getByRole("button", { name: "Dev v1" })).toBeVisible();
-  await expect(page.getByLabel("Connection open")).toBeVisible();
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
   await page.evaluate(() => Object.assign(window, { untouched: true }));
 
   Fs.writeFileSync(Path.join(root, "label.js"), 'export const label = "Dev v2";\n');
@@ -232,7 +232,7 @@ test("config hides a first-party contribution, live", async ({ page }) => {
   writeConfig(node.home, { "jhin.ui": { hide: { "sidebar.actions": ["jhin.inspector.toggle"] } } });
 
   await expect(inspector).toHaveCount(0);
-  await expect(page.getByLabel("Connection open")).toBeVisible();
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
 });
 
 test("jhin client serves only the web client and connects to a remote node", async ({ page }) => {

@@ -17,7 +17,8 @@ test("connects with the token from the URL, sends a message and streams the repl
 
   // The token never stays in the address bar.
   await expect(page).not.toHaveURL(/token=/);
-  await expect(page.getByLabel("Connection open")).toBeVisible();
+  // The sidebar's actions need an open node.
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
 
   await page.getByRole("button", { name: "Start a thread" }).click();
   const message = page.getByRole("textbox", { name: "Message" });
@@ -130,7 +131,7 @@ test("finds a thread from the command palette", async ({ page }) => {
 
 test("shows the node's live state in the inspector", async ({ page }) => {
   await page.goto(`${node.ui}#token=${node.token}`);
-  await expect(page.getByLabel("Connection open")).toBeVisible();
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
 
   await page.getByRole("button", { name: "Inspector" }).click();
 
@@ -160,8 +161,14 @@ test("ignores malformed saved nodes instead of failing to load", async ({ page }
   );
   await page.goto(`${node.ui}#token=${node.token}`);
 
-  await expect(page.getByLabel("Connection open")).toBeVisible();
-  await expect(page.getByRole("region", { name: /^Node / })).toHaveCount(1);
+  // Settings → Nodes lists the one node, open.
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Nodes", exact: true })
+    .click();
+  await expect(page.getByLabel("Connection open")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /^More actions for / })).toHaveCount(1);
 });
 
 test("serves only browser files of client plugins", async ({ request }) => {

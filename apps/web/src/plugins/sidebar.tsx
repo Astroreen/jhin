@@ -1,12 +1,13 @@
 // The design follows T3 Code's per-project sidebar (MIT, see THIRD_PARTY_NOTICES.md):
-// apps/web/src/components/LegacySidebar.tsx, sidebar/SidebarChrome.tsx and ThreadStatusIndicators.tsx.
+// apps/web/src/components/LegacySidebar.tsx, sidebar/SidebarChrome.tsx and ThreadStatusIndicators.tsx;
+// the node of a row as T3 marks a thread's environment: apps/web/src/components/Sidebar.tsx and
+// EnvironmentMachineIcon.tsx.
 import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   THREADS_CAPABILITY,
-  targetKey,
   type Connections,
   type Keybindings,
   type MeshMembership,
@@ -25,16 +26,16 @@ import {
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
   ContextMenu,
   ContextMenuPopup,
   ContextMenuTrigger,
   Kbd,
-  Menu,
   MenuItem,
-  MenuPopup,
   MenuSeparator,
-  MenuTrigger,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
@@ -63,14 +64,15 @@ import {
   ArchiveIcon,
   ChevronRightIcon,
   CopyIcon,
-  EllipsisIcon,
   FolderPlusIcon,
+  MessageSquareDashedIcon,
   PencilIcon,
   PlusIcon,
   SearchIcon,
   ServerIcon,
   SettingsIcon,
   SquarePenIcon,
+  TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
 import { useRef, useState, type ComponentType, type ReactNode } from "react";
@@ -78,11 +80,17 @@ import { useRef, useState, type ComponentType, type ReactNode } from "react";
 import { AddProjectDialog, createAddProjectRequests } from "../lib/add-project.tsx";
 import { builtin } from "../lib/builtin.ts";
 import { formatRelativeTimeLabel } from "../lib/format.ts";
-import { useCatalog, useExternal, useNow, useShortcutLabels } from "../lib/hooks.ts";
-import { useMeshMembers } from "../lib/mesh.ts";
+import { useExternal, useNow, useShortcutLabels } from "../lib/hooks.ts";
+import { createShownNodes, showsHosts, type NodeWithCatalog } from "../lib/nodes.ts";
 import { ProjectIcon } from "../lib/project-icon.tsx";
 import { CHAT_SECTION, ChatSettings, readSection, useSection } from "../lib/settings.ts";
-import { listedThreads, shownThreads, threadActivityAt } from "../lib/sidebar-order.ts";
+import {
+  projectKey,
+  shownThreads,
+  sidebarProjects,
+  threadActivityAt,
+  type SidebarProject,
+} from "../lib/sidebar-order.ts";
 import { strongestPill, threadStatusPill, type ThreadStatusPill } from "../lib/thread-status.ts";
 
 const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
@@ -90,7 +98,6 @@ const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
 
 const COLLAPSED_STORAGE_KEY = "jhin.sidebar.collapsed";
 
-/** The time a thread last moved: its last turn, then its last change. */
 /** A value of the sidebar that its commands read too (the search). */
 function createValue<T>(initial: T) {
   let value = initial;
@@ -216,14 +223,28 @@ function ThreadStatusLabel({
   );
 }
 
+/**
+ * The node a row lives on, while the sidebar shows several: T3 Code marks a
+ * thread's environment with its machine icon (EnvironmentMachineIcon, the
+ * "server" kind; nodes have no kind to pick yet).
+ */
+function HostIcon({ label, className }: { label: string; className?: string }) {
+  return (
+    <span
+      aria-label={`On ${label}`}
+      className={cn("inline-flex shrink-0 items-center justify-center", className)}
+      data-host-indicator
+      role="img"
+    >
+      <ServerIcon aria-hidden className="size-3" />
+    </span>
+  );
+}
+
 /** A connection's state as a dot (T3 Code's ConnectionStatusDot). */
 function ConnectionDot({ state }: { state: NodeConnection["state"] }) {
   return (
-    <span
-      aria-label={`Connection ${state}`}
-      className="relative flex size-3 shrink-0 items-center justify-center"
-      role="img"
-    >
+    <span aria-hidden className="relative flex size-3 shrink-0 items-center justify-center">
       {state === "connecting" ? (
         <span className="absolute inline-flex size-2 animate-status-ping rounded-full bg-warning/60" />
       ) : null}
@@ -304,6 +325,7 @@ export const sidebarPlugin = builtin(
       const search = createValue("");
       const addProjectRequests = createAddProjectRequests();
       const visitStore = visits ?? NO_VISITS;
+      const nodeView = createShownNodes(connections, mesh, threads);
 
       const targetOf = (route: { node?: string; remote?: string }): NodeTarget | undefined =>
         route.node === undefined
@@ -342,8 +364,10 @@ export const sidebarPlugin = builtin(
         project: ProjectRecord;
         active: boolean;
         now: number;
+        /** The node's name, while the sidebar shows several nodes. */
+        host: string | undefined;
       }) {
-        const { target, thread, active, now } = props;
+        const { target, thread, active, now, host } = props;
         const seen = useExternal(visitStore, visitStore.snapshot);
         const [renaming, setRenaming] = useState<string | undefined>();
         const committed = useRef(false);
@@ -409,17 +433,24 @@ export const sidebarPlugin = builtin(
                     <span
                       className={cn(
                         "pointer-events-none ml-auto flex min-w-12 shrink-0 justify-end max-sm:min-w-20",
+                        host !== undefined && "max-sm:min-w-24",
                         !running &&
                           "transition-opacity duration-150 max-sm:pr-6 group-hover/menu-sub-item:opacity-0 group-focus-within/menu-sub-item:opacity-0",
                       )}
                     >
-                      <span
-                        className={cn(
-                          "text-3xs tabular-nums",
-                          active ? "text-foreground" : "text-secondary-label",
+                      <span className="inline-flex items-center gap-1">
+                        <span
+                          className={cn(
+                            "text-3xs tabular-nums",
+                            active ? "text-foreground" : "text-secondary-label",
+                          )}
+                        >
+                          {formatRelativeTimeLabel(threadActivityAt(thread), now)}
+                        </span>
+                        {/* Last in the row, where T3 ends a row with its environment's icon. */}
+                        {host === undefined ? null : (
+                          <HostIcon className="text-sidebar-muted-foreground/70" label={host} />
                         )}
-                      >
-                        {formatRelativeTimeLabel(threadActivityAt(thread), now)}
                       </span>
                     </span>
                   </div>
@@ -512,22 +543,24 @@ export const sidebarPlugin = builtin(
       }
 
       function ProjectGroup(props: {
-        target: NodeTarget;
-        project: ProjectRecord;
-        threads: readonly ThreadRecord[];
+        entry: SidebarProject<NodeWithCatalog>;
         query: string;
         now: number;
+        /** Whether rows name their node: the sidebar shows several. */
+        hosts: boolean;
       }) {
-        const { target, project, query, now } = props;
+        const { query, now } = props;
+        const { key, project, node } = props.entry;
+        const target = node.target;
+        const host = props.hosts ? node.label : undefined;
         const route = useExternal(navigation, navigation.current);
         const settings = useSection(context, CHAT_SECTION, ChatSettings);
         const seen = useExternal(visitStore, visitStore.snapshot);
-        const key = `${targetKey(target)}|${project.id}`;
         const collapsedNow = useExternal(collapsed, collapsed.snapshot).has(key);
         const showAll = useExternal(showingAll, showingAll.snapshot).has(key);
         const here = sameTarget(targetOf(route), target);
         const drafting = here && route.thread === undefined && route.project === project.id;
-        const { matching, shown } = shownThreads(props.threads, {
+        const { matching, shown } = shownThreads(props.entry.threads, {
           query,
           limit: settings.threadPreviewCount,
           showAll,
@@ -583,9 +616,24 @@ export const sidebarPlugin = builtin(
                     <ProjectIcon project={project} />
                   </span>
                   <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="truncate text-sm font-medium text-sidebar-foreground/90">
+                    <span
+                      className={cn(
+                        "truncate text-sm font-medium text-sidebar-foreground/90",
+                        // The project's name first; the node's name takes what is left.
+                        host !== undefined && "max-w-[calc(100%-2rem)] shrink-0",
+                      )}
+                    >
                       {project.name}
                     </span>
+                    {/* Where T3 says how many projects a row groups: here, whose project it is. */}
+                    {host === undefined ? null : (
+                      <span
+                        aria-hidden
+                        className="min-w-6 max-w-24 truncate text-secondary-label text-3xs"
+                      >
+                        {host}
+                      </span>
+                    )}
                   </span>
                   <span aria-hidden className="w-4 shrink-0 max-sm:w-10" />
                 </ContextMenuTrigger>
@@ -596,6 +644,13 @@ export const sidebarPlugin = builtin(
                   />
                 </ContextMenuPopup>
               </ContextMenu>
+              {/* T3's remote project mark: the node's icon, giving way to the new-thread button. */}
+              {host === undefined ? null : (
+                <HostIcon
+                  className="pointer-events-none absolute top-1/2 right-1.5 size-5 -translate-y-1/2 rounded-md text-icon-muted transition-opacity duration-150 max-sm:right-7 group-hover/project-header:opacity-0 group-focus-within/project-header:opacity-0 max-sm:group-hover/project-header:opacity-100 max-sm:group-focus-within/project-header:opacity-100"
+                  label={host}
+                />
+              )}
               <div className="pointer-events-none absolute top-[calc(50%+1px)] right-0.5 -translate-y-1/2 opacity-0 transition-opacity duration-150 max-sm:pointer-events-auto max-sm:opacity-100 group-hover/project-header:pointer-events-auto group-hover/project-header:opacity-100 group-focus-within/project-header:pointer-events-auto group-focus-within/project-header:opacity-100">
                 <Tooltip>
                   <TooltipTrigger
@@ -616,7 +671,11 @@ export const sidebarPlugin = builtin(
             </div>
             {expanded ? (
               <SidebarMenuSub
-                aria-label={`Threads of ${project.name}`}
+                aria-label={
+                  host === undefined
+                    ? `Threads of ${project.name}`
+                    : `Threads of ${project.name} on ${host}`
+                }
                 className="mx-0.5 my-0 w-full translate-x-0 overflow-hidden empty:hidden sm:mx-1"
               >
                 {drafting ? <DraftRow /> : null}
@@ -630,6 +689,7 @@ export const sidebarPlugin = builtin(
                 {shown.map((thread) => (
                   <ThreadRow
                     active={here && route.thread === thread.id}
+                    host={host}
                     key={thread.id}
                     now={now}
                     project={project}
@@ -659,107 +719,88 @@ export const sidebarPlugin = builtin(
         );
       }
 
-      /** One node's projects and threads: a connected node, or one of its mesh. */
-      function NodeSection(props: {
-        target: NodeTarget;
-        label: string;
-        state: NodeConnection["state"];
-        query: string;
-        connection?: NodeConnection;
-      }) {
-        const { target, label, state, query } = props;
-        const catalog = useCatalog(threads, target)!;
+      /**
+       * Connections that are not open and nodes whose catalog failed, above the
+       * projects: T3 Code's LocalSecondaryStatus (LegacySidebar.tsx) for every node.
+       */
+      function NodeStatus({ nodes }: { nodes: readonly NodeWithCatalog[] }) {
+        const connecting = nodes.filter((node) => node.state === "connecting");
+        const closed = nodes.filter((node) => node.state === "closed");
+        const failed = nodes.filter(
+          (node) => node.state === "open" && node.catalog.status === "error",
+        );
+        if (connecting.length + closed.length + failed.length === 0) return null;
+        const labels = (list: readonly NodeWithCatalog[]) =>
+          list.map((node) => node.label).join(", ");
+        return (
+          <SidebarGroup aria-label="Nodes" className="gap-1.5 py-0" role="group">
+            {connecting.length > 0 ? (
+              <Alert variant="sidebar">
+                <ConnectionDot state="connecting" />
+                <AlertTitle>Connecting {labels(connecting)}</AlertTitle>
+              </Alert>
+            ) : null}
+            {closed.length > 0 ? (
+              <Alert variant="warning">
+                <TriangleAlertIcon />
+                <AlertTitle>Couldn't connect {labels(closed)}</AlertTitle>
+                <AlertDescription>The node didn't answer.</AlertDescription>
+              </Alert>
+            ) : null}
+            {failed.length > 0 ? (
+              <Alert variant="warning">
+                <TriangleAlertIcon />
+                <AlertTitle>Couldn't load {labels(failed)}</AlertTitle>
+                <AlertDescription>
+                  {failed.map((node) => node.catalog.error ?? "Cannot reach this node").join("; ")}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+          </SidebarGroup>
+        );
+      }
+
+      /**
+       * The projects of every shown node in one list, as T3 Code lists them:
+       * no section per node; while several nodes are shown, each row names its node.
+       */
+      function ProjectList({ nodes, query }: { nodes: readonly NodeWithCatalog[]; query: string }) {
         const route = useExternal(navigation, navigation.current);
         const now = useNow();
-        const here = sameTarget(targetOf(route), target);
-        const scratch = catalog.projects.find((project) => project.scratch);
-        const projects = catalog.projects.filter(
-          (project) =>
-            !project.scratch ||
-            listedThreads(catalog.threads, project.id).length > 0 ||
-            (here && route.project === project.id),
+        const routeTarget = targetOf(route);
+        const drafting =
+          routeTarget !== undefined && route.thread === undefined && route.project !== undefined
+            ? projectKey(routeTarget, route.project)
+            : undefined;
+        const projects = sidebarProjects(nodes, drafting);
+        const hosts = showsHosts(nodes);
+        const loading = nodes.some(
+          (node) => node.state === "open" && node.catalog.status === "loading",
         );
-
+        const empty =
+          projects.length === 0 &&
+          query === "" &&
+          !loading &&
+          nodes.some((node) => node.catalog.status === "ready");
         return (
-          <section aria-label={`Node ${label}`} className="flex flex-col">
-            <div className="group/node-header flex h-8 items-center gap-2 pr-1.5 pl-2">
-              {target.remote === undefined ? (
-                <ConnectionDot state={state} />
-              ) : (
-                <ServerIcon aria-hidden className="size-3 shrink-0 text-muted-foreground/60" />
-              )}
-              <span className="min-w-0 flex-1 truncate text-xs font-medium text-sidebar-muted-foreground/80">
-                {label}
-              </span>
-              <div className="flex shrink-0 items-center gap-0.5">
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        aria-label="New thread"
-                        disabled={state !== "open" || scratch === undefined}
-                        onClick={() => scratch !== undefined && newThread(target, scratch.id)}
-                        size="icon-xs"
-                        variant="ghost-muted"
-                      />
-                    }
-                  >
-                    <SquarePenIcon className="size-3.5" />
-                  </TooltipTrigger>
-                  <TooltipPopup side="top">New thread without a project on {label}</TooltipPopup>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        aria-label={`Add project on ${label}`}
-                        disabled={state !== "open"}
-                        onClick={() => addProjectRequests.open(target)}
-                        size="icon-xs"
-                        variant="ghost-muted"
-                      />
-                    }
-                  >
-                    <FolderPlusIcon className="size-3.5" />
-                  </TooltipTrigger>
-                  <TooltipPopup side="top">Add project</TooltipPopup>
-                </Tooltip>
-                {props.connection === undefined ? null : <NodeMenu connection={props.connection} />}
-              </div>
-            </div>
-            {catalog.status === "loading" && state === "open" ? (
-              <div className="flex flex-col gap-1.5 px-2 py-1" aria-hidden>
+          <>
+            {projects.length === 0 && loading ? (
+              <div aria-hidden className="flex flex-col gap-1.5 px-2 py-1">
                 <Skeleton className="h-4 w-3/4" />
                 <Skeleton className="h-4 w-1/2" />
               </div>
             ) : null}
-            {catalog.status === "error" ? (
-              <p className="px-2 py-1 text-2xs text-destructive-foreground" role="alert">
-                {catalog.error ?? "Cannot reach this node"}
-              </p>
-            ) : null}
             <SidebarMenu className="gap-0.5">
-              {projects.map((project) => (
-                <ProjectGroup
-                  key={project.id}
-                  now={now}
-                  project={project}
-                  query={query}
-                  target={target}
-                  threads={listedThreads(catalog.threads, project.id)}
-                />
+              {projects.map((entry) => (
+                <ProjectGroup entry={entry} hosts={hosts} key={entry.key} now={now} query={query} />
               ))}
             </SidebarMenu>
-            {catalog.status === "ready" &&
-            catalog.projects.every((p) => p.scratch) &&
-            query === "" &&
-            !(here && route.project !== undefined) &&
-            listedThreads(catalog.threads, scratch?.id ?? "").length === 0 ? (
+            {empty ? (
               <div className="flex flex-col items-center gap-2 px-2 py-4 text-center text-xs text-muted-foreground/60">
                 <span>No projects yet</span>
                 <button
                   className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                  onClick={() => addProjectRequests.open(target)}
+                  onClick={() => void context.commands.execute("project.add", {})}
                   type="button"
                 >
                   <PlusIcon className="-mx-0.5 size-3" />
@@ -767,33 +808,40 @@ export const sidebarPlugin = builtin(
                 </button>
               </div>
             ) : null}
-          </section>
+          </>
         );
       }
 
-      function NodeMenu({ connection }: { connection: NodeConnection }) {
-        return (
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  aria-label={`More for ${connection.label}`}
-                  size="icon-xs"
-                  variant="ghost-muted"
-                />
-              }
-            >
-              <EllipsisIcon className="size-3.5" />
-            </MenuTrigger>
-            <MenuPopup align="end">
-              <Slot name="node.actions" props={{ connection } satisfies NodeActionProps} />
-            </MenuPopup>
-          </Menu>
-        );
-      }
-
-      // The node menu's own items; they run the connections plugin's `node.*` commands.
+      // The node menu's own items (settings → Nodes renders the menu): what the node's
+      // sidebar section offered, then the connections plugin's `node.*` commands.
       const nodeItems: [string, number, ComponentType<NodeActionProps>][] = [
+        [
+          "new-thread",
+          1,
+          ({ connection }) => (
+            <MenuItem
+              disabled={connection.state !== "open"}
+              onClick={() => run("chat.new-without-project", { node: connection.id })}
+            >
+              <MessageSquareDashedIcon />
+              New thread without a project
+            </MenuItem>
+          ),
+        ],
+        [
+          "add-project",
+          2,
+          ({ connection }) => (
+            <MenuItem
+              disabled={connection.state !== "open"}
+              onClick={() => run("project.add", { node: connection.id })}
+            >
+              <FolderPlusIcon />
+              Add project
+            </MenuItem>
+          ),
+        ],
+        ["separator-new", 5, () => <MenuSeparator />],
         [
           "rename",
           10,
@@ -860,9 +908,14 @@ export const sidebarPlugin = builtin(
                       })
                 ).then((confirmed) => {
                   if (!confirmed) return;
-                  const here = navigation.current().node === connection.id;
+                  const { node, panel, section } = navigation.current();
                   run("node.disconnect", { node: connection.id });
-                  if (here) navigation.navigate({});
+                  // Away from the node's thread; the open panel (settings) stays.
+                  if (node === connection.id)
+                    navigation.navigate({
+                      ...(panel === undefined ? {} : { panel }),
+                      ...(section === undefined ? {} : { section }),
+                    });
                 })
               }
               variant="destructive"
@@ -876,26 +929,6 @@ export const sidebarPlugin = builtin(
       for (const [id, order, component] of nodeItems) {
         context.subscriptions.add(
           slots.contribute("node.actions", { id: `jhin.sidebar.node.${id}`, order, component }),
-        );
-      }
-
-      /** The other nodes of a connected node's mesh, reached through it. */
-      function MeshNodes({ node, query }: { node: NodeConnection; query: string }) {
-        const members = useMeshMembers(mesh, node.id) ?? [];
-        return (
-          <>
-            {members
-              .filter((member) => !member.self && member.reachable)
-              .map((member) => (
-                <NodeSection
-                  key={member.nodeId}
-                  label={member.name}
-                  query={query}
-                  state="open"
-                  target={{ node: node.id, remote: member.nodeId }}
-                />
-              ))}
-          </>
         );
       }
 
@@ -919,7 +952,8 @@ export const sidebarPlugin = builtin(
         threads.catalog(target).projects.find((project) => project.scratch)?.id ?? "scratch";
 
       function SidebarRoot() {
-        const nodes = useExternal(connections, connections.list);
+        const nodes = useExternal(nodeView, nodeView.snapshot);
+        const anyOpen = nodes.some((node) => node.state === "open");
         const query = useExternal(search, search.get);
         const setQuery = search.set;
         const shortcut = useShortcutLabels(keybindings);
@@ -984,18 +1018,15 @@ export const sidebarPlugin = builtin(
                     </div>
                     <div className="flex shrink-0 items-center">
                       <SidebarHeaderIconButton
-                        disabled={nodes.length === 0}
+                        disabled={!anyOpen}
                         label="Add project"
-                        onClick={() => {
-                          const place = currentPlace();
-                          if (place !== undefined) addProjectRequests.open(place.target);
-                        }}
+                        onClick={() => void context.commands.execute("project.add", {})}
                         shortcut={shortcut("project.add")}
                       >
                         <FolderPlusIcon />
                       </SidebarHeaderIconButton>
                       <SidebarHeaderIconButton
-                        disabled={nodes.length === 0}
+                        disabled={!anyOpen}
                         label="New thread"
                         onClick={() => void context.commands.execute("chat.new", {})}
                         shortcut={shortcut("chat.new")}
@@ -1013,23 +1044,33 @@ export const sidebarPlugin = builtin(
                     No node connected.
                   </p>
                 ) : (
-                  nodes.map((node) => (
-                    <div className="flex flex-col gap-2" key={node.id}>
-                      <NodeSection
-                        connection={node}
-                        label={node.label}
-                        query={query}
-                        state={node.state}
-                        target={{ node: node.id }}
-                      />
-                      {node.state === "open" ? <MeshNodes node={node} query={query} /> : null}
-                    </div>
-                  ))
+                  <>
+                    <NodeStatus nodes={nodes} />
+                    <ProjectList nodes={nodes} query={query} />
+                  </>
                 )}
               </SidebarGroup>
             </SidebarContent>
             <SidebarFooter>
               <SidebarMenu className="flex-row items-center">
+                <Slot name="sidebar.footer" />
+                <SidebarMenuItem className="ms-auto shrink-0">
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          aria-label="Command palette"
+                          className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md px-1.5 text-2xs text-sidebar-muted-foreground hover:text-sidebar-foreground"
+                          onClick={() => void context.commands.execute("palette.toggle", {})}
+                          type="button"
+                        />
+                      }
+                    >
+                      <Kbd>{shortcut("palette.toggle") ?? "⌘K"}</Kbd>
+                    </TooltipTrigger>
+                    <TooltipPopup side="top">Command palette</TooltipPopup>
+                  </Tooltip>
+                </SidebarMenuItem>
                 <SidebarMenuItem className="shrink-0">
                   <Tooltip>
                     <TooltipTrigger
@@ -1051,23 +1092,6 @@ export const sidebarPlugin = builtin(
                     </TooltipPopup>
                   </Tooltip>
                 </SidebarMenuItem>
-                <Slot name="sidebar.footer" />
-                <SidebarMenuItem className="ms-auto shrink-0">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <button
-                          className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md px-1.5 text-2xs text-sidebar-muted-foreground hover:text-sidebar-foreground"
-                          onClick={() => void context.commands.execute("palette.toggle", {})}
-                          type="button"
-                        />
-                      }
-                    >
-                      <Kbd>{shortcut("palette.toggle") ?? "⌘K"}</Kbd>
-                    </TooltipTrigger>
-                    <TooltipPopup side="top">Command palette</TooltipPopup>
-                  </Tooltip>
-                </SidebarMenuItem>
               </SidebarMenu>
             </SidebarFooter>
           </>
@@ -1080,6 +1104,7 @@ export const sidebarPlugin = builtin(
           <AddProjectDialog
             connections={connections}
             navigation={navigation}
+            nodes={nodeView}
             requests={addProjectRequests}
             threads={threads}
             toasts={toasts}
@@ -1109,36 +1134,29 @@ export const sidebarPlugin = builtin(
       }
 
       // --- Commands ------------------------------------------------------------
-      /** The threads the sidebar shows, in its order: nodes, projects, then recency. */
+      /** The threads the sidebar shows, in its order: projects (as `sidebarProjects` orders them), then recency. */
       const orderedThreads = (): { target: NodeTarget; thread: ThreadRecord }[] => {
-        const result: { target: NodeTarget; thread: ThreadRecord }[] = [];
         const query = search.get();
         const route = navigation.current();
+        const routeTarget = targetOf(route);
         const limit = readSection(context, CHAT_SECTION, ChatSettings).threadPreviewCount;
-        for (const node of connections.list()) {
-          const targets: NodeTarget[] = [
-            { node: node.id },
-            ...(mesh.members(node.id) ?? [])
-              .filter((member) => !member.self && member.reachable)
-              .map((member) => ({ node: node.id, remote: member.nodeId })),
-          ];
-          for (const target of targets) {
-            const catalog = threads.catalog(target);
-            for (const project of catalog.projects) {
-              const key = `${targetKey(target)}|${project.id}`;
-              // A search shows the matches of collapsed projects too.
-              if (query === "" && collapsed.has(key)) continue;
-              const { shown } = shownThreads(listedThreads(catalog.threads, project.id), {
-                query,
-                limit,
-                showAll: showingAll.has(key),
-                current: sameTarget(targetOf(route), target) ? route.thread : undefined,
-              });
-              for (const thread of shown) result.push({ target, thread });
-            }
-          }
-        }
-        return result;
+        const drafting =
+          routeTarget !== undefined && route.thread === undefined && route.project !== undefined
+            ? projectKey(routeTarget, route.project)
+            : undefined;
+        return sidebarProjects(nodeView.snapshot(), drafting).flatMap(
+          ({ key, node, threads: listed }) => {
+            // A search shows the matches of collapsed projects too.
+            if (query === "" && collapsed.has(key)) return [];
+            const { shown } = shownThreads(listed, {
+              query,
+              limit,
+              showAll: showingAll.has(key),
+              current: sameTarget(routeTarget, node.target) ? route.thread : undefined,
+            });
+            return shown.map((thread) => ({ target: node.target, thread }));
+          },
+        );
       };
       const step = (delta: number) => {
         const list = orderedThreads();
@@ -1222,12 +1240,16 @@ export const sidebarPlugin = builtin(
       context.commands.register({
         name: "chat.new-without-project",
         title: "New thread without a project",
-        description: "Starts a new thread in the node's scratch project",
-        input: z.object({}),
+        description:
+          "Starts a new thread in a node's scratch project: the given node, or the current one",
+        input: z.object({ node: z.string().optional(), remote: z.string().optional() }),
         output: z.object({}),
-        handler: () => {
-          const place = currentPlace();
-          if (place !== undefined) newThread(place.target, scratchOf(place.target));
+        handler: ({ node, remote }) => {
+          const target =
+            node === undefined
+              ? currentPlace()?.target
+              : { node, ...(remote === undefined ? {} : { remote }) };
+          if (target !== undefined) newThread(target, scratchOf(target));
           return {};
         },
       });

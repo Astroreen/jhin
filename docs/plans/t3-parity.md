@@ -127,8 +127,9 @@ contributions. Features of T3 Code that only make sense for its hosted product
 
 ### UI
 
-- **D64. Sidebar:** T3's per-project thread tree, under one section per node
-  (each connection and each reachable mesh member, D47). Rows show status
+- **D64. Sidebar:** T3's per-project thread tree, the projects of every node
+  the client shows (each connection and each reachable mesh member, D47) in
+  one list, without a section per node (D70). Rows show status
   pills (pending approval, awaiting input, working, failed, completed since
   the last visit), relative times, inline rename, archive on hover, a filter
   and "Show more" per project, and context menus (D69). Visits are kept per
@@ -177,10 +178,66 @@ contributions. Features of T3 Code that only make sense for its hosted product
   `node.disconnect` (the connections plugin) and `project.add`. The menus
   that run them are the slots `thread.actions` (props `ThreadActionProps`;
   the sidebar's context menu and the thread title's menu), `project.actions`
-  (`ProjectActionProps`) and `node.actions` (`NodeActionProps`): the sidebar
-  and the header render the slots, so a plugin adds an item, a shortcut or a
-  palette entry the same way the builtins do. Saved connections, drafts and
+  (`ProjectActionProps`) and `node.actions` (`NodeActionProps`; a node's menu
+  in settings → Nodes since D72): the sidebar, the header and settings render
+  the slots, so a plugin adds an item, a shortcut or a palette entry the same
+  way the builtins do. Saved connections, drafts and
   visits follow the other tabs of the same browser.
+
+### Sidebar follow-up
+
+- **D70. No section per node.** The sidebar lists the projects of every node
+  the client shows, connections and the reachable members of their meshes, in
+  one list, as T3 Code lists its projects: ordered as T3 orders them by
+  default (`updated_at`): the latest activity of a project's threads first, a
+  project without threads by when it was created, ties by name and then by
+  node. A scratch project shows only with threads or while a thread is
+  drafted in it. A node's state moves out of the per-node header into alerts
+  above the projects, as T3 reports its local backends: "Connecting …",
+  "Couldn't connect …" for a connection that is closed, "Couldn't load …" for
+  a catalog that failed. One store (`createShownNodes`) follows the
+  connections, each connection's mesh and each shown node's catalog, and the
+  thread shortcuts (`sidebar.thread.*`) count rows in the same order.
+- **D71. A row names its node only while several nodes are shown.** With one
+  node no row says where it lives. With more, a thread row ends with the
+  node's icon after its time, where T3 marks a thread's environment with its
+  machine icon (T3's newer layout ends a two-line row with it; Jhin's rows
+  have one line). A project row shows the node's name after its own and the
+  node's icon at its end, as T3 marks a remote project; the icon gives way to
+  the new-thread button on hover. Projects of the same name on two nodes stay
+  two rows, told apart by that name, and their thread lists are named
+  "Threads of <project> on <node>". The icon is T3's "server" machine kind for
+  every node: nodes have no kind to pick yet (Deferred).
+- **D72. The node's actions move where T3 has them.** The sidebar header's
+  "Add project" (`project.add`) asks on which node when several are shown,
+  as T3 asks for the environment first; "New thread" (`chat.new`) starts one
+  where the user is, and the palette's "New thread in..." lists the projects
+  of every node, scratch projects included. Both header buttons need an open
+  node. Settings → Nodes gives each connection T3's "More actions" menu,
+  which renders the `node.actions` slot (still `NodeActionProps`): "New
+  thread without a project" and "Add project" join rename, copy address and
+  disconnect, under the ids `jhin.sidebar.node.new-thread`,
+  `jhin.sidebar.node.add-project` and `jhin.sidebar.node.separator-new`; the
+  existing ids are kept. `chat.new-without-project` takes an optional node
+  (and remote member), as `project.add` does (additive). Disconnecting from
+  that menu leaves the settings page open.
+- **D73. Settings sits at the right end of the sidebar's footer**, after the
+  palette shortcut: the user's choice over T3's, which puts it first.
+- **D74. A dialog's form keeps the dialog's layout.** `DialogPopup` (from
+  T3's dialog) lays out a form that is its direct child as a flex column, as
+  T3's CustomSnoozeDialog styles its own form. As a block, the form let the
+  panel's full-height scroll area take the form's whole height, so the footer
+  (Cancel / Rename) sat below the popup as a box of its own; every dialog
+  whose content is a form had it (the prompt dialog, "Add project").
+
+The proof: `apps/web/test/sidebar-order.test.ts` (one list across nodes, T3's
+order, same names kept apart, the scratch rule) and `apps/web/test/nodes.test.ts`
+(which nodes are shown, host names only with several, the store following and
+releasing meshes and catalogs); Playwright `e2e/tests/sidebar.spec.ts` (no
+indicator with one node, indicators and distinct "web" projects with two, the
+footer's settings on the right, the node picker, the node menu in settings,
+the rename dialog's footer inside its panel) and the mesh specs, which reach
+remote nodes through the palette now.
 
 ## Not ported (out of scope)
 
@@ -206,6 +263,8 @@ contributions. Features of T3 Code that only make sense for its hosted product
 - Searching thread contents (the palette searches titles).
 - Sidebar: drag-and-drop ordering, pinning, snoozing, sort options, T3's
   newer sidebar layout.
+- A machine kind per node (T3's environment icon picker), so the node icons
+  of D71 differ by machine; every node shows the "server" icon today.
 - Visits and drafts are per device; syncing them, and device settings, across
   devices.
 - Warnings for conflicting keybindings in the settings page.

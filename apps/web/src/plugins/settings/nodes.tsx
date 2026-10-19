@@ -1,8 +1,8 @@
 // Rows follow T3 Code's connections settings (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/settings/EnvironmentRow.tsx and ConnectionsSettings.tsx.
-import type { AgentInfo, NodeConnection, NodeTarget } from "@jhin/client-api";
-import { Badge, Button, Spinner, cn } from "@jhin/ui";
-import { BotIcon, PencilIcon, PlusIcon, RefreshCwIcon, ServerIcon, XIcon } from "lucide-react";
+import type { AgentInfo, NodeActionProps, NodeConnection, NodeTarget } from "@jhin/client-api";
+import { Badge, Button, Menu, MenuPopup, MenuTrigger, Slot, Spinner, cn } from "@jhin/ui";
+import { BotIcon, EllipsisIcon, PlusIcon, RefreshCwIcon, ServerIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useExternal } from "../../lib/hooks.ts";
@@ -12,7 +12,11 @@ import { useSettingsServices } from "./index.tsx";
 
 function StateDot({ state }: { state: NodeConnection["state"] }) {
   return (
-    <span className="relative flex size-3 shrink-0 items-center justify-center">
+    <span
+      aria-label={`Connection ${state}`}
+      className="relative flex size-3 shrink-0 items-center justify-center"
+      role="img"
+    >
       <span
         className={cn(
           "relative inline-flex size-2 rounded-full",
@@ -103,7 +107,7 @@ function MeshMembers({ connection }: { connection: NodeConnection }) {
 }
 
 export function NodesSection() {
-  const { connections, navigation, dialogs } = useSettingsServices();
+  const { connections, navigation } = useSettingsServices();
   const nodes = useExternal(connections, connections.list);
   return (
     <SettingsSection
@@ -141,43 +145,23 @@ export function NodesSection() {
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              aria-label={`Rename ${node.label}`}
-              onClick={() =>
-                void dialogs
-                  ?.prompt({
-                    title: "Rename node",
-                    label: "Node name",
-                    value: node.label,
-                    confirmLabel: "Rename",
-                  })
-                  .then((label) => label !== undefined && connections.rename?.(node.id, label))
-              }
-              size="icon-xs"
-              variant="ghost-muted"
-            >
-              <PencilIcon />
-            </Button>
-            <Button
-              aria-label={`Disconnect ${node.label}`}
-              onClick={() =>
-                void (
-                  dialogs?.confirm({
-                    title: `Disconnect ${node.label}?`,
-                    description:
-                      "This device forgets the node and its token. The node keeps running.",
-                    confirmLabel: "Disconnect",
-                    variant: "destructive",
-                  }) ?? Promise.resolve(true)
-                ).then((confirmed) => {
-                  if (confirmed) connections.remove(node.id);
-                })
-              }
-              size="icon-xs"
-              variant="ghost-muted"
-            >
-              <XIcon />
-            </Button>
+            {/* T3's "More actions" menu of an environment: here the `node.actions` slot. */}
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    aria-label={`More actions for ${node.label}`}
+                    size="icon-xs"
+                    variant="ghost-muted"
+                  />
+                }
+              >
+                <EllipsisIcon className="size-3.5" />
+              </MenuTrigger>
+              <MenuPopup align="end">
+                <Slot name="node.actions" props={{ connection: node } satisfies NodeActionProps} />
+              </MenuPopup>
+            </Menu>
           </div>
         </div>
       ))}
