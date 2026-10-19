@@ -2,72 +2,11 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import type { RpcClient } from "@jhin/rpc";
-import type { StoredEvent } from "@jhin/storage-api";
-import {
-  connectInMemory,
-  createTestKernel,
-  memoryStoragePlugin,
-  mockCapability,
-  type TestPlugin,
-} from "@jhin/testing";
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { createTestKernel, memoryStoragePlugin, mockCapability } from "@jhin/testing";
+import { describe, expect, it } from "vite-plus/test";
 
-import agent from "../../agent-fake/src/index.ts";
 import threads from "../src/index.ts";
-
-const manifest = (dir: string) =>
-  JSON.parse(Fs.readFileSync(new URL(`../../${dir}/package.json`, import.meta.url), "utf8")).jhin;
-
-const stops: (() => Promise<void>)[] = [];
-afterEach(async () => {
-  for (const stop of stops.splice(0)) await stop();
-});
-
-async function node(options: { agent?: boolean; runtime?: unknown } = {}) {
-  const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-threads-"));
-  const storage = memoryStoragePlugin();
-  const plugins: TestPlugin[] = [
-    mockCapability("host.paths", {
-      home: data,
-      dataDir: (id: string) => {
-        Fs.mkdirSync(Path.join(data, id), { recursive: true });
-        return Path.join(data, id);
-      },
-    }),
-    storage,
-    { manifest: manifest("threads"), definition: threads },
-  ];
-  if (options.runtime !== undefined) plugins.push(mockCapability("agent.runtime", options.runtime));
-  else if (options.agent !== false)
-    plugins.push({ manifest: manifest("agent-fake"), definition: agent });
-  const kernel = await createTestKernel({ plugins });
-  const { client } = connectInMemory(kernel, { log: storage.storage.log });
-  stops.push(async () => {
-    client.close();
-    await kernel.stop();
-  });
-  return { kernel, client, data };
-}
-
-/** Subscribes to a thread; `until(type)` resolves with the first event of that type (seen or future). */
-function watch(client: RpcClient, threadId: string) {
-  const events: StoredEvent[] = [];
-  const waiters: { type: string; resolve: (event: StoredEvent) => void }[] = [];
-  client.subscribe(`thread/${threadId}`, {}, (event) => {
-    events.push(event);
-    for (const waiter of waiters.filter((item) => item.type === event.type)) {
-      waiters.splice(waiters.indexOf(waiter), 1);
-      waiter.resolve(event);
-    }
-  });
-  const until = (type: string, skip = 0) => {
-    const seen = events.filter((event) => event.type === type)[skip];
-    if (seen !== undefined) return Promise.resolve(seen);
-    return new Promise<StoredEvent>((resolve) => waiters.push({ type, resolve }));
-  };
-  return { events, until };
-}
+import { manifest, node, stops, watch } from "./support.ts";
 
 describe("jhin.threads", () => {
   it("has a scratch project and validates new project paths", async () => {

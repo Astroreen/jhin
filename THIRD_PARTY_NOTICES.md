@@ -8,8 +8,10 @@ require.
 
 Source: https://github.com/pingdotgg/t3code
 
-Used for: parts of the web client visual layer (components, layout, styles).
-Files derived from T3 Code say so in a header comment.
+Used for: the web client's visual layer (components, layout, styles) and
+parts of its logic (keybindings, command palette search, work-log summaries,
+prompt history, timestamps, thread status). Files derived from T3 Code say so
+in a header comment.
 
 ```
 MIT License

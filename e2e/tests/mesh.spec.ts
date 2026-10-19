@@ -126,7 +126,7 @@ test("D47: a client connected to a creates a thread on c, two hops away, and get
   await page.getByRole("button", { name: "Connect" }).click();
   await expect(page.getByLabel("Connection open")).toHaveCount(2);
   const nodeC = page.getByRole("region", { name: "Node c" });
-  await nodeC.getByRole("button", { name: "New thread" }).click();
+  await nodeC.getByRole("button", { name: "New thread", exact: true }).click();
   const message = page.getByRole("textbox", { name: "Message" });
   await message.fill("across the mesh");
   await message.press("Enter");
@@ -134,10 +134,14 @@ test("D47: a client connected to a creates a thread on c, two hops away, and get
   const agent = page.getByRole("log", { name: "Messages" }).getByRole("article", { name: "Agent" });
   await expect(agent).toHaveText("Echo: across the mesh");
   await expect(agent).toHaveAttribute("aria-busy", "false");
-  // The thread lives on c: it is listed (and selected) under c, and c's own node has it.
-  await expect(nodeC.locator("[aria-current=page]")).toHaveText("New thread");
+  // The thread lives on c: it is listed (and selected) under c, titled after its first
+  // message, and c's own node has it.
+  await expect(nodeC.getByRole("button", { name: "across the mesh", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   const onC = await c.client().call<{ title: string }[]>("threads.list");
-  expect(onC.map((thread) => thread.title)).toEqual(["New thread"]);
+  expect(onC.map((thread) => thread.title)).toEqual(["across the mesh"]);
 
   const shot = info.outputPath("mesh-chat.png");
   await page.screenshot({ path: shot });
@@ -164,7 +168,7 @@ test("D47: a link to a node the mesh does not know says so", async ({ page }) =>
   await page
     .getByRole("region", { name: /^Node / })
     .first()
-    .getByRole("button", { name: "New thread" })
+    .getByRole("button", { name: "New thread", exact: true })
     .click();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
   // The same thread id, but behind a remote node nobody has heard of.
@@ -193,7 +197,7 @@ test("D47: one client shows two independent nodes at once", async ({ page }, inf
 
   await expect(page.getByLabel("Connection open")).toHaveCount(2);
   const nodeY = page.getByRole("region", { name: `Node ${new URL(y.rpc).host}` });
-  await nodeY.getByRole("button", { name: "New thread" }).click();
+  await nodeY.getByRole("button", { name: "New thread", exact: true }).click();
   await page.getByRole("textbox", { name: "Message" }).fill("hello y");
   await page.getByRole("textbox", { name: "Message" }).press("Enter");
 
@@ -204,6 +208,42 @@ test("D47: one client shows two independent nodes at once", async ({ page }, inf
   const shot = info.outputPath("two-nodes.png");
   await page.screenshot({ path: shot });
   await info.attach("two-nodes", { path: shot, contentType: "image/png" });
+});
+
+test("the node config editor asks before another node's config replaces unsaved edits", async ({
+  page,
+}) => {
+  const x = await start({ mode: "ui" });
+  const y = await start({ mode: "serve" });
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await page.getByRole("button", { name: "Add node" }).click();
+  await page.getByRole("textbox", { name: "Node URL" }).fill(y.rpc);
+  await page.getByRole("textbox", { name: "Token" }).fill(y.token);
+  await page.getByRole("button", { name: "Connect" }).click();
+  await expect(page.getByLabel("Connection open")).toHaveCount(2);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Node config" })
+    .click();
+  const nodeSelect = page.getByRole("combobox", { name: "Node", exact: true });
+  await expect(nodeSelect).toHaveText(new URL(x.ui).host);
+  const file = page.getByRole("textbox", { name: /in the node file$/ });
+  await file.fill('{ "edited": true }');
+
+  const chooseY = async () => {
+    await nodeSelect.click();
+    await page.getByRole("option", { name: new URL(y.rpc).host }).click();
+    return page.getByRole("alertdialog", { name: /^Discard the changes to/ });
+  };
+  // Kept on purpose: still x, with the edit.
+  await (await chooseY()).getByRole("button", { name: "Cancel" }).click();
+  await expect(nodeSelect).toHaveText(new URL(x.ui).host);
+  await expect(file).toHaveValue('{ "edited": true }');
+  // Given up on purpose: y's config shows.
+  await (await chooseY()).getByRole("button", { name: "Discard" }).click();
+  await expect(nodeSelect).toHaveText(new URL(y.rpc).host);
 });
 
 test("D47: a thread a reachable remote cannot share says why and leaves the remote listed", async ({
@@ -217,8 +257,11 @@ test("D47: a thread a reachable remote cannot share says why and leaves the remo
 
   await page.goto(`${a.ui}#token=${a.token}`);
   const nodeB = page.getByRole("region", { name: "Node b" });
-  await nodeB.getByRole("button", { name: "New thread" }).click();
-  await expect(nodeB.locator("[aria-current=page]")).toHaveText("New thread");
+  await nodeB.getByRole("button", { name: "New thread", exact: true }).click();
+  // The new thread's draft is the current item of b's list.
+  await expect(
+    nodeB.getByRole("list", { name: "Threads of No project" }).getByRole("listitem"),
+  ).toHaveAttribute("aria-current", "page");
   // The same reachable remote, but a thread `mesh.open` refuses to copy.
   await page.evaluate(() => {
     const params = new URLSearchParams(location.hash.slice(1));
@@ -246,7 +289,7 @@ test("D47: remote routes on a node without the mesh plugin read as unreachable",
   // Only the connection itself is listed: no mesh, so no other nodes.
   const nodes = page.getByRole("region", { name: /^Node / });
   await expect(nodes).toHaveCount(1);
-  await nodes.getByRole("button", { name: "New thread" }).click();
+  await nodes.getByRole("button", { name: "New thread", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
 
   await page.evaluate(() => {

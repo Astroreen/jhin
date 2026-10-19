@@ -1,5 +1,6 @@
 import {
   DisposableStore,
+  toDisposable,
   PluginManifest,
   type CommandInfo,
   type Disposable,
@@ -205,7 +206,7 @@ export function createKernel(options: KernelOptions): Kernel {
     const pluginLog = log.child({ plugin: id });
     // Registrations go through `own`, so a context retained after deactivation
     // (a late callback, a timer) cannot register anything that would outlive it.
-    const own = <T extends Disposable>(register: () => T): T => {
+    const own = (register: () => Disposable): Disposable => {
       if (store.isDisposed) {
         throw new KernelError(
           "KERNEL_STATE",
@@ -213,7 +214,14 @@ export function createKernel(options: KernelOptions): Kernel {
           { plugin: id },
         );
       }
-      return store.add(register());
+      const registration = register();
+      // Disposed before the plugin (a component that unmounts, a listener no
+      // longer needed), it also leaves the plugin's store instead of piling up.
+      const tracked = toDisposable(() => {
+        store.delete(tracked);
+        registration.dispose();
+      });
+      return store.add(tracked);
     };
     const declared = (capability: string) =>
       capability in manifest.requires ||

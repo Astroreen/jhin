@@ -45,6 +45,7 @@ export function createMcpServer(
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: (await source.list()).map((command) => ({
       name: toolName(command.name),
+      ...(command.title === undefined ? {} : { title: command.title }),
       description: command.description,
       inputSchema: toolInput(command.inputSchema).schema,
     })),

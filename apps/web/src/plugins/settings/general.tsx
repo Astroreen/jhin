@@ -1,0 +1,238 @@
+// Rows follow T3 Code's general and appearance settings (MIT, see THIRD_PARTY_NOTICES.md):
+// apps/web/src/components/settings/SettingsPanels.tsx and ThemeSettings.tsx.
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue, Switch, cn } from "@jhin/ui";
+import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
+
+import { useConfig } from "../../lib/hooks.ts";
+import {
+  APPEARANCE_SECTION,
+  CHAT_SECTION,
+  ChatSettings,
+  useSection,
+  type Appearance,
+} from "../../lib/settings.ts";
+import { SettingResetButton, SettingsRow, SettingsSection } from "../../lib/settings-layout.tsx";
+import { useSettingsServices } from "./index.tsx";
+
+function Choice<T extends string>(props: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string }[];
+  onChange(value: T): void;
+}) {
+  return (
+    <Select onValueChange={(value) => props.onChange(value as T)} value={props.value}>
+      <SelectTrigger aria-label={props.label} className="w-full sm:w-44" size="sm">
+        <SelectValue>
+          {props.options.find((option) => option.value === props.value)?.label}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectPopup>
+        {props.options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  );
+}
+
+export function GeneralSection() {
+  const { context, settings } = useSettingsServices();
+  const chat = useSection(context, CHAT_SECTION, ChatSettings);
+  const defaults = ChatSettings.parse({});
+  const set = (values: Partial<ChatSettings>) => settings.patch(CHAT_SECTION, values);
+  const reset = <K extends keyof ChatSettings>(key: K, label: string) =>
+    chat[key] === defaults[key] ? null : (
+      <SettingResetButton
+        label={label}
+        onClick={() => settings.patch(CHAT_SECTION, { [key]: undefined })}
+      />
+    );
+  return (
+    <>
+      <SettingsSection title="Behavior">
+        <SettingsRow
+          control={
+            <Choice
+              label="Time format"
+              onChange={(timestampFormat) => set({ timestampFormat })}
+              options={[
+                { value: "locale", label: "System default" },
+                { value: "12-hour", label: "12-hour" },
+                { value: "24-hour", label: "24-hour" },
+              ]}
+              value={chat.timestampFormat}
+            />
+          }
+          description="How message times show in threads."
+          resetAction={reset("timestampFormat", "time format")}
+          title="Time format"
+        />
+        <SettingsRow
+          control={
+            <Choice
+              label="Send shortcut"
+              onChange={(sendShortcut) => set({ sendShortcut })}
+              options={[
+                { value: "enter", label: "Enter" },
+                { value: "mod-enter", label: "⌘/Ctrl + Enter" },
+              ]}
+              value={chat.sendShortcut}
+            />
+          }
+          description="Which key sends a message; the other inserts a new line with Shift."
+          resetAction={reset("sendShortcut", "send shortcut")}
+          title="Send shortcut"
+        />
+        <SettingsRow
+          control={
+            <Choice
+              label="Threads per project"
+              onChange={(value) => set({ threadPreviewCount: Number(value) })}
+              options={[3, 6, 10, 15].map((count) => ({
+                value: String(count),
+                label: String(count),
+              }))}
+              value={String(chat.threadPreviewCount)}
+            />
+          }
+          description="Threads the sidebar lists per project before “Show more”."
+          resetAction={reset("threadPreviewCount", "threads per project")}
+          title="Threads per project"
+        />
+      </SettingsSection>
+      <SettingsSection title="Confirmations">
+        <SettingsRow
+          control={
+            <Switch
+              aria-label="Confirm archiving"
+              checked={chat.confirmArchive}
+              onCheckedChange={(confirmArchive) => set({ confirmArchive })}
+            />
+          }
+          description="Ask before a thread is archived."
+          title="Archive"
+        />
+        <SettingsRow
+          control={
+            <Switch
+              aria-label="Confirm deleting"
+              checked={chat.confirmDelete}
+              onCheckedChange={(confirmDelete) => set({ confirmDelete })}
+            />
+          }
+          description="Ask before a thread is deleted or a project removed."
+          title="Delete"
+        />
+      </SettingsSection>
+    </>
+  );
+}
+
+const MODES = [
+  { value: "system", label: "System", icon: MonitorIcon },
+  { value: "light", label: "Light", icon: SunIcon },
+  { value: "dark", label: "Dark", icon: MoonIcon },
+] as const;
+
+function ModePreview({ mode }: { mode: "system" | "light" | "dark" }) {
+  const pane = (dark: boolean) => (
+    <div className={cn("flex h-full flex-1 gap-1 p-1.5", dark ? "bg-neutral-900" : "bg-zinc-50")}>
+      <div className={cn("w-1/4 rounded-sm", dark ? "bg-neutral-800" : "bg-zinc-200")} />
+      <div className="flex flex-1 flex-col justify-end gap-1">
+        <div
+          className={cn("ms-auto h-2 w-1/2 rounded-sm", dark ? "bg-neutral-700" : "bg-zinc-200")}
+        />
+        <div className={cn("h-2 w-3/4 rounded-sm", dark ? "bg-neutral-800" : "bg-zinc-100")} />
+        <div
+          className={cn(
+            "h-4 rounded-md border",
+            dark ? "border-neutral-700 bg-neutral-800" : "border-zinc-200 bg-white",
+          )}
+        />
+      </div>
+    </div>
+  );
+  return (
+    <div className="flex h-24 overflow-hidden rounded-lg border border-border/70">
+      {mode === "dark" ? (
+        pane(true)
+      ) : mode === "light" ? (
+        pane(false)
+      ) : (
+        <>
+          {pane(false)}
+          {pane(true)}
+        </>
+      )}
+    </div>
+  );
+}
+
+export function AppearanceSection() {
+  const { context, settings } = useSettingsServices();
+  const appearance = useConfig<Appearance>(context, APPEARANCE_SECTION);
+  return (
+    <>
+      <SettingsSection title="Colors">
+        <div className="px-3 py-3 sm:px-4">
+          <div aria-label="Appearance mode" className="grid w-full grid-cols-3 gap-3" role="group">
+            {MODES.map((option) => {
+              const active = appearance.mode === option.value;
+              const Icon = option.icon;
+              return (
+                <button
+                  aria-pressed={active}
+                  className={cn(
+                    "flex cursor-pointer flex-col items-stretch gap-1.5 rounded-xl border p-2 outline-none transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+                    active
+                      ? "border-transparent bg-accent/30"
+                      : "border-border/70 bg-card/60 hover:bg-accent/10",
+                  )}
+                  key={option.value}
+                  onClick={() => settings.patch(APPEARANCE_SECTION, { mode: option.value })}
+                  style={active ? { boxShadow: "inset 0 0 0 1px var(--ring)" } : undefined}
+                  type="button"
+                >
+                  <ModePreview mode={option.value} />
+                  <span className="flex items-center justify-center gap-1.5 text-xs font-medium">
+                    <Icon className="size-3.5" />
+                    {option.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </SettingsSection>
+      <SettingsSection title="Interface">
+        <SettingsRow
+          control={
+            <Choice
+              label="Chat width"
+              onChange={(chatWidth) => settings.patch(APPEARANCE_SECTION, { chatWidth })}
+              options={[
+                { value: "comfortable", label: "Comfortable" },
+                { value: "wide", label: "Wide" },
+                { value: "full", label: "Full width" },
+              ]}
+              value={appearance.chatWidth}
+            />
+          }
+          description="How wide messages and the composer are."
+          resetAction={
+            appearance.chatWidth === "comfortable" ? null : (
+              <SettingResetButton
+                label="chat width"
+                onClick={() => settings.patch(APPEARANCE_SECTION, { chatWidth: undefined })}
+              />
+            )
+          }
+          title="Chat width"
+        />
+      </SettingsSection>
+    </>
+  );
+}

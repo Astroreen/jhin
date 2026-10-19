@@ -15,12 +15,13 @@ export function toDisposable(dispose: () => void): Disposable {
 }
 
 /**
- * Collects disposables and disposes them in reverse order of addition.
- * Errors from one disposable do not prevent the others from running; they are
- * rethrown together once every disposable ran.
+ * Collects disposables and disposes them in reverse order of addition; an item
+ * added twice is disposed once. Errors from one disposable do not prevent the
+ * others from running; they are rethrown together once every disposable ran.
  */
 export class DisposableStore implements Disposable {
-  #items: Disposable[] = [];
+  // A set: forgetting one of many items costs the same as forgetting one of few.
+  #items = new Set<Disposable>();
   #disposed = false;
 
   get isDisposed(): boolean {
@@ -32,15 +33,20 @@ export class DisposableStore implements Disposable {
       item.dispose();
       return item;
     }
-    this.#items.push(item);
+    this.#items.add(item);
     return item;
+  }
+
+  /** Forgets an item without disposing it, e.g. one that was disposed on its own. */
+  delete(item: Disposable): void {
+    this.#items.delete(item);
   }
 
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
-    const items = this.#items.toReversed();
-    this.#items = [];
+    const items = [...this.#items].toReversed();
+    this.#items.clear();
     const errors: unknown[] = [];
     for (const item of items) {
       try {

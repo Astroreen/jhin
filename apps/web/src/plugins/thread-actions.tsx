@@ -1,0 +1,423 @@
+// The actions and their wording follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
+// apps/web/src/hooks/useThreadActionMenu.ts and apps/web/src/components/Sidebar.tsx.
+import {
+  MESH_CAPABILITY,
+  NAVIGATION_CAPABILITY,
+  THREADS_CAPABILITY,
+  VISITS_CAPABILITY,
+  type MeshMembership,
+  type Navigation,
+  type NodeTarget,
+  type ProjectActionProps,
+  type ThreadActionProps,
+  type ThreadsCatalog,
+  type ThreadVisits,
+} from "@jhin/client-api";
+import { definePlugin, z } from "@jhin/sdk";
+import {
+  MenuItem,
+  MenuSeparator,
+  UI_DIALOGS_CAPABILITY,
+  UI_SLOTS_CAPABILITY,
+  UI_TOASTS_CAPABILITY,
+  type Dialogs,
+  type SlotRegistry,
+  type Toasts,
+} from "@jhin/ui";
+import {
+  ArchiveIcon,
+  CopyIcon,
+  HashIcon,
+  LinkIcon,
+  MailOpenIcon,
+  PencilIcon,
+  SquarePenIcon,
+  Trash2Icon,
+  type LucideIcon,
+} from "lucide-react";
+import type { ComponentType } from "react";
+
+import { builtin } from "../lib/builtin.ts";
+import { threadActions } from "../lib/thread-actions.ts";
+
+const At = { node: z.string(), remote: z.string().optional() };
+const ThreadRef = z.object({ ...At, threadId: z.string() });
+const ProjectRef = z.object({ ...At, projectId: z.string() });
+
+const targetOf = (input: { node: string; remote?: string | undefined }): NodeTarget => ({
+  node: input.node,
+  ...(input.remote === undefined ? {} : { remote: input.remote }),
+});
+
+/** One item of an actions menu. */
+function ActionItem(props: {
+  icon: LucideIcon;
+  label: string;
+  onClick(): void;
+  destructive?: boolean;
+  disabled?: boolean;
+}) {
+  const Icon = props.icon;
+  return (
+    <MenuItem
+      disabled={props.disabled === true}
+      onClick={props.onClick}
+      {...(props.destructive === true ? { variant: "destructive" as const } : {})}
+    >
+      <Icon />
+      {props.label}
+    </MenuItem>
+  );
+}
+
+/**
+ * What can be done to a thread or a project, as commands (so shortcuts, the
+ * palette and other plugins reach them too), and the items of the
+ * `thread.actions` and `project.actions` menus that run them. The sidebar and
+ * the thread view only show those menus; plugins add their own items.
+ */
+export const threadActionsPlugin = builtin(
+  "jhin.thread-actions",
+  {
+    requires: {
+      [UI_SLOTS_CAPABILITY]: "^1",
+      [THREADS_CAPABILITY]: "^1",
+      [NAVIGATION_CAPABILITY]: "^1",
+      [MESH_CAPABILITY]: "^1",
+    },
+    optional: {
+      [UI_TOASTS_CAPABILITY]: "^1",
+      [UI_DIALOGS_CAPABILITY]: "^1",
+      [VISITS_CAPABILITY]: "^1",
+    },
+  },
+  definePlugin({
+    activate(context) {
+      const slots = context.services.get<SlotRegistry>(UI_SLOTS_CAPABILITY);
+      const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
+      const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
+      const mesh = context.services.get<MeshMembership>(MESH_CAPABILITY);
+      const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
+      const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
+      const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
+      const actions = threadActions({
+        context,
+        threads,
+        navigation,
+        mesh,
+        toasts,
+        dialogs,
+        visits,
+      });
+
+      const threadOf = (input: z.infer<typeof ThreadRef>) => {
+        const target = targetOf(input);
+        const thread = threads.catalog(target).threads.find((item) => item.id === input.threadId);
+        if (thread === undefined) {
+          throw Object.assign(new Error(`No thread ${input.threadId} on this node`), {
+            code: "THREAD_NOT_FOUND",
+          });
+        }
+        return { target, thread };
+      };
+      const projectOf = (input: z.infer<typeof ProjectRef>) => {
+        const target = targetOf(input);
+        const catalog = threads.catalog(target);
+        const project = catalog.projects.find((item) => item.id === input.projectId);
+        if (project === undefined) {
+          throw Object.assign(new Error(`No project ${input.projectId} on this node`), {
+            code: "PROJECT_NOT_FOUND",
+          });
+        }
+        return { target, project, catalog };
+      };
+
+      const register = <I extends z.ZodType>(
+        name: string,
+        title: string,
+        description: string,
+        input: I,
+        run: (input: z.output<I>) => unknown,
+      ) =>
+        context.commands.register({
+          name,
+          title,
+          description,
+          input,
+          output: z.object({}),
+          handler: async (value) => {
+            await run(value);
+            return {};
+          },
+        });
+
+      register(
+        "thread.rename",
+        "Rename thread",
+        "Gives a thread another title",
+        ThreadRef.extend({ title: z.string() }),
+        async (input) => {
+          const { target, thread } = threadOf(input);
+          await actions.rename(target, thread, input.title);
+        },
+      );
+      register(
+        "thread.mark-unread",
+        "Mark thread unread",
+        "Shows the thread's latest turn as new again",
+        ThreadRef,
+        (input) => {
+          const { target, thread } = threadOf(input);
+          actions.markUnread(target, thread);
+        },
+      );
+      register("thread.copy-id", "Copy thread ID", "Copies a thread's id", ThreadRef, (input) =>
+        actions.copyId(threadOf(input).thread),
+      );
+      register(
+        "thread.copy-address",
+        "Copy thread address",
+        "Copies a thread's jhin:// address, which any node of the mesh resolves",
+        ThreadRef,
+        (input) => {
+          const { target, thread } = threadOf(input);
+          actions.copyAddress(target, thread);
+        },
+      );
+      register(
+        "thread.archive",
+        "Archive thread",
+        "Hides a thread from the sidebar until it is unarchived",
+        ThreadRef,
+        (input) => {
+          const { target, thread } = threadOf(input);
+          return actions.archive(target, thread);
+        },
+      );
+      register(
+        "thread.unarchive",
+        "Unarchive thread",
+        "Brings an archived thread back",
+        ThreadRef,
+        (input) => {
+          const { target, thread } = threadOf(input);
+          return actions.unarchive(target, thread);
+        },
+      );
+      register(
+        "thread.delete",
+        "Delete thread",
+        "Deletes a thread for good, after asking",
+        ThreadRef,
+        (input) => {
+          const { target, thread } = threadOf(input);
+          return actions.remove(target, thread);
+        },
+      );
+      register(
+        "project.new-thread",
+        "New thread in project",
+        "Opens a new thread in a project",
+        ProjectRef,
+        (input) => {
+          const { target, project } = projectOf(input);
+          navigation.navigate({ ...target, project: project.id });
+        },
+      );
+      register(
+        "project.rename",
+        "Rename project",
+        "Gives a project another name, after asking for it",
+        ProjectRef,
+        (input) => {
+          const { target, project } = projectOf(input);
+          return actions.renameProject(target, project);
+        },
+      );
+      register(
+        "project.copy-path",
+        "Copy project path",
+        "Copies a project's folder on its node",
+        ProjectRef,
+        (input) => actions.copyPath(projectOf(input).project),
+      );
+      register(
+        "project.remove",
+        "Remove project",
+        "Removes a project and deletes its threads, after asking; its folder stays",
+        ProjectRef,
+        (input) => {
+          const { target, project, catalog } = projectOf(input);
+          const count = catalog.threads.filter((thread) => thread.projectId === project.id).length;
+          return actions.removeProject(target, project, count);
+        },
+      );
+
+      /** Runs a command for a menu item; what fails shows as a toast. */
+      const run = (name: string, input: unknown) =>
+        void context.commands.execute(name, input).catch((error: unknown) =>
+          toasts?.show({
+            type: "error",
+            title: "Could not do that",
+            description: (error as Error).message,
+          }),
+        );
+      const threadRef = (target: NodeTarget, threadId: string) => ({ ...target, threadId });
+      const projectRef = (target: NodeTarget, projectId: string) => ({ ...target, projectId });
+
+      const threadItems: [string, number, ComponentType<ThreadActionProps>][] = [
+        [
+          "new-in-project",
+          0,
+          ({ target, project }) =>
+            project === undefined ? null : (
+              <ActionItem
+                icon={SquarePenIcon}
+                label={`New thread in ${project.name}`}
+                onClick={() => run("project.new-thread", projectRef(target, project.id))}
+              />
+            ),
+        ],
+        [
+          "rename",
+          10,
+          ({ rename }) =>
+            rename === undefined ? null : (
+              <ActionItem icon={PencilIcon} label="Rename thread" onClick={rename} />
+            ),
+        ],
+        [
+          "mark-unread",
+          20,
+          ({ target, thread }) => (
+            <ActionItem
+              icon={MailOpenIcon}
+              label="Mark unread"
+              onClick={() => run("thread.mark-unread", threadRef(target, thread.id))}
+            />
+          ),
+        ],
+        [
+          "copy-id",
+          30,
+          ({ target, thread }) => (
+            <ActionItem
+              icon={HashIcon}
+              label="Copy thread ID"
+              onClick={() => run("thread.copy-id", threadRef(target, thread.id))}
+            />
+          ),
+        ],
+        [
+          "copy-address",
+          40,
+          ({ target, thread }) => (
+            <ActionItem
+              icon={LinkIcon}
+              label="Copy thread address"
+              onClick={() => run("thread.copy-address", threadRef(target, thread.id))}
+            />
+          ),
+        ],
+        ["separator", 50, () => <MenuSeparator />],
+        [
+          "archive",
+          60,
+          ({ target, thread }) => (
+            <ActionItem
+              // A running turn is stopped by archiving: not from a menu item in passing.
+              disabled={
+                thread.lastTurn?.status === "running" || thread.lastTurn?.status === "waiting"
+              }
+              icon={ArchiveIcon}
+              label="Archive thread"
+              onClick={() => run("thread.archive", threadRef(target, thread.id))}
+            />
+          ),
+        ],
+        [
+          "delete",
+          70,
+          ({ target, thread }) => (
+            <ActionItem
+              destructive
+              icon={Trash2Icon}
+              label="Delete"
+              onClick={() => run("thread.delete", threadRef(target, thread.id))}
+            />
+          ),
+        ],
+      ];
+      for (const [id, order, component] of threadItems) {
+        context.subscriptions.add(
+          slots.contribute("thread.actions", {
+            id: `jhin.thread-actions.${id}`,
+            order,
+            component,
+          }),
+        );
+      }
+
+      // The scratch project is neither renamed nor removed.
+      const projectItems: [string, number, ComponentType<ProjectActionProps>][] = [
+        [
+          "new-thread",
+          0,
+          ({ target, project }) => (
+            <ActionItem
+              icon={SquarePenIcon}
+              label="New thread"
+              onClick={() => run("project.new-thread", projectRef(target, project.id))}
+            />
+          ),
+        ],
+        [
+          "rename",
+          10,
+          ({ target, project }) =>
+            project.scratch ? null : (
+              <ActionItem
+                icon={PencilIcon}
+                label="Rename project"
+                onClick={() => run("project.rename", projectRef(target, project.id))}
+              />
+            ),
+        ],
+        [
+          "copy-path",
+          20,
+          ({ target, project }) => (
+            <ActionItem
+              icon={CopyIcon}
+              label="Copy path"
+              onClick={() => run("project.copy-path", projectRef(target, project.id))}
+            />
+          ),
+        ],
+        ["separator", 30, ({ project }) => (project.scratch ? null : <MenuSeparator />)],
+        [
+          "remove",
+          40,
+          ({ target, project }) =>
+            project.scratch ? null : (
+              <ActionItem
+                destructive
+                icon={Trash2Icon}
+                label="Remove project"
+                onClick={() => run("project.remove", projectRef(target, project.id))}
+              />
+            ),
+        ],
+      ];
+      for (const [id, order, component] of projectItems) {
+        context.subscriptions.add(
+          slots.contribute("project.actions", {
+            id: `jhin.thread-actions.project.${id}`,
+            order,
+            component,
+          }),
+        );
+      }
+    },
+  }),
+);

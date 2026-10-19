@@ -96,10 +96,16 @@ function until(nodes: readonly TestNode[], condition: () => boolean): Promise<vo
 const view = (from: TestNode, to: TestNode) =>
   from.mesh.members().find((member) => member.record.nodeId === to.id);
 
-async function chain(network: Network, options: { cAdvertises?: boolean } = {}) {
+async function chain(
+  network: Network,
+  options: { cAdvertises?: boolean; cExecute?: (method: string) => Promise<unknown> } = {},
+) {
   const a = startNode(network, "a");
   const b = startNode(network, "b");
-  const c = startNode(network, "c", { advertise: options.cAdvertises ?? true });
+  const c = startNode(network, "c", {
+    advertise: options.cAdvertises ?? true,
+    ...(options.cExecute === undefined ? {} : { execute: options.cExecute }),
+  });
   await b.mesh.join(a.address, a.mesh.invite().code);
   await c.mesh.join(b.address, b.mesh.invite().code);
   const all = [a, b, c];
@@ -144,6 +150,21 @@ describe("mesh", () => {
       caller: "node:a",
     });
     expect(await c.mesh.call("a", "app.whoami", {})).toMatchObject({ node: "a", caller: "node:c" });
+  });
+
+  it("keeps the code of an error the node it reached threw, through a relay", async () => {
+    const network = createMemoryNetwork();
+    network.block("mem://a", "mem://c");
+    // What a client tells apart by its code, e.g. a thread that runs a turn.
+    const busy = Object.assign(new Error("The thread is already running a turn"), {
+      code: "TURN_IN_PROGRESS",
+    });
+    const { a } = await chain(network, { cExecute: () => Promise.reject(busy) });
+
+    await expect(a.mesh.call("c", "threads.send", {})).rejects.toMatchObject({
+      code: "TURN_IN_PROGRESS",
+      message: "The thread is already running a turn",
+    });
   });
 
   it("reaches a node without an address (behind NAT) over the link it opened", async () => {

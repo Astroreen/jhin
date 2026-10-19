@@ -36,6 +36,11 @@ export interface CommandDefinition<I extends z.ZodType, O extends z.ZodType> {
   /** Lowercase dotted name, public API: `threads.create`. */
   readonly name: string;
   readonly description: string;
+  /**
+   * A short label for people, e.g. "Toggle sidebar". A client command with a
+   * title is offered in the command palette and can be bound to keys.
+   */
+  readonly title?: string;
   readonly input: I;
   readonly output: O;
   /** Permissions a caller must hold. */
@@ -46,6 +51,7 @@ export interface CommandDefinition<I extends z.ZodType, O extends z.ZodType> {
 export interface CommandInfo {
   readonly name: string;
   readonly description: string;
+  readonly title?: string;
   readonly plugin: string;
   readonly permissions: readonly string[];
   /** JSON Schema of the input, as consumed by RPC, CLI and MCP surfaces. */

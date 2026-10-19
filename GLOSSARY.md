@@ -28,7 +28,8 @@ One word per concept. Use these terms in code, docs, commits and UI.
 - **Disposable** — the handle every registration returns; disposing a plugin
   disposes everything it registered.
 - **Config layer** — one level of JSONC config: distribution → node →
-  project. Later layers win.
+  project on a node; distribution → node → **device** on a client. Later
+  layers win.
 - **Node** — one running Jhin server, identified by a stable `nodeId` and an
   Ed25519 key pair. T3 Code calls this an environment.
 - **Mesh** — the set of nodes of one owner that know about each other and
@@ -46,16 +47,35 @@ One word per concept. Use these terms in code, docs, commits and UI.
   project.
 - **Thread** — a conversation inside a project, stored as an append-only
   event log owned by one node.
-- **Turn** — one exchange in a thread: a request and the agent's response.
+- **Turn** — one exchange in a thread: a user message and the agent's response.
   Every turn carries an `agentId`.
 - **Item** — one unit inside a turn: a message, a tool call, a streamed delta.
 - **Agent** — the actor executing turns. Reserved as a separate entity with
   the address `jhin://<nodeId>/agents/<id>`.
 - **Agent runtime** — the capability that executes turns: an own agent loop
   or a wrapper over an existing agent. The foundation ships only a fake one.
+- **Agent registry** — the runtimes of a node (`agent.registry@1`); a thread
+  records which one, with which model, runs its turns.
+- **Runtime mode** — how freely an agent acts: `approval-required`,
+  `auto-accept-edits` or `full-access` (T3 Code's access modes).
+- **Interaction mode** — `default` (build) or `plan`: whether the agent
+  changes things or proposes a plan.
+- **Request** — something a running turn asks the user: an **approval** of a
+  tool call or **questions**. Answered with `threads.respond`; closed when its
+  turn ends.
+- **Follow-up** — a message sent while its thread runs a turn: it waits in
+  the client's queue and goes out once the thread is free.
+- **Work log** — the reasoning, tool calls and answered requests of a turn,
+  shown between its messages and folded once the turn ends.
 - **Event** — an entry in an event log with a per-stream monotonic
   `sequence`. Event types are namespaced per plugin (`agent.turn.started`).
 - **Sequence** — the position of an event in its stream; used to catch up
   after a disconnect without gaps or duplicates.
 - **Inspector** — the `inspect` command and dev panel showing the live state
   of a node.
+- **Keybinding** — a rule `{ key, command, when }` running a command on a
+  shortcut; `when` tests **context keys** that plugins set (`composerFocus`).
+- **Command palette** — the searchable list of titled commands, projects and
+  threads (⌘/Ctrl+K).
+- **Visit** — when a thread was last seen on this device, in its node's own
+  time; a turn that ended after it shows the thread as unread.

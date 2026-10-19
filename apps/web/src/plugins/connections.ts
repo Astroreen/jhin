@@ -1,6 +1,7 @@
 import { CONNECTIONS_CAPABILITY, type Connections, type NodeConnection } from "@jhin/client-api";
 import { connectWebSocket, createRpcClient, type RpcClient } from "@jhin/rpc";
 import { definePlugin, toDisposable, z } from "@jhin/sdk";
+import { copyText } from "@jhin/ui";
 
 import { builtin } from "../lib/builtin.ts";
 
@@ -62,7 +63,7 @@ export const connectionsPlugin = builtin(
   definePlugin({
     activate(context) {
       const listeners = new Set<() => void>();
-      const nodes = new Map<string, { saved: Saved; client: RpcClient }>();
+      const nodes = new Map<string, { saved: Saved; readonly client: RpcClient }>();
       let snapshot: readonly NodeConnection[] = [];
       const changed = () => {
         // An unchanged node keeps its object: views keyed on it do not restart.
@@ -108,6 +109,14 @@ export const connectionsPlugin = builtin(
           }
           return snapshot.find((node) => node.id === saved.url)!;
         },
+        rename(id, label) {
+          const node = nodes.get(id);
+          const trimmed = label.trim();
+          if (node === undefined || trimmed === "" || node.saved.label === trimmed) return;
+          node.saved = { ...node.saved, label: trimmed };
+          persist();
+          changed();
+        },
         remove(id) {
           nodes.get(id)?.client.close();
           nodes.delete(id);
@@ -126,9 +135,76 @@ export const connectionsPlugin = builtin(
         connections.add({ url: sameOriginUrl(), token, label: location.host });
       changed();
 
+      // Another tab changed the saved nodes: this one follows, instead of
+      // dropping that tab's changes with its next save.
+      const onStorage = (event: StorageEvent) => {
+        if (event.key !== STORAGE_KEY) return;
+        const stored = new Map(load().map((saved) => [saved.url, saved]));
+        for (const [url, node] of nodes) {
+          const saved = stored.get(url);
+          if (saved === undefined || saved.token !== node.saved.token) {
+            node.client.close();
+            nodes.delete(url);
+          } else {
+            node.saved = saved;
+          }
+        }
+        for (const saved of stored.values()) if (!nodes.has(saved.url)) open(saved);
+        changed();
+      };
+      window.addEventListener("storage", onStorage);
+
       context.services.provide(CONNECTIONS_CAPABILITY, connections);
+
+      // What can be done to a connected node, as commands (its menu runs them).
+      const Node = z.object({ node: z.string() });
+      const known = (id: string) => {
+        const node = nodes.get(id);
+        if (node === undefined) {
+          throw Object.assign(new Error(`Not connected to ${id}`), { code: "NODE_NOT_FOUND" });
+        }
+        return node;
+      };
+      context.commands.register({
+        name: "node.rename",
+        title: "Rename node",
+        description: "Changes the name this device shows for a connected node",
+        input: Node.extend({ label: z.string().trim().min(1) }),
+        output: z.object({}),
+        handler: ({ node, label }) => {
+          known(node);
+          connections.rename?.(node, label);
+          return {};
+        },
+      });
+      context.commands.register({
+        name: "node.copy-address",
+        title: "Copy node address",
+        description: "Copies the address a connected node is reached at",
+        input: Node,
+        output: z.object({}),
+        handler: async ({ node }) => {
+          await copyText(known(node).saved.url);
+          return {};
+        },
+      });
+      context.commands.register({
+        name: "node.disconnect",
+        title: "Disconnect node",
+        description:
+          "Forgets a connected node and its token on this device; the node keeps running",
+        input: Node,
+        output: z.object({}),
+        handler: ({ node }) => {
+          known(node);
+          connections.remove(node);
+          return {};
+        },
+      });
+
       context.subscriptions.add({
         dispose() {
+          window.removeEventListener("storage", onStorage);
           for (const node of nodes.values()) node.client.close();
           nodes.clear();
         },

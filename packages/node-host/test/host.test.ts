@@ -584,4 +584,33 @@ export default definePlugin({
     });
     expect(future.error).toMatchObject({ code: "CONFIG_TIME_IN_FUTURE" });
   });
+
+  it("reads a config section with what each file sets, and the schema of every section", async () => {
+    const home = tempDir("home");
+    const cwd = tempDir("cwd");
+    Fs.writeFileSync(
+      Path.join(home, "config.jsonc"),
+      '{ "jhin.example": { "greeting": "Hello" } }\n',
+    );
+    Fs.mkdirSync(Path.join(cwd, ".jhin"));
+    Fs.writeFileSync(
+      Path.join(cwd, ".jhin", "config.jsonc"),
+      '{ "jhin.example": { "greeting": "Howdy" } }\n',
+    );
+    host = new HostProcess({ home, cwd, distribution: [EXAMPLE] });
+    await host.ready();
+
+    const read = await host.execute("host.config.get", { section: "jhin.example" });
+    expect(read.value).toEqual({
+      value: { greeting: "Howdy" },
+      layers: { node: { greeting: "Hello" }, project: { greeting: "Howdy" } },
+    });
+    // A section no plugin defines has no value, and says why.
+    const unknown = await host.execute("host.config.get", { section: "acme.none" });
+    expect(unknown.value.value).toBeUndefined();
+    expect(unknown.value.error).toEqual(expect.any(String));
+
+    const schema = await host.execute("host.config.schema", {});
+    expect(schema.value.properties).toHaveProperty(["jhin.example"]);
+  });
 });

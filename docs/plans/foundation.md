@@ -240,11 +240,11 @@ and engineering practices.
 - Hiding selected nodes on a specific client.
 - History sync into on-device storage (IndexedDB, SQLite in Electron/mobile).
 - Settings UI with the scope picker (the config commands and fan-out exist in
-  the foundation).
+  the foundation). Done in `t3-parity.md` (D66).
 - Source-control plugin: linking PRs to threads, watching PRs; matching MCP
   tools.
 - "No project" chats in the UI (the scratch project exists in the data model,
-  D51).
+  D51). Done in `t3-parity.md` (D64).
 - Agent entity, several persistent agents attached to a node or project,
   multi-agent threads (D52 reserves the address and `agentId`).
 - AI Civilization: agents messaging each other across nodes.
