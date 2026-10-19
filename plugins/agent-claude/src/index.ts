@@ -168,7 +168,8 @@ export function createClaudeRuntime(options: {
     const { binaryPath, env } = options.config();
     return JSON.stringify({ binaryPath, env });
   };
-  let probing: Promise<Probe> | undefined;
+  /** The probe running now, by the config it runs with: a probe is joined only for its config. */
+  const probing = new Map<string, Promise<Probe>>();
   const models = () => probed?.probe.models ?? BUNDLED_MODELS;
   const defaultModel = () => {
     const configured = options.config().defaultModel;
@@ -191,13 +192,19 @@ export function createClaudeRuntime(options: {
     interactionModes: ["default", "plan"],
     async status() {
       const key = probeKey();
-      const refresh = () =>
-        (probing ??= probe(options.query, options.config())
-          .then((result) => {
-            probed = { at: Date.now(), key, probe: result };
-            return result;
-          })
-          .finally(() => (probing = undefined)));
+      const refresh = () => {
+        let running = probing.get(key);
+        if (running === undefined) {
+          running = probe(options.query, options.config())
+            .then((result) => {
+              probed = { at: Date.now(), key, probe: result };
+              return result;
+            })
+            .finally(() => probing.delete(key));
+          probing.set(key, running);
+        }
+        return running;
+      };
       if (probed === undefined || probed.key !== key) return (await refresh()).status;
       // A stale answer is given at once while a new probe runs: picking the default agent
       // (D96) never waits for Claude Code to start. "Unavailable" goes stale sooner, so a

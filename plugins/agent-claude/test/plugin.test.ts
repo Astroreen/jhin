@@ -287,6 +287,13 @@ describe("jhin.agent-claude: status", () => {
     config = { env: { CLAUDE_CONFIG_DIR: "/other" } };
     await claude.status!();
     expect(probes).toBe(2);
+    // A config change while a probe runs starts a probe of its own instead of joining it.
+    config = { env: { CLAUDE_CONFIG_DIR: "/a" } };
+    const first = claude.status!();
+    config = { env: { CLAUDE_CONFIG_DIR: "/b" } };
+    const second = claude.status!();
+    await Promise.all([first, second]);
+    expect(probes).toBe(4);
   });
 
   it("is unavailable when Claude Code does not initialize in time", async () => {
