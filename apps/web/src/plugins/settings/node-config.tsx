@@ -49,6 +49,45 @@ interface Loaded {
 }
 
 /**
+ * The chosen section as the node has it, and its text being edited. An answer
+ * for a section no longer chosen is dropped, so the text always belongs to the
+ * section it names.
+ */
+export function useLoadedSection(
+  client: Pick<NodeConnection["client"], "call">,
+  section: string | undefined,
+) {
+  const [loaded, setLoaded] = useState<Loaded | undefined>();
+  useEffect(() => {
+    if (section === undefined) return;
+    let current = true;
+    setLoaded(undefined);
+    void client
+      .call<ConfigRead>("host.config.get", { section })
+      .then((next) => {
+        if (!current) return;
+        const original = pretty(next.layers.node);
+        setLoaded({ section, read: next, original, text: original });
+      })
+      .catch((error: unknown) => {
+        if (current) {
+          const original = pretty(undefined);
+          setLoaded({
+            section,
+            read: { error: (error as Error).message, layers: {} },
+            original,
+            text: original,
+          });
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [client, section]);
+  return [loaded, setLoaded] as const;
+}
+
+/**
  * A node's config, section by section (D18–D20): the effective value, the node
  * file's part to edit, and the nodes of the mesh to apply it to — the ones not
  * reachable now get it when they return (D50).
@@ -99,7 +138,7 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
   const client = connection.client;
   const [sections, setSections] = useState<readonly string[] | undefined>();
   const [section, setSection] = useState<string | undefined>();
-  const [loaded, setLoaded] = useState<Loaded | undefined>();
+  const [loaded, setLoaded] = useLoadedSection(client, section);
   const [scope, setScope] = useState<readonly string[] | undefined>();
   const [saving, setSaving] = useState(false);
   const [outcomes, setOutcomes] = useState<readonly Outcome[]>([]);
@@ -129,34 +168,6 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
       .catch(() => setPending([]));
   }, [client]);
 
-  useEffect(() => {
-    if (section === undefined) return;
-    // An answer for a section no longer chosen is dropped.
-    let current = true;
-    setLoaded(undefined);
-    setOutcomes([]);
-    void client
-      .call<ConfigRead>("host.config.get", { section })
-      .then((next) => {
-        if (!current) return;
-        const original = pretty(next.layers.node);
-        setLoaded({ section, read: next, original, text: original });
-      })
-      .catch((error: unknown) => {
-        if (current) {
-          const original = pretty(undefined);
-          setLoaded({
-            section,
-            read: { error: (error as Error).message, layers: {} },
-            original,
-            text: original,
-          });
-        }
-      });
-    return () => {
-      current = false;
-    };
-  }, [client, section]);
   const read = loaded?.read;
   const text = loaded?.text ?? "";
   const edited = loaded !== undefined && loaded.text !== loaded.original;
@@ -176,6 +187,7 @@ function ConfigEditor({ connection }: { connection: NodeConnection }) {
     ) {
       return;
     }
+    setOutcomes([]);
     setSection(next);
   };
 
