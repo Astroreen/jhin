@@ -3,9 +3,10 @@
 // per native thread fed through a prompt queue (ClaudeAgentSdkQueryRunner.open), reused for
 // the next turn when its launch options match (claudeEffectiveQueryPolicyKey, openQuery),
 // the model and permission mode applied to it live (setModel, setPermissionMode, including
-// the mode Claude switched to by itself), replaced otherwise; and ProviderSessionManager's
-// release of an idle session. T3's continuation turns, wake buffers and background-work
-// guards are not ported.
+// the mode Claude switched to by itself), replaced otherwise; messages bound to the turn
+// whose prompt they answer by its uuid (T3's prompt uuids and echo tracking); and
+// ProviderSessionManager's release of an idle session. T3's continuation turns, wake
+// buffers and background-work guards are not ported.
 import type {
   CanUseTool,
   Options,
@@ -126,6 +127,11 @@ interface Live {
   permissionMode: PermissionMode | undefined;
   /** Taken by a turn, from its lease until its release. */
   busy: boolean;
+  /**
+   * Whether this Claude Code marks the frames of a turn with the uuid of the message it
+   * answers (`user_message_uuid(s)`), as current CLIs do: then a turn takes only its own.
+   */
+  stamps: boolean;
   holder: Holder | undefined;
   idleSince: Date | undefined;
   timer: ReturnType<typeof setTimeout> | undefined;
@@ -153,6 +159,22 @@ function launchKey(options: Options): string {
 /** The longest delay setTimeout takes. */
 const MAX_TIMER = 2 ** 31 - 1;
 
+/** The uuids of the messages a frame answers, when Claude Code marked it. */
+function stampOf(message: SDKMessage): readonly string[] | undefined {
+  const marked = message as { user_message_uuid?: unknown; user_message_uuids?: unknown };
+  if (Array.isArray(marked.user_message_uuids) && marked.user_message_uuids.length > 0) {
+    return marked.user_message_uuids as string[];
+  }
+  return typeof marked.user_message_uuid === "string" ? [marked.user_message_uuid] : undefined;
+}
+
+/** Ends a turn that still held its thread's Claude Code when a later turn took it. */
+export class SessionTakenOver extends Error {
+  constructor() {
+    super("A later turn of this thread took its Claude Code over.");
+  }
+}
+
 const noTurn = (toolUseID: string): PermissionResult => ({
   behavior: "deny",
   message: "No turn of this thread is running.",
@@ -169,14 +191,16 @@ export function createLiveSessions(options: {
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
 }): LiveSessions {
   const sessions = new Map<string, Live>();
+  /** The latest lease of each thread: an earlier one still on its way gives up. */
+  const latest = new Map<string, object>();
 
-  const close = (live: Live) => {
+  const close = (live: Live, reason?: Error) => {
     if (live.closed) return;
     live.closed = true;
     clearTimeout(live.timer);
     if (sessions.get(live.threadId) === live) sessions.delete(live.threadId);
     live.input.end();
-    live.holder?.end();
+    live.holder?.end(reason === undefined ? undefined : { error: reason });
     try {
       live.query.close();
     } catch (error) {
@@ -188,10 +212,9 @@ export function createLiveSessions(options: {
   };
 
   const open = (threadId: string, key: string, launch: Options): Live => {
-    // At most one Claude Code per thread: a lease that raced this one (two turns of a
-    // thread at once) loses its session rather than leaving it out of reach.
+    // At most one Claude Code per thread, so none is ever out of reach.
     const existing = sessions.get(threadId);
-    if (existing !== undefined) close(existing);
+    if (existing !== undefined) close(existing, new SessionTakenOver());
     const input = queue<SDKUserMessage>();
     let live!: Live;
     const query = options.query({
@@ -212,6 +235,7 @@ export function createLiveSessions(options: {
       model: launch.model,
       permissionMode: launch.permissionMode,
       busy: true,
+      stamps: false,
       holder: undefined,
       idleSince: undefined,
       timer: undefined,
@@ -231,6 +255,7 @@ export function createLiveSessions(options: {
           ) {
             live.permissionMode = message.permissionMode;
           }
+          if (!live.stamps && stampOf(message) !== undefined) live.stamps = true;
           live.holder?.push(message);
         }
         live.holder?.end();
@@ -274,8 +299,17 @@ export function createLiveSessions(options: {
   return {
     async lease({ threadId, options: launch, message }) {
       const key = launchKey(launch);
+      const self = {};
+      latest.set(threadId, self);
       let live = sessions.get(threadId);
-      if (live !== undefined && (live.closed || live.busy || live.key !== key)) {
+      // Busy means its turn was given up on: the threads plugin runs one turn of a thread
+      // at a time and frees the thread only once a turn ended, or once a stop stopped
+      // waiting for a turn that ignored its interrupt. The newer turn takes Claude Code
+      // over; the turn still holding it ends (D98).
+      if (live?.busy === true) {
+        close(live, new SessionTakenOver());
+        live = undefined;
+      } else if (live !== undefined && (live.closed || live.key !== key)) {
         close(live);
         live = undefined;
       }
@@ -284,7 +318,10 @@ export function createLiveSessions(options: {
         clearTimeout(live.timer);
         live.timer = undefined;
         live.idleSince = undefined;
-        if (!(await adapt(live, launch))) {
+        const adapted = await adapt(live, launch);
+        // A later turn of the thread came meanwhile and took the session: it wins.
+        if (latest.get(threadId) !== self) throw new SessionTakenOver();
+        if (!adapted) {
           close(live);
           live = undefined;
         }
@@ -308,10 +345,23 @@ export function createLiveSessions(options: {
       else session.input.push(message);
 
       let released = false;
+      const uuid = message.uuid;
       return {
         reused,
         messages: (async function* () {
+          // Until the turn's own frames come, what Claude Code sends belongs elsewhere: an
+          // earlier turn's (a message an interrupt did not stop still runs, and ends with a
+          // result of its own) or Claude Code's own (a continuation after background work,
+          // which marks nothing). Without marks (an older CLI) every frame is the turn's.
+          let begun = false;
           for await (const sent of received.read()) {
+            if (!begun) {
+              const stamp = stampOf(sent);
+              const own =
+                stamp === undefined ? !session.stamps : uuid !== undefined && stamp.includes(uuid);
+              if (!own) continue;
+              begun = true;
+            }
             yield sent;
             if (sent.type === "result") return;
           }

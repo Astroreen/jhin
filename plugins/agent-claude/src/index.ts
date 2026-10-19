@@ -30,7 +30,12 @@ export {
   transcript,
   type QueryFunction,
 } from "./turn.ts";
-export { createLiveSessions, type LiveSessionInfo, type LiveSessions } from "./session.ts";
+export {
+  SessionTakenOver,
+  createLiveSessions,
+  type LiveSessionInfo,
+  type LiveSessions,
+} from "./session.ts";
 export * from "./mapping.ts";
 
 export const CONFIG_SECTION = "jhin.agent-claude";
@@ -90,8 +95,7 @@ export const Config = z
     }),
   })
   .meta({ title: "Claude Code", description: "The Claude Code agent runtime of this node." });
-/** The section as written: unset fields take the defaults above. */
-export type Config = z.input<typeof Config>;
+export type Config = z.output<typeof Config>;
 
 /** What a status probe learnt: whether Claude Code runs and is signed in, and its models. */
 interface Probe {
@@ -204,8 +208,8 @@ export function createClaudeRuntime(options: {
     keepAlive: () => {
       const config = options.config();
       return {
-        keepAlive: (config.session ?? "keep-alive") === "keep-alive",
-        idleMs: (config.sessionIdleMinutes ?? 10) * 60_000,
+        keepAlive: config.session === "keep-alive",
+        idleMs: config.sessionIdleMinutes * 60_000,
       };
     },
     ...(options.log === undefined ? {} : { log: options.log }),

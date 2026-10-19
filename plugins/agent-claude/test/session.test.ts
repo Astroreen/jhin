@@ -3,14 +3,16 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { StoredEvent } from "@jhin/storage-api";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import type { z } from "@jhin/sdk";
 import { createMemoryStorage } from "@jhin/storage-api";
 
 import {
   createClaudeRuntime,
   createLiveSessions,
+  SessionTakenOver,
   sessionRecords,
   transcript,
-  type Config,
+  Config,
 } from "../src/index.ts";
 import {
   drain,
@@ -36,9 +38,9 @@ const answering = (...answers: string[]): Script =>
     await player.nextPrompt();
   };
 
-function node(scripts: Script[], config: Config = {}) {
+function node(scripts: Script[], config: z.input<typeof Config> = {}) {
   const scripted = scriptedQuery(...scripts);
-  const settings = { config };
+  const settings = { config: Config.parse(config) };
   const sessions = memorySessions();
   const claude = createClaudeRuntime({
     query: scripted.query,
@@ -289,13 +291,13 @@ describe("jhin.agent-claude: live sessions", () => {
   it("ends the running Claude Code when the setting turns to per-turn", async () => {
     const { turn, calls, settings } = node([answering("one", "two"), answering("three")]);
     await turn();
-    settings.config = { session: "per-turn" };
+    settings.config = Config.parse({ session: "per-turn" });
     // The kept session serves the turn, then ends with it.
     expect(answers(await turn())).toEqual(["two"]);
     expect(calls[0]!.closed).toBe(true);
   });
 
-  it("leaves no Claude Code out of reach when two turns of a thread lease at once", async () => {
+  it("gives a turn waiting for setModel up when a later turn takes Claude Code", async () => {
     const { query, calls } = scriptedQuery(answering("one"), answering(), answering());
     const live = createLiveSessions({
       query,
@@ -317,14 +319,47 @@ describe("jhin.agent-claude: live sessions", () => {
     }
     first.release(true);
     // The first waits for setModel on the kept session; the second takes it meanwhile.
-    const racing = await Promise.all([lease("b"), lease("a")]);
-    for (const held of racing) held.release(true);
+    const [waiting, later] = await Promise.allSettled([lease("b"), lease("a")]);
+    expect(waiting).toMatchObject({ status: "rejected", reason: expect.any(SessionTakenOver) });
+    expect(later.status).toBe("fulfilled");
+    if (later.status === "fulfilled") later.value.release(true);
 
+    // One Claude Code, the later turn's, and none out of reach.
     const running = calls.filter((call) => !call.closed);
     expect(running).toHaveLength(1);
     expect(live.list()).toHaveLength(1);
     live.dispose();
     expect(calls.every((call) => call.closed)).toBe(true);
+  });
+
+  it("lets a newer turn take Claude Code from a turn still holding it", async () => {
+    let holding!: () => void;
+    const held = new Promise<void>((resolve) => (holding = resolve));
+    const { claude, calls, sessions } = node([
+      // A turn that ignores its interrupt: the threads plugin gives up on it and frees the
+      // thread, so the next turn comes while this one still holds Claude Code.
+      async function* () {
+        yield init();
+        holding();
+        await new Promise(() => undefined);
+      },
+      answering("two"),
+    ]);
+    sessions.ids.add(THREAD);
+    const request = {
+      threadId: THREAD,
+      input: { text: "hi" },
+      history: [],
+      cwd: "/work",
+      model: "claude-haiku-5-5",
+    };
+    const stuck = drain(claude.startTurn({ ...request, turnId: "t1" }));
+    await held;
+    const next = drain(claude.startTurn({ ...request, turnId: "t2" }));
+    await expect(stuck).rejects.toThrow("A later turn of this thread took its Claude Code over.");
+    expect(answers(await next)).toEqual(["two"]);
+    expect(calls[0]!.closed).toBe(true);
+    expect(calls[1]!.options).toMatchObject({ resume: THREAD });
   });
 
   it("ends every live session when the runtime is disposed", async () => {
@@ -333,6 +368,88 @@ describe("jhin.agent-claude: live sessions", () => {
     claude.dispose();
     expect(calls[0]!.closed).toBe(true);
     expect(claude.live.list()).toEqual([]);
+  });
+});
+
+/** A frame marked as answering the message `uuid`, as Claude Code marks a turn's frames. */
+const answeringUuid = (uuid: string | undefined, message: SDKMessage) =>
+  ({ ...message, user_message_uuid: uuid, user_message_uuids: [uuid] }) as SDKMessage;
+
+describe("jhin.agent-claude: frames of other turns", () => {
+  it("does not hand a turn what Claude Code ran by itself before it", async () => {
+    const { turn } = node([
+      async function* (player) {
+        const first = player.call.prompt[0]!.uuid;
+        yield answeringUuid(first, init());
+        yield* streamedBlock("m1", 0, "text", ["one"]);
+        yield answeringUuid(first, result());
+        const second = (await player.nextPrompt())?.uuid;
+        // A background shell finished: Claude Code continues on its own, marking nothing.
+        yield init();
+        yield* streamedBlock("bg", 0, "text", ["background done"]);
+        yield result();
+        yield answeringUuid(second, init());
+        yield* streamedBlock("m2", 0, "text", ["two"]);
+        yield answeringUuid(second, result());
+        const third = (await player.nextPrompt())?.uuid;
+        yield answeringUuid(third, init());
+        yield* streamedBlock("m3", 0, "text", ["three"]);
+        yield answeringUuid(third, result());
+        await player.nextPrompt();
+      },
+    ]);
+    expect(answers(await turn())).toEqual(["one"]);
+    expect(answers(await turn())).toEqual(["two"]);
+    expect(answers(await turn())).toEqual(["three"]);
+  });
+
+  it("drops the late result of a message an interrupt did not stop", async () => {
+    const { claude, calls } = node([
+      async function* (player) {
+        const first = player.call.prompt[0]!.uuid;
+        yield answeringUuid(first, init());
+        yield* streamedBlock("m1", 0, "text", ["1\n"]);
+        await player.interrupted;
+        yield answeringUuid(
+          first,
+          result({
+            subtype: "error_during_execution",
+            errors: [],
+            terminal_reason: "aborted_streaming",
+          }),
+        );
+        const second = (await player.nextPrompt())?.uuid;
+        // The interrupted message still ran, and ends with a result of its own.
+        yield answeringUuid(first, init());
+        yield* streamedBlock("late", 0, "text", ["late"]);
+        yield answeringUuid(first, result());
+        yield answeringUuid(second, init());
+        yield* streamedBlock("m2", 0, "text", ["two"]);
+        yield answeringUuid(second, result());
+        await player.nextPrompt();
+      },
+    ]);
+    const request = {
+      threadId: THREAD,
+      input: { text: "count" },
+      history: [],
+      cwd: "/work",
+      model: "claude-haiku-5-5",
+    };
+    const first = claude.startTurn({ ...request, turnId: "t1" });
+    for await (const item of first.items) if (item.kind === "message.completed") first.interrupt();
+    expect(answers(await drain(claude.startTurn({ ...request, turnId: "t2" })))).toEqual(["two"]);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("gives every message of a turn a uuid of its own", async () => {
+    const { turn, calls } = node([answering("one", "two")]);
+    await turn();
+    await turn();
+    const [first, second] = calls[0]!.prompt.map((sent) => sent.uuid);
+    expect(first).toMatch(/^[0-9a-f-]{36}$/);
+    expect(second).toMatch(/^[0-9a-f-]{36}$/);
+    expect(first).not.toBe(second);
   });
 });
 

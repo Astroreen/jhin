@@ -5,6 +5,8 @@
 // AskUserQuestion, ExitPlanMode) and the stream projection of reasoning, tools and usage.
 // The live query a turn runs on is leased from ./session.ts: kept between turns, or started
 // for each turn and resumed, as the `session` setting says.
+import { randomUUID } from "node:crypto";
+
 import type {
   AgentItem,
   AgentResponse,
@@ -148,6 +150,9 @@ function userMessage(
   });
   return {
     type: "user",
+    // Fresh for every message: Claude Code marks the frames answering it with this uuid,
+    // so a live session hands a turn only its own (session.ts).
+    uuid: randomUUID(),
     message: {
       role: "user",
       content: images.length === 0 ? text : [...images, { type: "text", text }],

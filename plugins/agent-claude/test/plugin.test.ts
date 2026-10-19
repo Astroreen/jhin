@@ -16,7 +16,7 @@ import {
   CLAUDE_AGENT_ID,
   claudePlugin,
   createClaudeRuntime,
-  type Config,
+  Config,
   type QueryFunction,
 } from "../src/index.ts";
 import {
@@ -243,7 +243,11 @@ describe("jhin.agent-claude: context window", () => {
         yield result({ modelUsage: {} });
       },
     );
-    const claude = createClaudeRuntime({ query, sessions: memorySessions(), config: () => ({}) });
+    const claude = createClaudeRuntime({
+      query,
+      sessions: memorySessions(),
+      config: () => Config.parse({}),
+    });
     const request = {
       threadId: "0b6c5e5e-0000-4000-8000-000000000002",
       input: { text: "hi" },
@@ -276,7 +280,7 @@ describe("jhin.agent-claude: status", () => {
     return { query, closed: () => closed };
   };
   const runtime = (query: QueryFunction) =>
-    createClaudeRuntime({ query, sessions: memorySessions(), config: () => ({}) });
+    createClaudeRuntime({ query, sessions: memorySessions(), config: () => Config.parse({}) });
 
   it("is available when signed in, with the account's models", async () => {
     const probe = initializing({ email: "ada@example.com", tokenSource: "claude.ai" }, [
@@ -354,18 +358,18 @@ describe("jhin.agent-claude: status", () => {
       probes++;
       return initializing({ email: "ada@example.com" }).query(params);
     }) as QueryFunction;
-    let config: Config = {};
+    let config = Config.parse({});
     const claude = createClaudeRuntime({ query, sessions: memorySessions(), config: () => config });
     await claude.status!();
     await claude.status!();
     expect(probes).toBe(1);
-    config = { env: { CLAUDE_CONFIG_DIR: "/other" } };
+    config = Config.parse({ env: { CLAUDE_CONFIG_DIR: "/other" } });
     await claude.status!();
     expect(probes).toBe(2);
     // A config change while a probe runs starts a probe of its own instead of joining it.
-    config = { env: { CLAUDE_CONFIG_DIR: "/a" } };
+    config = Config.parse({ env: { CLAUDE_CONFIG_DIR: "/a" } });
     const first = claude.status!();
-    config = { env: { CLAUDE_CONFIG_DIR: "/b" } };
+    config = Config.parse({ env: { CLAUDE_CONFIG_DIR: "/b" } });
     const second = claude.status!();
     await Promise.all([first, second]);
     expect(probes).toBe(4);

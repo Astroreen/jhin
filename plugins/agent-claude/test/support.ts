@@ -44,6 +44,7 @@ export function scriptedQuery(...scripts: Script[]) {
   const query: QueryFunction = ({ prompt, options }) => {
     const script = scripts[calls.length];
     if (script === undefined) throw new Error(`no script for query ${calls.length + 1}`);
+    const played: Script = script;
     let closeCall!: () => void;
     const call: Call = {
       options,
@@ -73,16 +74,16 @@ export function scriptedQuery(...scripts: Script[]) {
     const prompts = prompt[Symbol.asyncIterator]();
     async function* play(): AsyncGenerator<SDKMessage, void, undefined> {
       if ((await player.nextPrompt()) === undefined) return;
-      yield* script(player);
+      yield* played(player);
     }
-    const played = play();
+    const playing = play();
     // After close() no message comes, as with the SDK.
     const messages: AsyncIterator<SDKMessage> = {
       next: () =>
         call.closed
           ? Promise.resolve({ done: true, value: undefined })
           : Promise.race([
-              played.next(),
+              playing.next(),
               call.whenClosed.then(() => ({ done: true as const, value: undefined })),
             ]),
     };
