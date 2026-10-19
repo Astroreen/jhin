@@ -48,6 +48,8 @@ const MAX_TITLE_LENGTH = 60;
 /** Per image, as a data URL (base64 adds a third). */
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
+/** All images of one message together, as data URLs: they are stored in the turn's first event. */
+const MAX_ATTACHMENTS_TOTAL = 20 * 1024 * 1024;
 const MAX_BROWSE_ENTRIES = 500;
 
 /** Every node has this project for chats without a project (D51). */
@@ -1116,7 +1118,15 @@ export default definePlugin({
       input: z.object({
         threadId: z.string(),
         text: z.string(),
-        attachments: z.array(Attachment).max(MAX_ATTACHMENTS).optional(),
+        attachments: z
+          .array(Attachment)
+          .max(MAX_ATTACHMENTS)
+          .refine(
+            (list) =>
+              list.reduce((total, item) => total + item.dataUrl.length, 0) <= MAX_ATTACHMENTS_TOTAL,
+            "are too large together",
+          )
+          .optional(),
         ...AgentSettings,
       }),
       output: z.object({ turnId: z.string() }),

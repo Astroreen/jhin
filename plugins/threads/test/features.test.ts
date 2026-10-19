@@ -523,5 +523,14 @@ describe("jhin.threads: turn items and requests", () => {
         attachments: [{ ...image, dataUrl: "javascript:alert(1)" }],
       }),
     ).rejects.toThrow();
+    // Each image fits, but not all of them together.
+    const large = { ...image, dataUrl: `data:image/png;base64,${"A".repeat(7 * 1024 * 1024)}` };
+    await expect(
+      client.call("threads.send", {
+        threadId: thread.id,
+        text: "x",
+        attachments: [large, large, large],
+      }),
+    ).rejects.toMatchObject({ code: "COMMAND_INPUT_INVALID" });
   });
 });
