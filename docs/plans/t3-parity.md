@@ -347,8 +347,17 @@ contributions. Features of T3 Code that only make sense for its hosted product
   the row stays where it was dropped until the nodes have it. Rows drag
   with dnd-kit, T3's library, once the pointer moved 6 px; the badge on the
   dragged row says what the drop does ("Pin", "Unpin", "Settle",
-  "Un-settle", "Wake"). As in T3 there is no keyboard dragging: the menu and
-  the shortcuts do the same. Collision is dnd-kit's closest centre, not
+  "Un-settle", "Wake"). A drop is several node commands, one per thread it
+  writes, run in turn: one that is refused (another device unpinned a
+  neighbour meanwhile, `THREAD_NOT_PINNED`) stops the rest, its error shows
+  as a toast, and the list shows what the nodes have; dropping again writes
+  the keys anew (one write per drop is deferred). `threads.unsettle` leaves
+  a thread that is not settled alone (T3's command would move it to the top
+  and switch the rule off for it), and `threads.reorder` refuses an active
+  place for a thread on a shelf, settled by the rule or snoozed, so no key
+  waits there to place it when it comes back; a drop un-settles or wakes it
+  first. As in T3 there is no keyboard dragging: the menu and the shortcuts
+  do the same. Collision is dnd-kit's closest centre, not
   T3's own detection around the pinned boundary (Deferred).
 - **D79. One clock for the sidebar and its commands.** The list was drawn
   with a minute tick while the shortcuts and `sidebar.thread.*` read
@@ -360,7 +369,11 @@ contributions. Features of T3 Code that only make sense for its hosted product
   snooze's end (T3 schedules that wake too), and reads the time again when
   the threads change, so a thread snoozed "in 1 hour" reads "60m", not a
   minute-old "2h". Menu items take the section from their host (D75); the
-  thread title's menu, which has no list, uses the time it opens at.
+  thread title's menu, which has no list, uses the time it opens at. Snooze
+  times are not read from this clock: a preset ("in 1 hour") and a custom
+  time are reckoned from the moment they are chosen, and the node checks
+  `until` against its own clock; a minute-old time would wake a thread up
+  to a minute early.
 
 The proof: `apps/web/test/sidebar-order.test.ts` (statuses, Done after a
 visit, fading, the settle rule and its activity time, one list across nodes

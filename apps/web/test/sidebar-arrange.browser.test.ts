@@ -45,7 +45,11 @@ const done = (hours: number) => ({
  * One node whose threads change as the threads plugin's arrangement commands
  * say (D75–D78), recording every call.
  */
-function world(threads: ThreadRecord[]) {
+function world(
+  threads: ThreadRecord[],
+  /** An error the node answers a call with, e.g. another device's unpin meanwhile. */
+  refuse: (method: string, params: Record<string, unknown>) => Error | undefined = () => undefined,
+) {
   const connection = {
     id: A,
     url: A,
@@ -81,6 +85,8 @@ function world(threads: ThreadRecord[]) {
     async call<T>(_target: NodeTarget, method: string, params?: unknown): Promise<T> {
       const input = params as Record<string, unknown> & { threadId: string };
       calls.push({ method, params: input });
+      const refused = refuse(method, input);
+      if (refused !== undefined) throw refused;
       const { threadId } = input;
       switch (method) {
         case "threads.settle":
@@ -138,8 +144,12 @@ afterEach(async () => {
   localStorage.clear();
 });
 
-async function start(threads: ThreadRecord[], route: Route = {}) {
-  const w = world(threads);
+async function start(
+  threads: ThreadRecord[],
+  route: Route = {},
+  refuse?: Parameters<typeof world>[1],
+) {
+  const w = world(threads, refuse);
   w.navigation.navigate(route);
   w.visited.length = 0;
   kernel = await createTestKernel({
@@ -244,6 +254,30 @@ describe("moving a thread, as dropping it does (D78)", () => {
     ]);
     const keys = calls.slice(1).map((call) => call.params.orderKey as string);
     expect(keys.toSorted()).toEqual(keys);
+  });
+
+  it("stops at a step the node refuses, says why, and shows what the nodes have", async () => {
+    const { run, calls, visited } = await start(
+      [
+        thread("p1", 1, { pinnedAt: ago(1) }),
+        thread("p2", 2, { pinnedAt: ago(1) }),
+        thread("p3", 3, { pinnedAt: ago(1) }),
+      ],
+      {},
+      // Another device unpinned p1 meanwhile.
+      (method, params) =>
+        method === "threads.reorder" && params.threadId === "p1"
+          ? Object.assign(new Error("The thread is not pinned"), { code: "THREAD_NOT_PINNED" })
+          : undefined,
+    );
+    // No keys yet: the drop rewrites the three, the dropped one first.
+    await expect(
+      run("sidebar.thread.move", { node: A, threadId: "p3", section: "pinned", index: 0 }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_PINNED" });
+    expect(calls.map((call) => call.params.threadId)).toEqual(["p3", "p1"]);
+    // The drop shown in place is gone: the list is the nodes' (p3 keyed on top, then by creation).
+    for (const jump of [1, 2, 3]) await run(`sidebar.thread.jump.${jump}`);
+    expect(visited.map((route) => route.thread)).toEqual(["p3", "p1", "p2"]);
   });
 
   it("settles a thread moved to the shelf, and refuses a thread it does not show", async () => {

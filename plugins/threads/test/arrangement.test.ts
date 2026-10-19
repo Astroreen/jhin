@@ -118,6 +118,32 @@ describe("jhin.threads: settling by hand (D75)", () => {
     expect(back.unsettledAt).toEqual(expect.any(String));
   });
 
+  it("leaves a thread that is not settled alone when asked to un-settle it", async () => {
+    const { client, index, thread } = await withThread();
+    expect(await client.call("threads.unsettle", { threadId: thread.id })).toEqual(thread);
+    await client.call("threads.update", {
+      threadId: thread.id,
+      title: "after",
+    });
+    await index.untilMatch(
+      (event) => (event.payload as unknown as Thread & { title: string }).title === "after",
+    );
+    // Only the rename was recorded: no override, no return time.
+    expect(index.events.map((event) => event.type)).toEqual([
+      "threads.thread.created",
+      "threads.thread.updated",
+    ]);
+  });
+
+  it("un-settles a snoozed settled thread without waking it: the snooze still hides it", async () => {
+    const { client, thread } = await withThread();
+    await client.call("threads.settle", { threadId: thread.id });
+    const until = inAnHour();
+    await client.call("threads.snooze", { threadId: thread.id, until });
+    const back = await client.call<Thread>("threads.unsettle", { threadId: thread.id });
+    expect(back).toMatchObject({ settledOverride: "active", snoozedUntil: until });
+  });
+
   it("lets the automatic rule apply again after a turn, keeping when it came back by hand", async () => {
     const { client, thread, turn } = await withThread();
     const unsettled = await client.call<Thread>("threads.unsettle", { threadId: thread.id });
@@ -173,6 +199,26 @@ describe("jhin.threads: pinning and order (D76, D78)", () => {
     const unpinned = await client.call<Thread>("threads.unpin", { threadId: thread.id });
     expect(unpinned.pinnedAt).toBeUndefined();
     expect(unpinned.pinOrderKey).toBeUndefined();
+  });
+
+  it("refuses an active order for a thread on a shelf: settled by the rule, or snoozed", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { client, thread } = await withThread();
+    const other = await client.call<Thread>("threads.create", {});
+    await client.call("threads.snooze", { threadId: other.id, until: inAnHour() });
+    await expect(
+      client.call("threads.reorder", { threadId: other.id, list: "active", orderKey: "n" }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_ACTIVE" });
+
+    vi.setSystemTime(Date.now() + 4 * DAY_MS);
+    await expect(
+      client.call("threads.reorder", { threadId: thread.id, list: "active", orderKey: "n" }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_ACTIVE" });
+    // Back by hand, it takes its place.
+    await client.call("threads.unsettle", { threadId: thread.id });
+    expect(
+      await client.call("threads.reorder", { threadId: thread.id, list: "active", orderKey: "n" }),
+    ).toMatchObject({ activeOrderKey: "n" });
   });
 
   it("refuses order keys that are not lowercase letters ending past a", async () => {

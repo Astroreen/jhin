@@ -1439,13 +1439,16 @@ export default definePlugin({
     context.commands.register({
       name: "threads.unsettle",
       description:
-        "Brings a thread back from the Settled shelf to the top of the active threads; it stays active until its next turn",
+        "Brings a thread back from the Settled shelf to the top of the active threads; it stays active until its next turn. A thread not settled is left as it is",
       input: ThreadId,
       output: Thread,
       permissions: ["threads.write"],
       handler: ({ threadId }) =>
         arrange(threadId, (thread, at) => {
-          if (thread.settledOverride === "active") return thread;
+          // Only a thread on the shelf comes back: T3's command would also move an
+          // active one to the top and switch the automatic rule off for it. A
+          // snooze stays; it still hides the thread until it wakes.
+          if (!isSettled(thread, Date.parse(at))) return thread;
           const { settledAt: _settledAt, ...rest } = thread;
           return { ...rest, settledOverride: "active", unsettledAt: at };
         }),
@@ -1504,19 +1507,23 @@ export default definePlugin({
       output: Thread,
       permissions: ["threads.write"],
       handler: ({ threadId, list, orderKey }) =>
-        arrange(threadId, (thread) => {
-          // Refused rather than pinning or un-settling in passing: a reorder that
-          // races an unpin must not bring the pin back.
+        arrange(threadId, (thread, at) => {
+          // Refused rather than pinning, un-settling or waking in passing: a
+          // reorder that races an unpin must not bring the pin back, and a key
+          // written on a shelf would place the thread when it comes back.
           if (list === "pinned" && thread.pinnedAt === undefined) {
             throw new ThreadsError("THREAD_NOT_PINNED", "The thread is not pinned", { threadId });
           }
+          const nowMs = Date.parse(at);
           if (
             list === "active" &&
-            (thread.pinnedAt !== undefined || thread.settledOverride === "settled")
+            (thread.pinnedAt !== undefined || isSettled(thread, nowMs) || isSnoozed(thread, nowMs))
           ) {
-            throw new ThreadsError("THREAD_NOT_ACTIVE", "The thread is pinned or settled", {
-              threadId,
-            });
+            throw new ThreadsError(
+              "THREAD_NOT_ACTIVE",
+              "The thread is pinned, settled or snoozed",
+              { threadId },
+            );
           }
           const key = list === "pinned" ? "pinOrderKey" : "activeOrderKey";
           return thread[key] === orderKey ? thread : { ...thread, [key]: orderKey };
