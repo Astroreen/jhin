@@ -88,3 +88,10 @@ One word per concept. Use these terms in code, docs, commits and UI.
 - **Settled** — a thread that needs nothing more: no activity for three days
   and no turn running or waiting for the user. The sidebar lists it on its
   Settled shelf instead of among the active threads (T3 Code's term).
+- **Source control** — what a node reads of its projects' git repositories
+  (`source-control.git@1`): the checked-out branch, ahead/behind, uncommitted
+  changes, diffs, branches and the pull request of a branch.
+- **Thread branch** — the branch a thread works on: the one checked out in
+  its project when the thread was created or one of its turns started or
+  ended, or the one it was switched to. The card shows it, and whether it is
+  still checked out.

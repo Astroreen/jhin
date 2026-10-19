@@ -88,6 +88,18 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --shadow-composer: 0 12px 28px -18px rgb(0 0 0 / 40%);
   --shadow-composer-dark: 0 14px 32px -18px rgb(0 0 0 / 75%);
+  /* Overlap the lower toolbar backdrop by one pixel to cover the composer seam. */
+  --spacing-composer-seam: calc(var(--spacing) * 4 - 1px);
+  /* Dark-mode shade where the context strip meets the composer: 10px of
+     shadow fading away from the 1rem seam, over a faint white fill. */
+  --background-image-composer-seam-below:
+    linear-gradient(
+      to bottom,
+      transparent 0 1rem,
+      rgb(0 0 0 / 18%) 1rem,
+      transparent calc(1rem + 10px)
+    ),
+    linear-gradient(rgb(255 255 255 / 1%), rgb(255 255 255 / 1%));
   --color-zinc-25: oklch(99.2% 0 0);
   --animate-skeleton: skeleton 2.4s infinite;
   /* Duty-cycled indicator animations: long holds with stepped ramps. */

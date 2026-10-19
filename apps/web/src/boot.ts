@@ -13,6 +13,7 @@ import { navigationPlugin } from "./plugins/navigation.ts";
 import { notificationsPlugin } from "./plugins/notifications.tsx";
 import { settingsPlugin } from "./plugins/settings/index.tsx";
 import { sidebarPlugin } from "./plugins/sidebar.tsx";
+import { sourceControlPlugin } from "./plugins/source-control/index.tsx";
 import { threadsStorePlugin } from "./plugins/threads-store.ts";
 import { uiHostPlugin } from "./plugins/ui-host.tsx";
 import { visitsPlugin } from "./plugins/visits.ts";
@@ -100,6 +101,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     threadActionsPlugin,
     sidebarPlugin,
     chatPlugin,
+    sourceControlPlugin,
     commandPalettePlugin,
     settingsPlugin,
     notificationsPlugin,

@@ -4,7 +4,7 @@
 // ComposerPendingUserInputPanel.tsx, QueuedRunsControl.tsx, ProviderModelPicker.tsx,
 // ContextWindowMeter.tsx and runtimeModeConfig.ts. A plain textarea replaces the rich editor.
 import type { AgentResponse, TokenUsage, TurnAttachment, UserQuestion } from "@jhin/agent-api";
-import type { AgentInfo, NodeTarget } from "@jhin/client-api";
+import type { AgentInfo, ChatComposerContextProps, NodeTarget } from "@jhin/client-api";
 import {
   Button,
   Menu,
@@ -18,6 +18,7 @@ import {
   SelectItem,
   SelectPopup,
   SelectValue,
+  Slot,
   Spinner,
   Tooltip,
   TooltipPopup,
@@ -68,7 +69,7 @@ import {
   ComposerControlIcon,
   ComposerControlSeparator,
   ComposerSelectControl,
-} from "./controls.tsx";
+} from "../../lib/composer-control.tsx";
 import type { QueuedMessage, QueuePause } from "./follow-ups.ts";
 import { useAgents, useChat } from "./services.ts";
 import { ComposerSurface } from "./surface.tsx";
@@ -625,6 +626,8 @@ function ContextMeter({ usage }: { usage: TokenUsage }) {
 
 export interface ComposerProps {
   readonly target: NodeTarget;
+  /** What the strip under the composer (`chat.composer.context`) is about. */
+  readonly context?: ChatComposerContextProps;
   /** Where the draft is kept: a thread, or a project for a new thread. */
   readonly draftKey: string;
   readonly selection: Selection;
@@ -1265,6 +1268,11 @@ export function Composer(props: ComposerProps) {
             </form>
           </div>
         </ComposerSurface.Host>
+        {props.context === undefined ? null : (
+          <ComposerSurface.ContextStrip className="text-xs font-normal text-muted-foreground/70">
+            <Slot name="chat.composer.context" props={props.context} />
+          </ComposerSurface.ContextStrip>
+        )}
       </ComposerSurface.Shell>
       <div
         aria-hidden

@@ -327,6 +327,11 @@ export function ThreadView(props: {
                   />
                 ) : (
                   <Composer
+                    context={{
+                      target,
+                      ...(thread === undefined ? {} : { thread }),
+                      ...(props.project === undefined ? {} : { project: props.project }),
+                    }}
                     draftKey={threadDraftKey(target, threadId)}
                     handleRef={handle}
                     history={history}
@@ -480,6 +485,7 @@ export function DraftView(props: {
                 </div>
               </div>
               <Composer
+                context={{ target, project }}
                 draftKey={`${targetKey(target)}|draft|${project.id}`}
                 handleRef={handle}
                 history={[]}

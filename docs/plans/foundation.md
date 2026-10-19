@@ -242,7 +242,8 @@ and engineering practices.
 - Settings UI with the scope picker (the config commands and fan-out exist in
   the foundation). Done in `t3-parity.md` (D66).
 - Source-control plugin: linking PRs to threads, watching PRs; matching MCP
-  tools.
+  tools. Done in `source-control.md` (D110–D120) except linking pull
+  requests to threads, which stays deferred there.
 - "No project" chats in the UI (the scratch project exists in the data model,
   D51). Done in `t3-parity.md` (D64).
 - Agent entity, several persistent agents attached to a node or project,

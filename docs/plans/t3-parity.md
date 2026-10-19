@@ -294,8 +294,11 @@ and mesh specs, which use the cards and their context menu.
   while a turn runs, go out only while the page is open, and are lost if it
   closes.
 - Terminal drawer (`node-pty` + xterm) and the `terminalFocus` context key.
-- Git and source control: branch toolbar, diff panel, checkpoints and
-  reverting to a turn, worktrees, pull requests.
+- Git and source control: done in `source-control.md` (D110–D120) for the
+  branch, diff and pull request on the cards, the branch toolbar and the diff
+  panel; checkpoints and reverting to a turn, worktrees, git actions
+  (commit, push, create a pull request) and linking pull requests to threads
+  are deferred there.
 - Composer: `@` file mentions, slash commands, rich text (tiptap), pasted
   files other than images, image compression and HEIC conversion.
 - Implementing a proposed plan from plan mode with one action.
@@ -307,8 +310,9 @@ and mesh specs, which use the cards and their context menu.
   today and a revived one keeps its place by creation; pinning and its
   section, snoozing and the Snoozed and Working shelves, drag-and-drop
   ordering, multi-select, the jump-number hints, discarding a draft from its
-  card, and the card's branch, diff, terminal and pull request indicators
-  (source control and terminals are deferred above).
+  card, and the card's terminal indicator (terminals are deferred above; the
+  card's branch, diff and pull request are `source-control.md`'s D117, in
+  the `sidebar.thread.indicators` slot a terminal plugin contributes to).
 - A machine kind per node (T3's environment icon picker), so the node icons
   of D71 differ by machine; every node shows the "server" icon today.
 - Visits and drafts are per device; syncing them, and device settings, across
