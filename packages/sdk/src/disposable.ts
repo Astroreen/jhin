@@ -36,6 +36,12 @@ export class DisposableStore implements Disposable {
     return item;
   }
 
+  /** Forgets an item without disposing it, e.g. one that was disposed on its own. */
+  delete(item: Disposable): void {
+    const index = this.#items.indexOf(item);
+    if (index >= 0) this.#items.splice(index, 1);
+  }
+
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
