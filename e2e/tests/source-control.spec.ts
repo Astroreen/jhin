@@ -145,6 +145,8 @@ test("D113–D120: a card shows its thread's branch, pull request and diff; the 
   await expect(card.getByRole("link")).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Branch main" })).toBeVisible();
   expect(git(dir, "branch", "--show-current").trim()).toBe("main");
+  // The panel reads the diff again for the new checkout.
+  await expect(panel.getByLabel("Comparing main against main")).toBeVisible();
   await shot(page, info, "source-control-switched");
 
   await page.getByRole("button", { name: "Toggle diff panel" }).click();
