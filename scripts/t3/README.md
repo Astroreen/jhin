@@ -28,6 +28,12 @@ The web client keeps the token in the page's storage, so after opening that
 URL once, the plain `http://127.0.0.1:7777` (T3 Code's preview) stays
 connected until `reset.sh` makes a new home.
 
+To open the dev client from another machine on your tailnet, share the port
+with `tailscale serve --bg 7780` (or 7777 for `serve.sh`) and open
+`https://<machine>.<tailnet>.ts.net/#token=…`. The node and Vite still listen
+on 127.0.0.1 only; Tailscale proxies to them over HTTPS, and Vite accepts
+`*.ts.net` hosts. `tailscale serve reset` stops sharing.
+
 Environment overrides: `JHIN_PORT` (node, default 7777; written into the dev
 home's config when the home is created, a warning when it differs later),
 `JHIN_WEB_PORT` (Vite, default 7780), `JHIN_NODE_VERSION` (the Node release
