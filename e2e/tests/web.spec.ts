@@ -84,6 +84,29 @@ test("answers the agent's question from the composer", async ({ page }) => {
   await expect(page.getByRole("article", { name: "Agent" })).toHaveText("You chose Blue");
 });
 
+test("archives a thread, which then takes no messages until it is unarchived", async ({ page }) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("to be archived");
+  await message.press("Enter");
+  await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Echo: to be archived");
+
+  const threads = page.getByRole("list", { name: "Threads of No project" });
+  // The archive button shows while the pointer is over the row.
+  await threads.getByRole("listitem").filter({ hasText: "to be archived" }).hover();
+  await threads.getByRole("button", { name: "Archive to be archived", exact: true }).click();
+  await expect(threads.getByText("to be archived")).toHaveCount(0);
+
+  // Back on the archived thread: no composer, a way back instead.
+  await page.goBack();
+  await expect(page.getByRole("status")).toHaveText(/This thread is archived/);
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Unarchive" }).click();
+  await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+  await expect(threads.getByText("to be archived")).toBeVisible();
+});
+
 test("finds a thread from the command palette", async ({ page }) => {
   await page.goto(`${node.ui}#token=${node.token}`);
   await page.getByRole("button", { name: "Start a thread" }).click();

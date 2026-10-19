@@ -9,7 +9,7 @@ import {
 } from "@jhin/client-api";
 import type { StoredEvent } from "@jhin/storage-api";
 import { Alert, AlertAction, AlertDescription, Button } from "@jhin/ui";
-import { ChevronDownIcon, CircleAlertIcon, XIcon } from "lucide-react";
+import { ArchiveRestoreIcon, ChevronDownIcon, CircleAlertIcon, XIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { buildPromptHistory } from "../../lib/composer.ts";
@@ -330,7 +330,9 @@ export function ThreadView(props: {
           >
             <div className="w-full px-[calc(env(safe-area-inset-left)+0.75rem)] sm:px-12">
               <div className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)">
-                {timeline.deleted ? null : (
+                {timeline.deleted ? null : thread?.archivedAt !== undefined ? (
+                  <ArchivedNotice onUnarchive={() => void chat.actions.unarchive(target, thread)} />
+                ) : (
                   <Composer
                     draftKey={`${targetKey(target)}|thread|${threadId}`}
                     handleRef={handle}
@@ -360,6 +362,22 @@ export function ThreadView(props: {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** An archived thread takes no messages: in place of the composer, the way back. */
+function ArchivedNotice(props: { onUnarchive: () => void }) {
+  return (
+    <div
+      className="flex items-center justify-between gap-3 rounded-[20px] border border-border bg-card px-4 py-3 text-sm shadow-xs"
+      role="status"
+    >
+      <span className="text-muted-foreground">This thread is archived.</span>
+      <Button onClick={props.onUnarchive} size="sm" variant="outline">
+        <ArchiveRestoreIcon />
+        Unarchive
+      </Button>
     </div>
   );
 }
