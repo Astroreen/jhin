@@ -66,11 +66,20 @@ as JSON.
   switch's state while a key is unset, and "(default)" in a select.
 
 - **D83. Secrets are marked with JSON Schema's `writeOnly`**
-  (`.meta({ writeOnly: true })`). The form renders them as password fields
-  and never shows them in clear, an override from the project file included.
-  `host.config.get` still returns the files as written (so the JSON view and
-  `host.config.read` see them); redacting them there stays deferred, as the
-  Deferred list of `t3-parity.md` says. No first-party section has a secret.
+  (`.meta({ writeOnly: true })`), on the field or on the non-null branch of
+  a nullable one; everything inside a secret (a list's items, a record's
+  values, a group's keys) is one too. The page never shows them in clear:
+  text and number fields are password fields, wherever they are (a nullable
+  field, a list item, a record value); in an inline JSON field, the "Edit as
+  JSON" view and the effective value a secret reads `<hidden secret>`, and an
+  edit that leaves that placeholder in place keeps the stored value (by key,
+  and by position in a list); a placeholder where nothing is stored is
+  refused. An override from the project file reads "it". A switch or a
+  select cannot be hidden: a secret is text or a number. This is about the
+  page only: `host.config.get` still returns the files as written, so the
+  values reach the browser and any holder of `host.config.read`; redacting
+  them there stays deferred, as the Deferred list of `t3-parity.md` says. No
+  first-party section has a secret.
 
 - **D84. Saving sends the change, and checks it first.** Save writes only the
   node layer (`layer: "node"`), only the top-level keys whose value changed,
@@ -152,8 +161,9 @@ context.config.define("acme.http", Config);
 
 ## Deferred
 
-- Redacting secrets in `host.config.get` and keeping them when the JSON view
-  saves (see `t3-parity.md`); the marker (D83) is in place.
+- Redacting secrets in `host.config.get` (see `t3-parity.md`): the page
+  hides them (D83), but they still reach the browser. A secret list item
+  moved in the JSON view takes the stored value of its new position.
 - Arrays of objects (keybinding rules) as lists of groups: edited as JSON
   today.
 - Comments inside a changed top-level key: a save rewrites that key's value

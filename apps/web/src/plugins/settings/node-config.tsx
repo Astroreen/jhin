@@ -19,6 +19,7 @@ import {
   equal,
   getAt,
   hasUnparsed,
+  redact,
   sectionForm,
   setAt,
   validate,
@@ -394,6 +395,7 @@ function ConfigEditor({
           value: loaded.value,
           project: read?.layers.project,
           errors,
+          root: schema ?? {},
           set: (path, next) =>
             setLoaded((current) =>
               current === undefined
@@ -480,7 +482,7 @@ function ConfigEditor({
                 title="Effective value"
               >
                 <pre className="mt-2 mb-2 max-h-56 overflow-auto rounded-lg bg-muted/60 p-3 font-mono text-xs">
-                  {read?.error ?? pretty(read?.value)}
+                  {read?.error ?? pretty(redact(schema, read?.value, schema ?? {}))}
                 </pre>
               </SettingsRow>
               <SettingsRow
@@ -500,6 +502,7 @@ function ConfigEditor({
                       current === undefined ? current : { ...current, value: next },
                     )
                   }
+                  schema={schema ?? {}}
                   section={loaded.section}
                   value={loaded.value}
                 />

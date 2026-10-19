@@ -22,7 +22,16 @@ import {
 import { ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
-import { equal, getAt, Unparsed, type Field, type Option } from "../../lib/config-form.ts";
+import {
+  equal,
+  getAt,
+  redact,
+  restore,
+  Unparsed,
+  type Field,
+  type JsonSchema,
+  type Option,
+} from "../../lib/config-form.ts";
 import { SettingResetButton, SettingsRow } from "../../lib/settings-layout.tsx";
 
 /** What every field of one section reads and changes. */
@@ -33,6 +42,8 @@ export interface FieldsContext {
   readonly project: unknown;
   /** Errors by path inside the section, joined with dots. */
   readonly errors: ReadonlyMap<string, readonly string[]>;
+  /** The section's schema, for the references inside its fields' schemas. */
+  readonly root: JsonSchema;
   /** Sets `path` in the node file's part; `undefined` removes the key. */
   set(path: readonly string[], next: unknown): void;
 }
@@ -156,6 +167,7 @@ function LeafControl(props: {
           className={width}
           disabled={props.disabled}
           inputMode={integer ? "numeric" : "decimal"}
+          {...(field.secret ? { type: "password", autoComplete: "off" } : {})}
           nativeInput
           onChange={(event) => {
             const text = event.target.value;
@@ -209,8 +221,14 @@ function JsonControl(props: {
   rows?: number;
   /** Why a value that parses is still refused here. */
   refuse?(value: unknown): string | undefined;
+  /**
+   * The value as shown: secrets replaced (D83). What is typed gets them back
+   * from the value it edits, wherever the placeholder is left.
+   */
+  hide?(value: unknown): unknown;
 }) {
   const [text, setText] = useState("");
+  const shownValue = props.hide === undefined ? props.value : props.hide(props.value);
   const parsed = (() => {
     try {
       return { ok: true as const, value: JSON.parse(text) as unknown };
@@ -221,11 +239,11 @@ function JsonControl(props: {
   const shown =
     props.value instanceof Unparsed
       ? props.value.text
-      : text.trim() !== "" && parsed.ok && equal(parsed.value, props.value)
+      : text.trim() !== "" && parsed.ok && equal(parsed.value, shownValue)
         ? text
-        : props.value === undefined
+        : shownValue === undefined
           ? ""
-          : pretty(props.value);
+          : pretty(shownValue);
   return (
     <Textarea
       aria-label={props.label}
@@ -237,7 +255,13 @@ function JsonControl(props: {
         try {
           const value = JSON.parse(next) as unknown;
           const refused = props.refuse?.(value);
-          props.onChange(refused === undefined ? value : new Unparsed(next, refused));
+          props.onChange(
+            refused !== undefined
+              ? new Unparsed(next, refused)
+              : props.hide === undefined
+                ? value
+                : restore(value, props.value),
+          );
         } catch (error) {
           props.onChange(new Unparsed(next, `Invalid JSON: ${(error as Error).message}`));
         }
@@ -291,6 +315,7 @@ function ItemControl(props: {
       ) : (
         <JsonControl
           describedBy={messages.length === 0 ? undefined : id}
+          hide={(shown) => redact(field.schema, shown, context.root, field.secret)}
           invalid={messages.length > 0}
           label={props.label}
           onChange={change}
@@ -485,7 +510,13 @@ function FieldRow({
   const override =
     fromProject === undefined ? null : (
       <span className="block">
-        The project file sets {field.secret ? "it" : <code>{brief(fromProject)}</code>}, which wins.
+        The project file sets{" "}
+        {field.secret ? (
+          "it"
+        ) : (
+          <code>{brief(redact(field.schema, fromProject, context.root))}</code>
+        )}
+        , which wins.
       </span>
     );
 
@@ -549,6 +580,7 @@ function FieldRow({
         <SettingsRow {...row}>
           <JsonControl
             describedBy={describedBy}
+            hide={(shown) => redact(field.schema, shown, context.root, field.secret)}
             invalid={messages.length > 0}
             label={field.title}
             onChange={(next) => context.set(path, next)}
@@ -650,6 +682,8 @@ export function Fields({
 /** The node file's part of a whole section as JSON: the escape hatch (D80). */
 export function SectionJson(props: {
   section: string;
+  /** The section's schema: the values it marks `writeOnly` show hidden (D83). */
+  schema: JsonSchema;
   value: unknown;
   onChange(next: unknown): void;
   messages: readonly string[];
@@ -659,6 +693,7 @@ export function SectionJson(props: {
     <>
       <JsonControl
         describedBy={props.messages.length === 0 ? undefined : id}
+        hide={(shown) => redact(props.schema, shown, props.schema)}
         invalid={props.messages.length > 0}
         label={`${props.section} in the node file`}
         onChange={(next) => props.onChange(next ?? {})}

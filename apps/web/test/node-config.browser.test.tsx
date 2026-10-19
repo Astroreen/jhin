@@ -4,8 +4,8 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
-import { changesOf, sectionForm, setAt } from "../src/lib/config-form.ts";
-import { Fields } from "../src/plugins/settings/config-fields.tsx";
+import { changesOf, HIDDEN, sectionForm, setAt } from "../src/lib/config-form.ts";
+import { Fields, SectionJson } from "../src/plugins/settings/config-fields.tsx";
 import {
   errorsOf,
   readBack,
@@ -97,6 +97,15 @@ const Server = z
     proxies: z.array(z.string()).default([]),
     tls: z.object({ cert: z.string().optional() }).meta({ title: "TLS" }).optional(),
     shape: z.union([z.object({ a: z.string() }), z.object({ b: z.number() })]).optional(),
+    token: z.string().optional().meta({ writeOnly: true }),
+    pin: z.number().meta({ writeOnly: true }).nullable().optional(),
+    keys: z.array(z.string()).optional().meta({ writeOnly: true }),
+    auth: z
+      .union([
+        z.object({ password: z.string().meta({ writeOnly: true }) }),
+        z.object({ none: z.boolean() }),
+      ])
+      .optional(),
   })
   .meta({ title: "Server" });
 const schema = z.toJSONSchema(Server, { io: "input", unrepresentable: "any" });
@@ -125,6 +134,7 @@ function mountForm(original: Record<string, unknown>, issues: Loaded["read"]["is
           value,
           project: undefined,
           errors: errorsOf(schema, loaded),
+          root: schema,
           set: (path, next) => setValue((current: unknown) => setAt(current, path, next)),
         }}
         fields={form.fields}
@@ -216,5 +226,50 @@ describe("a config section as a form (D80)", () => {
 
     await userEvent.fill(page.getByRole("textbox", { name: "Name" }), "y");
     expect(page.getByRole("alert").elements()).toEqual([]);
+  });
+
+  it("never shows a secret in clear, wherever it is (D83)", async () => {
+    const view = mountForm({ token: "s3cret", pin: 1234, keys: ["k1"], auth: { password: "pw" } });
+    const input = (label: string) => page.getByLabelText(label, { exact: true }).element();
+
+    // A text field, a nullable number and a list item: password fields.
+    expect(input("Token")).toHaveProperty("type", "password");
+    expect(input("Pin")).toHaveProperty("type", "password");
+    expect(input("Keys 1")).toHaveProperty("type", "password");
+    // Inside an inline JSON field: hidden, and kept when the rest is edited.
+    const auth = page.getByRole("textbox", { name: "Auth" });
+    expect(auth.element()).toHaveProperty("value", expect.stringContaining(HIDDEN));
+    expect(document.body.innerHTML).not.toContain("pw");
+    await userEvent.fill(auth, `{ "password": "${HIDDEN}" }`);
+    expect(view.state.value).toMatchObject({ auth: { password: "pw" } });
+  });
+
+  it("hides secrets in the section's JSON and keeps them through an edit (D83)", async () => {
+    const changes: unknown[] = [];
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const value = { token: "s3cret", name: "a" };
+    act(() =>
+      root.render(
+        <SectionJson
+          messages={[]}
+          onChange={(next) => changes.push(next)}
+          schema={schema}
+          section="acme.server"
+          value={value}
+        />,
+      ),
+    );
+    mounted.push(() => {
+      act(() => root.unmount());
+      container.remove();
+    });
+    const json = page.getByRole("textbox", { name: "acme.server in the node file" });
+    expect(json.element()).toHaveProperty("value", expect.not.stringContaining("s3cret"));
+    expect(json.element()).toHaveProperty("value", expect.stringContaining(HIDDEN));
+
+    await userEvent.fill(json, `{ "token": "${HIDDEN}", "name": "b" }`);
+    expect(changes.at(-1)).toEqual({ token: "s3cret", name: "b" });
   });
 });

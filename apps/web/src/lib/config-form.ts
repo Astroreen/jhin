@@ -172,6 +172,8 @@ function controlOf(
   path: readonly string[],
   root: JsonSchema,
   comments: ReadonlyMap<string, string>,
+  /** Inside a secret: everything below is one too (D83). */
+  secret = false,
 ): Control {
   if (path.length > MAX_DEPTH) return { kind: "json" };
   const options = optionsOf(schema, root);
@@ -180,7 +182,7 @@ function controlOf(
   if (types.length !== 1 || branchesOf(schema) !== undefined) return { kind: "json" };
   switch (types[0]) {
     case "string":
-      return { kind: "text", secret: schema["writeOnly"] === true };
+      return { kind: "text", secret };
     case "number":
     case "integer":
       return { kind: "number", integer: types[0] === "integer" };
@@ -192,13 +194,13 @@ function controlOf(
         return {
           kind: "group",
           fields: Object.entries(properties).map(([key, property]) =>
-            fieldOf(key, [...path, key], property, root, comments),
+            fieldOf(key, [...path, key], property, root, comments, secret),
           ),
         };
       }
       const values = schema["additionalProperties"];
       if (isObject(values)) {
-        const value = fieldOf("", [...path, "*"], values, root, comments);
+        const value = fieldOf("", [...path, "*"], values, root, comments, secret);
         if (value.control.kind !== "json") return { kind: "map", value };
       }
       return { kind: "json" };
@@ -206,7 +208,7 @@ function controlOf(
     case "array": {
       const items = schema["items"];
       if (!isObject(items)) return { kind: "json" };
-      const item = fieldOf("", [...path, "*"], items, root, comments);
+      const item = fieldOf("", [...path, "*"], items, root, comments, secret);
       const kind = item.control.kind;
       return kind === "text" || kind === "number" || kind === "switch" || kind === "select"
         ? { kind: "list", item }
@@ -225,9 +227,12 @@ function fieldOf(
   raw: unknown,
   root: JsonSchema,
   comments: ReadonlyMap<string, string>,
+  inSecret = false,
 ): Field {
   const outer = resolve(raw, root);
   const { schema, nullable } = withoutNull(outer, root);
+  // Marked on the field, on its non-null branch (`.meta()` before `.nullable()`), or above it.
+  const secret = inSecret || outer["writeOnly"] === true || schema["writeOnly"] === true;
   const title = typeof outer["title"] === "string" ? outer["title"] : humanize(key);
   const description =
     typeof outer["description"] === "string"
@@ -241,14 +246,14 @@ function fieldOf(
     path,
     title,
     ...(description === undefined ? {} : { description }),
-    control: controlOf(schema, path, root, comments),
+    control: controlOf(schema, path, root, comments, secret),
     schema,
     hasDefault: "default" in outer,
     ...("default" in outer ? { default: outer["default"] } : {}),
     nullable,
     advanced: outer["advanced"] === true,
     deprecated: outer["deprecated"] === true,
-    secret: outer["writeOnly"] === true,
+    secret,
     ...(example === undefined ? {} : { example }),
   };
 }
@@ -423,6 +428,10 @@ function check(
     out.push({ path: join(path), message: value.message });
     return;
   }
+  if (value === HIDDEN) {
+    out.push({ path: join(path), message: "Enter the secret: there is no stored one here" });
+    return;
+  }
   if (raw === false) {
     out.push({ path: join(path), message: "Not allowed here" });
     return;
@@ -492,8 +501,11 @@ function check(
     if (typeof exclusiveMaximum === "number" && value >= exclusiveMaximum) {
       at(`Must be less than ${exclusiveMaximum}`);
     }
-    if (typeof multipleOf === "number" && !Number.isInteger(value / multipleOf)) {
-      at(`Must be a multiple of ${multipleOf}`);
+    if (typeof multipleOf === "number" && multipleOf > 0) {
+      // Floating point: 0.3 / 0.1 is 2.9999999999999996, yet 0.3 is a multiple of 0.1.
+      const quotient = value / multipleOf;
+      const off = Math.abs(quotient - Math.round(quotient));
+      if (off > 1e-9 * Math.max(1, Math.abs(quotient))) at(`Must be a multiple of ${multipleOf}`);
     }
   }
   if (Array.isArray(value)) {
@@ -540,4 +552,79 @@ export function validate(schema: unknown, value: unknown): Issue[] {
   const out: Issue[] = [];
   check(root, value, [], root, true, out);
   return out;
+}
+
+// Secrets ----------------------------------------------------------------------
+
+/** What a secret shows as wherever the form writes JSON (D83). */
+export const HIDDEN = "<hidden secret>";
+
+const isSecret = (schema: JsonSchema, root: JsonSchema) =>
+  schema["writeOnly"] === true || withoutNull(schema, root).schema["writeOnly"] === true;
+
+/**
+ * `value` with every value its schema marks `writeOnly` replaced by
+ * `HIDDEN` (D83), for the JSON views. `secret`: the whole value is one.
+ */
+export function redact(raw: unknown, value: unknown, root: JsonSchema, secret = false): unknown {
+  if (value === undefined || value === null || value instanceof Unparsed) return value;
+  const schema = resolve(raw, root);
+  if (secret || isSecret(schema, root)) return HIDDEN;
+  const branches = branchesOf(schema);
+  if (branches !== undefined) {
+    // The branch the value is of; a value of none keeps whatever any branch hides.
+    const fits = branches.find((branch) => {
+      const issues: Issue[] = [];
+      check(branch, value, [], root, true, issues);
+      return issues.length === 0;
+    });
+    return branches.reduce<unknown>(
+      (current, branch) =>
+        fits === undefined || branch === fits ? redact(branch, current, root) : current,
+      value,
+    );
+  }
+  if (Array.isArray(value)) {
+    return schema["items"] === undefined
+      ? value
+      : value.map((item) => redact(schema["items"], item, root));
+  }
+  if (isObject(value)) {
+    const properties = isObject(schema["properties"]) ? schema["properties"] : {};
+    const additional = schema["additionalProperties"];
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        Object.hasOwn(properties, key)
+          ? redact(properties[key], item, root)
+          : isObject(additional)
+            ? redact(additional, item, root)
+            : item,
+      ]),
+    );
+  }
+  return value;
+}
+
+/**
+ * An edit of a redacted value with the secrets put back: wherever `HIDDEN`
+ * is left, the value `previous` held at that place (D83). One left where
+ * there was none stays `HIDDEN`, which `validate` refuses.
+ */
+export function restore(edited: unknown, previous: unknown): unknown {
+  if (edited === HIDDEN) return previous ?? HIDDEN;
+  if (Array.isArray(edited)) {
+    return edited.map((item, index) =>
+      restore(item, Array.isArray(previous) ? previous[index] : undefined),
+    );
+  }
+  if (isObject(edited)) {
+    return Object.fromEntries(
+      Object.entries(edited).map(([key, item]) => [
+        key,
+        restore(item, isObject(previous) ? previous[key] : undefined),
+      ]),
+    );
+  }
+  return edited;
 }

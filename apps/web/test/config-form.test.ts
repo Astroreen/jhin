@@ -5,7 +5,10 @@ import {
   changesOf,
   getAt,
   hasUnparsed,
+  HIDDEN,
   humanize,
+  redact,
+  restore,
   sectionForm,
   setAt,
   Unparsed,
@@ -245,5 +248,69 @@ describe("editing and saving values", () => {
     expect(humanize("trustProxy")).toBe("Trust proxy");
     expect(humanize("queueExpiryHours")).toBe("Queue expiry hours");
     expect(humanize("default_agent")).toBe("Default agent");
+  });
+});
+
+describe("multiples", () => {
+  it("accepts a decimal that is a multiple of a fractional step", () => {
+    const schema = served(z.object({ ratio: z.number().multipleOf(0.1) }));
+    // 0.3 / 0.1 is 2.9999999999999996 in floating point.
+    expect(validate(schema, { ratio: 0.3 })).toEqual([]);
+    expect(validate(schema, { ratio: 0.7 })).toEqual([]);
+    expect(validate(schema, { ratio: 0.35 })).toEqual([
+      { path: "ratio", message: "Must be a multiple of 0.1" },
+    ]);
+  });
+});
+
+describe("secrets (D83)", () => {
+  const Secret = z.object({
+    token: z.string().optional().meta({ writeOnly: true }),
+    // Marked before `.nullable()`: on the non-null branch.
+    pin: z.string().meta({ writeOnly: true }).nullable().optional(),
+    keys: z.array(z.string()).optional().meta({ writeOnly: true }),
+    vault: z.record(z.string(), z.string().meta({ writeOnly: true })).optional(),
+    auth: z
+      .union([
+        z.object({ password: z.string().meta({ writeOnly: true }) }),
+        z.object({ none: z.boolean() }),
+      ])
+      .optional(),
+    name: z.string().optional(),
+  });
+  const schema = served(Secret);
+  const fields = byKey(sectionForm("s", schema).fields);
+
+  it("marks a secret, and everything inside it, wherever it is written", () => {
+    expect(fields.get("token")?.secret).toBe(true);
+    expect(fields.get("pin")).toMatchObject({ secret: true, nullable: true });
+    expect(fields.get("keys")?.control).toMatchObject({ kind: "list", item: { secret: true } });
+    expect(fields.get("vault")?.control).toMatchObject({ kind: "map", value: { secret: true } });
+    expect(fields.get("name")?.secret).toBe(false);
+  });
+
+  it("hides secrets in JSON and puts them back where the placeholder is left", () => {
+    const value = {
+      token: "t",
+      pin: null,
+      keys: ["k"],
+      vault: { a: "v" },
+      auth: { password: "pw" },
+      name: "n",
+    };
+    const hidden = redact(schema, value, schema);
+    expect(hidden).toEqual({
+      token: HIDDEN,
+      pin: null,
+      keys: HIDDEN,
+      vault: { a: HIDDEN },
+      auth: { password: HIDDEN },
+      name: "n",
+    });
+    expect(restore({ ...(hidden as object), name: "m" }, value)).toEqual({ ...value, name: "m" });
+    // A placeholder where nothing was stored is refused, never saved.
+    expect(validate(schema, restore({ token: HIDDEN }, {}))).toEqual([
+      { path: "token", message: "Enter the secret: there is no stored one here" },
+    ]);
   });
 });
