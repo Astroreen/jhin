@@ -187,7 +187,7 @@ interface Running {
 }
 
 /** What a turn with open requests waits for: an approval, if one is open, else answers. */
-function waitingFor(open: ReadonlyMap<string, AgentRequest["kind"]>): AgentRequest["kind"] {
+function awaitedKind(open: ReadonlyMap<string, AgentRequest["kind"]>): AgentRequest["kind"] {
   return [...open.values()].includes("approval") ? "approval" : "user-input";
 }
 
@@ -773,7 +773,7 @@ export default definePlugin({
                 turnId,
                 runtime.agentId,
                 "waiting",
-                waitingFor(entry.openRequests),
+                awaitedKind(entry.openRequests),
               );
             }
           }
@@ -1509,7 +1509,7 @@ export default definePlugin({
                 current.turnId,
                 current.agentId,
                 "waiting",
-                waitingFor(current.openRequests),
+                awaitedKind(current.openRequests),
               ));
         }
         if (refused !== undefined) {
