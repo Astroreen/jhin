@@ -227,8 +227,9 @@ contributions. Features of T3 Code that only make sense for its hosted product
   Accessible names follow: a row is named "title, status, project", and
   while several nodes are shown "… on <node>"; so is the filter's button.
   The icon is T3's "server" machine kind for every node: nodes have no kind
-  to pick yet (Deferred). The agent's icon is Claude's for
-  `jhin.agent-claude` and a generic one for any other runtime.
+  to pick yet (Deferred). The agent's icon is Claude's for the Claude Code
+  runtime (`jhin.agent-claude`, `providers.md`), as T3 draws its claudeAgent
+  provider, and a generic one for any other runtime.
 - **D72. The node's actions move where T3 has them.** The header's "Add
   project" (`project.add`) asks on which node when several are shown, as T3
   asks for the environment first; "New thread" (`chat.new`) starts one
@@ -270,7 +271,8 @@ kernel: `chat.new-without-project` and `project.add` refusing a remote without
 its node and nodes not shown or not open, the `sidebar.thread.*` shortcuts
 following the list, the shelf and filter kept per device, corrupt stored
 values); `apps/web/test/settings.test.ts` (stored chat settings with the
-removed setting still read); Playwright `e2e/tests/sidebar.spec.ts` (no node
+removed setting still read); `apps/web/test/agent-icon.browser.test.tsx`
+(Claude's icon for `jhin.agent-claude`, a generic one otherwise); Playwright `e2e/tests/sidebar.spec.ts` (no node
 icon with one node, icons and node-named rows with two, the project filter
 keeping two "web" projects apart, search, settings leading the footer, the
 node picker, the node menu in settings, the rename dialog's footer inside its
