@@ -223,10 +223,9 @@ test("D47: a thread a reachable remote cannot share says why and leaves the remo
   const nodeB = page.getByRole("region", { name: "Node b" });
   await nodeB.getByRole("button", { name: "New thread", exact: true }).click();
   // The new thread's draft is the current item of b's list.
-  await expect(nodeB.getByRole("listitem").filter({ hasText: "New thread" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await expect(
+    nodeB.getByRole("list", { name: "Threads of No project" }).getByRole("listitem"),
+  ).toHaveAttribute("aria-current", "page");
   // The same reachable remote, but a thread `mesh.open` refuses to copy.
   await page.evaluate(() => {
     const params = new URLSearchParams(location.hash.slice(1));
