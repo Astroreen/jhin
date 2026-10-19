@@ -334,10 +334,25 @@ export default definePlugin({
         .map((entry) => Thread.parse(entry.value))
         .toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-    /** Changes to one thread's record run one at a time, so none overwrites another. */
+    /**
+     * Changes to one record run one at a time, so none overwrites another and
+     * none writes back a record removed meanwhile: by thread id, and by
+     * `project/<id>` for projects.
+     */
     const pending = new Map<string, Promise<unknown>>();
+    /** Runs `task` once the changes to the same record queued before it are done. */
+    function queued<T>(id: string, task: () => Promise<T>): Promise<T> {
+      const previous = pending.get(id) ?? Promise.resolve();
+      const result = previous.then(task, task);
+      const settled = result.catch(() => undefined);
+      pending.set(id, settled);
+      void settled.then(() => {
+        if (pending.get(id) === settled) pending.delete(id);
+      });
+      return result;
+    }
     function updateThread(id: string, change: (thread: Thread) => Thread): Promise<Thread> {
-      const run = async () => {
+      return queued(id, async () => {
         const current = await getThread(id);
         const changed = change(current);
         if (changed === current) return current;
@@ -347,15 +362,7 @@ export default definePlugin({
           { type: ThreadEvents.threadUpdated, payload: next as unknown as Json },
         ]);
         return next;
-      };
-      const previous = pending.get(id) ?? Promise.resolve();
-      const result = previous.then(run, run);
-      const settled = result.catch(() => undefined);
-      pending.set(id, settled);
-      void settled.then(() => {
-        if (pending.get(id) === settled) pending.delete(id);
       });
-      return result;
     }
     /** Records where the thread's latest turn is; failures are logged, never thrown. */
     const setTurnStatus = (
@@ -812,7 +819,8 @@ export default definePlugin({
             // Its stream says deleted: it stays closed to turns, whatever fails next.
             deletion.recorded = true;
           }
-          await kv.delete(NAMESPACE, `thread/${thread.id}`);
+          // After the changes to its record already under way: none writes it back.
+          await queued(thread.id, () => kv.delete(NAMESPACE, `thread/${thread.id}`));
           await log.append(THREADS_STREAM, [
             { type: ThreadEvents.threadDeleted, payload: { id: thread.id } },
           ]);
@@ -890,18 +898,23 @@ export default definePlugin({
       input: z.object({ projectId: z.string(), name: z.string().trim().min(1) }),
       output: Project,
       permissions: ["projects.write"],
-      handler: async ({ projectId, name }) => {
-        const project = await getProject(projectId);
-        if (project.scratch) {
-          throw new ThreadsError("PROJECT_IS_SCRATCH", "The scratch project cannot be renamed", {
-            projectId,
-          });
-        }
-        const next: Project = { ...project, name };
-        await kv.set(NAMESPACE, `project/${projectId}`, next);
-        await projectEvent(ThreadEvents.projectUpdated, next as unknown as Json);
-        return next;
-      },
+      // One change of a project's record at a time, its removal included.
+      handler: ({ projectId, name }) =>
+        queued(`project/${projectId}`, async () => {
+          if (removedProjects.has(projectId)) {
+            throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
+          }
+          const project = await getProject(projectId);
+          if (project.scratch) {
+            throw new ThreadsError("PROJECT_IS_SCRATCH", "The scratch project cannot be renamed", {
+              projectId,
+            });
+          }
+          const next: Project = { ...project, name };
+          await kv.set(NAMESPACE, `project/${projectId}`, next);
+          await projectEvent(ThreadEvents.projectUpdated, next as unknown as Json);
+          return next;
+        }),
     });
 
     context.commands.register({
@@ -939,7 +952,8 @@ export default definePlugin({
         await Promise.allSettled(creations.get(projectId) ?? []);
         const threads = (await listThreads()).filter((thread) => thread.projectId === projectId);
         for (const thread of threads) await deleteThread(thread);
-        await kv.delete(NAMESPACE, `project/${projectId}`);
+        // After a rename under way: none writes the project back.
+        await queued(`project/${projectId}`, () => kv.delete(NAMESPACE, `project/${projectId}`));
         removed = true;
         await projectEvent(ThreadEvents.projectDeleted, { id: projectId });
         return { deletedThreads: threads.length };

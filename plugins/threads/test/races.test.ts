@@ -186,6 +186,37 @@ describe("jhin.threads: concurrent changes", () => {
     expect(await deletion).toEqual({ deleted: true });
   });
 
+  it("lets no change of a thread's record bring it back after its deletion", async () => {
+    const { client, storage } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    // The renamed record is written once the test says so.
+    const kv = storage.storage.kv;
+    const set = kv.set.bind(kv);
+    const renaming = latch();
+    const write = latch();
+    kv.set = async (namespace, key, value) => {
+      if (key === `thread/${thread.id}` && (value as { title?: string }).title === "Renamed") {
+        renaming.resolve();
+        await write.promise;
+      }
+      return set(namespace, key, value);
+    };
+
+    const renamed = client.call("threads.update", { threadId: thread.id, title: "Renamed" });
+    await renaming.promise;
+    const deletion = client.call("threads.delete", { threadId: thread.id });
+    await until("threads.thread.deleted");
+    write.resolve();
+
+    await renamed;
+    expect(await deletion).toEqual({ deleted: true });
+    expect(await client.call("threads.list", {})).toEqual([]);
+    await expect(client.call("threads.get", { threadId: thread.id })).rejects.toMatchObject({
+      code: "THREAD_NOT_FOUND",
+    });
+  });
+
   it("archives a thread once when it is archived twice at once", async () => {
     const { client, storage } = await node();
     const thread = await client.call<Thread>("threads.create", {});
@@ -395,6 +426,38 @@ describe("jhin.threads: deletions that fail or overlap", () => {
     await creating;
     expect(await removing).toEqual({ deletedThreads: 1 });
     expect(await client.call("threads.list", {})).toEqual([]);
+  });
+
+  it("lets no rename bring a project back after its removal", async () => {
+    const { client, storage, data } = await node();
+    const project = await client.call<{ id: string }>("projects.create", { path: data });
+    // The renamed project is written once the test says so.
+    const kv = storage.storage.kv;
+    const set = kv.set.bind(kv);
+    const renaming = latch();
+    const write = latch();
+    kv.set = async (namespace, key, value) => {
+      if (key === `project/${project.id}` && (value as { name?: string }).name === "Renamed") {
+        renaming.resolve();
+        await write.promise;
+      }
+      return set(namespace, key, value);
+    };
+
+    const renamed = client.call("projects.update", { projectId: project.id, name: "Renamed" });
+    await renaming.promise;
+    const removing = client.call("projects.delete", { projectId: project.id });
+    // The removal has begun once a new thread in the project is refused.
+    await expect(client.call("threads.create", { projectId: project.id })).rejects.toMatchObject({
+      code: "PROJECT_NOT_FOUND",
+    });
+    write.resolve();
+
+    await renamed;
+    expect(await removing).toEqual({ deletedThreads: 0 });
+    expect((await client.call<{ id: string }[]>("projects.list")).map((item) => item.id)).toEqual([
+      "scratch",
+    ]);
   });
 
   it("creates threads again in a project whose removal failed", async () => {
