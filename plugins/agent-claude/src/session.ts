@@ -75,6 +75,8 @@ export interface LiveSessions {
   }): Promise<Lease>;
   /** Ends a thread's live session, if any; a turn holding it ends too. */
   close(threadId: string): boolean;
+  /** Ends every live session no turn holds; held ones end with their turn's release. */
+  closeIdle(): number;
   list(): LiveSessionInfo[];
   /** Ends every live session. */
   dispose(): void;
@@ -132,6 +134,10 @@ interface Live {
    * answers (`user_message_uuid(s)`), as current CLIs do: then a turn takes only its own.
    */
   stamps: boolean;
+  /** Whether it reports `session_state_changed` (running, idle), as asked at launch. */
+  reportsState: boolean;
+  /** Whether the last state it reported is idle: it has taken every message sent so far. */
+  settled: boolean;
   holder: Holder | undefined;
   idleSince: Date | undefined;
   timer: ReturnType<typeof setTimeout> | undefined;
@@ -166,6 +172,20 @@ function stampOf(message: SDKMessage): readonly string[] | undefined {
     return marked.user_message_uuids as string[];
   }
   return typeof marked.user_message_uuid === "string" ? [marked.user_message_uuid] : undefined;
+}
+
+/** What a `session_state_changed` frame reports, if the frame is one. */
+function stateOf(message: SDKMessage): "idle" | "running" | "requires_action" | undefined {
+  return message.type === "system" && message.subtype === "session_state_changed"
+    ? message.state
+    : undefined;
+}
+
+/** Ends a turn whose message Claude Code took without answering it (nothing marked as its). */
+export class NoAnswer extends Error {
+  constructor() {
+    super("Claude Code finished without answering the turn's message.");
+  }
 }
 
 /** Ends a turn that still held its thread's Claude Code when a later turn took it. */
@@ -221,6 +241,9 @@ export function createLiveSessions(options: {
       prompt: input.read(),
       options: {
         ...launch,
+        // Running and idle reports: idle is Claude Code's own word that it took every
+        // message, the way out for a turn whose frames it does not mark (D104).
+        env: { ...(launch.env ?? process.env), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
         // Set once per process: Claude Code asks whichever turn holds the session.
         canUseTool: (toolName, toolInput, permission) =>
           live.holder?.canUseTool?.(toolName, toolInput, permission) ??
@@ -236,6 +259,8 @@ export function createLiveSessions(options: {
       permissionMode: launch.permissionMode,
       busy: true,
       stamps: false,
+      reportsState: false,
+      settled: false,
       holder: undefined,
       idleSince: undefined,
       timer: undefined,
@@ -256,6 +281,11 @@ export function createLiveSessions(options: {
             live.permissionMode = message.permissionMode;
           }
           if (!live.stamps && stampOf(message) !== undefined) live.stamps = true;
+          const state = stateOf(message);
+          if (state !== undefined) {
+            live.reportsState = true;
+            live.settled = state === "idle";
+          }
           live.holder?.push(message);
         }
         live.holder?.end();
@@ -345,7 +375,11 @@ export function createLiveSessions(options: {
       else session.input.push(message);
 
       let released = false;
+      let stopping = false;
+      /** Ended on an idle report: nothing of the turn is left in flight. */
+      let wentIdle = false;
       const uuid = message.uuid;
+      const settledAtLease = session.settled;
       return {
         reused,
         messages: (async function* () {
@@ -354,20 +388,55 @@ export function createLiveSessions(options: {
           // result of its own) or Claude Code's own (a continuation after background work,
           // which marks nothing). Without marks (an older CLI) every frame is the turn's.
           let begun = false;
+          /** Unmarked frames since the last unmarked init: the turn's, if Claude Code never marks it. */
+          let unmarked: SDKMessage[] = [];
+          /** An idle report counts once it cannot be the one before this message went in. */
+          let idleCounts = settledAtLease;
           for await (const sent of received.read()) {
             if (!begun) {
               const stamp = stampOf(sent);
-              const own =
-                stamp === undefined ? !session.stamps : uuid !== undefined && stamp.includes(uuid);
-              if (!own) continue;
-              begun = true;
+              const state = stateOf(sent);
+              if (
+                stamp === undefined ? !session.stamps : uuid !== undefined && stamp.includes(uuid)
+              ) {
+                begun = true;
+              } else if (stamp !== undefined) {
+                unmarked = [];
+                continue;
+              } else if (state !== undefined) {
+                if (state === "running") idleCounts = true;
+                // Idle with nothing marked as this turn's: Claude Code took the message and
+                // marked none of its frames, or it never answered. A stopped turn ends here too.
+                if (state === "idle" && (idleCounts || stopping)) {
+                  wentIdle = true;
+                  if (unmarked.at(-1)?.type === "result") {
+                    yield* unmarked;
+                    return;
+                  }
+                  if (stopping) return;
+                  throw new NoAnswer();
+                }
+                continue;
+              } else {
+                if (sent.type === "system" && sent.subtype === "init") unmarked = [sent];
+                else unmarked.push(sent);
+                // Without idle reports an unmarked result is the only end in sight.
+                if (sent.type === "result" && (!session.reportsState || stopping)) {
+                  yield* unmarked;
+                  return;
+                }
+                continue;
+              }
             }
             yield sent;
             if (sent.type === "result") return;
           }
           if (failure !== undefined) throw failure.error;
         })(),
-        interrupt: () => session.query.interrupt(),
+        interrupt: () => {
+          stopping = true;
+          return session.query.interrupt();
+        },
         release(keep) {
           if (released) return;
           released = true;
@@ -376,7 +445,7 @@ export function createLiveSessions(options: {
           if (session.holder === holder) session.holder = undefined;
           session.busy = false;
           const policy = options.keepAlive();
-          if (!keep || !policy.keepAlive || session.closed) return close(session);
+          if (!(keep || wentIdle) || !policy.keepAlive || session.closed) return close(session);
           session.idleSince = new Date();
           if (policy.idleMs > 0) {
             // setTimeout fires at once past its limit (about 24.8 days): that is the most.
@@ -391,6 +460,15 @@ export function createLiveSessions(options: {
       if (live === undefined) return false;
       close(live);
       return true;
+    },
+    closeIdle() {
+      let closed = 0;
+      for (const live of sessions.values()) {
+        if (live.busy) continue;
+        close(live);
+        closed++;
+      }
+      return closed;
     },
     list: () =>
       [...sessions.values()].map((live) => ({

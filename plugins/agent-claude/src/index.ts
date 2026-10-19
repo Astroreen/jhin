@@ -201,8 +201,13 @@ export function createClaudeRuntime(options: {
   readonly sessions: SessionStore;
   readonly config: () => Config;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
-}): AgentRuntime & { readonly live: LiveSessions; dispose(): void } {
-  const turns = new Set<AgentTurn>();
+}): AgentRuntime & {
+  readonly live: LiveSessions;
+  /** Settles once no turn of the thread started so far is running. */
+  settled(threadId: string): Promise<void>;
+  dispose(): void;
+} {
+  const turns = new Map<AgentTurn, { threadId: string; done: Promise<void> }>();
   const live = createLiveSessions({
     query: options.query,
     keepAlive: () => {
@@ -280,7 +285,7 @@ export function createClaudeRuntime(options: {
         contextWindow: (name) => windows.get(name) ?? manifestContextWindow(name),
         ...(options.log === undefined ? {} : { log: options.log }),
       });
-      turns.add(turn);
+      turns.set(turn, { threadId: request.threadId, done: turn.done });
       // Forgotten once its query ended, whether or not anyone read its items.
       void turn.done.then(() => turns.delete(turn));
       const items = turn.items;
@@ -297,35 +302,59 @@ export function createClaudeRuntime(options: {
         })(),
       };
     },
+    settled: async (threadId) => {
+      const running = [...turns.values()].filter((turn) => turn.threadId === threadId);
+      await Promise.all(running.map((turn) => turn.done));
+    },
     dispose() {
-      for (const turn of turns) turn.interrupt();
+      for (const turn of turns.keys()) turn.interrupt();
       live.dispose();
     },
   };
 }
 
 /**
- * Which threads have a Claude session, in `storage.kv`. A forgotten (deleted) thread is
- * never recorded again: a turn still letting go of its session when the thread was
- * deleted would otherwise write the record back.
+ * Which threads have a Claude session, in `storage.kv`. Writes of one thread run one after
+ * another, so `forget` (its thread was deleted) lands after any `set` already on its way,
+ * and later `set`s write nothing: a turn still letting go of its session when the thread
+ * was deleted would otherwise write the record back. The guard is dropped once `settled`
+ * says no turn of the thread is left to write.
  */
 export function sessionRecords(kv: KeyValueStore): SessionStore & {
-  forget(threadId: string): Promise<void>;
+  forget(threadId: string, settled?: Promise<void>): Promise<void>;
 } {
   const forgotten = new Set<string>();
-  const remove = async (threadId: string) => {
-    await kv.delete(NAMESPACE, `session/${threadId}`);
+  /** The last write of each thread still running; the next waits for it. */
+  const writes = new Map<string, Promise<void>>();
+  const write = (threadId: string, run: () => Promise<unknown>): Promise<void> => {
+    const next = (writes.get(threadId) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(run)
+      .then(() => undefined);
+    writes.set(threadId, next);
+    const settle = () => {
+      if (writes.get(threadId) === next) writes.delete(threadId);
+    };
+    next.then(settle, settle);
+    return next;
   };
+  const key = (threadId: string) => `session/${threadId}`;
   return {
-    has: async (threadId) => (await kv.get(NAMESPACE, `session/${threadId}`)) !== undefined,
-    set: async (threadId) => {
-      if (forgotten.has(threadId)) return;
-      await kv.set(NAMESPACE, `session/${threadId}`, { at: new Date().toISOString() });
-    },
-    delete: remove,
-    forget: (threadId) => {
+    has: async (threadId) => (await kv.get(NAMESPACE, key(threadId))) !== undefined,
+    set: (threadId) =>
+      write(threadId, async () => {
+        if (forgotten.has(threadId)) return;
+        await kv.set(NAMESPACE, key(threadId), { at: new Date().toISOString() });
+      }),
+    delete: (threadId) => write(threadId, () => kv.delete(NAMESPACE, key(threadId))),
+    forget: (threadId, settled = Promise.resolve()) => {
       forgotten.add(threadId);
-      return remove(threadId);
+      const removed = write(threadId, () => kv.delete(NAMESPACE, key(threadId)));
+      void Promise.all([removed, settled]).then(
+        () => forgotten.delete(threadId),
+        () => forgotten.delete(threadId),
+      );
+      return removed;
     },
   };
 }
@@ -358,6 +387,15 @@ export function claudePlugin(query: QueryFunction) {
       });
       context.subscriptions.add(registry.register(runtime));
       context.onDeactivate(() => runtime.dispose());
+      // Turned to per-turn: kept sessions end now, not when their idle time runs out (held
+      // ones end with their turn).
+      context.subscriptions.add(
+        context.config.onDidChange(CONFIG_SECTION, () => {
+          if (context.config.get<Config>(CONFIG_SECTION).session === "per-turn") {
+            runtime.live.closeIdle();
+          }
+        }),
+      );
 
       // A deleted or archived thread takes no more turns: its Claude Code exits. A deleted
       // thread's session record goes too (Claude Code's own session file stays).
@@ -367,7 +405,7 @@ export function claudePlugin(query: QueryFunction) {
           if (typeof payload?.id !== "string") return;
           if (event.type === ThreadEvents.threadDeleted) {
             runtime.live.close(payload.id);
-            void sessions.forget(payload.id).catch((error: unknown) =>
+            void sessions.forget(payload.id, runtime.settled(payload.id)).catch((error: unknown) =>
               context.log.warn("could not forget the claude session", {
                 threadId: payload.id,
                 error: String(error),

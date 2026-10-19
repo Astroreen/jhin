@@ -62,7 +62,7 @@ async function node(...scripts: Script[]) {
     client.close();
     await kernel.stop();
   });
-  return { client, calls, storage };
+  return { client, calls, storage, kernel };
 }
 
 /** Resolves with the thread's events (all of them, from its start) once `count` of type `type` are recorded. */
@@ -193,6 +193,28 @@ describe("jhin.agent-claude: the plugin", () => {
     expect(
       await storage.storage.kv.get("jhin.agent-claude", `session/${thread.id}`),
     ).toBeUndefined();
+  });
+
+  it("ends kept sessions as soon as the setting turns to per-turn", async () => {
+    const { client, calls, kernel } = await node(async function* (player) {
+      yield init();
+      yield result();
+      await player.nextPrompt();
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    const completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await completed;
+    expect(await client.call("claude.sessions.list", {})).toHaveLength(1);
+
+    // Another change to the section leaves it running.
+    kernel.config.setLayer("node", { "jhin.agent-claude": { sessionIdleMinutes: 30 } });
+    expect(calls[0]!.closed).toBe(false);
+    kernel.config.setLayer("node", { "jhin.agent-claude": { session: "per-turn" } });
+    await calls[0]!.whenClosed;
+    expect(await client.call("claude.sessions.list", {})).toEqual([]);
   });
 
   it("ends live sessions on request", async () => {

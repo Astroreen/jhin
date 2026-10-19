@@ -374,33 +374,122 @@ describe("jhin.agent-claude: live sessions", () => {
 /** A frame marked as answering the message `uuid`, as Claude Code marks a turn's frames. */
 const answeringUuid = (uuid: string | undefined, message: SDKMessage) =>
   ({ ...message, user_message_uuid: uuid, user_message_uuids: [uuid] }) as SDKMessage;
+/** Claude Code's running and idle reports (`CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS`). */
+const state = (value: "running" | "idle") =>
+  ({ type: "system", subtype: "session_state_changed", state: value }) as SDKMessage;
 
 describe("jhin.agent-claude: frames of other turns", () => {
   it("does not hand a turn what Claude Code ran by itself before it", async () => {
     const { turn } = node([
       async function* (player) {
         const first = player.call.prompt[0]!.uuid;
+        yield state("running");
         yield answeringUuid(first, init());
         yield* streamedBlock("m1", 0, "text", ["one"]);
         yield answeringUuid(first, result());
+        yield state("idle");
         const second = (await player.nextPrompt())?.uuid;
-        // A background shell finished: Claude Code continues on its own, marking nothing.
+        // A background shell finished: Claude Code continues on its own, marking nothing,
+        // and takes the waiting message right after, without going idle in between.
+        yield state("running");
         yield init();
         yield* streamedBlock("bg", 0, "text", ["background done"]);
         yield result();
         yield answeringUuid(second, init());
         yield* streamedBlock("m2", 0, "text", ["two"]);
         yield answeringUuid(second, result());
+        yield state("idle");
         const third = (await player.nextPrompt())?.uuid;
+        yield state("running");
         yield answeringUuid(third, init());
         yield* streamedBlock("m3", 0, "text", ["three"]);
         yield answeringUuid(third, result());
+        yield state("idle");
         await player.nextPrompt();
       },
     ]);
     expect(answers(await turn())).toEqual(["one"]);
     expect(answers(await turn())).toEqual(["two"]);
     expect(answers(await turn())).toEqual(["three"]);
+  });
+
+  it("ends a turn whose frames Claude Code does not mark once it goes idle", async () => {
+    const { turn } = node([
+      async function* (player) {
+        const first = player.call.prompt[0]!.uuid;
+        yield state("running");
+        yield answeringUuid(first, init());
+        yield answeringUuid(first, result());
+        yield state("idle");
+        await player.nextPrompt();
+        // The session marks frames, but none of this message's (a rewritten uuid).
+        yield state("running");
+        yield init();
+        yield* streamedBlock("m2", 0, "text", ["two"]);
+        yield result();
+        yield state("idle");
+        await player.nextPrompt();
+        // Taken, and never answered.
+        yield state("running");
+        yield state("idle");
+        await player.nextPrompt();
+      },
+    ]);
+    await turn();
+    expect(answers(await turn())).toEqual(["two"]);
+    await expect(turn()).rejects.toThrow(
+      "Claude Code finished without answering the turn's message.",
+    );
+  });
+
+  it("takes an unmarked result when Claude Code reports no idle", async () => {
+    const { turn } = node([
+      async function* (player) {
+        const first = player.call.prompt[0]!.uuid;
+        yield answeringUuid(first, init());
+        yield answeringUuid(first, result());
+        await player.nextPrompt();
+        yield init();
+        yield* streamedBlock("m2", 0, "text", ["two"]);
+        yield result({ is_error: true, api_error_status: 529, result: "overloaded" });
+        await player.nextPrompt();
+      },
+    ]);
+    await turn();
+    await expect(turn()).rejects.toThrow("Claude API is overloaded (529).");
+  });
+
+  it("ends a stopped turn whose frames never come marked", async () => {
+    let holding!: () => void;
+    const held = new Promise<void>((resolve) => (holding = resolve));
+    const { claude, calls } = node([
+      async function* (player) {
+        const first = player.call.prompt[0]!.uuid;
+        yield state("running");
+        yield answeringUuid(first, init());
+        yield answeringUuid(first, result());
+        yield state("idle");
+        await player.nextPrompt();
+        // Nothing of the second message comes marked; the stop is answered with idle.
+        yield state("running");
+        holding();
+        await player.interrupted;
+        yield state("idle");
+        await player.nextPrompt();
+      },
+    ]);
+    const request = { threadId: THREAD, input: { text: "hi" }, history: [], cwd: "/work" };
+    await drain(claude.startTurn({ ...request, turnId: "t1" }));
+    const stopped = claude.startTurn({ ...request, turnId: "t2" });
+    const items: AgentItem[] = [];
+    const reading = (async () => {
+      for await (const item of stopped.items) items.push(item);
+    })();
+    await held;
+    stopped.interrupt();
+    await reading;
+    expect(items).toEqual([]);
+    expect(calls[0]!.closed).toBe(false);
   });
 
   it("drops the late result of a message an interrupt did not stop", async () => {
@@ -488,14 +577,51 @@ describe("jhin.agent-claude: turns Claude missed", () => {
 });
 
 describe("jhin.agent-claude: session records", () => {
-  it("never records a deleted thread's session again", async () => {
+  it("never records a deleted thread's session again while its turns run", async () => {
     const records = sessionRecords(createMemoryStorage().kv);
+    let settle!: () => void;
+    const settled = new Promise<void>((resolve) => (settle = resolve));
     await records.set(THREAD);
     // A turn still letting go of its session writes after the thread was deleted.
-    await records.forget(THREAD);
+    await records.forget(THREAD, settled);
     await records.set(THREAD);
     expect(await records.has(THREAD)).toBe(false);
     await records.set("another");
     expect(await records.has("another")).toBe(true);
+    // Its turns are done: the guard is dropped, nothing is left to write.
+    settle();
+    await settled;
+    await records.forget("another");
+    await records.set(THREAD);
+    expect(await records.has(THREAD)).toBe(true);
+  });
+
+  it("deletes after a write already on its way", async () => {
+    const storage = createMemoryStorage().kv;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const set = storage.set.bind(storage);
+    let writing!: () => void;
+    const started = new Promise<void>((resolve) => (writing = resolve));
+    // A set that has passed every check and is still writing when the thread is deleted.
+    const kv = {
+      ...storage,
+      get: storage.get.bind(storage),
+      delete: storage.delete.bind(storage),
+      set: async (...args: Parameters<typeof storage.set>) => {
+        writing();
+        await held;
+        return set(...args);
+      },
+    };
+    const records = sessionRecords(kv);
+    const inFlight = records.set(THREAD);
+    await started;
+    const forgotten = records.forget(THREAD, new Promise(() => undefined));
+    // One turn of the event loop: a delete that does not wait for the write has run by now.
+    await new Promise((resolve) => setImmediate(resolve));
+    release();
+    await Promise.all([inFlight, forgotten]);
+    expect(await records.has(THREAD)).toBe(false);
   });
 });

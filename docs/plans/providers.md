@@ -23,22 +23,22 @@ specific to Claude: the runtime is a plugin on the public API.
   derived files name their origin and are covered by
   `THIRD_PARTY_NOTICES.md`. T3's Effect runtime, workflow and goal tracking
   are not ported; its live-query reuse is (D98–D101).
-- **D91. One Claude session per thread, kept running or resumed.** The
-  session is named after the thread (thread ids are UUIDs): the Claude Code
-  that starts it passes `sessionId`, any later one `resume`; with live
-  sessions (D98) most turns go to the Claude Code already running. Which threads have a session is recorded
-  in `storage.kv` once Claude Code reports `system/init`. When the record and
-  Claude Code disagree (no conversation to resume, or a session id already in
-  use, before anything started), the turn retries once the other way, unless
-  it was stopped meanwhile. The two cases are told apart by Claude Code's error
-  text ("No conversation found", "already in use"): a reworded message in a new
-  CLI makes the turn fail with that message instead of retrying (only a
-  Claude Code started for the turn can refuse it). A turn holds its thread's
-  Claude Code from its message to its result; with `session: "per-turn"`
-  (D98) it starts one and ends it, as before live sessions. A thread that
-  started on another agent hands its earlier messages to Claude as a
-  transcript in the first message of its session; one that went to another
-  agent and came back hands Claude the turns it missed (D102).
+- **D91. One Claude session per thread, kept running or resumed.** The session
+  is named after the thread (thread ids are UUIDs): the Claude Code that
+  starts it passes `sessionId`, any later one `resume`; with live sessions
+  (D98) most turns go to the Claude Code already running. Which threads have a
+  session is recorded in `storage.kv` once Claude Code reports `system/init`.
+  When the record and Claude Code disagree (no conversation to resume, or a
+  session id already in use, before anything started), the turn retries once
+  the other way, unless it was stopped meanwhile. The two cases are told apart
+  by Claude Code's error text ("No conversation found", "already in use"): a
+  reworded message in a new CLI makes the turn fail with that message instead
+  of retrying (only a Claude Code started for the turn can refuse it). A turn
+  holds its thread's Claude Code from its message to its result; with
+  `session: "per-turn"` (D98) it starts one and ends it, as before live
+  sessions. A thread that started on another agent hands its earlier messages
+  to Claude as a transcript in the first message of its session; one that went
+  to another agent and came back hands Claude the turns it missed (D102).
 - **D92. Modes map as in T3 Code:** `approval-required` → `default`,
   `auto-accept-edits` → `acceptEdits`, `full-access` → `bypassPermissions`
   (with `allowDangerouslySkipPermissions`), interaction mode `plan` →
@@ -73,13 +73,14 @@ specific to Claude: the runtime is a plugin on the public API.
   bundled list (Fable 5.1 by default, as in T3). An account that reports no
   fields at all counts as signed in, as in T3. A probe is reused for five
   minutes when it found Claude Code available and for ten seconds when not, so
-  a sign-in shows soon. A stale answer is given at once while a new probe runs:
-  only the node's first look waits for Claude Code to start, and picking the
-  default agent (D96) never waits after that. Nothing probes (or starts a
+  a sign-in shows soon. A stale answer is given at once while a new probe
+  runs: only the node's first look waits for Claude Code to start, and picking
+  the default agent (D96) never waits after that. Nothing probes (or starts a
   live session) at activation, since one-shot CLI commands boot the same
   plugins and would start Claude Code for nothing. The probe runs a Claude
-  Code of its own, never a thread's live session. Context windows come from the manifest for its models and aliases, otherwise from what
-  Claude Code reported for the model in an earlier result, else none.
+  Code of its own, never a thread's live session. Context windows come from
+  the manifest for its models and aliases, otherwise from what Claude Code
+  reported for the model in an earlier result, else none.
 - **D96. Claude Code is the node's default agent when it is available.**
   Registered runtimes come first (D55), so a node without
   `jhin.threads.defaultAgent` picks Claude Code when it is signed in and the
@@ -100,26 +101,28 @@ specific to Claude: the runtime is a plugin on the public API.
 - **D98. Live sessions, kept by default.** `session: "keep-alive"` (the
   default) keeps a thread's Claude Code running after a turn: the next turn
   pushes its message into the same prompt stream (the SDK's streaming input)
-  and reads until its own `result` (D104), as T3 Code's live query does. It skips
-  starting Claude Code and resuming the session — measured on Claude Haiku
-  5.5, a second turn's `system/init` comes after about 30–60 ms instead of
-  1.3–1.7 s — at the cost of a process (and its memory) per thread with a
+  and reads until its own `result` (D104), as T3 Code's live query does. It
+  skips starting Claude Code and resuming the session — measured on Claude
+  Haiku 5.5 with `scripts/claude-ttft.ts`, a second turn's `system/init` comes
+  after about 30–100 ms instead of 1.3–1.7 s (several seconds on a loaded
+  machine) — at the cost of a process (and its memory) per thread with a
   recent turn. `session: "per-turn"` starts Claude Code for every turn and
   ends it with the turn (D91). A kept Claude Code that waits
   `sessionIdleMinutes` (default 10; 0: no limit) for its thread's next turn
   exits; the next turn resumes. Messages Claude Code sends between turns are
-  dropped. A thread never has two Claude Codes, and the newest turn wins:
-  the threads plugin runs one turn of a thread at a time and frees the
-  thread only when a turn ended or a stop gave up on a turn that ignored its
-  interrupt, so a session still held when the next turn comes belongs to a
-  turn given up on. The next turn takes it over (ends it and starts Claude
-  Code again with `resume`), and the turn that held it ends with "A later
-  turn of this thread took its Claude Code over." A turn still waiting for
-  `setModel` or `setPermissionMode` when a later one comes gives up with the
-  same error instead of starting a Claude Code of its own. The live sessions
-  of a node are listed by `claude.sessions.list` and ended by
-  `claude.sessions.close` (one thread or all). The section's defaults live
-  in its schema only; the runtime reads the parsed section.
+  dropped. A thread never has two Claude Codes, and the newest turn wins: the
+  threads plugin runs one turn of a thread at a time and frees the thread only
+  when a turn ended or a stop gave up on a turn that ignored its interrupt, so
+  a session still held when the next turn comes belongs to a turn given up on.
+  The next turn takes it over (ends it and starts Claude Code again with
+  `resume`), and the turn that held it ends with "A later turn of this thread
+  took its Claude Code over." A turn still waiting for `setModel` or
+  `setPermissionMode` when a later one comes gives up with the same error
+  instead of starting a Claude Code of its own. The live sessions of a node
+  are listed by `claude.sessions.list` and ended by `claude.sessions.close`
+  (one thread or all). Turning `session` to `per-turn` ends every kept session
+  no turn holds at once; a held one ends with its turn. The section's defaults
+  live in its schema only; the runtime reads the parsed section.
 - **D99. A live session takes a turn's settings when it can.** Everything a
   running Claude Code cannot change — the working directory, effort, binary,
   environment, system prompt and `allowDangerouslySkipPermissions` — forms
@@ -138,13 +141,16 @@ specific to Claude: the runtime is a plugin on the public API.
   so the rest of that turn never reaches the next one. Claude Code that exits
   — mid-turn (the turn fails, as before) or while idle — is started again
   with `resume` on the next turn.
-- **D101. A thread's live session ends with the thread.** The plugin
-  requires `storage.eventlog@1` and follows the `threads` stream: a thread
-  archived (`threads.thread.updated` with `archivedAt`) or deleted
+- **D101. A thread's live session ends with the thread.** The plugin requires
+  `storage.eventlog@1` and follows the `threads` stream: a thread archived
+  (`threads.thread.updated` with `archivedAt`) or deleted
   (`threads.thread.deleted`) ends its live session, and a deleted thread's
   `session/<threadId>` record is forgotten for good: a turn still letting go
-  of the session does not write it back. Only a string `archivedAt` counts
-  as an archive. Deactivating the plugin ends every live session.
+  of the session does not write it back. Only a string `archivedAt` counts as
+  an archive. A deleted thread's record writes run one after another, so the
+  delete lands after a write already on its way, and a later write is skipped;
+  that guard is dropped once no turn of the thread is left running.
+  Deactivating the plugin ends every live session.
 - **D102. Turns Claude missed are handed to it.** A thread that ran on
   Claude, went to another agent and came back gives Claude, in front of the
   new message, a transcript of the turns after Claude's last one (the
@@ -155,17 +161,27 @@ specific to Claude: the runtime is a plugin on the public API.
   in the node's shell would: its sign-in (`ANTHROPIC_API_KEY`,
   `CLAUDE_CONFIG_DIR`), proxies and `PATH` for the tools it runs. An
   allow-list is deferred.
-- **D104. A turn takes only its own frames.** Every message a turn sends has
-  a fresh `uuid`, and Claude Code marks the frames answering it with that
-  uuid (`user_message_uuids` on `system/init` and the result,
-  `user_message_uuid` on the first stream event and assistant message), as
-  T3 Code binds frames to its prompt uuids. Until its own marked frame comes,
-  a turn on a live session drops what arrives: another message's frames (a
-  message an interrupt did not stop still runs, with a result of its own)
-  and unmarked ones once the session has shown it marks (Claude Code running
-  on its own, such as a continuation after background work). Claude Code
-  that marks nothing (an older CLI) gives a turn every frame up to the first
-  result, as before.
+- **D104. A turn takes only its own frames.** Every message a turn sends has a
+  fresh `uuid`, and Claude Code marks the frames answering it with that uuid
+  (`user_message_uuids` on `system/init` and the result, `user_message_uuid`
+  on the first stream event and assistant message), as T3 Code binds frames to
+  its prompt uuids. Until its own marked frame comes, a turn on a live session
+  drops what arrives: another message's frames (a message an interrupt did not
+  stop still runs, with a result of its own) and unmarked ones once the
+  session has shown it marks (Claude Code running on its own, such as a
+  continuation after background work). Claude Code that marks nothing (an
+  older CLI) gives a turn every frame up to the first result, as before. A
+  turn never waits without end for its marks: live sessions run with
+  `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1`, so Claude Code reports
+  `session_state_changed` running and idle, and idle is its own word that it
+  took every message sent. Once idle comes (after a running report, or on a
+  session that was idle when the message went in) with nothing of the turn
+  marked, the unmarked frames since the last unmarked `system/init` are the
+  turn's answer if they end in a result (the CLI did not mark this message),
+  and otherwise the turn fails with "Claude Code finished without answering
+  the turn's message." A Claude Code that reports no states gives a turn its
+  first unmarked result. A stopped turn ends on the next idle or result,
+  whatever its marks; a turn that ended on idle keeps the session.
 
 ## Not ported
 
@@ -192,7 +208,9 @@ specific to Claude: the runtime is a plugin on the public API.
   of it (D104).
 - Frames on a Claude Code that marks no message uuids (older CLIs): a result
   of another message or of Claude Code's own continuation can end the next
-  turn early there (D104).
+  turn early there (D104). On one that marks them, a continuation that goes
+  idle just as the next message goes in (before Claude Code read it) is
+  taken for that turn's unmarked answer.
 - An allow-list for the environment Claude Code gets (D103): the node's whole
   environment passes through, including variables meant for the node only.
 - Per-turn model options in the composer (effort, fast mode): only the
