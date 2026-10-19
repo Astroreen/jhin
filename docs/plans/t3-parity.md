@@ -43,7 +43,9 @@ contributions. Features of T3 Code that only make sense for its hosted product
   event (`agent.request.opened`/`resolved`); a turn that ends closes its open
   requests without a response, so a client never shows a stale question.
   While a request is open the thread's last turn is `waiting` with
-  `waitingFor` (`approval` or `user-input`).
+  `waitingFor` (`approval` or `user-input`). An answer must be of the
+  request's kind, and it counts once it is recorded: only then does the agent
+  get it, and an answer that could not be recorded can be sent again.
 - **D57. The thread record says where its latest turn is** (`lastTurn`:
   running, waiting, completed, interrupted, failed, with its time) and when it
   changed (`updatedAt`, `archivedAt`). Every change appends
@@ -52,11 +54,20 @@ contributions. Features of T3 Code that only make sense for its hosted product
   threads and the index head they reflect. After a restart, turns that were
   running are recorded as interrupted.
 - **D58. Thread and project management as commands:** rename, archive and
-  unarchive (archiving stops a running turn), delete (the stream keeps a final
-  deleted event); a new thread takes its title from its first message (hook
-  `threads.title`); projects can be created (the name defaults to the
-  folder's), renamed and deleted (never the scratch project; its threads go
-  with it); `projects.browse` lists folders for the project picker.
+  unarchive, delete (the stream keeps a final deleted event); a new thread
+  takes its title from its first message (hook `threads.title`); projects can
+  be created (the name defaults to the folder's), renamed and deleted (never
+  the scratch project; its threads go with it); `projects.browse` lists
+  folders for the project picker, under a permission of its own
+  (`projects.browse`), since it reads any folder the node can.
+- **D68. One turn per thread, and none on a thread going away.** Checking
+  that a thread is free and reserving it is one step, so concurrent sends
+  start one turn. An archived thread takes no messages until it is unarchived
+  (`THREAD_ARCHIVED`); no turn starts on a thread while it is being archived
+  or deleted, so nothing is written after its deleted event, and no thread is
+  created in a project being removed. Archiving and deleting stop a running
+  turn; an agent that ignores the interrupt for `STOP_TIMEOUT_MS` (5 s) is
+  given up on: its turn is recorded as interrupted and the thread freed.
 
 ### Client
 
@@ -99,7 +110,8 @@ contributions. Features of T3 Code that only make sense for its hosted product
   the model picker, access mode, plan/build toggle, image attachments, a
   context meter from token usage, prompt history (↑/↓), drafts per thread,
   approval and question banners, and a queue of follow-ups sent while a turn
-  runs (client side, see Deferred). The header has a breadcrumb, title actions
+  runs (client side, see Deferred). An archived thread shows a way to
+  unarchive it instead of the composer. The header has a breadcrumb, title actions
   and the slot `chat.header.actions` (props: `ChatHeaderActionProps`).
 - **D66. Settings page** with sections as contributions: General, Appearance
   (system/light/dark, chat width), Notifications, Keybindings (record, reset,
@@ -140,6 +152,10 @@ contributions. Features of T3 Code that only make sense for its hosted product
   devices.
 - Warnings for conflicting keybindings in the settings page.
 - Code splitting of the web client: the main chunk is over 500 kB minified.
+- Scoped tokens: `projects.browse` has a permission of its own, but every
+  token today holds every permission (`*`), so whoever holds a node's token
+  can list the names of folders the node process can read. Grant it on
+  purpose once tokens carry scopes.
 
 Done here from the foundation's Deferred list: the settings UI with the scope
 picker (D66) and "No project" chats in the UI (D64).
@@ -152,9 +168,12 @@ did not expect, and the new client needs the new commands. The proof:
 
 - `plugins/threads` tests: management, titles, projects, agents, tool,
   reasoning and plan items, approvals, questions, interrupts closing requests,
-  restart recovery, attachments; kernel and MCP tests of command titles; the
+  restart recovery, attachments; concurrent sends, archives, deletions and
+  project removals, answers of the wrong kind or not recorded, agents that
+  ignore an interrupt (D68); kernel and MCP tests of command titles; the
   node-host test of `host.config.get` and `host.config.schema`.
 - `apps/web/test`: keybindings, timeline, palette search, prompt history and
   drafts, status pills and visits, routes, the threads store, notifications.
-- Playwright: send and stream, stop, approval, questions, palette, inspector,
-  mesh and client plugins, with screenshots in the report.
+- Playwright: send and stream, stop, approval, questions, archiving, the
+  palette, the inspector, mesh and client plugins, with screenshots in the
+  report.
