@@ -263,8 +263,12 @@ contributions. Features of T3 Code that only make sense for its hosted product
   is settled and un-settled by hand and the choice is part of its record, so
   every client and device follows it through the `threads` index (D57):
   `threads.settle` and `threads.unsettle` set `settledOverride` (`settled`,
-  `active`) with `settledAt` or `unsettledAt`. Settling unpins the thread and
-  drops its place among the active threads; a thread running a turn or
+  `active`) with `settledAt` or `unsettledAt`. Settling unpins the thread,
+  drops its place among the active threads and wakes it if snoozed (T3's
+  drop onto the shelf clears the snooze; otherwise the Snoozed shelf, which
+  comes first, would keep showing it), and a thread already on the shelf
+  keeps its time there (by the rule: its last activity, as T3 keeps
+  `settledAt`); a thread running a turn or
   waiting for an answer is refused (`TURN_IN_PROGRESS`, T3's "Stop it before
   settling" and "Answer it before settling"), and so is an archived one
   (`THREAD_ARCHIVED`). D70's automatic rule stays as the fallback, computed
@@ -397,7 +401,8 @@ and mesh specs, which use the cards and their context menu.
 
 The proof of D75–D79: `plugins/threads/test/arrangement.test.ts` (settling
 and un-settling in the index without touching `updatedAt`, refusals for a
-running, waiting or archived thread, a turn bringing a settled thread back
+running, waiting or archived thread, settling waking a snoozed thread and
+keeping the time a thread the rule settled has on the shelf, a turn bringing a settled thread back
 on top and out of the dragged order, a choice by hand giving way to the rule
 after a turn, a thread the rule settled after three days coming back, pin,
 reorder and unpin with their refusals and key validation, settling

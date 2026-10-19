@@ -75,6 +75,34 @@ describe("jhin.threads: settling by hand (D75)", () => {
     ]);
   });
 
+  it("wakes a snoozed thread it settles, so it leaves the Snoozed shelf for the Settled one", async () => {
+    const { client, thread } = await withThread();
+    await client.call("threads.snooze", { threadId: thread.id, until: inAnHour() });
+    const settled = await client.call<Thread>("threads.settle", { threadId: thread.id });
+    expect(settled).toMatchObject({
+      settledOverride: "settled",
+      lastSnoozeWakeAt: expect.any(String),
+    });
+    expect(settled.snoozedUntil).toBeUndefined();
+    expect(settled.snoozedAt).toBeUndefined();
+
+    // Settled already, then snoozed: settling again still wakes it, keeping when it settled.
+    await client.call("threads.snooze", { threadId: thread.id, until: inAnHour() });
+    const again = await client.call<Thread>("threads.settle", { threadId: thread.id });
+    expect(again.snoozedUntil).toBeUndefined();
+    expect(again.settledAt).toBe(settled.settledAt);
+  });
+
+  it("keeps when the automatic rule settled a thread that is then settled by hand", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const { client, thread, turn } = await withThread();
+    const done = await turn();
+    vi.setSystemTime(Date.now() + 4 * DAY_MS);
+    const settled = await client.call<Thread>("threads.settle", { threadId: thread.id });
+    // On the shelf it stays where it was: settled as of its last activity, not now.
+    expect(settled.settledAt).toBe(done.lastTurn!.at);
+  });
+
   it("refuses to settle a thread whose turn runs or waits for an answer, and an archived one", async () => {
     const { client, thread, record } = await withThread();
     const stream = watch(client, thread.id);

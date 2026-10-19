@@ -175,9 +175,17 @@ function isSnoozed(thread: Thread, nowMs: number): boolean {
  */
 function isSettled(thread: Thread, nowMs: number): boolean {
   if (thread.settledOverride !== undefined) return thread.settledOverride === "settled";
-  if (thread.pinnedAt !== undefined || isSnoozed(thread, nowMs)) return false;
+  return autoSettledAt(thread, nowMs) !== undefined;
+}
+
+/**
+ * When the automatic rule settled the thread, if it did: as of its last
+ * activity, a snooze that ended counting as activity (the web client's twin).
+ */
+function autoSettledAt(thread: Thread, nowMs: number): string | undefined {
+  if (thread.pinnedAt !== undefined || isSnoozed(thread, nowMs)) return undefined;
   const status = thread.lastTurn?.status;
-  if (status === "running" || status === "waiting") return false;
+  if (status === "running" || status === "waiting") return undefined;
   const until = millis(thread.snoozedUntil);
   const activity = Math.max(
     ...[thread.lastTurn?.at ?? thread.updatedAt ?? thread.createdAt, thread.lastSnoozeWakeAt]
@@ -185,7 +193,9 @@ function isSettled(thread: Thread, nowMs: number): boolean {
       .filter((value) => !Number.isNaN(value)),
     until <= nowMs ? until : Number.NEGATIVE_INFINITY,
   );
-  return Number.isFinite(activity) && activity < nowMs - AUTO_SETTLE_AFTER_MS;
+  return Number.isFinite(activity) && activity < nowMs - AUTO_SETTLE_AFTER_MS
+    ? new Date(activity).toISOString()
+    : undefined;
 }
 
 /**
@@ -1404,7 +1414,7 @@ export default definePlugin({
     context.commands.register({
       name: "threads.settle",
       description:
-        "Moves a thread to the Settled shelf until it is un-settled or its next turn; unpins it. A thread running a turn or waiting for an answer cannot settle",
+        "Moves a thread to the Settled shelf until it is un-settled or its next turn; unpins it and wakes it if snoozed. A thread running a turn or waiting for an answer cannot settle",
       input: ThreadId,
       output: Thread,
       permissions: ["threads.write"],
@@ -1424,15 +1434,33 @@ export default definePlugin({
               { threadId },
             );
           }
-          if (thread.settledOverride === "settled" && thread.pinnedAt === undefined) return thread;
+          const snoozed = thread.snoozedUntil !== undefined;
+          if (thread.settledOverride === "settled" && thread.pinnedAt === undefined && !snoozed) {
+            return thread;
+          }
           const {
             unsettledAt: _unsettledAt,
             pinnedAt: _pinnedAt,
             pinOrderKey: _pinOrderKey,
             activeOrderKey: _activeOrderKey,
+            snoozedUntil: _until,
+            snoozedAt: _snoozedAt,
             ...rest
           } = thread;
-          return { ...rest, settledOverride: "settled", settledAt: at };
+          // A thread on the shelf already keeps its place there: settled by hand
+          // as of then, by the rule as of its last activity (T3 keeps settledAt).
+          const since =
+            thread.settledOverride === "settled"
+              ? thread.settledAt
+              : autoSettledAt(thread, Date.parse(at));
+          return {
+            ...rest,
+            settledOverride: "settled",
+            settledAt: since ?? at,
+            // Settling wakes a snoozed thread, as T3's drop onto the shelf does:
+            // the Snoozed shelf would otherwise keep showing it.
+            ...(snoozed ? { lastSnoozeWakeAt: at } : {}),
+          };
         }),
     });
 
