@@ -115,22 +115,24 @@ contributions. Features of T3 Code that only make sense for its hosted product
   the last visit), relative times, inline rename, archive on hover, a filter
   and "Show more" per project, and context menus (D69). Visits are kept per
   device and compared with the node's own times.
-- **D65. Chat view:** T3's timeline — user bubbles, markdown answers
-  (GFM, Shiki highlighting in both themes), a work log per turn with a
-  summary that folds behind "Worked for …" once the turn ends, plan cards,
-  failed and interrupted turns with their reason and a retry. The composer has
-  the model picker, access mode, plan/build toggle, image attachments, a
-  context meter from token usage, prompt history (↑/↓), drafts per thread,
-  approval and question banners, and a queue of follow-ups sent while a turn
-  runs (client side, see Deferred). The chat plugin keeps the queues: each
-  follows its thread's record and sends its next message when the record
-  shows the turn ended, whether the thread is on screen or not, with the
-  agent, model and modes it was typed with; one that fails waits for the user
-  instead of being retried. A new thread whose first message the node refused
-  is deleted again; when the connection dropped the call, the thread stays,
-  with the message in its composer. An archived thread shows a way to
-  unarchive it instead of the composer. The header has a breadcrumb, title
-  actions and the slot `chat.header.actions` (props: `ChatHeaderActionProps`).
+- **D65. Chat view:** T3's timeline — user bubbles, markdown answers (GFM,
+  Shiki highlighting in both themes), a work log per turn with a summary that
+  folds behind "Worked for …" once the turn ends, plan cards, failed and
+  interrupted turns with their reason and a retry. The composer has the model
+  picker, access mode, plan/build toggle, image attachments, a context meter
+  from token usage, prompt history (↑/↓), drafts per thread, approval and
+  question banners, and a queue of follow-ups sent while a turn runs (client
+  side, see Deferred). The chat plugin keeps the queues: each follows its
+  thread's record and sends its next message when the record shows the turn
+  ended, whether the thread is on screen or not, with the agent, model and
+  modes it was typed with. As in T3 Code, a turn that was stopped or failed
+  holds the queue until the user resumes it, and a message that is refused
+  waits for a retry; the message on its way can no longer be removed. A new
+  thread whose first message the node refused is deleted again; when the
+  connection dropped the call, the thread stays and offers to send the message
+  again until it shows it. An archived thread shows a way to unarchive it
+  instead of the composer. The header has a breadcrumb, title actions and the
+  slot `chat.header.actions` (props: `ChatHeaderActionProps`).
 - **D66. Settings page** with sections as contributions: General, Appearance
   (system/light/dark, chat width), Notifications, Keybindings (record, reset,
   search), Nodes (connections, agents, mesh members), Node config (edit any
@@ -186,6 +188,9 @@ contributions. Features of T3 Code that only make sense for its hosted product
 - Visits and drafts are per device; syncing them, and device settings, across
   devices.
 - Warnings for conflicting keybindings in the settings page.
+- Idempotent thread creation (an id chosen by the client): a
+  `threads.create` whose answer the connection dropped can leave an empty
+  thread behind.
 - Attachments as blobs: images travel as data URLs inside the turn's first
   event, hence the 20 MB per message (D54).
 - Code splitting of the web client: the main chunk is over 500 kB minified.
@@ -219,9 +224,11 @@ did not expect, and the new client needs the new commands. The proof:
   arrive), palette search, prompt history, drafts across tabs, attachment
   limits, status pills and visits, sidebar ordering and filtering, routes, the
   threads store, notifications, starting a thread, the follow-up queues, and
-  (browser mode) the node config editor and a thread's timeline following its
-  node's client; `packages/ui` dialogs and the clipboard fallback; the
-  kernel's disposal of registrations disposed early.
+  (browser mode) the node config editor, a thread's timeline following its
+  node's client and an unconfirmed first message; `packages/ui` dialogs and
+  the clipboard fallback; the kernel's disposal of registrations disposed
+  early; `mesh-core`: a relayed call keeps the error code of the node it
+  reached.
 - Playwright: send and stream, stop, approval, questions, archiving, the
   palette, the inspector, mesh and client plugins, the node config editor
   keeping unsaved edits, with screenshots in the report.
