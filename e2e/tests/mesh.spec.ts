@@ -210,6 +210,42 @@ test("D47: one client shows two independent nodes at once", async ({ page }, inf
   await info.attach("two-nodes", { path: shot, contentType: "image/png" });
 });
 
+test("the node config editor asks before another node's config replaces unsaved edits", async ({
+  page,
+}) => {
+  const x = await start({ mode: "ui" });
+  const y = await start({ mode: "serve" });
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await page.getByRole("button", { name: "Add node" }).click();
+  await page.getByRole("textbox", { name: "Node URL" }).fill(y.rpc);
+  await page.getByRole("textbox", { name: "Token" }).fill(y.token);
+  await page.getByRole("button", { name: "Connect" }).click();
+  await expect(page.getByLabel("Connection open")).toHaveCount(2);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Node config" })
+    .click();
+  const nodeSelect = page.getByRole("combobox", { name: "Node", exact: true });
+  await expect(nodeSelect).toHaveText(new URL(x.ui).host);
+  const file = page.getByRole("textbox", { name: /in the node file$/ });
+  await file.fill('{ "edited": true }');
+
+  const chooseY = async () => {
+    await nodeSelect.click();
+    await page.getByRole("option", { name: new URL(y.rpc).host }).click();
+    return page.getByRole("alertdialog", { name: /^Discard the changes to/ });
+  };
+  // Kept on purpose: still x, with the edit.
+  await (await chooseY()).getByRole("button", { name: "Cancel" }).click();
+  await expect(nodeSelect).toHaveText(new URL(x.ui).host);
+  await expect(file).toHaveValue('{ "edited": true }');
+  // Given up on purpose: y's config shows.
+  await (await chooseY()).getByRole("button", { name: "Discard" }).click();
+  await expect(nodeSelect).toHaveText(new URL(y.rpc).host);
+});
+
 test("D47: a thread a reachable remote cannot share says why and leaves the remote listed", async ({
   page,
 }) => {
