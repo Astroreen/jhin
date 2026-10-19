@@ -50,9 +50,11 @@ async function shoot(
   await info.attach(name, { path, contentType: "image/png" });
 }
 
-test("D130–D133: every node shows the icon of its machine kind, and its owner can change it", async ({
-  page,
-}, info) => {
+/**
+ * A laptop node x serving the page and a cloud node y, each with a thread, the page
+ * connected to both. Before y is added the page shows no machine icon (D71).
+ */
+async function twoNodes(page: Page) {
   const x = await start("ui", "laptop");
   const y = await start("serve", "cloud");
   const xHost = new URL(x.ui).host;
@@ -72,9 +74,15 @@ test("D130–D133: every node shows the icon of its machine kind, and its owner 
   await page.getByRole("button", { name: "Connect" }).click();
   await expectOpenConnections(page, 2);
 
-  // Thread cards: the bottom-right icon is each node's own machine.
   const onX = threadRow(page, "on x");
   const onY = threadRow(page, "on y");
+  return { x, y, xHost, yHost, onX, onY };
+}
+
+test("D130, D133: every node shows the icon of its machine kind", async ({ page }, info) => {
+  const { xHost, yHost, onX, onY } = await twoNodes(page);
+
+  // Thread cards: the bottom-right icon is each node's own machine.
   await expect(machineIn(onX.getByLabel(`On ${xHost}`, { exact: true }))).toHaveAttribute(
     "data-machine",
     "laptop",
@@ -129,6 +137,12 @@ test("D130–D133: every node shows the icon of its machine kind, and its owner 
   await shoot(page.getByRole("listbox"), info, "add-project-machines");
   await page.keyboard.press("Escape");
   await adding.getByRole("button", { name: "Cancel" }).click();
+});
+
+test("D131, D132: the owner changes a node's icon, from its menu or its node config", async ({
+  page,
+}, info) => {
+  const { y, xHost, yHost, onX, onY } = await twoNodes(page);
 
   // Settings → Nodes: each row leads with its machine, and T3's Icon menu changes it.
   await page.getByRole("button", { name: "Settings", exact: true }).click();
