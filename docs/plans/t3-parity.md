@@ -73,10 +73,11 @@ contributions. Features of T3 Code that only make sense for its hosted product
   or deleted, so nothing is written after its deleted event, and no thread is
   created in a project being removed. Archiving and deleting stop a running
   turn; an agent that ignores the interrupt for `STOP_TIMEOUT_MS` (5 s) is
-  given up on: its turn is recorded as interrupted and the thread freed. A
-  turn still starting at that deadline is given up on as soon as it has
-  started; a request is always recorded opened before its turn's end closes
-  it. Two
+  given up on: its turn is recorded as interrupted and the thread freed, and
+  the node stops waiting for the agent's next item and closes its items, so
+  an agent that never answers again holds nothing. A turn still starting at
+  that deadline is given up on as soon as it has started; a request is always
+  recorded opened before its turn's end closes it. Two
   deletions of one thread at once delete it once. A deletion that fails
   before the thread's stream records it leaves the thread as it was; one
   that fails later keeps it closed, and deleting it again finishes the job.
@@ -217,7 +218,10 @@ picker (D66) and "No project" chats in the UI (D64).
 
 One PR. Its parts depend on each other: the threads plugin names threads
 after their first message and reports requests, which the previous web client
-did not expect, and the new client needs the new commands.
+did not expect, and the new client needs the new commands. It also fixes a
+defect of the dev scripts found while proving it with `scripts/t3/smoke.sh`:
+`stop.sh` gave up 2 s after it started instead of 2 s after its first
+SIGKILL, so on a slow machine it reported processes it had just killed.
 
 **Done when:**
 
