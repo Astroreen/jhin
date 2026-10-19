@@ -174,6 +174,18 @@ describe("jhin.threads: thread management", () => {
       code: "PATH_INVALID",
     });
   });
+
+  it("browses folders only with a permission of its own", async () => {
+    const { kernel, data } = await node();
+    const as = (permissions: string[]) => ({ caller: { id: "someone", permissions } });
+
+    await expect(
+      kernel.commands.execute("projects.browse", { path: data }, as(["projects.write"])),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    expect(
+      await kernel.commands.execute("projects.browse", { path: data }, as(["projects.browse"])),
+    ).toMatchObject({ path: Path.resolve(data) });
+  });
 });
 
 describe("jhin.threads: agents", () => {
@@ -256,6 +268,44 @@ describe("jhin.threads: agents", () => {
     await expect(
       client.call("threads.send", { threadId: thread.id, text: "x", agentId: "acme.none" }),
     ).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
+  });
+
+  it("keeps a thread's settings consistent when they change", async () => {
+    const { client } = await node({ plugins: [registering(claude)] });
+    const thread = await client.call<Thread & { updatedAt: string }>("threads.create", {
+      agentId: "acme.claude",
+      model: "opus",
+    });
+    const index = watch(client, "stream:threads");
+
+    const moded = await client.call<Thread & { updatedAt?: string }>("threads.update", {
+      threadId: thread.id,
+      runtimeMode: "approval-required",
+    });
+    expect(moded).toMatchObject({ model: "opus", runtimeMode: "approval-required" });
+    expect(moded.updatedAt).toEqual(expect.any(String));
+    // Another agent: the model it does not know is dropped, unless one is named.
+    const switched = await client.call<Thread>("threads.update", {
+      threadId: thread.id,
+      agentId: "jhin.agent-fake",
+    });
+    expect(switched.agentId).toBe("jhin.agent-fake");
+    expect(switched).not.toHaveProperty("model");
+    // Nothing new: no change recorded.
+    await client.call("threads.update", { threadId: thread.id, agentId: "jhin.agent-fake" });
+    await expect(
+      client.call("threads.update", { threadId: thread.id, agentId: "acme.none" }),
+    ).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
+
+    // A rename marks the end: every change before it is in the index by then.
+    await client.call("threads.update", { threadId: thread.id, title: "Done" });
+    await index.untilMatch((event) => (event.payload as unknown as Thread).title === "Done");
+    expect(index.events.map((event) => event.type)).toEqual([
+      "threads.thread.created",
+      "threads.thread.updated",
+      "threads.thread.updated",
+      "threads.thread.updated",
+    ]);
   });
 
   it("uses the configured default agent", async () => {

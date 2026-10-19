@@ -14,6 +14,7 @@ import {
   threadStream,
   type AgentItem,
   type AgentRegistry,
+  type AgentRequest,
   type AgentResponse,
   type AgentRuntime,
   type AgentRuntimeStatus,
@@ -37,6 +38,8 @@ export { THREADS_STREAM };
 const NAMESPACE = "jhin.threads";
 const CONFIG_SECTION = "jhin.threads";
 const DRAIN_TIMEOUT_MS = 5000;
+/** How long archiving or deleting a thread waits for its turn to end after the interrupt. */
+export const STOP_TIMEOUT_MS = 5000;
 /** How long an agent runtime's `status()` answer is reused. */
 const STATUS_TTL_MS = 30_000;
 /** The title a thread gets until its first message names it. */
@@ -68,6 +71,7 @@ type Project = z.infer<typeof Project>;
 
 const TurnStatus = z.enum(["running", "waiting", "completed", "interrupted", "failed"]);
 type TurnStatus = z.infer<typeof TurnStatus>;
+const ENDED: ReadonlySet<TurnStatus> = new Set(["completed", "interrupted", "failed"]);
 
 const Thread = z.object({
   id: z.string(),
@@ -163,8 +167,15 @@ interface Running {
   turn: AgentTurn | undefined;
   readonly done: Promise<void>;
   interrupted: boolean;
-  /** Requests the agent opened that nobody answered yet. */
-  readonly openRequests: Set<string>;
+  /** Requests the agent opened that nobody answered yet, with the kind of answer each takes. */
+  readonly openRequests: Map<string, AgentRequest["kind"]>;
+  /** Answers being recorded; the turn's end waits for them. */
+  readonly answering: Map<string, Promise<unknown>>;
+  /**
+   * Ends the turn without the agent, for an agent that ignores its interrupt;
+   * set once the agent started.
+   */
+  abandon: ((reason: string) => Promise<void>) | undefined;
 }
 
 /** The first line of a message, shortened at a word: the title of a new thread. */
@@ -189,6 +200,14 @@ export default definePlugin({
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
     const paths = context.services.get<HostPaths>(HOST_PATHS_CAPABILITY);
     const active = new Map<string, Running>();
+    /** Threads being archived, and deleted ones: no turn starts on them. */
+    const closing = new Map<string, "archived" | "deleted">();
+    /** Projects being removed, and removed ones: no thread is created in them. */
+    const removedProjects = new Set<string>();
+    const archivedError = (threadId: string) =>
+      new ThreadsError("THREAD_ARCHIVED", "The thread is archived: unarchive it to continue", {
+        threadId,
+      });
     // Before storage stops (it deactivates after this plugin), running turns are
     // interrupted and their last event recorded; an agent that ignores the
     // interrupt cannot hold shutdown for more than DRAIN_TIMEOUT_MS.
@@ -310,8 +329,14 @@ export default definePlugin({
       waitingFor?: "approval" | "user-input",
     ) =>
       updateThread(threadId, (thread) =>
-        // A turn's late ending never overwrites the status of a newer turn.
-        status !== "running" && thread.lastTurn !== undefined && thread.lastTurn.turnId !== turnId
+        // A turn's late ending never overwrites the status of a newer turn, and
+        // a turn that ended stays ended (an answer recorded as it ends says "running").
+        (status !== "running" &&
+          thread.lastTurn !== undefined &&
+          thread.lastTurn.turnId !== turnId) ||
+        (thread.lastTurn?.turnId === turnId &&
+          ENDED.has(thread.lastTurn.status) &&
+          !ENDED.has(status))
           ? thread
           : {
               ...thread,
@@ -397,15 +422,29 @@ export default definePlugin({
     }
 
     /**
-     * Reserves the thread synchronously, so two sends can never both start a
-     * turn. `release` frees the thread once the turn's last event is recorded;
-     * `finish` (which releases too) ends the turn's work for the shutdown drain.
+     * Reserves the thread for a turn. Checking that it is free and taking it is
+     * one synchronous step, so two sends can never both start a turn, nor a
+     * send start one on a thread being archived or deleted. `release` frees the
+     * thread once the turn's last event is recorded; `finish` (which releases
+     * too) ends the turn's work for stops and the shutdown drain.
      */
     function reserve(
       threadId: string,
       turnId: string,
       agentId: string,
     ): { entry: Running; release: () => void; finish: () => void } {
+      const current = active.get(threadId);
+      if (current !== undefined) {
+        throw new ThreadsError("TURN_IN_PROGRESS", "The thread is already running a turn", {
+          threadId,
+          turnId: current.turnId,
+        });
+      }
+      const closed = closing.get(threadId);
+      if (closed === "deleted") {
+        throw new ThreadsError("THREAD_NOT_FOUND", `No thread ${threadId}`, { threadId });
+      }
+      if (closed === "archived") throw archivedError(threadId);
       let resolve!: () => void;
       const entry: Running = {
         turnId,
@@ -413,7 +452,9 @@ export default definePlugin({
         turn: undefined,
         done: new Promise((done) => (resolve = done)),
         interrupted: false,
-        openRequests: new Set(),
+        openRequests: new Map(),
+        answering: new Map(),
+        abandon: undefined,
       };
       active.set(threadId, entry);
       const release = () => {
@@ -577,20 +618,55 @@ export default definePlugin({
         );
       /** Requests left open when the turn ends are closed without an answer. */
       const closeRequests = async () => {
-        const open = [...entry.openRequests];
+        // Answers already being recorded go first.
+        await Promise.allSettled(entry.answering.values());
+        const open = [...entry.openRequests.keys()];
         entry.openRequests.clear();
         for (const requestId of open) {
           await recordEnd(ThreadEvents.requestResolved, { turnId, requestId });
         }
       };
+      let ended = false;
+      /** Records the end of the turn once, whether the agent ended it or a stop gave up on it. */
+      const end = async (ending: {
+        type: string;
+        status: TurnStatus;
+        error?: string;
+        reason?: string;
+      }) => {
+        if (ended) return;
+        ended = true;
+        try {
+          await closeRequests();
+          await recordEnd(ending.type, {
+            turnId,
+            ...(ending.error === undefined ? {} : { error: ending.error }),
+            ...(ending.reason === undefined ? {} : { reason: ending.reason }),
+          });
+        } finally {
+          // Once its last event is recorded the thread takes the next message.
+          release();
+        }
+        try {
+          await setTurnStatus(thread.id, turnId, runtime.agentId, ending.status);
+        } finally {
+          finish();
+        }
+      };
+      entry.abandon = (reason) =>
+        end({ type: ThreadEvents.turnInterrupted, status: "interrupted", reason });
       void (async () => {
         let ending: { type: string; status: TurnStatus; error?: string };
         try {
           // A turn that delivered its answer is complete even if an interrupt came late.
           let answered = false;
           for await (const item of turn.items) {
+            // Given up on (it ignored an interrupt): what the agent still says is dropped.
+            if (ended) break;
             answered = item.kind === "message.completed";
-            if (item.kind === "request.opened") entry.openRequests.add(item.requestId);
+            if (item.kind === "request.opened") {
+              entry.openRequests.set(item.requestId, item.request.kind);
+            }
             const event = eventOf(turnId, item);
             await log.append(stream, [event]);
             if (item.kind === "request.opened" && entry.openRequests.size === 1) {
@@ -605,34 +681,39 @@ export default definePlugin({
           context.log.warn("turn failed", { threadId: thread.id, turnId, error: String(error) });
           ending = { type: ThreadEvents.turnFailed, status: "failed", error: String(error) };
         }
-        try {
-          await closeRequests();
-          await recordEnd(ending.type, {
-            turnId,
-            ...(ending.error === undefined ? {} : { error: ending.error }),
-          });
-        } finally {
-          // Once its last event is recorded the thread takes the next message.
-          release();
-        }
-        try {
-          await setTurnStatus(thread.id, turnId, runtime.agentId, ending.status);
-        } finally {
-          finish();
-        }
+        await end(ending);
       })();
     }
 
-    /** Stops a thread's running turn, if any, and waits until it has ended. */
+    /**
+     * Stops a thread's running turn, if any, and waits until it has ended. An
+     * agent that ignores the interrupt for STOP_TIMEOUT_MS is given up on: its
+     * turn is recorded as interrupted and the thread released.
+     */
     async function stopTurn(threadId: string): Promise<void> {
       const current = active.get(threadId);
       if (current === undefined) return;
       current.interrupted = true;
       current.turn?.interrupt();
+      let timer: NodeJS.Timeout | undefined;
+      const stopped = await Promise.race([
+        current.done.then(() => true),
+        new Promise<false>(
+          (resolve) => (timer = setTimeout(() => resolve(false), STOP_TIMEOUT_MS)),
+        ),
+      ]);
+      clearTimeout(timer);
+      if (stopped) return;
+      // An agent still starting has no turn to give up on yet: it applies the
+      // interrupt once it starts. Either way the turn's last events are recorded
+      // once it is done, also when the agent ended it just now.
+      await current.abandon?.("The agent did not stop when interrupted");
       await current.done;
     }
 
     async function deleteThread(thread: Thread): Promise<void> {
+      // From here on no turn starts on it, so none writes after its deleted event.
+      closing.set(thread.id, "deleted");
       await stopTurn(thread.id);
       await log.append(threadStream(thread.id), [
         { type: ThreadEvents.threadDeleted, payload: { id: thread.id } },
@@ -731,6 +812,8 @@ export default definePlugin({
             projectId,
           });
         }
+        // From here on no thread is created in it, so none is left behind.
+        removedProjects.add(projectId);
         const threads = (await listThreads()).filter((thread) => thread.projectId === projectId);
         for (const thread of threads) await deleteThread(thread);
         await kv.delete(NAMESPACE, `project/${projectId}`);
@@ -750,7 +833,8 @@ export default definePlugin({
         home: z.string(),
         entries: z.array(z.object({ name: z.string(), path: z.string(), git: z.boolean() })),
       }),
-      permissions: ["projects.write"],
+      // It reads any folder the node can: a permission of its own, granted on purpose.
+      permissions: ["projects.browse"],
       handler: ({ path: given }) => {
         const home = Os.homedir();
         const raw = given === undefined || given.trim() === "" ? home : given.trim();
@@ -856,6 +940,9 @@ export default definePlugin({
       permissions: ["threads.write"],
       handler: async ({ projectId, title, ...settings }) => {
         await getProject(projectId);
+        if (removedProjects.has(projectId)) {
+          throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
+        }
         const createdAt = now();
         const thread: Thread = Thread.parse({
           id: Crypto.randomUUID(),
@@ -869,11 +956,12 @@ export default definePlugin({
         await log.append(threadStream(thread.id), [
           { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
         ]);
-        // The node's index of threads: other nodes follow it to mirror new threads (D26 eager).
+        await kv.set(NAMESPACE, `thread/${thread.id}`, thread as unknown as Json);
+        // Then the node's index of threads, which other nodes follow to mirror new
+        // threads (D26 eager): whoever learns of the thread there can read it.
         await log.append(THREADS_STREAM, [
           { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
         ]);
-        await kv.set(NAMESPACE, `thread/${thread.id}`, thread as unknown as Json);
         return thread;
       },
     });
@@ -911,12 +999,32 @@ export default definePlugin({
       }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: ({ threadId, title, ...settings }) =>
-        updateThread(threadId, (thread) => ({
-          ...thread,
-          ...(title === undefined ? {} : { title, updatedAt: now() }),
-          ...settings,
-        })),
+      handler: ({ threadId, title, ...settings }) => {
+        if (settings.agentId !== undefined && registry.get(settings.agentId) === undefined) {
+          throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${settings.agentId} on this node`, {
+            agentId: settings.agentId,
+          });
+        }
+        return updateThread(threadId, (thread) => {
+          const next: Thread = {
+            ...thread,
+            ...(title === undefined ? {} : { title }),
+            ...settings,
+          };
+          // A model named for another agent does not carry over to a new one.
+          if (
+            settings.agentId !== undefined &&
+            settings.agentId !== thread.agentId &&
+            settings.model === undefined
+          ) {
+            delete (next as { model?: string }).model;
+          }
+          const changed = (Object.keys({ ...thread, ...next }) as (keyof Thread)[]).some(
+            (key) => next[key] !== thread[key],
+          );
+          return changed ? { ...next, updatedAt: now() } : thread;
+        });
+      },
     });
 
     context.commands.register({
@@ -926,9 +1034,20 @@ export default definePlugin({
       output: Thread,
       permissions: ["threads.write"],
       handler: async ({ threadId }) => {
-        await getThread(threadId);
-        await stopTurn(threadId);
-        return updateThread(threadId, (thread) => ({ ...thread, archivedAt: now() }));
+        const thread = await getThread(threadId);
+        if (thread.archivedAt !== undefined) return thread;
+        // From here on no turn starts on it; an archived thread takes no messages.
+        closing.set(threadId, "archived");
+        try {
+          await stopTurn(threadId);
+          return await updateThread(threadId, (latest) => ({
+            ...latest,
+            archivedAt: now(),
+            updatedAt: now(),
+          }));
+        } finally {
+          if (closing.get(threadId) === "archived") closing.delete(threadId);
+        }
       },
     });
 
@@ -939,7 +1058,11 @@ export default definePlugin({
       output: Thread,
       permissions: ["threads.write"],
       handler: ({ threadId }) =>
-        updateThread(threadId, ({ archivedAt: _archivedAt, ...thread }) => thread),
+        updateThread(threadId, (thread) => {
+          if (thread.archivedAt === undefined) return thread;
+          const { archivedAt: _archivedAt, ...rest } = thread;
+          return { ...rest, updatedAt: now() };
+        }),
     });
 
     context.commands.register({
@@ -987,15 +1110,17 @@ export default definePlugin({
         if (text.trim() === "" && (attachments ?? []).length === 0) {
           throw new ThreadsError("MESSAGE_EMPTY", "A message needs text or an attachment");
         }
-        const thread = await getThread(threadId);
-        const current = active.get(threadId);
-        if (current !== undefined) {
+        // Early answers for the common cases; the reservation below decides.
+        const read = await getThread(threadId);
+        if (read.archivedAt !== undefined) throw archivedError(threadId);
+        const running = active.get(threadId);
+        if (running !== undefined) {
           throw new ThreadsError("TURN_IN_PROGRESS", "The thread is already running a turn", {
             threadId,
-            turnId: current.turnId,
+            turnId: running.turnId,
           });
         }
-        const agentId = requested.agentId ?? thread.agentId;
+        const agentId = requested.agentId ?? read.agentId;
         let runtime = agentId === undefined ? undefined : registry.get(agentId);
         if (runtime === undefined && requested.agentId !== undefined) {
           throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${requested.agentId} on this node`, {
@@ -1006,32 +1131,38 @@ export default definePlugin({
         if (runtime === undefined) {
           throw new ThreadsError("NO_AGENT", "No agent runtime is installed on this node");
         }
-        // A model named for another agent does not carry over to this one.
-        const sameAgent = thread.agentId === undefined || thread.agentId === runtime.agentId;
-        const model = requested.model ?? (sameAgent ? thread.model : undefined);
-        const runtimeMode = requested.runtimeMode ?? thread.runtimeMode;
-        const interactionMode = requested.interactionMode ?? thread.interactionMode;
-        const settings: TurnSettings = {
-          ...(model === undefined ? {} : { model }),
-          ...(runtimeMode === undefined ? {} : { runtimeMode }),
-          ...(interactionMode === undefined ? {} : { interactionMode }),
-        };
         const turnId = Crypto.randomUUID();
+        // Nothing is awaited between checking that the thread is free and taking it.
         const reservation = reserve(threadId, turnId, runtime.agentId);
-        // The first message names a thread that still has the default title.
-        const named =
-          thread.lastTurn === undefined && thread.title === DEFAULT_THREAD_TITLE
-            ? await context.hooks
-                .run("threads.title", { thread, text }, ({ text: input }) => titleFromText(input))
-                .catch(() => titleFromText(text))
-            : thread.title;
-        const chosen = { agentId: runtime.agentId, ...settings };
-        const changed =
-          named !== thread.title ||
-          Object.entries(chosen).some(
-            ([key, value]) => (thread as Record<string, unknown>)[key] !== value,
-          );
+        let thread: Thread;
+        let settings: TurnSettings;
         try {
+          // The thread as it is now that it is ours: archived meanwhile, it takes no turn.
+          thread = await getThread(threadId);
+          if (thread.archivedAt !== undefined) throw archivedError(threadId);
+          // A model named for another agent does not carry over to this one.
+          const sameAgent = thread.agentId === undefined || thread.agentId === runtime.agentId;
+          const model = requested.model ?? (sameAgent ? thread.model : undefined);
+          const runtimeMode = requested.runtimeMode ?? thread.runtimeMode;
+          const interactionMode = requested.interactionMode ?? thread.interactionMode;
+          settings = {
+            ...(model === undefined ? {} : { model }),
+            ...(runtimeMode === undefined ? {} : { runtimeMode }),
+            ...(interactionMode === undefined ? {} : { interactionMode }),
+          };
+          // The first message names a thread that still has the default title.
+          const named =
+            thread.lastTurn === undefined && thread.title === DEFAULT_THREAD_TITLE
+              ? await context.hooks
+                  .run("threads.title", { thread, text }, ({ text: input }) => titleFromText(input))
+                  .catch(() => titleFromText(text))
+              : thread.title;
+          const chosen = { agentId: runtime.agentId, ...settings };
+          const changed =
+            named !== thread.title ||
+            Object.entries(chosen).some(
+              ([key, value]) => (thread as Record<string, unknown>)[key] !== value,
+            );
           if (changed) {
             await updateThread(threadId, (latest) => ({ ...latest, ...chosen, title: named }));
           }
@@ -1074,11 +1205,20 @@ export default definePlugin({
       permissions: ["threads.write"],
       handler: async ({ threadId, requestId, response }) => {
         const current = active.get(threadId);
-        if (current === undefined || !current.openRequests.has(requestId)) {
+        const kind = current?.openRequests.get(requestId);
+        // An answer being recorded makes the request no longer open to another one.
+        if (current === undefined || kind === undefined || current.answering.has(requestId)) {
           throw new ThreadsError("REQUEST_NOT_FOUND", `No open request ${requestId}`, {
             threadId,
             requestId,
           });
+        }
+        if (response.kind !== kind) {
+          throw new ThreadsError(
+            "RESPONSE_MISMATCH",
+            `Request ${requestId} takes a ${kind} answer, not ${response.kind}`,
+            { threadId, requestId, expected: kind, received: response.kind },
+          );
         }
         const turn = current.turn;
         if (turn?.respond === undefined) {
@@ -1087,8 +1227,7 @@ export default definePlugin({
             requestId,
           });
         }
-        current.openRequests.delete(requestId);
-        await log.append(threadStream(threadId), [
+        const recorded = log.append(threadStream(threadId), [
           {
             type: ThreadEvents.requestResolved,
             payload: {
@@ -1098,6 +1237,15 @@ export default definePlugin({
             },
           },
         ]);
+        current.answering.set(requestId, recorded);
+        try {
+          await recorded;
+        } finally {
+          // A failed record leaves the request open, so the answer can be sent again.
+          current.answering.delete(requestId);
+        }
+        // Recorded: the request is answered, and the agent hears it.
+        current.openRequests.delete(requestId);
         turn.respond(requestId, response);
         if (current.openRequests.size === 0 && active.get(threadId) === current) {
           await setTurnStatus(threadId, current.turnId, current.agentId, "running");
