@@ -3,8 +3,8 @@
 // (makeClaudeQueryOptions), runtime and interaction modes to Claude permission modes
 // (permissionModeForClaudeRuntimePolicy), the canUseTool callback (approvals,
 // AskUserQuestion, ExitPlanMode) and the stream projection of reasoning, tools and usage.
-// T3 keeps one live query per thread; here every turn runs one query that resumes the
-// thread's Claude session, so a turn owns everything it starts.
+// The live query a turn runs on is leased from ./session.ts: kept between turns, or started
+// for each turn and resumed, as the `session` setting says.
 import type {
   AgentItem,
   AgentResponse,
@@ -26,6 +26,12 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 
 import {
+  createLiveSessions,
+  type Lease,
+  type LiveSessions,
+  type QueryFunction,
+} from "./session.ts";
+import {
   EXIT_PLAN_TOOL,
   QUESTION_TOOL,
   TODO_TOOL,
@@ -45,17 +51,10 @@ import {
   type TaskList,
 } from "./mapping.ts";
 
-/** The part of the SDK's `Query` a turn uses. */
-interface ClaudeQuery extends AsyncIterable<SDKMessage> {
-  interrupt(): Promise<unknown>;
-  close(): void;
-}
+export type { QueryFunction } from "./session.ts";
 
-/** The SDK's `query`, injected so tests can script Claude Code. */
-export type QueryFunction = (params: {
-  prompt: AsyncIterable<SDKUserMessage>;
-  options: Options;
-}) => ClaudeQuery;
+/** The runtime's agent id, recorded on Claude's turns (D90). */
+export const CLAUDE_AGENT_ID = "jhin.agent-claude";
 
 /** Which threads already have a Claude session (named after the thread). */
 export interface SessionStore {
@@ -74,6 +73,8 @@ interface ClaudeSettings {
 
 export interface ClaudeTurnDependencies {
   readonly query: QueryFunction;
+  /** The node's live sessions; without them the turn starts Claude Code and ends it. */
+  readonly live?: LiveSessions;
   readonly sessions: SessionStore;
   readonly settings: ClaudeSettings;
   readonly defaultModel: string;
@@ -88,6 +89,11 @@ export function claudeEnvironment(
 ): Record<string, string | undefined> {
   return { ...process.env, ...env };
 }
+
+/** Without live sessions: every turn starts Claude Code and ends it. */
+const PER_TURN = { keepAlive: false, idleMs: 0 } as const;
+
+const log = (deps: ClaudeTurnDependencies) => (deps.log === undefined ? {} : { log: deps.log });
 
 /** Tool output kept in the thread's log; longer output is cut. */
 const MAX_TOOL_OUTPUT = 20_000;
@@ -151,24 +157,38 @@ function userMessage(
 }
 
 /**
- * The conversation so far, for a thread whose earlier turns ran on another agent: Claude
- * starts a session of its own and gets them as context in the first message.
+ * The conversation Claude has not seen, as context for the first message it gets: every
+ * earlier turn of a thread whose turns ran on another agent before Claude joined (no
+ * `since`), or the turns after Claude's last one (`since`: Claude's agent id) of a thread
+ * that went to another agent and came back. `undefined` when there is none.
  */
-export function transcript(history: TurnRequest["history"]): string | undefined {
-  const lines: string[] = [];
+export function transcript(history: TurnRequest["history"], since?: string): string | undefined {
+  const turns: { agentId: unknown; lines: string[] }[] = [];
+  const byId = new Map<unknown, { agentId: unknown; lines: string[] }>();
   for (const event of history) {
     const payload = event.payload as Record<string, unknown> | null;
     if (payload === null || typeof payload !== "object") continue;
     if (event.type === ThreadEvents.turnStarted) {
+      const turn = { agentId: payload["agentId"], lines: [] as string[] };
+      turns.push(turn);
+      byId.set(payload["turnId"], turn);
       const input = payload["input"] as { text?: unknown } | undefined;
-      if (typeof input?.text === "string") lines.push(`User: ${input.text}`);
+      if (typeof input?.text === "string") turn.lines.push(`User: ${input.text}`);
     } else if (event.type === ThreadEvents.itemCompleted && payload["kind"] === "message") {
-      if (typeof payload["text"] === "string") lines.push(`Assistant: ${payload["text"]}`);
+      const turn = byId.get(payload["turnId"]) ?? turns.at(-1);
+      if (typeof payload["text"] === "string") turn?.lines.push(`Assistant: ${payload["text"]}`);
     }
   }
+  const missed =
+    since === undefined
+      ? turns
+      : turns.slice(turns.findLastIndex((turn) => turn.agentId === since) + 1);
+  const lines = missed.flatMap((turn) => turn.lines);
   if (lines.length === 0) return undefined;
   return [
-    "This thread started before you joined it. The conversation so far:",
+    since === undefined
+      ? "This thread started before you joined it. The conversation so far:"
+      : "Since your last turn this thread went on with another agent. The conversation since then:",
     "",
     ...lines,
     "",
@@ -225,7 +245,10 @@ class SessionMismatch extends Error {
   }
 }
 
-/** Runs one turn of a thread on Claude Code; `done` settles once its query has ended. */
+/**
+ * Runs one turn of a thread on Claude Code; `done` settles once the turn let go of its
+ * live session (ended or kept for the next turn).
+ */
 export function claudeTurn(
   request: TurnRequest,
   deps: ClaudeTurnDependencies,
@@ -236,8 +259,9 @@ export function claudeTurn(
   const interactionMode = request.interactionMode ?? "default";
   const model = request.model ?? deps.defaultModel;
   const answers = new Map<string, (response: AgentResponse | undefined) => void>();
-  let current: ClaudeQuery | undefined;
-  let ended: (() => void) | undefined;
+  const live =
+    deps.live ?? createLiveSessions({ query: deps.query, keepAlive: () => PER_TURN, ...log(deps) });
+  let current: Lease | undefined;
 
   /**
    * Opens a request and waits for its answer: `undefined` when the turn stops first or
@@ -518,27 +542,23 @@ export function claudeTurn(
 
   /** One query; resolves with the result, or `undefined` when the stream ended without one. */
   const attempt = async (resume: boolean, text: string) => {
-    let release!: () => void;
-    const finished = new Promise<void>((resolve) => (release = resolve));
-    ended = release;
-    // The prompt stays open until the turn ends: Claude Code reads permission answers
-    // and control requests through the same process.
-    async function* prompt(): AsyncGenerator<SDKUserMessage> {
-      yield userMessage(text, request.input.attachments, (attachment) =>
+    const lease = await live.lease({
+      threadId: request.threadId,
+      options: options(resume),
+      message: userMessage(text, request.input.attachments, (attachment) =>
         deps.log?.("claude takes no such attachment, skipped", {
           name: attachment.name,
           mimeType: attachment.mimeType,
         }),
-      );
-      await finished;
-    }
-    const query = deps.query({ prompt: prompt(), options: options(resume) });
-    current = query;
-    if (interrupted) void query.interrupt().catch(() => undefined);
+      ),
+    });
+    current = lease;
+    if (interrupted) stop(lease);
     let started = false;
     let result: SDKResultMessage | undefined;
     try {
-      for await (const message of query) {
+      for await (const message of lease.messages) {
+        // Claude Code initializes every turn, also on a session kept from an earlier one.
         if (message.type === "system" && message.subtype === "init") {
           started = true;
           // A record that could not be written costs one retry on the next turn (D91),
@@ -565,8 +585,9 @@ export function claudeTurn(
       }
       throw error;
     } finally {
-      release();
-      query.close();
+      // Kept only when Claude Code finished the turn, interrupted or not: one that broke
+      // off mid-turn would hand the rest of this turn to the next.
+      lease.release(started && result !== undefined);
       current = undefined;
     }
     if (result !== undefined && !started) {
@@ -577,11 +598,20 @@ export function claudeTurn(
     return result;
   };
 
+  /**
+   * Interrupts the turn, not the session: Claude Code ends the turn with an aborted result
+   * and stays up for the next one. When it does not take the interrupt it is ended.
+   */
+  const stop = (lease: Lease) => {
+    void lease.interrupt().catch(() => lease.release(false));
+  };
+
   const run = async () => {
     const hasSession = await deps.sessions.has(request.threadId);
     // Stopped before Claude Code started: it never starts.
     if (interrupted) return;
-    const preface = hasSession ? undefined : transcript(request.history);
+    // A thread Claude has a session of may have gone on with another agent since.
+    const preface = transcript(request.history, hasSession ? CLAUDE_AGENT_ID : undefined);
     const text = preface === undefined ? request.input.text : `${preface}${request.input.text}`;
     let result: SDKResultMessage | undefined;
     try {
@@ -629,13 +659,7 @@ export function claudeTurn(
       interrupted = true;
       for (const resolve of answers.values()) resolve(undefined);
       answers.clear();
-      const query = current;
-      if (query === undefined) return;
-      void query.interrupt().catch(() => {
-        // Claude Code did not take the interrupt: end its process instead.
-        ended?.();
-        query.close();
-      });
+      if (current !== undefined) stop(current);
     },
     respond(requestId, response) {
       const resolve = answers.get(requestId);

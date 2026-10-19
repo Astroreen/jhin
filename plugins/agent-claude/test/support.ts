@@ -3,19 +3,25 @@ import type { Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-a
 
 import type { QueryFunction, SessionStore } from "../src/turn.ts";
 
-/** One query a turn started: its options, the prompt it sent and what was done to it. */
+/** One query a turn started: its options, the prompts it sent and what was done to it. */
 interface Call {
   readonly options: Options;
   readonly prompt: SDKUserMessage[];
+  /** Live changes, in order: `model:<id>`, `mode:<permission mode>`. */
+  readonly controls: string[];
   interrupts: number;
   closed: boolean;
+  /** Resolves when the query is closed. */
+  readonly whenClosed: Promise<void>;
 }
 
 /** What a script can do while it plays Claude Code. */
 interface Player {
   readonly call: Call;
-  /** Resolves when the turn interrupts the query. */
+  /** Resolves when a turn first interrupts the query. */
   readonly interrupted: Promise<void>;
+  /** The next message of the prompt stream, as a live session gets its next turn; `undefined` once it ends. */
+  nextPrompt(): Promise<SDKUserMessage | undefined>;
   /** Calls the turn's canUseTool, as Claude Code does before running a tool. */
   canUseTool(
     toolName: string,
@@ -27,31 +33,63 @@ interface Player {
 
 export type Script = (player: Player) => AsyncGenerator<SDKMessage, void, undefined>;
 
-/** A scripted stand-in for the SDK's `query`: every call plays the next script. */
+/**
+ * A scripted stand-in for the SDK's `query`: every call plays the next script, and the
+ * script's end is Claude Code exiting. `refuseControls` makes setModel and
+ * setPermissionMode fail, as an older CLI would.
+ */
 export function scriptedQuery(...scripts: Script[]) {
   const calls: Call[] = [];
+  const state = { refuseControls: false };
   const query: QueryFunction = ({ prompt, options }) => {
     const script = scripts[calls.length];
     if (script === undefined) throw new Error(`no script for query ${calls.length + 1}`);
-    const call: Call = { options, prompt: [], interrupts: 0, closed: false };
+    let closeCall!: () => void;
+    const call: Call = {
+      options,
+      prompt: [],
+      controls: [],
+      interrupts: 0,
+      closed: false,
+      whenClosed: new Promise((resolve) => (closeCall = resolve)),
+    };
     calls.push(call);
     let interrupt!: () => void;
-    const interrupted = new Promise<void>((resolve) => (interrupt = resolve));
     const player: Player = {
       call,
-      interrupted,
+      interrupted: new Promise<void>((resolve) => (interrupt = resolve)),
+      nextPrompt: async () => {
+        const next = await prompts.next();
+        if (next.done === true) return undefined;
+        call.prompt.push(next.value);
+        return next.value;
+      },
       canUseTool: (toolName, input, toolUseID, signal = new AbortController().signal) =>
         options.canUseTool!(toolName, input, {
           signal,
           toolUseID,
         } as Parameters<NonNullable<Options["canUseTool"]>>[2]),
     };
+    const prompts = prompt[Symbol.asyncIterator]();
     async function* play(): AsyncGenerator<SDKMessage, void, undefined> {
-      const first = await prompt[Symbol.asyncIterator]().next();
-      if (first.done !== true) call.prompt.push(first.value);
+      if ((await player.nextPrompt()) === undefined) return;
       yield* script(player);
     }
-    const messages = play();
+    const played = play();
+    // After close() no message comes, as with the SDK.
+    const messages: AsyncIterator<SDKMessage> = {
+      next: () =>
+        call.closed
+          ? Promise.resolve({ done: true, value: undefined })
+          : Promise.race([
+              played.next(),
+              call.whenClosed.then(() => ({ done: true as const, value: undefined })),
+            ]),
+    };
+    const control = async (entry: string) => {
+      if (state.refuseControls) throw new Error("Unsupported control request");
+      call.controls.push(entry);
+    };
     return {
       [Symbol.asyncIterator]: () => messages,
       interrupt: async () => {
@@ -61,10 +99,13 @@ export function scriptedQuery(...scripts: Script[]) {
       },
       close: () => {
         call.closed = true;
+        closeCall();
       },
+      setModel: (model) => control(`model:${model}`),
+      setPermissionMode: (mode) => control(`mode:${mode}`),
     };
   };
-  return { query, calls };
+  return { query, calls, state };
 }
 
 export function memorySessions(initial: string[] = []): SessionStore & { ids: Set<string> } {
@@ -98,7 +139,13 @@ export async function drain(
 
 const message = (value: unknown) => value as SDKMessage;
 
-export const init = () => message({ type: "system", subtype: "init", session_id: "s" });
+export const init = (permissionMode?: string) =>
+  message({
+    type: "system",
+    subtype: "init",
+    session_id: "s",
+    ...(permissionMode === undefined ? {} : { permissionMode }),
+  });
 
 /** A streamed text (or thinking) block of an API message, snapshot before its stop as the CLI sends it. */
 export function* streamedBlock(

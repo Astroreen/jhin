@@ -65,17 +65,18 @@ async function node(...scripts: Script[]) {
   return { client, calls, storage };
 }
 
-/** Resolves with the thread's events once one of type `type` is recorded. */
+/** Resolves with the thread's events (all of them, from its start) once `count` of type `type` are recorded. */
 function until(
   client: Awaited<ReturnType<typeof node>>["client"],
   threadId: string,
   type: string,
+  count = 1,
 ): Promise<StoredEvent[]> {
   const events: StoredEvent[] = [];
   return new Promise((resolve) => {
     client.subscribe(`thread/${threadId}`, {}, (event) => {
       events.push(event);
-      if (event.type === type) resolve(events);
+      if (events.filter((seen) => seen.type === type).length === count) resolve(events);
     });
   });
 }
@@ -133,10 +134,79 @@ describe("jhin.agent-claude: the plugin", () => {
     });
     expect(calls[0]!.options).toMatchObject({ sessionId: thread.id });
 
-    const second = until(client, thread.id, "agent.turn.completed");
+    const second = until(client, thread.id, "agent.turn.completed", 2);
     await client.call("threads.send", { threadId: thread.id, text: "Again?" });
     await second;
     expect(calls[1]!.options).toMatchObject({ resume: thread.id });
+  });
+
+  it("keeps the thread's Claude Code between turns until the thread is archived", async () => {
+    const answering: Script = async function* (player) {
+      yield init();
+      yield result();
+      while ((await player.nextPrompt()) !== undefined) {
+        yield init();
+        yield result();
+      }
+    };
+    const { client, calls } = await node(answering);
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    for (const [index, text] of ["one", "two"].entries()) {
+      const completed = until(client, thread.id, "agent.turn.completed", index + 1);
+      await client.call("threads.send", { threadId: thread.id, text });
+      await completed;
+    }
+    expect(calls).toHaveLength(1);
+    expect(await client.call("claude.sessions.list", {})).toEqual([
+      expect.objectContaining({ threadId: thread.id, busy: false }),
+    ]);
+
+    await client.call("threads.archive", { threadId: thread.id });
+    await calls[0]!.whenClosed;
+    expect(await client.call("claude.sessions.list", {})).toEqual([]);
+  });
+
+  it("ends a deleted thread's Claude Code and forgets its session", async () => {
+    const { client, calls, storage } = await node(async function* (player) {
+      yield init();
+      yield result();
+      await player.nextPrompt();
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    const completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await completed;
+    expect(await storage.storage.kv.get("jhin.agent-claude", `session/${thread.id}`)).toBeDefined();
+
+    await client.call("threads.delete", { threadId: thread.id });
+    await calls[0]!.whenClosed;
+    expect(await client.call("claude.sessions.list", {})).toEqual([]);
+    expect(
+      await storage.storage.kv.get("jhin.agent-claude", `session/${thread.id}`),
+    ).toBeUndefined();
+  });
+
+  it("ends live sessions on request", async () => {
+    const { client, calls } = await node(async function* (player) {
+      yield init();
+      yield result();
+      await player.nextPrompt();
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    const completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await completed;
+    expect(await client.call("claude.sessions.close", { threadId: "elsewhere" })).toEqual({
+      closed: 0,
+    });
+    expect(await client.call("claude.sessions.close", {})).toEqual({ closed: 1 });
+    expect(calls[0]!.closed).toBe(true);
   });
 
   it("records Claude Code's failure as a failed turn", async () => {
