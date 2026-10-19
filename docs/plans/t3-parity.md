@@ -314,7 +314,11 @@ contributions. Features of T3 Code that only make sense for its hosted product
 - **D77. Snoozing.** `threads.snooze` takes `until` (an ISO time with its
   offset) and keeps `snoozedUntil` and `snoozedAt`; a time not in the future
   is refused (`SNOOZE_IN_PAST`), as is a thread waiting for an answer
-  (`TURN_IN_PROGRESS`); a running one may snooze. `threads.unsnooze` wakes it
+  (`TURN_IN_PROGRESS`); a running one may snooze. Snoozing keeps a pin and
+  a settlement, as T3's `thread.snooze` does: the client shows the Snoozed
+  shelf first (T3's section order: snoozed, settled, pinned, active), and a
+  thread that wakes goes back where it was. Pinning and settling, the other
+  way round, wake it (D75, D76), so the latest choice is what shows. `threads.unsnooze` wakes it
   and records `lastSnoozeWakeAt`; a new turn wakes it too. A snoozed thread
   leaves the cards for the "Snoozed" shelf (collapsed by default, kept per
   device, T3's info tone, soonest wake first, each row saying how long is
@@ -404,10 +408,12 @@ and un-settling in the index without touching `updatedAt`, refusals for a
 running, waiting or archived thread, settling waking a snoozed thread and
 keeping the time a thread the rule settled has on the shelf, a turn bringing a settled thread back
 on top and out of the dragged order, a choice by hand giving way to the rule
-after a turn, a thread the rule settled after three days coming back, pin,
+after a turn, a rename landing while a turn brings the thread back staying,
+a thread the rule settled after three days coming back, pin,
 reorder and unpin with their refusals and key validation, settling
 unpinning, pinning un-settling and waking, snoozing in the future only, not
-while waiting, waking by hand or by a turn);
+while waiting, keeping a pin and a settlement under a snooze, waking by hand
+or by a turn);
 `apps/web/test/sidebar-order.test.ts` (sections and their order, settled by
 hand, kept active, pinned, a Done thread settling, an activity time that does
 not parse, a snooze's end as activity, waking by time and by a raised hand,

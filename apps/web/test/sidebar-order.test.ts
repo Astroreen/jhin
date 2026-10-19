@@ -232,6 +232,16 @@ describe("snoozing (D77)", () => {
     expect(isSnoozed(snoozed({ lastTurn: turn("running", ago(3)) }), NOW)).toBe(true);
   });
 
+  it("shows a snoozed thread on the Snoozed shelf first, then back where it was pinned or settled", () => {
+    const later = NOW + 3 * HOUR;
+    const pinned = snoozed({ pinnedAt: ago(6), pinOrderKey: "n" });
+    expect(threadSection(pinned, NOW)).toBe("snoozed");
+    expect(threadSection(pinned, later)).toBe("pinned");
+    const settled = snoozed({ settledOverride: "settled", settledAt: ago(6) });
+    expect(threadSection(settled, NOW)).toBe("snoozed");
+    expect(threadSection(settled, later)).toBe("settled");
+  });
+
   it("refuses to snooze a thread waiting for an answer", () => {
     expect(
       canSnooze(thread("t", ago(1), { lastTurn: turn("waiting", ago(1), "user-input") })),

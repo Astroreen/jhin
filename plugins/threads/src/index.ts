@@ -1705,29 +1705,30 @@ export default definePlugin({
             ...(runtimeMode === undefined ? {} : { runtimeMode }),
             ...(interactionMode === undefined ? {} : { interactionMode }),
           };
-          // The first message names a thread that still has the default title.
-          const named =
-            firstTitle !== undefined &&
-            thread.lastTurn === undefined &&
-            thread.title === DEFAULT_THREAD_TITLE
-              ? firstTitle
-              : thread.title;
           const chosen = { agentId: runtime.agentId, ...settings };
           // The record keeps what this turn runs with: no model of another agent.
           const dropModel = settings.model === undefined;
-          const changed =
-            named !== thread.title ||
-            (dropModel && thread.model !== undefined) ||
-            Object.entries(chosen).some(
-              ([key, value]) => (thread as Record<string, unknown>)[key] !== value,
-            );
           // A new turn also brings a settled thread back and wakes a snoozed one.
           const at = now();
           await updateThread(threadId, (latest) => {
             const back = revived(latest, at);
-            if (!changed && back === latest) return latest;
             const { model: _model, ...rest } = back;
-            return { ...(dropModel ? rest : back), ...chosen, title: named };
+            const next: Thread = {
+              ...(dropModel ? rest : back),
+              ...chosen,
+              // Only the first message names the thread, and only while it has the
+              // default title: a rename that landed since it was read stays.
+              title:
+                firstTitle !== undefined &&
+                latest.lastTurn === undefined &&
+                latest.title === DEFAULT_THREAD_TITLE
+                  ? firstTitle
+                  : latest.title,
+            };
+            const changed = (Object.keys({ ...latest, ...next }) as (keyof Thread)[]).some(
+              (key) => next[key] !== latest[key],
+            );
+            return changed ? next : latest;
           });
         } catch (error) {
           reservation.finish();

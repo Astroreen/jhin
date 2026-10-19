@@ -1,3 +1,4 @@
+import { memoryStoragePlugin } from "@jhin/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { node, watch } from "./support.ts";
@@ -172,6 +173,51 @@ describe("jhin.threads: settling by hand (D75)", () => {
     expect(back).toMatchObject({ settledOverride: "active", snoozedUntil: until });
   });
 
+  it("keeps a rename that lands while a turn brings the thread back", async () => {
+    const storage = memoryStoragePlugin();
+    const { client } = await node({ storage });
+    const index = watch(client, "stream:threads");
+    const thread = await client.call<Thread>("threads.create", {});
+    const first = await client.call<{ turnId: string }>("threads.send", {
+      threadId: thread.id,
+      text: "hello",
+    });
+    await index.untilMatch(
+      (event) =>
+        (event.payload as unknown as Thread).lastTurn?.turnId === first.turnId &&
+        (event.payload as unknown as Thread).lastTurn?.status === "completed",
+    );
+    await client.call("threads.settle", { threadId: thread.id });
+
+    // The send reads the thread twice: before taking it and once it is its own.
+    // A rename lands right after the second read, before the send writes.
+    const kv = storage.storage.kv;
+    const get = kv.get.bind(kv);
+    let reads = 0;
+    kv.get = async (namespace, key) => {
+      const value = await get(namespace, key);
+      if (key === `thread/${thread.id}` && ++reads === 2) {
+        await client.call("threads.update", { threadId: thread.id, title: "Renamed meanwhile" });
+      }
+      return value;
+    };
+    const { turnId } = await client.call<{ turnId: string }>("threads.send", {
+      threadId: thread.id,
+      text: "again",
+    });
+    kv.get = get;
+
+    const ended = await index.untilMatch((event) => {
+      const payload = event.payload as unknown as Thread & { title: string };
+      return payload.lastTurn?.turnId === turnId && payload.lastTurn.status === "completed";
+    });
+    const record = ended.payload as unknown as Thread & { title: string };
+    expect(record.title).toBe("Renamed meanwhile");
+    // Brought back all the same.
+    expect(record.settledOverride).toBeUndefined();
+    expect(record.unsettledAt).toEqual(expect.any(String));
+  });
+
   it("lets the automatic rule apply again after a turn, keeping when it came back by hand", async () => {
     const { client, thread, turn } = await withThread();
     const unsettled = await client.call<Thread>("threads.unsettle", { threadId: thread.id });
@@ -309,6 +355,24 @@ describe("jhin.threads: snoozing (D77)", () => {
     expect(awake.lastSnoozeWakeAt).toEqual(expect.any(String));
     // Awake already: nothing changes.
     expect(await client.call("threads.unsnooze", { threadId: thread.id })).toEqual(awake);
+  });
+
+  it("keeps a pin and a settlement under a snooze, as T3 does: the thread wakes back into its place", async () => {
+    const { client, thread } = await withThread();
+    const pinned = await client.call<Thread>("threads.pin", { threadId: thread.id, orderKey: "n" });
+    const snoozed = await client.call<Thread>("threads.snooze", {
+      threadId: thread.id,
+      until: inAnHour(),
+    });
+    expect(snoozed).toMatchObject({ pinnedAt: pinned.pinnedAt, pinOrderKey: "n" });
+
+    const other = await client.call<Thread>("threads.create", {});
+    const settled = await client.call<Thread>("threads.settle", { threadId: other.id });
+    const both = await client.call<Thread>("threads.snooze", {
+      threadId: other.id,
+      until: inAnHour(),
+    });
+    expect(both).toMatchObject({ settledOverride: "settled", settledAt: settled.settledAt });
   });
 
   it("refuses to snooze a thread waiting for an answer; a new turn wakes a snoozed thread", async () => {
