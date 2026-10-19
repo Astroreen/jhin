@@ -312,6 +312,33 @@ export function parseNumstat(output: string): NumstatEntry[] {
   return entries;
 }
 
+const NAME_STATUS: Readonly<Record<string, FileChangeStatus>> = {
+  A: "added",
+  D: "deleted",
+  M: "modified",
+  R: "renamed",
+  C: "copied",
+  T: "type-changed",
+  U: "conflicted",
+};
+
+/** Parses `git diff --name-status -z`: a status letter (with a score for renames), then paths. */
+export function parseNameStatus(output: string): { path: string; status: FileChangeStatus }[] {
+  const records = output.split("\0");
+  const entries: { path: string; status: FileChangeStatus }[] = [];
+  for (let index = 0; index < records.length; index++) {
+    const code = records[index]!;
+    if (code === "") continue;
+    const letter = code[0]!;
+    // A rename or copy names the old path, then the new one.
+    if (letter === "R" || letter === "C") index++;
+    const path = records[++index];
+    if (path === undefined) break;
+    entries.push({ path, status: NAME_STATUS[letter] ?? "modified" });
+  }
+  return entries;
+}
+
 /** Untracked files counted at the same time: each holds one file descriptor and one buffer. */
 const COUNT_CONCURRENCY = 8;
 /** The read buffer of a count; git decides "binary" from the first 8000 bytes too. */
@@ -524,6 +551,12 @@ export async function checkout(
   branch: string,
   options: { create: boolean; remotes: readonly string[] },
 ): Promise<void> {
+  // A name git would read as an option is refused, whether or not such a ref exists.
+  if (branch.startsWith("-")) {
+    throw new SourceControlError("BRANCH_INVALID", `${branch} is not a valid branch name`, {
+      branch,
+    });
+  }
   if (options.create) {
     if (!(await isValidBranchName(git, branch))) {
       throw new SourceControlError("BRANCH_INVALID", `${branch} is not a valid branch name`, {
@@ -628,26 +661,28 @@ export async function readPatch(
   }
   let files = local.files;
   if (options.scope === "branch") {
-    const numstat = await git(["diff", "-M", "--numstat", "-z", ...whitespace, from, "--"]);
+    // The branch's diff is the working tree against the merge base: its own name-status
+    // says what each file is (added, deleted, renamed) across commits and edits alike.
+    const range = ["-M", "-z", ...whitespace, from, "--"];
+    const [numstat, names] = await Promise.all([
+      git(["diff", "--numstat", ...range]),
+      git(["diff", "--name-status", ...range]),
+    ]);
+    const statuses = new Map(
+      parseNameStatus(names.stdout).map((entry) => [entry.path, entry.status]),
+    );
     const committed = parseNumstat(numstat.stdout).map((entry): ChangedFile => ({
       path: entry.path,
       ...(entry.previousPath === undefined ? {} : { previousPath: entry.previousPath }),
-      status: entry.previousPath === undefined ? "modified" : "renamed",
+      status:
+        statuses.get(entry.path) ?? (entry.previousPath === undefined ? "modified" : "renamed"),
       insertions: entry.insertions,
       deletions: entry.deletions,
       binary: entry.binary,
     }));
-    // Statuses of the working tree win where they say more (added, deleted, untracked).
-    const working = new Map(files.map((file) => [file.path, file]));
-    files = [
-      ...committed.map((file) => {
-        const known = working.get(file.path);
-        return known === undefined || known.status === "modified"
-          ? file
-          : { ...file, status: known.status };
-      }),
-      ...untracked,
-    ].toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    files = [...committed, ...untracked].toSorted((a, b) =>
+      a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
+    );
   } else if (options.ignoreWhitespace) {
     const numstat = parseNumstat(
       (await git(["diff", "-M", "--numstat", "-z", "--ignore-all-space", from, "--"])).stdout,

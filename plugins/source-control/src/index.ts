@@ -482,9 +482,30 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   };
 
   /** The status as last read (the first read is awaited). */
+  /**
+   * The status as last read. Until one was read, the first read is awaited;
+   * if that failed (a git hiccup, a repository being rewritten), it is read
+   * again, so one failure never keeps the project unreadable.
+   */
   const statusOf = async (repo: Repo): Promise<ProjectStatus> => {
-    const first = await repo.ready;
-    return repo.status ?? first;
+    if (repo.status !== undefined) return repo.status;
+    try {
+      return await repo.ready;
+    } catch {
+      return refresh(repo);
+    }
+  };
+
+  /** A status for `git.status`: a project that cannot be read says why instead of failing the rest. */
+  const listedStatus = async (repo: Repo, reread: boolean): Promise<ProjectStatus> => {
+    try {
+      return await (reread ? statusNow(repo) : statusOf(repo));
+    } catch (error) {
+      return nonRepository(
+        repo.project.id,
+        `Could not read the repository: ${(error as Error).message}`,
+      );
+    }
   };
 
   const gitOf = async (repo: Repo): Promise<{ git: Git; root: string }> => {
@@ -730,9 +751,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       const head = await log.head(SOURCE_CONTROL_STREAM);
       await Promise.all([loadProjects(), loadThreads()]);
       const chosen = projectId === undefined ? [...repos.values()] : [await repoOf(projectId)];
-      const projects = await Promise.all(
-        chosen.map((repo) => (reread === true ? statusNow(repo) : statusOf(repo))),
-      );
+      const projects = await Promise.all(chosen.map((repo) => listedStatus(repo, reread === true)));
       return {
         head,
         projects,

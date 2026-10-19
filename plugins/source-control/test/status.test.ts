@@ -1,7 +1,10 @@
+import * as Fs from "node:fs";
+import * as Path from "node:path";
+
 import type { Branch, Diff, ProjectStatus } from "@jhin/source-control-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { countLines, mapLimited } from "../src/git.ts";
+import { countLines, mapLimited, parseNameStatus } from "../src/git.ts";
 import { parseNumstat, parseStatus } from "../src/index.ts";
 import { git, node, repository, statusEvent, temp, threadEvent, write } from "./support.ts";
 
@@ -120,6 +123,32 @@ describe("jhin.source-control: reading a repository", () => {
     await sc.until((next) => next.sequence > event.sequence && clean(next));
   });
 
+  it("reads a project again after its first read failed, and lists the others meanwhile", async () => {
+    const broken = repository();
+    const fine = repository();
+    // A corrupt index: git finds the repository, but cannot read its status.
+    Fs.writeFileSync(Path.join(broken, ".git", "index"), "not an index");
+    const sc = await node({ watch: false });
+    const brokenId = await sc.project(broken);
+    const fineId = await sc.project(fine);
+    const listed = (await sc.status()).projects;
+    expect(listed.find((project) => project.projectId === brokenId)).toMatchObject({
+      isRepo: false,
+      reason: expect.stringMatching(/^Could not read the repository: /),
+    });
+    expect(listed.find((project) => project.projectId === fineId)).toMatchObject({
+      isRepo: true,
+      branch: "main",
+    });
+    // Repaired: the project reads again, without being added anew.
+    Fs.rmSync(Path.join(broken, ".git", "index"));
+    git(broken, "reset", "--quiet");
+    expect((await sc.status(brokenId)).projects[0]).toMatchObject({ isRepo: true, branch: "main" });
+    await expect(sc.client.call("git.diff", { projectId: brokenId })).resolves.toMatchObject({
+      files: [],
+    });
+  });
+
   it("publishes a status only when it changed", async () => {
     const dir = repository();
     const sc = await node();
@@ -198,6 +227,27 @@ describe("jhin.source-control: diffs", () => {
     expect(diff.patch).not.toContain("main.md");
   });
 
+  it("says which files a branch added and deleted in its commits", async () => {
+    const dir = repository();
+    write(dir, "old.md", "old\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "--quiet", "-m", "old");
+    git(dir, "switch", "--quiet", "--create", "feature");
+    write(dir, "added.md", "new\n");
+    git(dir, "rm", "--quiet", "old.md");
+    git(dir, "add", ".");
+    git(dir, "commit", "--quiet", "-m", "add and delete");
+    write(dir, "README.md", "one\ntwo\nthree\nfour\n");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const diff = await sc.client.call<Diff>("git.diff", { projectId, scope: "branch" });
+    expect(diff.files.map((file) => [file.path, file.status])).toEqual([
+      ["README.md", "modified"],
+      ["added.md", "added"],
+      ["old.md", "deleted"],
+    ]);
+  });
+
   it("refuses a diff of a project that is no repository", async () => {
     const sc = await node();
     const projectId = await sc.project(temp("jhin-sc-plain-"));
@@ -247,6 +297,11 @@ describe("jhin.source-control: branches", () => {
     await expect(
       sc.client.call("git.checkout", { projectId, branch: "missing" }),
     ).rejects.toMatchObject({ code: "BRANCH_NOT_FOUND" });
+    // A ref git would read as an option, even one that exists, is never passed to git.
+    git(dir, "update-ref", "refs/heads/-f", "HEAD");
+    await expect(sc.client.call("git.checkout", { projectId, branch: "-f" })).rejects.toMatchObject(
+      { code: "BRANCH_INVALID" },
+    );
   });
 
   it("reports git's own refusal, e.g. a checkout that would lose changes", async () => {
@@ -441,6 +496,27 @@ describe("jhin.source-control: parsing git's output", () => {
         { path: "untracked.txt", status: "untracked" },
       ],
     });
+  });
+
+  it("reads name-status with renames and copies", () => {
+    const output = [
+      "A",
+      "added.md",
+      "D",
+      "gone.md",
+      "R087",
+      "old.ts",
+      "new.ts",
+      "M",
+      "kept.ts",
+      "",
+    ].join("\0");
+    expect(parseNameStatus(output)).toEqual([
+      { path: "added.md", status: "added" },
+      { path: "gone.md", status: "deleted" },
+      { path: "new.ts", status: "renamed" },
+      { path: "kept.ts", status: "modified" },
+    ]);
   });
 
   it("reads numstat with renames and binary files", () => {

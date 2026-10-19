@@ -50,7 +50,9 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   (a thread's branch, whether it is checked out, its pull request and its
   project's status), `git.diff` (a project's or a thread's project's diff:
   `uncommitted` against `HEAD`, or `branch` against the merge base with
-  `base`, the default branch by default; untracked files count as added;
+  `base`, the default branch by default; each file's status is git's own
+  name-status of that diff, so a branch's added and deleted files say so;
+  untracked files count as added;
   `ignoreWhitespace`), `git.branches` (local and remote, the current one
   first) and `git.checkout` (a branch, a remote branch as a local one
   following it, or `create` a new one from `HEAD`; `threadId` moves that
@@ -58,12 +60,17 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   codes: `PROJECT_NOT_FOUND`, `THREAD_NOT_FOUND`, `THREAD_PROJECT_MISMATCH`
   (a checkout's `threadId` names a thread of another project; nothing is
   checked out then), `NOT_A_REPOSITORY`,
-  `BRANCH_NOT_FOUND`, `BRANCH_INVALID` (also any name starting with `-`),
+  `BRANCH_NOT_FOUND`, `BRANCH_INVALID` (also any name starting with `-`, even an
+  existing ref, so git never reads a branch name as an option),
   `GIT_FAILED` (git's own refusal, e.g. a checkout that would lose changes,
   with git's message). A status is T3's `VcsStatusResult` shape: branch,
   upstream, ahead/behind, default branch, remote URL, the working tree's files
   (at most 200 listed, totals over all) with insertions and deletions, the
-  pull request provider and the pull request of each branch looked up.
+  pull request provider and the pull request of each branch looked up. A
+  repository whose read fails is read again on the next request rather than
+  kept failing, and in `git.status` it is listed as unreadable
+  (`isRepo: false`, "Could not read the repository: …") without failing the
+  other projects.
 - **D113. A thread's branch is recorded, not guessed.** It is the branch
   checked out in the thread's project when the thread is created, again when
   one of its turns starts (the agent works on what is checked out) and when it
