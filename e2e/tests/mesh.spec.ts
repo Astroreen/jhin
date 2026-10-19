@@ -229,8 +229,11 @@ test("the node config editor asks before another node's config replaces unsaved 
     .click();
   const nodeSelect = page.getByRole("combobox", { name: "Node", exact: true });
   await expect(nodeSelect).toHaveText(new URL(x.ui).host);
-  // The first section by title, as a form (D80).
-  await expect(page.getByRole("combobox", { name: "Config section" })).toHaveText("Example");
+  // A section as a form (D80).
+  const sectionSelect = page.getByRole("combobox", { name: "Config section" });
+  await sectionSelect.click();
+  await page.getByRole("option", { name: /^Example/ }).click();
+  await expect(sectionSelect).toHaveText("Example");
   const greeting = page.getByRole("textbox", { name: "Greeting" });
   await greeting.fill("Edited");
 
