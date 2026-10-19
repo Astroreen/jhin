@@ -108,8 +108,13 @@ export function permissionMode(
   }
 }
 
-/** Whether tool calls the permission mode does not allow by itself ask the user. */
-const asksForApproval = (runtimeMode: RuntimeMode) => runtimeMode !== "full-access";
+/**
+ * Whether tool calls the permission mode does not allow by itself ask the user. Plan mode
+ * always asks: what Claude Code asks about there is a change the plan was not to make, so
+ * full access does not approve it on its own (T3 Code does).
+ */
+const asksForApproval = (runtimeMode: RuntimeMode, interactionMode: InteractionMode) =>
+  runtimeMode !== "full-access" || interactionMode === "plan";
 
 const IMAGE_TYPES = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
 
@@ -441,7 +446,7 @@ export function claudeTurn(request: TurnRequest, deps: ClaudeTurnDependencies): 
         toolUseID,
       };
     }
-    if (!asksForApproval(runtimeMode)) {
+    if (!asksForApproval(runtimeMode, interactionMode)) {
       return { behavior: "allow", updatedInput: toolInput, toolUseID };
     }
     startTool(toolUseID, toolName, toolInput);

@@ -361,6 +361,25 @@ describe("jhin.agent-claude: a turn", () => {
     expect(decision).toMatchObject({ behavior: "deny" });
   });
 
+  it("asks before a change in plan mode even with full access", async () => {
+    let decision: unknown;
+    const { turn } = start(
+      [
+        async function* (player) {
+          yield init();
+          decision = await player.canUseTool("Write", { file_path: "/work/a.txt" }, "w-1");
+          yield result();
+        },
+      ],
+      { runtimeMode: "full-access", interactionMode: "plan" },
+    );
+    const items = await drain(turn, () => ({ kind: "approval", decision: "decline" }));
+    expect(items).toContainEqual(
+      expect.objectContaining({ kind: "request.opened", requestId: "w-1:approval" }),
+    );
+    expect(decision).toMatchObject({ behavior: "deny" });
+  });
+
   it("turns TodoWrite and the Task tools into plan updates", async () => {
     const { turn } = start([
       async function* () {

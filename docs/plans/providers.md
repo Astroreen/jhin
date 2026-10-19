@@ -39,7 +39,9 @@ specific to Claude: the runtime is a plugin on the public API.
   `auto-accept-edits` → `acceptEdits`, `full-access` → `bypassPermissions`
   (with `allowDangerouslySkipPermissions`), interaction mode `plan` →
   `plan`. `canUseTool` is always installed: a tool call Claude Code does not
-  allow by itself becomes an approval request (`<toolUseId>:approval`, its
+  allow by itself becomes an approval request (in plan mode even with full
+  access, unlike T3 Code: what Claude asks about there is a change the plan
+  was not to make) (`<toolUseId>:approval`, its
   tool titled as an action, "Run command"); accept and accept-for-session
   allow it (the latter adds Claude's suggested rules, or an allow rule for the
   tool, to the session), decline denies it and records the tool as declined,
