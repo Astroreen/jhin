@@ -3,6 +3,7 @@
 import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
+  MACHINES_CAPABILITY,
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
   SETTINGS_CAPABILITY,
@@ -12,6 +13,7 @@ import {
   type Keybindings,
   type MeshMembership,
   type Navigation,
+  type NodeMachines,
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import { definePlugin, toDisposable, z } from "@jhin/sdk";
@@ -53,6 +55,7 @@ export interface SettingsServices {
   readonly navigation: Navigation;
   readonly mesh: MeshMembership;
   readonly threads: ThreadsCatalog;
+  readonly machines: NodeMachines | undefined;
   readonly settings: DeviceSettings;
   readonly keybindings: Keybindings | undefined;
   readonly toasts: Toasts | undefined;
@@ -112,6 +115,7 @@ export const settingsPlugin = builtin(
       [KEYBINDINGS_CAPABILITY]: "^1",
       [UI_TOASTS_CAPABILITY]: "^1",
       [UI_DIALOGS_CAPABILITY]: "^1",
+      [MACHINES_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -129,6 +133,7 @@ export const settingsPlugin = builtin(
         navigation,
         mesh,
         threads,
+        machines: context.services.tryGet<NodeMachines>(MACHINES_CAPABILITY),
         settings: context.services.get<DeviceSettings>(SETTINGS_CAPABILITY),
         keybindings,
         toasts,

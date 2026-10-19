@@ -56,3 +56,36 @@ export interface HostIdentity {
   /** Stable for the life of the node's home. */
   readonly nodeId: string;
 }
+
+/**
+ * What kind of machine a node runs on, for the icon clients show next to it
+ * (T3 Code's environment machine kinds). A client that meets a kind it does
+ * not know shows it as a `server`.
+ */
+export const MACHINE_KINDS = [
+  "server",
+  "cloud",
+  "linux",
+  "desktop",
+  "laptop",
+  "mac-mini",
+  "mac-studio",
+] as const;
+export type MachineKind = (typeof MACHINE_KINDS)[number];
+
+/** How each kind is named to people (T3 Code's labels). */
+export const MACHINE_KIND_LABELS: Readonly<Record<MachineKind, string>> = {
+  server: "Server",
+  cloud: "Cloud VM",
+  linux: "Linux/WSL",
+  desktop: "Desktop",
+  laptop: "Laptop",
+  "mac-mini": "Mini PC",
+  "mac-studio": "Workstation",
+};
+
+export const isMachineKind = (value: unknown): value is MachineKind =>
+  (MACHINE_KINDS as readonly unknown[]).includes(value);
+
+/** The config section where a node's owner names its machine kind (`jhin.host.machine`). */
+export const HOST_CONFIG_SECTION = "jhin.host";

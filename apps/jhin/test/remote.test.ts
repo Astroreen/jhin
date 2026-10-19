@@ -57,6 +57,12 @@ describe("a running node", () => {
 
       const client = createRpcClient({ connect: () => connectWebSocket(url, token) });
       const result = await client.call("example.greet", { name: "Ada" }, { trace: "trace-e2e-1" });
+      // The web client connects with this token, the owner's (`*`): it holds host.identity,
+      // so it learns each node's machine kind (D130) instead of showing a server.
+      expect(await client.call("host.identity", {})).toMatchObject({
+        nodeId: Fs.readFileSync(Path.join(home, "node-id"), "utf8").trim(),
+        machine: expect.any(String),
+      });
       client.close();
       expect(result).toEqual({ message: "Hello, Ada!", count: 1 });
 

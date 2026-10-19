@@ -2,6 +2,7 @@ import {
   targetKey,
   type Connections,
   type Navigation,
+  type NodeMachines,
   type NodeTarget,
   type ProjectRecord,
   type ThreadsCatalog,
@@ -30,6 +31,8 @@ import {
 import { CornerLeftUpIcon, FolderGit2Icon, FolderIcon } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { MachineIcon } from "./machine-icon.tsx";
+import { useMachineKind } from "./machines.ts";
 import type { ShownNode } from "./nodes.ts";
 
 interface Listing {
@@ -103,6 +106,8 @@ export function AddProjectDialog(props: {
   requests: AddProjectRequests;
   /** With several, the dialog asks on which node (T3 Code asks for the environment). */
   nodes?: NodeChoices;
+  /** Each node of the picker shows its machine icon. */
+  machines?: NodeMachines | undefined;
   connections: Connections;
   navigation: Navigation;
   threads: ThreadsCatalog;
@@ -130,9 +135,28 @@ export function AddProjectDialog(props: {
   );
 }
 
+/** A node of the picker: its machine icon, then its name. */
+function NodeChoice(props: {
+  machines: NodeMachines | undefined;
+  target: NodeTarget;
+  label: string;
+}) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <MachineIcon
+        aria-hidden
+        className="size-3.5 shrink-0 text-muted-foreground"
+        kind={useMachineKind(props.machines, props.target)}
+      />
+      <span className="truncate">{props.label}</span>
+    </span>
+  );
+}
+
 function AddProjectForm(props: {
   requests: AddProjectRequests;
   nodes?: NodeChoices;
+  machines?: NodeMachines | undefined;
   target: NodeTarget;
   connections: Connections;
   navigation: Navigation;
@@ -234,12 +258,14 @@ function AddProjectForm(props: {
               value={targetKey(target)}
             >
               <SelectTrigger aria-label="Node" className="w-full">
-                <SelectValue>{label}</SelectValue>
+                <SelectValue>
+                  <NodeChoice label={label} machines={props.machines} target={target} />
+                </SelectValue>
               </SelectTrigger>
               <SelectPopup>
                 {choices.map((node) => (
                   <SelectItem key={targetKey(node.target)} value={targetKey(node.target)}>
-                    {node.label}
+                    <NodeChoice label={node.label} machines={props.machines} target={node.target} />
                   </SelectItem>
                 ))}
               </SelectPopup>

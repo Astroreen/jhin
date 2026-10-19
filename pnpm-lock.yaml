@@ -329,6 +329,9 @@ importers:
 
   packages/client-api:
     dependencies:
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../host-api
       '@jhin/rpc':
         specifier: workspace:*
         version: link:../rpc
