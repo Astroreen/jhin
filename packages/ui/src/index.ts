@@ -192,6 +192,7 @@ export {
   TooltipScrollDismissArea,
   TooltipTrigger,
 } from "./components/tooltip.tsx";
+export { copyText } from "./clipboard.ts";
 export { cn } from "./cn.ts";
 export { useIsMobile, useMediaQuery } from "./hooks/use-media-query.ts";
 export { useResizeDrag } from "./hooks/use-resize-drag.ts";

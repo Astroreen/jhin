@@ -102,13 +102,14 @@ export interface Dialogs {
   prompt(options: PromptOptions): Promise<string | undefined>;
 }
 
-type Request =
+type Request = { readonly id: number } & (
   | { readonly kind: "confirm"; readonly options: ConfirmOptions; resolve(value: boolean): void }
   | {
       readonly kind: "prompt";
       readonly options: PromptOptions;
       resolve(value: string | undefined): void;
-    };
+    }
+);
 
 type HostState =
   | { readonly status: "idle" }
@@ -118,6 +119,8 @@ type HostState =
 export function createDialogs(): Dialogs & {
   state(): HostState;
   subscribe(listener: () => void): Disposable;
+  /** `subscribe` as React's useSyncExternalStore takes it: one function, unsubscribing by return. */
+  watch(listener: () => void): () => void;
   respond(value: boolean | string | undefined): void;
   closed(): void;
   register(): () => void;
@@ -125,6 +128,7 @@ export function createDialogs(): Dialogs & {
   let state: HostState = { status: "idle" };
   let queue: Request[] = [];
   let hosts = 0;
+  let ids = 0;
   const listeners = new Set<() => void>();
   const publish = (next: HostState) => {
     state = next;
@@ -143,12 +147,18 @@ export function createDialogs(): Dialogs & {
     else queue.push(request);
   };
   return {
-    confirm: (options) => new Promise((resolve) => enqueue({ kind: "confirm", options, resolve })),
-    prompt: (options) => new Promise((resolve) => enqueue({ kind: "prompt", options, resolve })),
+    confirm: (options) =>
+      new Promise((resolve) => enqueue({ id: ++ids, kind: "confirm", options, resolve })),
+    prompt: (options) =>
+      new Promise((resolve) => enqueue({ id: ++ids, kind: "prompt", options, resolve })),
     state: () => state,
     subscribe(listener) {
       listeners.add(listener);
       return { dispose: () => listeners.delete(listener) };
+    },
+    watch(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
     respond(value) {
       if (state.status !== "open") return;
@@ -185,6 +195,9 @@ function PromptForm(props: {
   const { options } = props;
   const [value, setValue] = React.useState(options.value ?? "");
   const error = options.validate?.(value);
+  // An error shows once the value was changed.
+  const shownError = error !== undefined && value !== (options.value ?? "") ? error : undefined;
+  const errorId = React.useId();
   return (
     <form
       onSubmit={(event) => {
@@ -200,6 +213,8 @@ function PromptForm(props: {
       </DialogHeader>
       <DialogPanel>
         <Input
+          aria-describedby={shownError === undefined ? undefined : errorId}
+          aria-invalid={shownError !== undefined}
           aria-label={options.label ?? options.title}
           autoFocus
           onChange={(event) => setValue(event.target.value)}
@@ -207,11 +222,11 @@ function PromptForm(props: {
           placeholder={options.placeholder}
           value={value}
         />
-        {error !== undefined && value !== (options.value ?? "") ? (
-          <p className="text-destructive-foreground text-xs" role="alert">
-            {error}
+        {shownError === undefined ? null : (
+          <p className="text-destructive-foreground text-xs" id={errorId} role="alert">
+            {shownError}
           </p>
-        ) : null}
+        )}
       </DialogPanel>
       <DialogFooter>
         <Button onClick={props.onCancel} type="button" variant="outline">
@@ -227,13 +242,7 @@ function PromptForm(props: {
 
 /** Shows the requests of `dialogs`; the UI host mounts one. */
 export function DialogHost({ dialogs }: { dialogs: ReturnType<typeof createDialogs> }) {
-  const state = React.useSyncExternalStore(
-    (listener) => {
-      const subscription = dialogs.subscribe(listener);
-      return () => subscription.dispose();
-    },
-    () => dialogs.state(),
-  );
+  const state = React.useSyncExternalStore(dialogs.watch, dialogs.state);
   React.useEffect(() => dialogs.register(), [dialogs]);
   const request = state.status === "idle" ? undefined : state.request;
   const open = state.status === "open";
@@ -283,7 +292,7 @@ export function DialogHost({ dialogs }: { dialogs: ReturnType<typeof createDialo
         {request?.kind === "prompt" ? (
           <DialogPopup showCloseButton={false}>
             <PromptForm
-              key={request.options.title}
+              key={request.id}
               onCancel={() => dialogs.respond(undefined)}
               onSubmit={(value) => dialogs.respond(value)}
               options={request.options}

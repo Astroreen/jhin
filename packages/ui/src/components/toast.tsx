@@ -22,6 +22,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { copyText } from "../clipboard.ts";
 import { cn } from "../cn.ts";
 import { Button, buttonVariants } from "./button.tsx";
 import { Spinner } from "./spinner.tsx";
@@ -97,7 +98,7 @@ function CopyErrorButton({ text }: { text: string }) {
             aria-label={label}
             className="[--control-icon-color:currentColor] rounded-md text-muted-foreground/80 hover:bg-transparent hover:text-muted-foreground"
             onClick={() =>
-              void navigator.clipboard?.writeText(text).then(
+              void copyText(text).then(
                 () => setCopied(true),
                 () => setCopied(false),
               )
