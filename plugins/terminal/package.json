@@ -51,7 +51,7 @@
     "description": "PTY sessions per thread in its project's folder, their output streamed to clients (T3 Code's terminal)",
     "side": "server",
     "provides": {
-      "terminal.sessions": "1.0.0"
+      "terminal.sessions": "1.1.0"
     },
     "optional": {
       "rpc.streams": "^1",

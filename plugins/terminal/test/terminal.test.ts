@@ -525,15 +525,148 @@ describe("terminal sessions", () => {
     Fs.rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("keeps a running terminal's folder: cwd counts when a shell starts (D140)", async () => {
+  it("refuses another folder for a running terminal, takes a link to the same one (D140)", async () => {
     const { client, cwd } = await node();
     const input = { threadId: "t", terminalId: "term-1", cwd };
-    await client.call("terminals.open", input);
-    const elsewhere = await client.call<TerminalSummary>("terminals.open", {
-      ...input,
-      cwd: Os.tmpdir(),
+    const opened = await client.call<TerminalSummary>("terminals.open", input);
+    await expect(
+      client.call("terminals.open", { ...input, cwd: Os.tmpdir() }),
+    ).rejects.toMatchObject({ code: "TERMINAL_CWD_MISMATCH", details: { cwd } });
+    const link = `${cwd}-link`;
+    Fs.symlinkSync(cwd, link);
+    try {
+      expect(await client.call("terminals.open", { ...input, cwd: link })).toMatchObject({
+        pid: opened.pid,
+        status: "running",
+      });
+    } finally {
+      Fs.rmSync(link);
+    }
+  });
+
+  it("sends the terminals stream again when a terminal is resized", async () => {
+    const { client, cwd } = await node();
+    const input = { threadId: "t", terminalId: "term-1", cwd };
+    await client.call("terminals.open", { ...input, cols: 80, rows: 24 });
+    const sessions = watch(client, TERMINALS_STREAM);
+    const latest = () =>
+      (sessions.events.at(-1)?.payload as { terminals: TerminalSummary[] } | undefined)
+        ?.terminals[0];
+    await sessions.until(() => latest()?.cols === 80);
+
+    await client.call("terminals.resize", { ...input, cols: 100, rows: 30 });
+    await sessions.until(() => latest()?.cols === 100);
+    expect(latest()).toMatchObject({ cols: 100, rows: 30 });
+    // Resized by an open of the running terminal too.
+    await client.call("terminals.open", { ...input, cols: 90, rows: 20 });
+    await sessions.until(() => latest()?.cols === 90);
+    const { terminals } = await client.call<{ terminals: TerminalSummary[] }>("terminals.list", {});
+    expect(terminals[0]).toMatchObject({ cols: 90, rows: 20 });
+    expect(latest()).toEqual(terminals[0]);
+  });
+
+  it("warns once when the process table cannot be read, then waits quietly", async () => {
+    const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-terminal-"));
+    const warnings: string[] = [];
+    let reads = 0;
+    let thirdRead!: () => void;
+    const threeReads = new Promise<void>((resolve) => (thirdRead = resolve));
+    // A shell that never prints and exits only when killed: the process table is under test.
+    const pty: PtySpawner = {
+      spawn: () => {
+        const exits = new Set<(exit: { exitCode: number; signal: number | null }) => void>();
+        return {
+          pid: 4242,
+          write: () => undefined,
+          resize: () => undefined,
+          kill: () => {
+            for (const exit of exits) exit({ exitCode: 0, signal: 1 });
+          },
+          onData: () => () => undefined,
+          onExit: (listener) => {
+            exits.add(listener);
+            return () => exits.delete(listener);
+          },
+        };
+      },
+    };
+    const sessions = createSessions({
+      streams: createMemoryStreams(),
+      pty: async () => pty,
+      processTable: async () => {
+        reads += 1;
+        if (reads === 3) thirdRead();
+        throw new Error("stdout maxBuffer length exceeded");
+      },
+      pollIntervalMs: 1,
+      config: () => ({ shell: "/bin/sh", scrollback: 5000 }),
+      log: { ...quiet, warn: (message) => warnings.push(message) },
     });
-    expect(elsewhere.cwd).toBe(cwd);
+    await sessions.open({ threadId: "t", terminalId: "term-1", cwd });
+    await threeReads;
+    expect(warnings).toEqual([
+      "process table not read; terminal labels and indicators wait for it",
+    ]);
+    await sessions.dispose();
+    Fs.rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("trims the scrollback with at most one look at the stream per flush", async () => {
+    const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-terminal-"));
+    const inner = createMemoryStreams();
+    const stream = terminalStream("t", "term-1");
+    /** How often each flush looked at the session's stream (its trim). */
+    const looksPerFlush: number[] = [];
+    let printed = "";
+    const waiting: { text: string; resolve: () => void }[] = [];
+    const streams: typeof inner = {
+      ...inner,
+      events(name) {
+        if (name === stream && looksPerFlush.length > 0) {
+          looksPerFlush[looksPerFlush.length - 1]! += 1;
+        }
+        return inner.events(name);
+      },
+      append(name, type, payload) {
+        const event = inner.append(name, type, payload);
+        if (name === stream && type === TerminalEvents.output) {
+          looksPerFlush.push(0);
+          printed += (payload as { data: string }).data;
+          for (const waiter of waiting.filter((item) => printed.includes(item.text))) {
+            waiting.splice(waiting.indexOf(waiter), 1);
+            waiter.resolve();
+          }
+        }
+        return event;
+      },
+    };
+    const shows = (text: string) =>
+      printed.includes(text)
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => waiting.push({ text, resolve }));
+    const sessions = createSessions({
+      streams,
+      pty: loadNodePty,
+      config: () => ({ shell: "/bin/sh", scrollback: 100 }),
+      log: quiet,
+    });
+    const input = { threadId: "t", terminalId: "term-1", cwd };
+    await sessions.open(input);
+    // Three runs of 300 lines: each flush past the limit forgets older events.
+    for (const [from, to] of [
+      [1, 300],
+      [301, 600],
+      [601, 900],
+    ]) {
+      sessions.write({ ...input, data: `seq ${from} ${to}\r` });
+      await shows(`\n${to}`);
+    }
+    // Some flushes trimmed (the line limit is 100), none looked more than once.
+    expect(looksPerFlush.some((looks) => looks === 1)).toBe(true);
+    expect(Math.max(...looksPerFlush)).toBe(1);
+    expect(sessions.get("t", "term-1")?.history).not.toMatch(/\n2\r\n3\r\n/);
+    await sessions.dispose();
+    Fs.rmSync(cwd, { recursive: true, force: true });
   });
 });
 

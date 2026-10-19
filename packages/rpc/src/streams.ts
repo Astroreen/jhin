@@ -80,8 +80,8 @@ export interface MemoryStreams extends StreamSource {
   append(stream: string, type: string, payload: Json): StoredEvent;
   /** The events still kept, oldest first. */
   events(stream: string): readonly StoredEvent[];
-  /** Forgets the oldest `count` events of `stream`. */
-  drop(stream: string, count: number): void;
+  /** Forgets `count` events of `stream`, the oldest first, from the `offset`-th kept one (default 0). */
+  drop(stream: string, count: number, offset?: number): void;
   /** Forgets one event of `stream`, by its sequence. */
   remove(stream: string, sequence: number): void;
   /** Forgets every event of `stream`; its sequences keep counting. */
@@ -135,10 +135,10 @@ export function createMemoryStreams(
       return event;
     },
     events: (stream) => kept.get(stream) ?? [],
-    drop(stream, count) {
+    drop(stream, count, offset = 0) {
       const list = kept.get(stream);
       if (list === undefined || count <= 0) return;
-      list.splice(0, count);
+      list.splice(offset, count);
       if (list.length === 0) kept.delete(stream);
     },
     remove(stream, sequence) {

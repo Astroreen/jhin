@@ -160,7 +160,7 @@ export default definePlugin({
           throw new TerminalError(
             "TERMINAL_NOT_FOUND",
             `No terminal ${input.terminalId} in thread ${input.threadId}`,
-            input,
+            { ...input, instance: sessions.instance },
           );
         }
         return found;

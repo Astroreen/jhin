@@ -38,7 +38,10 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
   have no subscriptions). The client passes `cwd`, the folder of the thread's
   project, as T3's client does: the plugin needs no capability of the threads
   plugin. `cwd` counts only when a shell starts: `open` on a running session
-  keeps its folder (the summary says which). Nor is it checked against the
+  with another folder is refused with `TERMINAL_CWD_MISMATCH` (its details
+  name the folder it runs in), while a link to the same folder is the same
+  folder; a session whose shell exited starts its next one in the new
+  folder. Nor is `cwd` checked against the
   thread's project: `threadId` is a label that groups terminals, and the
   `terminals.write` permission is the only gate, as for every command that
   runs a process. As in T3: the shell is `$SHELL` (`COMSPEC` or PowerShell on
@@ -69,7 +72,11 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
   belongs to an earlier one), `terminal.output {data}`, `terminal.exited
   {exitCode, signal}` and `terminal.closed`. The node's `terminals` stream
   holds one event, `terminal.sessions {terminals}`, the whole list after each
-  change: a late subscriber gets the current list and nothing else. Output
+  change (a resize included, so the stream and `terminals.list` agree on the
+  size): a late subscriber gets the current list and nothing else. Every
+  summary names the run of the node's terminals it belongs to (`instance`,
+  `terminal.sessions@1.1`): new whenever they start over, after a node
+  restart or a plugin reload, and also in `TERMINAL_NOT_FOUND`'s details. Output
   arriving in one tick is one event (at most 64 KiB). Without
   `rpc.streams@1` the plugin still runs, and output is read with
   `terminals.get`.
@@ -77,14 +84,18 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
 - **D142. Scrollback for late joiners.** A session's stream keeps the output
   of its current process up to `jhin.terminal.scrollback` lines (5000, T3's
   default) and 8 MiB of UTF-8 (T3's byte limit), dropping whole output events
-  from the oldest; the newest event and the `terminal.started` that opens the
-  stream always stay. A client attaches as T3's does, with a
+  from the oldest, in one pass per flush; the newest event and the
+  `terminal.started` that opens the stream always stay. A client attaches as T3's does, with a
   snapshot and the stream: `terminals.open`, then `terminals.get` (the kept
   output and the sequence it reaches), then a subscription after that
   sequence; `terminals.open` only when the node has no session under these
   ids (`TERMINAL_NOT_FOUND`), so a shell that exited while nobody watched
   (the drawer hidden, the connection away) ends its tab instead of starting
-  again. What xterm.js answers to queries in replayed output (cursor
+  again. Only the first attach of a tab opens a shell this way. After the
+  connection comes back, a session that is gone ends the tab with "Terminal
+  closed" when the node reports the run the tab saw it in (closed elsewhere
+  meanwhile); only when the run is another one (the node started over) does
+  the tab open a new shell. What xterm.js answers to queries in replayed output (cursor
   position, colours) is dropped instead of being typed into the shell, and
   what is typed before the terminal is open (its shell starting, the
   connection coming back) waits and goes once it is.
@@ -109,7 +120,9 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
 
 - **D144. What a terminal runs, as T3 finds it.** While any session runs, the
   plugin reads `ps -eo pid=,ppid=,comm=` every second (backing off up to a
-  minute while `ps` fails; a failed read changes nothing) and records a child
+  minute while `ps` fails; a failed read changes nothing, and the first of a
+  run of failures is logged as a warning, since labels and indicators wait
+  until `ps` answers again) and records a child
   of the shell as `hasRunningSubprocess` with its name as `label`, ignoring a
   copy of the shell without children of its own (async prompt themes). The
   tab is named after the program, else "Terminal N". Not on Windows yet.
@@ -187,15 +200,19 @@ deleted thread's terminals closed; no live streams; a terminal reopened while
 the old one is still being closed; the scrollback trimmed with its start kept;
 no subscription without `terminals.read`; an open failing for a terminal
 closed while node-pty loaded; no shell for an open caught by deactivation
-while it read its folder or waited for node-pty; `cwd` kept on a running
-session), `packages/rpc/test/
+while it read its folder or waited for node-pty; another folder refused for
+a running terminal and a link to the same one taken; the `terminals` stream
+sent again on a resize; one warning for a run of `ps` failures; at most one
+look at the stream per flush when trimming), `packages/rpc/test/
 streams.test.ts` (live streams through `rpc.subscribe`, their permissions, a
 deleted stream starting above its old sequences, resuming after a
 restart, longest prefix), `apps/web/test/terminal-state.test.ts` (T3's tab
 and split rules, the stored layout), `apps/web/test/terminal-attach.test.ts`
 (the viewport's attach against the real plugin: output, typing before the
 terminal is open, a shell that exited unwatched ending without a new one, replay to a second
-client, exit and close, a dropped connection, a missing folder),
+client, exit and close, a dropped connection, a terminal closed elsewhere
+while the connection was away not brought back, a new shell after the node
+started over meanwhile, a missing folder),
 `apps/web/test/terminal-plugin.browser.test.tsx` (the card indicator and its
 click, ⌘/Ctrl+D only with `terminalFocus`, an exited terminal closed on its
 node and one closed elsewhere only dropping its tab), Playwright
@@ -232,17 +249,10 @@ installed package).
   shell access as the node's user, whoever holds it (an MCP client
   included); grant it only where that is meant. A list of variables to
   strip (or keep) in `jhin.terminal` would narrow it.
-- `ps` output is read into at most 512 KiB: on a host with many thousands
-  of processes the read fails every time, the poll backs off to a minute,
-  and the indicator and tab labels stop, with only a debug log line to say
-  why. A larger limit or a warning once the table keeps failing.
-- A resize changes a session's size without sending the `terminals` stream
-  again, so the streamed list carries the size from the last other change
-  while `terminals.list` has the current one.
-- Trimming the scrollback finds and removes one event at a time, so a
-  chatty process at the line limit costs O(n²) per flush in the number of
-  kept events; dropping a counted run of the oldest output events at once
-  would do.
+- `ps` output is still read into at most 512 KiB: on a host with many
+  thousands of processes the read fails every time and the poll backs off to
+  a minute (now with a warning, D144); a larger limit, or a process table
+  read another way, would keep labels and indicators going there.
 - Flow control: T3 acknowledges output windows so a slow client does not
   queue unbounded output; Jhin sends every event as it comes.
 - Terminal history across node restarts (T3 writes it to files), a limit on

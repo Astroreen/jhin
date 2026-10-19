@@ -48,6 +48,13 @@ export function attachTerminal(options: {
   /** Open and followed: typing goes straight to the node. */
   let attached = false;
   let typed: string[] = [];
+  /**
+   * The run of the node's terminals this session was seen in, once one
+   * attach succeeded: a later attach that finds no session tells from it
+   * whether the session was closed meanwhile (same run) or the node started
+   * over (another run, or none reported).
+   */
+  let seenIn: string | undefined;
 
   const send = (data: string) =>
     void client
@@ -61,13 +68,19 @@ export function attachTerminal(options: {
     sink.ended(reason);
   };
 
-  /** The session as the node has it, or undefined when it has none under these ids. */
-  async function readSnapshot(): Promise<TerminalSnapshot | undefined> {
+  /** The session as the node has it, or the run that has no session under these ids. */
+  async function readSnapshot(): Promise<
+    { found: TerminalSnapshot } | { missing: { instance: string | undefined } }
+  > {
     try {
-      return await client.call<TerminalSnapshot>("terminals.get", { threadId, terminalId });
+      return {
+        found: await client.call<TerminalSnapshot>("terminals.get", { threadId, terminalId }),
+      };
     } catch (error) {
-      if ((error as { code?: unknown }).code === "TERMINAL_NOT_FOUND") return undefined;
-      throw error;
+      const failure = error as { code?: unknown; details?: { instance?: unknown } };
+      if (failure.code !== "TERMINAL_NOT_FOUND") throw error;
+      const instance = failure.details?.instance;
+      return { missing: { instance: typeof instance === "string" ? instance : undefined } };
     }
   }
 
@@ -81,9 +94,15 @@ export function attachTerminal(options: {
     try {
       // Read first: a session whose shell ended while nobody watched ends its
       // tab, it is not started again; only a terminal the node lacks is opened.
-      const found = await readSnapshot();
-      if (found !== undefined) {
-        snapshot = found;
+      const read = await readSnapshot();
+      if ("found" in read) {
+        snapshot = read.found;
+      } else if (seenIn !== undefined && read.missing.instance === seenIn) {
+        // Gone while the connection was away, in the same run of the node's
+        // terminals: closed elsewhere. Only a first attach, or one after the
+        // node started over, opens a shell.
+        if (!stale()) end("closed");
+        return;
       } else {
         await client.call<TerminalSummary>("terminals.open", {
           threadId,
@@ -98,6 +117,7 @@ export function attachTerminal(options: {
       return;
     }
     if (stale()) return;
+    seenIn = snapshot.instance;
     sink.reset();
     if (snapshot.history.length > 0) sink.write(snapshot.history, true);
     if (snapshot.status === "exited") {
@@ -137,13 +157,22 @@ export function attachTerminal(options: {
     if (waiting.length > 0) send(waiting.join(""));
   }
 
+  // The first attach waits for the connection by itself; a later one follows
+  // a connection that was open, went away and came back.
   let wasOpen = client.state === "open";
+  let lost = false;
   const state = client.onState((next) => {
-    const reopened = next === "open" && !wasOpen;
-    wasOpen = next === "open";
-    // Typing waits while the connection is away, then for the terminal to open again.
-    if (next !== "open") attached = false;
-    if (reopened && !disposed && !ended) void attach();
+    if (next !== "open") {
+      // Typing waits while the connection is away, then for the terminal to open again.
+      attached = false;
+      if (wasOpen) lost = true;
+      wasOpen = false;
+      return;
+    }
+    wasOpen = true;
+    if (!lost || disposed || ended) return;
+    lost = false;
+    void attach();
   });
   void attach();
 

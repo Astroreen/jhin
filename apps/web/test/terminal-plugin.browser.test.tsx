@@ -43,6 +43,7 @@ const summary = (extra: Partial<TerminalSummary>): TerminalSummary => ({
   label: "",
   startedAt: "2026-10-19T10:00:00.000Z",
   updatedAt: "2026-10-19T10:00:00.000Z",
+  instance: "run-1",
   ...extra,
 });
 
