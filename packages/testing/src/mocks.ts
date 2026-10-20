@@ -1,6 +1,7 @@
 import { definePlugin } from "@jhin/sdk";
 import {
   createMemoryStorage,
+  BLOBS_CAPABILITY,
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
   type MemoryStorage,
@@ -33,12 +34,17 @@ export function memoryStoragePlugin(): TestPlugin & { readonly storage: MemorySt
   return {
     storage,
     manifest: testManifest("mock.storage", {
-      provides: { [KV_CAPABILITY]: "1.0.0", [EVENTLOG_CAPABILITY]: "1.2.0" },
+      provides: {
+        [KV_CAPABILITY]: "1.0.0",
+        [EVENTLOG_CAPABILITY]: "1.2.0",
+        [BLOBS_CAPABILITY]: "1.0.0",
+      },
     }),
     definition: definePlugin({
       activate(context) {
         context.services.provide(KV_CAPABILITY, storage.kv);
         context.services.provide(EVENTLOG_CAPABILITY, storage.log);
+        context.services.provide(BLOBS_CAPABILITY, storage.blobs);
       },
     }),
   };

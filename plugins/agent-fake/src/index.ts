@@ -31,6 +31,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/ask" asks a question and answers with the choice;
  * - "/plan" publishes a three-step plan and completes it;
  * - "/options" answers with the model options the turn runs with;
+ * - "/attachments" answers with each attachment's name, size and, for text, its content;
  * - in plan mode, anything else is answered with a proposed plan titled after it;
  * - "/write <file> <text>" writes the text to a file of its working directory;
  * - anything else is answered "Echo: <text>", one word per delta.
@@ -185,6 +186,20 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
         steps: steps.map((step) => ({ text: step, status: "completed" })),
       };
       yield* say("Plan done");
+      return;
+    }
+    if (text.startsWith("/attachments")) {
+      const described = await Promise.all(
+        (request.input.attachments ?? []).map(async (attachment) => {
+          if (!("read" in attachment)) return `${attachment.name} (inline)`;
+          const bytes = await attachment.read();
+          const content = attachment.mimeType.startsWith("text/")
+            ? `: ${String.fromCharCode(...bytes.slice(0, 40))}`
+            : "";
+          return `${attachment.name} (${bytes.length} bytes${content})`;
+        }),
+      );
+      yield* say(`Attached: ${described.length === 0 ? "nothing" : described.join(", ")}`);
       return;
     }
     if (text.replace(/^Ultrathink:\s*/, "").startsWith("/options")) {

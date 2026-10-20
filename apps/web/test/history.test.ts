@@ -5,13 +5,16 @@ import { appendToDraft, restoreIntoDraft, type ComposerDraft } from "../src/lib/
 import { editFromHere } from "../src/plugins/chat/history.tsx";
 import type { ComposerHandle } from "../src/plugins/chat/services.ts";
 
-const image = (name: string, size = 10) => ({
+/** An uploaded image (D293). */
+const image = (name: string, sizeBytes = 10) => ({
   kind: "image" as const,
+  id: `att-${name}`,
   name,
   mimeType: "image/png",
-  dataUrl: `data:image/png;base64,${"A".repeat(size)}`,
+  sizeBytes,
 });
-const ten = Array.from({ length: 10 }, (_, index) => image(`i${index}`));
+/** 80 MiB of images: as much as one message takes. */
+const ten = Array.from({ length: 10 }, (_, index) => image(`i${index}`, 8 * 1024 * 1024));
 
 describe("Edit from here: the message back in the composer (D223)", () => {
   it("puts the message after the draft, a blank line between, images after the draft's", () => {

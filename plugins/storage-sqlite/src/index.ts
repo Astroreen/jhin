@@ -3,7 +3,9 @@ import * as Path from "node:path";
 
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { definePlugin, z } from "@jhin/sdk";
-import { EVENTLOG_CAPABILITY, KV_CAPABILITY } from "@jhin/storage-api";
+import { BLOBS_CAPABILITY, EVENTLOG_CAPABILITY, KV_CAPABILITY } from "@jhin/storage-api";
+
+import { openFileBlobs } from "./blobs.ts";
 
 import { openSqliteStorage } from "./sqlite.ts";
 
@@ -42,8 +44,14 @@ export default definePlugin({
     context.subscriptions.add({ dispose: () => storage.close() });
     context.services.provide(KV_CAPABILITY, storage.kv);
     context.services.provide(EVENTLOG_CAPABILITY, storage.log);
+    // Blobs are files beside the database's default place, whatever file the database is.
+    context.services.provide(
+      BLOBS_CAPABILITY,
+      openFileBlobs(Path.join(paths.dataDir(context.plugin.id), "blobs")),
+    );
     context.log.info("storage opened", { file });
   },
 });
 
+export { openFileBlobs } from "./blobs.ts";
 export { openSqliteStorage, type SqliteStorage } from "./sqlite.ts";

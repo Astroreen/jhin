@@ -43,6 +43,7 @@ import { useState } from "react";
 import { builtin } from "../../lib/builtin.ts";
 import { createDrafts, type ComposerDraft } from "../../lib/composer.ts";
 import { createModelOptionsMemory } from "../../lib/model-options.ts";
+import { createAttachmentUrls } from "../../lib/uploads.ts";
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import { CHAT_SECTION, ChatSettings } from "../../lib/settings.ts";
@@ -240,6 +241,8 @@ export const chatPlugin = builtin(
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
       const composer: ComposerHandle = { current: undefined };
+      const attachmentUrls = createAttachmentUrls();
+      context.subscriptions.add({ dispose: () => attachmentUrls.dispose() });
       const services: ChatServices = {
         context,
         connections,
@@ -256,6 +259,7 @@ export const chatPlugin = builtin(
         agents: createAgentsCache(threads),
         lastSelection: createLastSelection(),
         modelOptions: createModelOptionsMemory(),
+        attachmentUrls,
         unconfirmed: createUnconfirmed(),
         composer,
       };

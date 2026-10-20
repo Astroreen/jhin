@@ -59,7 +59,8 @@
     },
     "optional": {
       "agent.runtime": "^1",
-      "rpc.streams": "^1.1"
+      "rpc.streams": "^1.1",
+      "storage.blobs": "^1"
     },
     "entry": "src/index.ts"
   }

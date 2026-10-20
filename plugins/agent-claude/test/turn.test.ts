@@ -192,6 +192,52 @@ describe("jhin.agent-claude: a turn", () => {
     ]);
   });
 
+  it("sends uploaded images as blocks and names every attachment's file after the text", async () => {
+    const { turn, calls } = start(
+      [
+        async function* () {
+          yield init();
+          yield result();
+        },
+      ],
+      {
+        input: {
+          text: "look",
+          attachments: [
+            {
+              kind: "image",
+              id: "att-1",
+              name: "shot.png",
+              mimeType: "image/png",
+              sizeBytes: 3,
+              read: async () => new Uint8Array([1, 2, 3]),
+              path: "/data/blobs/thread/t1/att-1.png",
+            },
+            {
+              kind: "file",
+              id: "att-2",
+              name: "notes.md",
+              mimeType: "text/markdown",
+              sizeBytes: 5,
+              read: async () => new Uint8Array(),
+              path: "/data/blobs/thread/t1/att-2.md",
+            },
+          ],
+        },
+      },
+    );
+    await drain(turn);
+    expect(calls[0]!.prompt[0]!.message.content).toEqual([
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "AQID" } },
+      {
+        type: "text",
+        text: 'look\n\n[Attached image "shot.png" is saved at: /data/blobs/thread/t1/att-1.png]\n\n[Attached file "notes.md" is saved at: /data/blobs/thread/t1/att-2.md]',
+      },
+    ]);
+    // Claude may read them where the node keeps them.
+    expect(calls[0]!.options.additionalDirectories).toEqual(["/data/blobs/thread/t1"]);
+  });
+
   it("resumes the thread's session on a later turn", async () => {
     const { turn, calls } = start(
       [

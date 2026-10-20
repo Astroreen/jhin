@@ -608,13 +608,25 @@ export function codexTurn(
   const userInput = (
     text: string,
     attachments: TurnRequest["input"]["attachments"] = request.input.attachments,
-  ): TurnInput[] => [
-    ...(text.length > 0 ? [{ type: "text" as const, text }] : []),
-    ...(attachments ?? []).map((attachment) => ({
-      type: "image" as const,
-      url: attachment.dataUrl,
-    })),
-  ];
+  ): TurnInput[] => {
+    // Every uploaded file is named after the text, as T3 writes it (D294).
+    const notes = (attachments ?? []).flatMap((attachment) =>
+      "path" in attachment && attachment.path !== undefined
+        ? [`[Attached ${attachment.kind} "${attachment.name}" is saved at: ${attachment.path}]`]
+        : [],
+    );
+    const body = [text, ...notes].filter((part) => part.length > 0).join("\n\n");
+    return [
+      ...(body.length > 0 ? [{ type: "text" as const, text: body }] : []),
+      ...(attachments ?? []).flatMap((attachment): TurnInput[] =>
+        "dataUrl" in attachment
+          ? [{ type: "image", url: attachment.dataUrl }]
+          : attachment.kind === "image" && attachment.path !== undefined
+            ? [{ type: "localImage", path: attachment.path }]
+            : [],
+      ),
+    ];
+  };
 
   /** Starts or resumes the thread's Codex thread on this app-server. */
   const ensureThread = async (current: Lease, recorded: string | undefined) => {

@@ -14,14 +14,38 @@ export * from "./agents.ts";
 
 import type { InteractionMode, RuntimeMode } from "./modes.ts";
 
-/** A file sent with a message. Only images today, inlined as data URLs. */
-export interface TurnAttachment {
+/** D54's form: an image inlined as a data URL, still accepted and read from older events. */
+export interface InlineImageAttachment {
   readonly kind: "image";
   readonly name: string;
   readonly mimeType: string;
   /** `data:<mime>;base64,…` */
   readonly dataUrl: string;
 }
+
+/**
+ * Since 1.2: a file uploaded to the node (`attachments.*`), referred to by id
+ * (D293). Images and any other file.
+ */
+export interface StoredAttachment {
+  readonly kind: "image" | "file";
+  readonly id: string;
+  readonly name: string;
+  readonly mimeType: string;
+  readonly sizeBytes: number;
+}
+
+/** A file sent with a message, as a turn's first event records it. */
+export type TurnAttachment = InlineImageAttachment | StoredAttachment;
+
+/** A stored attachment as a runtime gets it: with its bytes and, where there is one, its file (D294). */
+export interface ResolvedAttachment extends StoredAttachment {
+  read(): Promise<Uint8Array>;
+  /** The local file that holds it, for an agent that reads files. */
+  readonly path?: string;
+}
+
+export type RuntimeAttachment = InlineImageAttachment | ResolvedAttachment;
 
 export interface TurnInput {
   readonly text: string;
@@ -31,7 +55,10 @@ export interface TurnInput {
 export interface TurnRequest {
   readonly threadId: string;
   readonly turnId: string;
-  readonly input: TurnInput;
+  readonly input: {
+    readonly text: string;
+    readonly attachments?: readonly RuntimeAttachment[];
+  };
   /**
    * Every earlier event the thread still shows, oldest first: without the
    * turns a rollback dropped (`visibleThreadEvents`; since `agent.registry` 1.1). A runtime
@@ -175,7 +202,7 @@ export interface AgentTurn {
    * turn can take nothing more (it ended or is ending): the message then goes
    * to a turn of its own.
    */
-  steer?(input: TurnInput): void;
+  steer?(input: TurnRequest["input"]): void;
 }
 
 /** One choice of a `select` model option (T3 Code's `ProviderOptionChoice`). */

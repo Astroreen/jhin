@@ -42,6 +42,7 @@
     "@vitejs/plugin-react": "catalog:",
     "@xterm/addon-fit": "catalog:",
     "@xterm/xterm": "catalog:",
+    "heic-to": "catalog:",
     "lucide-react": "catalog:",
     "oxc-transform-react": "catalog:",
     "react": "catalog:",

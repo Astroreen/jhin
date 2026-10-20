@@ -136,3 +136,72 @@ test("chooses the model's options for a turn: effort, fast mode and Ultrathink",
     "Options: effort=high fastMode=true prompt=Ultrathink",
   );
 });
+
+/** A 1×1 PNG. */
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+test("attaches any file: uploads it, sends it by id and shows it in the message", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: "notes.md", mimeType: "text/markdown", buffer: Buffer.from("Hello, world") },
+    { name: "dot.png", mimeType: "image/png", buffer: PNG },
+  ]);
+  const composer = page.getByRole("form", { name: "Composer" });
+  await expect(composer.getByText("notes.md")).toBeVisible();
+  await expect(composer.getByRole("img", { name: "dot.png" })).toBeVisible();
+  // Uploaded: the file row shows its size instead of its progress.
+  await expect(composer.getByText("1 KB")).toBeVisible();
+
+  const shot = info.outputPath("attachments-composer.png");
+  await page.screenshot({ path: shot });
+  await info.attach("attachments in the composer", { path: shot, contentType: "image/png" });
+
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/attachments");
+  await message.press("Enter");
+  const log = page.getByRole("log", { name: "Messages" });
+  await expect(log.getByRole("article", { name: "Agent" })).toHaveText(
+    `Attached: notes.md (12 bytes: Hello, world), dot.png (${PNG.length} bytes)`,
+  );
+  const sent = log.getByRole("article", { name: "You" });
+  await expect(sent.getByRole("img", { name: "dot.png" })).toBeVisible();
+  await expect(sent.getByRole("button", { name: "Download notes.md" })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await sent.getByRole("button", { name: "Download notes.md" }).click();
+  expect((await download).suggestedFilename()).toBe("notes.md");
+
+  const sentShot = info.outputPath("attachments-message.png");
+  await page.screenshot({ path: sentShot });
+  await info.attach("attachments in the message", { path: sentShot, contentType: "image/png" });
+});
+
+test("attaches a large paste as pasted-text.txt", async ({ page }) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.focus();
+  const large = "x".repeat(40 * 1024);
+  await page.evaluate((text) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", text);
+    document.activeElement?.dispatchEvent(
+      new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }),
+    );
+  }, large);
+  await expect(page.getByText("Large paste attached as pasted-text.txt")).toBeVisible();
+  await expect(message).toHaveValue("");
+  await expect(
+    page.getByRole("form", { name: "Composer" }).getByText("pasted-text.txt"),
+  ).toBeVisible();
+  await message.fill("/attachments");
+  await message.press("Enter");
+  await expect(page.getByRole("article", { name: "Agent" })).toContainText(
+    "pasted-text.txt (40960 bytes: xxxx",
+  );
+});

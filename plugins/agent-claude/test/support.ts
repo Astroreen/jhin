@@ -125,7 +125,12 @@ export function scriptedQuery(...scripts: Script[]) {
       },
       setModel: (model) => control(`model:${model}`),
       setPermissionMode: (mode) => control(`mode:${mode}`),
-      applyFlagSettings: (settings) => control(`effort:${settings.effortLevel}`),
+      applyFlagSettings: (settings) =>
+        control(
+          "effortLevel" in settings
+            ? `effort:${settings.effortLevel}`
+            : `flags:fastMode=${settings.fastMode},ultracode=${settings.ultracode}`,
+        ),
       setMcpServers: (servers) => {
         call.mcpServers.push(servers);
         const names = Object.keys(servers);

@@ -16,6 +16,7 @@ import { createContext, useContext, useEffect, useSyncExternalStore } from "reac
 
 import type { ComposerDraft, Drafts } from "../../lib/composer.ts";
 import type { ModelOptionsMemory } from "../../lib/model-options.ts";
+import type { AttachmentUrls } from "../../lib/uploads.ts";
 import type { Unconfirmed } from "./unconfirmed.ts";
 
 /** Agents of each node, from `agents.list`, refreshed when a picker opens or after a while. */
@@ -119,6 +120,8 @@ export interface ChatServices {
   readonly lastSelection: ReturnType<typeof createLastSelection>;
   /** The options last chosen for each model on this device. */
   readonly modelOptions: ModelOptionsMemory;
+  /** Attachments read back from their nodes, for the timeline. */
+  readonly attachmentUrls: AttachmentUrls;
   /** When threads were seen on this device; absent without a `client.visits` provider. */
   readonly visits: ThreadVisits | undefined;
   /** First messages that may not have reached their new thread. */

@@ -78,3 +78,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## heic-to
+
+Source: https://github.com/hoppergee/heic-to (npm `heic-to`, LGPL-3.0, built
+on libheif). Used unmodified by the web client to convert HEIC and HEIF
+images to JPEG before they are attached (`t3-parity.md` D296), as T3 Code
+does. It is a separate chunk that the browser loads only when a HEIC image is
+attached, so it can be replaced with another build of the library. Its license
+text ships with the package (`node_modules/heic-to/LICENSE`).

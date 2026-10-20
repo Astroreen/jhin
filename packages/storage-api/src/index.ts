@@ -1,9 +1,11 @@
 export { createMemoryStorage, type MemoryStorage } from "./memory.ts";
 export {
+  BLOBS_CAPABILITY,
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
   StorageError,
   appendKeepingNewest,
+  assertBlobKey,
   assertCount,
   assertEvents,
   assertName,
@@ -14,6 +16,8 @@ export {
   keepNewest,
   parseStored,
   type AppendOptions,
+  type BlobInfo,
+  type BlobStore,
   type EventLog,
   type Json,
   type KeyValueStore,

@@ -169,7 +169,9 @@ export const THREAD_CONFIG = { "tools.update_plan.enabled": true } as const;
 
 export type TurnInput =
   | { readonly type: "text"; readonly text: string }
-  | { readonly type: "image"; readonly url: string };
+  | { readonly type: "image"; readonly url: string }
+  /** An image the node keeps as a file (an upload, t3-parity.md D294). */
+  | { readonly type: "localImage"; readonly path: string };
 
 /** The `turn/start` params of a turn (T3's buildCodexTurnStartParams, without its MCP context). */
 export function turnStartParams(input: {

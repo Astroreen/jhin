@@ -5,11 +5,11 @@ import { DatabaseSync } from "node:sqlite";
 
 import { definePlugin } from "@jhin/sdk";
 import type { EventLog, KeyValueStore } from "@jhin/storage-api";
-import { describeStorageContract } from "@jhin/storage-api/contract";
+import { describeBlobContract, describeStorageContract } from "@jhin/storage-api/contract";
 import { createTestKernel, mockCapability, testManifest } from "@jhin/testing";
 import { describe, expect, it } from "vite-plus/test";
 
-import plugin, { openSqliteStorage } from "../src/index.ts";
+import plugin, { openFileBlobs, openSqliteStorage } from "../src/index.ts";
 
 const manifest = JSON.parse(
   Fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -28,6 +28,29 @@ describeStorageContract("sqlite", async () => {
       return storage;
     },
   };
+});
+
+describeBlobContract("files", async () => {
+  const dir = tempDir();
+  return { blobs: openFileBlobs(dir), restart: async () => openFileBlobs(dir) };
+});
+
+describe("blobs as files", () => {
+  it("names the file of a blob and keeps every name inside its folder", async () => {
+    const dir = tempDir();
+    const blobs = openFileBlobs(dir);
+    await blobs.append("jhin.threads", "thread/t1/a.png", new Uint8Array([1, 2]));
+    const file = blobs.path!("jhin.threads", "thread/t1/a.png");
+    expect(file.startsWith(dir)).toBe(true);
+    expect(Fs.readFileSync(file)).toEqual(Buffer.from([1, 2]));
+    // Escaped names: a segment of dots or slashes never leaves the namespace.
+    await blobs.append("..", "a%2F..", new Uint8Array([3]));
+    expect(Fs.readdirSync(dir).toSorted()).toEqual(["%2E%2E", "jhin%2Ethreads"]);
+    expect(await blobs.list("..")).toMatchObject([{ key: "a%2F.." }]);
+    // Folders a move or delete empties go.
+    await blobs.delete("jhin.threads", "thread/t1/a.png");
+    expect(Fs.readdirSync(Path.join(dir, "jhin%2Ethreads"))).toEqual([]);
+  });
 });
 
 describe("jhin.storage-sqlite plugin", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { EventLog, KeyValueStore, StoredEvent } from "./types.ts";
+import type { BlobStore, EventLog, KeyValueStore, StoredEvent } from "./types.ts";
 
 export interface StorageUnderTest {
   readonly kv: KeyValueStore;
@@ -345,6 +345,76 @@ export function describeStorageContract(name: string, open: () => Promise<Storag
       ]);
       const [next] = await reopened.log.append("s", [{ type: "app.b", payload: 2 }]);
       expect(next?.sequence).toBe(2);
+    });
+  });
+}
+
+/**
+ * The behaviour every implementation of storage.blobs@1 must have.
+ * `restart` closes and reopens the same store, for stores that persist.
+ */
+export function describeBlobContract(
+  name: string,
+  open: () => Promise<{ blobs: BlobStore; restart?: () => Promise<BlobStore> }>,
+): void {
+  // ASCII only: the package is isomorphic and its lib has no TextEncoder.
+  const bytes = (text: string) => Uint8Array.from(text, (char) => char.charCodeAt(0));
+  const text = (value: Uint8Array | undefined) =>
+    value === undefined ? undefined : String.fromCharCode(...value);
+
+  describe(`blob contract: ${name}`, () => {
+    it("appends in chunks, refusing a chunk at the wrong offset, and reads ranges", async () => {
+      const { blobs } = await open();
+      expect(await blobs.read("app", "a/b.txt")).toBeUndefined();
+      expect(await blobs.append("app", "a/b.txt", bytes("Hello, "), { offset: 0 })).toBe(7);
+      expect(await blobs.append("app", "a/b.txt", bytes("world"), { offset: 7 })).toBe(12);
+      await expect(
+        blobs.append("app", "a/b.txt", bytes("world"), { offset: 7 }),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+      expect(text(await blobs.read("app", "a/b.txt"))).toBe("Hello, world");
+      expect(text(await blobs.read("app", "a/b.txt", { offset: 7, length: 3 }))).toBe("wor");
+      expect(text(await blobs.read("app", "a/b.txt", { offset: 20 }))).toBe("");
+      expect(await blobs.stat("app", "a/b.txt")).toMatchObject({ key: "a/b.txt", size: 12 });
+      expect(await blobs.stat("other", "a/b.txt")).toBeUndefined();
+    });
+
+    it("moves, lists by prefix in key order and deletes", async () => {
+      const { blobs } = await open();
+      await blobs.append("app", "pending/2", bytes("two"));
+      await blobs.append("app", "pending/1", bytes("one"));
+      await blobs.append("app", "kept/x", bytes("x"));
+      expect((await blobs.list("app", { prefix: "pending/" })).map((blob) => blob.key)).toEqual([
+        "pending/1",
+        "pending/2",
+      ]);
+      expect(await blobs.move("app", "pending/1", "thread/t1/1")).toBe(true);
+      expect(await blobs.move("app", "pending/1", "thread/t1/1")).toBe(false);
+      expect(text(await blobs.read("app", "thread/t1/1"))).toBe("one");
+      expect((await blobs.list("app")).map((blob) => blob.key)).toEqual([
+        "kept/x",
+        "pending/2",
+        "thread/t1/1",
+      ]);
+      expect(await blobs.delete("app", "thread/t1/1")).toBe(true);
+      expect(await blobs.delete("app", "thread/t1/1")).toBe(false);
+      expect(await blobs.read("app", "thread/t1/1")).toBeUndefined();
+    });
+
+    it("refuses keys with empty, . or .. segments", async () => {
+      const { blobs } = await open();
+      for (const key of ["", "a//b", "../x", "a/./b", "a/.."]) {
+        await expect(blobs.append("app", key, bytes("x"))).rejects.toMatchObject({
+          code: "INVALID",
+        });
+      }
+    });
+
+    it("keeps blobs across a restart, where it persists", async () => {
+      const { blobs, restart } = await open();
+      if (restart === undefined) return;
+      await blobs.append("app", "k", bytes("kept"));
+      const reopened = await restart();
+      expect(text(await reopened.read("app", "k"))).toBe("kept");
     });
   });
 }

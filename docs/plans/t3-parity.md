@@ -457,11 +457,16 @@ It lands as a stack of PRs, each named below with the decisions it carries.
 
 - **D291. `storage.blobs@1`: bytes beside the event log.** A capability of
   `@jhin/storage-api`: `put`/`append` bytes under a namespaced key, `read`
-  (a range), `stat`, `delete`, `list`, and an optional `path(key)` that names
-  the file a blob is kept in when it is a local file. The SQLite storage
-  plugin provides it as files in its data directory (written to a `.part`
-  file and renamed, so a blob is either whole or absent); the memory storage
-  of `@jhin/testing` keeps them in memory, without `path`. Blobs are generic
+  (a range), `stat`, `move`, `delete`, `list`, and an optional `path(key)`
+  that names the file a blob is kept in when it is a local file. A blob is
+  written by `append` at an expected offset, so a chunk sent twice is never
+  written twice; an upload counts as whole once its size is the announced
+  one, and only a whole one is moved under a thread. The SQLite storage
+  plugin provides it as files under `blobs/` in its data directory (every
+  name escaped, so no key leaves its folder); the memory storage of
+  `@jhin/testing` keeps them in memory, without `path`. The threads plugin
+  takes it as optional: a node without it refuses uploads with T3's "This
+  node does not support file attachments." Blobs are generic
   storage, not attachments: other plugins (screenshots, exports) use them too.
 - **D292. Uploads are commands, in chunks.** T3 mints a signed HTTP URL and
   the browser POSTs the file to it. A Jhin client reaches mesh members only
@@ -517,7 +522,9 @@ It lands as a stack of PRs, each named below with the decisions it carries.
   `threads.send` takes them, the thread records them with its model (D55), and
   later turns default to them. `agents.list` reports each model's options.
   Values a model does not declare are dropped, not refused, so a selection
-  carried over from another model does no harm.
+  carried over from another model does no harm. A model its runtime does not list
+  (its list not known yet, a model typed by hand) keeps the values as given,
+  and the runtime filters them itself.
 - **D298. Claude's options are T3's manifest** for the current models:
   Reasoning (`effort`: Low, Medium, High, Extra High, Max, Ultracode where the
   model has it, Ultrathink) and Fast Mode on Opus 5.5; the context window
@@ -533,8 +540,8 @@ It lands as a stack of PRs, each named below with the decisions it carries.
   sent. The node config's `effort` stays the default when a turn chooses
   none. On a live session (`providers.md` D98) a new effort is applied live
   (`applyFlagSettings`, `providers.md` D349) and the model through `setModel`;
-  other settings (Fast Mode, Ultracode, thinking) start it again (Deferred:
-  applying Fast Mode and Ultracode live, as T3 does).
+  Fast Mode and Ultracode go to it through `applyFlagSettings` too, as T3
+  applies them; only a change of thinking starts it again.
 - **D299. T3's traits menu.** One button after the model picker, labelled
   with the chosen values ("High · Fast"), opens a menu with a section per
   select option (radio items, "Default" on the model's default) and On/Off
@@ -644,6 +651,25 @@ query); `apps/web/test/model-options.test.ts` (current values, T3's trigger
 labels, Ultrathink in the prompt and out of it, options remembered per model);
 Playwright `e2e/tests/composer.spec.ts` (choosing High and Fast Mode, the
 turn running with them, Ultrathink written into the prompt), with screenshots.
+
+The proof of D291–D296: the blob contract (`@jhin/storage-api/contract`,
+run against memory and files: chunks at an offset, a chunk sent twice
+refused, ranges, moves, prefixes, keys with `.`/`..` refused, kept across a
+restart) and `plugins/storage-sqlite/test/sqlite.test.ts` (escaped names,
+empty folders removed); `plugins/threads/test/attachments.test.ts` (an upload
+in chunks, a message refused while one is incomplete, its event holding ids
+only, the runtime reading the bytes, reading back a range, a retry to the same
+thread, another thread refused, deleting the thread deleting them, T3's
+refusals and messages, sweeping day-old uploads, a node without blobs);
+`plugins/agent-claude/test/turn.test.ts` (uploaded images as blocks, every
+file's path after the text, `additionalDirectories`);
+`apps/web/test/uploads.test.ts`, `attachment-files.test.ts`,
+`image-compression.test.ts`, `composer.test.ts` (chunks and progress, reading
+back, cancelling, one load per attachment; T3's classification, pastes, sizes,
+HEIC detection and dimensions, the byte budgets; what fits in a message);
+Playwright `e2e/tests/composer.spec.ts` (a text file and an image uploaded,
+sent by id, read by the agent, shown and downloaded from the message; a large
+paste attached as `pasted-text.txt`), with screenshots.
 
 ### Node machine icons
 
@@ -1376,9 +1402,14 @@ and as events arrive).
   panel; checkpoints and reverting to a turn, worktrees, git actions
   (commit, push, create a pull request) and linking pull requests to threads
   are deferred there.
-- Composer: `@` file mentions, slash commands, rich text (tiptap), pasted
-  files other than images, image compression and HEIC conversion (W6, D290–D303,
-  in progress).
+- Composer: `@` file mentions, slash commands and rich text (tiptap) (W6,
+  D300–D303, in progress).
+- Attachments (D291–D296): the node finds a thread's attachments by listing
+  every attachment's record when the thread is deleted (fine for thousands,
+  not for millions); T3's preview of a file in the composer and in the
+  message (here a file downloads), video attachments, and T3's captured
+  window context on screenshots. A live Claude Code session starts again
+  when a turn's attachments add their folder to `additionalDirectories`.
 - Thread history (W2, D220–D228): reverting files with a rollback (W3's
   checkpoints), Claude Code's native rewind and fork (`resumeSessionAt` and
   `forkSession` instead of a new session with the transcript, D222, D225;
@@ -1427,8 +1458,6 @@ and as events arrive).
   connection opens again or the page reloads (D132).
 - Visits and drafts are per device; syncing them, and device settings, across
   devices.
-- Attachments as blobs: images travel as data URLs inside the turn's first
-  event, hence the 20 MB per message (D54).
 - Scoped tokens. Done in `security.md` (D410–D416): device tokens carry
   their grants, so `projects.browse`, `host.config.read` and
   `host.identity` are given on purpose, and mesh calls carry their caller's
