@@ -1301,7 +1301,7 @@ export default definePlugin({
     context.commands.register({
       name: "threads.create",
       description:
-        "Starts a thread in a project (the scratch project by default). With a `threadId` chosen by the caller it is idempotent: creating that thread again in the same project returns it",
+        "Starts a thread in a project (the scratch project by default). With a `threadId` chosen by the caller it is idempotent: creating that thread again in the same project returns it as it is, whatever title or agent settings the later call names",
       input: z.object({
         projectId: z.string().default(SCRATCH_PROJECT),
         title: z.string().min(1).default(DEFAULT_THREAD_TITLE),

@@ -41,6 +41,15 @@ function nodeIdOf(mesh: MeshMembership, target: NodeTarget): string | undefined 
 const UNCERTAIN = new Set(["DISCONNECTED", "MESH_TIMEOUT", "NODE_UNREACHABLE"]);
 
 /**
+ * Whether a failed `startThread` may have left its thread on the node: only a
+ * creation whose answer the connection lost. Then the next try asks for the
+ * same id; after any other failure the id is spent (its thread deleted, which
+ * takes the id for good, D207) or was never used.
+ */
+export const threadMayExist = (error: unknown) =>
+  UNCERTAIN.has(String((error as { code?: unknown } | null)?.code));
+
+/**
  * Creates a thread and sends its first message. A creation whose answer the
  * connection dropped is asked again with the same thread id, so it leaves no
  * second thread. A thread whose first message

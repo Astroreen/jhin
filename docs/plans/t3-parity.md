@@ -629,12 +629,15 @@ and resetting it clears them), with a screenshot.
   (Deferred).
 - **D207. `threads.create` with an id the caller chooses** (`threadId`,
   letters, digits, `_` and `-`, up to 128) is idempotent: asked again with
-  the same id and project it returns the thread it made, also when two
-  calls come at once. An id of another project's thread or of a deleted
+  the same id and project it returns the thread it made as it is (a later
+  call's title and agent settings change nothing), also when two calls come
+  at once. An id of another project's thread or of a deleted
   thread is refused (`THREAD_EXISTS`). A creation that stopped after the
   thread's first event is finished by the next call with that id, with the
   thread that event recorded. The web client chooses the id of every thread
-  it starts and asks again with it when the connection dropped the answer.
+  it starts and asks again with it when the connection dropped the answer;
+  after any other failure the draft takes a new id, since a thread deleted
+  after its refused first message keeps its id taken.
 - **D208. One write for a record and its index event:
   `storage.eventlog@1.1`** (additive) takes `records` with an append: entries
   of the `storage.kv` the same plugin provides, set or deleted in the same

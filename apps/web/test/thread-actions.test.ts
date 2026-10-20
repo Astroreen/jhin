@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { startThread } from "../src/lib/thread-actions.ts";
+import { startThread, threadMayExist } from "../src/lib/thread-actions.ts";
 
 /** A node that creates thread `t1` and answers the other calls as told. */
 function fakeNode(fail: { create?: Error; send?: Error; delete?: Error } = {}) {
@@ -90,5 +90,24 @@ describe("startThread", () => {
   it("reports the send's failure even when the clean-up fails too", async () => {
     const node = fakeNode({ send: new Error("Not connected"), delete: new Error("Not connected") });
     await expect(startThread(node, target, first)).rejects.toThrow("Not connected");
+  });
+
+  it("says whether a failed start may have left its thread, so its id is asked again", async () => {
+    const dropped = Object.assign(new Error("Connection closed"), { code: "DISCONNECTED" });
+    const twice = fakeNode({ create: dropped });
+    const lost = startThread(
+      {
+        call: async (target, method, params) => {
+          if (method === "threads.create") throw dropped;
+          return twice.call(target, method, params);
+        },
+      },
+      target,
+      first,
+    );
+    await expect(lost).rejects.toSatisfy(threadMayExist);
+    // A refused first message deletes the thread: its id is spent.
+    const refused = fakeNode({ send: new Error("No agent runtime is installed on this node") });
+    await expect(startThread(refused, target, first)).rejects.not.toSatisfy(threadMayExist);
   });
 });

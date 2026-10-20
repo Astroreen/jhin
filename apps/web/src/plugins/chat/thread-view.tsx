@@ -16,7 +16,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { buildPromptHistory } from "../../lib/composer.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { wokeAt } from "../../lib/sidebar-order.ts";
-import { startThread } from "../../lib/thread-actions.ts";
+import { startThread, threadMayExist } from "../../lib/thread-actions.ts";
 import { openRequests } from "../../lib/timeline.ts";
 import { Composer, type ComposerHandleApi, type Selection } from "./composer.tsx";
 import { sendMessage, useFollowUps } from "./follow-ups.ts";
@@ -467,6 +467,8 @@ export function DraftView(props: {
       }
       return true;
     } catch (failure) {
+      // A thread deleted after its first message was refused takes its id along.
+      if (!threadMayExist(failure)) nextThreadId.current = crypto.randomUUID();
       chat.toasts?.show({
         type: "error",
         title: "Could not start the thread",
