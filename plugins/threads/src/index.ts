@@ -2130,6 +2130,8 @@ export default definePlugin({
     // A thread's queue lives in the node's storage, so it outlives the page that
     // sent its messages; each change is announced on the thread's stream.
     const queueKey = (threadId: string) => `queue/${threadId}`;
+    /** Queued messages steered whose removal from the queue could not be written: never sent again. */
+    const taken = new Set<string>();
     /** Queued messages being promoted to a steer, as `thread:message`: they start no turn of their own. */
     const steering = new Set<string>();
     const readQueue = async (threadId: string): Promise<Queue> => {
@@ -2191,6 +2193,13 @@ export default definePlugin({
         }
         // Promoted to a steer at this moment: it goes into the turn, not after it.
         if (steering.has(`${threadId}:${head.id}`)) return;
+        // Steered already, though storage still lists it: it leaves now, unsent.
+        if (taken.has(`${threadId}:${head.id}`)) {
+          taken.delete(`${threadId}:${head.id}`);
+          await writeQueue(threadId, { ...queue, messages: queue.messages.slice(1) });
+          void deliver(threadId);
+          return;
+        }
         const { id, createdAt: _createdAt, updatedAt: _updatedAt, ...message } = head;
         const progress = { recorded: false };
         // It leaves the queue in the write that records its turn's start, so a
@@ -2339,7 +2348,11 @@ export default definePlugin({
             if (alongside !== undefined) {
               await log
                 .append(threadStream(threadId), [alongside.event], { records: [alongside.record] })
-                .catch(failed("could not take a steered message out of its queue", threadId));
+                .catch((again: unknown) => {
+                  failed("could not take a steered message out of its queue", threadId)(again);
+                  // Still queued on storage: the node drops it before it would start.
+                  taken.add(`${threadId}:${messageId}`);
+                });
             }
           });
         current.steering.add(recording);
@@ -2425,11 +2438,12 @@ export default definePlugin({
       name: "threads.queue.list",
       description: "A thread's queued messages, in the order they go, with their images",
       input: z.object({ threadId: z.string() }),
-      output: Queue,
+      output: Queue.omit({ resumedPast: true }),
       permissions: ["threads.read"],
       handler: async ({ threadId }) => {
         await getThread(threadId);
-        return readQueue(threadId);
+        const { resumedPast: _resumedPast, ...queue } = await readQueue(threadId);
+        return queue;
       },
     });
 

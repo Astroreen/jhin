@@ -423,6 +423,29 @@ describe("jhin.threads: writes that go together (D202, D205)", () => {
     expect(started(events)).toEqual(["/hold on"]);
   });
 
+  it("never sends a steered message again when its queue cannot be written either", async () => {
+    const { client, thread, storage, events, watched } = await holding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "a", messageId: "a" });
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    let failures = 2;
+    log.append = async (stream, batch, options) => {
+      if (
+        failures > 0 &&
+        (options?.records ?? []).some((record) => record.key.startsWith("queue/"))
+      ) {
+        failures--;
+        throw new Error("disk full");
+      }
+      return append(stream, batch, options);
+    };
+    await client.call("threads.queue.steer", { threadId: thread.id, messageId: "a" });
+    await untilCount(watched, ThreadEvents.turnCompleted, 1);
+    await watched.untilMatch(() => lastQueue(events)?.messages.length === 0);
+
+    expect(started(events)).toEqual(["/hold on"]);
+  });
+
   it("lets the fake agent take a steer that came before its turn waits", async () => {
     const turn = fakeTurn({
       threadId: "t",
