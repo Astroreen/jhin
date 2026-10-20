@@ -75,13 +75,18 @@ export function createClientStore(
       onCorrupt(moved, error);
     }
   }
-  const save = () => {
+  /**
+   * Writes `next` and only then makes it current: a failed write changes
+   * nothing, so a revoke that throws has revoked nothing either.
+   */
+  const commit = (next: ClientRecord[]) => {
     const temporary = `${file}.${process.pid}.tmp`;
     Fs.mkdirSync(Path.dirname(file), { recursive: true });
-    Fs.writeFileSync(temporary, `${JSON.stringify({ clients: records }, null, 2)}\n`, {
+    Fs.writeFileSync(temporary, `${JSON.stringify({ clients: next }, null, 2)}\n`, {
       mode: 0o600,
     });
     Fs.renameSync(temporary, file);
+    records = next;
   };
 
   return {
@@ -100,11 +105,10 @@ export function createClientStore(
         secretHash: hash(secret),
       };
       // Expired tokens go with the next write; nothing can use them any more.
-      records = [
+      commit([
         ...records.filter((entry) => entry.expiresAt === undefined || entry.expiresAt > now),
         record,
-      ];
-      save();
+      ]);
       return { record, token: `${DEVICE_TOKEN_PREFIX}${id}.${secret}` };
     },
     verify(token, now) {
@@ -126,8 +130,7 @@ export function createClientStore(
     remove(ids) {
       const gone = records.filter((record) => ids.includes(record.id));
       if (gone.length > 0) {
-        records = records.filter((record) => !ids.includes(record.id));
-        save();
+        commit(records.filter((record) => !ids.includes(record.id)));
       }
       return gone;
     },
