@@ -162,8 +162,13 @@ export function ThreadView(props: {
   // Follow-ups typed while a turn runs wait in the thread's queue on its node
   // (D201) and go out one by one as turns end, whoever is watching.
   const agents = useAgents(target);
+  // A steer goes into the running turn, so that turn's agent decides. Until
+  // the agents are known the setting is trusted: an agent that cannot steer
+  // gets the message queued (STEER_UNSUPPORTED, send.ts).
   const canSteer =
-    running && agents?.find((agent) => agent.agentId === lastTurn?.agentId)?.steering === true;
+    running &&
+    (agents === undefined ||
+      agents.find((agent) => agent.agentId === lastTurn?.agentId)?.steering === true);
   // A first message the connection dropped: offered again until the thread shows it.
   const unconfirmed = useUnconfirmed(
     chat.unconfirmed,
