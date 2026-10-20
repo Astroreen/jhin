@@ -259,6 +259,8 @@ function activateScheduler(context: PluginContext): void {
   type KeptDelivery = Delivery & { readonly pending?: true };
   /** Deliveries this activation accepted: the recovery leaves them alone. */
   const ownDeliveries = new Set<string>();
+  /** Once the recovery is done it needs no list of this activation's deliveries. */
+  let recoveringDeliveries = true;
 
   const markDeliveryFailed = async (key: string, error: string) => {
     const delivery = (await kv.get(NAMESPACE, key)) as KeptDelivery | undefined;
@@ -619,6 +621,8 @@ function activateScheduler(context: PluginContext): void {
       if ((value as unknown as KeptDelivery).pending !== true || ownDeliveries.has(key)) continue;
       await markDeliveryFailed(key, "The node stopped before this delivery ran.");
     }
+    recoveringDeliveries = false;
+    ownDeliveries.clear();
     for (const task of await loadAll()) {
       if (task.lastRunStatus !== "running") continue;
       await mutate(task.id, (current) =>
@@ -1017,7 +1021,7 @@ function activateScheduler(context: PluginContext): void {
     queue.count += 1;
     webhookQueues.set(task.id, queue);
     try {
-      ownDeliveries.add(key);
+      if (recoveringDeliveries) ownDeliveries.add(key);
       await recordDelivery(key, {
         ...entry("accepted", {
           signatureVerified: signature !== null,
@@ -1135,6 +1139,8 @@ function activateScheduler(context: PluginContext): void {
       });
       if (body === "too_large") {
         response.setHeader("connection", "close");
+        // The rest is not read for ever: once the answer is out, the connection goes.
+        response.once("finish", () => request.destroy());
         answer(response, 413, { error: "body_too_large" });
         return;
       }
