@@ -47,6 +47,8 @@ import {
   type StoredEvent,
 } from "@jhin/storage-api";
 
+import { mergeBackMessage } from "./history.ts";
+
 export { THREADS_STREAM };
 
 const NAMESPACE = "jhin.threads";
@@ -167,6 +169,12 @@ const Thread = z.object({
   parentThreadId: z.string().optional(),
   /** How it relates to `parentThreadId`: a delegated child task's thread is a `subagent`. */
   relationshipToParent: z.enum(["subagent"]).optional(),
+  /** The thread and turn this thread was forked at (D225). */
+  forkedFrom: z.object({ threadId: z.string(), turnId: z.string() }).optional(),
+  /** A fork merged back: its result goes to the agent with the next message (D226). */
+  pendingMergeBack: z
+    .object({ id: z.string(), threadId: z.string(), turnId: z.string(), at: z.string() })
+    .optional(),
 });
 type Thread = z.infer<typeof Thread>;
 
@@ -981,6 +989,8 @@ export default definePlugin({
       /** Set once the turn's start is recorded: from then on the message is the turn's. */
       progress?: { recorded: boolean },
       alongside?: { events: readonly NewEvent[]; records: readonly RecordWrite[] },
+      /** A fork's result the agent gets before the message (D226). */
+      handoff?: { readonly payload: Json; readonly text: string },
     ): Promise<void> {
       const { turnId } = entry;
       const stream = threadStream(thread.id);
@@ -1012,6 +1022,7 @@ export default definePlugin({
                   input: input as unknown as Json,
                   ...(settings as Record<string, Json>),
                   ...(messageId === undefined ? {} : { messageId }),
+                  ...(handoff === undefined ? {} : { handoff: handoff.payload }),
                 },
               },
               ...(alongside?.events ?? []),
@@ -1058,7 +1069,7 @@ export default definePlugin({
           turn = runtime.startTurn({
             threadId: thread.id,
             turnId,
-            input,
+            input: handoff === undefined ? input : { ...input, text: handoff.text },
             history,
             cwd: hookInput.cwd,
             ...settings,
@@ -1713,12 +1724,34 @@ export default definePlugin({
       },
     });
 
+    /** Creates a thread in a project that is not being removed; a removal waits for it. */
+    async function creatingIn(projectId: string, create: () => Promise<Thread>): Promise<Thread> {
+      await getProject(projectId);
+      if (removedProjects.has(projectId)) {
+        throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
+      }
+      // A removal of the project that starts meanwhile waits for this thread.
+      const creating = create();
+      const underWay = creations.get(projectId) ?? new Set<Promise<unknown>>();
+      creations.set(projectId, underWay.add(creating));
+      try {
+        return await creating;
+      } finally {
+        underWay.delete(creating);
+        if (underWay.size === 0 && creations.get(projectId) === underWay) {
+          creations.delete(projectId);
+        }
+      }
+    }
+
     async function createThread(
       id: string,
       projectId: string,
       title: string,
       settings: Omit<Thread, "id" | "projectId" | "title" | "createdAt" | "updatedAt">,
       retried = false,
+      /** Events written with its first one: a fork's copy of its parent (D225). */
+      following: (thread: Thread) => { type: string; payload: Json }[] = () => [],
     ): Promise<Thread> {
       const stream = threadStream(id);
       const taken = () =>
@@ -1771,14 +1804,17 @@ export default definePlugin({
         try {
           await log.append(
             stream,
-            [{ type: ThreadEvents.threadCreated, payload: thread as unknown as Json }],
+            [
+              { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
+              ...following(thread),
+            ],
             { expectedHead: 0 },
           );
         } catch (error) {
           // Another process sharing the storage took the id meanwhile: what it
           // wrote decides, as for any id already taken.
           if (codeOf(error) !== "CONFLICT" || retried) throw error;
-          return createThread(id, projectId, title, settings, true);
+          return createThread(id, projectId, title, settings, true, following);
         }
       }
       // Then the record with the node's index of threads, which other nodes
@@ -2168,6 +2204,8 @@ export default definePlugin({
          * starts: a regeneration drops the turn it runs again (D224).
          */
         prepare?: (thread: Thread) => Promise<Thread>;
+        /** A fork merged into the turn being run again (D226); else the thread's pending one. */
+        merge?: { readonly threadId: string; readonly turnId: string };
       } = {},
     ): Promise<string> {
       // Early answers for the common cases; the reservation below decides.
@@ -2201,11 +2239,15 @@ export default definePlugin({
               )
               .catch(() => titleFromText(text))
           : undefined;
+      const merge = options.merge;
       const turnId = Crypto.randomUUID();
       // Nothing is awaited between checking that the thread is free and taking it.
       const reservation = reserve(threadId, turnId, runtime.agentId);
       let thread: Thread;
       let settings: TurnSettings;
+      let handoff: { payload: Json; text: string } | undefined;
+      let dropMerge: string | undefined;
+      let deliveredMerge: string | undefined;
       try {
         // The thread as it is now that it is ours: archived meanwhile, it takes no turn.
         thread = await getThread(threadId);
@@ -2221,6 +2263,16 @@ export default definePlugin({
           ...(interactionMode === undefined ? {} : { interactionMode }),
         };
         const chosen = { agentId: runtime.agentId, ...settings };
+        // A fork merged back meanwhile: its result goes with this message (D226).
+        const marked = merge === undefined ? thread.pendingMergeBack : undefined;
+        const delivering = merge ?? marked;
+        const found =
+          delivering === undefined ? undefined : await mergeBackHandoff(thread, delivering, text);
+        if (typeof found === "object") handoff = found;
+        // A pending mark whose fork or turn is gone goes now; one delivered goes once the
+        // turn has started, so a turn that cannot start keeps it for the next message.
+        if (found === "gone" && marked !== undefined) dropMerge = marked.id;
+        if (typeof found === "object" && marked !== undefined) deliveredMerge = marked.id;
         // The record keeps what this turn runs with: no model of another agent.
         const dropModel = settings.model === undefined;
         // A new turn also brings a settled thread back and wakes a snoozed one.
@@ -2228,8 +2280,14 @@ export default definePlugin({
         await updateThread(threadId, (latest) => {
           const back = revived(latest, at);
           const { model: _model, ...rest } = back;
+          // The merge it delivers is done; one recorded since waits for the next message.
+          const { pendingMergeBack: _merge, ...dropped } = dropModel ? rest : back;
           const next: Thread = {
-            ...(dropModel ? rest : back),
+            ...(dropMerge !== undefined && latest.pendingMergeBack?.id === dropMerge
+              ? dropped
+              : dropModel
+                ? rest
+                : back),
             ...chosen,
             // Only the first message names the thread, and only while it has the
             // default title: a rename that landed since it was read stays.
@@ -2246,6 +2304,16 @@ export default definePlugin({
           return changed ? next : latest;
         });
         if (options.prepare !== undefined) thread = await options.prepare(thread);
+        // The drop put back the mark of the merge this turn delivers again: it goes too.
+        const restored = thread.pendingMergeBack;
+        if (
+          merge !== undefined &&
+          handoff !== undefined &&
+          restored?.threadId === merge.threadId &&
+          restored.turnId === merge.turnId
+        ) {
+          deliveredMerge = restored.id;
+        }
       } catch (error) {
         reservation.finish();
         throw error;
@@ -2259,7 +2327,21 @@ export default definePlugin({
         options.messageId,
         options.progress,
         options.alongside,
+        handoff,
       );
+      if (deliveredMerge !== undefined) {
+        const id = deliveredMerge;
+        await updateThread(threadId, (latest) => {
+          if (latest.pendingMergeBack?.id !== id) return latest;
+          const { pendingMergeBack: _merge, ...rest } = latest;
+          return rest;
+        }).catch((error: unknown) =>
+          context.log.error("could not record a merge-back delivered", {
+            threadId,
+            error: String(error),
+          }),
+        );
+      }
       return turnId;
     }
 
@@ -2854,12 +2936,38 @@ export default definePlugin({
             },
           ]);
           const last = toTurnId === undefined ? undefined : endedTurn(events, toTurnId);
+          // A dropped turn that delivered a fork's merge gives the mark back (D226): the
+          // next message, or the turn run again, delivers it again.
+          const droppedIds = new Set(dropped);
+          const merged = events
+            .filter(
+              (event) =>
+                event.type === ThreadEvents.turnStarted && droppedIds.has(String(turnIdOf(event))),
+            )
+            .map(
+              (event) =>
+                (event.payload as { handoff?: { threadId?: unknown; turnId?: unknown } }).handoff,
+            )
+            .find(
+              (handoff) =>
+                typeof handoff?.threadId === "string" && typeof handoff.turnId === "string",
+            );
           const next = await updateThread(thread.id, (latest) => {
             const { lastTurn: _lastTurn, ...rest } = latest;
             return {
               ...rest,
               updatedAt: now(),
               ...(last === undefined ? {} : { lastTurn: last }),
+              ...(merged !== undefined && latest.pendingMergeBack === undefined
+                ? {
+                    pendingMergeBack: {
+                      id: Crypto.randomUUID(),
+                      threadId: merged.threadId as string,
+                      turnId: merged.turnId as string,
+                      at: now(),
+                    },
+                  }
+                : {}),
             };
           });
           return { thread: next, turnIds: dropped };
@@ -3033,9 +3141,166 @@ export default definePlugin({
               dropped = result.turnIds;
               return result.thread;
             },
+            // A fork merged into the turn is merged into its replacement too.
+            ...(payload.handoff?.threadId !== undefined && payload.handoff.turnId !== undefined
+              ? { merge: { threadId: payload.handoff.threadId, turnId: payload.handoff.turnId } }
+              : {}),
           },
         );
         return { turnId: next, turnIds: dropped };
+      },
+    });
+
+    /** A fork's turns of its own after its fork point, oldest first, and its visible events. */
+    async function ownTurns(fork: Thread) {
+      const { events, turns } = await visibleTurns(fork.id);
+      // Copied turns carry their parent's time, also once the fork point is rolled back.
+      const inherited = new Set(
+        events
+          .filter(
+            (event) =>
+              event.type === ThreadEvents.turnStarted &&
+              (event.payload as { inheritedAt?: unknown } | null)?.inheritedAt !== undefined,
+          )
+          .map(turnIdOf),
+      );
+      return { events, own: turns.filter((turnId) => !inherited.has(turnId)) };
+    }
+
+    /**
+     * The handoff of a fork merged back into `thread` (D226): what to tell the
+     * agent, or `gone` when the fork or its merged turn no longer exists (the
+     * mark is dropped), or `unreadable` (the mark stays for the next message).
+     */
+    async function mergeBackHandoff(
+      thread: Thread,
+      merge: { readonly threadId: string; readonly turnId: string },
+      userText: string,
+    ): Promise<{ payload: Json; text: string } | "gone" | "unreadable"> {
+      try {
+        const fork = await getThread(merge.threadId);
+        const { events, own } = await ownTurns(fork);
+        const index = own.indexOf(merge.turnId);
+        if (index === -1) return "gone";
+        return {
+          payload: { kind: "merge-back", threadId: fork.id, turnId: merge.turnId },
+          text: mergeBackMessage({
+            fork,
+            target: thread,
+            events,
+            turnIds: own.slice(0, index + 1),
+            userText,
+          }),
+        };
+      } catch (error) {
+        if (error instanceof ThreadsError && error.code === "THREAD_NOT_FOUND") return "gone";
+        context.log.warn("could not read a fork merged back; the message goes alone", {
+          threadId: thread.id,
+          forkId: merge.threadId,
+          error: String(error),
+        });
+        return "unreadable";
+      }
+    }
+
+    context.commands.register({
+      name: "threads.fork",
+      description:
+        "Starts a thread from another one at a turn (the latest ended one by default): it copies the turns up to it and runs with the same agent, model and modes",
+      input: z.object({
+        threadId: z.string(),
+        turnId: z.string().optional(),
+        title: z.string().trim().min(1).max(200).optional(),
+      }),
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: async ({ threadId, turnId, title }) => {
+        const parent = await getThread(threadId);
+        const { events, turns } = await visibleTurns(threadId);
+        const current = active.get(threadId);
+        const runningTurn = current?.turnId;
+        const target = turnId ?? turns.findLast((id) => id !== runningTurn);
+        if (target === undefined) {
+          throw new ThreadsError("TURN_NOT_FOUND", "The thread has no ended turn to fork at", {
+            threadId,
+          });
+        }
+        if (!turns.includes(target)) throw turnNotFound(threadId, target);
+        if (target === runningTurn) {
+          throw new ThreadsError(
+            "TURN_IN_PROGRESS",
+            "The turn is still running: in-progress turns cannot be forked",
+            { threadId, turnId: target },
+          );
+        }
+        const kept = new Set(turns.slice(0, turns.indexOf(target) + 1));
+        // The turns' own events; a fork's marker names a turn too, but is not one.
+        const copied = events.filter((event) => {
+          const id = turnIdOf(event);
+          return event.type !== ThreadEvents.threadForked && typeof id === "string" && kept.has(id);
+        });
+        const { agentId, model, runtimeMode, interactionMode } = parent;
+        return creatingIn(parent.projectId, () =>
+          createThread(
+            Crypto.randomUUID(),
+            parent.projectId,
+            title ?? `${parent.title} fork`,
+            {
+              ...(agentId === undefined ? {} : { agentId }),
+              ...(model === undefined ? {} : { model }),
+              ...(runtimeMode === undefined ? {} : { runtimeMode }),
+              ...(interactionMode === undefined ? {} : { interactionMode }),
+              forkedFrom: { threadId, turnId: target },
+            },
+            false,
+            () => [
+              // Each keeps the time it happened at in the parent.
+              ...copied.map((event) => ({
+                type: event.type,
+                // A fork of a fork keeps the time its parent kept.
+                payload: {
+                  ...(event.payload as Record<string, Json>),
+                  inheritedAt:
+                    (event.payload as { inheritedAt?: string } | null)?.inheritedAt ?? event.at,
+                },
+              })),
+              { type: ThreadEvents.threadForked, payload: { threadId, turnId: target } },
+            ],
+          ),
+        );
+      },
+    });
+
+    context.commands.register({
+      name: "threads.merge-back",
+      description:
+        "Merges a fork back into the thread it was forked from: the fork's turns up to `turnId` (its latest ended one by default) go to that thread's agent with its next message",
+      input: z.object({ threadId: z.string(), turnId: z.string().optional() }),
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: async ({ threadId, turnId }) => {
+        const fork = await getThread(threadId);
+        if (fork.forkedFrom === undefined) {
+          throw new ThreadsError("THREAD_NOT_FORK", "The thread is not a fork", { threadId });
+        }
+        const { own } = await ownTurns(fork);
+        const current = active.get(threadId);
+        const runningTurn = current?.turnId;
+        const ended = own.filter((id) => id !== runningTurn);
+        const target = turnId ?? ended.at(-1);
+        if (target === undefined || !ended.includes(target)) {
+          throw new ThreadsError(
+            "TURN_NOT_FOUND",
+            "Complete a run in this fork before merging it back",
+            { threadId, ...(target === undefined ? {} : { turnId: target }) },
+          );
+        }
+        const parentId = fork.forkedFrom.threadId;
+        return updateThread(parentId, (parent) => ({
+          ...parent,
+          // A newer merge of the same or another fork replaces one not yet delivered.
+          pendingMergeBack: { id: Crypto.randomUUID(), threadId, turnId: target, at: now() },
+        }));
       },
     });
 

@@ -15,6 +15,8 @@ import {
   CircleIcon,
   CopyIcon,
   EyeIcon,
+  GitForkIcon,
+  GitMergeIcon,
   GlobeIcon,
   HammerIcon,
   ListTodoIcon,
@@ -29,6 +31,7 @@ import {
 } from "lucide-react";
 import {
   createContext,
+  Fragment,
   useContext,
   useEffect,
   useMemo,
@@ -527,33 +530,56 @@ function WorkingTimer({ startedAt }: { startedAt: string }) {
   );
 }
 
-function SystemDivider({
-  label,
-  detail,
-  tone,
-}: {
+function SystemDivider(props: {
   label: string;
   detail?: string | undefined;
   tone?: "danger";
+  icon?: LucideIcon;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
+  const Icon = props.icon ?? XIcon;
+  const content = (
+    <>
+      <Icon className="size-3 shrink-0" />
+      <span className="font-medium">{props.label}</span>
+      {props.detail === undefined ? null : (
+        <span className="inline-flex min-w-0 max-w-80 items-center truncate opacity-70">
+          · {props.detail}
+        </span>
+      )}
+    </>
+  );
   return (
     <div
       className={cn(
         "flex min-w-0 items-center gap-2 py-2 text-2xs text-muted-foreground",
-        tone === "danger" && "text-destructive",
+        props.tone === "danger" && "text-destructive",
       )}
       role="status"
     >
       <span aria-hidden className="h-px flex-1 bg-border/70" />
-      <span className="flex min-w-0 flex-wrap items-center justify-center gap-1.5 rounded-full px-2 py-1">
-        <XIcon className="size-3 shrink-0" />
-        <span className="font-medium">{label}</span>
-        {detail === undefined ? null : (
-          <span className="inline-flex min-w-0 max-w-80 items-center truncate opacity-70">
-            · {detail}
-          </span>
-        )}
-      </span>
+      {props.onAction === undefined ? (
+        <span className="flex min-w-0 flex-wrap items-center justify-center gap-1.5 rounded-full px-2 py-1">
+          {content}
+        </span>
+      ) : (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                aria-label={props.actionLabel}
+                className="flex min-w-0 cursor-pointer items-center gap-1.5 rounded-full border border-border/70 bg-background px-2.5 py-1 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+                onClick={props.onAction}
+                type="button"
+              />
+            }
+          >
+            {content}
+          </TooltipTrigger>
+          <TooltipPopup side="top">{props.actionLabel}</TooltipPopup>
+        </Tooltip>
+      )}
       <span aria-hidden className="h-px flex-1 bg-border/70" />
     </div>
   );
@@ -733,8 +759,12 @@ export function TimelineView(props: {
   /** The thread's project folder, where "Save to workspace" writes. */
   projectPath?: string;
   onSavePlan?: SavePlan;
+  /** Opens another thread of the node: a fork's parent, a fork merged back. */
+  onOpenThread?(threadId: string): void;
+  /** A thread's title, where the node's catalog knows it. */
+  titleOf?(threadId: string): string | undefined;
 }) {
-  const { turns } = props.timeline;
+  const { turns, forkedFrom } = props.timeline;
   const now = useNow();
   const running = turns.at(-1)?.state === "running";
   const where = useMemo(
@@ -754,15 +784,41 @@ export function TimelineView(props: {
     <NowContext.Provider value={now}>
       <MessageActionsContext.Provider value={where}>
         {turns.map((turn, index) => (
-          <TurnView
-            format={props.format}
-            key={turn.turnId}
-            latest={index === turns.length - 1}
-            turn={turn}
-            {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
-            {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
-            {...(props.onRetry === undefined ? {} : { onRetry: () => props.onRetry!(turn) })}
-          />
+          <Fragment key={turn.turnId}>
+            {turn.handoff === undefined ? null : (
+              <SystemDivider
+                detail={props.titleOf?.(turn.handoff.threadId)}
+                icon={GitMergeIcon}
+                label="Merged back from fork"
+                {...(props.onOpenThread === undefined
+                  ? {}
+                  : {
+                      actionLabel: "Open fork",
+                      onAction: () => props.onOpenThread!(turn.handoff!.threadId),
+                    })}
+              />
+            )}
+            <TurnView
+              format={props.format}
+              latest={index === turns.length - 1}
+              turn={turn}
+              {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
+              {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
+              {...(props.onRetry === undefined ? {} : { onRetry: () => props.onRetry!(turn) })}
+            />
+            {forkedFrom?.turnId === turn.turnId ? (
+              <SystemDivider
+                icon={GitForkIcon}
+                label="Forked from conversation"
+                {...(props.onOpenThread === undefined
+                  ? {}
+                  : {
+                      actionLabel: "Open source conversation",
+                      onAction: () => props.onOpenThread!(forkedFrom.threadId),
+                    })}
+              />
+            ) : null}
+          </Fragment>
         ))}
       </MessageActionsContext.Provider>
     </NowContext.Provider>

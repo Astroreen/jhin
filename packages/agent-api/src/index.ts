@@ -240,8 +240,11 @@ export const ThreadEvents = {
   /** `threads` index: `{ id }`. */
   projectDeleted: "threads.project.deleted",
   /**
-   * `{ turnId, agentId, runtimeId?, input, model?, runtimeMode?, interactionMode?, messageId? }`;
-   * `runtimeId` only when the agent is not a runtime itself (D601).
+   * `{ turnId, agentId, runtimeId?, input, model?, runtimeMode?, interactionMode?, messageId?,
+   * handoff? }`; `runtimeId` only when the agent is not a runtime itself (D601).
+   * `handoff` (`{ kind: "merge-back", threadId, turnId }`) says the agent got a
+   * fork's result before `input.text`. In a fork, events copied from its parent
+   * carry `inheritedAt`, their original time.
    */
   turnStarted: "agent.turn.started",
   /** `{ turnId, messageId, input }`: a message the running turn took (a steer, D205). */
@@ -273,6 +276,11 @@ export const ThreadEvents = {
    * readers skip them (`visibleThreadEvents`).
    */
   threadRolledBack: "threads.thread.rolled-back",
+  /**
+   * Thread stream of a fork: `{ threadId, turnId }`, the parent and the turn it
+   * was forked at, after the events copied from the parent.
+   */
+  threadForked: "threads.thread.forked",
 } as const;
 
 /**

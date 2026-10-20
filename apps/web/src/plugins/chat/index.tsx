@@ -496,6 +496,7 @@ export const chatPlugin = builtin(
       );
       registerHistory(context, {
         threads,
+        navigation,
         slots,
         drafts: services.drafts,
         composer,

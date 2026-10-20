@@ -122,6 +122,8 @@ export interface TimelineTurn {
   /** The agent's output in the order it came. A plan stays where it first appeared. */
   readonly items: readonly TimelineItem[];
   readonly usage?: TokenUsage;
+  /** A fork merged back that the agent got before this message (D226). */
+  readonly handoff?: { readonly kind: "merge-back"; readonly threadId: string };
 }
 
 export interface Timeline {
@@ -130,6 +132,8 @@ export interface Timeline {
   readonly deleted: boolean;
   /** What waits in the thread's queue; empty when nothing does. */
   readonly queue?: ThreadQueue;
+  /** A fork: its parent, and the turn it was forked after (D225). */
+  readonly forkedFrom?: { readonly threadId: string; readonly turnId: string };
 }
 
 interface Payload {
@@ -158,6 +162,10 @@ interface Payload {
   readonly held?: ThreadQueue["held"];
   /** The turns a rollback dropped. */
   readonly turnIds?: readonly string[];
+  /** A fork's parent; the time of an event copied into a fork. */
+  readonly threadId?: string;
+  readonly inheritedAt?: string;
+  readonly handoff?: { readonly kind?: string; readonly threadId?: string };
 }
 
 /**
@@ -195,6 +203,7 @@ export function createTimeline() {
   let sequence = 0;
   let deleted = false;
   let queue = EMPTY_QUEUE;
+  let forkedFrom: Timeline["forkedFrom"];
   let timeline: Timeline = { turns: [], deleted: false, queue };
 
   const find = (turn: MutableTurn, key: string): TimelineItem | undefined => {
@@ -216,6 +225,7 @@ export function createTimeline() {
     changed.clear();
     const wasDeleted = deleted;
     const queued = queue;
+    const wasForked = forkedFrom;
     let dropped = false;
     for (const event of events) {
       if (event.sequence <= sequence) continue;
@@ -230,6 +240,14 @@ export function createTimeline() {
           messages: payload.messages ?? [],
           ...(payload.held === undefined ? {} : { held: payload.held }),
         };
+        continue;
+      }
+      // A fork's copy of its parent's events keeps their times.
+      const at = payload.inheritedAt ?? event.at;
+      if (event.type === ThreadEvents.threadForked) {
+        if (payload.threadId !== undefined && payload.turnId !== undefined) {
+          forkedFrom = { threadId: payload.threadId, turnId: payload.turnId };
+        }
         continue;
       }
       if (event.type === ThreadEvents.threadRolledBack) {
@@ -259,7 +277,13 @@ export function createTimeline() {
             : { interactionMode: payload.interactionMode }),
           text: payload.input?.text ?? "",
           attachments: payload.input?.attachments ?? [],
-          startedAt: event.at,
+          // A merge into the parent is the parent's: a fork's copy of that turn shows none.
+          ...(payload.inheritedAt === undefined &&
+          payload.handoff?.kind === "merge-back" &&
+          payload.handoff.threadId !== undefined
+            ? { handoff: { kind: "merge-back" as const, threadId: payload.handoff.threadId } }
+            : {}),
+          startedAt: at,
           state: "running",
           items: [],
         };
@@ -292,7 +316,7 @@ export function createTimeline() {
             tool: payload.tool,
             output: "",
             status: "running",
-            at: event.at,
+            at,
           });
           break;
         }
@@ -310,7 +334,7 @@ export function createTimeline() {
           if (existing !== undefined && existing.kind === kind) {
             put(turn, itemId, { ...existing, text: existing.text + text });
           } else if (existing === undefined) {
-            put(turn, itemId, { kind, itemId, text, completed: false, at: event.at });
+            put(turn, itemId, { kind, itemId, text, completed: false, at: at });
           }
           break;
         }
@@ -328,7 +352,7 @@ export function createTimeline() {
               status,
               output: payload.output ?? existing.output,
               ...(payload.error === undefined ? {} : { error: payload.error }),
-              endedAt: event.at,
+              endedAt: at,
             });
             break;
           }
@@ -355,7 +379,7 @@ export function createTimeline() {
               payload.text ??
               (existing !== undefined && existing.kind === kind ? existing.text : ""),
             completed: true,
-            at: existing?.at ?? event.at,
+            at: existing?.at ?? at,
           } as MessageItem | ReasoningItem);
           break;
         }
@@ -366,7 +390,7 @@ export function createTimeline() {
             requestId: payload.requestId,
             request: payload.request,
             state: "open",
-            at: event.at,
+            at,
           });
           break;
         }
@@ -390,7 +414,7 @@ export function createTimeline() {
           put(turn, "plan", {
             kind: "plan",
             steps: payload.steps ?? [],
-            at: existing?.at ?? event.at,
+            at: existing?.at ?? at,
           });
           break;
         }
@@ -411,25 +435,31 @@ export function createTimeline() {
           break;
         case ThreadEvents.turnCompleted:
           turn.state = "completed";
-          turn.endedAt = event.at;
+          turn.endedAt = at;
           changed.add(turn);
           break;
         case ThreadEvents.turnInterrupted:
           turn.state = "interrupted";
-          turn.endedAt = event.at;
+          turn.endedAt = at;
           if (payload.reason !== undefined) turn.error = payload.reason;
           changed.add(turn);
           break;
         case ThreadEvents.turnFailed:
           turn.state = "failed";
-          turn.endedAt = event.at;
+          turn.endedAt = at;
           if (payload.error !== undefined) turn.error = payload.error;
           changed.add(turn);
           break;
       }
     }
     // Nothing this batch held changed anything: the same timeline.
-    if (changed.size === 0 && deleted === wasDeleted && queue === queued && !dropped) {
+    if (
+      changed.size === 0 &&
+      deleted === wasDeleted &&
+      queue === queued &&
+      !dropped &&
+      forkedFrom === wasForked
+    ) {
       return timeline;
     }
     for (const turn of changed) {
@@ -444,7 +474,12 @@ export function createTimeline() {
             );
       snapshots.set(turn, { ...turn, items });
     }
-    timeline = { turns: turns.map((turn) => snapshots.get(turn)!), deleted, queue };
+    timeline = {
+      turns: turns.map((turn) => snapshots.get(turn)!),
+      deleted,
+      queue,
+      ...(forkedFrom === undefined ? {} : { forkedFrom }),
+    };
     return timeline;
   }
 

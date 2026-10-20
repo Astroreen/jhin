@@ -472,3 +472,293 @@ describe("jhin.threads: regenerating a turn (D224)", () => {
     expect(events.some((event) => event.type === "threads.thread.rolled-back")).toBe(false);
   });
 });
+
+interface Fork extends Thread {
+  title: string;
+  projectId: string;
+  agentId?: string;
+  runtimeMode?: string;
+  forkedFrom?: { threadId: string; turnId: string };
+  pendingMergeBack?: { id: string; threadId: string; turnId: string; at: string };
+}
+
+describe("jhin.threads: forking a thread (D225)", () => {
+  it("copies the turns up to a turn, with their times, into a new thread of the same project", async () => {
+    const { runtime, histories } = recordingRuntime();
+    const { client } = await node({ runtime });
+    const parent = await client.call<Fork>("threads.create", { runtimeMode: "approval-required" });
+    const first = await turn(client, parent.id, "one");
+    const second = await turn(client, parent.id, "two");
+    await turn(client, parent.id, "three");
+    const index = watch(client, "stream:threads");
+
+    const fork = await client.call<Fork>("threads.fork", { threadId: parent.id, turnId: second });
+    expect(fork).toMatchObject({
+      title: "one fork",
+      projectId: parent.projectId,
+      agentId: "acme.recording",
+      runtimeMode: "approval-required",
+      forkedFrom: { threadId: parent.id, turnId: second },
+    });
+    expect(fork.lastTurn).toBeUndefined();
+    await index.untilMatch(
+      (event) =>
+        event.type === "threads.thread.created" &&
+        (event.payload as unknown as Fork).id === fork.id,
+    );
+
+    const parentEvents = watch(client, parent.id);
+    await parentEvents.until("agent.turn.completed", 2);
+    const forkEvents = watch(client, fork.id);
+    const marker = await forkEvents.until("threads.thread.forked");
+    expect(marker.payload).toEqual({ threadId: parent.id, turnId: second });
+    const copied = forkEvents.events.filter((event) => event.sequence < marker.sequence).slice(1);
+    const original = parentEvents.events.filter((event) =>
+      [first, second].includes((event.payload as { turnId?: string }).turnId ?? ""),
+    );
+    expect(copied.map((event) => [event.type, event.payload])).toEqual(
+      original.map((event) => [
+        event.type,
+        { ...(event.payload as object), inheritedAt: event.at },
+      ]),
+    );
+
+    // The fork's agent gets the copied turns as its history.
+    await turn(client, fork.id, "four");
+    expect(turnIdsOf(histories.at(-1)!).filter(Boolean)).toEqual([first, second]);
+  });
+
+  it("forks at the latest ended turn by default, and never at a running one", async () => {
+    const { client } = await node();
+    const parent = await client.call<Fork>("threads.create", {});
+    await expect(client.call("threads.fork", { threadId: parent.id })).rejects.toMatchObject({
+      code: "TURN_NOT_FOUND",
+    });
+    const first = await turn(client, parent.id, "one");
+    const { until } = watch(client, parent.id);
+    const { turnId: holding } = await client.call<{ turnId: string }>("threads.send", {
+      threadId: parent.id,
+      text: "/hold on",
+    });
+    await until("agent.item.delta", 1);
+
+    expect(
+      await client.call<Fork>("threads.fork", { threadId: parent.id, title: "Side quest" }),
+    ).toMatchObject({ title: "Side quest", forkedFrom: { threadId: parent.id, turnId: first } });
+    await expect(
+      client.call("threads.fork", { threadId: parent.id, turnId: holding }),
+    ).rejects.toMatchObject({ code: "TURN_IN_PROGRESS" });
+  });
+});
+
+describe("jhin.threads: merging a fork back (D226)", () => {
+  it("gives the parent's next turn the fork's own turns, once, keeping the user's text", async () => {
+    const { runtime } = recordingRuntime();
+    const requests: TurnRequest[] = [];
+    const tracked: AgentRuntime = {
+      ...runtime,
+      startTurn: (request) => {
+        requests.push(request);
+        return runtime.startTurn(request);
+      },
+    };
+    const { client } = await node({ runtime: tracked });
+    const parent = await client.call<Fork>("threads.create", {});
+    await turn(client, parent.id, "plan the work");
+    const fork = await client.call<Fork>("threads.fork", { threadId: parent.id });
+    await expect(client.call("threads.merge-back", { threadId: fork.id })).rejects.toMatchObject({
+      code: "TURN_NOT_FOUND",
+    });
+    await turn(client, fork.id, "try   the risky\nidea");
+    const tried = await turn(client, fork.id, "it worked");
+
+    const merged = await client.call<Fork>("threads.merge-back", { threadId: fork.id });
+    expect(merged).toMatchObject({
+      id: parent.id,
+      pendingMergeBack: { threadId: fork.id, turnId: tried, at: expect.any(String) },
+    });
+
+    const { untilMatch } = watch(client, parent.id);
+    const next = await turn(client, parent.id, "go on");
+    const text = requests.at(-1)!.input.text;
+    expect(text.split("\n")).toEqual([
+      "Context handoff (merge_back / fork_delta_summary):",
+      "Merge-back context from forked conversation.",
+      `Source thread: plan the work fork (${fork.id})`,
+      `Target thread: plan the work (${parent.id})`,
+      "Covered fork turns: 2",
+      "",
+      "Fork delta:",
+      "- User: try the risky idea",
+      "- Assistant: Echo: try the risky idea",
+      "- User: it worked",
+      "- Assistant: Echo: it worked",
+      "",
+      "User message:",
+      "go on",
+    ]);
+    // The thread records what the user typed, and where the rest came from.
+    const started = await untilMatch(
+      (event) =>
+        event.type === "agent.turn.started" &&
+        (event.payload as { turnId: string }).turnId === next,
+    );
+    expect(started.payload).toMatchObject({
+      input: { text: "go on" },
+      handoff: { kind: "merge-back", threadId: fork.id, turnId: tried },
+    });
+    const { thread: after } = await client.call<{ thread: Fork }>("threads.get", {
+      threadId: parent.id,
+    });
+    expect(after.pendingMergeBack).toBeUndefined();
+    await turn(client, parent.id, "and again");
+    expect(requests.at(-1)!.input.text).toBe("and again");
+  });
+
+  /** A thread with a fork that ran one turn of its own, and a runtime keeping requests. */
+  async function forked() {
+    const requests: TurnRequest[] = [];
+    const tracked: AgentRuntime = {
+      agentId: "acme.tracked",
+      startTurn: (request) => {
+        requests.push(request);
+        return fakeTurn(request);
+      },
+    };
+    const started = await node({ runtime: tracked });
+    const parent = await started.client.call<Fork>("threads.create", {});
+    const planned = await turn(started.client, parent.id, "plan");
+    const fork = await started.client.call<Fork>("threads.fork", { threadId: parent.id });
+    const tried = await turn(started.client, fork.id, "try it");
+    return { ...started, requests, parent, fork, planned, tried };
+  }
+  const pendingOf = async (client: RpcClient, threadId: string) =>
+    (await client.call<{ thread: Fork }>("threads.get", { threadId })).thread.pendingMergeBack;
+
+  it("replaces a merge not yet delivered with a newer one", async () => {
+    const { client, parent, fork, requests } = await forked();
+    const first = await client.call<Fork>("threads.merge-back", { threadId: fork.id });
+    const latest = await turn(client, fork.id, "and more");
+    const second = await client.call<Fork>("threads.merge-back", { threadId: fork.id });
+    expect(second.pendingMergeBack?.id).not.toBe(first.pendingMergeBack?.id);
+    expect(second.pendingMergeBack?.turnId).toBe(latest);
+    await turn(client, parent.id, "go on");
+    expect(requests.at(-1)!.input.text).toContain("Covered fork turns: 2");
+  });
+
+  it("drops the mark of a fork deleted since, and the message goes alone", async () => {
+    const { client, parent, fork, requests } = await forked();
+    await client.call("threads.merge-back", { threadId: fork.id });
+    await client.call("threads.delete", { threadId: fork.id });
+    await turn(client, parent.id, "go on");
+    expect(requests.at(-1)!.input.text).toBe("go on");
+    expect(await pendingOf(client, parent.id)).toBeUndefined();
+  });
+
+  it("drops the mark of a merged turn rolled back in the fork since", async () => {
+    const { client, parent, fork, requests } = await forked();
+    await client.call("threads.merge-back", { threadId: fork.id });
+    // The fork drops its own turn, and every copied one with it.
+    await client.call("threads.rollback", { threadId: fork.id });
+    await turn(client, parent.id, "go on");
+    expect(requests.at(-1)!.input.text).toBe("go on");
+    expect(await pendingOf(client, parent.id)).toBeUndefined();
+  });
+
+  it("keeps the mark when the parent's turn cannot start, and gives it back on a rollback", async () => {
+    const { client, storage, parent, fork, requests } = await forked();
+    await client.call("threads.merge-back", { threadId: fork.id });
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    let fail = true;
+    log.append = async (stream, batch, options) => {
+      if (fail && batch.some((event) => event.type === "agent.turn.started")) {
+        fail = false;
+        throw new Error("disk full");
+      }
+      return append(stream, batch, options);
+    };
+    await expect(
+      client.call("threads.send", { threadId: parent.id, text: "go on" }),
+    ).rejects.toThrow("disk full");
+    expect(await pendingOf(client, parent.id)).toBeDefined();
+
+    const delivered = await turn(client, parent.id, "go on");
+    expect(await pendingOf(client, parent.id)).toBeUndefined();
+    // Edited away: the merge waits for the next message again.
+    await client.call("threads.rollback", { threadId: parent.id, beforeTurnId: delivered });
+    expect(await pendingOf(client, parent.id)).toMatchObject({ threadId: fork.id });
+    await turn(client, parent.id, "once more");
+    expect(requests.at(-1)!.input.text).toContain("Merge-back context from forked conversation.");
+    expect(await pendingOf(client, parent.id)).toBeUndefined();
+  });
+
+  it("merges again into a regenerated turn, leaving no mark", async () => {
+    const { client, parent, fork, requests } = await forked();
+    await client.call("threads.merge-back", { threadId: fork.id });
+    await turn(client, parent.id, "go on");
+    const { untilMatch } = watch(client, parent.id);
+    const { turnId } = await client.call<{ turnId: string }>("threads.regenerate", {
+      threadId: parent.id,
+    });
+    await untilMatch(
+      (event) =>
+        event.type === "agent.turn.completed" &&
+        (event.payload as { turnId: string }).turnId === turnId,
+    );
+    expect(requests.at(-1)!.input.text).toContain("Merge-back context from forked conversation.");
+    expect(await pendingOf(client, parent.id)).toBeUndefined();
+  });
+
+  it("counts copied turns as inherited after the fork point is rolled back, and refuses them", async () => {
+    const { client, fork, planned } = await forked();
+    const { untilMatch } = watch(client, fork.id);
+    // Regenerating the fork's copied turn drops the fork point and its own turn.
+    const { turnId } = await client.call<{ turnId: string }>("threads.regenerate", {
+      threadId: fork.id,
+      turnId: planned,
+    });
+    await untilMatch(
+      (event) =>
+        event.type === "agent.turn.completed" &&
+        (event.payload as { turnId: string }).turnId === turnId,
+    );
+    const merged = await client.call<Fork>("threads.merge-back", { threadId: fork.id });
+    expect(merged.pendingMergeBack?.turnId).toBe(turnId);
+    await expect(
+      client.call("threads.merge-back", { threadId: fork.id, turnId: planned }),
+    ).rejects.toMatchObject({ code: "TURN_NOT_FOUND" });
+  });
+
+  it("forks a fork with the first parent's times and one marker", async () => {
+    const { client, fork, planned } = await forked();
+    const first = watch(client, fork.id);
+    const copiedAt = (await first.until("agent.turn.started")).payload as { inheritedAt: string };
+    const grandchild = await client.call<Fork>("threads.fork", { threadId: fork.id });
+    const second = watch(client, grandchild.id);
+    await second.until("threads.thread.forked");
+    const started = second.events.filter((event) => event.type === "agent.turn.started");
+    const copiedTurn = started.find(
+      (event) => (event.payload as { turnId: string }).turnId === planned,
+    );
+    expect((copiedTurn?.payload as { inheritedAt?: string } | undefined)?.inheritedAt).toBe(
+      copiedAt.inheritedAt,
+    );
+    expect(second.events.filter((event) => event.type === "threads.thread.forked")).toHaveLength(1);
+  });
+
+  it("refuses a thread that is not a fork, and a fork whose parent is gone", async () => {
+    const { client } = await node();
+    const parent = await client.call<Fork>("threads.create", {});
+    await turn(client, parent.id, "one");
+    await expect(client.call("threads.merge-back", { threadId: parent.id })).rejects.toMatchObject({
+      code: "THREAD_NOT_FORK",
+    });
+    const fork = await client.call<Fork>("threads.fork", { threadId: parent.id });
+    await turn(client, fork.id, "two");
+    await client.call("threads.delete", { threadId: parent.id });
+    await expect(client.call("threads.merge-back", { threadId: fork.id })).rejects.toMatchObject({
+      code: "THREAD_NOT_FOUND",
+    });
+  });
+});

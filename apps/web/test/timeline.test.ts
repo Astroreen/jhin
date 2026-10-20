@@ -368,3 +368,50 @@ describe("rolled back turns (D221)", () => {
     expect(fold.current()).toEqual(reduceTimeline(events));
   });
 });
+
+describe("forks and merges (D225, D226)", () => {
+  it("keeps the times of turns copied from the parent and says where the fork starts", () => {
+    const copied = "2026-01-02T03:04:05.000Z";
+    const events = stream(
+      [ThreadEvents.threadCreated, { id: "fork" }],
+      [
+        ThreadEvents.turnStarted,
+        {
+          turnId: "u1",
+          agentId: "a",
+          input: { text: "first" },
+          inheritedAt: copied,
+          // Merged into the parent, not into this fork.
+          handoff: { kind: "merge-back", threadId: "elsewhere", turnId: "y" },
+        },
+      ],
+      [ThreadEvents.turnCompleted, { turnId: "u1", inheritedAt: "2026-01-02T03:04:09.000Z" }],
+      [ThreadEvents.threadForked, { threadId: "parent", turnId: "u1" }],
+      [
+        ThreadEvents.turnStarted,
+        {
+          turnId: "u2",
+          agentId: "a",
+          input: { text: "own" },
+          handoff: { kind: "merge-back", threadId: "other", turnId: "x" },
+        },
+      ],
+    );
+    const timeline = reduceTimeline(events);
+    expect(timeline.forkedFrom).toEqual({ threadId: "parent", turnId: "u1" });
+    expect(timeline.turns[0]).toMatchObject({
+      startedAt: copied,
+      endedAt: "2026-01-02T03:04:09.000Z",
+    });
+    expect(timeline.turns[0]).not.toHaveProperty("handoff");
+    expect(timeline.turns[1]).toMatchObject({
+      startedAt: events[4]!.at,
+      handoff: { kind: "merge-back", threadId: "other" },
+    });
+    // Folded event by event, the marker gives a new timeline too.
+    const fold = createTimeline();
+    const before = fold.apply(events.slice(0, 3));
+    expect(fold.apply(events.slice(3, 4))).not.toBe(before);
+    expect(fold.apply(events.slice(4))).toEqual(timeline);
+  });
+});

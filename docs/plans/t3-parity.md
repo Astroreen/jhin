@@ -1054,11 +1054,16 @@ for, built from the same rewind.
   with the parent's agent, model and modes, titled "<title> fork" (T3's),
   whose record says `forkedFrom: { threadId, turnId }` (T3's lineage). Its
   stream copies the visible events of the turns up to `turnId`, each payload
-  with `inheritedAt` (the original time, so durations and timestamps stay),
+  with `inheritedAt` (the original time, so durations and timestamps stay;
+  a fork of a fork keeps the first parent's),
   then `threads.thread.forked` (`{ threadId, turnId }`), where the timeline
-  draws T3's divider "Forked from conversation" with a link to the parent.
+  draws T3's divider "Forked from conversation" with "Open source
+  conversation".
   Copying, not referencing the parent as T3's projection does, keeps a fork
-  readable when its parent is deleted or lives on a node that is away. A
+  readable when its parent is deleted or lives on a node that is away. The
+  copy is one read of the parent's log, a consistent state of it; a fork's
+  own turns are those without `inheritedAt`, so they stay apart from the
+  copied ones even once the fork point is rolled back in the fork. A
   running or waiting turn cannot be forked (`TURN_IN_PROGRESS`, T3's "in-progress
   runs cannot be forked"). The agent's own session is not copied: Claude
   starts the fork's session with the transcript (D222); T3's native session
@@ -1067,8 +1072,9 @@ for, built from the same rewind.
   command `thread.fork` opens the fork.
 - **D226. Merging a fork back.** `threads.merge-back` (`{ threadId, turnId?
   }`: the fork, and its latest ended turn by default) records on the parent
-  `pendingMergeBack: { threadId, turnId, at }`, replacing an older one (T3's
-  superseded transfer); no turn starts. The parent's next turn gives the
+  `pendingMergeBack: { id, threadId, turnId, at }`, replacing an older one
+  (T3's superseded transfer; it is the user's arrangement, so `updatedAt`
+  stays); no turn starts. The parent's next turn gives the
   agent T3's handoff before the user's text: "Context handoff (merge_back /
   fork_delta_summary):", "Merge-back context from forked conversation.", the
   source and target threads, then every user message and answer of the fork
@@ -1076,7 +1082,13 @@ for, built from the same rewind.
   compacted and cut at 240 characters), then "User message:" and the text.
   The turn's event keeps the user's text as typed and the handoff apart
   (`handoff: { kind: "merge-back", threadId, turnId }`), where the timeline
-  says "Merged back from <fork>"; the pending mark goes. Refused for a
+  draws a divider "Merged back from fork" with the fork's title and "Open
+  fork"; the mark goes once that turn has started, so a turn that cannot
+  start leaves it for the next message. A mark whose fork, or whose merged
+  turn, is gone since is dropped and the message goes alone; one whose fork
+  cannot be read now stays. Dropping a turn that delivered a merge (a
+  rollback, "Edit from here") gives the mark back, and regenerating it
+  merges into the new turn again. Refused for a
   thread that is not a fork (`THREAD_NOT_FORK`), a parent that is gone
   (`THREAD_NOT_FOUND`) or a fork with no ended turn of its own
   (`TURN_NOT_FOUND`). The fork's header gets T3's `GitMergeIcon` button
@@ -1145,7 +1157,10 @@ and as events arrive).
   from before D222, lets the next turn resume a session that still holds
   the dropped turns, D222; and the Claude Code session a new one replaces is
   left on disk),
-  T3's in-thread find (`mod+f`), T3's "Resume thread" for a stopped turn
+  a merge-back's handoff in an agent's history (it reaches the agent as the
+  text of the turn that delivers it, and the stored event keeps the user's
+  text, so a runtime replaying history, as Claude's transcript does for a new
+  session, sees only the user's text), T3's in-thread find (`mod+f`), T3's "Resume thread" for a stopped turn
   ("Continue where you left off.", which belongs with the composer, W6), a search index on disk (the node reads
   each thread's texts once per run, D227) and T3's Lineage panel listing a
   thread's forks.
