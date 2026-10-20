@@ -32,9 +32,9 @@ export async function implementPlan(
 ): Promise<{ readonly threadId: string }> {
   const { threads, navigation } = deps;
   const { target, threadId } = input;
-  const [events, thread] = await Promise.all([
+  const [events, { thread }] = await Promise.all([
     threads.call<StoredEvent[]>(target, "threads.events", { threadId }),
-    threads.call<ThreadRecord>(target, "threads.get", { threadId }),
+    threads.call<{ thread: ThreadRecord }>(target, "threads.get", { threadId }),
   ]);
   const plan = actionablePlan(reduceTimeline(events));
   if (plan === undefined) {
