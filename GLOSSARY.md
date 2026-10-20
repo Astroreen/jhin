@@ -199,3 +199,10 @@ Words about Jhin:
   time of day on chosen weekdays, or when its **webhook** URL is called. A
   run goes to the thread the task is bound to, or to a new thread each time
   (T3 Code's term; `jhin.scheduler`).
+- **Preview tab** — a page of the node's headless browser, opened for a
+  thread by an agent or the user; its frames stream to the **right panel**,
+  where the user watches it. Its **owner** is the agent session that opened
+  it, a **viewer** (a panel watching it) that took control, or nobody
+  (**unclaimed**). T3 Code's collaborative browser tab.
+- **Viewer** — a client panel watching a preview tab, named by an id the
+  client picks; the one **holding control** sends the page its input.

@@ -81,6 +81,9 @@ catalogs:
     playwright:
       specifier: 1.61.1
       version: 1.61.1
+    playwright-core:
+      specifier: 1.61.1
+      version: 1.61.1
     react:
       specifier: 19.3.1
       version: 19.3.1
@@ -182,6 +185,9 @@ importers:
       '@jhin/plugin-orchestration':
         specifier: workspace:*
         version: link:../../plugins/orchestration
+      '@jhin/plugin-preview':
+        specifier: workspace:*
+        version: link:../../plugins/preview
       '@jhin/plugin-scheduler':
         specifier: workspace:*
         version: link:../../plugins/scheduler
@@ -437,6 +443,12 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
+
+  packages/preview-api:
+    dependencies:
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../sdk
 
   packages/rpc:
     dependencies:
@@ -729,6 +741,37 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.32.1(zod@4.6.7)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+
+  plugins/preview:
+    dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../../packages/agent-api
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../../packages/host-api
+      '@jhin/preview-api':
+        specifier: workspace:*
+        version: link:../../packages/preview-api
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
+      playwright-core:
+        specifier: 'catalog:'
+        version: 1.61.1
+    devDependencies:
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
