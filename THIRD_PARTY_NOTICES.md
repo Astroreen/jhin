@@ -24,8 +24,10 @@ sessions kept between turns, the node's MCP server attached to Claude Code),
 the agent credentials of the MCP server plugin (`plugins/mcp-server`) and the
 terminal plugin (`plugins/terminal`:
 loading node-pty, the shell's environment, sizes, scrollback and finding the
-program a terminal runs). Files derived from T3 Code say so in a header
-comment.
+program a terminal runs) and orchestration (`plugins/orchestration`: the
+contracts, rules and messages of delegated tasks, thread launches and their
+capabilities, and the script contract of workflows). Files derived from T3
+Code say so in a header comment.
 
 ```
 MIT License

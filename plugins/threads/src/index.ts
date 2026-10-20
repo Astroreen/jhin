@@ -136,6 +136,10 @@ const Thread = z.object({
   snoozedAt: z.string().optional(),
   /** When a snooze last ended by hand: the automatic rule counts it as activity. */
   lastSnoozeWakeAt: z.string().optional(),
+  /** The thread that delegated this one's work (docs/plans/orchestration.md, D363). */
+  parentThreadId: z.string().optional(),
+  /** How it relates to `parentThreadId`: a delegated child task's thread is a `subagent`. */
+  relationshipToParent: z.enum(["subagent"]).optional(),
 });
 type Thread = z.infer<typeof Thread>;
 
@@ -1246,6 +1250,8 @@ export default definePlugin({
         projectId: z.string().default(SCRATCH_PROJECT),
         title: z.string().min(1).default(DEFAULT_THREAD_TITLE),
         ...AgentSettings,
+        parentThreadId: z.string().min(1).optional(),
+        relationshipToParent: z.enum(["subagent"]).optional(),
       }),
       output: Thread,
       permissions: ["threads.write"],

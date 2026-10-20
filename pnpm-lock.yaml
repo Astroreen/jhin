@@ -176,6 +176,9 @@ importers:
       '@jhin/plugin-mesh':
         specifier: workspace:*
         version: link:../../plugins/mesh
+      '@jhin/plugin-orchestration':
+        specifier: workspace:*
+        version: link:../../plugins/orchestration
       '@jhin/plugin-source-control':
         specifier: workspace:*
         version: link:../../plugins/source-control
@@ -657,6 +660,31 @@ importers:
       '@types/ws':
         specifier: 'catalog:'
         version: 8.18.2
+
+  plugins/orchestration:
+    dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../../packages/agent-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
+    devDependencies:
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.32.1(zod@4.6.7)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
 
   plugins/source-control:
     dependencies:

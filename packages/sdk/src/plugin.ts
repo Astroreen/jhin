@@ -33,6 +33,8 @@ export interface Invocation {
   /**
    * The thread whose agent makes this call: bound to an agent's MCP credential, or named
    * by the `x-jhin-thread` header of an MCP request made with the node's own token.
+   * Commands that act as the calling thread, such as delegating a task, default
+   * to it (docs/plans/orchestration.md, D362).
    */
   readonly threadId?: string;
 }
