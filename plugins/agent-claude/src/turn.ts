@@ -534,7 +534,8 @@ export function claudeTurn(
     ...(deps.settings.binaryPath === undefined
       ? {}
       : { pathToClaudeCodeExecutable: deps.settings.binaryPath }),
-    ...(deps.settings.env === undefined ? {} : { env: claudeEnvironment(deps.settings.env) }),
+    // The config's variables only: the session adds the node's environment (session.ts).
+    ...(deps.settings.env === undefined ? {} : { env: { ...deps.settings.env } }),
     systemPrompt: {
       type: "preset",
       preset: "claude_code",

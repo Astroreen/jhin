@@ -121,23 +121,25 @@ specific to Claude: the runtime is a plugin on the public API.
   `setPermissionMode` when a later one comes gives up with the same error
   instead of starting a Claude Code of its own. The live sessions of a node
   are listed by `claude.sessions.list` and ended by `claude.sessions.close`
-  (one thread or all). Turning `session` to `per-turn` ends every kept session
-  no turn holds at once; a held one ends with its turn. A new
-  `sessionIdleMinutes` re-arms the sessions already idle, counted from their
-  last turn. The section's defaults live in its schema only; the runtime reads
-  the parsed section.
+  (one thread or all): only those no turn runs on, unless `force: true`, which
+  ends busy ones too and fails their turn. Turning `session` to `per-turn`
+  ends every kept session no turn holds at once; a held one ends with its
+  turn. A new `sessionIdleMinutes` re-arms the sessions already idle, counted
+  from their last turn. The section's defaults live in its schema only; the
+  runtime reads the parsed section.
 - **D99. A live session takes a turn's settings when it can.** Everything a
   running Claude Code cannot change — the working directory, effort, binary,
-  environment (the node's when the config names none, with the state reports
-  of D104), system prompt and `allowDangerouslySkipPermissions` — forms its
-  launch key (T3's `claudeEffectiveQueryPolicyKey`); a turn with another key
-  ends it and starts Claude Code again with `resume`, so entering or leaving
-  full access, or a config change, restarts it. A different model goes in with
-  `setModel` and a different permission mode with `setPermissionMode`; the
-  mode Claude Code last reported (`system/init`, `system/status`) counts, so a
-  session Claude moved into plan mode by itself goes back to the thread's
-  mode, as in T3. When either control fails (an older CLI) the session is
-  replaced.
+  the config's `env`, system prompt and `allowDangerouslySkipPermissions` —
+  forms its launch key (T3's `claudeEffectiveQueryPolicyKey`); a turn with
+  another key ends it and starts Claude Code again with `resume`, so entering
+  or leaving full access, or a config change, restarts it. A different model
+  goes in with `setModel` and a different permission mode with
+  `setPermissionMode`; the mode Claude Code last reported (`system/init`,
+  `system/status`) counts, so a session Claude moved into plan mode by itself
+  goes back to the thread's mode, as in T3. When either control fails (an
+  older CLI) the session is replaced. The node's own environment is passed
+  through on launch (with the state reports of D104) and is not part of the
+  key, so a change to it keeps a running Claude Code.
 - **D100. An interrupt stops the turn, not the session.** Claude Code answers
   it with an aborted result and stays up for the next turn; one that does
   not take the interrupt is ended. A turn that lets go of its session before
@@ -148,13 +150,14 @@ specific to Claude: the runtime is a plugin on the public API.
 - **D101. A thread's live session ends with the thread.** The plugin requires
   `storage.eventlog@1` and follows the `threads` stream: a thread archived
   (`threads.thread.updated` with `archivedAt`) or deleted
-  (`threads.thread.deleted`) ends its live session, and a deleted thread's
-  `session/<threadId>` record is forgotten for good: a turn still letting go
-  of the session does not write it back. Only a string `archivedAt` counts as
-  an archive. A deleted thread's record writes run one after another, so the
-  delete lands after a write already on its way, and a later write is skipped;
-  that guard is dropped once no turn of the thread is left running.
-  Deactivating the plugin ends every live session.
+  (`threads.thread.deleted`) ends its live session, also one a turn given up
+  on still holds, and a deleted thread's `session/<threadId>` record is
+  forgotten for good: a turn still letting go of the session does not write it
+  back. Only a string `archivedAt` counts as an archive. A deleted thread's
+  record writes run one after another, so the delete lands after a write
+  already on its way, and a later write is skipped; that guard is dropped once
+  no turn of the thread is left running. Deactivating the plugin ends every
+  live session.
 - **D102. Turns Claude missed are handed to it.** A thread that ran on Claude,
   went to another agent and came back gives Claude, in front of the new
   message, a transcript of the turns after Claude's last one (the user's

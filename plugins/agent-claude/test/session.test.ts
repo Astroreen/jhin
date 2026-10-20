@@ -172,24 +172,28 @@ describe("jhin.agent-claude: live sessions", () => {
     expect(calls[1]!.closed).toBe(true);
   });
 
-  it("launches with the node's environment, part of the launch key", async () => {
-    const { turn, calls } = node([answering("one"), answering("two")]);
+  it("keys a session on the configured environment, not the node's", async () => {
+    const { turn, calls, settings } = node([answering("one", "two"), answering("three")]);
     await turn();
     expect(calls[0]!.options.env).toMatchObject({
       PATH: process.env["PATH"],
       CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
     });
+    // The node's environment passes through: a change to it keeps the running Claude Code.
     process.env["JHIN_TEST_LAUNCH_KEY"] = "changed";
     try {
-      await turn();
+      expect(answers(await turn())).toEqual(["two"]);
     } finally {
       delete process.env["JHIN_TEST_LAUNCH_KEY"];
     }
-    // Another environment needs another process: resumed, not reused.
+    expect(calls).toHaveLength(1);
+    // The config's `env` is part of the launch key: another one starts Claude Code again.
+    settings.config = Config.parse({ env: { CLAUDE_CONFIG_DIR: "/other" } });
+    expect(answers(await turn())).toEqual(["three"]);
     expect(calls).toHaveLength(2);
     expect(calls[1]!.options).toMatchObject({
       resume: THREAD,
-      env: { JHIN_TEST_LAUNCH_KEY: "changed" },
+      env: { CLAUDE_CONFIG_DIR: "/other", PATH: process.env["PATH"] },
     });
   });
 

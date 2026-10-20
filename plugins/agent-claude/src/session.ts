@@ -73,8 +73,11 @@ export interface LiveSessions {
     readonly options: Options;
     readonly message: SDKUserMessage;
   }): Promise<Lease>;
-  /** Ends a thread's live session, if any; a turn holding it ends too. */
-  close(threadId: string): boolean;
+  /**
+   * Ends a thread's live session when no turn holds it, or with `force` also one a turn
+   * runs on (that turn fails). False when nothing was ended.
+   */
+  close(threadId: string, force?: boolean): boolean;
   /** Ends every live session no turn holds; held ones end with their turn's release. */
   closeIdle(): number;
   /**
@@ -134,6 +137,8 @@ interface Live {
   permissionMode: PermissionMode | undefined;
   /** Taken by a turn, from its lease until its release. */
   busy: boolean;
+  /** The last lease that came for it: an earlier one still on its way gives up. */
+  leasedBy: object | undefined;
   /**
    * Whether this Claude Code marks the frames of a turn with the uuid of the message it
    * answers (`user_message_uuid(s)`), as current CLIs do: then a turn takes only its own.
@@ -168,16 +173,13 @@ function launchKey(options: Options): string {
 }
 
 /**
- * The options a session launches with: the environment Claude Code gets (the node's when
- * the caller names none), with running and idle reports on. Idle is Claude Code's own word
- * that it took every message, the way out for a turn whose frames it does not mark (D104).
- * The environment is part of the launch key, like everything a process cannot change.
+ * The environment Claude Code launches with: the node's, the caller's `env` (the config's,
+ * which alone is in the launch key) and running and idle reports. Idle is Claude Code's own
+ * word that it took every message, the way out for a turn whose frames it does not mark
+ * (D104). The node's own environment is passed through, not keyed on.
  */
-function withStateReports(options: Options): Options {
-  return {
-    ...options,
-    env: { ...(options.env ?? process.env), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
-  };
+function launchEnvironment(env: Options["env"]): Record<string, string | undefined> {
+  return { ...process.env, ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" };
 }
 
 /** The longest delay setTimeout takes. */
@@ -229,8 +231,6 @@ export function createLiveSessions(options: {
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
 }): LiveSessions {
   const sessions = new Map<string, Live>();
-  /** The latest lease of each thread: an earlier one still on its way gives up. */
-  const latest = new Map<string, object>();
 
   const close = (live: Live, reason?: Error) => {
     if (live.closed) return;
@@ -270,6 +270,7 @@ export function createLiveSessions(options: {
       prompt: input.read(),
       options: {
         ...launch,
+        env: launchEnvironment(launch.env),
         // Set once per process: Claude Code asks whichever turn holds the session.
         canUseTool: (toolName, toolInput, permission) =>
           live.holder?.canUseTool?.(toolName, toolInput, permission) ??
@@ -284,6 +285,7 @@ export function createLiveSessions(options: {
       model: launch.model,
       permissionMode: launch.permissionMode,
       busy: true,
+      leasedBy: undefined,
       stamps: false,
       reportsState: false,
       settled: false,
@@ -353,12 +355,11 @@ export function createLiveSessions(options: {
   };
 
   return {
-    async lease({ threadId, options: requested, message }) {
-      const launch = withStateReports(requested);
+    async lease({ threadId, options: launch, message }) {
       const key = launchKey(launch);
       const self = {};
-      latest.set(threadId, self);
       let live = sessions.get(threadId);
+      if (live !== undefined) live.leasedBy = self;
       // Busy means its turn was given up on: the threads plugin runs one turn of a thread
       // at a time and frees the thread only once a turn ended, or once a stop stopped
       // waiting for a turn that ignored its interrupt. The newer turn takes Claude Code
@@ -377,7 +378,7 @@ export function createLiveSessions(options: {
         live.idleSince = undefined;
         const adapted = await adapt(live, launch);
         // A later turn of the thread came meanwhile and took the session: it wins.
-        if (latest.get(threadId) !== self) throw new SessionTakenOver();
+        if (live.leasedBy !== self) throw new SessionTakenOver();
         if (!adapted) {
           close(live);
           live = undefined;
@@ -478,9 +479,9 @@ export function createLiveSessions(options: {
         },
       };
     },
-    close(threadId) {
+    close(threadId, force = false) {
       const live = sessions.get(threadId);
-      if (live === undefined) return false;
+      if (live === undefined || (live.busy && !force)) return false;
       close(live);
       return true;
     },

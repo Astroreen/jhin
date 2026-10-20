@@ -259,6 +259,38 @@ describe("jhin.agent-claude: the plugin", () => {
     expect(calls[0]!.closed).toBe(true);
   });
 
+  it("ends a Claude Code a turn runs on only when forced", async () => {
+    let running!: () => void;
+    const started = new Promise<void>((resolve) => (running = resolve));
+    const { client, calls } = await node(async function* () {
+      yield init();
+      running();
+      // The turn runs until its Claude Code is ended.
+      await new Promise(() => undefined);
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    const failed = until(client, thread.id, "agent.turn.failed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await started;
+
+    expect(await client.call("claude.sessions.close", {})).toEqual({ closed: 0 });
+    expect(await client.call("claude.sessions.close", { threadId: thread.id })).toEqual({
+      closed: 0,
+    });
+    expect(calls[0]!.closed).toBe(false);
+    expect(await client.call("claude.sessions.list", {})).toEqual([
+      expect.objectContaining({ threadId: thread.id, busy: true }),
+    ]);
+
+    expect(await client.call("claude.sessions.close", { force: true })).toEqual({ closed: 1 });
+    expect(calls[0]!.closed).toBe(true);
+    expect((await failed).at(-1)?.payload).toMatchObject({
+      error: expect.stringContaining("Claude Code ended the turn without a result."),
+    });
+  });
+
   it("records Claude Code's failure as a failed turn", async () => {
     const { client } = await node(async function* () {
       yield init();

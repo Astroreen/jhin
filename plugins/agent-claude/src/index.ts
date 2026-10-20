@@ -407,7 +407,7 @@ export function claudePlugin(query: QueryFunction) {
           const payload = event.payload as { id?: unknown; archivedAt?: unknown } | null;
           if (typeof payload?.id !== "string") return;
           if (event.type === ThreadEvents.threadDeleted) {
-            runtime.live.close(payload.id);
+            runtime.live.close(payload.id, true);
             void sessions.forget(payload.id, runtime.settled(payload.id)).catch((error: unknown) =>
               context.log.warn("could not forget the claude session", {
                 threadId: payload.id,
@@ -418,7 +418,7 @@ export function claudePlugin(query: QueryFunction) {
             event.type === ThreadEvents.threadUpdated &&
             typeof payload.archivedAt === "string"
           ) {
-            runtime.live.close(payload.id);
+            runtime.live.close(payload.id, true);
           }
         }),
       );
@@ -435,12 +435,21 @@ export function claudePlugin(query: QueryFunction) {
       context.commands.register({
         name: "claude.sessions.close",
         description:
-          "Ends a thread's running Claude Code, or every one: a turn running on it fails, the thread's next turn resumes its session",
-        input: z.object({ threadId: z.string().optional() }),
+          "Ends the running Claude Code of a thread, or of every thread, that no turn runs on; `force` ends busy ones too (their turn fails). The thread's next turn resumes its session",
+        input: z.object({
+          threadId: z.string().optional(),
+          force: z
+            .boolean()
+            .default(false)
+            .describe("Also end a Claude Code a turn is running on; that turn fails"),
+        }),
         output: z.object({ closed: z.number().int() }),
         permissions: ["threads.write"],
-        handler: ({ threadId }) => {
-          if (threadId !== undefined) return { closed: runtime.live.close(threadId) ? 1 : 0 };
+        handler: ({ threadId, force }) => {
+          if (threadId !== undefined) {
+            return { closed: runtime.live.close(threadId, force) ? 1 : 0 };
+          }
+          if (!force) return { closed: runtime.live.closeIdle() };
           const closed = runtime.live.list().length;
           runtime.live.dispose();
           return { closed };
