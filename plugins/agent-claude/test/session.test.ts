@@ -213,6 +213,21 @@ describe("jhin.agent-claude: live sessions", () => {
     expect(calls[1]!.options).toMatchObject({ resume: THREAD });
   });
 
+  it("waits out an idle time longer than a timer can, then ends the session", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const limit = 2 ** 31 - 1;
+    // 50 000 minutes, about 34.7 days: more than one setTimeout can wait (about 24.8 days).
+    const { turn, calls } = node([answering("one")], { sessionIdleMinutes: 50_000 });
+    const idleMs = 50_000 * 60_000;
+    await turn();
+    vi.advanceTimersByTime(limit);
+    expect(calls[0]!.closed).toBe(false);
+    vi.advanceTimersByTime(idleMs - limit - 1);
+    expect(calls[0]!.closed).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(calls[0]!.closed).toBe(true);
+  });
+
   it("waits for the next turn without end when the idle minutes are 0", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { turn, calls } = node([answering("one", "two")], { sessionIdleMinutes: 0 });

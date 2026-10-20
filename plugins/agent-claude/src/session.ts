@@ -182,7 +182,7 @@ function launchEnvironment(env: Options["env"]): Record<string, string | undefin
   return { ...process.env, ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" };
 }
 
-/** The longest delay setTimeout takes. */
+/** The longest delay setTimeout takes (2^31 - 1 ms, about 24.8 days). */
 const MAX_TIMER = 2 ** 31 - 1;
 
 /** The uuids of the messages a frame answers, when Claude Code marked it. */
@@ -254,10 +254,18 @@ export function createLiveSessions(options: {
     clearTimeout(live.timer);
     live.timer = undefined;
     if (idleMs <= 0 || live.idleSince === undefined) return;
-    const left = Math.max(0, live.idleSince.getTime() + idleMs - Date.now());
-    // setTimeout fires at once past its limit (about 24.8 days): that is the most.
-    live.timer = setTimeout(() => close(live), Math.min(left, MAX_TIMER));
-    live.timer.unref?.();
+    const deadline = live.idleSince.getTime() + idleMs;
+    // setTimeout fires at once past its limit (about 24.8 days): a longer wait goes in
+    // steps of at most that, each counting what is left until the deadline.
+    const wait = () => {
+      const left = Math.max(0, deadline - Date.now());
+      live.timer = setTimeout(
+        () => (left > MAX_TIMER ? wait() : close(live)),
+        Math.min(left, MAX_TIMER),
+      );
+      live.timer.unref?.();
+    };
+    wait();
   };
 
   const open = (threadId: string, key: string, launch: Options): Live => {
