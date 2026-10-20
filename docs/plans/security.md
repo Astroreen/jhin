@@ -126,13 +126,15 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   layer keeps providing it (a list item cannot be left out, so it is
   refused). Inside a list the marker names its secret's place
   (`••••••#keys.1`), so a reordered or shortened list keeps each secret;
-  `isRedactedSecret` (`@jhin/host-api`) tells either form. An invalid
+  `isRedactedSecret` (`@jhin/host-api`) tells either form; an address that
+  names no secret of the layer is refused. An invalid
   section's `error` is the kernel's summary, an issue about a secret says
   only that it is not valid, and other issues have every secret's text (of
   4 characters or more) replaced by the marker, since a refinement may quote
   it (elsewhere the
   marker is a value like any other). The walk follows `$ref`, unions and
-  intersections, `if`/`then`/`else`, tuples (`prefixItems`), `items`,
+  intersections, `if`/`then`/`else`, `dependentSchemas`, tuples
+  (`prefixItems`), `items`, `contains`, `unevaluatedProperties`,
   `properties`, `patternProperties` and `additionalProperties`; a section
   no plugin defines has no schema, so all of its scalars are redacted. A marker where nothing is stored is refused
   (`CONFIG_SECRET_MISSING`). The settings page's `<hidden secret>`
@@ -264,6 +266,10 @@ scripts, revoking the client disconnects it, and `jhin pair` prints the link
 and QR code.
 
 ## Deferred
+
+- `host.config.get` and `host.config.patch` convert every section's schema
+  (`config.jsonSchema()`) to pick one; a kernel call for one section's
+  schema, or a cache cleared on `kernel.config.changed`, would avoid it.
 
 - Secrets stay in the config files in clear (D417): T3 keeps them in a
   secret store apart from its settings. A key store (the OS keychain, an

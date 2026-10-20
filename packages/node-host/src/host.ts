@@ -347,9 +347,10 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
                 : undefined;
             return {
               // With issues listed, the summary is said without their messages.
+              // The kernel's own summary, never a message that might quote a value.
               error:
                 issues === undefined
-                  ? scrub(error instanceof Error ? error.message : String(error), secrets)
+                  ? `Config section ${section} is invalid`
                   : `Config section ${section} is invalid (${issues.length} ${issues.length === 1 ? "issue" : "issues"})`,
               ...(issues === undefined
                 ? {}

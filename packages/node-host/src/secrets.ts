@@ -33,10 +33,13 @@ function deref(schema: unknown, root: Schema, depth = 0): Schema {
 
 /** Schemas a value at this level must also match: unions, intersections, conditional branches. */
 function branchesOf(schema: Schema): unknown[] {
-  return ["anyOf", "oneOf", "allOf", "then", "else"].flatMap((key) => {
+  const branches = ["anyOf", "oneOf", "allOf", "then", "else"].flatMap((key) => {
     const value = schema[key];
     return Array.isArray(value) ? value : isObject(value) ? [value] : [];
   });
+  // Schemas that apply when a key is present describe the same object.
+  const dependent = schema["dependentSchemas"];
+  return isObject(dependent) ? [...branches, ...Object.values(dependent)] : branches;
 }
 
 /** A secret here: marked itself, or on a branch (the non-null branch of a nullable field). */
@@ -60,19 +63,23 @@ function schemasOfKey(schema: Schema, key: string): unknown[] {
       }
     }
   }
-  if (found.length === 0 && isObject(schema["additionalProperties"])) {
-    found.push(schema["additionalProperties"]);
+  if (found.length === 0) {
+    for (const rest of ["additionalProperties", "unevaluatedProperties"]) {
+      if (isObject(schema[rest])) found.push(schema[rest]);
+    }
   }
   return found;
 }
 
 /** The schemas that describe item `index` of a list: a tuple's own, else `items`. */
 function schemasOfItem(schema: Schema, index: number): unknown[] {
+  const found: unknown[] = [];
   const prefix = schema["prefixItems"];
-  if (Array.isArray(prefix) && index < prefix.length) return [prefix[index]];
-  return schema["items"] === undefined || typeof schema["items"] === "boolean"
-    ? []
-    : [schema["items"]];
+  if (Array.isArray(prefix) && index < prefix.length) found.push(prefix[index]);
+  else if (isObject(schema["items"])) found.push(schema["items"]);
+  // Some item matches `contains`; any may be the one, so each is read by it too.
+  if (isObject(schema["contains"])) found.push(schema["contains"]);
+  return found;
 }
 
 /**
@@ -228,6 +235,13 @@ export function restoreSecrets(
       // An addressed marker is the secret at that place, wherever it was moved to.
       const address =
         value === SECRET_REDACTED ? path : value.slice(SECRET_REDACTED.length + 1).split(".");
+      // An address names a secret of the layer, nothing else.
+      if (value !== SECRET_REDACTED && !secretPaths(schema, stored).includes(address.join("."))) {
+        throw Object.assign(new Error(`${value} names no secret of this section`), {
+          code: "CONFIG_SECRET_MISSING",
+          details: { path: [...label, ...path].join(".") },
+        });
+      }
       const kept = at(stored, address);
       if (kept !== undefined && kept !== null) return kept;
       const other = at(elsewhere, address);

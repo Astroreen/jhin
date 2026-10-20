@@ -174,4 +174,37 @@ describe("config secrets (security.md D417)", () => {
       restoreSecrets(schema, { keys: [shown.keys[2], shown.keys[1]] }, stored, undefined),
     ).toEqual({ keys: ["third", "second"] });
   });
+
+  it("refuses an addressed marker that names no secret", () => {
+    const schema = schemaOf(
+      z.object({ keys: z.array(z.string().meta({ writeOnly: true })), name: z.string() }),
+    );
+    expect(() =>
+      restoreSecrets(
+        schema,
+        { keys: [`${SECRET_REDACTED}#name`] },
+        { keys: [], name: "n" },
+        undefined,
+      ),
+    ).toThrow(expect.objectContaining({ code: "CONFIG_SECRET_MISSING" }));
+  });
+
+  it("follows dependent schemas, unevaluated properties and contains", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        a: {
+          type: "object",
+          dependentSchemas: { kind: { properties: { key: { writeOnly: true } } } },
+        },
+        b: { type: "object", unevaluatedProperties: { type: "string", writeOnly: true } },
+        c: { type: "array", contains: { type: "string", writeOnly: true } },
+      },
+    };
+    expect(redactSecrets(schema, { a: { kind: 1, key: "k" }, b: { x: "y" }, c: ["z"] })).toEqual({
+      a: { kind: 1, key: SECRET_REDACTED },
+      b: { x: SECRET_REDACTED },
+      c: [`${SECRET_REDACTED}#c.0`],
+    });
+  });
 });
