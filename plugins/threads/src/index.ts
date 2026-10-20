@@ -38,6 +38,7 @@ import {
   type EventLog,
   type Json,
   type KeyValueStore,
+  type NewEvent,
   type RecordWrite,
 } from "@jhin/storage-api";
 
@@ -909,6 +910,7 @@ export default definePlugin({
       messageId?: string,
       /** Set once the turn's start is recorded: from then on the message is the turn's. */
       progress?: { recorded: boolean },
+      alongside?: { events: readonly NewEvent[]; records: readonly RecordWrite[] },
     ): Promise<void> {
       const { turnId } = entry;
       const stream = threadStream(thread.id);
@@ -920,18 +922,23 @@ export default definePlugin({
         // that stops in between finds it on restart and closes it.
         await setTurnStatus(thread.id, turnId, runtime.agentId, "running");
         try {
-          await log.append(stream, [
-            {
-              type: ThreadEvents.turnStarted,
-              payload: {
-                turnId,
-                agentId: runtime.agentId,
-                input: input as unknown as Json,
-                ...(settings as Record<string, Json>),
-                ...(messageId === undefined ? {} : { messageId }),
+          await log.append(
+            stream,
+            [
+              {
+                type: ThreadEvents.turnStarted,
+                payload: {
+                  turnId,
+                  agentId: runtime.agentId,
+                  input: input as unknown as Json,
+                  ...(settings as Record<string, Json>),
+                  ...(messageId === undefined ? {} : { messageId }),
+                },
               },
-            },
-          ]);
+              ...(alongside?.events ?? []),
+            ],
+            alongside === undefined ? undefined : { records: alongside.records },
+          );
           if (progress !== undefined) progress.recorded = true;
         } catch (error) {
           // Never started: the record does not say it runs.
@@ -1998,7 +2005,12 @@ export default definePlugin({
     async function startTurn(
       threadId: string,
       { text, attachments, ...requested }: Outgoing,
-      options: { messageId?: string; progress?: { recorded: boolean } } = {},
+      options: {
+        messageId?: string;
+        progress?: { recorded: boolean };
+        /** Written with the turn's start: a queued message leaving its queue. */
+        alongside?: { events: readonly NewEvent[]; records: readonly RecordWrite[] };
+      } = {},
     ): Promise<string> {
       // Early answers for the common cases; the reservation below decides.
       const read = await getThread(threadId);
@@ -2087,6 +2099,7 @@ export default definePlugin({
         reservation,
         options.messageId,
         options.progress,
+        options.alongside,
       );
       return turnId;
     }
@@ -2108,24 +2121,29 @@ export default definePlugin({
     // A thread's queue lives in the node's storage, so it outlives the page that
     // sent its messages; each change is announced on the thread's stream.
     const queueKey = (threadId: string) => `queue/${threadId}`;
+    /** Queued messages being promoted to a steer: they do not start a turn of their own. */
+    const steering = new Set<string>();
     const readQueue = async (threadId: string): Promise<Queue> => {
       const value = await kv.get(NAMESPACE, queueKey(threadId));
       return value === undefined ? { messages: [] } : Queue.parse(value);
     };
     /** Writes a queue with its `threads.queue.updated` event in one write; an empty queue holds nothing. */
-    const writeQueue = async (threadId: string, queue: Queue): Promise<Queue> => {
+    /** The event and the record that write a queue; an empty queue holds nothing. */
+    const queueWrite = (threadId: string, queue: Queue) => {
       const next: Queue = queue.messages.length === 0 ? { messages: [] } : queue;
-      await log.append(
-        threadStream(threadId),
-        [{ type: ThreadEvents.queueUpdated, payload: viewOf(next) as unknown as Json }],
-        {
-          records: [
-            next.messages.length === 0
-              ? { namespace: NAMESPACE, key: queueKey(threadId), delete: true }
-              : { namespace: NAMESPACE, key: queueKey(threadId), value: next as unknown as Json },
-          ],
-        },
-      );
+      const record: RecordWrite =
+        next.messages.length === 0
+          ? { namespace: NAMESPACE, key: queueKey(threadId), delete: true }
+          : { namespace: NAMESPACE, key: queueKey(threadId), value: next as unknown as Json };
+      return {
+        next,
+        event: { type: ThreadEvents.queueUpdated, payload: viewOf(next) as unknown as Json },
+        record,
+      };
+    };
+    const writeQueue = async (threadId: string, queue: Queue): Promise<Queue> => {
+      const { next, event, record } = queueWrite(threadId, queue);
+      await log.append(threadStream(threadId), [event], { records: [record] });
       return next;
     };
     /**
@@ -2163,12 +2181,19 @@ export default definePlugin({
         if (stopping || head === undefined || queue.held !== undefined || active.has(threadId)) {
           return;
         }
+        // Promoted to a steer at this moment: it goes into the turn, not after it.
+        if (steering.has(head.id)) return;
         const { id, createdAt: _createdAt, updatedAt: _updatedAt, ...message } = head;
         const progress = { recorded: false };
-        // Out of the queue first: once the turn's start is recorded the message is the turn's.
-        const rest = await writeQueue(threadId, { messages: queue.messages.slice(1) });
+        // It leaves the queue in the write that records its turn's start, so a
+        // crash leaves it in one place or the other, never in neither.
+        const { event, record } = queueWrite(threadId, { messages: queue.messages.slice(1) });
         try {
-          await startTurn(threadId, message, { messageId: id, progress });
+          await startTurn(threadId, message, {
+            messageId: id,
+            progress,
+            alongside: { events: [event], records: [record] },
+          });
         } catch (error) {
           if (deleted.has(threadId)) return;
           const at = now();
@@ -2182,10 +2207,13 @@ export default definePlugin({
                   error: String((error as Error).message ?? error),
                   at,
                 };
-          await writeQueue(threadId, {
-            messages: progress.recorded ? rest.messages : [head, ...rest.messages],
-            ...(held === undefined ? {} : { held }),
-          });
+          if (progress.recorded) {
+            if (held !== undefined) {
+              await writeQueue(threadId, { messages: queue.messages.slice(1), held });
+            }
+          } else if (held !== undefined) {
+            await writeQueue(threadId, { ...queue, held });
+          }
         }
       }).catch(failed("could not deliver a queued message", threadId));
     }
@@ -2462,10 +2490,17 @@ export default definePlugin({
       input: QueueTarget,
       output: z.object({ messageId: z.string(), turnId: z.string() }),
       permissions: ["threads.write"],
-      handler: ({ threadId, messageId }) =>
-        changeQueue(threadId, async (queue) => {
-          const message = queue.messages.find((item) => item.id === messageId);
-          if (message === undefined) throw notQueued(threadId, messageId);
+      handler: async ({ threadId, messageId }) => {
+        // The queue is held only to read the message: the agent is waited for
+        // outside it, so a slow start blocks no other change of the queue.
+        const message = await changeQueue(threadId, async (queue) => {
+          const found = queue.messages.find((item) => item.id === messageId);
+          if (found === undefined) throw notQueued(threadId, messageId);
+          // Not delivered as a turn of its own meanwhile.
+          steering.add(messageId);
+          return found;
+        });
+        try {
           const turnId = active.get(threadId)?.turnId;
           if (turnId === undefined || !(await steerInto(threadId, messageId, message))) {
             throw new ThreadsError(
@@ -2476,12 +2511,19 @@ export default definePlugin({
               },
             );
           }
-          await writeQueue(threadId, {
-            ...queue,
-            messages: queue.messages.filter((item) => item.id !== messageId),
-          });
+          await changeQueue(threadId, (queue) =>
+            writeQueue(threadId, {
+              ...queue,
+              messages: queue.messages.filter((item) => item.id !== messageId),
+            }),
+          );
           return { messageId, turnId };
-        }),
+        } finally {
+          steering.delete(messageId);
+          // A turn that ended meanwhile left the queue to go on.
+          if (!active.has(threadId)) void deliver(threadId);
+        }
+      },
     });
 
     context.commands.register({

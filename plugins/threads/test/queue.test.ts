@@ -265,6 +265,121 @@ describe("jhin.threads: the queue (D201–D203)", () => {
   });
 });
 
+describe("jhin.threads: the queue under failures (D202)", () => {
+  it("holds the queue after a queued message's turn failed", async () => {
+    const { client, thread, events, watched } = await holding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "/fail now" });
+    await client.call("threads.queue.add", { threadId: thread.id, text: "after" });
+    await client.call("threads.steer", { threadId: thread.id, text: "end it" });
+
+    await untilCount(watched, ThreadEvents.turnFailed, 1);
+    await watched.untilMatch(() => lastQueue(events)?.held !== undefined);
+    expect(lastQueue(events)).toMatchObject({
+      messages: [{ text: "after" }],
+      held: { reason: "failed" },
+    });
+    expect(started(events)).toEqual(["/hold on", "/fail now"]);
+  });
+
+  it("takes a message out of its queue in the write that starts its turn", async () => {
+    const { client, thread, storage, watched } = await holding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "next" });
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    const writes: { types: string[]; keys: string[] }[] = [];
+    log.append = async (stream, batch, options) => {
+      if (stream === `thread/${thread.id}`) {
+        writes.push({
+          types: batch.map((event) => event.type),
+          keys: (options?.records ?? []).map((record) => record.key),
+        });
+      }
+      return append(stream, batch, options);
+    };
+    await client.call("threads.steer", { threadId: thread.id, text: "go" });
+    await untilCount(watched, ThreadEvents.turnCompleted, 2);
+
+    expect(
+      writes.find((write) => write.types[0] === ThreadEvents.turnStarted && write.types.length > 1),
+    ).toEqual({
+      types: [ThreadEvents.turnStarted, ThreadEvents.queueUpdated],
+      keys: [`queue/${thread.id}`],
+    });
+  });
+
+  it("keeps a message whose turn could not be recorded, and holds the queue", async () => {
+    const { client, thread, storage, events, watched } = await holding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "next" });
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    log.append = async (stream, batch, options) => {
+      if (
+        batch.some(
+          (event) => (event.payload as { input?: { text?: string } }).input?.text === "next",
+        )
+      ) {
+        log.append = append;
+        throw new Error("disk full");
+      }
+      return append(stream, batch, options);
+    };
+    await client.call("threads.steer", { threadId: thread.id, text: "go" });
+
+    await watched.untilMatch(() => lastQueue(events)?.held?.reason === "refused");
+    expect(lastQueue(events)).toMatchObject({
+      messages: [{ text: "next" }],
+      held: { reason: "refused", error: expect.stringContaining("disk full") },
+    });
+  });
+
+  it("records a stopped turn's end even when its queue cannot be read", async () => {
+    const { client, thread, storage, until } = await holding();
+    const kv = storage.storage.kv;
+    const get = kv.get.bind(kv);
+    kv.get = async (namespace, key) => {
+      if (key === `queue/${thread.id}`) {
+        kv.get = get;
+        throw new Error("disk unreadable");
+      }
+      return get(namespace, key);
+    };
+    await client.call("threads.interrupt", { threadId: thread.id });
+    await until(ThreadEvents.turnInterrupted);
+    // The thread is free again.
+    await client.call("threads.send", { threadId: thread.id, text: "again" });
+  });
+
+  it("refuses to promote a message while the turn is being stopped, and keeps it", async () => {
+    const { client, thread, events, until, watched } = await holding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "a", messageId: "a" });
+    await client.call("threads.interrupt", { threadId: thread.id });
+    await expect(
+      client.call("threads.queue.steer", { threadId: thread.id, messageId: "a" }),
+    ).rejects.toMatchObject({ code: "TURN_NOT_RUNNING" });
+    await until(ThreadEvents.turnInterrupted);
+    await watched.untilMatch(() => lastQueue(events)?.held !== undefined);
+    expect(lastQueue(events)?.messages.map((message) => message.id)).toEqual(["a"]);
+    expect(count(events, ThreadEvents.turnSteered)).toBe(0);
+  });
+
+  it("removes a queued message's images when edited with none", async () => {
+    const { client, thread } = await holding();
+    await client.call("threads.queue.add", {
+      threadId: thread.id,
+      text: "with image",
+      attachments: [IMAGE],
+      messageId: "img",
+    });
+    const view = await client.call<QueueView>("threads.queue.edit", {
+      threadId: thread.id,
+      messageId: "img",
+      text: "without",
+      attachments: [],
+    });
+    expect(view.messages[0]).toMatchObject({ text: "without", attachments: [] });
+  });
+});
+
 describe("jhin.threads: steering (D204, D205)", () => {
   it("steers a message into the running turn and records it before the answer", async () => {
     const { client, thread, events, until } = await holding();

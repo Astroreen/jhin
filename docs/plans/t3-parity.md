@@ -760,7 +760,8 @@ and resetting it clears them), with a screenshot.
   settings, an optional `messageId` the caller chooses) starts a turn at once
   when the thread is free and its queue empty and not held, and answers
   `{ messageId, turnId }`; otherwise the message joins the end of the queue
-  (`{ messageId }`). Adding a `messageId` already queued changes nothing. Each
+  (`{ messageId }`). Adding a `messageId` still queued changes nothing; one
+  that already left the queue is taken again (see Deferred). Each
   change of the queue appends `threads.queue.updated` to the thread's stream
   with the whole queue (`messages` in order, each with its text, settings,
   times and its attachments' names and types; the images stay in the
@@ -769,8 +770,9 @@ and resetting it clears them), with a screenshot.
 - **D202. Delivery, and a queue held as T3 holds it.** When a turn ends the
   node starts the first queued message as the thread's next turn, through
   the same path as `threads.send` (titles, settings, D68's reservation): the
-  message leaves the queue as its turn starts and goes back first if the
-  node refuses it. A turn that was
+  message leaves the queue in the same write that records its turn's start,
+  so a crash leaves it in the queue or in a turn, never in neither; one the
+  node refuses stays first. A turn that was
   interrupted or failed, also one the node closed after a restart, holds
   the queue (`held: { reason: "interrupted" | "failed", turnId }`), as T3's
   `queueHeld` does after a stop, until `threads.queue.resume`; the hold is
@@ -781,8 +783,9 @@ and resetting it clears them), with a screenshot.
   deleting it drops the queue. When the node starts, every free thread with
   a queue that is not held starts its next message.
 - **D203. Editing, reordering and cancelling queued messages**, T3's
-  commands: `threads.queue.edit` (`messageId`, `text`, `attachments?`; a
-  message left with neither is refused, `MESSAGE_EMPTY`),
+  commands: `threads.queue.edit` (`messageId`, `text`, `attachments?`:
+  absent keeps the images, `[]` removes them; a message left with neither
+  text nor images is refused, `MESSAGE_EMPTY`),
   `threads.queue.reorder` (`messageId`, `beforeMessageId`: the message it
   goes before, `null` for the end) and `threads.queue.cancel`. A message not
   in the queue (sent or cancelled meanwhile) is `QUEUED_MESSAGE_NOT_FOUND`.
@@ -805,7 +808,9 @@ and resetting it clears them), with a screenshot.
   refuses it (`STEER_UNSUPPORTED`). `threads.queue.steer` (T3's
   promote-to-steer) moves a queued message into the running turn the same
   way; it leaves the queue only once the agent took it, and without a running
-  turn it is refused (`TURN_NOT_RUNNING`).
+  turn it is refused (`TURN_NOT_RUNNING`). The queue is locked only to read
+  the message and to remove it, not while the agent takes it, and the message
+  does not start a turn of its own meanwhile.
 - **D206. Steering Claude Code**, as T3's `steerTurn`: the message goes into
   the live query the turn holds (D98) as a user message with
   `priority: "now"`. Claude Code then ends its current response with a
