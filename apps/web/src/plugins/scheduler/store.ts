@@ -52,7 +52,12 @@ export function applySchedulerEvent(
   if (event.type === SchedulerEvents.taskDeleted) {
     const id = (event.payload as { id?: unknown } | null)?.id;
     if (typeof id !== "string") return view;
-    return { ...view, tasks: view.tasks.filter((item) => item.id !== id) };
+    // A deleted task keeps no URL state; a read of it still in flight finds no task.
+    return {
+      ...view,
+      tasks: view.tasks.filter((item) => item.id !== id),
+      urls: withUrlState(view, id, undefined),
+    };
   }
   return view;
 }

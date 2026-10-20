@@ -59,6 +59,17 @@ describe("applySchedulerEvent", () => {
       payload: { id: "t1" },
     });
     expect(deleted.tasks.map((t) => t.id)).toEqual(["h1", "t2"]);
+    // A webhook task deleted while its URL loads leaves no loading state behind.
+    const loading = applySchedulerEvent(view, {
+      type: SchedulerEvents.taskUpdated,
+      payload: hook(null),
+    });
+    expect(loading.urls?.get("h1")).toBe("loading");
+    const gone = applySchedulerEvent(loading, {
+      type: SchedulerEvents.taskDeleted,
+      payload: { id: "h1" },
+    });
+    expect(gone.urls?.has("h1")).toBe(false);
     expect(applySchedulerEvent(view, { type: "other", payload: {} })).toBe(view);
     expect(applySchedulerEvent(view, { type: SchedulerEvents.taskUpdated, payload: null })).toBe(
       view,
