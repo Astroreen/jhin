@@ -13,7 +13,7 @@ import { Alert, AlertAction, AlertDescription, Button, Slot } from "@jhin/ui";
 import { ArchiveRestoreIcon, ChevronDownIcon, CircleAlertIcon, XIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { buildPromptHistory } from "../../lib/composer.ts";
+import { buildPromptHistory, threadDraftKey } from "../../lib/composer.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread, threadMayExist } from "../../lib/thread-actions.ts";
@@ -31,10 +31,6 @@ import { useAgents, useChat } from "./services.ts";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
 import { TimelineView } from "./timeline.tsx";
-
-/** Where a thread's composer keeps its draft. */
-const threadDraftKey = (target: NodeTarget, threadId: string) =>
-  `${targetKey(target)}|thread|${threadId}`;
 
 /** Stick to the end while the user is there; a pill brings them back otherwise. */
 function useStickToEnd(dependency: unknown) {
@@ -145,6 +141,9 @@ export function ThreadView(props: {
   // Commands reach this composer, which has focus when the thread opens (as in T3 Code).
   useEffect(() => {
     chat.composer.current = {
+      draftKey: threadDraftKey(target, threadId),
+      restore: (draft) => handle.current?.restore(draft),
+      draft: () => handle.current?.draft(),
       focus: () => handle.current?.focus(),
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),
@@ -407,7 +406,13 @@ export function ThreadView(props: {
               ) : (
                 <TimelineView
                   format={settings.timestampFormat}
-                  onRetry={(text, attachments) => send(text, attachments)}
+                  onRetry={(turn) =>
+                    chat.context.commands
+                      .execute("thread.regenerate", { ...target, threadId, turnId: turn.turnId })
+                      // The command shows its own toast.
+                      .catch(() => undefined)
+                  }
+                  thread={{ target, threadId }}
                   timeline={timeline}
                   {...(savePlan === undefined || props.project === undefined
                     ? {}
@@ -529,6 +534,9 @@ export function DraftView(props: {
   useEffect(() => setSelection(lastSelection), [lastSelection]);
   useEffect(() => {
     chat.composer.current = {
+      draftKey: `${targetKey(target)}|draft|${project.id}`,
+      restore: (draft) => handle.current?.restore(draft),
+      draft: () => handle.current?.draft(),
       focus: () => handle.current?.focus(),
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),

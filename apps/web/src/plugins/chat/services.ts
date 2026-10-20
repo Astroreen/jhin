@@ -13,7 +13,7 @@ import type { PluginContext } from "@jhin/sdk";
 import type { Dialogs, SlotRegistry, Toasts } from "@jhin/ui";
 import { createContext, useContext, useEffect, useSyncExternalStore } from "react";
 
-import type { Drafts } from "../../lib/composer.ts";
+import type { ComposerDraft, Drafts } from "../../lib/composer.ts";
 import type { Unconfirmed } from "./unconfirmed.ts";
 
 /** Agents of each node, from `agents.list`, refreshed when a picker opens or after a while. */
@@ -125,6 +125,12 @@ export interface ChatServices {
 export interface ComposerHandle {
   current:
     | {
+        /** Where it keeps its draft: the thread (or new thread) it belongs to. */
+        readonly draftKey: string;
+        /** Puts a sent message back after what is typed ("Edit from here"). */
+        restore(draft: ComposerDraft): void;
+        /** What it holds now, before its draft is stored. */
+        draft(): ComposerDraft | undefined;
         focus(): void;
         toggleModelPicker(): void;
         cycleRuntimeMode(): void;

@@ -1021,21 +1021,34 @@ for, built from the same rewind.
   of a sent message gets `Undo2Icon` "Edit from here" while no turn runs.
   It asks "Edit from here?" / "Rewind chat to before this message. Your
   prompt and attachments return to the composer." with "Cancel" and "Revert
-  and keep changes" (W3 adds "Revert files too"), rolls back to the turn
-  before, and puts the text after the composer's draft (a blank line
-  between) and the images back into the composer; nothing is sent. The
-  client command is `thread.edit-from-here` (`{ node, remote?, threadId,
-  turnId }`); the hover rows are the slot `chat.message.actions` (props
+  and keep changes" (W3 adds "Revert files too"), rolls back to before the
+  turn and puts the text after the composer's draft (a blank line between)
+  and the images back into the composer; nothing is sent. The node does the
+  parts that must agree: `threads.turn` (`{ threadId, turnId }`) tells a
+  turn's message and settings, and `threads.rollback` takes `beforeTurnId`,
+  resolved while the thread is held. Before rewinding, the images must fit
+  beside what the composer holds (T3's "Make room for this message's
+  attachments in the composer before rewinding."); after it the message is
+  never lost: it goes to the thread's composer if it is on screen, else to
+  the thread's stored draft. Without a dialog to ask, nothing is rewound
+  unless the call says `confirmed`. The client command is
+  `thread.edit-from-here` (`{ node, remote?, threadId, turnId, confirmed?
+  }`); the hover rows are the slot `chat.message.actions` (props
   `ChatMessageActionProps`), so the copy button, this one and D224's are
   contributions.
 - **D224. Regenerating = dropping a turn and sending its message again.**
   `threads.regenerate` (`{ threadId, turnId? }`, the latest turn by
   default) rolls back to before the turn and starts a turn with its text,
-  images, agent, model and modes, as one command: nothing can start in
-  between. The timeline's "Retry" of a failed or stopped latest turn runs it
-  (it sent the message again before, leaving the failed turn above), and the
-  latest final answer gets "Regenerate response" (`RefreshCwIcon`) in its
-  hover row; client command `thread.regenerate`.
+  images, agent (the thread's when that agent is gone from the node), the
+  model it named (else the thread's) and modes, as one command: nothing can
+  start in between, and the drop is the last step before the turn starts,
+  so only a turn whose first event cannot be written leaves the turns
+  dropped without a new one. The timeline's "Retry" of a failed latest turn
+  runs it (it sent the message again before, leaving the failed turn
+  above); a stopped turn keeps its "Run interrupted" divider without a
+  retry, as before (T3's "Resume thread" is Deferred), and the latest final
+  answer gets "Regenerate response" (`RefreshCwIcon`) in its hover row;
+  client command `thread.regenerate`.
 - **D225. Forking at a turn.** `threads.fork` (`{ threadId, turnId?, title?
   }`, the latest ended turn by default) creates a thread in the same project
   with the parent's agent, model and modes, titled "<title> fork" (T3's),
@@ -1132,7 +1145,8 @@ and as events arrive).
   from before D222, lets the next turn resume a session that still holds
   the dropped turns, D222; and the Claude Code session a new one replaces is
   left on disk),
-  T3's in-thread find (`mod+f`), a search index on disk (the node reads
+  T3's in-thread find (`mod+f`), T3's "Resume thread" for a stopped turn
+  ("Continue where you left off.", which belongs with the composer, W6), a search index on disk (the node reads
   each thread's texts once per run, D227) and T3's Lineage panel listing a
   thread's forks.
 - Sidebar (T3's layout, D70, D75–D79): settling on a merged pull request,

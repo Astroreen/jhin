@@ -2163,6 +2163,11 @@ export default definePlugin({
         progress?: { recorded: boolean };
         /** Written with the turn's start: a queued message leaving its queue. */
         alongside?: { events: readonly NewEvent[]; records: readonly RecordWrite[] };
+        /**
+         * Runs once the thread is held for the turn, as the last step before it
+         * starts: a regeneration drops the turn it runs again (D224).
+         */
+        prepare?: (thread: Thread) => Promise<Thread>;
       } = {},
     ): Promise<string> {
       // Early answers for the common cases; the reservation below decides.
@@ -2240,6 +2245,7 @@ export default definePlugin({
           );
           return changed ? next : latest;
         });
+        if (options.prepare !== undefined) thread = await options.prepare(thread);
       } catch (error) {
         reservation.finish();
         throw error;
@@ -2867,7 +2873,7 @@ export default definePlugin({
      */
     async function rollback(
       threadId: string,
-      toTurnId: string | undefined,
+      to: { turnId?: string | undefined } | { beforeTurnId: string },
     ): Promise<{ thread: Thread; turnIds: string[] }> {
       const read = await getThread(threadId);
       if (read.archivedAt !== undefined) throw archivedError(threadId);
@@ -2889,7 +2895,12 @@ export default definePlugin({
       try {
         const thread = await getThread(threadId);
         if (thread.archivedAt !== undefined) throw archivedError(threadId);
-        return await dropTurns(thread, toTurnId);
+        if (!("beforeTurnId" in to)) return await dropTurns(thread, to.turnId);
+        // Resolved under the hold: no turn comes or goes in between.
+        const { turns } = await visibleTurns(threadId);
+        const index = turns.indexOf(to.beforeTurnId);
+        if (index === -1) throw turnNotFound(threadId, to.beforeTurnId);
+        return await dropTurns(thread, turns[index - 1]);
       } finally {
         rollingBack.delete(threadId);
         release();
@@ -2901,11 +2912,129 @@ export default definePlugin({
     context.commands.register({
       name: "threads.rollback",
       description:
-        "Drops the turns of a thread after `turnId` (every turn without it); their events stay in the log, marked dropped. Refused while a turn runs",
-      input: z.object({ threadId: z.string(), turnId: z.string().optional() }),
+        "Drops the turns of a thread after `turnId` (every turn without it), or `beforeTurnId` and every turn after it; their events stay in the log, marked dropped. Refused while a turn runs",
+      input: z
+        .object({
+          threadId: z.string(),
+          turnId: z.string().optional(),
+          beforeTurnId: z.string().optional(),
+        })
+        .refine(
+          (input) => input.turnId === undefined || input.beforeTurnId === undefined,
+          "takes `turnId` or `beforeTurnId`, not both",
+        ),
       output: z.object({ thread: Thread, turnIds: z.array(z.string()) }),
       permissions: ["threads.write"],
-      handler: ({ threadId, turnId }) => rollback(threadId, turnId),
+      handler: ({ threadId, turnId, beforeTurnId }) =>
+        rollback(threadId, beforeTurnId === undefined ? { turnId } : { beforeTurnId }),
+    });
+
+    context.commands.register({
+      name: "threads.turn",
+      description:
+        "A turn the thread shows: the message it started with and the agent, model and modes it ran with",
+      input: z.object({ threadId: z.string(), turnId: z.string() }),
+      output: z.object({
+        turnId: z.string(),
+        input: z.object({ text: z.string(), attachments: z.array(Attachment).optional() }),
+        ...AgentSettings,
+        agentId: z.string(),
+        /** The turn before it, which a rollback to before this one keeps last. */
+        previousTurnId: z.string().optional(),
+      }),
+      permissions: ["threads.read"],
+      handler: async ({ threadId, turnId }) => {
+        await getThread(threadId);
+        const { events, turns } = await visibleTurns(threadId);
+        const index = turns.indexOf(turnId);
+        if (index === -1) throw turnNotFound(threadId, turnId);
+        const started = events.find(
+          (event) => event.type === ThreadEvents.turnStarted && turnIdOf(event) === turnId,
+        );
+        const payload = (started?.payload ?? {}) as {
+          agentId?: string;
+          input?: { text?: string; attachments?: TurnAttachment[] };
+          model?: string;
+          runtimeMode?: RuntimeMode;
+          interactionMode?: InteractionMode;
+        };
+        const previous = turns[index - 1];
+        return {
+          turnId,
+          agentId: payload.agentId ?? "",
+          input: {
+            text: payload.input?.text ?? "",
+            ...(payload.input?.attachments === undefined
+              ? {}
+              : { attachments: [...payload.input.attachments] }),
+          },
+          ...(payload.model === undefined ? {} : { model: payload.model }),
+          ...(payload.runtimeMode === undefined ? {} : { runtimeMode: payload.runtimeMode }),
+          ...(payload.interactionMode === undefined
+            ? {}
+            : { interactionMode: payload.interactionMode }),
+          ...(previous === undefined ? {} : { previousTurnId: previous }),
+        };
+      },
+    });
+
+    context.commands.register({
+      name: "threads.regenerate",
+      description:
+        "Runs a turn's message again: drops the turn (the latest by default) and every later one, then starts a turn with its text, images, agent, model and modes",
+      input: z.object({ threadId: z.string(), turnId: z.string().optional() }),
+      output: z.object({ turnId: z.string(), turnIds: z.array(z.string()) }),
+      permissions: ["threads.write"],
+      handler: async ({ threadId, turnId }) => {
+        const { events, turns } = await visibleTurns(threadId);
+        const target = turnId ?? turns.at(-1);
+        if (target === undefined) {
+          throw new ThreadsError("TURN_NOT_FOUND", "The thread has no turn to regenerate", {
+            threadId,
+          });
+        }
+        if (!turns.includes(target)) throw turnNotFound(threadId, target);
+        const started = events.find(
+          (event) => event.type === ThreadEvents.turnStarted && turnIdOf(event) === target,
+        );
+        const payload = (started?.payload ?? {}) as {
+          input?: { text?: string; attachments?: TurnAttachment[] };
+          agentId?: string;
+          model?: string;
+          runtimeMode?: RuntimeMode;
+          interactionMode?: InteractionMode;
+        };
+        let dropped: string[] = [];
+        // Its agent, unless that is gone from the node: then the thread's, as a send.
+        const own = payload.agentId !== undefined && registry.get(payload.agentId) !== undefined;
+        const next = await startTurn(
+          threadId,
+          {
+            text: payload.input?.text ?? "",
+            ...(payload.input?.attachments === undefined
+              ? {}
+              : { attachments: payload.input.attachments }),
+            ...(own ? { agentId: payload.agentId } : {}),
+            ...(own && payload.model !== undefined ? { model: payload.model } : {}),
+            ...(payload.runtimeMode === undefined ? {} : { runtimeMode: payload.runtimeMode }),
+            ...(payload.interactionMode === undefined
+              ? {}
+              : { interactionMode: payload.interactionMode }),
+          },
+          {
+            prepare: async (thread) => {
+              // Read again now that the thread is held: a rollback may have come first.
+              const current = await visibleTurns(threadId);
+              const index = current.turns.indexOf(target);
+              if (index === -1) throw turnNotFound(threadId, target);
+              const result = await dropTurns(thread, current.turns[index - 1]);
+              dropped = result.turnIds;
+              return result.thread;
+            },
+          },
+        );
+        return { turnId: next, turnIds: dropped };
+      },
     });
 
     context.commands.register({

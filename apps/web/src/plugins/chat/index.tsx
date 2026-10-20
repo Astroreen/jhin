@@ -51,6 +51,7 @@ import {
   type ComposerHandle,
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
+import { registerHistory } from "./history.tsx";
 import { implementPlan } from "./plan-follow-up.ts";
 import { createUnconfirmed } from "./unconfirmed.ts";
 
@@ -493,6 +494,14 @@ export const chatPlugin = builtin(
       context.subscriptions.add(
         slots.contribute("app.main", { id: "jhin.chat.view", component: Main }),
       );
+      registerHistory(context, {
+        threads,
+        slots,
+        drafts: services.drafts,
+        composer,
+        dialogs,
+        toasts,
+      });
     },
   }),
 );
