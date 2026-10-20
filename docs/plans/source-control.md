@@ -1,7 +1,9 @@
 # Source control plan
 
 Status: **implemented** (status, diffs, branches, pull requests, the card's
-indicators, the branch toolbar and the diff panel). This file records how
+indicators, the branch toolbar and the diff panel); W3 (checkpoints,
+reverting, worktrees, D240–D259) **in progress**: the turn hooks and a
+thread's own working directory (D241, D242) are done. This file records how
 Jhin reads the git repositories of a node's projects, how the web client
 shows them as T3 Code does, what was left out and what is deferred.
 
@@ -207,14 +209,203 @@ pull request and diff on the card, a file written on disk showing on it, the
 diff panel's files and branch scope, switching branches from the toolbar,
 with screenshots).
 
+### Checkpoints, reverting and worktrees (W3, `t3-roadmap.md`)
+
+- **D240. Reference: T3 Code `eb7b35ac` (D53)**: `apps/server/src/vcs/GitVcsDriver.ts`
+  (the checkpoint operations), `checkpointing/CheckpointDiffQuery.ts` and `Diffs.ts`,
+  `orchestration-v2/CheckpointService.ts`, `CheckpointCaptureService.ts`,
+  `RunExecutionService.ts` (when checkpoints are taken), `CheckpointRollbackService.ts`
+  and `CheckpointRestoreSafety.ts` (reverting), `vcs/GitVcsDriverCore.ts` (worktrees,
+  fetching from origin), `worktreesDirectory.ts`, `ThreadLaunchService.ts` (the
+  workspace strategy), `mcp/toolkits/worktree/*` (handing a thread over), and in
+  `apps/web` `DiffPanel.tsx` (the turn scopes), `chat/ChangedFilesTree.tsx` and
+  `MessagesTimeline.tsx` (the changed files card, "Edit from here"),
+  `BranchToolbar*.tsx` (the workspace selector), `ThreadStatusIndicators.tsx` (the
+  worktree icon) and `worktreeCleanup.ts`. T3's setup scripts and their progress
+  card, branch names generated from the first message, cleanup rules, submodules
+  and nested checkpoint scopes (subagents) are not ported (Deferred).
+- **D241. `jhin.threads` has public hooks around a turn** (`ThreadHooks` in
+  `@jhin/agent-api`, next to the existing `threads.title`): `threads.turn.start`
+  runs once `agent.turn.started` is recorded and before the agent starts, with
+  `TurnHookInput` (thread, project, turn, agent and the `cwd` the agent runs in);
+  a hook that throws fails the turn with its error and the agent never starts.
+  `threads.turn.end` runs once the agent is done or given up on, before the
+  turn's last event is recorded, with the same input and how the turn ends
+  (`completed`, `interrupted`, `failed`); a hook that throws is logged and the
+  turn still ends. A client that sees a turn end therefore sees what the end
+  hooks did (a checkpoint). The hooks hold the thread like the rest of the turn
+  (a stop waits for them, so archiving or deleting a thread may wait up to a
+  stuck hook's deadline instead of `STOP_TIMEOUT_MS`; the node's shutdown
+  drain stays bounded by its own 5 s), but at most `turnHookTimeoutSeconds`
+  (a `jhin.threads` setting, 60 s by default; 0 gives hooks no time): a start hook that has not answered by then fails
+  the turn like one that throws (the agent never works without what the hooks
+  do first), an end hook is logged and the turn ends; a stop that gives up
+  meanwhile records no second end. A hook given up on is not cancelled (hooks
+  get no abort signal, so their input stays serialisable): one whose work may
+  overlap the thread's next turn keeps it apart itself.
+- **D242. A thread may have a working directory of its own** (`worktreePath`, T3's
+  field): an existing absolute directory, usually a git worktree of its project,
+  set with `threads.create` or `threads.update` (`null` clears it; a running turn
+  keeps the directory it started in). It is stored by its real path and, like
+  `projects.create`'s path, may be any directory the node can read: whoever holds
+  `threads.write` may point a thread's agent anywhere, as they may make any
+  folder a project (scoped permissions are W13's). Its turns run there:
+  `TurnRequest.cwd` is `worktreePath ?? project.path`, so every runtime of
+  `agent.runtime@1` runs in it without a change (Claude Code's live session
+  restarts when its directory changes, and a session it cannot resume there
+  continues from the thread's transcript, D91). A turn whose directory is gone
+  fails before the agent starts ("The thread's worktree … no longer exists"),
+  after the start hooks had their chance to bring it back (D256).
+
+#### Checkpoints
+
+- **D243. A checkpoint is a commit of the whole working tree under
+  `refs/jhin/checkpoints/<threadId>/<n>`**, `n` the thread's turn count: `0` before
+  its first turn, `N` after turn `N` (T3's ordinals). It is written as T3 writes
+  it, never touching the user's index, `HEAD` or branch: a scratch index
+  `<git-common-dir>/jhin-checkpoint-index-<uuid>` (`GIT_INDEX_FILE`), `read-tree
+  HEAD`, `add -A -- .` (untracked files in, ignored ones out), `write-tree`,
+  `commit-tree -p HEAD -m "jhin checkpoint ref=<ref>"` as "Jhin"
+  (`jhin@users.noreply.github.com`), `update-ref`, with T3's index guards
+  (`core.fsmonitor=false`, `core.splitIndex=false`, …) and fsync flags; the scratch
+  index is removed afterwards. Refs under `refs/jhin/` are never pushed, never
+  listed as branches and keep the commits from `git gc`. Checkpoint operations run
+  one at a time per working directory. T3's fast path (reusing the real index)
+  and sparse-checkout handling are not ported.
+- **D244. When**: the source control plugin hooks the turn (D241). At a turn's
+  start, the checkpoint `N-1` is written if it is missing (normally the previous
+  turn's end wrote it; the first turn writes `0`). At its end, a turn that
+  completed or was interrupted writes `N`; a failed one writes nothing, and the
+  next turn writes its own start. `N` counts the thread's turns as the plugin saw
+  them start. A project that is no repository (or the scratch project) records
+  the turn as `missing`; a write that fails records `error` and is logged; neither
+  ever fails the turn. Checkpoints are taken in the turn's `cwd`, so a worktree
+  thread's checkpoints live in its worktree's repository.
+- **D245. A turn's checkpoint record** (`TurnCheckpoint` in
+  `@jhin/source-control-api`): thread, turn id, turn count, ref, status
+  (`ready`, `missing`, `error`, `stale` once reverted past), the files the turn
+  changed (at most 200 listed, totals over all) and when. The files are the
+  numstat of `N-1 → N` without what came from `HEAD` moving (T3's
+  `listAuthoredPaths`: a pull, a rebase or a checkout the agent ran is not its
+  authored change). Records live in `storage.kv`, survive restarts and go with
+  their thread; each change is appended to the `source-control` stream as
+  `source-control.checkpoint.changed`, and `git.status` returns each thread's
+  latest one (`checkpoints`). `git.checkpoints { threadId }` lists a thread's,
+  oldest first. The capability becomes `source-control.git@1.1`.
+- **D246. Turn diffs**: `git.diff` takes the scope `turn` with `threadId` and
+  `turn` (a turn count): the diff of `N-1 → N` of that thread, files filtered as
+  in D245, `ignoreWhitespace` as for the other scopes; `fromTurn` widens it
+  (`fromTurn → turn`, T3's full thread diff is `0 → N`). A turn without a ready
+  checkpoint answers `CHECKPOINT_UNAVAILABLE` ("Turn N has no checkpoint").
+- **D247. The diff panel offers T3's turn scopes**: the scope menu reads
+  "Changes", "Uncommitted", "Latest turn" and the submenu "Turn" with "Turn N"
+  items, newest first, each with its time; the trigger says "Latest turn" or
+  "Turn N" for a turn. A thread without checkpointed turns shows "No completed
+  turns yet."; loading a turn shows "Loading checkpoint diff...". The panel
+  follows the thread's checkpoints, so "Latest turn" moves on when a turn ends.
+- **D248. Under a turn that changed files, T3's changed files card**: "N changed
+  file(s)", `+A -D`, the files as a folder tree ("Expand all folders" /
+  "Collapse all folders" when there are folders) and "Open diff" (tooltip "Open
+  the full diff"); a file or "Open diff" opens the diff panel on that turn. The
+  card is the contribution `jhin.source-control.changed-files` to the new slot
+  `chat.turn.footer` (props `ChatTurnFooterProps`: target, thread, turn id, its
+  state), rendered after a turn's answer, so any plugin can put something under
+  a turn.
+- **D249. The card's diff count is the thread's latest turn** (T3's
+  `latestRunDiff`, a stub in `eb7b35ac`): the `+A −D` of the latest checkpointed
+  turn of the thread, nothing when it changed nothing. A thread without
+  checkpoints keeps D117's count (its directory's uncommitted changes while its
+  branch is checked out).
+
+#### Worktrees
+
+- **D250. Worktrees live under `<jhin home>/worktrees/<repository>/<branch>`**
+  (`/` in the branch becomes `-`; T3's `~/.t3/worktrees`), or under the
+  `worktreesDirectory` setting of `jhin.source-control` (absolute, `~` expanded,
+  not a filesystem root). Commands: `git.worktree.create { projectId, baseRef,
+  branch?, startFromOrigin? }` runs `git worktree add -b <branch> -- <path>
+  <start>`, `<branch>` defaulting to T3's temporary `jhin/<8 hex>` (`jhin-<8 hex>`
+  when a branch `jhin` exists); with `startFromOrigin` (and an `origin`) it first
+  runs `git fetch --quiet -- origin +refs/heads/<base>:refs/remotes/origin/<base>`
+  and starts from `origin/<base>` when that exists. `git.worktree.remove {
+  projectId, path, force? }` (`git worktree remove`, an already missing one is
+  pruned) and `git.worktree.list { projectId }` (`git worktree list
+  --porcelain`). Errors: `BRANCH_EXISTS`, `BRANCH_INVALID`, `WORKTREE_INVALID`,
+  `GIT_FAILED`. `git.write` for the first two, `git.read` for the list.
+- **D251. A worktree thread's source control is its worktree's.** The plugin
+  follows every directory a thread works in: the thread's branch (D113) is read
+  there, and each worktree in use has its own status, appended as
+  `source-control.worktree.changed` (a `ProjectStatus` with `worktreePath`) and
+  `source-control.worktree.removed`, listed in `git.status` as `worktrees`.
+  `git.diff`, `git.branches` and `git.checkout` with a `threadId` act on the
+  thread's directory. Older clients ignore the new events.
+- **D252. `threads.create` takes T3's `workspace`** (`ThreadLaunchService`'s
+  strategy, as W10's launch passes it): `{ type: "root" }` (the default),
+  `{ type: "worktree", baseRef, branch?, startFromOrigin? }` (the threads plugin
+  runs `git.worktree.create` and records the new path; without a source control
+  plugin it answers `WORKSPACE_UNSUPPORTED`) or `{ type: "existing_worktree",
+  worktreePath, branch? }`. `branch` checks that branch out in a new worktree, or
+  names the existing worktree's. The thread's branch stays the source control
+  plugin's record (D113), not a field of the thread.
+- **D253. The branch toolbar gets T3's workspace selector** (`aria-label
+  "Workspace"`): "Current checkout" (or "Current worktree"), "New worktree" and,
+  when another thread of the project has one, "Previous worktree" with its
+  branch. With "New worktree" the branch picker picks the base ("From <ref>",
+  `origin/<ref>` with "Start from origin") and its footer has T3's switch "Start
+  from origin" (tooltip "Creates the worktree from the latest matching branch on
+  origin instead of your local branch."). After the first message the selector
+  is a fixed label: "Local checkout", "Worktree". The draft's first send creates
+  the thread with that `workspace` through the new client hook `thread.create`
+  (D252); the chat's thread start runs it.
+- **D254. A worktree thread's card shows T3's worktree icon**
+  (`jhin.source-control.worktree`, order -50 in `sidebar.thread.indicators`):
+  `FolderGit2`, tooltip "Worktree: <folder> (<branch>)".
+- **D255. Deleting a thread offers to delete its worktree**, as T3 asks: when no
+  other thread works in it, "This thread is the only one linked to this
+  worktree:\n<folder>\n\nDelete the worktree too?"; the thread is deleted first,
+  then the worktree is removed with `force`; a failure shows "Failed to delete
+  worktree" ("Could not remove <folder>. <reason>"). It runs through the new
+  client hook `thread.delete` around the thread actions' delete.
+- **D256. Handing a thread over to a worktree**: `git.worktree.handoff {
+  threadId, branch?, baseRef?, startFromOrigin? }` creates a worktree (base: the
+  branch checked out in the project; detached → "Could not determine the current
+  branch of the project workspace (detached HEAD?). Pass baseRef explicitly.")
+  and moves the thread there; it refuses a thread already in a worktree ("Thread
+  '<id>' is already attached to worktree '<path>'.", `ALREADY_IN_WORKTREE`), an
+  archived one and a project that is no repository. Called by an agent during its
+  turn (MCP tool `git_worktree_handoff`), the turn finishes where it started and
+  the next one runs in the worktree. A thread's managed worktree (one under the
+  worktrees directory) that is gone is created again from its branch when the
+  thread's next turn starts (T3's "provider turn start recreating missing
+  worktree").
+
+#### Reverting
+
+- **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
+  W2's drop of later turns): the dialog "Edit from here?" ("Rewind chat to before
+  this message. Your prompt and attachments return to the composer.", Cancel,
+  "Revert files too", "Revert and keep changes"), refused while the thread runs
+  ("Interrupt the current turn before reverting checkpoints."). Reverting drops
+  the turns from that message on (W2), restores the files of checkpoint `N-1`
+  when asked, deletes the later checkpoint refs and marks their records `stale`.
+- **D258. Restoring files** is T3's: `git restore --source <checkpoint>
+  --worktree --staged -- .`, `git clean -fd -- .`, `git reset --quiet -- .`
+  (`HEAD`, the branch and ignored files untouched). Only a thread in a worktree no
+  other thread works in may restore files; otherwise it fails with T3's "File
+  restore requires an isolated worktree. This workspace may contain changes from
+  another thread. Rewind the conversation without restoring files instead."
+- **D259. The agent's own session goes back too**: a runtime that can rewind its
+  conversation does it when its thread is reverted (Claude Code: a new session
+  for turn 0, otherwise resuming at the target turn's last answer); others start
+  the next turn from the thread's transcript (D91).
+
 ## Deferred
 
 - **Checkpoints and per-turn diffs** (T3's "Latest turn" and "Turn N"
-  scopes, the card's latest-run diff): needs a snapshot of the working tree
-  when a turn starts and ends (a commit of a temporary index under
+  scopes, the card's latest-run diff): a snapshot of the working tree when a
+  turn starts and ends (a commit of a temporary index under
   `refs/jhin/checkpoints/<thread>/<turn>`, as T3's CheckpointStore keeps
-  them), taken before the agent starts. That needs a hook in `jhin.threads`
-  around a turn's start (none is public today) and its events per turn.
+  them), taken through the turn hooks of D241 (W3, D243–D249).
 - **Reverting to a turn**: restoring a checkpoint into the working tree and
   truncating the thread after it; needs checkpoints first, and a thread
   operation to drop later turns (threads are append-only today).

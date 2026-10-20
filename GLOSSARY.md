@@ -155,3 +155,9 @@ Words about Jhin:
   its project when the thread was created or one of its turns started or
   ended, or the one it was switched to. The card shows it, and whether it is
   still checked out.
+- **Worktree** — a git worktree of a project that a thread works in instead of
+  the project's own folder (`worktreePath`); its turns, branch, status and
+  diffs are the worktree's. The project's folder is the **local checkout**.
+- **Checkpoint** — a snapshot of a thread's working directory before its first
+  turn and after each turn (a commit under `refs/jhin/checkpoints/`), from
+  which a turn's diff is read and to which a thread can be reverted.

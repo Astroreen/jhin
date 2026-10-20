@@ -44,7 +44,7 @@ export interface TurnRequest {
   readonly input: TurnInput;
   /** Every earlier event of the thread, oldest first. */
   readonly history: readonly StoredEvent[];
-  /** The project's working directory. */
+  /** Where the agent works: the thread's worktree, else its project's directory. */
   readonly cwd: string;
   /** One of the runtime's `models`; its default model when absent. */
   readonly model?: string;
@@ -257,6 +257,47 @@ export const ThreadEvents = {
   turnInterrupted: "agent.turn.interrupted",
   turnFailed: "agent.turn.failed",
 } as const;
+
+/**
+ * Hooks of `jhin.threads` (kernel hooks: `before`, `around`, `after`). Other
+ * plugins hook in here instead of following events, when they must act
+ * before the agent starts or before clients learn that a turn ended.
+ */
+export const ThreadHooks = {
+  /** `{ thread, text }` → the title of a thread named by its first message. */
+  title: "threads.title",
+  /**
+   * `TurnHookInput`, run after `agent.turn.started` is recorded and before the
+   * agent starts: whatever it does happens before the agent touches anything.
+   * A hook that throws, or does not answer within `jhin.threads`'
+   * `turnHookTimeoutSeconds`, fails the turn; the agent never starts. A hook
+   * given up on is not cancelled: one that may still run when the thread's
+   * next turn starts keeps its work apart (the checkpoints lock per directory).
+   */
+  turnStart: "threads.turn.start",
+  /**
+   * `TurnEndHookInput`, run once the agent is done (or given up on) and before
+   * the turn's last event is recorded: clients that see the turn end see what
+   * the hook did. A hook that throws, or does not answer in time, is logged;
+   * the turn still ends.
+   */
+  turnEnd: "threads.turn.end",
+} as const;
+
+/** What the turn hooks get: the turn and where its agent runs. */
+export interface TurnHookInput {
+  readonly threadId: string;
+  readonly projectId: string;
+  readonly turnId: string;
+  readonly agentId: string;
+  /** The directory the agent runs in: the thread's worktree, else its project's. */
+  readonly cwd: string;
+}
+
+export interface TurnEndHookInput extends TurnHookInput {
+  /** How the turn ends. */
+  readonly status: "completed" | "interrupted" | "failed";
+}
 
 export const threadStream = (threadId: string) => `thread/${threadId}`;
 /** The node's index of projects and threads: one event per record created, changed or deleted. */
