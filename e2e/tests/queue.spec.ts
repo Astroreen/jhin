@@ -123,3 +123,34 @@ test("holds the queue after a stop until it is resumed, and steers with the othe
   );
   await expect(queued(page)).toHaveCount(0);
 });
+
+test("sends typed text the other way with ⌘/Ctrl+Shift+Enter when ⌘/Ctrl+Enter sends, and steers nothing else", async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "jhin.settings",
+      JSON.stringify({ "jhin.chat": { sendShortcut: "mod-enter" } }),
+    ),
+  );
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/hold first");
+  await message.press("ControlOrMeta+Enter");
+  const log = page.getByRole("log", { name: "Messages" });
+  await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText("Holding");
+  await message.fill("/hold queued");
+  await message.press("ControlOrMeta+Enter");
+  await expect(rows(page)).toHaveText([/\/hold queued/]);
+
+  // Typed text owns the chord: it steers the running turn, and the queued
+  // message is not steered with it; it starts a turn of its own afterwards.
+  await message.fill("typed");
+  await message.press("ControlOrMeta+Shift+Enter");
+  await expect(log.getByText("Echo: typed")).toBeVisible();
+  await expect(queued(page)).toHaveCount(0);
+  await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText("Holding");
+  await expect(log.getByText("Echo: /hold queued")).toHaveCount(0);
+  await page.getByRole("button", { name: "Stop generation" }).click();
+});

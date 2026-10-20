@@ -1329,6 +1329,8 @@ export function Composer(props: ComposerProps) {
         return;
       }
     }
+    // A shortcut took the key already (the dispatcher runs first): nothing more.
+    if (event.defaultPrevented) return;
     if (event.key !== "Enter" || event.altKey) return;
     const withMod = event.metaKey || event.ctrlKey;
     // While a turn runs the send key with ⌘/Ctrl (and Shift when ⌘/Ctrl sends)
