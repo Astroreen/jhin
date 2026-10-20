@@ -4,9 +4,8 @@ Status: **implemented** (status, diffs, branches, pull requests, the card's
 indicators, the branch toolbar and the diff panel); W3 (checkpoints,
 reverting, worktrees, D240–D259) **in progress**: the turn hooks and a
 thread's own working directory (D241, D242) are done; git actions (W4 of
-`t3-roadmap.md`, D260–D266), linked pull requests (D267–D270) and watching
-them (D271–D274) **implemented**; other forges (D275–D279) **in progress**.
-This file records how
+`t3-roadmap.md`, D260–D266), linked pull requests (D267–D270), watching them
+(D271–D274) and other forges (D275–D279) **implemented**. This file records how
 Jhin reads the git repositories of a node's projects, how the web client
 shows them as T3 Code does, what was left out and what is deferred.
 
@@ -633,6 +632,63 @@ quietly, refusing to watch a merged one, and closing with a word);
 Playwright `e2e/tests/git-actions.spec.ts` (watching from the thread's menu
 marks the badge's list, with a screenshot).
 
+### Other forges, GitHub Enterprise and forks (W4, D275–D279)
+
+- **D275. Pull requests come from the forge of the remote they go to**: a
+  driver per forge behind one interface in the plugin (find a branch's pull
+  request, read one by URL, create one, its template paths and its word for
+  a pull request, and the read of a watch where it has one), as T3 Code's
+  `packages/source-control-*` drivers at D53. Which forge a host is follows
+  T3's `detectSourceControlProviderFromRemoteUrl`: `forgeHosts` (config,
+  host → forge) first, then `githubHosts`, then by name: GitHub (`github.com`,
+  `*.ghe.com`, a `github` label), GitLab (`gitlab.com`, a `gitlab` label),
+  Azure DevOps (`dev.azure.com`, `*.visualstudio.com`), Bitbucket
+  (`bitbucket.org`, a `bitbucket` label), Forgejo and Gitea (`codeberg.org`, a
+  `forgejo` or `gitea` label). The remote pull requests go to is `upstream`
+  when there is one (a fork cloned as `origin`, as `gh` picks it), else
+  `origin`. `ProjectStatus.provider.kind` names the forge (additive), and the
+  client says "MR" for GitLab (T3's terminology) in the git actions.
+- **D276. GitHub Enterprise** is GitHub on another host: `gh` answers for the
+  host of the repository or URL it is given, so any host recognised as GitHub
+  (or listed) is read the same way; signing in is `gh auth login --hostname`.
+- **D277. Forks** (T3's `resolveBranchHeadContext` and
+  `matchesBranchHeadContext`): a branch pushed to another repository than the
+  one pull requests go to belongs to that fork's owner. A forge's answers for
+  the branch name are kept only when they match: from a fork, its owner's
+  cross-repository pull request; otherwise one that is not cross-repository,
+  so a same-named branch of someone's fork is never the branch's (GitHub
+  reads `isCrossRepository` and `headRepositoryOwner`, ten at most). A pull
+  request is opened from a fork as `owner:branch` (GitHub, Forgejo) or with
+  the fork as its source repository (Bitbucket).
+- **D278. GitLab, Azure DevOps and Forgejo through their CLIs**, as T3 calls
+  them: `glab mr list --source-branch … --all --output json`, `glab api
+  --hostname <host> projects/<path>/merge_requests[/<iid>]` (created with
+  `--raw-field` and the body as `--field description=@<file>`), the head
+  pipeline as its one check; `az repos pr list|show|create --detect true`
+  (completed is merged, abandoned closed; no checks, as in T3); `tea api
+  /repos/<owner>/<repo>/pulls…` and the head commit's statuses as checks, a
+  `WIP` title as a draft, tea's error body read even though it exits 0. Paths
+  `glabPath`, `azPath`, `teaPath`; T3's messages for a missing or signed-out
+  tool ("GitLab CLI (glab) is not installed on this node", "… run `glab auth
+  login` on this node", `az devops login`, `tea login add`).
+- **D279. Bitbucket Cloud through its REST API** (T3's BitbucketApi):
+  `GET /repositories/<ws>/<repo>/pullrequests?q=source.branch.name="…"`, its
+  `statuses` as checks, `POST …/pullrequests`; the token comes from the
+  node's environment (`JHIN_BITBUCKET_ACCESS_TOKEN`, or `JHIN_BITBUCKET_EMAIL`
+  and `JHIN_BITBUCKET_API_TOKEN`; `JHIN_BITBUCKET_API_BASE_URL` for another
+  base), "Bitbucket needs a token on this node: …" without one. Watching
+  (D272) reads GitHub only; `git.pr.watch` on another forge says so.
+
+The proof: `plugins/source-control/test/forges.test.ts` (which host is which
+forge, configured hosts first; matching forks; a GitHub Enterprise host; a
+fork's pull request told from another fork's same-named branch and none
+taken for a branch not pushed to a fork; opening a fork's pull request as
+`me:feature`; GitLab with a fake `glab`: the branch's merge request with its
+failed pipeline, a fork's newer one left out, creating one with "Created MR
+#6", refusing to watch it, `glab` missing; Azure DevOps with a fake `az`;
+Forgejo with a fake `tea` and its statuses; Bitbucket against a local server
+with the node's token, and without one).
+
 ## Deferred
 
 - **Checkpoints and per-turn diffs** (T3's "Latest turn" and "Turn N"
@@ -647,8 +703,11 @@ marks the badge's list, with a screenshot).
   workspace selector, "Start from origin", worktree cleanup): needs a thread
   to carry a working directory of its own and the agent runtimes to run in
   it (`agent.runtime@1.1` gets the project's directory).
-- Other forges, GitHub Enterprise hosts and forks (W4, D275–D279, in
-  progress).
+- Forges (D275–D279): watching a pull request on forges other than GitHub,
+  Bitbucket Server and Data Center, forges' icons and names in the client,
+  tokens kept as the node's secrets instead of its environment, creating a
+  GitLab merge request from a fork, and T3's checkout of a pull request into
+  a thread ("Checkout pull request").
 - Watching (D274): review thread comments on lines, required checks as the
   gate, read fingerprints, rate limit pauses, a notification for a wake and
   the sidebar's "Waiting" for a watched thread (W14 may take it).
@@ -664,9 +723,6 @@ marks the badge's list, with a screenshot).
 - Cancelling a running git action: writes to a project queue behind it (its
   writer is bounded by `writerTimeoutSeconds`, a commit's hooks by ten
   minutes), with no way to stop it from the client.
-- Other forges (GitLab, Bitbucket, Azure DevOps, Forgejo), GitHub
-  Enterprise hosts beyond `githubHosts`, and forks: `gh pr list --head`
-  matches the branch name only, so a same-named branch of a fork can match.
 - The diff panel's syntax highlighting, split view, file tree, comments and
   opening a file in an editor (T3 renders with `@pierre/diffs`); the base ref
   picker of the "Changes" scope.

@@ -57,22 +57,18 @@ import {
   type Repository,
 } from "./git.ts";
 import {
-  DEFAULT_TERMINOLOGY,
   aheadOfBase,
+  baseRemoteOf,
+  headContextOf,
+  remoteUrlOf,
   pull,
   runStackedAction,
   type PullRequestCreator,
 } from "./actions.ts";
-import {
-  GITHUB_TEMPLATE_PATHS,
-  GitHubUnavailable,
-  createPullRequest,
-  pullRequestAt,
-  pullRequestFor,
-  readWatch,
-  type Viewers,
-  remoteHost,
-} from "./github.ts";
+import { FORGE_KINDS, ForgeUnavailable, forgeKindOf, type Forge, type ForgeKind } from "./forge.ts";
+import { azureForge, bitbucketForge, forgejoForge, gitlabForge, siteOf } from "./forges.ts";
+import { githubForge, remoteHost } from "./github.ts";
+import type { Viewers } from "./github.ts";
 import { createLinks, type LinkTarget } from "./links.ts";
 import { createWatcher } from "./watcher.ts";
 import { watchTree, type TreeWatcher } from "./watch.ts";
@@ -80,6 +76,7 @@ import { agentWriter } from "./writer.ts";
 
 export { parseNumstat, parseStatus } from "./git.ts";
 export { remoteHost, rollupChecks } from "./github.ts";
+export { forgeKindOf, matchesHead } from "./forge.ts";
 export {
   parseCommitMessage,
   resolveAutoFeatureBranchName,
@@ -115,7 +112,14 @@ export const Config = z
     }),
     githubHosts: z.array(z.string()).default(["github.com"]).meta({
       title: "GitHub hosts",
-      description: "Remote hosts whose pull requests are read with the GitHub CLI (gh)",
+      description:
+        "Remote hosts whose pull requests are read with the GitHub CLI (gh), besides those recognised as GitHub (github.com, *.ghe.com, hosts named github)",
+      advanced: true,
+    }),
+    forgeHosts: z.record(z.string(), z.enum(FORGE_KINDS)).default({}).meta({
+      title: "Forge hosts",
+      description:
+        "Which forge a remote host is, for self-hosted ones whose name does not say (git.example.com: gitlab)",
       advanced: true,
     }),
     gitPath: z
@@ -125,6 +129,21 @@ export const Config = z
     ghPath: z.string().default("gh").meta({
       title: "GitHub CLI executable",
       description: "Path to gh, the GitHub CLI",
+      advanced: true,
+    }),
+    glabPath: z.string().default("glab").meta({
+      title: "GitLab CLI executable",
+      description: "Path to glab, the GitLab CLI",
+      advanced: true,
+    }),
+    azPath: z.string().default("az").meta({
+      title: "Azure CLI executable",
+      description: "Path to az, the Azure CLI with its azure-devops extension",
+      advanced: true,
+    }),
+    teaPath: z.string().default("tea").meta({
+      title: "Forgejo and Gitea CLI executable",
+      description: "Path to tea, the Gitea CLI (it serves Forgejo too)",
       advanced: true,
     }),
     watchSweepSeconds: z.number().int().min(0).max(86_400).default(120).meta({
@@ -181,6 +200,8 @@ interface Repo {
   pullRequests: Map<string, CachedPullRequest>;
   prChain: Promise<unknown>;
   provider: PullRequestProvider | null;
+  /** The forge of the remote pull requests go to, and that remote's URL. */
+  forge: { readonly kind: ForgeKind; readonly url: string } | undefined;
   /** When `gh` last could not answer; it is asked again once a refresh period has passed. */
   unavailableAt: number | undefined;
   disposed: boolean;
@@ -282,6 +303,15 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     const projectId = await threadProject(threadId).catch(() => undefined);
     return projectId === undefined ? undefined : repos.get(projectId);
   };
+  /** The forge a linked pull request's host is, working in its thread's project. */
+  const forgeOfLink = async (threadId: string, host: string): Promise<Forge | undefined> => {
+    const kind = kindOfHost(host);
+    if (kind === undefined) return undefined;
+    const repo = await repoOfThread(threadId);
+    const cwd =
+      repo?.location?.isRepo === true ? repo.location.root : (repo?.project.path ?? process.cwd());
+    return makeForge(kind, cwd, undefined);
+  };
   const links = createLinks({
     kv,
     append,
@@ -291,16 +321,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         ? null
         : ((await statusOf(repo).catch(() => undefined))?.remoteUrl ?? null);
     },
-    read: async (threadId, link) => {
-      const hosts = config().githubHosts.map((host) => host.toLowerCase());
-      if (!hosts.includes(link.host)) return undefined;
-      const repo = await repoOfThread(threadId);
-      const cwd =
-        repo?.location?.isRepo === true
-          ? repo.location.root
-          : (repo?.project.path ?? process.cwd());
-      return pullRequestAt(config().ghPath, cwd, link.url);
-    },
+    read: async (threadId, link) => (await forgeOfLink(threadId, link.host))?.at(link.url),
     warn: (message, fields) => context.log.warn(message, fields),
   });
 
@@ -310,16 +331,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const watcher = createWatcher({
     kv,
     links,
-    read: async (threadId, link) => {
-      const hosts = config().githubHosts.map((host) => host.toLowerCase());
-      if (!hosts.includes(link.host)) return undefined;
-      const repo = await repoOfThread(threadId);
-      const cwd =
-        repo?.location?.isRepo === true
-          ? repo.location.root
-          : (repo?.project.path ?? process.cwd());
-      return readWatch(config().ghPath, cwd, link.url, viewers);
-    },
+    read: async (threadId, link) => (await forgeOfLink(threadId, link.host))?.watch?.(link.url),
     thread: async (threadId) => {
       const answer = (await context.commands
         .execute("threads.get", { threadId })
@@ -413,6 +425,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       pullRequests: new Map(),
       prChain: Promise.resolve(),
       provider: null,
+      forge: undefined,
       unavailableAt: undefined,
       disposed: false,
     };
@@ -518,7 +531,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   };
 
   const read = async (repo: Repo): Promise<ProjectStatus> => {
-    const { gitPath, githubHosts } = config();
+    const { gitPath } = config();
     // Its folder lives in the node's home, which may well sit inside some repository.
     if (repo.project.scratch === true) {
       return nonRepository(repo.project.id, "Chats without a project have no repository");
@@ -552,11 +565,14 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         : local.head.branch === defaultBranch
           ? 0
           : await aheadOfBase(git, defaultBranch);
-    const host = remoteUrl === null ? undefined : remoteHost(remoteUrl);
-    const github =
-      host !== undefined && githubHosts.map((item) => item.toLowerCase()).includes(host);
-    if (!github) repo.provider = null;
-    else repo.provider ??= { kind: "github", available: true };
+    // Pull requests go to `upstream` when there is one (a fork cloned as `origin`).
+    const base = await baseRemoteOf(git);
+    const baseUrl = base === undefined ? undefined : await remoteUrlOf(git, base);
+    const host = baseUrl === undefined ? undefined : remoteHost(baseUrl);
+    const kind = host === undefined ? undefined : kindOfHost(host);
+    repo.forge = kind === undefined || baseUrl === undefined ? undefined : { kind, url: baseUrl };
+    if (kind === undefined) repo.provider = null;
+    else if (repo.provider?.kind !== kind) repo.provider = { kind, available: true };
     const status: ProjectStatus = {
       projectId: repo.project.id,
       isRepo: true,
@@ -614,7 +630,12 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       if (status === undefined || repo.disposed || repo.provider === null) return;
       const location = repo.location;
       if (location?.isRepo !== true) return;
-      const { ghPath, pullRequestRefreshSeconds } = config();
+      const { pullRequestRefreshSeconds } = config();
+      const forge =
+        repo.forge === undefined
+          ? undefined
+          : makeForge(repo.forge.kind, location.root, repo.forge.url);
+      if (forge === undefined) return;
       const ttl = pullRequestRefreshSeconds * 1000;
       // Missing, signed out or failing: asked again once per refresh period, not on every
       // change in between (with a period of 0, only when asked).
@@ -622,18 +643,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         const since = Date.now() - (repo.unavailableAt ?? 0);
         if (ttl === 0 || since < ttl) return;
       }
-      let provider: PullRequestProvider = { kind: "github", available: true };
+      let provider: PullRequestProvider = { kind: forge.kind, available: true };
       for (const branch of branchesOfInterest(repo, status)) {
         const cached = repo.pullRequests.get(branch);
         const stale =
           cached === undefined || (ttl > 0 && Date.now() - cached.at >= ttl) || options.force;
         if (!stale) continue;
         try {
-          const pr = await pullRequestFor(ghPath, location.root, branch);
+          const pr = await forge.find(await headContextOf(repo.git!, branch));
           repo.pullRequests.set(branch, { pr, at: Date.now() });
         } catch (error) {
-          if (!(error instanceof GitHubUnavailable)) throw error;
-          provider = { kind: "github", available: false, reason: error.message };
+          if (!(error instanceof ForgeUnavailable)) throw error;
+          provider = { kind: forge.kind, available: false, reason: error.message };
           if (error.kind === "failed") {
             context.log.warn("reading a pull request failed", {
               projectId: repo.project.id,
@@ -1053,23 +1074,49 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     },
   };
 
-  /** Where the repository's pull requests are created: GitHub through `gh`, when its remote is there. */
+  /** Which forge a host is: a configured one, a GitHub host of `githubHosts`, else by its name. */
+  function kindOfHost(host: string): ForgeKind | undefined {
+    const { forgeHosts, githubHosts } = config();
+    const github = githubHosts.map((item) => item.toLowerCase()).includes(host.toLowerCase());
+    return forgeKindOf(host, forgeHosts) ?? (github ? "github" : undefined);
+  }
+
+  /** A forge's driver working in `cwd`; `remoteUrl` names the repository pull requests go to. */
+  function makeForge(
+    kind: ForgeKind,
+    cwd: string,
+    remoteUrl: string | undefined,
+  ): Forge | undefined {
+    const tool = (key: "ghPath" | "glabPath" | "azPath" | "teaPath") => () => config()[key];
+    if (kind === "github") return githubForge(tool("ghPath"), cwd, viewers);
+    if (kind === "azure-devops")
+      return azureForge(tool("azPath"), { cwd, host: "", repository: "" });
+    const site =
+      remoteUrl === undefined ? { cwd, host: "", repository: "" } : siteOf(cwd, remoteUrl);
+    if (site === undefined) return undefined;
+    if (kind === "gitlab") return gitlabForge(tool("glabPath"), site);
+    if (kind === "bitbucket") return bitbucketForge(site);
+    return forgejoForge(tool("teaPath"), site);
+  }
+
+  /** Where the repository's pull requests are created: its remote's forge, when it has one. */
   function forgeOf(repo: Repo, root: string): PullRequestCreator | undefined {
-    if (repo.provider === null) return undefined;
-    const ghPath = () => config().ghPath;
+    if (repo.forge === undefined) return undefined;
+    const forge = makeForge(repo.forge.kind, root, repo.forge.url);
+    if (forge === undefined) return undefined;
     const git = repo.git!;
     return {
-      terminology: DEFAULT_TERMINOLOGY,
-      find: (branch) => pullRequestFor(ghPath(), root, branch),
+      terminology: forge.terminology,
+      find: async (branch) => forge.find(await headContextOf(git, branch)),
       create: async (request) => {
         try {
-          return await createPullRequest(ghPath(), root, request);
+          return await forge.create({ ...request, head: await headContextOf(git, request.head) });
         } catch (error) {
           throw new SourceControlError("PULL_REQUEST_FAILED", (error as Error).message);
         }
       },
       template: async (ref) => {
-        for (const path of GITHUB_TEMPLATE_PATHS) {
+        for (const path of forge.templatePaths) {
           const shown = await git(["show", `${ref}:${path}`], { ok: [0, 128] });
           if (shown.code === 0 && shown.stdout.trim() !== "") return shown.stdout;
         }
@@ -1363,13 +1410,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         target(input),
         "agent",
       );
-      // Only a forge whose pull requests a watch can read is watched (GitHub here, D274).
-      const githubHosts = config().githubHosts.map((host) => host.toLowerCase());
-      if (!githubHosts.includes(pullRequest.host)) {
+      // Only a forge whose pull requests a watch can read is watched (GitHub, D279).
+      const forge = await forgeOfLink(input.threadId, pullRequest.host);
+      if (forge?.watch === undefined) {
         if (!alreadyLinked) await links.unlink(input.threadId, target(input));
         throw new SourceControlError(
           "ACTION_UNAVAILABLE",
-          `Watching pull requests on ${pullRequest.host} is not supported on this node yet.`,
+          `Watching pull requests on ${forge?.name ?? pullRequest.host} is not supported on this node yet.`,
         );
       }
       let result: Awaited<ReturnType<typeof watcher.watch>>;

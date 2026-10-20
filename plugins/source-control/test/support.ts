@@ -283,3 +283,50 @@ export const ghPullRequest = (fields: Record<string, unknown> = {}) => ({
   statusCheckRollup: [],
   ...fields,
 });
+
+/**
+ * A fake CLI `name` on PATH: each call is logged to `calls`; `answer(args, value)`
+ * makes a call whose arguments start with `args` print `value` as JSON.
+ */
+export function fakeCli(name: string): {
+  answer(args: string, value: unknown): void;
+  calls(): string[];
+} {
+  const dir = temp(`jhin-fake-${name}-`);
+  let answers = 0;
+  const script = () => {
+    const cases = Fs.readdirSync(dir)
+      .filter((file) => file.startsWith("answer-"))
+      .toSorted()
+      .toReversed()
+      .map((file) => {
+        const args = Fs.readFileSync(Path.join(dir, file, "args"), "utf8");
+        return `  "${args.replaceAll('"', '\\\\"')}"*) cat "${Path.join(dir, file, "out")}"; exit 0;;`;
+      })
+      .join("\n");
+    Fs.writeFileSync(
+      Path.join(dir, name),
+      `#!/bin/sh\necho "$*" >> "${dir}/calls"\ncase "$*" in\n${cases}\nesac\necho "unexpected ${name} call: $*" >&2\nexit 1\n`,
+      { mode: 0o755 },
+    );
+  };
+  script();
+  const previous = process.env["PATH"];
+  process.env["PATH"] = `${dir}${Path.delimiter}${previous ?? ""}`;
+  cleanups.push(() => {
+    process.env["PATH"] = previous;
+  });
+  return {
+    answer(args, value) {
+      const folder = Path.join(dir, `answer-${String(answers++).padStart(4, "0")}`);
+      Fs.mkdirSync(folder);
+      Fs.writeFileSync(Path.join(folder, "args"), args);
+      Fs.writeFileSync(Path.join(folder, "out"), JSON.stringify(value));
+      script();
+    },
+    calls: () =>
+      Fs.existsSync(Path.join(dir, "calls"))
+        ? Fs.readFileSync(Path.join(dir, "calls"), "utf8").trim().split("\n")
+        : [],
+  };
+}
