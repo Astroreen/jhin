@@ -26,6 +26,7 @@ interface Thread {
   agentId?: string;
   model?: string;
   runtimeMode?: string;
+  updatedAt?: string;
   lastTurn?: { turnId: string; status: string };
 }
 
