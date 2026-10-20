@@ -444,6 +444,37 @@ describe("jhin.agent-claude: a turn", () => {
     expect(decision).toMatchObject({ behavior: "deny" });
   });
 
+  it("runs with the turn's model options: effort, settings, the model id and Ultrathink", async () => {
+    const script = async function* () {
+      yield init();
+      yield result();
+    };
+    const { turn, calls } = start([script], {
+      model: "claude-opus-5-5",
+      modelOptions: [
+        { id: "effort", value: "ultracode" },
+        { id: "fastMode", value: true },
+      ],
+    });
+    await drain(turn);
+    expect(calls[0]!.options).toMatchObject({
+      model: "claude-opus-5-5",
+      effort: "xhigh",
+      settings: { fastMode: true, ultracode: true },
+      thinking: { type: "adaptive", display: "summarized" },
+    });
+
+    const thinking = start([script], {
+      model: "claude-fable-5-1",
+      modelOptions: [{ id: "effort", value: "ultrathink" }],
+      input: { text: "fix it" },
+    });
+    await drain(thinking.turn);
+    expect(thinking.calls[0]!.options.effort).toBeUndefined();
+    expect(thinking.calls[0]!.options.settings).toBeUndefined();
+    expect(thinking.calls[0]!.prompt[0]!.message.content).toBe("Ultrathink:\nfix it");
+  });
+
   it("asks before a change in plan mode even with full access", async () => {
     let decision: unknown;
     const { turn } = start(

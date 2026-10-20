@@ -3,13 +3,25 @@
 // ComposerPendingApprovalPanel.tsx, ComposerPendingApprovalActions.tsx,
 // ComposerPendingUserInputPanel.tsx, QueuedRunsControl.tsx, ProviderModelPicker.tsx,
 // ContextWindowMeter.tsx and runtimeModeConfig.ts. A plain textarea replaces the rich editor.
-import type { AgentResponse, TokenUsage, TurnAttachment, UserQuestion } from "@jhin/agent-api";
+import type {
+  AgentResponse,
+  ModelOptionDescriptor,
+  ModelOptionSelection,
+  TokenUsage,
+  TurnAttachment,
+  UserQuestion,
+} from "@jhin/agent-api";
 import type { AgentInfo, ChatComposerContextProps, NodeTarget } from "@jhin/client-api";
 import {
+  Badge,
   Button,
   Menu,
+  MenuGroup,
   MenuItem,
   MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
   MenuTrigger,
   Popover,
   PopoverPopup,
@@ -27,6 +39,7 @@ import {
 } from "@jhin/ui";
 import {
   BotIcon,
+  BrainIcon,
   CheckIcon,
   ChevronDownIcon,
   EllipsisIcon,
@@ -60,6 +73,13 @@ import {
   type PromptHistoryPosition,
 } from "../../lib/composer.ts";
 import { formatTokens } from "../../lib/format.ts";
+import {
+  currentOptionValue,
+  selectedTraits,
+  traitSelectChange,
+  traitsTriggerLabel,
+  withOptionValue,
+} from "../../lib/model-options.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { isMacPlatform, currentPlatform } from "../../lib/keybindings.ts";
 import type { RequestItem } from "../../lib/timeline.ts";
@@ -81,6 +101,8 @@ export interface Selection {
   readonly model?: string;
   readonly runtimeMode?: string;
   readonly interactionMode?: string;
+  /** Values chosen for the model's options (D297). */
+  readonly modelOptions?: readonly ModelOptionSelection[];
 }
 
 const RUNTIME_MODES: Record<string, { label: string; description: string; icon: LucideIcon }> = {
@@ -407,6 +429,8 @@ function QueueBanner(props: {
 function ModelPicker(props: {
   agents: readonly AgentInfo[] | undefined;
   selection: Selection;
+  /** The options last chosen for a model on this device. */
+  remembered(agentId: string, model: string): readonly ModelOptionSelection[] | undefined;
   onSelect(selection: Selection): void;
   open: boolean;
   onOpenChange(open: boolean): void;
@@ -527,11 +551,16 @@ function ModelPicker(props: {
                           disabled={!candidate.available}
                           key={`${candidate.agentId}:${item.id}`}
                           onClick={() => {
-                            const { model: _model, ...rest } = selection;
+                            const { model: _model, modelOptions: _options, ...rest } = selection;
+                            const remembered =
+                              item.id === ""
+                                ? undefined
+                                : props.remembered(candidate.agentId, item.id);
                             props.onSelect({
                               ...rest,
                               agentId: candidate.agentId,
                               ...(item.id === "" ? {} : { model: item.id }),
+                              ...(remembered === undefined ? {} : { modelOptions: remembered }),
                             });
                             props.onOpenChange(false);
                           }}
@@ -559,6 +588,141 @@ function ModelPicker(props: {
         </div>
       </PopoverPopup>
     </Popover>
+  );
+}
+
+/** T3's TraitsPicker: the chosen model's options (D299), after the model picker. */
+function TraitsPicker(props: {
+  descriptors: readonly ModelOptionDescriptor[];
+  selections: readonly ModelOptionSelection[] | undefined;
+  prompt: string;
+  onPromptChange(prompt: string): void;
+  onChange(selections: ModelOptionSelection[]): void;
+}) {
+  const { descriptors, selections, prompt } = props;
+  const [open, setOpen] = useState(false);
+  if (descriptors.length === 0) return null;
+  const {
+    selectDescriptors,
+    booleanDescriptors,
+    primarySelectDescriptor,
+    ultrathinkPromptControlled,
+    ultrathinkInBodyText,
+  } = selectedTraits(descriptors, prompt);
+  const label = traitsTriggerLabel(descriptors, selections, prompt);
+  return (
+    <Menu onOpenChange={setOpen} open={open}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <MenuTrigger
+              render={
+                <ComposerControl
+                  aria-label={label}
+                  className="shrink-0 whitespace-nowrap"
+                  data-composer-shortcut="composer.effort"
+                />
+              }
+            />
+          }
+        >
+          <ComposerControlIcon icon={BrainIcon} />
+          <span data-composer-control-label>{label}</span>
+          <ComposerControlChevron />
+        </TooltipTrigger>
+        <TooltipPopup side="top">{label}</TooltipPopup>
+      </Tooltip>
+      <MenuPopup align="start">
+        {selectDescriptors.map((descriptor, index) => {
+          const primary = descriptor.id === primarySelectDescriptor?.id;
+          const value =
+            ultrathinkPromptControlled && primary
+              ? "ultrathink"
+              : String(currentOptionValue(descriptor, selections) ?? "");
+          return (
+            <div key={descriptor.id}>
+              {index > 0 ? <MenuSeparator /> : null}
+              <MenuGroup>
+                <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
+                  {descriptor.label}
+                </div>
+                {ultrathinkInBodyText && primary ? (
+                  <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
+                    Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change
+                    this option.
+                  </div>
+                ) : null}
+                <MenuRadioGroup
+                  onValueChange={(next) => {
+                    const change = traitSelectChange(
+                      descriptors,
+                      selections,
+                      descriptor,
+                      prompt,
+                      String(next),
+                    );
+                    if (change === null) return;
+                    if (change.prompt !== prompt) props.onPromptChange(change.prompt);
+                    if (change.modelOptions !== undefined) props.onChange(change.modelOptions);
+                  }}
+                  value={value}
+                >
+                  {descriptor.options.map((option) => (
+                    <MenuRadioItem
+                      closeOnClick
+                      disabled={ultrathinkInBodyText && primary}
+                      hideIndicator
+                      key={option.id}
+                      value={option.id}
+                    >
+                      <span className="flex w-full min-w-0 flex-col">
+                        <span className="flex min-w-0 items-center gap-1">
+                          <span className="min-w-0 truncate">{option.label}</span>
+                          {option.isDefault ? (
+                            <Badge className="min-w-0" size="sm" variant="outline">
+                              Default
+                            </Badge>
+                          ) : null}
+                        </span>
+                        {option.description ? (
+                          <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
+                            {option.description}
+                          </span>
+                        ) : null}
+                      </span>
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+              </MenuGroup>
+            </div>
+          );
+        })}
+        {booleanDescriptors.map((descriptor, index) => (
+          <div key={descriptor.id}>
+            {index > 0 || selectDescriptors.length > 0 ? <MenuSeparator /> : null}
+            <MenuGroup>
+              <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">
+                {descriptor.label}
+              </div>
+              <MenuRadioGroup
+                onValueChange={(next) =>
+                  props.onChange(
+                    withOptionValue(descriptors, selections, descriptor.id, next === "on"),
+                  )
+                }
+                value={currentOptionValue(descriptor, selections) === true ? "on" : "off"}
+              >
+                {(["on", "off"] as const).map((value) => (
+                  <MenuRadioItem closeOnClick hideIndicator key={value} value={value}>
+                    <span>{value === "on" ? "On" : "Off"}</span>
+                  </MenuRadioItem>
+                ))}
+              </MenuRadioGroup>
+            </MenuGroup>
+          </div>
+        ))}
+      </MenuPopup>
+    </Menu>
   );
 }
 
@@ -713,6 +877,8 @@ export function Composer(props: ComposerProps) {
     agents?.find((candidate) => candidate.default) ??
     agents?.[0];
   const runtimeModes = agent?.runtimeModes ?? [];
+  const modelId = props.selection.model ?? agent?.defaultModel ?? agent?.models[0]?.id;
+  const modelOptions = agent?.models.find((model) => model.id === modelId)?.options ?? [];
   const runtimeMode = props.selection.runtimeMode ?? "full-access";
   const planSupported = agent?.interactionModes.includes("plan") === true;
   const planMode = props.selection.interactionMode === "plan";
@@ -1122,12 +1288,30 @@ export function Composer(props: ComposerProps) {
                       >
                         <ModelPicker
                           agents={agents}
+                          remembered={chat.modelOptions.get}
                           onOpenChange={setPickerOpen}
                           onOpened={() => chat.agents.refresh(props.target)}
                           onSelect={props.onSelectionChange}
                           open={pickerOpen}
                           selection={props.selection}
                         />
+                        {modelOptions.length > 0 ? (
+                          <>
+                            <ComposerControlSeparator />
+                            <TraitsPicker
+                              descriptors={modelOptions}
+                              onChange={(next) => {
+                                if (agent !== undefined && modelId !== undefined) {
+                                  chat.modelOptions.set(agent.agentId, modelId, next);
+                                }
+                                props.onSelectionChange({ ...props.selection, modelOptions: next });
+                              }}
+                              onPromptChange={setPrompt}
+                              prompt={prompt}
+                              selections={props.selection.modelOptions}
+                            />
+                          </>
+                        ) : null}
                         {runtimeModes.length > 1 ? (
                           <>
                             <ComposerControlSeparator />

@@ -62,6 +62,7 @@ export async function startThread(
       readonly model?: string;
       readonly runtimeMode?: string;
       readonly interactionMode?: string;
+      readonly modelOptions?: readonly { readonly id: string; readonly value: string | boolean }[];
     };
   },
 ): Promise<{ readonly threadId: string; readonly uncertain?: Error }> {

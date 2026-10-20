@@ -332,6 +332,9 @@ importers:
 
   packages/client-api:
     dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../agent-api
       '@jhin/host-api':
         specifier: workspace:*
         version: link:../host-api

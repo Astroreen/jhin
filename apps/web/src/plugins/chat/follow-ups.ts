@@ -1,7 +1,7 @@
 // The queue follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/chat/QueuedRunsControl.tsx
 // (queued follow-ups) and apps/server/src/orchestration-v2/Orchestrator.ts (a queue held after a stop
 // or a failure), kept in this page instead of on the server.
-import type { TurnAttachment } from "@jhin/agent-api";
+import type { ModelOptionSelection, TurnAttachment } from "@jhin/agent-api";
 import {
   targetKey,
   visitKey,
@@ -20,6 +20,7 @@ interface MessageSettings {
   readonly model?: string;
   readonly runtimeMode?: string;
   readonly interactionMode?: string;
+  readonly modelOptions?: readonly ModelOptionSelection[];
 }
 
 /** A message sent while a turn ran: it goes out when the thread is free. */

@@ -340,8 +340,6 @@ specific to Claude: the runtime is a plugin on the public API.
   taken for that turn's unmarked answer. W9 left both: the Claude Code the
   distribution ships with its pinned SDK marks every frame, and telling the
   race apart needs a frame Claude Code does not send.
-- Per-turn model options in the composer (effort, fast mode): only the
-  config's `effort` applies.
 - Choosing a thread agent's permissions per thread or in config: D341 is one
   list for every Claude Code.
 - Slash commands and skills from Claude Code's initialization in the

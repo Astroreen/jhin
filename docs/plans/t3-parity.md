@@ -622,6 +622,18 @@ plans); Playwright `e2e/tests/composer.spec.ts` (the card, "Plan ready",
 saving to the project, "Refine", "Implement" in build mode, "Implement in a
 new thread" titled after the plan), with screenshots.
 
+The proof of D297–D299: `plugins/threads/test/features.test.ts` (options
+listed with their model, kept for the thread's next turns, dropped for another
+model, unknown ids, values and duplicates dropped, `threads.update` keeping an
+unchanged list without a change); `plugins/agent-claude/test/models.test.ts`
+(T3's profiles by id and alias, the effort map, Ultracode, Ultrathink, fast
+mode, the config's effort as the fallback, context windows by option and by
+suffix, Haiku 4.5's thinking) and `turn.test.ts` (what reaches Claude Code's
+query); `apps/web/test/model-options.test.ts` (current values, T3's trigger
+labels, Ultrathink in the prompt and out of it, options remembered per model);
+Playwright `e2e/tests/composer.spec.ts` (choosing High and Fast Mode, the
+turn running with them, Ultrathink written into the prompt), with screenshots.
+
 ### Node machine icons
 
 - **D130. A node says what it is: `host.identity`.** The node host's

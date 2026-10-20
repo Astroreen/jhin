@@ -52,6 +52,11 @@ export interface TurnRequest {
   readonly runtimeMode?: RuntimeMode;
   /** `default` when absent. */
   readonly interactionMode?: InteractionMode;
+  /**
+   * Since 1.2: values chosen for the model's `options`, only of those it
+   * declares; its defaults for the rest.
+   */
+  readonly modelOptions?: readonly ModelOptionSelection[];
 }
 
 /** What kind of work a tool call does; clients pick icons and wording from it. */
@@ -166,10 +171,78 @@ export interface AgentTurn {
   respond?(requestId: string, response: AgentResponse): void;
 }
 
+/** One choice of a `select` model option (T3 Code's `ProviderOptionChoice`). */
+export interface ModelOptionChoice {
+  readonly id: string;
+  readonly label: string;
+  readonly description?: string;
+  /** What the model does when nobody chose: one choice at most. */
+  readonly isDefault?: boolean;
+}
+
+/**
+ * Something a turn can choose for its model (since 1.2, T3 Code's option
+ * descriptors): a `select`, such as the reasoning effort, or a `boolean`,
+ * such as fast mode.
+ */
+export type ModelOptionDescriptor =
+  | {
+      readonly type: "select";
+      readonly id: string;
+      readonly label: string;
+      readonly description?: string;
+      readonly options: readonly ModelOptionChoice[];
+      /**
+       * Choices that are written into the prompt instead of being sent as an
+       * option (Claude's "Ultrathink"): the client puts them there.
+       */
+      readonly promptInjectedValues?: readonly string[];
+    }
+  | {
+      readonly type: "boolean";
+      readonly id: string;
+      readonly label: string;
+      readonly description?: string;
+    };
+
+/** A value chosen for one of a model's options. */
+export interface ModelOptionSelection {
+  readonly id: string;
+  readonly value: string | boolean;
+}
+
 export interface AgentModel {
   readonly id: string;
   readonly name: string;
   readonly description?: string;
+  /** Since 1.2: what a turn can choose for this model; none when absent. */
+  readonly options?: readonly ModelOptionDescriptor[];
+}
+
+/**
+ * The selections that apply to `descriptors`: unknown ids, values a select
+ * does not offer and values of the wrong type are dropped (D297).
+ */
+export function applicableModelOptions(
+  descriptors: readonly ModelOptionDescriptor[] | undefined,
+  selections: readonly ModelOptionSelection[] | undefined,
+): ModelOptionSelection[] {
+  if (descriptors === undefined || selections === undefined) return [];
+  const result: ModelOptionSelection[] = [];
+  for (const selection of selections) {
+    const descriptor = descriptors.find((candidate) => candidate.id === selection.id);
+    if (descriptor === undefined || result.some((kept) => kept.id === selection.id)) continue;
+    if (descriptor.type === "boolean" && typeof selection.value === "boolean") {
+      result.push({ id: selection.id, value: selection.value });
+    } else if (
+      descriptor.type === "select" &&
+      typeof selection.value === "string" &&
+      descriptor.options.some((option) => option.id === selection.value)
+    ) {
+      result.push({ id: selection.id, value: selection.value });
+    }
+  }
+  return result;
 }
 
 export interface AgentRuntimeStatus {
@@ -222,7 +295,7 @@ export const ThreadEvents = {
   projectUpdated: "threads.project.updated",
   /** `threads` index: `{ id }`. */
   projectDeleted: "threads.project.deleted",
-  /** `{ turnId, agentId, input, model?, runtimeMode?, interactionMode? }` */
+  /** `{ turnId, agentId, input, model?, runtimeMode?, interactionMode?, modelOptions? }` */
   turnStarted: "agent.turn.started",
   /** `{ turnId, itemId, kind: "tool", tool }`; messages and reasoning start with their first delta. */
   itemStarted: "agent.item.started",

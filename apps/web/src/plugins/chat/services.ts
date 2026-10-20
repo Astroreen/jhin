@@ -1,3 +1,4 @@
+import type { ModelOptionSelection } from "@jhin/agent-api";
 import type {
   AgentInfo,
   Connections,
@@ -14,6 +15,7 @@ import type { Dialogs, SlotRegistry, Toasts } from "@jhin/ui";
 import { createContext, useContext, useEffect, useSyncExternalStore } from "react";
 
 import type { Drafts } from "../../lib/composer.ts";
+import type { ModelOptionsMemory } from "../../lib/model-options.ts";
 import type { FollowUpQueues } from "./follow-ups.ts";
 import type { Unconfirmed } from "./unconfirmed.ts";
 
@@ -64,6 +66,8 @@ export interface ComposerSelection {
   readonly model?: string;
   readonly runtimeMode?: string;
   readonly interactionMode?: string;
+  /** Values chosen for the model's options (D297). */
+  readonly modelOptions?: readonly ModelOptionSelection[];
 }
 
 const SELECTION_STORAGE_KEY = "jhin.composer.selection.v1";
@@ -114,6 +118,8 @@ export interface ChatServices {
   readonly drafts: Drafts;
   readonly agents: AgentsCache;
   readonly lastSelection: ReturnType<typeof createLastSelection>;
+  /** The options last chosen for each model on this device. */
+  readonly modelOptions: ModelOptionsMemory;
   /** When threads were seen on this device; absent without a `client.visits` provider. */
   readonly visits: ThreadVisits | undefined;
   /** Follow-ups queued per thread; they outlive the thread's view. */

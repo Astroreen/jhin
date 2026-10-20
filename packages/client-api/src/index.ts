@@ -1,3 +1,4 @@
+import type { ModelOptionDescriptor, ModelOptionSelection } from "@jhin/agent-api";
 import type { MachineKind } from "@jhin/host-api";
 import type { ConnectionState, RpcClient } from "@jhin/rpc";
 import { z, type Disposable } from "@jhin/sdk";
@@ -165,6 +166,8 @@ export interface ThreadRecord {
   readonly model?: string;
   readonly runtimeMode?: string;
   readonly interactionMode?: string;
+  /** Values chosen for the model's options (D297). */
+  readonly modelOptions?: readonly ModelOptionSelection[];
   readonly lastTurn?: {
     readonly turnId: string;
     readonly status: TurnStatus;
@@ -406,6 +409,8 @@ export interface AgentInfo {
     readonly id: string;
     readonly name: string;
     readonly description?: string;
+    /** What a turn can choose for the model: effort, fast mode, … (D297). */
+    readonly options?: readonly ModelOptionDescriptor[];
   }[];
   readonly defaultModel?: string;
   readonly runtimeModes: readonly string[];

@@ -23,7 +23,12 @@ import {
 import { query as sdkQuery, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { claudeConfigDir, deleteSessionFiles } from "./files.ts";
-import { BUNDLED_DEFAULT_MODEL, BUNDLED_MODELS, manifestContextWindow } from "./models.ts";
+import {
+  BUNDLED_DEFAULT_MODEL,
+  BUNDLED_MODELS,
+  manifestContextWindow,
+  withOptions,
+} from "./models.ts";
 import {
   createLiveSessions,
   type Attachment,
@@ -255,11 +260,13 @@ async function probe(query: QueryFunction, config: Config): Promise<Probe> {
       account.subscriptionType !== undefined;
     const models = (init.models ?? [])
       .filter((model) => model.value !== "default")
-      .map((model) => ({
-        id: model.value,
-        name: model.displayName,
-        ...(model.description ? { description: model.description } : {}),
-      }));
+      .map((model) =>
+        withOptions({
+          id: model.value,
+          name: model.displayName,
+          ...(model.description ? { description: model.description } : {}),
+        }),
+      );
     return {
       status: signedIn
         ? {

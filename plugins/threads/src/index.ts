@@ -15,6 +15,7 @@ import {
   INTERACTION_MODES,
   RUNTIME_MODES,
   THREADS_STREAM,
+  applicableModelOptions,
   ThreadEvents,
   threadStream,
   type AgentItem,
@@ -25,6 +26,7 @@ import {
   type AgentRuntimeStatus,
   type AgentTurn,
   type InteractionMode,
+  type ModelOptionSelection,
   type RuntimeMode,
   type TurnAttachment,
 } from "@jhin/agent-api";
@@ -109,6 +111,10 @@ const Thread = z.object({
   model: z.string().optional(),
   runtimeMode: z.enum(RUNTIME_MODES).optional(),
   interactionMode: z.enum(INTERACTION_MODES).optional(),
+  /** Values chosen for the model's options (D297), kept with the model they are for. */
+  modelOptions: z
+    .array(z.object({ id: z.string(), value: z.union([z.string(), z.boolean()]) }))
+    .optional(),
   /** The latest turn, for lists: `waiting` means it asks the user something. */
   lastTurn: z
     .object({
@@ -247,12 +253,50 @@ const Attachment = z.object({
     .max(MAX_ATTACHMENT_BYTES, "is too large"),
 });
 
+const ModelOptionSelectionSchema = z.object({
+  id: z.string().min(1).max(100),
+  value: z.union([z.string().max(100), z.boolean()]),
+});
+
 const AgentSettings = {
   agentId: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
   runtimeMode: z.enum(RUNTIME_MODES).optional(),
   interactionMode: z.enum(INTERACTION_MODES).optional(),
+  /** Values for the model's options (D297); ones the model does not declare are dropped. */
+  modelOptions: z.array(ModelOptionSelectionSchema).max(20).optional(),
 };
+
+const ModelOptionDescriptorSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("select"),
+    id: z.string(),
+    label: z.string(),
+    description: z.string().optional(),
+    options: z.array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+        description: z.string().optional(),
+        isDefault: z.boolean().optional(),
+      }),
+    ),
+    promptInjectedValues: z.array(z.string()).optional(),
+  }),
+  z.object({
+    type: z.literal("boolean"),
+    id: z.string(),
+    label: z.string(),
+    description: z.string().optional(),
+  }),
+]);
+
+/** Equal records keep their thread untouched; option lists compare by value. */
+const sameValue = (left: unknown, right: unknown) =>
+  left === right ||
+  (typeof left === "object" &&
+    typeof right === "object" &&
+    JSON.stringify(left) === JSON.stringify(right));
 
 const Response: z.ZodType<AgentResponse> = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("approval"), decision: z.enum(APPROVAL_DECISIONS) }),
@@ -266,7 +310,12 @@ const AgentInfo = z.object({
   agentId: z.string(),
   name: z.string(),
   models: z.array(
-    z.object({ id: z.string(), name: z.string(), description: z.string().optional() }),
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().optional(),
+      options: z.array(ModelOptionDescriptorSchema).optional(),
+    }),
   ),
   defaultModel: z.string().optional(),
   runtimeModes: z.array(z.enum(RUNTIME_MODES)),
@@ -751,6 +800,7 @@ export default definePlugin({
       readonly model?: string;
       readonly runtimeMode?: RuntimeMode;
       readonly interactionMode?: InteractionMode;
+      readonly modelOptions?: ModelOptionSelection[];
     }
 
     async function runTurn(
@@ -777,7 +827,7 @@ export default definePlugin({
                 turnId,
                 agentId: runtime.agentId,
                 input: input as unknown as Json,
-                ...(settings as Record<string, Json>),
+                ...(settings as unknown as Record<string, Json>),
               },
             },
           ]);
@@ -1276,7 +1326,16 @@ export default definePlugin({
             return {
               agentId: runtime.agentId,
               name: runtime.name ?? runtime.agentId,
-              models: [...(runtime.models ?? [])],
+              models: (runtime.models ?? []).map(({ options, ...model }) => ({
+                ...model,
+                ...(options === undefined
+                  ? {}
+                  : {
+                      options: structuredClone(options) as z.infer<
+                        typeof ModelOptionDescriptorSchema
+                      >[],
+                    }),
+              })),
               ...(runtime.defaultModel === undefined ? {} : { defaultModel: runtime.defaultModel }),
               runtimeModes: [...(runtime.runtimeModes ?? ["full-access"])],
               interactionModes: [...(runtime.interactionModes ?? ["default"])],
@@ -1441,15 +1500,23 @@ export default definePlugin({
             ...settings,
           };
           // A model named for another agent does not carry over to a new one.
-          if (
-            settings.agentId !== undefined &&
-            settings.agentId !== thread.agentId &&
-            settings.model === undefined
-          ) {
+          const agentChanged =
+            settings.agentId !== undefined && settings.agentId !== thread.agentId;
+          if (agentChanged && settings.model === undefined) {
             delete (next as { model?: string }).model;
           }
+          // Nor do options chosen for another model.
+          if (
+            settings.modelOptions === undefined &&
+            (agentChanged || (settings.model !== undefined && settings.model !== thread.model))
+          ) {
+            delete (next as { modelOptions?: unknown }).modelOptions;
+          }
+          if (settings.modelOptions?.length === 0) {
+            delete (next as { modelOptions?: unknown }).modelOptions;
+          }
           const changed = (Object.keys({ ...thread, ...next }) as (keyof Thread)[]).some(
-            (key) => next[key] !== thread[key],
+            (key) => !sameValue(next[key], thread[key]),
           );
           return changed ? { ...next, updatedAt: now() } : thread;
         });
@@ -1806,21 +1873,34 @@ export default definePlugin({
           const model = requested.model ?? (sameAgent ? thread.model : undefined);
           const runtimeMode = requested.runtimeMode ?? thread.runtimeMode;
           const interactionMode = requested.interactionMode ?? thread.interactionMode;
+          // Options chosen for the thread's model carry over while the model does (D297),
+          // and only those the model declares go to the agent.
+          const sameModel = sameAgent && (requested.model ?? thread.model) === thread.model;
+          const effectiveModel = model ?? runtime.defaultModel ?? runtime.models?.[0]?.id;
+          const modelOptions = applicableModelOptions(
+            runtime.models?.find((candidate) => candidate.id === effectiveModel)?.options,
+            requested.modelOptions ?? (sameModel ? thread.modelOptions : undefined),
+          );
           settings = {
             ...(model === undefined ? {} : { model }),
             ...(runtimeMode === undefined ? {} : { runtimeMode }),
             ...(interactionMode === undefined ? {} : { interactionMode }),
+            ...(modelOptions.length === 0 ? {} : { modelOptions }),
           };
           const chosen = { agentId: runtime.agentId, ...settings };
-          // The record keeps what this turn runs with: no model of another agent.
+          // The record keeps what this turn runs with: no model of another agent,
+          // no options of another model.
           const dropModel = settings.model === undefined;
+          const dropOptions = settings.modelOptions === undefined;
           // A new turn also brings a settled thread back and wakes a snoozed one.
           const at = now();
           await updateThread(threadId, (latest) => {
             const back = revived(latest, at);
-            const { model: _model, ...rest } = back;
+            const { model: _model, ...withoutModel } = back;
+            const kept = dropModel ? withoutModel : back;
+            const { modelOptions: _options, ...withoutOptions } = kept;
             const next: Thread = {
-              ...(dropModel ? rest : back),
+              ...(dropOptions ? withoutOptions : kept),
               ...chosen,
               // Only the first message names the thread, and only while it has the
               // default title: a rename that landed since it was read stays.
@@ -1832,7 +1912,7 @@ export default definePlugin({
                   : latest.title,
             };
             const changed = (Object.keys({ ...latest, ...next }) as (keyof Thread)[]).some(
-              (key) => next[key] !== latest[key],
+              (key) => !sameValue(next[key], latest[key]),
             );
             return changed ? next : latest;
           });

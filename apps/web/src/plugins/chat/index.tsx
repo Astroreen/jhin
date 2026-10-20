@@ -39,6 +39,7 @@ import { useState } from "react";
 
 import { builtin } from "../../lib/builtin.ts";
 import { createDrafts } from "../../lib/composer.ts";
+import { createModelOptionsMemory } from "../../lib/model-options.ts";
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { useMeshMembers } from "../../lib/mesh.ts";
 import { CHAT_SECTION, ChatSettings } from "../../lib/settings.ts";
@@ -250,6 +251,7 @@ export const chatPlugin = builtin(
         drafts: context.subscriptions.add(createDrafts()),
         agents: createAgentsCache(threads),
         lastSelection: createLastSelection(),
+        modelOptions: createModelOptionsMemory(),
         followUps: context.subscriptions.add(
           createFollowUpQueues({
             threads,

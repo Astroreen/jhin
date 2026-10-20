@@ -27,6 +27,7 @@
     "prepack": "node ../../scripts/build.ts"
   },
   "dependencies": {
+    "@jhin/agent-api": "workspace:*",
     "@jhin/host-api": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*"

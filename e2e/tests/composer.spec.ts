@@ -95,3 +95,36 @@ test("implements the plan in a new thread titled after it", async ({ page }) => 
   await threadRow(page, "Rename the API").click();
   await expect(page.getByRole("region", { name: "Plan ready" })).toBeVisible();
 });
+
+test("chooses the model's options for a turn: effort, fast mode and Ultrathink", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const traits = page.getByRole("button", { name: "Medium", exact: true });
+  await traits.click();
+  await page.getByRole("menuitemradio", { name: "High" }).click();
+  await page.getByRole("button", { name: "High", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "On" }).click();
+  await expect(page.getByRole("button", { name: "High Fast", exact: true })).toBeVisible();
+
+  const shot = info.outputPath("traits.png");
+  await page.getByRole("button", { name: "High Fast", exact: true }).click();
+  await page.screenshot({ path: shot });
+  await info.attach("traits", { path: shot, contentType: "image/png" });
+  await page.keyboard.press("Escape");
+
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/options");
+  await message.press("Enter");
+  const log = page.getByRole("log", { name: "Messages" });
+  await expect(log.getByRole("article", { name: "Agent" })).toHaveText(
+    "Options: effort=high fastMode=true",
+  );
+
+  // The thread keeps them for its next turn; Ultrathink goes into the prompt.
+  await page.getByRole("button", { name: "High Fast", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: "Ultrathink" }).click();
+  await expect(message).toHaveValue("Ultrathink:\n");
+  await expect(page.getByRole("button", { name: "Ultrathink Fast", exact: true })).toBeVisible();
+});
