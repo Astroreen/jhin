@@ -98,30 +98,52 @@ const described = (schemas: unknown[]): unknown[] | undefined =>
  * unknown schema (`undefined`: no plugin defines the section) makes every
  * scalar a secret.
  */
+/** Keywords that say nothing of a value's shape. */
+const ANNOTATIONS = new Set([
+  "title",
+  "description",
+  "default",
+  "examples",
+  "deprecated",
+  "readOnly",
+  "$comment",
+  "$schema",
+  "$id",
+  "$defs",
+  "definitions",
+]);
+
+/** `{}` or `true`, as for `z.unknown()`: any value, with no secret inside it. */
+const opaque = (schema: Schema) => Object.keys(schema).every((key) => ANNOTATIONS.has(key));
+
+/** What `visit` learns of a secret: where it is, and whether it sits inside a list. */
+type Visit = (value: unknown, path: readonly string[], inList: boolean) => unknown;
+
 function mapSecrets(
   schemas: readonly unknown[] | undefined,
   value: unknown,
   root: Schema,
   path: readonly string[],
-  visit: (value: unknown, path: readonly string[]) => unknown,
+  visit: Visit,
+  inList = false,
 ): unknown {
   if (value === undefined || value === null) return value;
   const known = schemas?.map((schema) => deref(schema, root));
   if (known === undefined) {
     if (Array.isArray(value)) {
       return value.map((item, index) =>
-        mapSecrets(undefined, item, root, [...path, String(index)], visit),
+        mapSecrets(undefined, item, root, [...path, String(index)], visit, true),
       );
     }
     if (isObject(value)) {
       return Object.fromEntries(
         Object.entries(value).map(([key, item]) => [
           key,
-          mapSecrets(undefined, item, root, [...path, key], visit),
+          mapSecrets(undefined, item, root, [...path, key], visit, inList),
         ]),
       );
     }
-    return visit(value, path);
+    return visit(value, path, inList);
   }
   // Every schema that applies here, its branches included.
   const all: Schema[] = [];
@@ -131,7 +153,9 @@ function mapSecrets(
     for (const branch of branchesOf(schema)) add(deref(branch, root));
   };
   for (const schema of known) add(schema);
-  if (all.some((schema) => isSecret(schema, root))) return visit(value, path);
+  if (all.some((schema) => isSecret(schema, root))) return visit(value, path, inList);
+  // A field that takes anything (`z.unknown()`) holds data, not secrets.
+  if (all.every(opaque)) return value;
   if (Array.isArray(value)) {
     return value.map((item, index) =>
       mapSecrets(
@@ -140,6 +164,7 @@ function mapSecrets(
         root,
         [...path, String(index)],
         visit,
+        true,
       ),
     );
   }
@@ -153,6 +178,7 @@ function mapSecrets(
           root,
           [...path, key],
           visit,
+          inList,
         ),
       ]),
     );
@@ -173,10 +199,7 @@ export function redactSecrets(schema: unknown, value: unknown): unknown {
     rootOf(schema),
     [],
     // Inside a list, the marker names its secret's place, so a reorder keeps it.
-    (_value, path) =>
-      path.some((part) => /^\d+$/.test(part))
-        ? `${SECRET_REDACTED}#${toPointer(path)}`
-        : SECRET_REDACTED,
+    (_value, path, inList) => (inList ? `${SECRET_REDACTED}#${toPointer(path)}` : SECRET_REDACTED),
   );
 }
 
@@ -247,17 +270,19 @@ export function restoreSecrets(
   elsewhere: unknown,
   label: readonly string[] = [],
 ): Record<string, unknown> {
+  // The stored secrets' addresses, read once, the first time a marker names one.
+  let storedSecrets: Set<string> | undefined;
   const restored = mapSecrets(
     schema === undefined ? undefined : [schema],
     incoming,
     rootOf(schema),
     [],
-    (value, path) => {
+    (value, path, inList) => {
       if (!isRedactedSecret(value)) return value;
       // An addressed marker is the secret at that place, wherever it was moved to.
       // Inside a list only an addressed marker says which secret it is: the node
       // never sends a plain one there, and a position may have moved.
-      if (value === SECRET_REDACTED && path.some((part) => /^\d+$/.test(part))) {
+      if (value === SECRET_REDACTED && inList) {
         throw Object.assign(
           new Error(`A secret in a list needs its addressed marker; enter it again`),
           { code: "CONFIG_SECRET_MISSING", details: { path: [...label, ...path].join(".") } },
@@ -269,7 +294,9 @@ export function restoreSecrets(
       if (
         address === undefined ||
         (value !== SECRET_REDACTED &&
-          !secretPaths(schema, stored).some((secret) => toPointer(secret) === toPointer(address)))
+          !(storedSecrets ??= new Set(secretPaths(schema, stored).map(toPointer))).has(
+            toPointer(address),
+          ))
       ) {
         throw Object.assign(new Error(`${value} names no secret of this section`), {
           code: "CONFIG_SECRET_MISSING",

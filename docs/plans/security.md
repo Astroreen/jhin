@@ -125,7 +125,8 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   intersections, `if`/`then`/`else`, `dependentSchemas`, tuples
   (`prefixItems`), `items`, `contains`, `properties`, `patternProperties`,
   `additionalProperties` and `unevaluatedProperties`. What no schema
-  describes is unknown and redacted like a secret: every scalar of a
+  describes is unknown and redacted like a secret (a field that takes
+  anything, `{}` as `z.unknown()` gives, holds data and is shown): every scalar of a
   section no plugin defines, a key the section's schema does not name (a
   typo in a file), an item of a list without `items`.
 

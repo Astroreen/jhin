@@ -268,4 +268,23 @@ describe("config secrets (security.md D417)", () => {
       restoreSecrets(schema, { keys: [SECRET_REDACTED] }, { keys: ["a"] }, undefined),
     ).toThrow(expect.objectContaining({ code: "CONFIG_SECRET_MISSING" }));
   });
+
+  it("tells a record's numeric key from a list position", () => {
+    const schema = schemaOf(
+      z.object({ env: z.record(z.string(), z.string().meta({ writeOnly: true })) }),
+    );
+    const stored = { env: { "2024": "year-secret" } };
+    const shown = redactSecrets(schema, stored);
+    expect(shown).toEqual({ env: { "2024": SECRET_REDACTED } });
+    expect(restoreSecrets(schema, shown as Record<string, unknown>, stored, undefined)).toEqual(
+      stored,
+    );
+  });
+
+  it("shows data under a field that takes anything", () => {
+    const schema = schemaOf(z.object({ extra: z.unknown() }));
+    expect(redactSecrets(schema, { extra: { host: "h", port: 1 } })).toEqual({
+      extra: { host: "h", port: 1 },
+    });
+  });
 });
