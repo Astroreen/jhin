@@ -8,11 +8,25 @@ mesh, agents and MCP are all plugins. Users change or extend anything through
 config and their own plugins, without forking. T3 Code is the reference for
 behaviour, UI and engineering practice.
 
-Read these before working:
+## Find your way
 
-- `docs/plans/foundation.md` — every design decision (D1–D52), what is
-  deferred, and the PR plan with acceptance criteria.
-- `GLOSSARY.md` — the vocabulary. Use exactly these words.
+This file is the trailhead. It does not hold the answers; it points to them.
+
+1. `docs/map.md` — everything Jhin already has, one line each. Read it
+   before building anything, so you extend what exists instead of building
+   it twice.
+2. `docs/README.md` — the context library: which page knows what, how
+   knowledge is addressed, and how much to trust it.
+3. `GLOSSARY.md` — the vocabulary. Use exactly these words.
+4. The plan that owns your area (`docs/plans/`, listed in `docs/README.md`),
+   and `docs/plans/t3-roadmap.md` to check whether a workstream already
+   builds it.
+5. `docs/lore/` — short stories of how agents go wrong. Read them on arrival
+   and again after a compaction. In review a name is enough: "moonbase".
+
+Read only the section you need (`docs/plans/terminal.md#deferred`), not
+whole files. If something you need is not reachable from here, add the route
+in your PR.
 
 ## Architecture rules
 
@@ -84,3 +98,8 @@ Pull requests:
    covered by `THIRD_PARTY_NOTICES.md`.
 4. Anything deferred goes into the "Deferred" section of the relevant plan,
    never silently dropped.
+5. Knowledge has one source of truth: link to it, never copy it. A new
+   package, plugin, capability or command gets its line in `docs/map.md`, a
+   new word goes in `GLOSSARY.md`, and a decision goes in the plan that owns
+   the area (`docs/README.md#adding-knowledge`). Files, headings and decision
+   numbers others link to are addresses: do not rename them.

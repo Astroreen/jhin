@@ -2,6 +2,24 @@
 
 One word per concept. Use these terms in code, docs, commits and UI.
 
+Words about the docs themselves (`docs/README.md`):
+
+- **Context library** — everything Jhin knows about itself in `docs/`, plus
+  `AGENTS.md` and this file, with routes between them.
+- **Trailhead** — where an agent starts: `AGENTS.md`. It points to the
+  answers instead of holding them.
+- **Map** — `docs/map.md`: everything that exists, one line each, with the
+  route to its details.
+- **Route** — a link that makes a piece of knowledge reachable from the
+  trailhead. Knowledge without a route does not exist for an agent.
+- **Canon** — knowledge the project relies on: `AGENTS.md`, this file,
+  implemented plans, the map. Below it, in falling trust: insight, note,
+  observation, exhaust.
+- **Lore** — `docs/lore/`: named stories of recurring failures ("moonbase"),
+  told instead of adding one more rule.
+
+Words about Jhin:
+
 - **Kernel** — the small isomorphic core (`@jhin/kernel`): loader, lifecycle,
   dependency graph, service registry, hooks, commands, config, events,
   disposables, scoped state. Contains nothing product-shaped.

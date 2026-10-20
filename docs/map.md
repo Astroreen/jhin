@@ -1,0 +1,108 @@
+# Map of Jhin
+
+Everything Jhin already has, one line each: an inch deep, a mile wide. Read
+it before building anything, so you extend what exists instead of building it
+again next to it ([reinvent the wheel](lore/reinvent-the-wheel.md)). Each
+line routes to the place that knows the details; open that only when you need
+it.
+
+The live truth of a running node is `jhin inspect` (plugins, services,
+hooks, slots, mesh) and `jhin host.commands.list`. This map is the
+territory's outline; when they disagree, fix the map.
+
+When you add a package, plugin, capability or command, add its line here in
+the same PR.
+
+## Shape
+
+- **Kernel** (`packages/kernel`): plugins, capabilities, services, hooks,
+  commands, config layers, events, disposables, scoped state. Isomorphic, no
+  product in it. → `plans/foundation.md#kernel-and-plugins`
+- **Node** = a host (`packages/node-host`) running server plugins; **client**
+  = the web app (`apps/web`) running a second kernel with client plugins.
+  → `plans/foundation.md#mesh-nodes-transport`
+- Every operation is a **command**, reachable as an RPC method, a CLI
+  subcommand (`jhin <command>`) and an MCP tool. → `AGENTS.md` rule 6
+- UI is **slots** and **contributions** with stable ids. → `plans/t3-parity.md#ui`
+
+## Packages (`packages/`)
+
+| Package                    | What it is                                                                                   |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| `@jhin/kernel`             | the isomorphic kernel                                                                        |
+| `@jhin/sdk`                | the public API plugins import (`definePlugin`, types); the host provides it to user plugins  |
+| `@jhin/node-host`          | runs a node: loads plugins, hot reload, config files, logs, inspector, `host.*` commands     |
+| `@jhin/testing`            | test kernel, capability mocks, fake transport, in-memory mesh of N nodes                     |
+| `@jhin/rpc`                | JSON-RPC 2.0 over any channel: server sessions, reconnecting client, peers                   |
+| `@jhin/mesh-core`          | the mesh without transport: membership, gossip, routing with relay, `jhin://` addresses      |
+| `@jhin/mcp-bridge`         | turns a command registry into MCP tools                                                      |
+| `@jhin/ui`                 | UI kit for client plugins: T3 Code-derived primitives, theme, slots                          |
+| `@jhin/host-api`           | contracts of what a host gives plugins (`host.paths@1`, `host.identity@1`, `host.plugins@1`) |
+| `@jhin/http-api`           | contract of `http.server@1`                                                                  |
+| `@jhin/auth-api`           | contract of `auth.verifier@1`                                                                |
+| `@jhin/storage-api`        | contracts of `storage.kv@1`, `storage.eventlog@1`, an in-memory version, the contract tests  |
+| `@jhin/agent-api`          | contracts of `agent.runtime@1`, `agent.registry@1` and the thread event types                |
+| `@jhin/source-control-api` | contract of `source-control.git@1` and its events                                            |
+| `@jhin/terminal-api`       | contract of `terminal.sessions@1`, its commands and stream events                            |
+| `@jhin/client-api`         | contracts of client capabilities: connections, navigation, mesh, machines                    |
+
+## Server plugins (`plugins/`)
+
+| Plugin                | Provides                                               | Commands                                                                                                          | Plan                            |
+| --------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `jhin.http`           | `http.server@1`                                        | `http.info`                                                                                                       | `foundation.md`                 |
+| `jhin.auth-token`     | `auth.verifier@1` (static bearer token)                | `auth.token.show`, `auth.token.rotate`                                                                            | `foundation.md`                 |
+| `jhin.transport-ws`   | `rpc.streams@1`; every command over WS                 | —                                                                                                                 | `foundation.md`                 |
+| `jhin.storage-sqlite` | `storage.kv@1`, `storage.eventlog@1`                   | —                                                                                                                 | `foundation.md`                 |
+| `jhin.mcp-server`     | every command as an MCP tool                           | —                                                                                                                 | `foundation.md#D39`             |
+| `jhin.mesh`           | nodes of one owner, relay, addresses                   | `mesh.invite`, `mesh.join`, `mesh.nodes`, `mesh.call`, `mesh.resolve`, `mesh.open`, `mesh.close`, `mesh.config.*` | `foundation.md`                 |
+| `jhin.threads`        | `agent.registry@1`; projects, threads, turns as events | `projects.*`, `threads.*`, `agents.list`                                                                          | `foundation.md`, `t3-parity.md` |
+| `jhin.agent-claude`   | Claude Code as an agent runtime                        | `claude.sessions.list`, `claude.sessions.close`                                                                   | `providers.md`                  |
+| `jhin.agent-fake`     | `agent.runtime@1`, deterministic                       | —                                                                                                                 | `foundation.md`                 |
+| `jhin.source-control` | `source-control.git@1`                                 | `git.status`, `git.diff`, `git.branches`, `git.checkout`, `git.thread.status`                                     | `source-control.md`             |
+| `jhin.terminal`       | `terminal.sessions@1` (PTY)                            | `terminals.open`, `.write`, `.resize`, `.list`, `.get`, `.close`                                                  | `terminal.md`                   |
+| `jhin.web-ui`         | serves the web client                                  | `web-ui.info`                                                                                                     | `foundation.md`                 |
+| `jhin.example`        | the template for new plugins                           | `example.greet`                                                                                                   | `plugins/example/README.md`     |
+
+The host itself adds `host.inspect`, `host.identity`, `host.commands.list`,
+`host.config.get`, `host.config.patch`, `host.config.schema`,
+`host.plugins.reload` and `host.plugins.rescan`.
+
+## Client plugins (`apps/web/src/plugins/`)
+
+| Plugin            | What it does                                                       | Plan                              |
+| ----------------- | ------------------------------------------------------------------ | --------------------------------- |
+| `ui-host`         | the layout and its slots, appearance                               | `t3-parity.md#ui`                 |
+| `connections`     | saved nodes and their RPC clients (`client.connections@1`)         | `t3-parity.md`                    |
+| `navigation`      | the route in the URL fragment (`client.navigation@1`)              | `t3-parity.md`                    |
+| `mesh`            | one mesh feed per connection (`client.mesh@1`)                     | `foundation.md`                   |
+| `machines`        | node machine icons and their picker (`client.machines@1`)          | `t3-parity.md#node-machine-icons` |
+| `threads-store`   | thread catalogs per node, kept current                             | `t3-parity.md`                    |
+| `visits`          | when a thread was last seen on this device (`client.visits@1`)     | `t3-parity.md`                    |
+| `sidebar`         | nodes, projects, thread cards, pinned, Snoozed and Settled shelves | `t3-parity.md#sidebar-follow-up`  |
+| `thread-actions`  | the actions menu of a thread                                       | `t3-parity.md`                    |
+| `chat`            | the thread view, composer, work log, requests                      | `t3-parity.md`                    |
+| `command-palette` | ⌘/Ctrl+K                                                           | `t3-parity.md`                    |
+| `keybindings`     | shortcuts for client commands, overridable per command             | `t3-parity.md`                    |
+| `notifications`   | system notifications, sounds and toasts when a thread needs you    | `t3-parity.md`                    |
+| `settings`        | the settings page, config forms from schemas                       | `config-ui.md`                    |
+| `inspector`       | the dev panel showing `host.inspect`                               | `foundation.md#D36`               |
+| `source-control`  | branch, diff, pull request indicators, branch toolbar, diff panel  | `source-control.md`               |
+| `terminal`        | the terminal drawer and the card's terminal indicator              | `terminal.md`                     |
+
+## Apps, tests, scripts
+
+- `apps/jhin` — the CLI `jhin` (published as `jhin-ai`): `serve`, `inspect`,
+  and every command as a subcommand.
+- `apps/web` — the web client.
+- `e2e/` — Playwright end-to-end tests.
+- `scripts/verify.ts` (`pnpm verify`), `scripts/pack.ts`,
+  `scripts/pack-smoke.ts` (`pnpm pack:smoke`), `scripts/t3/` (run from a
+  checkout, see its README).
+
+## In progress
+
+The W1–W18 workstreams in [`plans/t3-roadmap.md`](plans/t3-roadmap.md)
+(queue, history, checkpoints and worktrees, git actions, Codex, OpenCode,
+delegated tasks, scheduled tasks, preview, pairing, desktop, …). Before you
+start anything that sounds like one of them, check its row there.

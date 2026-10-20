@@ -18,8 +18,8 @@ from the latest nightly; the plan that ports it names the tag it used.
 
 ## Rules for every workstream
 
-- Read `AGENTS.md`, `docs/plans/foundation.md`, `GLOSSARY.md`, the plan the
-  workstream continues and this file first.
+- Read `AGENTS.md`, `docs/map.md`, `docs/plans/foundation.md`,
+  `GLOSSARY.md`, the plan the workstream continues and this file first.
 - Decisions are numbered from the workstream's range below, so parallel
   branches never take the same number. A workstream that needs more numbers
   takes the next free block of 20 after D600 and writes it here.
