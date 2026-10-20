@@ -49,6 +49,8 @@ export const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1000;
 const MAX_AGENTS_PER_WORKFLOW = 1000;
 const MAX_ITEMS_PER_CALL = 4096;
+/** How long a workflow body may run before its first `await` (D374). */
+const SCRIPT_SYNC_TIMEOUT_MS = 1000;
 const MAX_WORKFLOW_LOGS = 200;
 /** How often a workflow agent's answer is sent back for not matching its schema. */
 const SCHEMA_RETRIES = 2;
@@ -545,7 +547,11 @@ export default definePlugin({
         if (disposed) return;
         if (event.type === ThreadEvents.threadDeleted) {
           const id = (event.payload as { id?: unknown } | null)?.id;
-          if (typeof id === "string") void onThreadGone(id);
+          if (typeof id === "string") {
+            void onThreadGone(id).catch((error: unknown) =>
+              context.log.error("could not follow a deleted thread", { error: String(error) }),
+            );
+          }
           return;
         }
         if (event.type !== ThreadEvents.threadUpdated && event.type !== ThreadEvents.threadCreated)
@@ -564,8 +570,13 @@ export default definePlugin({
             );
           }
         }
-        if (thread.archivedAt !== undefined) void dispose(thread.id);
-        else if (thread.lastTurn === undefined || ENDED_TURN.has(thread.lastTurn.status)) {
+        if (thread.archivedAt !== undefined) {
+          void dispose(thread.id).catch((error: unknown) =>
+            context.log.error("could not drop the wake-ups of an archived thread", {
+              error: String(error),
+            }),
+          );
+        } else if (thread.lastTurn === undefined || ENDED_TURN.has(thread.lastTurn.status)) {
           void deliver(thread.id);
         }
       }),
@@ -911,6 +922,8 @@ export default definePlugin({
           invocation,
         ));
       } catch (error) {
+        // The caller gets the error: the parent is not woken for it as well.
+        task = await saveTask({ ...task, wake: "none", delivery: "disposed" });
         await finish(
           task,
           "failed",
@@ -1480,17 +1493,26 @@ export default definePlugin({
               void updateWorkflow(workflow.workflowId, (current) => ({
                 ...current,
                 logs: [...current.logs, message].slice(-MAX_WORKFLOW_LOGS),
-              })),
+              })).catch((error: unknown) =>
+                context.log.error("could not record a workflow's progress", {
+                  error: String(error),
+                }),
+              ),
             phase: (title) =>
               void updateWorkflow(workflow.workflowId, (current) => ({
                 ...current,
                 currentPhase: title,
-              })),
+              })).catch((error: unknown) =>
+                context.log.error("could not record a workflow's progress", {
+                  error: String(error),
+                }),
+              ),
           },
           {
             concurrency: concurrency(),
             maxAgents: MAX_AGENTS_PER_WORKFLOW,
             maxItems: MAX_ITEMS_PER_CALL,
+            syncTimeoutMs: SCRIPT_SYNC_TIMEOUT_MS,
           },
           controller.signal,
         );
@@ -1505,6 +1527,12 @@ export default definePlugin({
         running.delete(workflow.workflowId);
       }
       if (disposed) return;
+      // An agent the script left running (it threw, or returned without waiting) stops with it.
+      for (const task of tasks.values()) {
+        if (task.workflowId === workflow.workflowId && !isTerminal(task)) {
+          await cancelTask(task, "The workflow's run ended");
+        }
+      }
       const latest = workflows.get(workflow.workflowId) ?? workflow;
       if (latest.status !== "running") return;
       await saveWorkflow({
@@ -1562,7 +1590,17 @@ export default definePlugin({
       permissions: ["threads.write"],
       handler: async ({ script, args, parentThreadId: named }, invocation) => {
         const parentThreadId = requireThread(callerThread(named, invocation), "workflows.run");
-        await getThread(parentThreadId, invocation);
+        const { thread: parent } = await getThread(parentThreadId, invocation);
+        // A script reaches the node's own functions (D375): only a thread that
+        // may already run anything without approval may run one.
+        const mode = parent.runtimeMode ?? DEFAULT_RUNTIME_MODE;
+        if (mode !== "full-access") {
+          throw new OrchestrationError(
+            "RUNTIME_MODE_ESCALATION_DENIED",
+            `A workflow script runs with the node's rights, so it needs a thread in full-access mode, not ${mode}.`,
+            { runtimeMode: mode },
+          );
+        }
         let parsed: ReturnType<typeof parseWorkflow>;
         try {
           parsed = parseWorkflow(script);
@@ -1664,7 +1702,9 @@ export default definePlugin({
       const parsed = Task.safeParse(entry.value);
       if (!parsed.success) continue;
       tasks.set(parsed.data.taskId, parsed.data);
-      if (parsed.data.clientRequestId !== undefined) {
+      // A task that never started is no answer to a retry of its request.
+      const started = parsed.data.childTurnId !== undefined;
+      if (parsed.data.clientRequestId !== undefined && started) {
         requests.set(
           `${parsed.data.parentThreadId}\u0000${parsed.data.clientRequestId}`,
           parsed.data.taskId,
@@ -1687,8 +1727,24 @@ export default definePlugin({
         });
       }
     }
+    const orphaned = new Set(
+      [...workflows.values()]
+        .filter((workflow) => workflow.status === "failed" && workflow.endedAt !== undefined)
+        .map((workflow) => workflow.workflowId),
+    );
     // After activation, so the commands this calls are all there.
     void (async () => {
+      // The agents of a run that ended with the node (or a reload) stop too.
+      for (const task of tasks.values()) {
+        if (task.workflowId !== undefined && orphaned.has(task.workflowId) && !isTerminal(task)) {
+          await cancelTask(task, "The workflow's run ended").catch((error: unknown) =>
+            context.log.warn("could not stop a workflow's agent", {
+              taskId: task.taskId,
+              error: String(error),
+            }),
+          );
+        }
+      }
       for (const task of tasks.values()) {
         if (task.endedAt === undefined) {
           await reconcile(task).catch((error: unknown) =>

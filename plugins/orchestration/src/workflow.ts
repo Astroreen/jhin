@@ -45,6 +45,11 @@ export interface WorkflowLimits {
   readonly maxAgents: number;
   /** Items of one `parallel()` or `pipeline()` call. */
   readonly maxItems: number;
+  /**
+   * How long the body may run before its first `await` (D374). Node's `vm`
+   * bounds only that synchronous start: a loop after an `await` still blocks.
+   */
+  readonly syncTimeoutMs: number;
 }
 
 export class WorkflowError extends Error {
@@ -330,7 +335,19 @@ export async function runWorkflow(
   } catch (error) {
     throw new WorkflowError("WORKFLOW_INVALID", `The script does not parse: ${String(error)}`);
   }
-  const result = await (script.runInContext(sandbox) as Promise<unknown>);
+  let running: Promise<unknown>;
+  try {
+    running = script.runInContext(sandbox, { timeout: limits.syncTimeoutMs }) as Promise<unknown>;
+  } catch (error) {
+    if ((error as { code?: unknown }).code === "ERR_SCRIPT_EXECUTION_TIMEOUT") {
+      throw new WorkflowError(
+        "WORKFLOW_SCRIPT",
+        `The script ran for more than ${limits.syncTimeoutMs} ms without waiting on anything`,
+      );
+    }
+    throw error;
+  }
+  const result = await running;
   stopped();
   return result === undefined ? null : JSON.parse(JSON.stringify(result));
 }

@@ -8,7 +8,7 @@ import {
   type WorkflowHost,
 } from "../src/workflow.ts";
 
-const limits = { concurrency: 4, maxAgents: 1000, maxItems: 4096 };
+const limits = { concurrency: 4, maxAgents: 1000, maxItems: 4096, syncTimeoutMs: 1000 };
 
 function host(answer: (prompt: string, options: AgentOptions) => unknown = (p) => `done: ${p}`) {
   const calls: { prompt: string; options: AgentOptions }[] = [];
@@ -192,6 +192,19 @@ return { p, q }`,
         controller.signal,
       ),
     ).rejects.toThrow(/stopped/);
+  });
+
+  it("stops a body that never waits instead of blocking the node", async () => {
+    // The loop never ends, so the outcome does not depend on how fast the timer is.
+    await expect(
+      runWorkflow(
+        "while (true) {}",
+        undefined,
+        host().host,
+        { ...limits, syncTimeoutMs: 20 },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: "WORKFLOW_SCRIPT", message: /more than 20 ms/ });
   });
 
   it("reports a syntax error as an invalid workflow", async () => {

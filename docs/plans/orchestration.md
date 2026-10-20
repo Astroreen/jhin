@@ -110,13 +110,15 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   an `orchestration.task.updated` event of the `orchestration` stream, so a
   client follows tasks without polling. On activation the plugin reconciles
   the records of unfinished tasks with their threads (a node that restarted
-  closed their turns).
+  closed their turns), and cancels the agents of a workflow that ended with
+  the node or a reload.
 - **D366. `mode: "async"` (default) or `"wait"`.** `wait` returns once the
   task is terminal, asks a question, or `timeoutMs` (default 10 minutes, at
   most 60, at least 1 ms) passes; then `waitTimedOut` is true and the child
   goes on. `clientRequestId` (at most 256 characters) makes a delegation
   idempotent per parent: a retry with the same id returns the same task
-  instead of starting another.
+  instead of starting another. A task whose turn could not start fails with the
+  error the caller got, wakes nobody, and is no answer to a retry.
 - **D367. `tasks.status` and `tasks.cancel`.** A thread reads and cancels
   only its own tasks (`TASK_NOT_FOUND`: "Delegated task X does not belong to
   thread Y."). Reading a terminal task acknowledges its delivery (D368).
@@ -197,10 +199,15 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   the Workflow tool.
 - **D374. Limits.** At most `jhin.orchestration.maxConcurrentAgents` agents
   of one workflow run at once (default `min(16, CPUs − 2)`, at least 1), 1000
-  over a run, 4096 items per `parallel()`/`pipeline()` call.
+  over a run, 4096 items per `parallel()`/`pipeline()` call. The body may run
+  1 s before its first `await` (`vm`'s timeout); a loop after an `await` is
+  not bounded and still blocks the node (Deferred). An agent the script left
+  running when it ends (it threw, or returned without waiting) is cancelled.
 - **D375. A script runs with the node's rights.** Node's `vm` is no security
-  boundary and the hooks are the node's own functions, so `workflows.run`
-  needs `threads.write`, like starting any agent. Nothing more is promised.
+  boundary and the hooks are the node's own functions (a script reaches
+  `process` through them), so `workflows.run` needs `threads.write` and a
+  calling thread in `full-access` mode: a thread that must ask before a
+  command cannot run one (`RUNTIME_MODE_ESCALATION_DENIED`).
 - **D376. Following and stopping a workflow.** A run's record
   (`workflow/<id>`, mirrored as `orchestration.workflow.updated`) holds its
   meta, `status` (`running`, `completed`, `failed`, `stopped`), the phases
@@ -231,6 +238,13 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   saved workflows by name and `scriptPath`, custom `agentType`s.
 - Delegating to an agent on another mesh node (`target.node`): today a task
   runs on the parent's node.
+- Running workflow scripts out of process (a worker or a child process),
+  which would bound their asynchronous part too and give them no node
+  rights.
+- `x-jhin-thread` from a caller with the node's own token is trusted as
+  given: such a caller can act as any thread, with that thread's modes, so
+  the ceiling of D364 binds agents only (W9's per-thread MCP credential
+  fixes the thread for them). Scoped tokens are W13.
 - A ceiling on modes for callers outside a thread (T3's approved permission
   mode of an MCP client) — W13's scoped tokens.
 - The calling thread over `jhin mcp` (stdio): only the HTTP endpoint reads

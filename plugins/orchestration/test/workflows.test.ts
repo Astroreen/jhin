@@ -121,6 +121,38 @@ return { echoed, failed, piped, counted, stubborn }`;
     );
   });
 
+  it("runs scripts only for a thread in full-access mode", async () => {
+    const { client } = await node();
+    const parent = await parentThread(client, { runtimeMode: "auto-accept-edits" });
+    await expect(
+      client.call("workflows.run", {
+        script: "export const meta = { name: 'x', description: 'y' }\nreturn 1",
+        parentThreadId: parent.id,
+      }),
+    ).rejects.toMatchObject({
+      code: "RUNTIME_MODE_ESCALATION_DENIED",
+      message:
+        "A workflow script runs with the node's rights, so it needs a thread in full-access mode, not auto-accept-edits.",
+    });
+  });
+
+  it("stops the agents a script left running when it ends", async () => {
+    const { client } = await node();
+    const feed = orchestrationFeed(client);
+    const parent = await parentThread(client);
+    const { workflowId } = await client.call<{ workflowId: string }>("workflows.run", {
+      script:
+        "export const meta = { name: 'leave', description: 'Leaves an agent running' }\nagent('/hold left')\nawait agent('quick')\nreturn 'done'",
+      parentThreadId: parent.id,
+    });
+    const done = await feed.workflow(workflowId, (record) => record.status !== "running");
+    expect(done).toMatchObject({ status: "completed", result: "done" });
+    const left = (done.agents as WorkflowView["agents"]).find((agent) => agent.index === 0)!;
+    expect(await feed.task(left.taskId!, (record) => record.endedAt !== undefined)).toMatchObject({
+      status: "cancelled",
+    });
+  });
+
   it("refuses an invalid script and records a script's error", async () => {
     const { client } = await node();
     const feed = orchestrationFeed(client);
@@ -162,5 +194,10 @@ return { echoed, failed, piped, counted, stubborn }`;
       status: "failed",
       error: "The node stopped while the workflow ran.",
     });
+    // Its agent stops with it, whatever its turn did meanwhile.
+    const taskId = after.agents[0]!.taskId!;
+    expect(
+      await orchestrationFeed(second.client).task(taskId, (record) => record.endedAt !== undefined),
+    ).toMatchObject({ status: "cancelled" });
   });
 });

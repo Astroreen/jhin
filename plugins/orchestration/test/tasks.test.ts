@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { childTitle } from "../src/index.ts";
 import {
@@ -79,12 +79,27 @@ describe("delegated tasks", () => {
       delivery: "none",
     });
 
-    const held = await client.call<TaskView>("tasks.delegate", {
+    // The wait's timer is caught when armed and fired by hand: no real time passes.
+    const WAIT = 123_456;
+    const realSetTimeout = globalThis.setTimeout;
+    const armed = new Promise<() => void>((resolve) => {
+      vi.spyOn(globalThis, "setTimeout").mockImplementation(((handler: () => void, ms?: number) => {
+        if (ms === WAIT) {
+          resolve(handler);
+          return realSetTimeout(() => undefined, 0);
+        }
+        return realSetTimeout(handler, ms);
+      }) as typeof globalThis.setTimeout);
+    });
+    const waiting = client.call<TaskView>("tasks.delegate", {
       task: "/hold on",
       mode: "wait",
-      timeoutMs: 1,
+      timeoutMs: WAIT,
       parentThreadId: parent.id,
     });
+    (await armed)();
+    vi.restoreAllMocks();
+    const held = await waiting;
     expect(held).toMatchObject({ status: "running", waitTimedOut: true, summary: null });
     // The task goes on; cancelling it stops the child like a Stop.
     expect(
