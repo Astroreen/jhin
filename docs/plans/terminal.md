@@ -41,7 +41,11 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
   with another folder is refused with `TERMINAL_CWD_MISMATCH` (its details
   name the folder it runs in), while a link to the same folder is the same
   folder; a session whose shell exited starts its next one in the new
-  folder. Nor is `cwd` checked against the
+  folder. This is a deliberate change in `terminal.sessions@1.1`: 1.0 kept
+  the running shell and ignored the other `cwd`, so a caller whose folder is
+  spelled differently than `realpath` makes it (a case change on a
+  case-insensitive filesystem) now gets the error instead of the session,
+  for an `open` that waited for the session to start as well. Nor is `cwd` checked against the
   thread's project: `threadId` is a label that groups terminals, and the
   `terminals.write` permission is the only gate, as for every command that
   runs a process. As in T3: the shell is `$SHELL` (`COMSPEC` or PowerShell on
@@ -75,8 +79,11 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
   change (a resize included, so the stream and `terminals.list` agree on the
   size): a late subscriber gets the current list and nothing else. Every
   summary names the run of the node's terminals it belongs to (`instance`,
-  `terminal.sessions@1.1`): new whenever they start over, after a node
-  restart or a plugin reload, and also in `TERMINAL_NOT_FOUND`'s details. Output
+  `terminal.sessions@1.1`, optional in the contract since a 1.0 provider
+  has none; this plugin always sets it): new whenever they start over, after
+  a node restart or a plugin reload, and also in `TERMINAL_NOT_FOUND`'s
+  details. A client that gets none treats the session's absence as a node
+  that started over. Output
   arriving in one tick is one event (at most 64 KiB). Without
   `rpc.streams@1` the plugin still runs, and output is read with
   `terminals.get`.
@@ -84,8 +91,9 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
 - **D142. Scrollback for late joiners.** A session's stream keeps the output
   of its current process up to `jhin.terminal.scrollback` lines (5000, T3's
   default) and 8 MiB of UTF-8 (T3's byte limit), dropping whole output events
-  from the oldest, in one pass per flush; the newest event and the
-  `terminal.started` that opens the stream always stay. A client attaches as T3's does, with a
+  from the oldest, in one pass per flush and past events of any other kind;
+  the newest event and the `terminal.started` that opens the stream always
+  stay. A client attaches as T3's does, with a
   snapshot and the stream: `terminals.open`, then `terminals.get` (the kept
   output and the sequence it reaches), then a subscription after that
   sequence; `terminals.open` only when the node has no session under these

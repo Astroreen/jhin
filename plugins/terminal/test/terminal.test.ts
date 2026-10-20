@@ -611,6 +611,84 @@ describe("terminal sessions", () => {
     Fs.rmSync(cwd, { recursive: true, force: true });
   });
 
+  it("refuses another folder to an open that waited for the same terminal to start", async () => {
+    const first = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-terminal-"));
+    const second = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-terminal-"));
+    const loading = deferred<PtySpawner>();
+    let asked!: () => void;
+    const loadAsked = new Promise<void>((resolve) => (asked = resolve));
+    const sessions = createSessions({
+      streams: createMemoryStreams(),
+      pty: () => {
+        asked();
+        return loading.promise;
+      },
+      config: () => ({ shell: "/bin/sh", scrollback: 5000 }),
+      log: quiet,
+    });
+    const ids = { threadId: "t", terminalId: "term-1" };
+    const starting = sessions.open({ ...ids, cwd: first });
+    // The terminal is starting in the first folder; the second open waits for it.
+    await loadAsked;
+    const waiting = sessions.open({ ...ids, cwd: second });
+    loading.resolve(await loadNodePty());
+
+    expect(await starting).toMatchObject({ status: "running", cwd: first });
+    await expect(waiting).rejects.toMatchObject({
+      code: "TERMINAL_CWD_MISMATCH",
+      details: { cwd: first },
+    });
+    await sessions.dispose();
+    for (const dir of [first, second]) Fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("trims past events other than output, never stopping at them", async () => {
+    const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-terminal-"));
+    const streams = createMemoryStreams();
+    const stream = terminalStream("t", "term-1");
+    let printed = "";
+    const waiting: { text: string; resolve: () => void }[] = [];
+    streams.subscribe(stream, (event) => {
+      if (event.type !== TerminalEvents.output) return;
+      printed += (event.payload as { data: string }).data;
+      for (const waiter of waiting.filter((item) => printed.includes(item.text))) {
+        waiting.splice(waiting.indexOf(waiter), 1);
+        waiter.resolve();
+      }
+    });
+    const shows = (text: string) =>
+      printed.includes(text)
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => waiting.push({ text, resolve }));
+    const sessions = createSessions({
+      streams,
+      pty: loadNodePty,
+      config: () => ({ shell: "/bin/sh", scrollback: 100 }),
+      log: quiet,
+    });
+    const input = { threadId: "t", terminalId: "term-1", cwd };
+    await sessions.open(input);
+    sessions.write({ ...input, data: "seq 1 300\r" });
+    await shows("\n300");
+    // An event of another kind among the output, as a later kind (a title) would be.
+    streams.append(stream, "terminal.title", { title: "seq" });
+    for (const [from, to] of [
+      [301, 600],
+      [601, 900],
+    ]) {
+      sessions.write({ ...input, data: `seq ${from} ${to}\r` });
+      await shows(`\n${to}`);
+    }
+
+    const kept = streams.events(stream).map((event) => event.type);
+    expect(kept[0]).toBe(TerminalEvents.started);
+    expect(kept).toContain("terminal.title");
+    // Output after the other event was trimmed too: the middle run is gone.
+    expect(sessions.get("t", "term-1")?.history).not.toMatch(/\n450\r\n/);
+    await sessions.dispose();
+    Fs.rmSync(cwd, { recursive: true, force: true });
+  });
+
   it("trims the scrollback with at most one look at the stream per flush", async () => {
     const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-terminal-"));
     const inner = createMemoryStreams();

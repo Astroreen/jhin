@@ -82,8 +82,8 @@ export interface MemoryStreams extends StreamSource {
   events(stream: string): readonly StoredEvent[];
   /** Forgets `count` events of `stream`, the oldest first, from the `offset`-th kept one (default 0). */
   drop(stream: string, count: number, offset?: number): void;
-  /** Forgets one event of `stream`, by its sequence. */
-  remove(stream: string, sequence: number): void;
+  /** Forgets events of `stream` by sequence: one, or a set of them in one pass. */
+  remove(stream: string, sequence: number | ReadonlySet<number>): void;
   /** Forgets every event of `stream`; its sequences keep counting. */
   clear(stream: string): void;
   /**
@@ -137,16 +137,19 @@ export function createMemoryStreams(
     events: (stream) => kept.get(stream) ?? [],
     drop(stream, count, offset = 0) {
       const list = kept.get(stream);
-      if (list === undefined || count <= 0) return;
+      // Only kept events: a negative offset would count from the newest end.
+      if (list === undefined || count <= 0 || offset < 0 || offset >= list.length) return;
       list.splice(offset, count);
       if (list.length === 0) kept.delete(stream);
     },
     remove(stream, sequence) {
       const list = kept.get(stream);
-      const index = list?.findIndex((event) => event.sequence === sequence) ?? -1;
-      if (list === undefined || index < 0) return;
-      list.splice(index, 1);
-      if (list.length === 0) kept.delete(stream);
+      if (list === undefined) return;
+      const gone = typeof sequence === "number" ? new Set([sequence]) : sequence;
+      // One pass, however many go.
+      const left = list.filter((event) => !gone.has(event.sequence));
+      if (left.length === 0) kept.delete(stream);
+      else kept.set(stream, left);
     },
     clear(stream) {
       kept.delete(stream);

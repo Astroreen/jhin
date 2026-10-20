@@ -83,7 +83,7 @@ export const TerminalSummary = z.object({
    * away" (same instance) from "the node started over" (another one). Added
    * in 1.1: a client should expect it missing from an older node.
    */
-  instance: z.string(),
+  instance: z.string().optional(),
 });
 export type TerminalSummary = z.infer<typeof TerminalSummary>;
 
@@ -129,8 +129,8 @@ export type CloseTerminalInput = z.infer<typeof CloseTerminalInput>;
 
 /** `terminal.sessions@1` for other plugins of the node; the `terminals.*` commands use it. */
 export interface TerminalSessions {
-  /** The run these sessions belong to (`TerminalSummary.instance`, 1.1). */
-  readonly instance: string;
+  /** The run these sessions belong to (`TerminalSummary.instance`, 1.1; absent before). */
+  readonly instance?: string;
   /**
    * Starts a shell in `cwd`, or returns the session already running under
    * these ids (resized to `cols` × `rows` when given). A session whose

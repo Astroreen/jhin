@@ -76,7 +76,8 @@ interface Session {
   starting: Promise<void> | undefined;
   /** Closed: its stream ended, what the process still prints goes nowhere. */
   closed: boolean;
-  summary: TerminalSummary;
+  /** This node always names its run (`instance`), which 1.1 allows a provider to leave out. */
+  summary: TerminalSummary & { instance: string };
   /** Output not sent yet: what arrived within this tick. */
   pending: string;
   flush: ReturnType<typeof setImmediate> | undefined;
@@ -111,6 +112,7 @@ function shellEnv(): Record<string, string> {
 
 /** The node's terminals: one PTY process per session, its output in the session's live stream. */
 export function createSessions(options: SessionOptions): TerminalSessions & {
+  readonly instance: string;
   dispose(): Promise<void>;
 } {
   const { streams, log } = options;
@@ -131,7 +133,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       terminals: [...sessions.values()].map((session) => session.summary),
     });
   };
-  const update = (session: Session, change: Partial<TerminalSummary>) => {
+  const update = (session: Session, change: Partial<Omit<TerminalSummary, "instance">>) => {
     session.summary = { ...session.summary, ...change, updatedAt: now() };
   };
 
@@ -178,21 +180,20 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
   const trim = (session: Session) => {
     const limit = options.config().scrollback;
     if (session.keptLines <= limit && session.keptBytes <= MAX_SCROLLBACK_BYTES) return;
-    // One pass: count the oldest output events to forget, then drop them at once.
+    // One pass: pick the oldest output events to forget, then forget them at
+    // once. Other events (`terminal.started`, any kind added later) stay where
+    // they are and are passed over, so trimming never stops at them.
     const kept = streams.events(session.stream);
-    const first = kept[0]?.type === TerminalEvents.started ? 1 : 0;
-    let end = first;
-    while (
-      (session.keptLines > limit || session.keptBytes > MAX_SCROLLBACK_BYTES) &&
-      end < kept.length - 1 &&
-      kept[end]!.type === TerminalEvents.output
-    ) {
-      const data = (kept[end]!.payload as { data: string }).data;
+    const forget = new Set<number>();
+    for (const event of kept.slice(0, -1)) {
+      if (session.keptLines <= limit && session.keptBytes <= MAX_SCROLLBACK_BYTES) break;
+      if (event.type !== TerminalEvents.output) continue;
+      const data = (event.payload as { data: string }).data;
       session.keptLines -= lines(data);
       session.keptBytes -= Buffer.byteLength(data);
-      end += 1;
+      forget.add(event.sequence);
     }
-    streams.drop(session.stream, end - first, first);
+    if (forget.size > 0) streams.remove(session.stream, forget);
   };
   const flushOutput = (session: Session) => {
     if (session.flush !== undefined) clearImmediate(session.flush);

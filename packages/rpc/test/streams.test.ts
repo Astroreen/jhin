@@ -152,6 +152,18 @@ describe("live streams", () => {
     ]);
   });
 
+  it("drops only kept events: an offset outside them changes nothing", () => {
+    const memory = createMemoryStreams({ firstSequence: 1 });
+    for (const n of [1, 2, 3]) memory.append("s", "app.n", n);
+    memory.drop("s", 1, -1);
+    memory.drop("s", 1, 3);
+    expect(memory.events("s").map((event) => event.payload)).toEqual([1, 2, 3]);
+    memory.drop("s", 1, 1);
+    expect(memory.events("s").map((event) => event.payload)).toEqual([1, 3]);
+    memory.remove("s", new Set([1, 3]));
+    expect(memory.events("s")).toEqual([]);
+  });
+
   it("keeps counting after a stream is cleared", () => {
     const memory = createMemoryStreams({ firstSequence: 5 });
     memory.append("s", "app.n", 1);
