@@ -165,8 +165,11 @@ export function createSchedulerStore(
      * once the first time and backing off while it keeps failing. A node
      * without the scheduler is not asked again.
      */
+    let failedOnce = false;
     const failed = (error: unknown) => {
-      if (stopped) return;
+      // One start fails once: a list and its stream never both schedule a restart.
+      if (stopped || failedOnce) return;
+      failedOnce = true;
       // A rejection may be anything, not only an Error.
       if ((error as { code?: unknown } | null)?.code === "COMMAND_NOT_FOUND") {
         set(feed, { ...LOADING, status: "unavailable" });

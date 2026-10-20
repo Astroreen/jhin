@@ -235,6 +235,9 @@ describe("the scheduler store", () => {
     node.subscriptions[1]?.onError?.(new Error("refused"));
     expect(delayed.map((entry) => entry.ms)).toEqual([1000]);
     expect(lists).toBe(2);
+    // A second error of the same start schedules nothing more.
+    node.subscriptions[1]?.onError?.(new Error("refused again"));
+    expect(delayed).toHaveLength(1);
     const ready = feed.next();
     delayed[0]?.run();
     expect((await ready).status).toBe("ready");
