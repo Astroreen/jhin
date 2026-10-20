@@ -213,7 +213,10 @@ specific to Claude: the runtime is a plugin on the public API.
   channel (`setMcpServers`) and not the command line, so the token is in
   neither Claude Code's argv nor the environment of the commands it runs
   (T3's reason). Its tools are approved without asking, as T3 pre-approves
-  its server's: by the permission callback, not `allowedTools`, whose bare
+  its server's; in plan mode only those whose command needs nothing but read
+  permissions (`*.read`, `projects.browse`), as T3's read-only sessions
+  pre-approve only its read-only tools, and the others ask like any tool.
+  The approval is the permission callback's, not `allowedTools`, whose bare
   entries make the SDK warn on every query. The appended system prompt
   (part of the launch key, D99) says what they are for. An MCP request names
   the thread whose agent calls in `x-jhin-thread`; the credential carries the
@@ -230,7 +233,11 @@ specific to Claude: the runtime is a plugin on the public API.
   worktree and pull-request tools. Not the node's token (`auth.admin`), config
   (`host.config.*` and `host.inspect`, which shows it: it can hold secrets),
   plugins, mesh administration and calls to other nodes, nor terminals
-  (Claude Code runs its own shell). A workstream that adds commands meant for
+  (Claude Code runs its own shell). Within that reach an agent is not held to
+  its own thread: like T3's tools, these act on any thread or project of the
+  node (the user's own records, which Claude Code could reach through the
+  user's token on disk anyway); `Invocation.threadId` says who acted, it does
+  not fence it in. A workstream that adds commands meant for
   agents (W10's delegated tasks) adds their permissions to this list.
 
 ## Not ported

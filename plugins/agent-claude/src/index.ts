@@ -75,6 +75,10 @@ export const AGENT_PERMISSIONS: readonly string[] = [
   "mesh.read",
 ];
 
+/** A permission that only reads: `threads.read`, `projects.browse`. */
+const readsOnly = (permission: string) =>
+  permission.endsWith(".read") || permission === "projects.browse";
+
 /**
  * Claude Code aborts an HTTP MCP call after 60 s unless the server sets a timeout; a tool
  * that waits (a thread's turn, W10's tasks) may take up to an hour, so T3's budget.
@@ -260,6 +264,8 @@ export function createClaudeRuntime(options: {
   readonly config: () => Config;
   /** The node's MCP server, when it runs one (D340). */
   readonly mcp?: McpServer;
+  /** Whether a tool of the node's MCP server only reads: every permission it needs does. */
+  readonly readOnlyTool?: (tool: string) => boolean;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
 }): AgentRuntime & {
   readonly live: LiveSessions;
@@ -344,7 +350,14 @@ export function createClaudeRuntime(options: {
         settings: config,
         defaultModel: model,
         contextWindow: (name) => windows.get(name) ?? manifestContextWindow(name),
-        ...(server === undefined ? {} : { mcp: (threadId) => mcpAttachment(server, threadId) }),
+        ...(server === undefined
+          ? {}
+          : {
+              mcp: {
+                attach: (threadId: string) => mcpAttachment(server, threadId),
+                readOnly: options.readOnlyTool ?? (() => false),
+              },
+            }),
         ...(options.log === undefined ? {} : { log: options.log }),
       });
       turns.set(turn, { threadId: request.threadId, done: turn.done });
@@ -446,6 +459,12 @@ export function claudePlugin(query: QueryFunction) {
         query,
         sessions,
         ...(mcp === undefined ? {} : { mcp }),
+        readOnlyTool: (tool) => {
+          const command = context.commands
+            .list()
+            .find((candidate) => candidate.name.replaceAll(".", "_") === tool);
+          return command !== undefined && command.permissions.every(readsOnly);
+        },
         config: () => context.config.get<Config>(CONFIG_SECTION),
         log: (message, data) => context.log.warn(message, data),
       });

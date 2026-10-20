@@ -85,7 +85,11 @@ export interface ClaudeTurnDependencies {
   readonly contextWindow?: (model: string) => number | undefined;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
   /** The node's MCP server for a Claude Code started for the thread (D340); none when unset. */
-  readonly mcp?: (threadId: string) => Attachment;
+  readonly mcp?: {
+    attach(threadId: string): Attachment;
+    /** Whether a tool of it only reads (`threads_list`); `threads_send` does not. */
+    readOnly(tool: string): boolean;
+  };
 }
 
 /** The name Claude Code knows the node's MCP server by; its tools are `mcp__jhin__<tool>`. */
@@ -502,12 +506,14 @@ export function claudeTurn(
         toolUseID,
       };
     }
-    // The node's own tools, as T3 pre-approves its server's. Not through `allowedTools`: the
-    // SDK warns on every query whose bare allowedTools entry shadows canUseTool.
-    if (
-      !asksForApproval(runtimeMode, interactionMode) ||
-      (deps.mcp !== undefined && toolName.startsWith(MCP_TOOL_PREFIX))
-    ) {
+    // The node's own tools, as T3 pre-approves its server's; in plan mode only those that
+    // read, as T3's read-only sessions (D340). Not through `allowedTools`: the SDK warns on
+    // every query whose bare allowedTools entry shadows canUseTool.
+    const nodeTool =
+      deps.mcp !== undefined &&
+      toolName.startsWith(MCP_TOOL_PREFIX) &&
+      (interactionMode !== "plan" || deps.mcp.readOnly(toolName.slice(MCP_TOOL_PREFIX.length)));
+    if (!asksForApproval(runtimeMode, interactionMode) || nodeTool) {
       return { behavior: "allow", updatedInput: toolInput, toolUseID };
     }
     startTool(toolUseID, toolName, toolInput);
@@ -574,7 +580,7 @@ export function claudeTurn(
     const lease = await live.lease({
       threadId: request.threadId,
       options: options(resume),
-      ...(deps.mcp === undefined ? {} : { attach: deps.mcp }),
+      ...(deps.mcp === undefined ? {} : { attach: deps.mcp.attach }),
       message: userMessage(text, request.input.attachments, (attachment) =>
         deps.log?.("claude takes no such attachment, skipped", {
           name: attachment.name,

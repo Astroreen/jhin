@@ -84,6 +84,9 @@ Words about Jhin:
 - **Live session** — an agent process kept running between a thread's turns,
   so the next turn goes to it instead of starting the agent and resuming the
   session; it ends when idle too long, with its thread or on request.
+- **Agent credential** — a bearer token the node's MCP server issues to one
+  agent process for a thread (`mcp.server@1`), with only the permissions it
+  names; revoked when that process ends.
 - **Agent registry** — the runtimes of a node (`agent.registry@1`); a thread
   records which one, with which model, runs its turns.
 - **Runtime mode** — how freely an agent acts: `approval-required`,

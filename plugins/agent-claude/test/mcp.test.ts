@@ -32,9 +32,11 @@ const answering = (...answers: string[]): Script =>
 function fakeServer() {
   const grants: McpGrant[] = [];
   const valid = new Set<string>();
+  const state = { refuse: false };
   const server: McpServer = {
     url: "http://127.0.0.1:4100/mcp",
     issue(grant) {
+      if (state.refuse) throw new Error("no credentials today");
       grants.push(grant);
       const token = `token-${grants.length}`;
       valid.add(token);
@@ -48,7 +50,7 @@ function fakeServer() {
       };
     },
   };
-  return { server, grants, valid };
+  return { server, grants, valid, state };
 }
 
 function node(scripts: Script[], config: z.input<typeof Config> = {}) {
@@ -61,10 +63,11 @@ function node(scripts: Script[], config: z.input<typeof Config> = {}) {
     sessions: memorySessions(),
     config: () => settings.config,
     mcp: mcp.server,
+    readOnlyTool: (tool) => tool === "threads_list",
     log: (message, data) => warnings.push({ message, ...(data === undefined ? {} : { data }) }),
   });
   let turns = 0;
-  const request = (): TurnRequest => ({
+  const request = (overrides: Partial<TurnRequest> = {}): TurnRequest => ({
     threadId: THREAD,
     turnId: `t${++turns}`,
     input: { text: `turn ${turns}` },
@@ -72,6 +75,7 @@ function node(scripts: Script[], config: z.input<typeof Config> = {}) {
     cwd: "/work",
     model: "claude-haiku-5-5",
     runtimeMode: "approval-required",
+    ...overrides,
   });
   const turn = () => drain(claude.startTurn(request()));
   return { claude, turn, request, settings, mcp, warnings, ...scripted };
@@ -141,6 +145,38 @@ describe("jhin.agent-claude: the node's MCP server (D340)", () => {
       }
     }
     expect(decisions[1]).toMatchObject({ behavior: "deny" });
+  });
+
+  it("in plan mode approves only the node's tools that read", async () => {
+    const decisions: unknown[] = [];
+    const { claude, request } = node([
+      async function* (player) {
+        yield init();
+        decisions.push(await player.canUseTool("mcp__jhin__threads_list", {}, "tool-1"));
+        decisions.push(await player.canUseTool("mcp__jhin__threads_send", {}, "tool-2"));
+        yield result();
+        await player.nextPrompt();
+      },
+    ]);
+    const turn = claude.startTurn(request({ interactionMode: "plan", runtimeMode: "full-access" }));
+    const asked: string[] = [];
+    for await (const item of turn.items) {
+      if (item.kind === "request.opened") {
+        asked.push(item.requestId);
+        turn.respond!(item.requestId, { kind: "approval", decision: "decline" });
+      }
+    }
+    expect(asked).toEqual(["tool-2:approval"]);
+    expect(decisions[0]).toMatchObject({ behavior: "allow" });
+    expect(decisions[1]).toMatchObject({ behavior: "deny" });
+  });
+
+  it("leaves no Claude Code behind when the credential cannot be issued", async () => {
+    const { turn, calls, mcp, claude } = node([answering("one")]);
+    mcp.state.refuse = true;
+    await expect(turn()).rejects.toThrow("no credentials today");
+    expect(calls[0]!.closed).toBe(true);
+    expect(claude.live.list()).toEqual([]);
   });
 
   it("issues a new credential for every Claude Code and revokes each with it", async () => {

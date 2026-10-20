@@ -376,9 +376,14 @@ export function createLiveSessions(options: {
     };
     sessions.set(threadId, live);
     if (attach !== undefined) {
-      const attachment = attach(threadId);
-      live.detach = () => attachment.dispose();
-      live.ready = register(live, attachment);
+      try {
+        const attachment = attach(threadId);
+        live.detach = () => attachment.dispose();
+        live.ready = register(live, attachment);
+      } catch (error) {
+        // The lease closes the session on a failed `ready`: no Claude Code is left behind.
+        live.ready = Promise.reject(error);
+      }
     }
     // One reader per process, for its whole life: what Claude Code sends between turns is
     // dropped, and an exit while idle closes the session, so the next turn resumes.
