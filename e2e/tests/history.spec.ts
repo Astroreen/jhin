@@ -169,3 +169,34 @@ test("forks a thread from a response and merges the fork back into its source", 
   await log.getByRole("button", { name: "Open source conversation" }).click();
   await expect(heading).toHaveText("plan the trip");
 });
+
+test("finds threads by their messages from the sidebar and the palette", async ({ page }, info) => {
+  const { message } = await thread(page, "an unrelated title", "the quokka lives on Rottnest");
+  await page.getByRole("button", { name: "New thread", exact: true }).first().click();
+  await message.fill("quokka facts please");
+  await message.press("Enter");
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText("quokka facts please");
+
+  const search = page.getByRole("combobox", { name: "Search threads" });
+  await search.fill("quokka");
+  const results = page.getByRole("listbox", { name: "Thread search results" });
+  // The title match first, then the thread found by a message, with its excerpt.
+  await expect(results.getByRole("option")).toHaveCount(2);
+  await expect(results.getByRole("option").first()).toHaveAccessibleName(/^quokka facts please/);
+  const byContent = results.getByRole("option").nth(1);
+  await expect(byContent).toHaveAccessibleName(/^an unrelated title/);
+  await expect(byContent).toContainText("You: the quokka lives on Rottnest");
+  await shoot(page, info, "sidebar-search");
+  await search.fill("no such words anywhere");
+  await expect(page.getByText("No threads found")).toBeVisible();
+  await search.fill("");
+
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("combobox", { name: "Search commands" }).fill("rottnest");
+  const option = palette.getByRole("option", { name: /an unrelated title/ });
+  await expect(option).toContainText("You: the quokka lives on Rottnest");
+  await shoot(page, info, "palette-search");
+  await option.click();
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText("an unrelated title");
+});

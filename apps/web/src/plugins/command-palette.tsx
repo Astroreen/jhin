@@ -70,6 +70,13 @@ import { useExternal, useNow } from "../lib/hooks.ts";
 import { MachineIcon } from "../lib/machine-icon.tsx";
 import { useMachineKind } from "../lib/machines.ts";
 import { filterSearchGroups, type SearchGroup } from "../lib/palette-search.ts";
+import { SearchMatchExcerpt } from "../lib/thread-search-match.tsx";
+import {
+  createContentSearch,
+  searchingContents,
+  type ContentMatch,
+  type ContentSearchState,
+} from "../lib/thread-search.ts";
 import { ProjectIcon } from "../lib/project-icon.tsx";
 
 interface PaletteItem {
@@ -83,6 +90,8 @@ interface PaletteItem {
   readonly timestamp?: string;
   readonly searchTerms: readonly string[];
   readonly searchRecency?: number;
+  /** A thread found by its messages: the excerpt that matched (D228). */
+  readonly contentMatch?: ContentMatch;
   readonly trailing?: ReactNode;
   readonly keepOpen?: boolean;
   readonly run?: () => unknown;
@@ -165,6 +174,9 @@ export const commandPalettePlugin = builtin(
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
       const mesh = context.services.get<MeshMembership>(MESH_CAPABILITY);
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
+      /** The threads the nodes find by their messages while a query is typed (D228). */
+      const contentSearch = createContentSearch(threads);
+      context.subscriptions.add({ dispose: contentSearch.dispose });
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const machines = context.services.tryGet<NodeMachines>(MACHINES_CAPABILITY);
@@ -225,8 +237,18 @@ export const commandPalettePlugin = builtin(
         );
       };
 
-      const threadItems = (now: number): PaletteItem[] => {
+      const threadItems = (
+        now: number,
+        content?: ContentSearchState,
+        query = "",
+      ): PaletteItem[] => {
         const current = navigation.current();
+        // Only matches of the query typed now: a previous query's snippets would rank stale.
+        const fresh = content !== undefined && content.query === query.trim() ? content : undefined;
+        const matchOf = (target: NodeTarget, threadId: string) =>
+          fresh?.matches.find(
+            (match) => match.threadId === threadId && targetKey(match.target) === targetKey(target),
+          );
         return targets()
           .flatMap(({ target, label }) => {
             const catalog = threads.catalog(target);
@@ -235,6 +257,7 @@ export const commandPalettePlugin = builtin(
               .map((thread) => {
                 const project = catalog.projects.find((item) => item.id === thread.projectId);
                 const at = thread.lastTurn?.at ?? thread.updatedAt ?? thread.createdAt;
+                const contentMatch = matchOf(target, thread.id);
                 const isCurrent =
                   current.thread === thread.id &&
                   current.node === target.node &&
@@ -248,7 +271,14 @@ export const commandPalettePlugin = builtin(
                   icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
                   timestamp: formatRelativeTimeLabel(at, now),
                   searchRecency: Date.parse(at),
-                  searchTerms: [thread.title, project?.name ?? "", label, thread.id],
+                  searchTerms: [
+                    thread.title,
+                    project?.name ?? "",
+                    label,
+                    contentMatch?.snippet ?? "",
+                    thread.id,
+                  ],
+                  ...(contentMatch === undefined ? {} : { contentMatch }),
                   run: () => navigation.navigate({ ...route(target), thread: thread.id }),
                 } satisfies PaletteItem;
               });
@@ -300,6 +330,7 @@ export const commandPalettePlugin = builtin(
         query: string,
         _revision: number,
         now: number,
+        content: ContentSearchState,
       ): SearchGroup<PaletteItem>[] => {
         const actions: SearchGroup<PaletteItem> = {
           value: "actions",
@@ -319,7 +350,7 @@ export const commandPalettePlugin = builtin(
         return [
           actions,
           { value: "projects-search", label: "Projects", items: projectItems() },
-          { value: "threads-search", label: "Threads", items: threadItems(now) },
+          { value: "threads-search", label: "Threads", items: threadItems(now, content, query) },
         ];
       };
 
@@ -364,7 +395,17 @@ export const commandPalettePlugin = builtin(
         const [stack, setStack] = useState<readonly PaletteItem[]>([]);
         const [highlighted, setHighlighted] = useState<string | null>(null);
         const submenu = stack.at(-1);
-        const base = submenu?.groups ?? rootGroups(query, revision, now);
+        // The nodes search their threads' messages too (T3's useThreadSearch).
+        const content = useExternal(contentSearch, contentSearch.get);
+        const searchQuery = submenu === undefined && !query.startsWith(">") ? query : "";
+        useEffect(() => {
+          contentSearch.request(
+            searchQuery,
+            targets().map(({ target }) => target),
+          );
+        }, [searchQuery, revision]);
+        useEffect(() => () => contentSearch.request("", []), []);
+        const base = submenu?.groups ?? rootGroups(query, revision, now, content);
         const groups = filterSearchGroups(base, query);
         const items = groups.flatMap((group) => group.items);
 
@@ -438,7 +479,9 @@ export const commandPalettePlugin = builtin(
                 <div className="py-10 text-center text-sm text-muted-foreground">
                   {query.startsWith(">")
                     ? "No matching actions."
-                    : "No matching commands, projects, or threads."}
+                    : searchingContents(content, searchQuery)
+                      ? "Searching thread messages…"
+                      : "No matching commands, projects, or threads."}
                 </div>
               ) : (
                 <CommandList className="overflow-y-auto">
@@ -467,6 +510,9 @@ export const commandPalettePlugin = builtin(
                                   {item.descriptionIcon}
                                   <span className="min-w-0 truncate">{item.description}</span>
                                 </span>
+                                {item.contentMatch === undefined ? null : (
+                                  <SearchMatchExcerpt match={item.contentMatch} query={query} />
+                                )}
                               </span>
                             )}
                             {item.trailing}
