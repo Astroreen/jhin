@@ -277,6 +277,10 @@ and QR code.
 
 ## Deferred
 
+- A secret whose real value starts with the marker and `#`
+  (`••••••#note`) reads as an addressed marker and is refused on save
+  (D417); such a value has to be changed to be saved.
+
 - `host.config.get` and `host.config.patch` convert every section's schema
   (`config.jsonSchema()`) to pick one; a kernel call for one section's
   schema, or a cache cleared on `kernel.config.changed`, would avoid it.
