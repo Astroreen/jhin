@@ -557,6 +557,24 @@ describe("the diff panel's scopes", () => {
     });
     selections.update(key, { base: undefined });
     expect(selections.get(key)).toEqual({ value: "uncommitted" });
+
+    // What storage holds is checked: a malformed entry is dropped, not passed to git as a base.
+    stored.set(
+      "jhin.diff-panel.v1",
+      JSON.stringify({ good: { base: "main" }, bad: { base: 5 }, odd: "x" }),
+    );
+    const read = createDiffSelections(storage);
+    expect([read.get("good"), read.get("bad"), read.get("odd")]).toEqual([
+      { base: "main" },
+      {},
+      {},
+    ]);
+    // Only the most recent 200 are kept.
+    for (let index = 0; index < 205; index++) read.update(`t${index}`, { value: "branch" });
+    const kept = Object.keys(JSON.parse(stored.get("jhin.diff-panel.v1")!));
+    expect(kept).toHaveLength(200);
+    expect(kept.at(0)).toBe("t5");
+    expect(kept.at(-1)).toBe("t204");
   });
 });
 

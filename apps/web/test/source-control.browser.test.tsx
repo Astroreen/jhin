@@ -491,6 +491,25 @@ describe("the diff panel", () => {
     mounted.unmount();
   });
 
+  it("keeps the diff it shows when a refresh fails", async () => {
+    let reads = 0;
+    const { value } = services(viewWith(status()), {
+      "git.diff": () => {
+        reads++;
+        if (reads > 1) throw new Error("git is busy");
+        return diff;
+      },
+    });
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
+    // The window regaining focus reads the diff again, as T3 does.
+    act(() => window.dispatchEvent(new Event("focus")));
+    await expect.element(page.getByText("git is busy")).toBeVisible();
+    expect(page.getByRole("button", { name: "Expand src/app.ts" }).element()).toBeTruthy();
+    expect(reads).toBe(2);
+  });
+
   it("says so when the project is no repository or has no changes", async () => {
     const Plain = createDiffPanel(
       services(viewWith(status({ isRepo: false, branch: null }))).value,

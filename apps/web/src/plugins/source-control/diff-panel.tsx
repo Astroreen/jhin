@@ -538,7 +538,16 @@ export function createDiffPanel(services: SourceControlServices) {
         .then(
           (result) => current && setState({ key: loadKey, what, result }),
           (error: unknown) =>
-            current && setState({ key: loadKey, what, error: (error as Error).message }),
+            current &&
+            // A failed refresh keeps the diff it had (a transient error at window focus).
+            setState((previous) => ({
+              key: loadKey,
+              what,
+              error: (error as Error).message,
+              ...(previous.what === what && previous.result !== undefined
+                ? { result: previous.result }
+                : {}),
+            })),
         );
       return () => {
         current = false;
@@ -984,6 +993,11 @@ export function createDiffPanel(services: SourceControlServices) {
     } else {
       body = (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+          {error === undefined ? null : (
+            <p className="shrink-0 border-b border-border/70 px-3 py-1.5 text-2xs text-error/80">
+              {error}
+            </p>
+          )}
           {result?.truncated ? (
             <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-2xs text-muted-foreground">
               This preview exceeds the size limit. Changes shown are incomplete. Totals include all

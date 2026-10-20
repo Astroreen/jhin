@@ -1,6 +1,6 @@
 // The selection store follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/diffPanelStore.ts.
 import { targetKey, type ThreadsCatalog } from "@jhin/client-api";
-import { toDisposable, type Disposable } from "@jhin/sdk";
+import { toDisposable, z, type Disposable } from "@jhin/sdk";
 import type {
   Diff,
   DiffScopeContext,
@@ -183,12 +183,23 @@ export interface DiffSelection {
 const SELECTION_STORAGE_KEY = "jhin.diff-panel.v1";
 
 /** The panel's selection per thread or draft, kept on this device (T3's diffPanelStore). */
+/** What is stored; anything else in storage is dropped. */
+const StoredSelection = z.object({
+  value: z.string().min(1).optional(),
+  base: z.string().min(1).optional(),
+});
+/** The most recently changed selections kept; older threads fall back to the defaults. */
+const MAX_SELECTIONS = 200;
+
 export function createDiffSelections(storage: Storage = localStorage) {
   let selections: Record<string, DiffSelection> = {};
   try {
     const value: unknown = JSON.parse(storage.getItem(SELECTION_STORAGE_KEY) ?? "{}");
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-      selections = value as Record<string, DiffSelection>;
+      for (const [key, entry] of Object.entries(value)) {
+        const parsed = StoredSelection.safeParse(entry);
+        if (parsed.success) selections[key] = parsed.data as DiffSelection;
+      }
     }
   } catch {
     selections = {};
@@ -200,7 +211,10 @@ export function createDiffSelections(storage: Storage = localStorage) {
     update(key: string, change: { [K in keyof DiffSelection]?: DiffSelection[K] | undefined }) {
       const next: Record<string, unknown> = { ...selections[key], ...change };
       for (const field of Object.keys(next)) if (next[field] === undefined) delete next[field];
-      selections = { ...selections, [key]: next as DiffSelection };
+      // Insertion order is recency: the key moves last, the oldest go past the limit.
+      const { [key]: _previous, ...rest } = selections;
+      const kept = Object.entries(rest).slice(-(MAX_SELECTIONS - 1));
+      selections = { ...Object.fromEntries(kept), [key]: next as DiffSelection };
       try {
         storage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(selections));
       } catch {
