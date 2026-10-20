@@ -4,7 +4,7 @@
 import type { ModelOptionDescriptor } from "@jhin/agent-api";
 
 /** How Claude Code takes a profile's options: T3's `adapter.claudeCode`. */
-export interface ClaudeProfileRuntime {
+interface ClaudeProfileRuntime {
   /** An effort value Claude Code knows under another name; `null`: no effort at all. */
   readonly effortMap?: Readonly<Record<string, string | null>>;
   /** Suffixes of the model id by option value, e.g. `contextWindow: { "1m": "[1m]" }`. */

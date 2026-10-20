@@ -16,11 +16,11 @@ const REASONING_SELECT_DESCRIPTOR_IDS: ReadonlySet<string> = new Set([
   "thinking",
 ]);
 
-export function isUltrathinkPrompt(text: string | null | undefined): boolean {
+function isUltrathinkPrompt(text: string | null | undefined): boolean {
   return typeof text === "string" && /\bultrathink\b/i.test(text);
 }
 
-export function applyUltrathinkPrefix(text: string): string {
+function applyUltrathinkPrefix(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return trimmed;
   // Prefixing a slash command turns it into plain prose, so Claude never runs it.
@@ -41,7 +41,7 @@ export function currentOptionValue(
   return descriptor.options.find((option) => option.isDefault)?.id;
 }
 
-export function currentOptionLabel(
+function currentOptionLabel(
   descriptor: ModelOptionDescriptor,
   selections: readonly ModelOptionSelection[] | undefined,
 ): string | undefined {
