@@ -89,7 +89,7 @@ export async function startThread(
   try {
     thread = await create();
   } catch (error) {
-    if (!UNCERTAIN.has(String((error as { code?: unknown }).code))) throw error;
+    if (!threadMayExist(error)) throw error;
     // The answer was lost, not necessarily the thread: the node returns the
     // thread it made for this id, or makes it now (D207).
     thread = await create();
@@ -102,7 +102,7 @@ export async function startThread(
       ...first.selection,
     });
   } catch (error) {
-    if (UNCERTAIN.has(String((error as { code?: unknown }).code))) {
+    if (UNCERTAIN.has(String((error as { code?: unknown } | null)?.code))) {
       return { threadId: thread.id, uncertain: error as Error };
     }
     // The send's error is the one to show; a failed clean-up adds nothing to it.
