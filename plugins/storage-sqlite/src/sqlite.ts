@@ -112,6 +112,10 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
       "SELECT key, value FROM kv WHERE namespace = ? AND key >= ? AND key < ? ORDER BY key",
     ),
     head: db.prepare("SELECT coalesce(max(sequence), 0) AS head FROM events WHERE stream = ?"),
+    // The newest event stays (D496): `max(sequence)` is the head.
+    trim: db.prepare(
+      "DELETE FROM events WHERE stream = ? AND sequence <= ? AND sequence < (SELECT max(sequence) FROM events WHERE stream = ?)",
+    ),
     insert: db.prepare(
       "INSERT INTO events (stream, sequence, type, payload, at) VALUES (?, ?, ?, ?, ?)",
     ),
@@ -242,6 +246,11 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
     subscribe(stream, listener) {
       assertName("stream", stream);
       return notifier.subscribe(stream, listener);
+    },
+    async trim(stream, through) {
+      assertName("stream", stream);
+      assertCount("through", through);
+      return Number(statements.trim.run(stream, through, stream).changes);
     },
   };
 

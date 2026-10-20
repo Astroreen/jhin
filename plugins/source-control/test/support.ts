@@ -186,10 +186,10 @@ function recordingLogger(listen: (message: string) => void): Logger {
 
 export async function node(
   config: Record<string, unknown> = {},
-  options: { data?: string } = {},
+  options: { data?: string; storage?: ReturnType<typeof memoryStoragePlugin> } = {},
 ): Promise<Node> {
   const data = options.data ?? temp("jhin-sc-node-");
-  const storage = memoryStoragePlugin();
+  const storage = options.storage ?? memoryStoragePlugin();
   const live = createLiveStreams();
   const logWaiters = new Map<string, (() => void)[]>();
   const logger = recordingLogger((message) => {

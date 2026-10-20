@@ -1,8 +1,15 @@
 import type { Logger } from "@jhin/sdk";
-import type { EventLog, Json, KeyValueStore } from "@jhin/storage-api";
+import { keepNewest, type EventLog, type Json, type KeyValueStore } from "@jhin/storage-api";
 
 /** The history of every queued config change and what became of it (D50). */
 export const OUTBOX_STREAM = "mesh/outbox";
+/**
+ * Events of the history kept (D497): the changes still waiting live in
+ * `storage.kv`, so older outcomes are never read again. Trimmed once the
+ * pending set is built and after every `TRIM_EVERY`th append.
+ */
+export const OUTBOX_HISTORY = 1000;
+const TRIM_EVERY = 100;
 /** The changes still waiting, one key each: what a mesh change looks at. */
 const PENDING = "jhin.mesh.outbox";
 /** Set once the pending set has been built from an outbox written before it existed. */
@@ -66,6 +73,17 @@ export interface Outbox {
 export function createOutbox(options: OutboxOptions): Outbox {
   const { kv, log } = options;
 
+  /** Never throws: an untrimmed history only costs disk. */
+  const trim = () =>
+    keepNewest(log, OUTBOX_STREAM, OUTBOX_HISTORY).catch((error: unknown) =>
+      options.logger.warn("config outbox history not trimmed", { error: String(error) }),
+    );
+  /** Appends to the history, trimming it now and then. */
+  const history = async (type: string, payload: Json) => {
+    const [stored] = await log.append(OUTBOX_STREAM, [{ type, payload }]);
+    if (stored !== undefined && stored.sequence % TRIM_EVERY === 0) await trim();
+  };
+
   /**
    * Keys carry a number that only grows: queue time, but always above the last
    * key's, so changes queued in the same millisecond or after the clock stepped
@@ -112,6 +130,8 @@ export function createOutbox(options: OutboxOptions): Outbox {
       await kv.set(BUILT.namespace, BUILT.key, { version: 1 });
     }
     await newestKey();
+    // Only now: an outbox from before the pending set was read whole above.
+    await trim();
   }
   // A failed preparation (a storage error) is tried again on the next call.
   let preparing: Promise<void> | undefined;
@@ -125,7 +145,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
     // History first: a crash in between delivers the change again, which is harmless
     // for the node (same values, same time) but leaves two outcome events for one
     // id in the history; the other order could lose the outcome.
-    await log.append(OUTBOX_STREAM, [{ type, payload: payload as Json }]);
+    await history(type, payload as Json);
     await kv.delete(PENDING, key);
   };
 
@@ -249,9 +269,7 @@ export function createOutbox(options: OutboxOptions): Outbox {
       try {
         await kv.set(PENDING, key, change as unknown as Json);
         try {
-          await log.append(OUTBOX_STREAM, [
-            { type: "mesh.config.queued", payload: change as unknown as Json },
-          ]);
+          await history("mesh.config.queued", change as unknown as Json);
         } catch (error) {
           await kv.delete(PENDING, key).catch((cleanup: unknown) =>
             options.logger.warn("config outbox could not withdraw a change it failed to queue", {

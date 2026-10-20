@@ -216,15 +216,30 @@ export function createSourceControlStore(
       if (attempt === 0) queueMicrotask(again);
       else retry = setTimeout(again, Math.min(MAX_RETRY_MS, 1000 * 2 ** (attempt - 1)));
     };
+    /** `git.status` again, then the stream after its head; the view stays meanwhile. */
+    const restart = () =>
+      queueMicrotask(() => {
+        if (!current() || feed.client !== client) return;
+        feed.stop?.();
+        feed.stop = start(feed, client);
+      });
     if (feed.target.remote === undefined) {
       void load()
         .then((snapshot) => {
           if (!current()) return;
+          let last = snapshot.head;
           subscription = client.subscribe(
             SOURCE_CONTROL_STREAM,
             { after: snapshot.head, onError: failed },
             (event) => {
-              if (current()) set(feed, applySourceControlEvent(feed.view, event));
+              if (!current()) return;
+              // A gap: the stream was trimmed past where it resumed (D498). Start over.
+              if (event.sequence > last + 1) {
+                restart();
+                return;
+              }
+              last = event.sequence;
+              set(feed, applySourceControlEvent(feed.view, event));
             },
           );
         })

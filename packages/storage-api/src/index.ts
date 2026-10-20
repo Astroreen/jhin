@@ -10,6 +10,7 @@ export {
   compareKeys,
   copyJson,
   createNotifier,
+  keepNewest,
   parseStored,
   type AppendOptions,
   type EventLog,

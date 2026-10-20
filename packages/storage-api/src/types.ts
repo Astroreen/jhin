@@ -82,6 +82,14 @@ export interface EventLog {
    * not delivered; read them with `read`.
    */
   subscribe(stream: string, listener: (event: StoredEvent) => void): Disposable;
+  /**
+   * `storage.eventlog@1.1` (D496): forgets the events of `stream` with
+   * `sequence <= through`, except the newest, which always stays, and
+   * resolves how many it forgot. The head and the sequences of what is kept
+   * do not change; a `read` after an older sequence starts at the first kept
+   * event. A 1.0 provider has no `trim`.
+   */
+  trim?(stream: string, through: number): Promise<number>;
 }
 
 export type StorageErrorCode = "CONFLICT" | "INVALID" | "CORRUPT";
@@ -128,12 +136,22 @@ export function assertRecords(records: readonly RecordWrite[]): void {
 }
 
 export function assertCount(
-  name: "after" | "limit" | "expectedHead",
+  name: "after" | "limit" | "expectedHead" | "through",
   value: number | undefined,
 ): void {
   if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
     throw new StorageError("INVALID", `${name} must be a non-negative integer`, { [name]: value });
   }
+}
+
+/**
+ * Trims `stream` down to its newest `count` events (D497). Resolves how many
+ * were forgotten; 0 on a `storage.eventlog@1.0` provider, which cannot trim.
+ */
+export async function keepNewest(log: EventLog, stream: string, count: number): Promise<number> {
+  if (log.trim === undefined) return 0;
+  const head = await log.head(stream);
+  return head > count ? log.trim(stream, head - count) : 0;
 }
 
 /** Code point order (= UTF-8 byte order), the one ordering every implementation uses. */

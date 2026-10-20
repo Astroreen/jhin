@@ -194,7 +194,11 @@ function fakeNode(answer: (params: unknown) => Promise<unknown>) {
     },
     call: async <T>(target: NodeTarget, method: string, params?: unknown) => {
       calls.push({ target, method, params });
-      return (await answer(params)) as T;
+      const result = await answer(params);
+      // The stream goes on from the head the answer reflects.
+      const head = (result as { head?: unknown } | null)?.head;
+      if (typeof head === "number") sequence = Math.max(sequence, head);
+      return result as T;
     },
     open: async () => "",
   };
@@ -212,8 +216,8 @@ function fakeNode(answer: (params: unknown) => Promise<unknown>) {
             const check = () => (subscriptions.length >= count ? resolve() : waiting.push(check));
             waiting.push(check);
           }),
-    append(type: string, payload: unknown) {
-      sequence += 1;
+    append(type: string, payload: unknown, skip = 0) {
+      sequence += 1 + skip;
       for (const { onEvent } of subscriptions) {
         onEvent({
           stream: SOURCE_CONTROL_STREAM,
@@ -287,6 +291,28 @@ describe("the source control store", () => {
     const changed = feed.next();
     node.append(SourceControlEvents.statusChanged, status({ ahead: 5 }));
     expect((await changed).projects.get("app")?.ahead).toBe(5);
+    feed.subscription.dispose();
+    store.dispose();
+  });
+
+  it("starts over when its stream skips events it missed (D498)", async () => {
+    let head = 0;
+    const node = fakeNode(async () => snapshot((head += 4), [status({ ahead: head })]));
+    const store = createSourceControlStore(node.connections, node.threads, quiet);
+    const target = { node: "ws://a/rpc" };
+    const feed = follow(store, target);
+    await feed.next();
+    await node.subscribed();
+    // 5 is followed by 7: the node trimmed 6 before this client resumed.
+    const changed = feed.next();
+    node.append(SourceControlEvents.statusChanged, status({ ahead: 1 }));
+    expect((await changed).projects.get("app")?.ahead).toBe(1);
+    const reloaded = feed.next();
+    node.append(SourceControlEvents.statusChanged, status({ ahead: 99 }), 1);
+    // Not applied: read again instead (head 8) and followed from there.
+    expect((await reloaded).projects.get("app")?.ahead).toBe(8);
+    await node.subscribed(2);
+    expect(node.subscriptions.map((entry) => entry.after)).toEqual([4, 8]);
     feed.subscription.dispose();
     store.dispose();
   });

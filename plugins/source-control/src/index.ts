@@ -39,6 +39,7 @@ import {
   type EventLog,
   type Json,
   type KeyValueStore,
+  keepNewest,
   type StoredEvent,
 } from "@jhin/storage-api";
 
@@ -93,6 +94,14 @@ export { createWatcher } from "./watcher.ts";
 
 export const CONFIG_SECTION = "jhin.source-control";
 const NAMESPACE = "jhin.source-control";
+
+/**
+ * Events of the `source-control` stream kept (D497): clients follow it from
+ * the head `git.status` names, so older ones are never read again. It is
+ * trimmed at start and after every `TRIM_EVERY`th append.
+ */
+export const HISTORY = 1000;
+const TRIM_EVERY = 100;
 
 /** Changes that come close together are read once: this long after the last of them… */
 const SETTLE_MS = 150;
@@ -299,10 +308,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   let indexChain: Promise<unknown> = Promise.resolve();
   let threadsLoaded: Promise<void> | undefined;
 
+  /** Never throws: an untrimmed history only costs disk. */
+  const trim = () =>
+    keepNewest(log, SOURCE_CONTROL_STREAM, HISTORY).catch((error: unknown) =>
+      context.log.warn("source control history not trimmed", { error: String(error) }),
+    );
   const append = async (type: string, payload: unknown) => {
     if (stopped) return;
-    await log.append(SOURCE_CONTROL_STREAM, [{ type, payload: payload as Json }]);
+    const [stored] = await log.append(SOURCE_CONTROL_STREAM, [{ type, payload: payload as Json }]);
+    if (stored !== undefined && stored.sequence % TRIM_EVERY === 0) await trim();
   };
+  /** The trim at start; the first `git.status` waits for it. */
+  const started = trim();
 
   // --- Pull requests linked to threads (D267–D270) ------------------------------------
 
@@ -1244,6 +1261,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     output: StatusSnapshot,
     permissions: ["git.read"],
     handler: async ({ projectId, refresh: reread }) => {
+      await started;
       // The head first: a change made while the statuses are read is also delivered after it.
       const head = await log.head(SOURCE_CONTROL_STREAM);
       await Promise.all([loadProjects(), loadThreads()]);

@@ -18,6 +18,9 @@ export interface MemoryStorage {
   readonly log: EventLog;
 }
 
+/** Sequences only grow and the newest event is never trimmed: the last one is the head. */
+const headOf = (events: readonly StoredEvent[]) => events.at(-1)?.sequence ?? 0;
+
 const copyEvent = (event: StoredEvent): StoredEvent => ({
   ...event,
   payload: copyJson(event.payload),
@@ -66,11 +69,12 @@ export function createMemoryStorage(now: () => Date = () => new Date()): MemoryS
       const records = options.records ?? [];
       assertRecords(records);
       const existing = streams.get(stream) ?? [];
-      if (options.expectedHead !== undefined && options.expectedHead !== existing.length) {
+      const head = headOf(existing);
+      if (options.expectedHead !== undefined && options.expectedHead !== head) {
         throw new StorageError(
           "CONFLICT",
-          `Stream ${stream} is at ${existing.length}, expected ${options.expectedHead}`,
-          { stream, head: existing.length, expectedHead: options.expectedHead },
+          `Stream ${stream} is at ${head}, expected ${options.expectedHead}`,
+          { stream, head, expectedHead: options.expectedHead },
         );
       }
       // Nothing awaited from here on: the records and the events land together.
@@ -86,7 +90,7 @@ export function createMemoryStorage(now: () => Date = () => new Date()): MemoryS
       const at = now().toISOString();
       const stored: StoredEvent[] = events.map((event, index) => ({
         stream,
-        sequence: existing.length + index + 1,
+        sequence: head + index + 1,
         type: event.type,
         payload: copyJson(event.payload),
         at,
@@ -106,18 +110,30 @@ export function createMemoryStorage(now: () => Date = () => new Date()): MemoryS
     },
     async head(stream) {
       assertName("stream", stream);
-      return streams.get(stream)?.length ?? 0;
+      return headOf(streams.get(stream) ?? []);
     },
     async streams(options = {}) {
       const prefix = options.prefix ?? "";
       return [...streams]
         .filter(([stream, events]) => stream.startsWith(prefix) && events.length > 0)
-        .map(([stream, events]) => ({ stream, head: events.length }))
+        .map(([stream, events]) => ({ stream, head: headOf(events) }))
         .toSorted((a, b) => compareKeys(a.stream, b.stream));
     },
     subscribe(stream, listener) {
       assertName("stream", stream);
       return notifier.subscribe(stream, listener);
+    },
+    async trim(stream, through) {
+      assertName("stream", stream);
+      assertCount("through", through);
+      const events = streams.get(stream) ?? [];
+      // The newest event always stays: it carries the head.
+      const kept = events.filter(
+        (event, index) => event.sequence > through || index === events.length - 1,
+      );
+      if (kept.length === events.length) return 0;
+      streams.set(stream, kept);
+      return events.length - kept.length;
     },
   };
 
