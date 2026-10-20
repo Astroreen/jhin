@@ -291,7 +291,10 @@ export function createGitActionsControl(services: SourceControlServices) {
                     label: cta.label,
                     onClick: () => {
                       toasts?.close(toastId);
-                      window.open(cta.url, "_blank", "noopener,noreferrer");
+                      // Only a web page: a forge's answer is no reason to run anything else.
+                      if (/^https?:\/\//i.test(cta.url)) {
+                        window.open(cta.url, "_blank", "noopener,noreferrer");
+                      }
                     },
                   },
                 }

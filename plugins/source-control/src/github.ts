@@ -111,6 +111,7 @@ function toPullRequest(raw: RawPullRequest): PullRequest | undefined {
   if (
     typeof raw.number !== "number" ||
     typeof raw.url !== "string" ||
+    !/^https?:\/\//i.test(raw.url) ||
     (state !== "open" && state !== "closed" && state !== "merged")
   ) {
     return undefined;

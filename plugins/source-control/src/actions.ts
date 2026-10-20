@@ -26,7 +26,8 @@ import type { Writer } from "./writer.ts";
 /** A commit's hooks may run a whole test suite. */
 const COMMIT_TIMEOUT_MS = 10 * 60_000;
 const PUSH_TIMEOUT_MS = 5 * 60_000;
-const PULL_TIMEOUT_MS = 30_000;
+/** A pull fetches over the network and may merge: as long as a push may take. */
+const PULL_TIMEOUT_MS = 5 * 60_000;
 /** A line of a hook's output is cut here. */
 const MAX_PROGRESS_TEXT = 500;
 /** Lines of a commit's hooks published per action; the rest only end up in git's error. */
@@ -307,6 +308,8 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
   let phase: GitActionPhase | null = null;
   /** The branch a feature branch was created from, to go back to when its commit fails. */
   let createdFrom: string | null | undefined;
+  /** The commit was made: from then on nothing is undone, its branch holds it. */
+  let committed = false;
   let partial = "";
   let hookLines = 0;
   const hookLine = (line: string) => {
@@ -329,11 +332,19 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
       if (wantsPush) fail("Cannot push from detached HEAD.");
       if (wantsPr) fail(`Cannot create a ${terms.singular} from detached HEAD.`);
     }
-    // Refused before anything is committed or pushed: the default branch has no base to target.
-    if (wantsPr && run.featureBranch !== true && branch !== null && branch === run.defaultBranch) {
-      fail(
-        `Cannot create a ${terms.singular} from the default branch ${branch}: check out a feature branch first.`,
-      );
+    // Refused before anything is committed or pushed: the default branch has no base to target,
+    // nor has a branch whose base would be itself (no default branch known).
+    if (wantsPr && run.featureBranch !== true && branch !== null) {
+      if (branch === run.defaultBranch) {
+        fail(
+          `Cannot create a ${terms.singular} from the default branch ${branch}: check out a feature branch first.`,
+        );
+      }
+      if ((await baseBranchOf(git, branch, upstream, run.defaultBranch)) === branch) {
+        fail(
+          `Cannot create a ${terms.singular} into ${branch} from itself: set the repository's default branch (origin/HEAD) or the branch's base.`,
+        );
+      }
     }
     let suggestion: { subject: string; body: string } | undefined =
       run.commitMessage === undefined ? undefined : parseCommitMessage(run.commitMessage);
@@ -414,6 +425,7 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
           hookLine(partial);
           partial = "";
         });
+        committed = true;
         const sha = (await git(["rev-parse", "HEAD"])).stdout.trim();
         result.commit = { status: "created", sha, subject: suggestion.subject };
       }
@@ -467,7 +479,7 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
   } catch (error) {
     // A feature branch whose commit failed is undone: back on the branch it came from, the
     // changes still in the working tree.
-    if (createdFrom !== undefined && result.commit.status !== "created" && branch !== null) {
+    if (createdFrom !== undefined && !committed && branch !== null) {
       const created = branch;
       await git(createdFrom === null ? ["switch", "--detach", "HEAD@{1}"] : ["switch", createdFrom])
         .then(() => git(["branch", "-D", "--", created]))
@@ -551,12 +563,12 @@ async function push(git: Git, branch: string): Promise<GitActionResult["push"]> 
 async function baseBranchOf(
   git: Git,
   branch: string,
-  upstream: string,
+  upstream: string | null,
   defaultBranch: string | null,
 ): Promise<string> {
   const configured = await configValue(git, `branch.${branch}.gh-merge-base`);
   if (configured !== undefined) return configured;
-  const parts = splitUpstream(upstream, await remotes(git));
+  const parts = upstream === null ? undefined : splitUpstream(upstream, await remotes(git));
   if (parts !== undefined && parts.branch !== branch) return parts.branch;
   return defaultBranch ?? "main";
 }

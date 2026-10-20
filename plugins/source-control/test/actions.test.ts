@@ -419,6 +419,25 @@ describe("jhin.source-control: git actions", () => {
     );
   });
 
+  it("refuses a pull request into its own branch before committing", async () => {
+    fakeGh();
+    const { dir } = withRemote("https://github.com/acme/demo.git");
+    // A base that names the branch itself, as a missing default branch's fallback can.
+    git(dir, "switch", "--quiet", "--create", "work");
+    git(dir, "config", "branch.work.gh-merge-base", "work");
+    write(dir, "a.txt", "a\n");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    await expect(
+      sc.client.call("git.action.run", { projectId, action: "commit_push_pr", commitMessage: "A" }),
+    ).rejects.toMatchObject({
+      code: "ACTION_UNAVAILABLE",
+      message:
+        "Cannot create a pull request into work from itself: set the repository's default branch (origin/HEAD) or the branch's base.",
+    });
+    expect(git(dir, "status", "--porcelain").trim()).toBe("?? a.txt");
+  });
+
   it("reports GitHub's refusal to create a pull request", async () => {
     const gh = fakeGh();
     gh.failCreate(1, "pull request create failed: GraphQL: No commits between main and feature\n");
