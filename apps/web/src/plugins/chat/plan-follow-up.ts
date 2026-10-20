@@ -9,7 +9,7 @@ import {
 } from "../../lib/proposed-plan.ts";
 import { startThread } from "../../lib/thread-actions.ts";
 import { actionablePlan, reduceTimeline } from "../../lib/timeline.ts";
-import { sendMessage } from "./follow-ups.ts";
+import { sendMessage } from "./send.ts";
 
 class PlanError extends Error {
   readonly code: string;
@@ -48,11 +48,13 @@ export async function implementPlan(
   };
   const text = buildPlanImplementationPrompt(plan.markdown);
   if (!input.newThread) {
-    const outcome = await sendMessage(threads, target, threadId, {
-      text,
-      attachments: [],
-      settings: selection,
-    });
+    const outcome = await sendMessage(
+      threads,
+      target,
+      threadId,
+      { text, attachments: [], settings: selection },
+      "start",
+    );
     if (outcome.kind === "busy") {
       throw new PlanError("TURN_IN_PROGRESS", "The thread is running a turn");
     }

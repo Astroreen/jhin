@@ -51,7 +51,6 @@ import {
   type ComposerHandle,
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
-import { createFollowUpQueues, sendMessage } from "./follow-ups.ts";
 import { implementPlan } from "./plan-follow-up.ts";
 import { createUnconfirmed } from "./unconfirmed.ts";
 
@@ -250,12 +249,6 @@ export const chatPlugin = builtin(
         drafts: context.subscriptions.add(createDrafts()),
         agents: createAgentsCache(threads),
         lastSelection: createLastSelection(),
-        followUps: context.subscriptions.add(
-          createFollowUpQueues({
-            threads,
-            post: (target, threadId, message) => sendMessage(threads, target, threadId, message),
-          }),
-        ),
         unconfirmed: createUnconfirmed(),
         composer,
       };
@@ -395,6 +388,26 @@ export const chatPlugin = builtin(
       register("chat.plan.toggle", "Toggle plan mode", "Switches between plan and build mode", () =>
         composer.current?.togglePlanMode(),
       );
+      // The queue's shortcuts and the composer's other send, T3's
+      // thread.steerQueuedMessage, thread.editQueuedMessage and composer.sendAlternate (D210).
+      register(
+        "chat.queue.steer-next",
+        "Steer the next queued message",
+        "Sends the open thread's first queued message into its running turn",
+        () => void composer.current?.steerNext(),
+      );
+      register(
+        "chat.queue.edit-latest",
+        "Edit the last queued message",
+        "Loads the open thread's last queued message into the composer to change it",
+        () => void composer.current?.editLatest(),
+      );
+      register(
+        "chat.composer.send-alternate",
+        "Send the other way",
+        "While a turn runs, steers the composer's message when follow-ups queue, or queues it when they steer",
+        () => composer.current?.sendAlternate(),
+      );
       register(
         "chat.stop",
         "Stop the running turn",
@@ -463,6 +476,16 @@ export const chatPlugin = builtin(
               when: "!terminalFocus && !editableFocus",
             },
             { key: "mod+l", command: "chat.composer.focus", when: "!terminalFocus" },
+            {
+              key: "mod+shift+enter",
+              command: "chat.queue.steer-next",
+              when: "!terminalFocus && queuedMessages && turnRunning && !composerHasText",
+            },
+            {
+              key: "alt+arrowup",
+              command: "chat.queue.edit-latest",
+              when: "composerFocus && queuedMessages && composerCaretAtStart",
+            },
           ]),
         );
       }

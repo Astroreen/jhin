@@ -1,12 +1,5 @@
-import { visitKey, type ThreadVisits, type TurnStatus } from "@jhin/client-api";
+import { visitKey, type ThreadVisits } from "@jhin/client-api";
 import type { Disposable } from "@jhin/sdk";
-
-/** The statuses of a turn that ended. */
-export const ENDED_STATUSES: ReadonlySet<TurnStatus> = new Set([
-  "completed",
-  "interrupted",
-  "failed",
-]);
 
 const STORAGE_KEY = "jhin.visits";
 

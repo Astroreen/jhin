@@ -575,6 +575,19 @@ describe("jhin.threads: steering (D204, D205)", () => {
     expect(lastQueue(events)?.messages.map((message) => message.id)).toEqual(["c"]);
   });
 
+  it("promotes a queued message once when asked twice at once", async () => {
+    const { client, thread, events, watched } = await holding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "a", messageId: "a" });
+    const results = await Promise.allSettled([
+      client.call("threads.queue.steer", { threadId: thread.id, messageId: "a" }),
+      client.call("threads.queue.steer", { threadId: thread.id, messageId: "a" }),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    await untilCount(watched, ThreadEvents.turnCompleted, 1);
+    expect(count(events, ThreadEvents.turnSteered)).toBe(1);
+    expect(started(events)).toEqual(["/hold on"]);
+  });
+
   it("refuses to steer an agent that cannot, and lists which agents can", async () => {
     const plain: AgentRuntime = { agentId: "acme.plain", startTurn: fakeTurn };
     const { client } = await node({

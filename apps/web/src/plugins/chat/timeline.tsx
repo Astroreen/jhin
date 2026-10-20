@@ -102,7 +102,14 @@ function Timestamp({
 /** Long messages fold to a few lines (over 600 characters or 8 lines). */
 const isLong = (text: string) => text.length > 600 || text.split("\n").length > 8;
 
-function UserMessage({ turn, format }: { turn: TimelineTurn; format: TimestampFormat }) {
+/** A message of the user: the one a turn answers, or one steered into it (D205). */
+function UserMessage({
+  turn,
+  format,
+}: {
+  turn: Pick<TimelineTurn, "text" | "attachments" | "startedAt">;
+  format: TimestampFormat;
+}) {
   const [expanded, setExpanded] = useState(false);
   const long = isLong(turn.text);
   return (
@@ -510,10 +517,14 @@ function TurnView(props: {
   const blocks = turnBlocks(turn);
   const folds = foldsBeforeFinal(turn);
   const finalIndex = blocks.findIndex((block) => block.kind === "message" && block.final);
-  // A proposed plan is never folded away: it is what the turn is for.
+  // A proposed plan is never folded away (it is what the turn is for), nor a
+  // message the user steered in.
   const visible =
     folds && !unfolded
-      ? blocks.filter((block, index) => index >= finalIndex || block.kind === "proposed-plan")
+      ? blocks.filter(
+          (block, index) =>
+            index >= finalIndex || block.kind === "proposed-plan" || block.kind === "steer",
+        )
       : blocks;
   const duration =
     turn.endedAt === undefined
@@ -573,6 +584,19 @@ function TurnView(props: {
             return <WorkGroup entries={block.entries} key={`work-${index}`} live={running} />;
           }
           if (block.kind === "plan") return <PlanCard item={block.item} key={`plan-${index}`} />;
+          if (block.kind === "steer") {
+            return (
+              <UserMessage
+                format={format}
+                key={`steer-${block.item.messageId}`}
+                turn={{
+                  text: block.item.text,
+                  attachments: block.item.attachments,
+                  startedAt: block.item.at,
+                }}
+              />
+            );
+          }
           if (block.kind === "proposed-plan") {
             return (
               <div className="min-w-0 px-1 py-0.5 pb-4" key={block.item.itemId}>

@@ -112,7 +112,11 @@ Words about Jhin:
   tool call or **questions**. Answered with `threads.respond`; closed when its
   turn ends.
 - **Follow-up** — a message sent while its thread runs a turn: it waits in
-  the client's queue and goes out once the thread is free.
+  the thread's **queue** on its node and starts the next turn once the
+  thread is free, unless the queue is **held** after a stopped or failed
+  turn.
+- **Steer** — a message sent into the running turn instead of after it; the
+  agent takes it into the work it is doing (`threads.steer`).
 - **Proposed plan** — a plan an agent proposes in plan mode for the user to
   accept (`agent.plan.proposed`); the composer offers to implement the latest
   one, in its thread or a new one. T3 Code's term.
