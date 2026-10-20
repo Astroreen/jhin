@@ -3,7 +3,9 @@
 // environment kept from the node, the kill grace and polling for the program
 // a terminal runs. T3's history files, restart-on-attach and Windows process
 // table are not ported.
+import * as Crypto from "node:crypto";
 import * as Fs from "node:fs";
+import * as Path from "node:path";
 
 import type { MemoryStreams } from "@jhin/rpc";
 import type { Logger } from "@jhin/sdk";
@@ -55,6 +57,10 @@ export interface SessionOptions {
   readonly log: Logger;
   /** Reads the working directory; `fs.promises.stat` unless a test controls it. */
   readonly stat?: (path: string) => Promise<Fs.Stats>;
+  /** This run's id (`TerminalSummary.instance`); a random one unless a test picks it. */
+  readonly instance?: string;
+  /** How often the process table is read while a terminal runs (1 s, T3's). */
+  readonly pollIntervalMs?: number;
   readonly now?: () => string;
 }
 
@@ -63,12 +69,15 @@ interface Session {
   readonly terminalId: string;
   readonly stream: string;
   cwd: string;
+  /** `cwd` without links, to tell whether another `cwd` names the same folder. */
+  realCwd: string;
   process: PtyProcess | undefined;
   /** Set while a process is being started for it. */
   starting: Promise<void> | undefined;
   /** Closed: its stream ended, what the process still prints goes nowhere. */
   closed: boolean;
-  summary: TerminalSummary;
+  /** This node always names its run (`instance`), which 1.1 allows a provider to leave out. */
+  summary: TerminalSummary & { instance: string };
   /** Output not sent yet: what arrived within this tick. */
   pending: string;
   flush: ReturnType<typeof setImmediate> | undefined;
@@ -103,6 +112,7 @@ function shellEnv(): Record<string, string> {
 
 /** The node's terminals: one PTY process per session, its output in the session's live stream. */
 export function createSessions(options: SessionOptions): TerminalSessions & {
+  readonly instance: string;
   dispose(): Promise<void>;
 } {
   const { streams, log } = options;
@@ -112,6 +122,9 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
   let spawner: Promise<PtySpawner> | undefined;
   let poll: ReturnType<typeof setTimeout> | undefined;
   let pollFailures = 0;
+  /** This run of the node's terminals: a client that comes back tells a restart by it. */
+  const instance = options.instance ?? Crypto.randomUUID();
+  const pollInterval = options.pollIntervalMs ?? POLL_INTERVAL_MS;
 
   /** Every session after a change; the stream keeps only the latest list. */
   const publish = () => {
@@ -120,7 +133,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       terminals: [...sessions.values()].map((session) => session.summary),
     });
   };
-  const update = (session: Session, change: Partial<TerminalSummary>) => {
+  const update = (session: Session, change: Partial<Omit<TerminalSummary, "instance">>) => {
     session.summary = { ...session.summary, ...change, updatedAt: now() };
   };
 
@@ -130,7 +143,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       throw new TerminalError(
         "TERMINAL_NOT_FOUND",
         `No terminal ${terminalId} in thread ${threadId}`,
-        { threadId, terminalId },
+        { threadId, terminalId, instance },
       );
     }
     return session;
@@ -166,15 +179,21 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
    */
   const trim = (session: Session) => {
     const limit = options.config().scrollback;
-    while (session.keptLines > limit || session.keptBytes > MAX_SCROLLBACK_BYTES) {
-      const kept = streams.events(session.stream);
-      const oldest = kept.find((event) => event.type === TerminalEvents.output);
-      if (oldest === undefined || oldest === kept.at(-1)) return;
-      const data = (oldest.payload as { data: string }).data;
+    if (session.keptLines <= limit && session.keptBytes <= MAX_SCROLLBACK_BYTES) return;
+    // One pass: pick the oldest output events to forget, then forget them at
+    // once. Other events (`terminal.started`, any kind added later) stay where
+    // they are and are passed over, so trimming never stops at them.
+    const kept = streams.events(session.stream);
+    const forget = new Set<number>();
+    for (const event of kept.slice(0, -1)) {
+      if (session.keptLines <= limit && session.keptBytes <= MAX_SCROLLBACK_BYTES) break;
+      if (event.type !== TerminalEvents.output) continue;
+      const data = (event.payload as { data: string }).data;
       session.keptLines -= lines(data);
       session.keptBytes -= Buffer.byteLength(data);
-      streams.remove(session.stream, oldest.sequence);
+      forget.add(event.sequence);
     }
+    if (forget.size > 0) streams.remove(session.stream, forget);
   };
   const flushOutput = (session: Session) => {
     if (session.flush !== undefined) clearImmediate(session.flush);
@@ -260,7 +279,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       }),
     ];
     publish();
-    schedulePoll(POLL_INTERVAL_MS);
+    schedulePoll(pollInterval);
   }
 
   /** Ends the session's process: SIGHUP as a closed terminal does, SIGKILL after the grace. */
@@ -309,7 +328,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
     poll = setTimeout(() => {
       void inspect().finally(() => {
         poll = undefined;
-        schedulePoll(Math.min(POLL_INTERVAL_MS * 2 ** pollFailures, MAX_POLL_INTERVAL_MS));
+        schedulePoll(Math.min(pollInterval * 2 ** pollFailures, MAX_POLL_INTERVAL_MS));
       });
     }, delay);
     poll.unref?.();
@@ -322,7 +341,13 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
     } catch (error) {
       // A partial table would make every terminal look idle: this round is skipped.
       pollFailures += 1;
-      log.debug("process table not read", { error: String(error) });
+      // Said once per run of failures: polling backs off, and the indicator and
+      // tab labels stop until `ps` answers again (a process table past its buffer).
+      if (pollFailures === 1) {
+        log.warn("process table not read; terminal labels and indicators wait for it", {
+          error: String(error),
+        });
+      } else log.debug("process table not read", { error: String(error) });
       return;
     }
     let changed = false;
@@ -344,6 +369,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
   publish();
 
   return {
+    instance,
     async open(input) {
       if (disposed) throw stopping();
       let stat: Fs.Stats | undefined;
@@ -361,22 +387,35 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
           { cwd: input.cwd },
         );
       }
+      const realCwd = await Fs.promises.realpath(input.cwd).catch(() => Path.resolve(input.cwd));
       // Disposed while the folder was read: the sessions it closed did not
       // include this one, so it must not start one now.
       if (disposed) throw stopping();
       const id = key(input.threadId, input.terminalId);
       const existing = sessions.get(id);
+      /** A running shell stays where it started: another folder is refused, not ignored. */
+      const sameFolder = (session: Session) => {
+        if (session.realCwd === realCwd) return;
+        throw new TerminalError(
+          "TERMINAL_CWD_MISMATCH",
+          `Terminal ${input.terminalId} in thread ${input.threadId} runs in ${session.summary.cwd}, not ${input.cwd}`,
+          { threadId: input.threadId, terminalId: input.terminalId, cwd: session.summary.cwd },
+        );
+      };
       if (existing?.starting !== undefined) {
         // Opened twice at once: one process, both get it.
         await existing.starting;
+        sameFolder(existing);
         return existing.summary;
       }
       if (existing?.process !== undefined) {
+        sameFolder(existing);
         const cols = input.cols ?? existing.summary.cols;
         const rows = input.rows ?? existing.summary.rows;
         if (cols !== existing.summary.cols || rows !== existing.summary.rows) {
           existing.process.resize(cols, rows);
           update(existing, { cols, rows });
+          publish();
         }
         return existing.summary;
       }
@@ -390,6 +429,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
         terminalId: input.terminalId,
         stream: terminalStream(input.threadId, input.terminalId),
         cwd: input.cwd,
+        realCwd,
         process: undefined,
         starting: undefined,
         closed: false,
@@ -405,6 +445,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
           label: "",
           startedAt: at,
           updatedAt: at,
+          instance,
           ...size,
         },
         pending: "",
@@ -415,6 +456,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
         stop: [],
       };
       session.cwd = input.cwd;
+      session.realCwd = realCwd;
       sessions.set(id, session);
       session.starting = start(session, size);
       try {
@@ -440,6 +482,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       if (session.summary.cols === input.cols && session.summary.rows === input.rows) return;
       session.process.resize(input.cols, input.rows);
       update(session, { cols: input.cols, rows: input.rows });
+      publish();
     },
     async close(input: CloseTerminalInput) {
       const matching = [...sessions.values()].filter(

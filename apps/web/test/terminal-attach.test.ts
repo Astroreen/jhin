@@ -2,9 +2,19 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { LIVE_STREAMS_CAPABILITY, createLiveStreams } from "@jhin/rpc";
+import { noopLogger } from "@jhin/kernel";
+import {
+  LIVE_STREAMS_CAPABILITY,
+  createLiveStreams,
+  createPeerPair,
+  createRpcClient,
+  serveRpc,
+  type LiveStreams,
+  type Peer,
+  type RpcClient,
+} from "@jhin/rpc";
 import { TerminalEvents, terminalStream } from "@jhin/terminal-api";
-import { connectInMemory, createTestKernel, mockCapability } from "@jhin/testing";
+import { connectInMemory, createTestKernel, mockCapability, type TestKernel } from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import terminal from "../../../plugins/terminal/src/index.ts";
@@ -32,7 +42,50 @@ async function node() {
     await kernel.stop();
     Fs.rmSync(cwd, { recursive: true, force: true });
   });
-  return { ...connection, cwd };
+  return { ...connection, cwd, kernel, live };
+}
+
+/**
+ * A client whose connection the test cuts and lets back in: while it is
+ * away, other things happen on the node.
+ */
+function gatedClient(kernel: TestKernel, live: LiveStreams) {
+  let gate: Promise<void> = Promise.resolve();
+  let server: Peer | undefined;
+  const client: RpcClient = createRpcClient({
+    retryDelay: () => 0,
+    async connect() {
+      await gate;
+      const [clientEnd, serverEnd] = createPeerPair();
+      server = serverEnd;
+      serveRpc(serverEnd, {
+        execute: (name, input, invocation) => kernel.commands.execute(name, input, invocation),
+        caller: { id: "owner", permissions: ["*"] },
+        streams: live,
+        hello: () => ({}),
+        newTraceId: () => "trace",
+        logger: noopLogger,
+      });
+      return clientEnd;
+    },
+  });
+  stops.push(async () => client.close());
+  /** Drops the connection and holds it off; resolves once the client knows. */
+  const cut = async () => {
+    let letIn!: () => void;
+    gate = new Promise((resolve) => (letIn = resolve));
+    const away = new Promise<void>((resolve) => {
+      const watching = client.onState((state) => {
+        if (state === "open") return;
+        watching.dispose();
+        resolve();
+      });
+    });
+    server?.close(1006, "cut by test");
+    await away;
+    return letIn;
+  };
+  return { client, cut };
 }
 
 /** A sink recording what a viewport would show; `until` waits for a fact about it. */
@@ -204,6 +257,48 @@ describe("attaching a terminal (the drawer's viewport)", () => {
       data: "echo again-$((2+2))\r",
     });
     await view.shows("again-4");
+  });
+
+  it("does not bring back a terminal closed elsewhere while the connection was away", async () => {
+    const { client: other, cwd, kernel, live } = await node();
+    const { client, cut } = gatedClient(kernel, live);
+    const input = { threadId: "t", terminalId: "term-1", cwd };
+    const view = recorder();
+    attachTerminal({ ...input, client, size, sink: view.sink });
+    await view.until(() => view.log.some((entry) => entry.kind === "reset"));
+
+    const letIn = await cut();
+    await other.call("terminals.close", input);
+    letIn();
+
+    await view.until(() => view.log.some((entry) => entry.kind === "ended"));
+    expect(view.log.filter((entry) => entry.kind === "ended")).toEqual([
+      { kind: "ended", text: "closed" },
+    ]);
+    // Nothing opened in its place.
+    expect(await other.call("terminals.list", {})).toEqual({ terminals: [] });
+  });
+
+  it("opens the terminal again when the node started over while the connection was away", async () => {
+    const { client: other, cwd, kernel, live } = await node();
+    const { client, cut } = gatedClient(kernel, live);
+    const input = { threadId: "t", terminalId: "term-1", cwd };
+    const view = recorder();
+    attachTerminal({ ...input, client, size, sink: view.sink });
+    await view.until(() => view.log.some((entry) => entry.kind === "reset"));
+
+    const letIn = await cut();
+    // The node's terminals start over (as after a restart): a new run, no sessions.
+    await kernel.reload("jhin.terminal");
+    letIn();
+
+    await view.until(() => view.log.filter((entry) => entry.kind === "reset").length === 2);
+    expect(view.log.some((entry) => entry.kind === "ended")).toBe(false);
+    const { terminals } = await other.call<{ terminals: { status: string }[] }>(
+      "terminals.list",
+      {},
+    );
+    expect(terminals).toMatchObject([{ status: "running" }]);
   });
 
   it("shows why a terminal cannot open", async () => {

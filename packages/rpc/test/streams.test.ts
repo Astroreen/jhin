@@ -152,6 +152,17 @@ describe("live streams", () => {
     ]);
   });
 
+  it("removes events in place: a held events() array follows", () => {
+    const memory = createMemoryStreams({ firstSequence: 1 });
+    for (const n of [1, 2, 3, 4]) memory.append("s", "app.n", n);
+    const held = memory.events("s");
+    memory.remove("s", new Set([1, 3]));
+    expect(held.map((event) => event.payload)).toEqual([2, 4]);
+    expect(memory.events("s")).toBe(held);
+    memory.drop("s", 1);
+    expect(held.map((event) => event.payload)).toEqual([4]);
+  });
+
   it("keeps counting after a stream is cleared", () => {
     const memory = createMemoryStreams({ firstSequence: 5 });
     memory.append("s", "app.n", 1);

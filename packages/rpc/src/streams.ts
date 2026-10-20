@@ -78,12 +78,16 @@ export function createLiveStreams(): LiveStreams {
  */
 export interface MemoryStreams extends StreamSource {
   append(stream: string, type: string, payload: Json): StoredEvent;
-  /** The events still kept, oldest first. */
+  /**
+   * The events still kept, oldest first: the stream's own array, not a copy,
+   * so it follows `append`, `drop` and `remove` (until `clear` or `delete`
+   * forgets it). Copy it to keep a snapshot.
+   */
   events(stream: string): readonly StoredEvent[];
   /** Forgets the oldest `count` events of `stream`. */
   drop(stream: string, count: number): void;
-  /** Forgets one event of `stream`, by its sequence. */
-  remove(stream: string, sequence: number): void;
+  /** Forgets events of `stream` by sequence: one, or a set of them in one pass. */
+  remove(stream: string, sequence: number | ReadonlySet<number>): void;
   /** Forgets every event of `stream`; its sequences keep counting. */
   clear(stream: string): void;
   /**
@@ -143,9 +147,15 @@ export function createMemoryStreams(
     },
     remove(stream, sequence) {
       const list = kept.get(stream);
-      const index = list?.findIndex((event) => event.sequence === sequence) ?? -1;
-      if (list === undefined || index < 0) return;
-      list.splice(index, 1);
+      if (list === undefined) return;
+      const gone = typeof sequence === "number" ? new Set([sequence]) : sequence;
+      // One pass, however many go, in place: the array `events` returned is
+      // the one that changes, as with `drop` and `append`.
+      let next = 0;
+      for (const event of list) {
+        if (!gone.has(event.sequence)) list[next++] = event;
+      }
+      list.length = next;
       if (list.length === 0) kept.delete(stream);
     },
     clear(stream) {
