@@ -512,8 +512,15 @@ function QueueBanner(props: {
                   <ComposerBanner.Icon aria-hidden={false}>
                     <Button
                       aria-label="Reorder queued message (drag, or press the arrow keys)"
-                      className="cursor-grab active:cursor-grabbing disabled:cursor-default"
-                      disabled={busyId !== undefined}
+                      // Kept focusable while a move goes, so ↑/↓ can be pressed again.
+                      aria-disabled={busyId !== undefined}
+                      className="cursor-grab active:cursor-grabbing aria-disabled:cursor-default"
+                      onPointerCancel={() => {
+                        if (drag === undefined) armed.current = undefined;
+                      }}
+                      onPointerUp={() => {
+                        armed.current = undefined;
+                      }}
                       onKeyDown={(event) => {
                         if (busyId !== undefined) return;
                         if (event.key === "ArrowUp" && index > 0) {
