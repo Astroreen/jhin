@@ -500,8 +500,15 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     const stored = readLayer(file, log)?.[section];
     const schema = (kernel.config.jsonSchema() as { properties: Record<string, unknown> })
       .properties[section];
+    // The page shows the effective value, so a secret another layer sets is kept too.
+    let effective: unknown;
+    try {
+      effective = kernel.config.get(section);
+    } catch {
+      // An invalid section has no effective value to keep a secret from.
+    }
     const restored = Object.entries(
-      restoreSecrets(schema, values, stored, [section]) as Record<string, unknown>,
+      restoreSecrets(schema, values, [stored, effective], [section]) as Record<string, unknown>,
     );
     let text = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n";
     for (const [key, value] of restored) {

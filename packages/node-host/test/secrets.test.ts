@@ -51,17 +51,15 @@ describe("config secrets (security.md D417)", () => {
       }),
     );
     expect(
-      restoreSecrets(
-        schema,
-        { a: SECRET_REDACTED, list: ["new", SECRET_REDACTED], plain: "x" },
+      restoreSecrets(schema, { a: SECRET_REDACTED, list: ["new", SECRET_REDACTED], plain: "x" }, [
         { a: "old-a", list: ["one", "two"] },
-      ),
+      ]),
     ).toEqual({ a: "old-a", list: ["new", "two"], plain: "x" });
   });
 
   it("keeps the marker as a value where no secret is", () => {
     const schema = schemaOf(z.object({ shown: z.string() }));
-    expect(restoreSecrets(schema, { shown: SECRET_REDACTED }, { shown: "old" })).toEqual({
+    expect(restoreSecrets(schema, { shown: SECRET_REDACTED }, [{ shown: "old" }])).toEqual({
       shown: SECRET_REDACTED,
     });
   });
@@ -71,7 +69,7 @@ describe("config secrets (security.md D417)", () => {
       z.object({ env: z.record(z.string(), z.string().meta({ writeOnly: true })) }),
     );
     expect(() =>
-      restoreSecrets(schema, { env: { B: SECRET_REDACTED } }, { env: {} }, ["s"]),
+      restoreSecrets(schema, { env: { B: SECRET_REDACTED } }, [{ env: {} }], ["s"]),
     ).toThrow(
       expect.objectContaining({ code: "CONFIG_SECRET_MISSING", details: { path: "s.env.B" } }),
     );
@@ -91,6 +89,7 @@ describe("config secrets (security.md D417)", () => {
         },
         mode: {
           if: { properties: { kind: { const: "key" } } },
+          // oxlint-disable-next-line unicorn/no-thenable -- JSON Schema's own keyword
           then: { properties: { key: { type: "string", writeOnly: true } } },
         },
       },
@@ -117,6 +116,13 @@ describe("config secrets (security.md D417)", () => {
       list: [SECRET_REDACTED],
       nested: { b: SECRET_REDACTED },
     });
-    expect(restoreSecrets(undefined, hidden, value)).toEqual(value);
+    expect(restoreSecrets(undefined, hidden, [value])).toEqual(value);
+  });
+
+  it("keeps a secret from the next source when the first has none", () => {
+    const schema = schemaOf(z.object({ key: z.string().meta({ writeOnly: true }) }));
+    expect(restoreSecrets(schema, { key: SECRET_REDACTED }, [{}, { key: "effective" }])).toEqual({
+      key: "effective",
+    });
   });
 });

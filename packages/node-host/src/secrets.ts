@@ -13,7 +13,11 @@ type Schema = Record<string, unknown>;
 const isObject = (value: unknown): value is Schema =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Follows a local `$ref` (`#`, `#/$defs/x`, `#/definitions/x`); anything else stays as it is. */
+/**
+ * Follows a local `$ref` (`#…`) against the section's own schema: the kernel
+ * converts each section on its own (`config.jsonSchema()`), so its `$defs`
+ * stay inside it.
+ */
 function deref(schema: unknown, root: Schema, depth = 0): Schema {
   if (!isObject(schema)) return {};
   const ref = schema["$ref"];
@@ -168,14 +172,15 @@ function at(value: unknown, path: readonly string[]): unknown {
 
 /**
  * `incoming` with the marker replaced, wherever its schema says a secret is,
- * by what `stored` holds at the same place (by key, by position in a list).
- * The marker anywhere else is a value like any other. A marker where nothing
- * is stored fails with `CONFIG_SECRET_MISSING`; `label` prefixes its path.
+ * by what the first of `sources` holding one has at the same place (by key,
+ * by position in a list). The marker anywhere else is a value like any
+ * other. A marker no source has a value for fails with
+ * `CONFIG_SECRET_MISSING`; `label` prefixes its path.
  */
 export function restoreSecrets(
   schema: unknown,
   incoming: unknown,
-  stored: unknown,
+  sources: readonly unknown[],
   label: readonly string[] = [],
 ): unknown {
   return mapSecrets(
@@ -185,7 +190,9 @@ export function restoreSecrets(
     [],
     (value, path) => {
       if (value !== SECRET_REDACTED) return value;
-      const kept = at(stored, path);
+      const kept = sources
+        .map((source) => at(source, path))
+        .find((found) => found !== undefined && found !== null);
       if (kept === undefined || kept === null) {
         const where = [...label, ...path].join(".");
         throw Object.assign(new Error(`No secret is stored at ${where} to keep; enter it again`), {

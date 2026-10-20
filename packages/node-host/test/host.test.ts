@@ -524,6 +524,7 @@ export default definePlugin({
         key: z.string().optional().meta({ writeOnly: true }),
         pin: z.number().meta({ writeOnly: true }).nullable().optional(),
         env: z.record(z.string(), z.string().meta({ writeOnly: true })).optional(),
+        keys: z.array(z.string().meta({ writeOnly: true })).optional(),
       }),
     );
   },
@@ -533,21 +534,33 @@ export default definePlugin({
     );
     Fs.writeFileSync(
       Path.join(home, "config.jsonc"),
-      '{ "acme.vault": { "user": "me", "key": "s3cret", "pin": 1234, "env": { "A": "a-value" } } }\n',
+      '{ "acme.vault": { "user": "me", "key": "s3cret", "pin": 1234, "env": { "A": "a-value" }, "keys": ["k-one", "k-two"] } }\n',
     );
     host = new HostProcess({ home, cwd: tempDir("cwd") });
     await host.ready();
 
-    const hidden = { user: "me", key: "••••••", pin: "••••••", env: { A: "••••••" } };
+    const hidden = {
+      user: "me",
+      key: "••••••",
+      pin: "••••••",
+      env: { A: "••••••" },
+      keys: ["••••••", "••••••"],
+    };
     const read = await host.execute("host.config.get", { section: "acme.vault" });
     expect(read.value).toMatchObject({ value: hidden, layers: { node: hidden } });
-    expect(JSON.stringify(read.value)).not.toMatch(/s3cret|1234|a-value/);
+    expect(JSON.stringify(read.value)).not.toMatch(/s3cret|1234|a-value|k-one|k-two/);
 
     // The form sends a whole top-level key back: the markers keep what is stored.
     const saved = await host.execute("host.config.patch", {
       layer: "node",
       section: "acme.vault",
-      values: { key: "••••••", env: { A: "••••••", B: "b-value" } },
+      values: {
+        key: "••••••",
+        pin: "••••••",
+        env: { A: "••••••", B: "b-value" },
+        // The first secret of the list kept, the second replaced.
+        keys: ["••••••", "k-three"],
+      },
     });
     expect(saved.value).toMatchObject({ applied: true });
     const file = Fs.readFileSync(Path.join(home, "config.jsonc"), "utf8");
@@ -555,6 +568,10 @@ export default definePlugin({
     expect(file).toContain('"a-value"');
     expect(file).toContain('"b-value"');
     expect(file).not.toContain("••••••");
+    expect(file).toContain("1234");
+    expect(file).toContain('"k-one"');
+    expect(file).toContain('"k-three"');
+    expect(file).not.toContain('"k-two"');
 
     // A marker where nothing is stored is refused.
     const missing = await host.execute("host.config.patch", {
