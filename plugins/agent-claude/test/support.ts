@@ -7,7 +7,7 @@ import type { QueryFunction, SessionStore } from "../src/turn.ts";
 interface Call {
   readonly options: Options;
   readonly prompt: SDKUserMessage[];
-  /** Live changes, in order: `model:<id>`, `mode:<permission mode>`. */
+  /** Live changes, in order: `model:<id>`, `mode:<permission mode>`, `effort:<level>`. */
   readonly controls: string[];
   /** The MCP servers registered over the control channel (`setMcpServers`), in order. */
   readonly mcpServers: Record<string, unknown>[];
@@ -43,7 +43,12 @@ export type Script = (player: Player) => AsyncGenerator<SDKMessage, void, undefi
  */
 export function scriptedQuery(...scripts: Script[]) {
   const calls: Call[] = [];
-  const state: { refuseControls: boolean; mcp: "connect" | "fail" | "silent" } = {
+  const state: {
+    refuseControls: boolean;
+    mcp: "connect" | "fail" | "silent";
+    /** What an interrupt answers with: the receipt of a current CLI (D350). */
+    receipt?: (call: Call) => unknown;
+  } = {
     refuseControls: false,
     mcp: "connect",
   };
@@ -103,7 +108,7 @@ export function scriptedQuery(...scripts: Script[]) {
       interrupt: async () => {
         call.interrupts++;
         interrupt();
-        return undefined;
+        return state.receipt?.(call);
       },
       close: () => {
         call.closed = true;
@@ -111,6 +116,7 @@ export function scriptedQuery(...scripts: Script[]) {
       },
       setModel: (model) => control(`model:${model}`),
       setPermissionMode: (mode) => control(`mode:${mode}`),
+      applyFlagSettings: (settings) => control(`effort:${settings.effortLevel}`),
       setMcpServers: (servers) => {
         call.mcpServers.push(servers);
         const names = Object.keys(servers);
