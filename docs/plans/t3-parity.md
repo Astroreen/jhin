@@ -435,6 +435,193 @@ threads back; a custom snooze, the clock an hour on, "Woke" dismissed or
 cleared by opening; dragging pinned and active rows and onto the shelf, kept
 after a reload), with screenshots.
 
+### Composer (W6)
+
+T3 Code's composer, ported from the D53 tag (`eb7b35ac`): what the user can
+attach, mention and choose for a turn, and what happens to a proposed plan.
+It lands as a stack of PRs, each named below with the decisions it carries.
+
+- **D290. One reference, one stack.** Every part follows T3 Code at D53:
+  `ChatComposer.tsx`, `ComposerPromptEditorTiptap.tsx`, `ComposerCommandMenu.tsx`,
+  `TraitsPicker.tsx`, `ProposedPlanCard.tsx`, `imageCompression.ts`,
+  `composerAttachmentFiles.ts` and their server halves. T3's wording, limits
+  and keyboard behaviour are kept; where Jhin's architecture differs (commands
+  instead of T3's RPC and HTTP routes, a mesh between client and node) the
+  decision says how. The stack: the plan card (D304–D306), per-turn model
+  options (D297–D299), attachments as blobs (D291–D296), the rich-text editor
+  (D303), then commands, skills and mentions (D300–D302).
+
+#### Attachments
+
+- **D291. `storage.blobs@1`: bytes beside the event log.** A capability of
+  `@jhin/storage-api`: `put`/`append` bytes under a namespaced key, `read`
+  (a range), `stat`, `delete`, `list`, and an optional `path(key)` that names
+  the file a blob is kept in when it is a local file. The SQLite storage
+  plugin provides it as files in its data directory (written to a `.part`
+  file and renamed, so a blob is either whole or absent); the memory storage
+  of `@jhin/testing` keeps them in memory, without `path`. Blobs are generic
+  storage, not attachments: other plugins (screenshots, exports) use them too.
+- **D292. Uploads are commands, in chunks.** T3 mints a signed HTTP URL and
+  the browser POSTs the file to it. A Jhin client reaches mesh members only
+  through commands relayed by its node, so an upload is commands:
+  `attachments.begin` (`{ kind, name, mimeType, sizeBytes }` → `{ attachmentId }`),
+  `attachments.write` (`{ attachmentId, offset, data }`, base64 chunks of at
+  most 1 MiB, in order) and `attachments.discard`; `attachments.read`
+  (`{ attachmentId, offset?, length? }`) returns a range for showing it. The
+  threads plugin owns them, under `threads.write` and `threads.read`. The
+  limits are T3's (`chatAttachment.ts`): 100 attachments per message, an image
+  up to 10 MiB and 80 MiB of images together, a file from 1 byte to 50 MiB,
+  with T3's messages ("You can attach up to 100 files per message.", "'X'
+  exceeds the 50 MB attachment limit."). An upload not sent within 24 hours
+  is swept, as T3 sweeps its pending files.
+- **D293. A message refers to its attachments by id.** `TurnAttachment`
+  (`agent.runtime@1.2`, additive) is `{ kind: "image" | "file", id, name,
+  mimeType, sizeBytes }`; the data URL form of D54 is still accepted and still
+  read from older events, so old threads and old clients keep working.
+  `threads.send` claims each uploaded attachment for the thread: it checks it
+  is complete and within the limits, and moves it under the thread, so an id
+  is sent once. Deleting a thread deletes its attachments. The turn's first
+  event now holds ids, not bytes: D54's 20 MB per message goes.
+- **D294. A runtime gets the bytes and, where there is one, a path.** The
+  threads plugin resolves each attachment before the turn starts:
+  `read()` for its bytes and `path` when the blob is a local file. Claude
+  Code gets images as base64 image blocks, as before, and every attachment's
+  path in the text, as T3 writes it (`[Attached file "name" is saved at:
+  /path]`); the attachments directory is added to Claude's
+  `additionalDirectories` so it can read them.
+- **D295. Any file can be attached.** As T3: images (GIF, HEIC, HEIF, JPEG,
+  PNG, WebP) show as thumbnails, everything else as a row with its icon, name
+  and size, in the composer and in the sent message (where it downloads). A
+  paste of 32 KiB of text or more is attached as `pasted-text.txt`
+  (`pasted-text-2.txt`, …) with T3's toast; ⌘/Ctrl+Shift+V keeps it inline.
+  Uploads start when a file is attached, show their progress, can be retried
+  and removed; sending waits for none: a message whose upload did not finish
+  is refused with T3's "Attachment 'X' did not finish uploading.". The file
+  picker takes any type.
+- **D296. Images are made to fit before they are uploaded,** with T3's
+  `imageCompression.ts`: PNG and JPEG are scaled to 2000 px on the longest
+  edge; an image over 10 MiB is re-encoded (WebP, else JPEG, quality 0.92 down
+  to 0.68, then 75 % and 55 % of its size) until it fits; HEIC and HEIF are
+  converted to JPEG with `heic-to` (loaded only when one is attached; at most
+  64 megapixels). An image that cannot fit says "'X' is too large to attach,
+  even after compression.".
+
+#### Per-turn model options
+
+- **D297. A model describes its options** (`agent.runtime@1.2`, additive):
+  `AgentModel.options` lists T3's option descriptors, a `select` (`id`,
+  `label`, `options` with one `isDefault`, `promptInjectedValues`) or a
+  `boolean`. A turn request carries `modelOptions` (`{ id, value }[]`);
+  `threads.send` takes them, the thread records them with its model (D55), and
+  later turns default to them. `agents.list` reports each model's options.
+  Values a model does not declare are dropped, not refused, so a selection
+  carried over from another model does no harm.
+- **D298. Claude's options are T3's manifest** for the current models:
+  Reasoning (`effort`: Low, Medium, High, Extra High, Max, Ultracode where the
+  model has it, Ultrathink) and Fast Mode on Opus 5.5; the context window
+  options of T3's older 4.6 profiles (200k, 1M) for models Claude Code
+  reports with those ids. They apply as T3 applies them: the effort through
+  the effort map (Ultracode runs `xhigh` with `ultracode` set, Ultrathink adds
+  "Ultrathink:" before the message instead of an effort), Fast Mode as Claude
+  Code's `fastMode` setting, a context window as the model id's suffix
+  (`[1m]`). The node config's `effort` stays the default when a turn chooses
+  none. A live session (`providers.md` D98) whose options change is started
+  again; applying them live is W9's (`applyFlagSettings`).
+- **D299. T3's traits menu.** One button after the model picker, labelled
+  with the chosen values ("High · Fast"), opens a menu with a section per
+  select option (radio items, "Default" on the model's default) and On/Off
+  for each boolean. A prompt that contains "ultrathink" locks the effort with
+  T3's note. The choice is kept per thread like the model, and remembered per
+  model on the device for new threads, as T3's sticky options.
+
+#### Commands, skills and mentions
+
+- **D300. A runtime lists its commands and skills** (`agent.runtime@1.2`,
+  additive): `AgentRuntime.commands?({ cwd })` returns `{ commands, skills }`
+  with T3's shapes (`{ name, description?, input?: { hint } }`, `{ name,
+  description?, path, scope?, displayName? }`). The command `agents.commands`
+  (`{ agentId?, projectId }`) asks it for a project's folder. Claude Code
+  answers from its initialization (`initializationResult().commands`, the
+  probe T3 runs, cached per folder for 5 minutes) with T3's `/compact` first;
+  its skills are read from `SKILL.md` files under Claude's config directory
+  (scope `user`) and the project's `.claude/skills` (scope `project`), as T3
+  reads them.
+- **D301. The `/` and `$` menus.** As T3: `/` at the start of the prompt
+  offers T3's built-ins (`/model`, and `/plan`, `/default` when the agent has
+  plan mode), then the runtime's commands, then skills as `/skill:name`;
+  `$` offers skills. Picking a command inserts `/name `, a skill `$name `;
+  `/plan` and `/default` (picked, or sent alone) switch the mode and `/model`
+  opens the picker. Ranking is T3's (`composerSlashCommandSearch.ts`). Claude
+  Code runs a skill only when `/name` starts the message's last text block, so
+  the runtime sends a `$skill` that way (T3's `ClaudeSkillDispatch.ts`).
+- **D302. `@` mentions files and folders of the project.** The command
+  `projects.search-entries` (`{ projectId, query, limit ≤ 200, kind? }` →
+  `{ entries: { path, kind }[], truncated }`) searches an index of the
+  project kept by the threads plugin: the files `git ls-files` lists (tracked
+  and untracked, not ignored), else a walk of the folder, and the folders
+  they are in, at most 25 000 entries, dropped after 15 minutes unused. T3
+  ranks with a native index (`@ff-labs/fff-node`); here T3's own fuzzy scorer
+  (`scoreQueryMatch`) ranks the entries. The menu ("Files and folders",
+  "Searching workspace files...", "No matching files or folders.") waits
+  120 ms after typing, and a pick inserts T3's markdown link
+  (`[name](path)`), which the agent reads as text.
+
+#### Rich text
+
+- **D303. The prompt is a tiptap editor,** as T3's
+  `ComposerPromptEditorTiptap.tsx`: StarterKit with T3's choices, mention and
+  skill chips as inline atoms that serialize back to their text, inline
+  markdown marks, lists, quotes and code blocks; the prompt is still a
+  markdown string, so drafts, history, the queue and `threads.send` are
+  unchanged. Enter sends, Shift+Enter breaks a line, IME composition never
+  sends; arrow keys move through prompt history on the first and last line
+  only. The menus of D301 and D302 open from the editor's caret.
+
+#### Proposed plans
+
+- **D304. A proposed plan is an item of its own** (`agent.runtime@1.2`,
+  additive): `{ kind: "plan.proposed", itemId, markdown }`, recorded as
+  `agent.plan.proposed` (`{ turnId, itemId, markdown }`). Claude Code's
+  `ExitPlanMode` yields it instead of a message, as T3's adapter captures it.
+  The latest plan of a thread's latest turn is the one that can be acted on.
+- **D305. T3's plan card:** "Plan" badge and the plan's first heading as its
+  title ("Proposed plan" without one), the body without that heading,
+  collapsed past 900 characters or 20 lines ("Expand plan", "Collapse plan"),
+  and the "Plan actions" menu: "Copy to clipboard", "Download as markdown"
+  (the title's slug, `.md`) and "Save to workspace", which writes the file
+  into the project through `projects.write-file` (`{ projectId, path,
+  contents }`; a relative path inside the project, under `projects.write`,
+  refusing a path that leads out through a link, the file itself included).
+- **D306. "Implement this plan".** After a plan-mode turn that proposed a
+  plan and asks nothing, the composer shows T3's "Plan ready" banner with the
+  plan's title. With an empty prompt the send button reads "Implement", and
+  it is the form's submit button, so Enter in the empty composer implements
+  too, as in T3: it sends "PLEASE IMPLEMENT THIS PLAN:\n" and the plan in build mode
+  (`interactionMode: "default"`), and its menu ("Implementation actions")
+  offers "Implement in a new thread", which creates a thread titled
+  "Implement <title>" in the same project with the same agent and model and
+  sends it there. With text typed, the button reads "Refine" and sends it in
+  plan mode. Both are commands (`chat.plan.implement`,
+  `chat.plan.implement-new-thread`, on the open thread or the one named);
+  a new thread whose first message the connection dropped says so
+  (`uncertain`). `agent.runtime@1.2` is a version of the contract, not of a
+  manifest entry: its additions are optional fields and items a runtime may
+  never use, so a consumer reads them where they are and does without them.
+
+- **D307–D309.** Free for this workstream's follow-ups.
+
+The proof of D304–D306: `plugins/threads/test/features.test.ts` (a proposed
+plan recorded as `agent.plan.proposed`, `projects.write-file` writing inside a
+project and refusing `..`, absolute paths, a link out of it and the project
+itself); `plugins/agent-claude/test/turn.test.ts` (`ExitPlanMode` yields
+`plan.proposed`); `apps/web/test/proposed-plan.test.ts` (T3's title, body,
+preview, file name, thread title and prompt; the plan as a timeline item that
+never folds away, the latest one offered only after its turn ended and not
+after a failure or a later turn, Claude's earlier `:plan` messages read as
+plans); Playwright `e2e/tests/composer.spec.ts` (the card, "Plan ready",
+saving to the project, "Refine", "Implement" in build mode, "Implement in a
+new thread" titled after the plan), with screenshots.
+
 ### Node machine icons
 
 - **D130. A node says what it is: `host.identity`.** The node host's
@@ -706,8 +893,8 @@ and resetting it clears them), with a screenshot.
   (commit, push, create a pull request) and linking pull requests to threads
   are deferred there.
 - Composer: `@` file mentions, slash commands, rich text (tiptap), pasted
-  files other than images, image compression and HEIC conversion.
-- Implementing a proposed plan from plan mode with one action.
+  files other than images, image compression and HEIC conversion (W6, D290–D303,
+  in progress).
 - Editing a sent message, regenerating, forking a thread.
 - Searching thread contents (the palette and the sidebar search titles).
 - Sidebar (T3's layout, D70, D75–D79): settling on a merged pull request,

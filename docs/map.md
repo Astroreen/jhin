@@ -61,7 +61,7 @@ the same PR.
 | `jhin.storage-sqlite` | `storage.kv@1`, `storage.eventlog@1.1`                                                                        | —                                                                                                                                                              | `foundation.md`                 |
 | `jhin.mcp-server`     | `mcp.server@1`; every command as an MCP tool                                                                  | —                                                                                                                                                              | `foundation.md#D39`             |
 | `jhin.mesh`           | nodes of one owner, relay, addresses                                                                          | `mesh.invite`, `mesh.join`, `mesh.nodes`, `mesh.call`, `mesh.resolve`, `mesh.open`, `mesh.close`, `mesh.config.*`                                              | `foundation.md`                 |
-| `jhin.threads`        | `agent.registry@1`; projects, threads, turns as events                                                        | `projects.*`, `threads.*`, `agents.list`                                                                                                                       | `foundation.md`, `t3-parity.md` |
+| `jhin.threads`        | `agent.registry@1`; projects, threads, turns as events                                                        | `projects.*` (incl. `projects.write-file`), `threads.*`, `agents.list`                                                                                         | `foundation.md`, `t3-parity.md` |
 | `jhin.agent-claude`   | Claude Code as an agent runtime                                                                               | `claude.sessions.list`, `claude.sessions.close`; event `claude.session.files.deleted`                                                                          | `providers.md`                  |
 | `jhin.agent-fake`     | `agent.runtime@1`, deterministic                                                                              | —                                                                                                                                                              | `foundation.md`                 |
 | `jhin.orchestration`  | delegated tasks, thread launches, workflow scripts                                                            | `tasks.*`, `orchestration.capabilities`, `orchestration.launch`, `workflows.*`                                                                                 | `orchestration.md`              |
@@ -76,25 +76,25 @@ The host itself adds `host.inspect`, `host.identity`, `host.commands.list`,
 
 ## Client plugins (`apps/web/src/plugins/`)
 
-| Plugin            | What it does                                                       | Plan                              |
-| ----------------- | ------------------------------------------------------------------ | --------------------------------- |
-| `ui-host`         | the layout and its slots, appearance                               | `t3-parity.md#ui`                 |
-| `connections`     | saved nodes and their RPC clients (`client.connections@1`)         | `t3-parity.md`                    |
-| `navigation`      | the route in the URL fragment (`client.navigation@1`)              | `t3-parity.md`                    |
-| `mesh`            | one mesh feed per connection (`client.mesh@1`)                     | `foundation.md`                   |
-| `machines`        | node machine icons and their picker (`client.machines@1`)          | `t3-parity.md#node-machine-icons` |
-| `threads-store`   | thread catalogs per node, kept current                             | `t3-parity.md`                    |
-| `visits`          | when a thread was last seen on this device (`client.visits@1`)     | `t3-parity.md`                    |
-| `sidebar`         | nodes, projects, thread cards, pinned, Snoozed and Settled shelves | `t3-parity.md#sidebar-follow-up`  |
-| `thread-actions`  | the actions menu of a thread                                       | `t3-parity.md`                    |
-| `chat`            | the thread view, composer, work log, requests                      | `t3-parity.md`                    |
-| `command-palette` | ⌘/Ctrl+K                                                           | `t3-parity.md`                    |
-| `keybindings`     | shortcuts for client commands, overridable per command             | `t3-parity.md`                    |
-| `notifications`   | system notifications, sounds and toasts when a thread needs you    | `t3-parity.md`                    |
-| `settings`        | the settings page, config forms from schemas                       | `config-ui.md`                    |
-| `inspector`       | the dev panel showing `host.inspect`                               | `foundation.md#D36`               |
-| `source-control`  | branch, diff, pull request indicators, branch toolbar, diff panel  | `source-control.md`               |
-| `terminal`        | the terminal drawer and the card's terminal indicator              | `terminal.md`                     |
+| Plugin            | What it does                                                                                                            | Plan                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `ui-host`         | the layout and its slots, appearance                                                                                    | `t3-parity.md#ui`                 |
+| `connections`     | saved nodes and their RPC clients (`client.connections@1`)                                                              | `t3-parity.md`                    |
+| `navigation`      | the route in the URL fragment (`client.navigation@1`)                                                                   | `t3-parity.md`                    |
+| `mesh`            | one mesh feed per connection (`client.mesh@1`)                                                                          | `foundation.md`                   |
+| `machines`        | node machine icons and their picker (`client.machines@1`)                                                               | `t3-parity.md#node-machine-icons` |
+| `threads-store`   | thread catalogs per node, kept current                                                                                  | `t3-parity.md`                    |
+| `visits`          | when a thread was last seen on this device (`client.visits@1`)                                                          | `t3-parity.md`                    |
+| `sidebar`         | nodes, projects, thread cards, pinned, Snoozed and Settled shelves                                                      | `t3-parity.md#sidebar-follow-up`  |
+| `thread-actions`  | the actions menu of a thread                                                                                            | `t3-parity.md`                    |
+| `chat`            | the thread view, composer, work log, requests, proposed plans (`chat.plan.implement`, `chat.plan.implement-new-thread`) | `t3-parity.md#composer-w6`        |
+| `command-palette` | ⌘/Ctrl+K                                                                                                                | `t3-parity.md`                    |
+| `keybindings`     | shortcuts for client commands, overridable per command                                                                  | `t3-parity.md`                    |
+| `notifications`   | system notifications, sounds and toasts when a thread needs you                                                         | `t3-parity.md`                    |
+| `settings`        | the settings page, config forms from schemas                                                                            | `config-ui.md`                    |
+| `inspector`       | the dev panel showing `host.inspect`                                                                                    | `foundation.md#D36`               |
+| `source-control`  | branch, diff, pull request indicators, branch toolbar, diff panel                                                       | `source-control.md`               |
+| `terminal`        | the terminal drawer and the card's terminal indicator                                                                   | `terminal.md`                     |
 
 ## Apps, tests, scripts
 

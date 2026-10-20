@@ -28,6 +28,7 @@ import {
 import {
   BotIcon,
   CheckIcon,
+  ChevronDownIcon,
   EllipsisIcon,
   ListOrderedIcon,
   LockIcon,
@@ -291,6 +292,25 @@ function QuestionsBanner(props: {
             </div>
           </ComposerBanner.Body>
         </ComposerBanner.Scroll>
+      </ComposerBanner.Root>
+    </ComposerBanner.Attachment>
+  );
+}
+
+/** T3's ComposerPlanFollowUpBanner: a plan-mode turn proposed a plan that can be implemented. */
+function PlanFollowUpBanner({ planTitle }: { planTitle: string | null }) {
+  return (
+    <ComposerBanner.Attachment>
+      <ComposerBanner.Root aria-label="Plan ready" className="relative z-0" role="region">
+        <ComposerBanner.Row>
+          <ComposerBanner.Icon />
+          <ComposerBanner.Content>
+            <span className="shrink-0 font-medium text-muted-foreground">Plan ready</span>
+            {planTitle ? (
+              <span className="min-w-0 flex-1 truncate text-foreground/85">{planTitle}</span>
+            ) : null}
+          </ComposerBanner.Content>
+        </ComposerBanner.Row>
       </ComposerBanner.Root>
     </ComposerBanner.Attachment>
   );
@@ -652,6 +672,14 @@ export interface ComposerProps {
   /** False when the answer was not delivered: what was typed stays. */
   onRespond(requestId: string, response: AgentResponse): Promise<boolean>;
   readonly handleRef?: Ref<ComposerHandleApi>;
+  /**
+   * A proposed plan the user can act on (D306): an empty prompt implements it,
+   * typed text refines it. False when it was not sent.
+   */
+  readonly planFollowUp?: {
+    readonly title: string | null;
+    onImplement(newThread: boolean): Promise<boolean>;
+  };
 }
 
 export function Composer(props: ComposerProps) {
@@ -780,10 +808,28 @@ export function Composer(props: ComposerProps) {
   };
 
   const hasContent = prompt.trim() !== "" || attachments.length > 0;
+  // T3 shows the follow-up only while the composer holds no attachments.
+  const planFollowUp =
+    question === undefined && approval === undefined && attachments.length === 0
+      ? props.planFollowUp
+      : undefined;
+  const implement = async (newThread: boolean) => {
+    if (planFollowUp === undefined || busy || props.unavailable !== undefined) return;
+    setBusy(true);
+    try {
+      await planFollowUp.onImplement(newThread);
+    } finally {
+      setBusy(false);
+    }
+  };
   const send = async () => {
     if (busy || props.unavailable !== undefined || approval !== undefined) return;
     if (question !== undefined) {
       await submitAnswers();
+      return;
+    }
+    if (planFollowUp !== undefined && !hasContent) {
+      await implement(false);
       return;
     }
     if (!hasContent) return;
@@ -978,6 +1024,8 @@ export function Composer(props: ComposerProps) {
             queue={props.queue}
             sending={props.queueSending === true}
           />
+        ) : planFollowUp !== undefined ? (
+          <PlanFollowUpBanner planTitle={planFollowUp.title} />
         ) : null}
         <ComposerSurface.Host>
           <div className="relative z-10">
@@ -1216,6 +1264,54 @@ export function Composer(props: ComposerProps) {
                                   ? "Submit answers"
                                   : "Submit answer"}
                           </button>
+                        ) : planFollowUp !== undefined && !props.running ? (
+                          hasContent ? (
+                            <button
+                              className={PILL_BUTTON}
+                              disabled={busy || props.unavailable !== undefined}
+                              type="submit"
+                            >
+                              {busy ? "Sending..." : "Refine"}
+                            </button>
+                          ) : (
+                            <div
+                              className="flex items-center justify-end"
+                              data-chat-composer-implement-actions="true"
+                            >
+                              <button
+                                className={cn(PILL_BUTTON, "rounded-r-none")}
+                                disabled={busy || props.unavailable !== undefined}
+                                type="submit"
+                              >
+                                {busy ? "Sending..." : "Implement"}
+                              </button>
+                              <Menu>
+                                <MenuTrigger
+                                  render={
+                                    <button
+                                      aria-label="Implementation actions"
+                                      className={cn(
+                                        PILL_BUTTON,
+                                        "rounded-l-none border-l border-message-action-foreground/20 px-2",
+                                      )}
+                                      disabled={busy || props.unavailable !== undefined}
+                                      type="button"
+                                    />
+                                  }
+                                >
+                                  <ChevronDownIcon className="size-3.5" />
+                                </MenuTrigger>
+                                <MenuPopup align="end" side="top">
+                                  <MenuItem
+                                    disabled={busy || props.unavailable !== undefined}
+                                    onClick={() => void implement(true)}
+                                  >
+                                    Implement in a new thread
+                                  </MenuItem>
+                                </MenuPopup>
+                              </Menu>
+                            </div>
+                          )
                         ) : props.running && !hasContent ? (
                           <Tooltip>
                             <TooltipTrigger

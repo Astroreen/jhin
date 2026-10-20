@@ -63,6 +63,8 @@ export async function startThread(
   target: NodeTarget,
   first: {
     readonly projectId: string;
+    /** Instead of the title the first message gives it. */
+    readonly title?: string;
     readonly text: string;
     readonly attachments: readonly TurnAttachment[];
     /** The agent, model and modes the thread runs with. */
@@ -80,6 +82,7 @@ export async function startThread(
     threads.call<ThreadRecord>(target, "threads.create", {
       threadId,
       projectId: first.projectId,
+      ...(first.title === undefined ? {} : { title: first.title }),
       ...first.selection,
     });
   let thread: ThreadRecord;

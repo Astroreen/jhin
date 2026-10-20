@@ -159,6 +159,58 @@ describe("jhin.threads: thread management", () => {
     expect(Fs.existsSync(dir)).toBe(true);
   });
 
+  it("writes a file inside a project, never outside it", async () => {
+    const { client, data } = await node();
+    const dir = Path.join(data, "app");
+    Fs.mkdirSync(dir);
+    Fs.symlinkSync(data, Path.join(dir, "out"));
+    const project = await client.call<{ id: string }>("projects.create", { path: dir });
+
+    expect(
+      await client.call("projects.write-file", {
+        projectId: project.id,
+        path: "docs/plans/cache.md",
+        contents: "# Cache\n",
+      }),
+    ).toEqual({
+      path: Path.join(dir, "docs", "plans", "cache.md"),
+      relativePath: "docs/plans/cache.md",
+    });
+    expect(Fs.readFileSync(Path.join(dir, "docs", "plans", "cache.md"), "utf8")).toBe("# Cache\n");
+
+    // A link as the file itself, to a file outside and leading nowhere.
+    Fs.writeFileSync(Path.join(data, "secret.txt"), "keep");
+    Fs.symlinkSync(Path.join(data, "secret.txt"), Path.join(dir, "linked.md"));
+    Fs.symlinkSync(Path.join(data, "nowhere.md"), Path.join(dir, "dangling.md"));
+    // A folder on the way that is a link leading nowhere outside.
+    Fs.symlinkSync(Path.join(data, "missing-folder"), Path.join(dir, "gone"));
+    for (const path of [
+      "../escape.md",
+      Path.join(data, "abs.md"),
+      "out/through-link.md",
+      ".",
+      "linked.md",
+      "dangling.md",
+      "gone/x.md",
+    ]) {
+      await expect(
+        client.call("projects.write-file", { projectId: project.id, path, contents: "x" }),
+      ).rejects.toMatchObject({ code: "PATH_OUTSIDE_PROJECT" });
+    }
+    expect(Fs.existsSync(Path.join(data, "escape.md"))).toBe(false);
+    expect(Fs.existsSync(Path.join(data, "through-link.md"))).toBe(false);
+    expect(Fs.readFileSync(Path.join(data, "secret.txt"), "utf8")).toBe("keep");
+    expect(Fs.existsSync(Path.join(data, "nowhere.md"))).toBe(false);
+    expect(Fs.existsSync(Path.join(data, "missing-folder"))).toBe(false);
+    // A name that only starts with two dots is inside.
+    await client.call("projects.write-file", {
+      projectId: project.id,
+      path: "..notes.md",
+      contents: "n",
+    });
+    expect(Fs.readFileSync(Path.join(dir, "..notes.md"), "utf8")).toBe("n");
+  });
+
   it("browses folders for a project picker", async () => {
     const { client, data } = await node();
     Fs.mkdirSync(Path.join(data, "repo", ".git"), { recursive: true });
@@ -414,6 +466,25 @@ describe("jhin.threads: turn items and requests", () => {
     expect(events.filter((event) => event.type === "agent.plan.updated")).toHaveLength(2);
     expect(events.find((event) => event.type === "agent.item.started")?.payload).toMatchObject({
       tool: { kind: "command", detail: "npm test" },
+    });
+  });
+
+  it("records a proposed plan as an event of its own", async () => {
+    const { client } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const { events, until } = watch(client, thread.id);
+
+    await client.call("threads.send", {
+      threadId: thread.id,
+      text: "Add a cache",
+      interactionMode: "plan",
+    });
+    await until("agent.turn.completed");
+
+    const proposed = events.find((event) => event.type === "agent.plan.proposed");
+    expect(proposed?.payload).toMatchObject({
+      itemId: expect.any(String),
+      markdown: expect.stringContaining("# Add a cache"),
     });
   });
 

@@ -56,7 +56,21 @@ export interface PlanItem {
   readonly at: string;
 }
 
-type TimelineItem = MessageItem | ReasoningItem | ToolItem | RequestItem | PlanItem;
+/** A plan the agent proposed for the user to accept (plan mode, D304). */
+export interface ProposedPlanItem {
+  readonly kind: "proposed-plan";
+  readonly itemId: string;
+  readonly markdown: string;
+  readonly at: string;
+}
+
+type TimelineItem =
+  | MessageItem
+  | ReasoningItem
+  | ToolItem
+  | RequestItem
+  | PlanItem
+  | ProposedPlanItem;
 
 export interface TimelineTurn {
   readonly turnId: string;
@@ -100,8 +114,16 @@ interface Payload {
   readonly request?: AgentRequest;
   readonly response?: AgentResponse;
   readonly steps?: readonly PlanStep[];
+  readonly markdown?: string;
   readonly usage?: TokenUsage;
 }
+
+/**
+ * Claude Code's proposed plans before they had an item of their own (D304)
+ * were its messages with this item id suffix (`<tool use id>:plan`).
+ */
+const LEGACY_PLAN_SUFFIX = ":plan";
+const LEGACY_PLAN_AGENT = "jhin.agent-claude";
 
 type MutableTurn = { -readonly [K in keyof TimelineTurn]: TimelineTurn[K] } & {
   items: TimelineItem[];
@@ -233,6 +255,21 @@ export function createTimeline() {
             break;
           }
           const kind = payload.kind === "reasoning" ? "reasoning" : "message";
+          if (
+            kind === "message" &&
+            existing === undefined &&
+            turn.agentId === LEGACY_PLAN_AGENT &&
+            itemId.endsWith(LEGACY_PLAN_SUFFIX) &&
+            payload.text !== undefined
+          ) {
+            put(turn, itemId, {
+              kind: "proposed-plan",
+              itemId,
+              markdown: payload.text,
+              at: event.at,
+            });
+            break;
+          }
           put(turn, itemId, {
             kind,
             itemId,
@@ -276,6 +313,16 @@ export function createTimeline() {
             kind: "plan",
             steps: payload.steps ?? [],
             at: existing?.at ?? event.at,
+          });
+          break;
+        }
+        case ThreadEvents.planProposed: {
+          if (itemId === undefined || payload.markdown === undefined) break;
+          put(turn, itemId, {
+            kind: "proposed-plan",
+            itemId,
+            markdown: payload.markdown,
+            at: find(turn, itemId)?.at ?? event.at,
           });
           break;
         }
@@ -333,13 +380,25 @@ export function openRequests(timeline: Timeline): RequestItem[] {
   );
 }
 
+/**
+ * The plan the composer can implement (T3's `findLatestProposedPlan` and
+ * `shouldShowPlanFollowUpPrompt`): the latest one the thread's latest turn
+ * proposed, once that turn ended without a failure.
+ */
+export function actionablePlan(timeline: Timeline): ProposedPlanItem | undefined {
+  const last = timeline.turns.at(-1);
+  if (last === undefined || last.state === "running" || last.state === "failed") return undefined;
+  return last.items.findLast((item): item is ProposedPlanItem => item.kind === "proposed-plan");
+}
+
 /** Work entries: what the work log lists between messages. */
 export type WorkEntry = ReasoningItem | ToolItem | RequestItem;
 
 export type TurnBlock =
   | { readonly kind: "message"; readonly item: MessageItem; readonly final: boolean }
   | { readonly kind: "work"; readonly entries: readonly WorkEntry[] }
-  | { readonly kind: "plan"; readonly item: PlanItem };
+  | { readonly kind: "plan"; readonly item: PlanItem }
+  | { readonly kind: "proposed-plan"; readonly item: ProposedPlanItem };
 
 /**
  * A turn's items as rendered: consecutive work entries become one work block;
@@ -365,6 +424,9 @@ export function turnBlocks(turn: TimelineTurn): TurnBlock[] {
     } else if (item.kind === "plan") {
       flush();
       blocks.push({ kind: "plan", item });
+    } else if (item.kind === "proposed-plan") {
+      flush();
+      blocks.push({ kind: "proposed-plan", item });
     } else if (item.kind === "request" && item.state === "open") {
       continue;
     } else {

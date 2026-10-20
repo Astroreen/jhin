@@ -52,6 +52,7 @@ import {
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
 import { createFollowUpQueues, sendMessage } from "./follow-ups.ts";
+import { implementPlan } from "./plan-follow-up.ts";
 import { createUnconfirmed } from "./unconfirmed.ts";
 
 /** The page header of a view without a thread. */
@@ -414,6 +415,43 @@ export const chatPlugin = builtin(
         await copyText(route.thread);
         toasts?.show({ type: "success", title: "Thread ID copied", timeout: 1500 });
       });
+      // "Implement this plan" (D306): the open thread's, or the one named.
+      const PlanTarget = z.object({
+        node: z.string().optional(),
+        remote: z.string().optional(),
+        threadId: z.string().optional(),
+      });
+      const planCommand = (name: string, title: string, description: string, newThread: boolean) =>
+        context.commands.register({
+          name,
+          title,
+          description,
+          input: PlanTarget,
+          output: z.object({ threadId: z.string(), uncertain: z.string().optional() }),
+          handler: async (input) => {
+            const route = navigation.current();
+            const node = input.node ?? route.node;
+            const remote = input.node === undefined ? route.remote : input.remote;
+            const threadId = input.threadId ?? route.thread;
+            if (node === undefined || threadId === undefined) {
+              throw Object.assign(new Error("No thread is open"), { code: "THREAD_NOT_FOUND" });
+            }
+            const target = { node, ...(remote === undefined ? {} : { remote }) };
+            return implementPlan({ threads, navigation }, { target, threadId, newThread });
+          },
+        });
+      planCommand(
+        "chat.plan.implement",
+        "Implement this plan",
+        "Sends the thread's proposed plan to be implemented, in build mode",
+        false,
+      );
+      planCommand(
+        "chat.plan.implement-new-thread",
+        "Implement in a new thread",
+        "Starts a thread in the same project that implements the proposed plan",
+        true,
+      );
       if (keybindings !== undefined) {
         context.subscriptions.add(
           keybindings.addDefaults([

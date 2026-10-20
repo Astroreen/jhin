@@ -50,6 +50,7 @@ import {
   type WorkEntry,
 } from "../../lib/timeline.ts";
 import { ChatMarkdown } from "./markdown.tsx";
+import { ProposedPlanCard, type SavePlan } from "./proposed-plan-card.tsx";
 
 function MessageCopyButton({ text, label = "Copy message" }: { text: string; label?: string }) {
   const { copied, copy } = useCopy();
@@ -497,6 +498,8 @@ function TurnView(props: {
   latest: boolean;
   format: TimestampFormat;
   onRetry?(): Promise<unknown>;
+  projectPath?: string;
+  onSavePlan?: SavePlan;
 }) {
   const { turn, format } = props;
   const now = useContext(NowContext);
@@ -507,7 +510,11 @@ function TurnView(props: {
   const blocks = turnBlocks(turn);
   const folds = foldsBeforeFinal(turn);
   const finalIndex = blocks.findIndex((block) => block.kind === "message" && block.final);
-  const visible = folds && !unfolded ? blocks.slice(finalIndex) : blocks;
+  // A proposed plan is never folded away: it is what the turn is for.
+  const visible =
+    folds && !unfolded
+      ? blocks.filter((block, index) => index >= finalIndex || block.kind === "proposed-plan")
+      : blocks;
   const duration =
     turn.endedAt === undefined
       ? undefined
@@ -566,6 +573,17 @@ function TurnView(props: {
             return <WorkGroup entries={block.entries} key={`work-${index}`} live={running} />;
           }
           if (block.kind === "plan") return <PlanCard item={block.item} key={`plan-${index}`} />;
+          if (block.kind === "proposed-plan") {
+            return (
+              <div className="min-w-0 px-1 py-0.5 pb-4" key={block.item.itemId}>
+                <ProposedPlanCard
+                  planMarkdown={block.item.markdown}
+                  {...(props.onSavePlan === undefined ? {} : { onSave: props.onSavePlan })}
+                  {...(props.projectPath === undefined ? {} : { workspaceRoot: props.projectPath })}
+                />
+              </div>
+            );
+          }
           const streaming = running && block.item === lastMessage?.item && !block.item.completed;
           return (
             <AssistantMessage
@@ -625,6 +643,9 @@ export function TimelineView(props: {
   format: TimestampFormat;
   /** Sends a failed turn's message again, with its images. */
   onRetry?(text: string, attachments: readonly TurnAttachment[]): Promise<unknown>;
+  /** The thread's project folder, where "Save to workspace" writes. */
+  projectPath?: string;
+  onSavePlan?: SavePlan;
 }) {
   const { turns } = props.timeline;
   const now = useNow();
@@ -645,6 +666,8 @@ export function TimelineView(props: {
           key={turn.turnId}
           latest={index === turns.length - 1}
           turn={turn}
+          {...(props.projectPath === undefined ? {} : { projectPath: props.projectPath })}
+          {...(props.onSavePlan === undefined ? {} : { onSavePlan: props.onSavePlan })}
           {...(props.onRetry === undefined
             ? {}
             : { onRetry: () => props.onRetry!(turn.text, turn.attachments) })}
