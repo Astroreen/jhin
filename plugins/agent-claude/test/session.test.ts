@@ -7,6 +7,7 @@ import type { z } from "@jhin/sdk";
 import { createMemoryStorage } from "@jhin/storage-api";
 
 import {
+  BackgroundWorkRunning,
   createClaudeRuntime,
   createLiveSessions,
   SessionTakenOver,
@@ -91,6 +92,7 @@ describe("jhin.agent-claude: live sessions", () => {
         permissionMode: "default",
         busy: false,
         idleSince: expect.any(String),
+        background: 0,
       },
     ]);
   });
@@ -785,5 +787,242 @@ describe("jhin.agent-claude: session files (D345)", () => {
     exitFirst();
     await ended;
     expect(order).toEqual(["first exits", "ended"]);
+  });
+});
+
+/** Claude Code's level of background tasks (`background_tasks_changed`). */
+const backgroundTasks = (...tasks: { task_id: string; ambient?: boolean }[]) =>
+  ({ type: "system", subtype: "background_tasks_changed", tasks }) as unknown as SDKMessage;
+
+/** Claude Code that answers, starts a background task, and ends it when `done` resolves. */
+function workingInBackground(done: Promise<void>, ...answers: string[]): Script {
+  return async function* (player) {
+    yield init();
+    // Started during the turn, as a `run_in_background` shell is.
+    yield backgroundTasks({ task_id: "shell-1" }, { task_id: "watcher", ambient: true });
+    yield* streamedBlock("m0", 0, "text", [answers[0] ?? "one"]);
+    yield result();
+    const next = player.nextPrompt();
+    await Promise.race([done, next]);
+    yield backgroundTasks({ task_id: "watcher", ambient: true });
+    for (const answer of answers.slice(1)) {
+      if ((await next) === undefined) return;
+      yield init();
+      yield* streamedBlock("m1", 0, "text", [answer]);
+      yield result();
+    }
+    await player.nextPrompt();
+  };
+}
+
+describe("jhin.agent-claude: W9 live sessions", () => {
+  it("ends the idle sessions that waited longest past the cap (D347)", async () => {
+    const { turn, calls, claude } = node([answering("a"), answering("b"), answering("c")], {
+      maxLiveSessions: 2,
+    });
+    const other = (n: number) => `0b6c5e5e-0000-4000-8000-00000000010${n}`;
+    await turn({ threadId: other(1) });
+    await turn({ threadId: other(2) });
+    expect(claude.live.list()).toHaveLength(2);
+    await turn({ threadId: other(3) });
+    expect(calls[0]!.closed).toBe(true);
+    expect(calls[1]!.closed).toBe(false);
+    expect(claude.live.list().map((live) => live.threadId)).toEqual([other(2), other(3)]);
+  });
+
+  it("keeps a session running background work past its idle time, then ends it (D348)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => (finish = resolve));
+    const { claude, turn, calls } = node([workingInBackground(done)], { sessionIdleMinutes: 5 });
+    await turn();
+    expect(claude.live.list()).toMatchObject([{ background: 1 }]);
+    vi.advanceTimersByTime(60 * 60_000);
+    expect(calls[0]!.closed).toBe(false);
+    // Not for the asking either: only with force.
+    expect(claude.live.close(THREAD)).toBe(false);
+    // The work ends past the idle deadline: the session ends with it.
+    finish();
+    await calls[0]!.whenClosed;
+    expect(claude.live.list()).toEqual([]);
+  });
+
+  it("ends a per-turn session running background work once the work ends (D348)", async () => {
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => (finish = resolve));
+    const { claude, turn, calls } = node([workingInBackground(done)], { session: "per-turn" });
+    await turn();
+    expect(calls[0]!.closed).toBe(false);
+    expect(claude.live.closeIdle()).toBe(0);
+    finish();
+    await calls[0]!.whenClosed;
+  });
+
+  it("refuses a turn that would replace a session running background work (D348)", async () => {
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => (finish = resolve));
+    const { claude, turn, calls } = node([workingInBackground(done, "one", "two")]);
+    await turn();
+    // Full access is another launch: it would end the shell.
+    await expect(turn({ runtimeMode: "full-access" })).rejects.toThrow(BackgroundWorkRunning);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.closed).toBe(false);
+    expect(claude.live.list()).toMatchObject([{ busy: false, background: 1 }]);
+    // The same settings go to it as ever.
+    finish();
+    expect(answers(await turn())).toEqual(["two"]);
+  });
+
+  it("keeps a refused per-turn session ending with its work (D348)", async () => {
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => (finish = resolve));
+    const { turn, calls } = node([workingInBackground(done)], { session: "per-turn" });
+    await turn();
+    await expect(turn({ runtimeMode: "full-access" })).rejects.toThrow(
+      "Claude is still running background agents or commands",
+    );
+    finish();
+    await calls[0]!.whenClosed;
+  });
+
+  it("does not end a session running background work for the cap, and 0 is no cap (D347)", async () => {
+    const other = (n: number) => `0b6c5e5e-0000-4000-8000-00000000020${n}`;
+    const working = node([workingInBackground(new Promise(() => undefined)), answering("b")], {
+      maxLiveSessions: 1,
+    });
+    await working.turn({ threadId: other(1) });
+    await working.turn({ threadId: other(2) });
+    expect(working.calls[0]!.closed).toBe(false);
+    expect(working.claude.live.list()).toHaveLength(2);
+
+    const uncapped = node([answering("a"), answering("b"), answering("c")], {
+      maxLiveSessions: 0,
+    });
+    for (const n of [1, 2, 3]) await uncapped.turn({ threadId: other(n) });
+    expect(uncapped.claude.live.list()).toHaveLength(3);
+  });
+
+  it("interrupts again at once when the message started before the receipt came (D350)", async () => {
+    const { claude, calls, state } = node([
+      async function* (player) {
+        const uuid = player.call.prompt[0]!.uuid;
+        yield answeringUuid(uuid, init());
+        yield* streamedBlock("m1", 0, "text", ["half"]);
+        // Only a second interrupt ends it.
+        await player.interruptedTimes(2);
+        yield answeringUuid(
+          uuid,
+          result({
+            subtype: "error_during_execution",
+            errors: [],
+            terminal_reason: "aborted_streaming",
+          }),
+        );
+        await player.nextPrompt();
+      },
+    ]);
+    state.receipt = (call) => ({ still_queued: [call.prompt[0]!.uuid] });
+    const turn = claude.startTurn({
+      threadId: THREAD,
+      turnId: "t1",
+      input: { text: "count" },
+      history: [],
+      cwd: "/work",
+      model: "claude-haiku-5-5",
+    });
+    for await (const item of turn.items) if (item.kind === "message.completed") turn.interrupt();
+    expect(calls[0]!.interrupts).toBe(2);
+  });
+
+  it("does not interrupt again once the stopped turn let go (D350)", async () => {
+    let giveReceipt!: (receipt: unknown) => void;
+    const late = new Promise((resolve) => (giveReceipt = resolve));
+    const scripted = scriptedQuery(async function* (player) {
+      const uuid = player.call.prompt[0]!.uuid;
+      yield answeringUuid(uuid, init());
+      await player.interrupted;
+      yield answeringUuid(
+        uuid,
+        result({
+          subtype: "error_during_execution",
+          errors: [],
+          terminal_reason: "aborted_streaming",
+        }),
+      );
+      await player.nextPrompt();
+    });
+    scripted.state.receipt = () => late;
+    const live = createLiveSessions({
+      query: scripted.query,
+      keepAlive: () => ({ keepAlive: true, idleMs: 0 }),
+    });
+    const held = await live.lease({
+      threadId: THREAD,
+      options: { cwd: "/work" },
+      message: {
+        type: "user",
+        uuid: "0b6c5e5e-0000-4000-8000-0000000000aa",
+        message: { role: "user", content: "count" },
+        parent_tool_use_id: null,
+      },
+    });
+    let stopped: Promise<unknown> | undefined;
+    for await (const message of held.messages) {
+      if (message.type === "system") stopped = held.interrupt();
+    }
+    held.release(true);
+    // The receipt comes after the turn let go: the session may run another turn by now.
+    giveReceipt({ still_queued: ["0b6c5e5e-0000-4000-8000-0000000000aa"] });
+    await stopped;
+    expect(scripted.calls[0]!.interrupts).toBe(1);
+  });
+
+  it("changes the effort of the running Claude Code live (D349)", async () => {
+    const { turn, calls, settings } = node([answering("one", "two", "three")]);
+    await turn();
+    settings.config = Config.parse({ effort: "high" });
+    await turn();
+    settings.config = Config.parse({});
+    await turn();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.controls).toEqual(["effort:high", "effort:null"]);
+  });
+
+  it("stops a message the interrupt did not reach once it starts (D350)", async () => {
+    let received!: () => void;
+    const sent = new Promise<void>((resolve) => (received = resolve));
+    const { claude, calls, state } = node([
+      async function* (player) {
+        const uuid = player.call.prompt[0]!.uuid;
+        received();
+        await player.interrupted;
+        // Claude Code took the message after the interrupt: it runs, and is stopped again.
+        yield answeringUuid(uuid, init());
+        yield* streamedBlock("m1", 0, "text", ["unseen"]);
+        yield answeringUuid(
+          uuid,
+          result({
+            subtype: "error_during_execution",
+            errors: [],
+            terminal_reason: "aborted_streaming",
+          }),
+        );
+        await player.nextPrompt();
+      },
+    ]);
+    state.receipt = (call) => ({ still_queued: [call.prompt[0]!.uuid] });
+    const stopped = claude.startTurn({
+      threadId: THREAD,
+      turnId: "t1",
+      input: { text: "count" },
+      history: [],
+      cwd: "/work",
+      model: "claude-haiku-5-5",
+    });
+    const items = drain(stopped);
+    await sent;
+    stopped.interrupt();
+    expect(answers(await items)).toEqual([]);
+    expect(calls[0]!.interrupts).toBe(2);
   });
 });

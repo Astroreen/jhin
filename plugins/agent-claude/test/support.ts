@@ -7,7 +7,7 @@ import type { QueryFunction, SessionStore } from "../src/turn.ts";
 interface Call {
   readonly options: Options;
   readonly prompt: SDKUserMessage[];
-  /** Live changes, in order: `model:<id>`, `mode:<permission mode>`. */
+  /** Live changes, in order: `model:<id>`, `mode:<permission mode>`, `effort:<level>`. */
   readonly controls: string[];
   /** The MCP servers registered over the control channel (`setMcpServers`), in order. */
   readonly mcpServers: Record<string, unknown>[];
@@ -22,6 +22,8 @@ interface Player {
   readonly call: Call;
   /** Resolves when a turn first interrupts the query. */
   readonly interrupted: Promise<void>;
+  /** Resolves once the query was interrupted `count` times. */
+  interruptedTimes(count: number): Promise<void>;
   /** The next message of the prompt stream, as a live session gets its next turn; `undefined` once it ends. */
   nextPrompt(): Promise<SDKUserMessage | undefined>;
   /** Calls the turn's canUseTool, as Claude Code does before running a tool. */
@@ -43,7 +45,12 @@ export type Script = (player: Player) => AsyncGenerator<SDKMessage, void, undefi
  */
 export function scriptedQuery(...scripts: Script[]) {
   const calls: Call[] = [];
-  const state: { refuseControls: boolean; mcp: "connect" | "fail" | "silent" } = {
+  const state: {
+    refuseControls: boolean;
+    mcp: "connect" | "fail" | "silent";
+    /** What an interrupt answers with: the receipt of a current CLI (D350). */
+    receipt?: (call: Call) => unknown;
+  } = {
     refuseControls: false,
     mcp: "connect",
   };
@@ -63,9 +70,14 @@ export function scriptedQuery(...scripts: Script[]) {
     };
     calls.push(call);
     let interrupt!: () => void;
+    const waiting: { count: number; resolve: () => void }[] = [];
     const player: Player = {
       call,
       interrupted: new Promise<void>((resolve) => (interrupt = resolve)),
+      interruptedTimes: (count) =>
+        call.interrupts >= count
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => waiting.push({ count, resolve })),
       nextPrompt: async () => {
         const next = await prompts.next();
         if (next.done === true) return undefined;
@@ -103,7 +115,8 @@ export function scriptedQuery(...scripts: Script[]) {
       interrupt: async () => {
         call.interrupts++;
         interrupt();
-        return undefined;
+        for (const waiter of waiting) if (call.interrupts >= waiter.count) waiter.resolve();
+        return state.receipt?.(call);
       },
       close: () => {
         call.closed = true;
@@ -111,6 +124,7 @@ export function scriptedQuery(...scripts: Script[]) {
       },
       setModel: (model) => control(`model:${model}`),
       setPermissionMode: (mode) => control(`mode:${mode}`),
+      applyFlagSettings: (settings) => control(`effort:${settings.effortLevel}`),
       setMcpServers: (servers) => {
         call.mcpServers.push(servers);
         const names = Object.keys(servers);

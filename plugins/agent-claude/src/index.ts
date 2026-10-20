@@ -48,6 +48,7 @@ export {
   type QueryFunction,
 } from "./turn.ts";
 export {
+  BackgroundWorkRunning,
   SessionTakenOver,
   createLiveSessions,
   type Attachment,
@@ -158,6 +159,12 @@ export const Config = z
       title: "Jhin tools",
       description:
         "Give Claude Code this node's MCP server, so it can work with Jhin's threads and projects when asked",
+    }),
+    maxLiveSessions: z.number().int().nonnegative().default(8).meta({
+      title: "Live sessions",
+      description:
+        "How many threads' Claude Codes the node keeps running at most; the idle ones that waited longest end first. 0: no limit",
+      advanced: true,
     }),
     sessionIdleMinutes: z.number().int().nonnegative().default(10).meta({
       title: "Idle minutes",
@@ -305,6 +312,7 @@ export function createClaudeRuntime(options: {
       return {
         keepAlive: config.session === "keep-alive",
         idleMs: config.sessionIdleMinutes * 60_000,
+        maxSessions: config.maxLiveSessions,
       };
     },
     ...(options.log === undefined ? {} : { log: options.log }),
@@ -504,6 +512,10 @@ const LiveSession = z.object({
   permissionMode: z.string().optional(),
   busy: z.boolean().describe("A turn runs on it now"),
   idleSince: z.string().optional().describe("When its last turn ended (ISO 8601)"),
+  background: z
+    .number()
+    .int()
+    .describe("Background tasks it runs; it is not ended for being idle while they run"),
 });
 
 /**
@@ -605,13 +617,15 @@ export function claudePlugin(query: QueryFunction) {
       context.commands.register({
         name: "claude.sessions.close",
         description:
-          "Ends the running Claude Code of a thread, or of every thread, that no turn runs on; `force` ends busy ones too (their turn fails). The thread's next turn resumes its session",
+          "Ends the running Claude Code of a thread, or of every thread, that no turn runs on and that runs no background work (one with work ends once it is done); `force` ends those too (a running turn fails, background work stops). The thread's next turn resumes its session",
         input: z.object({
           threadId: z.string().optional(),
           force: z
             .boolean()
             .default(false)
-            .describe("Also end a Claude Code a turn is running on; that turn fails"),
+            .describe(
+              "Also end a Claude Code a turn or background work runs on; the turn fails, the work stops",
+            ),
         }),
         output: z.object({ closed: z.number().int() }),
         permissions: ["threads.write"],

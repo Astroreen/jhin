@@ -10,6 +10,7 @@
 // continuation turns, wake buffers and background-work guards are not ported.
 import type {
   CanUseTool,
+  EffortLevel,
   McpServerConfig,
   McpSetServersResult,
   Options,
@@ -27,6 +28,7 @@ interface ClaudeQuery extends AsyncIterable<SDKMessage> {
   setModel?(model?: string): Promise<void>;
   setPermissionMode?(mode: PermissionMode): Promise<void>;
   setMcpServers?(servers: Record<string, McpServerConfig>): Promise<McpSetServersResult>;
+  applyFlagSettings?(settings: { effortLevel?: EffortLevel | null }): Promise<void>;
 }
 
 /** MCP servers a Claude Code gets once started, and how to revoke their credentials. */
@@ -47,6 +49,8 @@ export interface KeepAlive {
   readonly keepAlive: boolean;
   /** Milliseconds an idle session stays open; 0 keeps it until something else closes it. */
   readonly idleMs: number;
+  /** How many Claude Codes a node keeps (D347); 0: no cap. */
+  readonly maxSessions?: number;
 }
 
 /** One turn's hold on its thread's Claude Code: its message went in, its messages come out. */
@@ -72,6 +76,8 @@ export interface LiveSessionInfo {
   readonly busy: boolean;
   /** When its last turn ended (ISO 8601); absent while busy. */
   readonly idleSince?: string;
+  /** Background tasks it runs (D348): it is not ended for being idle while they run. */
+  readonly background: number;
 }
 
 export interface LiveSessions {
@@ -156,6 +162,12 @@ interface Live {
   readonly query: ClaudeQuery;
   readonly input: ReturnType<typeof queue<SDKUserMessage>>;
   model: string | undefined;
+  /** Changed live with applyFlagSettings (D349). */
+  effort: EffortLevel | undefined;
+  /** Its non-ambient background tasks, as `background_tasks_changed` last said (D348). */
+  background: number;
+  /** Ends once its background work does: per-turn, or turned to it while the work ran. */
+  closeWhenDone: boolean;
   /** As Claude Code last reported it: Claude can switch it by itself (plan mode). */
   permissionMode: PermissionMode | undefined;
   /** Taken by a turn, from its lease until its release. */
@@ -194,6 +206,7 @@ function launchKey(options: Options): string {
     resume: _resume,
     sessionId: _sessionId,
     canUseTool: _canUseTool,
+    effort: _effort,
     ...launch
   } = options;
   return JSON.stringify(launch);
@@ -265,6 +278,22 @@ class NoAnswer extends Error {
   }
 }
 
+/** A replacement would end the background work a session runs (D348, T3's message). */
+export class BackgroundWorkRunning extends Error {
+  constructor() {
+    super(
+      "Claude is still running background agents or commands, and this model or setting change would end them. Wait for them to finish, or press Stop, then send the message again.",
+    );
+  }
+}
+
+/** The non-ambient tasks of a `background_tasks_changed` frame, if the frame is one. */
+function backgroundOf(message: SDKMessage): number | undefined {
+  const frame = message as { type: string; subtype?: string; tasks?: { ambient?: boolean }[] };
+  if (frame.type !== "system" || frame.subtype !== "background_tasks_changed") return undefined;
+  return (frame.tasks ?? []).filter((task) => task.ambient !== true).length;
+}
+
 /** Ends a turn that still held its thread's Claude Code when a later turn took it. */
 export class SessionTakenOver extends Error {
   constructor() {
@@ -320,8 +349,11 @@ export function createLiveSessions(options: {
     // steps of at most that, each counting what is left until the deadline.
     const wait = () => {
       const left = Math.max(0, deadline - Date.now());
+      // Past its deadline already (its background work outlasted it): it ends now.
+      if (left === 0 && live.background === 0) return close(live);
+      // Background work keeps it past its deadline; it is armed again once the work ends.
       live.timer = setTimeout(
-        () => (left > MAX_TIMER ? wait() : close(live)),
+        () => (left > MAX_TIMER ? wait() : live.background > 0 ? undefined : close(live)),
         Math.min(left, MAX_TIMER),
       );
       live.timer.unref?.();
@@ -403,6 +435,9 @@ export function createLiveSessions(options: {
       query,
       input,
       model: launch.model,
+      effort: launch.effort,
+      background: 0,
+      closeWhenDone: false,
       permissionMode: started.permissionMode,
       busy: true,
       leasedBy: undefined,
@@ -454,6 +489,15 @@ export function createLiveSessions(options: {
             live.permissionMode = message.permissionMode;
           }
           if (!live.stamps && stampOf(message) !== undefined) live.stamps = true;
+          const background = backgroundOf(message);
+          if (background !== undefined) {
+            live.background = background;
+            // The work it waited for ended: per-turn ends it, otherwise its idle time runs.
+            if (background === 0 && !live.busy && !live.closed) {
+              if (live.closeWhenDone) close(live);
+              else arm(live, options.keepAlive().idleMs);
+            }
+          }
           const state = stateOf(message);
           if (state !== undefined) {
             live.reportsState = true;
@@ -481,7 +525,23 @@ export function createLiveSessions(options: {
     return live;
   };
 
-  /** Puts the turn's model and mode on a running session; false when it cannot. */
+  /**
+   * Ends the idle sessions that waited longest, without background work, until no more than
+   * `maxSessions` run (D347); held ones and those running work are never ended for it.
+   */
+  const enforceCap = () => {
+    const max = options.keepAlive().maxSessions ?? 0;
+    if (max <= 0 || sessions.size <= max) return;
+    const idle = [...sessions.values()]
+      .filter((live) => !live.busy && live.background === 0 && live.idleSince !== undefined)
+      .toSorted((a, b) => a.idleSince!.getTime() - b.idleSince!.getTime());
+    for (const live of idle) {
+      if (sessions.size <= max) return;
+      close(live);
+    }
+  };
+
+  /** Puts the turn's model, effort and mode on a running session; false when it cannot. */
   const adapt = async (live: Live, launch: Options) => {
     try {
       if (launch.model !== live.model) {
@@ -495,6 +555,12 @@ export function createLiveSessions(options: {
         }
         await live.query.setPermissionMode(launch.permissionMode);
         live.permissionMode = launch.permissionMode;
+      }
+      // Last: a session the model or mode cannot go to keeps its effort when it is kept.
+      if (launch.effort !== live.effort) {
+        if (live.query.applyFlagSettings === undefined) return false;
+        await live.query.applyFlagSettings({ effortLevel: launch.effort ?? null });
+        live.effort = launch.effort;
       }
       return !live.closed;
     } catch (error) {
@@ -524,17 +590,30 @@ export function createLiveSessions(options: {
         close(live, new SessionTakenOver());
         live = undefined;
       } else if (live !== undefined && (live.closed || live.key !== key)) {
+        // Another launch would end the work it runs: the turn is refused instead (D348).
+        if (!live.closed && live.background > 0) throw new BackgroundWorkRunning();
         close(live);
         live = undefined;
       }
       if (live !== undefined) {
         live.busy = true;
+        const closeWhenDone = live.closeWhenDone;
+        live.closeWhenDone = false;
         clearTimeout(live.timer);
         live.timer = undefined;
+        const idleSince = live.idleSince;
         live.idleSince = undefined;
         const adapted = await adapt(live, launch);
         // A later turn of the thread came meanwhile and took the session: it wins.
         if (live.leasedBy !== self) throw new SessionTakenOver();
+        if (!adapted && live.background > 0 && !live.closed) {
+          // It stays as it was, idle with its work, and the turn is refused (D348).
+          live.busy = false;
+          live.closeWhenDone = closeWhenDone;
+          live.idleSince = idleSince ?? new Date();
+          if (!closeWhenDone) arm(live, options.keepAlive().idleMs);
+          throw new BackgroundWorkRunning();
+        }
         if (!adapted) {
           close(live);
           live = undefined;
@@ -543,6 +622,7 @@ export function createLiveSessions(options: {
       const reused = live !== undefined;
       let session = live ?? open(threadId, key, launch, attach, false, inherit);
       session.leasedBy = self;
+      if (!reused) enforceCap();
       try {
         await session.ready;
       } catch (error) {
@@ -581,6 +661,10 @@ export function createLiveSessions(options: {
 
       let released = false;
       let stopping = false;
+      /** Its first own frame came. */
+      let begun = false;
+      /** The interrupt came before Claude Code took the message: stop it once it starts (D350). */
+      let interruptOnStart = false;
       /** Ended on an idle report: nothing of the turn is left in flight. */
       let wentIdle = false;
       const uuid = message.uuid;
@@ -592,7 +676,6 @@ export function createLiveSessions(options: {
           // earlier turn's (a message an interrupt did not stop still runs, and ends with a
           // result of its own) or Claude Code's own (a continuation after background work,
           // which marks nothing). Without marks (an older CLI) every frame is the turn's.
-          let begun = false;
           /** Unmarked frames since the last unmarked init: the turn's, if Claude Code never marks it. */
           let unmarked: SDKMessage[] = [];
           /** An idle report counts once it cannot be the one before this message went in. */
@@ -605,6 +688,10 @@ export function createLiveSessions(options: {
                 stamp === undefined ? !session.stamps : uuid !== undefined && stamp.includes(uuid)
               ) {
                 begun = true;
+                if (interruptOnStart) {
+                  interruptOnStart = false;
+                  void session.query.interrupt().catch(() => undefined);
+                }
               } else if (stamp !== undefined) {
                 unmarked = [];
                 continue;
@@ -638,27 +725,45 @@ export function createLiveSessions(options: {
           }
           if (failure !== undefined) throw failure.error;
         })(),
-        interrupt: () => {
+        interrupt: async () => {
           stopping = true;
-          return session.query.interrupt();
+          const receipt = (await session.query.interrupt()) as
+            | { still_queued?: readonly string[] }
+            | undefined;
+          // Still queued: it will run, so it is stopped again as soon as it starts, or now
+          // when its first frame came before the receipt.
+          if (uuid !== undefined && receipt?.still_queued?.includes(uuid) === true) {
+            // Not once the turn let go: the session may run a later turn's message by then.
+            if (released) return receipt;
+            if (begun) void session.query.interrupt().catch(() => undefined);
+            else interruptOnStart = true;
+          }
+          return receipt;
         },
         release(keep) {
           if (released) return;
           released = true;
+          interruptOnStart = false;
           // The turn reads no more: its messages end, also when it lets go mid-turn.
           holder.end();
           if (session.holder === holder) session.holder = undefined;
           session.busy = false;
           const policy = options.keepAlive();
-          if (!(keep || wentIdle) || !policy.keepAlive || session.closed) return close(session);
+          if (!(keep || wentIdle) || session.closed) return close(session);
           session.idleSince = new Date();
+          if (!policy.keepAlive) {
+            // Per turn, but its background work goes on: it ends once the work does (D348).
+            if (session.background === 0) return close(session);
+            session.closeWhenDone = true;
+            return;
+          }
           arm(session, policy.idleMs);
         },
       };
     },
     close(threadId, force = false) {
       const live = sessions.get(threadId);
-      if (live === undefined || (live.busy && !force)) return false;
+      if (live === undefined || ((live.busy || live.background > 0) && !force)) return false;
       close(live);
       return true;
     },
@@ -670,6 +775,11 @@ export function createLiveSessions(options: {
       let closed = 0;
       for (const live of sessions.values()) {
         if (live.busy) continue;
+        // Its background work goes on; it ends with it (D348).
+        if (live.background > 0) {
+          live.closeWhenDone = true;
+          continue;
+        }
         close(live);
         closed++;
       }
@@ -685,6 +795,7 @@ export function createLiveSessions(options: {
         ...(live.permissionMode === undefined ? {} : { permissionMode: live.permissionMode }),
         busy: live.busy,
         ...(live.idleSince === undefined ? {} : { idleSince: live.idleSince.toISOString() }),
+        background: live.background,
       })),
     dispose() {
       // Closing deletes from the map: safe while iterating it.

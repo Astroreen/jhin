@@ -1,6 +1,7 @@
 # Providers plan: Claude Code
 
-Status: **implemented** (Claude Code). This file records how Jhin runs real
+Status: **implemented** (Claude Code; W9's follow-ups D340–D350 too, see
+Deferred for what is left). This file records how Jhin runs real
 agents ("providers" in T3 Code) behind `agent.runtime@1.1` (D54) and
 `agent.registry@1` (D55), what was left out and what is deferred.
 
@@ -285,6 +286,38 @@ specific to Claude: the runtime is a plugin on the public API.
   away from it. The config's `env` and `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS`
   always go in. The list is part of the launch key (D99), the node's variables
   are still not.
+- **D347. A cap on live sessions.** The config's `maxLiveSessions` (default
+  8; 0: none) bounds the Claude Codes a node keeps: when a new one starts and
+  more are running, the idle ones without background work (D348) that waited
+  longest since their last turn end first, until the count fits. A session a
+  turn holds or one running background work is never ended for the cap, so a
+  node can be over it while they run. T3 has no cap; it is Jhin's, for a node
+  with many threads.
+- **D348. Background work keeps its Claude Code.** Claude Code reports the
+  background tasks it runs (shells, monitors, subagents) with
+  `background_tasks_changed`, a level that replaces the last one; ambient
+  ones (watchers) do not count. While a session runs one: the idle timer does
+  not end it (it re-arms when the work ends), nor does turning `session` to
+  `per-turn` or `claude.sessions.close` without `force` (a per-turn session
+  ends once its work does). A turn that would replace it (another launch key,
+  or a model or mode it cannot take live) fails with T3's message instead:
+  "Claude is still running background agents or commands, and this model or
+  setting change would end them. Wait for them to finish, or press Stop, then
+  send the message again." `force`, archiving, deleting and deactivating
+  still end it, work and all. `claude.sessions.list` shows `background`, the
+  number of tasks.
+- **D349. Effort changes live.** The effort is no longer part of the launch
+  key: a running Claude Code takes another with `applyFlagSettings({
+  effortLevel })` (`null` back to its default), as T3 applies its
+  selection's flags; one that refuses is replaced, as for the model (D99).
+- **D350. An interrupt that came before Claude Code took the message.** The
+  interrupt receipt lists in `still_queued` the messages that will still run.
+  When the stopped turn's own message is among them, the turn interrupts
+  again as soon as that message's first frame comes, so it ends at once
+  instead of running unseen to its result (D104 still keeps its frames out of
+  the next turn). The SDK has no call for `cancel_async_message`, which would
+  drop the message before it runs; an older CLI sends no receipt and keeps
+  D104's behaviour.
 
 ## Not ported
 
@@ -297,23 +330,16 @@ specific to Claude: the runtime is a plugin on the public API.
 
 - Steering a running turn and queueing follow-ups into it; the live session
   (D98) is where a steer would go.
-- A cap on live sessions (a least-recently-used limit): today every thread
-  with a turn in the last `sessionIdleMinutes` keeps a Claude Code.
-- Background work and live sessions: a Claude Code ended while idle, on a
-  launch-key change or by `claude.sessions.close` takes its background shells
-  and subagents with it. T3 refuses such a replacement until they finish.
-- Effort or other flag settings changed live (`applyFlagSettings`): a config
-  change restarts the live session instead.
-- An interrupt that reaches Claude Code before it took the turn's message:
-  the message still runs (the interrupt receipt's `still_queued` is not
-  read, nor `cancel_async_message` sent); the stopped turn waits for that
-  result, nothing of it recorded, and the next turn drops any later frames
-  of it (D104).
+- Dropping a message an interrupt did not reach before it runs
+  (`cancel_async_message`): the SDK has no call for it, so D350 interrupts it
+  again once it starts.
 - Frames on a Claude Code that marks no message uuids (older CLIs): a result
   of another message or of Claude Code's own continuation can end the next
   turn early there (D104). On one that marks them, a continuation that goes
   idle just as the next message goes in (before Claude Code read it) is
-  taken for that turn's unmarked answer.
+  taken for that turn's unmarked answer. W9 left both: the Claude Code the
+  distribution ships with its pinned SDK marks every frame, and telling the
+  race apart needs a frame Claude Code does not send.
 - Per-turn model options in the composer (effort, fast mode): only the
   config's `effort` applies.
 - A proposed-plan card with "implement this plan" (shown as a message today;
@@ -322,10 +348,25 @@ specific to Claude: the runtime is a plugin on the public API.
   list for every Claude Code.
 - Slash commands and skills from Claude Code's initialization in the
   composer.
-- Subagent transcripts inside their tool call; today only the result shows.
+- Subagent transcripts; today only the `Agent` tool's result shows. T3 shows
+  a Claude subagent as a child thread of the parent (`subagentProjection`'s
+  `makeSubagentChildThread`), not inside the tool call. Jhin has no child
+  threads yet (W10's delegated tasks bring them), nor a way for a runtime to
+  write another thread's items through `agent.runtime@1`.
 - Codex and OpenCode runtimes.
 - A snapshot frame Claude Code would send twice for one unstreamed block
   (not seen so far) shows twice: since D342 identical texts are not merged.
+- Session files of a deleted thread under an earlier config directory: D345
+  looks only in the directory the config names when the thread is deleted,
+  so a session started under another `CLAUDE_CONFIG_DIR` or `inheritEnv`
+  keeps its files.
+- The kept probe (D344) is keyed on the configuration, not on the values of
+  the node's variables: a changed `ANTHROPIC_API_KEY` in the node's
+  environment shows the old status until the probe's time runs out.
+- A bound on background work (D348): a task Claude Code never reports done
+  keeps its session out of the idle timer, the cap and a plain
+  `claude.sessions.close` until the thread is archived or deleted, `force`
+  ends it, or the node stops.
 - A node's very first look at the agents (no probe kept yet for its
   configuration, D344) still waits for Claude Code to start, up to 25 s when
   it hangs.
