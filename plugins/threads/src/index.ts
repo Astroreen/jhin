@@ -16,6 +16,7 @@ import {
   RUNTIME_MODES,
   THREADS_STREAM,
   ThreadEvents,
+  ThreadHooks,
   threadStream,
   type AgentItem,
   type AgentRegistry,
@@ -27,6 +28,8 @@ import {
   type InteractionMode,
   type RuntimeMode,
   type TurnAttachment,
+  type TurnEndHookInput,
+  type TurnHookInput,
 } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
@@ -107,6 +110,11 @@ const Thread = z.object({
   model: z.string().optional(),
   runtimeMode: z.enum(RUNTIME_MODES).optional(),
   interactionMode: z.enum(INTERACTION_MODES).optional(),
+  /**
+   * The thread's own working directory (T3 Code's `worktreePath`), usually a
+   * git worktree of its project: its turns run there. Absent: the project's.
+   */
+  worktreePath: z.string().optional(),
   /** The latest turn, for lists: `waiting` means it asks the user something. */
   lastTurn: z
     .object({
@@ -333,6 +341,19 @@ function expandHome(path: string): string {
   return path.startsWith("~/") || path.startsWith(`~${Path.sep}`)
     ? Path.join(Os.homedir(), path.slice(2))
     : path;
+}
+
+/** A thread's own working directory: an existing absolute directory, stored normalised. */
+function worktreeDirectory(given: string): string {
+  const path = Path.resolve(given);
+  if (!Path.isAbsolute(given) || !Fs.existsSync(path) || !Fs.statSync(path).isDirectory()) {
+    throw new ThreadsError(
+      "WORKTREE_PATH_INVALID",
+      `${given} is not an existing absolute directory`,
+      { path: given },
+    );
+  }
+  return path;
 }
 
 export default definePlugin({
@@ -752,8 +773,16 @@ export default definePlugin({
       const { turnId } = entry;
       const stream = threadStream(thread.id);
       let turn: AgentTurn;
+      let hookInput: TurnHookInput;
       try {
         const project = await getProject(thread.projectId);
+        hookInput = {
+          threadId: thread.id,
+          projectId: thread.projectId,
+          turnId,
+          agentId: runtime.agentId,
+          cwd: thread.worktreePath ?? project.path,
+        };
         const history = await log.read(stream);
         // The record says the turn runs before its first event is written: a node
         // that stops in between finds it on restart and closes it.
@@ -776,16 +805,18 @@ export default definePlugin({
           throw error;
         }
         try {
+          // Before the agent touches anything (a checkpoint of the working tree, D240).
+          await context.hooks.run(ThreadHooks.turnStart, hookInput, () => undefined);
           turn = runtime.startTurn({
             threadId: thread.id,
             turnId,
             input,
             history,
-            cwd: project.path,
+            cwd: hookInput.cwd,
             ...settings,
           });
         } catch (error) {
-          // turn.started is already recorded: close it, keeping the agent's error for the caller.
+          // turn.started is already recorded: close it, keeping the hook's or the agent's error.
           await log
             .append(stream, [
               { type: ThreadEvents.turnFailed, payload: { turnId, error: String(error) } },
@@ -838,6 +869,20 @@ export default definePlugin({
         entry.ending = true;
         try {
           await closeRequests();
+          // Before the end is recorded: whoever sees the turn end sees what the hooks did.
+          const endInput: TurnEndHookInput = {
+            ...hookInput,
+            status: ending.status as TurnEndHookInput["status"],
+          };
+          await context.hooks
+            .run(ThreadHooks.turnEnd, endInput, () => undefined)
+            .catch((error: unknown) =>
+              context.log.error("a turn end hook failed", {
+                threadId: thread.id,
+                turnId,
+                error: String(error),
+              }),
+            );
           await recordEnd(ending.type, {
             turnId,
             ...(ending.error === undefined ? {} : { error: ending.error }),
@@ -924,7 +969,7 @@ export default definePlugin({
      * agent that ignores the interrupt for STOP_TIMEOUT_MS is given up on: its
      * turn is recorded as interrupted and the thread released. A turn still
      * starting then is given up on as soon as it has started; its start only
-     * waits on storage, as recording its end would.
+     * waits on storage and the turn start hooks, as recording its end would.
      */
     async function stopTurn(threadId: string): Promise<void> {
       const current = active.get(threadId);
@@ -1246,10 +1291,18 @@ export default definePlugin({
         projectId: z.string().default(SCRATCH_PROJECT),
         title: z.string().min(1).default(DEFAULT_THREAD_TITLE),
         ...AgentSettings,
+        worktreePath: z.string().min(1).optional().meta({
+          description:
+            "The thread's own working directory (a git worktree of the project); its turns run there",
+        }),
       }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: async ({ projectId, title, ...settings }) => {
+      handler: async ({ projectId, title, worktreePath, ...rest }) => {
+        const settings =
+          worktreePath === undefined
+            ? rest
+            : { ...rest, worktreePath: worktreeDirectory(worktreePath) };
         await getProject(projectId);
         if (removedProjects.has(projectId)) {
           throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
@@ -1321,26 +1374,47 @@ export default definePlugin({
 
     context.commands.register({
       name: "threads.update",
-      description: "Renames a thread or changes the agent, model and modes its next turns run with",
+      description:
+        "Renames a thread or changes the agent, model and modes its next turns run with, or the working directory they run in",
       input: z.object({
         threadId: z.string(),
         title: z.string().trim().min(1).max(200).optional(),
         ...AgentSettings,
+        worktreePath: z.string().min(1).nullable().optional().meta({
+          description:
+            "The thread's own working directory (a git worktree of the project); null: the project's again",
+        }),
       }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: ({ threadId, title, ...settings }) => {
+      handler: ({ threadId, title, worktreePath, ...settings }) => {
         if (settings.agentId !== undefined && registry.get(settings.agentId) === undefined) {
           throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${settings.agentId} on this node`, {
             agentId: settings.agentId,
           });
         }
+        const directory =
+          worktreePath === undefined || worktreePath === null
+            ? worktreePath
+            : worktreeDirectory(worktreePath);
         return updateThread(threadId, (thread) => {
+          if (directory !== undefined && directory !== (thread.worktreePath ?? null)) {
+            // A running turn keeps the directory it started in; the next one moves.
+            if (active.has(threadId)) {
+              throw new ThreadsError(
+                "TURN_IN_PROGRESS",
+                "The thread is running a turn: its working directory changes once it ends",
+                { threadId },
+              );
+            }
+          }
           const next: Thread = {
             ...thread,
             ...(title === undefined ? {} : { title }),
             ...settings,
+            ...(typeof directory === "string" ? { worktreePath: directory } : {}),
           };
+          if (directory === null) delete (next as { worktreePath?: string }).worktreePath;
           // A model named for another agent does not carry over to a new one.
           if (
             settings.agentId !== undefined &&
@@ -1665,6 +1739,20 @@ export default definePlugin({
         // Early answers for the common cases; the reservation below decides.
         const read = await getThread(threadId);
         if (read.archivedAt !== undefined) throw archivedError(threadId);
+        // A worktree removed under the thread: its agent would have nowhere to run.
+        if (
+          read.worktreePath !== undefined &&
+          !(await Fs.promises.stat(read.worktreePath).then(
+            (stat) => stat.isDirectory(),
+            () => false,
+          ))
+        ) {
+          throw new ThreadsError(
+            "WORKTREE_NOT_FOUND",
+            `The thread's worktree ${read.worktreePath} no longer exists`,
+            { threadId, path: read.worktreePath },
+          );
+        }
         const running = active.get(threadId);
         if (running !== undefined) {
           throw new ThreadsError("TURN_IN_PROGRESS", "The thread is already running a turn", {
@@ -1688,7 +1776,7 @@ export default definePlugin({
         const firstTitle =
           read.lastTurn === undefined && read.title === DEFAULT_THREAD_TITLE
             ? await context.hooks
-                .run("threads.title", { thread: read, text }, ({ text: input }) =>
+                .run(ThreadHooks.title, { thread: read, text }, ({ text: input }) =>
                   titleFromText(input),
                 )
                 .catch(() => titleFromText(text))
