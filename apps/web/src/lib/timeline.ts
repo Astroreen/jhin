@@ -120,9 +120,10 @@ interface Payload {
 
 /**
  * Claude Code's proposed plans before they had an item of their own (D304)
- * were messages with this item id suffix.
+ * were its messages with this item id suffix (`<tool use id>:plan`).
  */
 const LEGACY_PLAN_SUFFIX = ":plan";
+const LEGACY_PLAN_AGENT = "jhin.agent-claude";
 
 type MutableTurn = { -readonly [K in keyof TimelineTurn]: TimelineTurn[K] } & {
   items: TimelineItem[];
@@ -257,6 +258,7 @@ export function createTimeline() {
           if (
             kind === "message" &&
             existing === undefined &&
+            turn.agentId === LEGACY_PLAN_AGENT &&
             itemId.endsWith(LEGACY_PLAN_SUFFIX) &&
             payload.text !== undefined
           ) {

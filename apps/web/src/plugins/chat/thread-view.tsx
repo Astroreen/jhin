@@ -214,10 +214,17 @@ export function ThreadView(props: {
           onImplement: async (newThread: boolean) => {
             setError(undefined);
             try {
-              await chat.context.commands.execute(
+              const result = (await chat.context.commands.execute(
                 newThread ? "chat.plan.implement-new-thread" : "chat.plan.implement",
                 { ...target, threadId },
-              );
+              )) as { uncertain?: string };
+              if (result.uncertain !== undefined) {
+                chat.toasts?.show({
+                  type: "warning",
+                  title: "The plan may not have reached the new thread",
+                  description: result.uncertain,
+                });
+              }
               if (!newThread)
                 setSelection((current) => ({ ...current, interactionMode: "default" }));
               return true;

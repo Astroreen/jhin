@@ -278,12 +278,6 @@ const AgentInfo = z.object({
   default: z.boolean(),
 });
 
-const pathExists = (target: string) =>
-  Fs.promises.access(target).then(
-    () => true,
-    () => false,
-  );
-
 class ThreadsError extends Error {
   readonly code: string;
   readonly details: Record<string, unknown>;
@@ -1156,13 +1150,32 @@ export default definePlugin({
           );
         if (relativePath === "" || outside(relativePath)) throw refuse();
         // A link inside the project must not lead the write out of it: not a folder
-        // on the way (resolved here), nor the file itself (never followed below).
+        // on the way (resolved before and after creating the missing ones), nor the
+        // file itself (refused, and never followed where the platform can say so).
+        // A link swapped in between these steps by someone who can already write
+        // into the project is not guarded against.
         const realRoot = await Fs.promises.realpath(root);
+        const inside = async (folder: string) => {
+          const real = await Fs.promises.realpath(folder).catch(() => undefined);
+          return real !== undefined && !outside(Path.relative(realRoot, real));
+        };
+        const lexists = (candidate: string) =>
+          Fs.promises.lstat(candidate).then(
+            () => true,
+            () => false,
+          );
         let parent = Path.dirname(target);
-        while (!(await pathExists(parent))) parent = Path.dirname(parent);
-        const realParent = await Fs.promises.realpath(parent);
-        if (outside(Path.relative(realRoot, realParent))) throw refuse();
-        await Fs.promises.mkdir(Path.dirname(target), { recursive: true });
+        while (!(await lexists(parent))) parent = Path.dirname(parent);
+        // A folder that is a dangling link resolves nowhere: refused too.
+        if (!(await inside(parent))) throw refuse();
+        try {
+          await Fs.promises.mkdir(Path.dirname(target), { recursive: true });
+        } catch {
+          throw refuse();
+        }
+        if (!(await inside(Path.dirname(target)))) throw refuse();
+        const existing = await Fs.promises.lstat(target).catch(() => undefined);
+        if (existing !== undefined && !existing.isFile()) throw refuse();
         let file: Fs.promises.FileHandle;
         try {
           file = await Fs.promises.open(
@@ -1170,7 +1183,7 @@ export default definePlugin({
             Fs.constants.O_WRONLY |
               Fs.constants.O_CREAT |
               Fs.constants.O_TRUNC |
-              Fs.constants.O_NOFOLLOW,
+              (Fs.constants.O_NOFOLLOW ?? 0),
             0o644,
           );
         } catch (error) {

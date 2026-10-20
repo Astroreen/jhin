@@ -8,11 +8,17 @@ const PLAN = "# Add a cache\n\n1. Read\n";
 const target = { node: "n1" };
 
 /** A node answering the calls implementPlan makes, recording them. */
-function fakeNode(events: { type: string; payload: unknown }[]) {
+function fakeNode(
+  events: { type: string; payload: unknown }[],
+  fail: Record<string, { code: string; message: string }> = {},
+) {
   const calls: { method: string; params: unknown }[] = [];
   const threads = {
     async call<T>(_target: unknown, method: string, params?: unknown): Promise<T> {
       calls.push({ method, params });
+      const failure = fail[method];
+      if (failure !== undefined)
+        throw Object.assign(new Error(failure.message), { code: failure.code });
       switch (method) {
         case "threads.events":
           return events.map((event, index) => ({
@@ -91,6 +97,36 @@ describe("implementPlan (D306)", () => {
     });
     expect(calls.at(-1)).toMatchObject({ method: "threads.send", params: { threadId: "t2" } });
     expect(routes).toEqual([{ node: "n1", thread: "t2" }]);
+  });
+
+  it("says the thread is busy, and when its first message may not have arrived", async () => {
+    const busy = fakeNode(proposed, {
+      "threads.send": { code: "TURN_IN_PROGRESS", message: "running" },
+    });
+    await expect(
+      implementPlan({ threads: busy.threads }, { target, threadId: "t1", newThread: false }),
+    ).rejects.toMatchObject({ code: "TURN_IN_PROGRESS" });
+    const dropped = fakeNode(proposed, {
+      "threads.send": { code: "DISCONNECTED", message: "The connection closed" },
+    });
+    expect(
+      await implementPlan(
+        { threads: dropped.threads },
+        { target, threadId: "t1", newThread: true },
+      ),
+    ).toEqual({ threadId: "t2", uncertain: "The connection closed" });
+  });
+
+  it("refuses a plan whose turn failed, also for a new thread", async () => {
+    const failed = [
+      ...proposed.filter((event) => event.type !== ThreadEvents.turnCompleted),
+      { type: ThreadEvents.turnFailed, payload: { turnId: "u1", error: "boom" } },
+    ];
+    const { threads, calls } = fakeNode(failed);
+    await expect(
+      implementPlan({ threads }, { target, threadId: "t1", newThread: true }),
+    ).rejects.toMatchObject({ code: "PLAN_NOT_FOUND" });
+    expect(calls.some((call) => call.method === "threads.create")).toBe(false);
   });
 
   it("refuses a thread without a plan to implement", async () => {

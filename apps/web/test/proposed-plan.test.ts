@@ -127,10 +127,20 @@ describe("proposed plans in the timeline (D304)", () => {
     expect(actionablePlan(later)).toBeUndefined();
   });
 
-  it("reads Claude Code's earlier plans, recorded as messages ending in ':plan'", () => {
+  it("reads Claude Code's earlier plans, recorded as messages ending in ':plan', and no other agent's", () => {
+    const other = reduceTimeline(
+      stream(started("u1"), [
+        ThreadEvents.itemCompleted,
+        { turnId: "u1", itemId: "step:plan", kind: "message", text: "just text" },
+      ]),
+    );
+    expect(other.turns[0]!.items[0]).toMatchObject({ kind: "message", text: "just text" });
     const timeline = reduceTimeline(
       stream(
-        started("u1"),
+        [
+          ThreadEvents.turnStarted,
+          { turnId: "u1", agentId: "jhin.agent-claude", input: { text: "plan it" } },
+        ],
         [
           ThreadEvents.itemCompleted,
           { turnId: "u1", itemId: "toolu_1:plan", kind: "message", text: PLAN },
