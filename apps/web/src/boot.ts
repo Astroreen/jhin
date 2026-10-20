@@ -12,6 +12,7 @@ import { machinesPlugin } from "./plugins/machines.tsx";
 import { meshPlugin } from "./plugins/mesh.ts";
 import { navigationPlugin } from "./plugins/navigation.ts";
 import { notificationsPlugin } from "./plugins/notifications.tsx";
+import { schedulerPlugin } from "./plugins/scheduler/index.tsx";
 import { settingsPlugin } from "./plugins/settings/index.tsx";
 import { sidebarPlugin } from "./plugins/sidebar.tsx";
 import { sourceControlPlugin } from "./plugins/source-control/index.tsx";
@@ -108,6 +109,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     terminalPlugin,
     commandPalettePlugin,
     settingsPlugin,
+    schedulerPlugin,
     notificationsPlugin,
     inspectorPlugin,
   ];

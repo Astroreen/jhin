@@ -25,6 +25,7 @@
     "@jhin/client-api": "workspace:*",
     "@jhin/kernel": "workspace:*",
     "@jhin/rpc": "workspace:*",
+    "@jhin/scheduler-api": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/source-control-api": "workspace:*",
     "@jhin/storage-api": "workspace:*",

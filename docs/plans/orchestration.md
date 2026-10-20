@@ -300,7 +300,7 @@ whole set reachable as MCP tools.
 
 ## W11. Scheduled tasks and webhooks
 
-Status: **implemented** (`plugins/scheduler`, `packages/scheduler-api`); the settings page is D389.
+Status: **implemented** (`plugins/scheduler`, `packages/scheduler-api`, the settings page in `apps/web/src/plugins/scheduler`).
 
 ### Decisions
 
@@ -395,13 +395,35 @@ the rest of it is unchanged since D53's tag.
   their outcome (`accepted`, `dispatch_failed`, `rejected_signature`,
   `disabled`, `rate_limited`), body (up to 64 KiB), headers, missing
   placeholders and the rendered prompt.
-- **D389. UI:** T3's Settings → Scheduled tasks page and the thread's
-  automations panel, on these commands and the `scheduler` stream
-  (follow-up PR).
+- **D389. The settings page, T3's:** the web client's builtin plugin
+  `jhin.scheduler.ui` adds the section `scheduled-tasks` (Settings →
+  Scheduled tasks) through `ui.settings@1`: the tasks of every connected node
+  (one section per node when there are several), each row with its schedule
+  ("Every 5 min", "Weekdays at 09:00", "On webhook"), the next run or
+  Paused / Listening, the last run's status and error, an enable switch and
+  the actions Edit, Run now (Deliveries for a webhook) and Delete (at once,
+  without asking, as in T3; rotating a URL asks first), contributed to the
+  slot `scheduler.task.actions` (ids `jhin.scheduler.<action>`). The editor
+  dialog takes T3's name, project, prompt, trigger, weekdays, webhook URL
+  (copy, rotate) and signature fields, plus the thread the runs go to (none:
+  a new thread each run); the deliveries dialog lists the requests and shows
+  one with its headers, body and the prompt it filled in. The page reads
+  `scheduler.tasks.list` and follows the `scheduler` stream after its head.
 
 ### Deferred
 
-- The settings page and the thread's automations panel (D389).
+- The thread's automations panel: T3 shows a thread's tasks in its thread
+  details panel, which Jhin does not have yet.
+- The editor's workspace strategy (a new worktree, the project checkout, a
+  given checkout; W3's worktrees) and its model picker: a new thread runs on
+  the node's default agent and model unless a command gives others.
+- Tasks of mesh members on the settings page: it shows the nodes the client
+  is connected to.
+- Tests of the page below its one end-to-end flow: the editor's validation
+  and webhook parts (signature and secret, Rotate), the Deliveries dialog,
+  several nodes and a node without the scheduler: the server tests of `jhin.scheduler` and the store's unit tests
+  cover them below the UI; the e2e spec covers create, pause, run now and
+  delete.
 - `secretRef` for webhook signing secrets, entered through
   `request_secret` (W13's secrets).
 - A public webhook URL through a relay, held deliveries while the node is

@@ -243,6 +243,9 @@ importers:
       '@jhin/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc
+      '@jhin/scheduler-api':
+        specifier: workspace:*
+        version: link:../../packages/scheduler-api
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
