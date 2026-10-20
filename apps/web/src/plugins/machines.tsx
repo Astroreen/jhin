@@ -9,7 +9,10 @@ import {
   THREADS_CAPABILITY,
   isMachineKind,
   type Connections,
+  type MeshMember,
   type NodeActionProps,
+  type NodeConnection,
+  type NodeMemberActionProps,
   type NodeMachines,
   type ThreadsCatalog,
 } from "@jhin/client-api";
@@ -110,11 +113,23 @@ export const machinesPlugin = builtin(
         },
       });
 
-      /** T3's "Icon" submenu of an environment's menu, in settings → Nodes. */
-      function IconMenu({ connection }: NodeActionProps) {
-        const target = { node: connection.id };
+      /**
+       * T3's "Icon" submenu of an environment's menu, in settings → Nodes: of a
+       * connection, or of a member of its mesh (T3 gives every saved environment one).
+       */
+      function IconMenu({
+        connection,
+        member,
+      }: {
+        connection: NodeConnection;
+        member?: MeshMember;
+      }) {
+        const target = {
+          node: connection.id,
+          ...(member === undefined ? {} : { remote: member.nodeId }),
+        };
         const machine = useMachine(machines, target);
-        const open = connection.state === "open";
+        const open = connection.state === "open" && (member === undefined || member.reachable);
         const detected = machine?.detected ?? "server";
         const current = machine?.kind ?? "server";
         return (
@@ -139,7 +154,7 @@ export const machinesPlugin = builtin(
                   // The detected kind is no choice: the node keeps following what it detects.
                   context.commands
                     .execute("node.set-machine", {
-                      node: connection.id,
+                      ...target,
                       machine: next === detected ? null : next,
                     })
                     .catch((error: unknown) =>
@@ -173,6 +188,14 @@ export const machinesPlugin = builtin(
         context.subscriptions.add(
           slots.contribute<NodeActionProps>("node.actions", {
             id: "jhin.node-machines.icon",
+            order: 3,
+            component: IconMenu,
+          }),
+        );
+      if (slots !== undefined)
+        context.subscriptions.add(
+          slots.contribute<NodeMemberActionProps>("node.member.actions", {
+            id: "jhin.node-machines.member-icon",
             order: 3,
             component: IconMenu,
           }),

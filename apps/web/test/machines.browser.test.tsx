@@ -290,5 +290,9 @@ describe("the node-machines plugin", () => {
     expect(t.slots.list("node.actions").map((item) => item.id)).toEqual([
       "jhin.node-machines.icon",
     ]);
+    // And into each mesh member's (D442).
+    expect(t.slots.list("node.member.actions").map((item) => item.id)).toEqual([
+      "jhin.node-machines.member-icon",
+    ]);
   });
 });
