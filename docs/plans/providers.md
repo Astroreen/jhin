@@ -224,9 +224,11 @@ specific to Claude: the runtime is a plugin on the public API.
   with the node's own token may name any (`Invocation.threadId`, new and
   optional, which W10's commands act on). A Claude Code that does not answer
   the registration within 90 s (T3's limit) fails the turn; one that cannot
-  connect the server runs without it, with a warning. The config's `mcp` (on
-  by default) turns it off and, through the system prompt, restarts a live
-  session.
+  connect the server runs without it, with a warning. The config's `mcp` (on by default) turns it off; whether the server is
+  attached is part of the launch key (D99), so changing it restarts a live
+  session. Credentials live in memory only: a node restart ends them with the
+  Claude Codes that held them, and deactivating `jhin.agent-claude` ends its
+  Claude Codes and so revokes theirs.
 - **D341. What a thread's agent may do through it:** `threads.read`,
   `threads.write`, `projects.read`, `projects.write`, `projects.browse`,
   `git.read`, `git.write` and `mesh.read`, the reach of T3's orchestration,

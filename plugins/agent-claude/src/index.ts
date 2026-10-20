@@ -463,7 +463,12 @@ export function claudePlugin(query: QueryFunction) {
           const command = context.commands
             .list()
             .find((candidate) => candidate.name.replaceAll(".", "_") === tool);
-          return command !== undefined && command.permissions.every(readsOnly);
+          // A command that names no permission is not known to read only: it asks.
+          return (
+            command !== undefined &&
+            command.permissions.length > 0 &&
+            command.permissions.every(readsOnly)
+          );
         },
         config: () => context.config.get<Config>(CONFIG_SECTION),
         log: (message, data) => context.log.warn(message, data),

@@ -87,7 +87,7 @@ afterEach(() => {
 
 describe("jhin.agent-claude: the node's MCP server (D340)", () => {
   it("gives a Claude Code it starts the server over the control channel, with a credential of its own", async () => {
-    const { claude, turn, calls, mcp } = node([answering("one", "two")]);
+    const { claude, turn, calls, mcp } = node([answering("one", "two"), answering("three")]);
     await turn();
     await turn();
 
@@ -119,6 +119,12 @@ describe("jhin.agent-claude: the node's MCP server (D340)", () => {
     // The credential lives as long as that Claude Code.
     expect(mcp.valid).toEqual(new Set(["token-1"]));
     claude.live.close(THREAD);
+    expect(mcp.valid).toEqual(new Set());
+
+    // Disposing the runtime (the plugin deactivating or reloading) revokes them too.
+    await turn();
+    expect(mcp.valid).toEqual(new Set(["token-2"]));
+    claude.dispose();
     expect(mcp.valid).toEqual(new Set());
   });
 

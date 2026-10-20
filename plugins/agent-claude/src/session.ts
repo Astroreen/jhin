@@ -446,7 +446,8 @@ export function createLiveSessions(options: {
 
   return {
     async lease({ threadId, options: launch, message, attach }) {
-      const key = launchKey(launch);
+      // With or without the node's MCP server is a launch of its own (D340).
+      const key = `${launchKey(launch)}${attach === undefined ? "" : "+mcp"}`;
       const self = {};
       let live = sessions.get(threadId);
       if (live !== undefined) live.leasedBy = self;
