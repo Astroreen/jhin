@@ -134,7 +134,8 @@ export interface TerminalSessions {
   /**
    * Starts a shell in `cwd`, or returns the session already running under
    * these ids (resized to `cols` × `rows` when given). A session whose
-   * process exited starts a new process.
+   * process exited starts a new process. Since 1.1 it rejects with
+   * `TERMINAL_CWD_MISMATCH` when the running session is in another `cwd`.
    */
   open(input: OpenTerminalInput): Promise<TerminalSummary>;
   write(input: WriteTerminalInput): void;
