@@ -2592,7 +2592,18 @@ export default definePlugin({
         if (turnId !== undefined && (await steerInto(threadId, messageId, message))) {
           return { messageId, turnId, outcome: "steered" as const };
         }
-        // No turn, or it ended first: the message goes first, as T3 starts the follow-up turn.
+        if (turnId === undefined) {
+          // Nothing runs: the user's newest message starts a turn now, past a
+          // held queue too, as a send would.
+          try {
+            const started = await startTurn(threadId, message, { messageId });
+            return { messageId, turnId: started, outcome: "started" as const };
+          } catch (error) {
+            if (codeOf(error) !== "TURN_IN_PROGRESS") throw error;
+          }
+        }
+        // The turn ended before it took the message: it goes first, as T3
+        // starts the follow-up turn (held after a stop, as the rest are).
         const sent = await enqueue(threadId, messageId, message, true);
         return {
           ...sent,

@@ -525,6 +525,22 @@ describe("jhin.threads: steering (D204, D205)", () => {
     expect(answers(events)).toEqual(["Echo: hi"]);
   });
 
+  it("starts a steer on a free thread at once, past a held queue", async () => {
+    const { client, thread, events, until, watched } = await holding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "held" });
+    await client.call("threads.interrupt", { threadId: thread.id });
+    await until(ThreadEvents.turnInterrupted);
+    await watched.untilMatch(() => lastQueue(events)?.held !== undefined);
+
+    expect(await client.call("threads.steer", { threadId: thread.id, text: "now" })).toMatchObject({
+      outcome: "started",
+    });
+    await untilCount(watched, ThreadEvents.turnCompleted, 1);
+    expect(started(events)).toEqual(["/hold on", "now"]);
+    // The held message still waits for the user.
+    expect(lastQueue(events)).toMatchObject({ messages: [{ text: "held" }], held: {} });
+  });
+
   it("promotes a queued message to a steer", async () => {
     const { client, thread, events, until, watched } = await holding();
     await client.call("threads.queue.add", { threadId: thread.id, text: "a", messageId: "a" });

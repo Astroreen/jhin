@@ -286,6 +286,13 @@ const isSteerAbort = (message: SDKMessage) =>
   message.type === "result" &&
   (message.terminal_reason === "aborted_streaming" || message.terminal_reason === "aborted_tools");
 
+/**
+ * Results a turn ends with because a steer stopped the response and Claude Code had
+ * nothing more to say: the turn is complete, not stopped (D206).
+ */
+const steeredAway = new WeakSet<SDKMessage>();
+export const endedBySteer = (message: SDKMessage) => steeredAway.has(message);
+
 /** Ends a turn whose message Claude Code took without answering it (nothing marked as its). */
 class NoAnswer extends Error {
   constructor() {
@@ -748,6 +755,7 @@ export function createLiveSessions(options: {
             // has nothing left to say for the turn, which ends with that result.
             if (passed !== undefined && stateOf(sent) === "idle") {
               ended = true;
+              steeredAway.add(passed);
               yield passed;
               return;
             }

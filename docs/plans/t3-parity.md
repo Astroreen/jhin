@@ -802,7 +802,8 @@ and resetting it clears them), with a screenshot.
   a message into the thread's running turn; the turn records it as
   `agent.turn.steered` (`{ turnId, messageId, input }`) right after the agent
   took it, before anything the agent answers to it. On a free thread it
-  starts a turn, as `threads.queue.add` does; when the turn ends before the
+  starts a turn at once, as `threads.send` does, also past a held queue (it
+  is the user's newest message); when the turn ends before the
   agent took the message, the message is queued first instead, as T3 starts
   the follow-up turn when a steer comes too late. The answer says which
   (`outcome`: `steered`, `started`, `queued`). An agent that cannot steer
