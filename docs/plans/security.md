@@ -234,10 +234,19 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   what the paired client can do.", "Select at least one permission.") and
   shows the QR code ("Pairing link — scan to open on another device") with
   "Reach this machine via" over the node's addresses. The QR encoder is a
-  port of T3's `packages/shared/src/qrCode.ts`. The "Add node" form accepts
-  a pairing code or pairing URL instead of a token ("Pairing code",
-  placeholder "PAIRCODE").
-- **D425. `jhin pair` prints a pairing link and its QR code.** As `t3 pair`:
+  port of T3's `packages/shared/src/qrCode.ts` (Project Nayuki's encoder),
+  in `apps/web/src/lib/qr-code.ts`. The connect form ("Connect a node")
+  takes a pairing link in "Node URL", or a pairing code or token in
+  "Pairing code or token" (placeholder "PAIRCODE"); a code pairs over
+  `POST /auth/pair` (`client.connections` 1.2 `pair`). A page opened with a
+  refused code says why ("… Request a new pairing link."). Reopening the
+  node's page with the same `#token=` keeps its session instead of issuing
+  another device token. A `jhin client` page, served by no node, keeps a
+  `#token=` token in IndexedDB as before; a pairing link must be opened on
+  the node's own address or pasted into the connect form.
+- **D425. `jhin pair` prints a pairing link and its QR code** (Deferred:
+  until then `jhin auth.pairing.create --label <name>` prints the link and
+  the code as JSON). As `t3 pair`:
   `--label` (default `jhin pair`), `--ttl` (minutes, default 5),
   repeatable `--permission`; it prints "Pairing with <label> (<origin>).",
   the QR code in half-block characters, `Pairing URL:`, `Code:` and
@@ -321,6 +330,15 @@ Implements D419–D425, in two layers:
 - `host.config.get` and `host.config.patch` convert every section's schema
   (`config.jsonSchema()`) to pick one; a kernel call for one section's
   schema, or a cache cleared on `kernel.config.changed`, would avoid it.
+- `jhin pair` (D425): a CLI subcommand printing T3's "Pairing with <label>
+  (<origin>)." block with a terminal QR code. The encoder lives in the web
+  client; the CLI would need it in a shared package.
+- Pairing links for a `jhin client` page (T3's hosted-app link
+  `…/pair?host=<node>#token=<CODE>`): today the link names the node's own
+  address only.
+- A paired device's metadata (T3's device type, OS, browser, IP) in the
+  list of authorized clients; Jhin keeps a label only.
+
 - Secrets stay in the config files in clear (D417): T3 keeps them in a
   secret store apart from its settings. A key store (the OS keychain, an
   encrypted file) would let a config file be shared without them.

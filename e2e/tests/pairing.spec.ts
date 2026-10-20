@@ -1,0 +1,116 @@
+import { expect, test, type Page } from "@playwright/test";
+
+import { startNode, type RunningNode } from "./support/node.ts";
+
+// security.md D419–D424: pairing a second browser by its pairing link, the
+// page's own session in an httpOnly cookie, revoking a paired client.
+
+let node: RunningNode;
+test.beforeAll(async () => {
+  node = await startNode();
+});
+test.afterAll(async () => {
+  await node.stop();
+});
+
+async function openAuthorizedClients(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Authorized clients", exact: true })
+    .click();
+}
+
+/** Everything a script on the page can read of its storage: localStorage, IndexedDB, cookies. */
+const readableStorage = (page: Page) =>
+  page.evaluate(async () => {
+    const indexed = await new Promise<unknown>((resolve) => {
+      const opening = indexedDB.open("jhin.connections", 1);
+      opening.addEventListener("success", () => {
+        const read = opening.result
+          .transaction("nodes", "readonly")
+          .objectStore("nodes")
+          .get("list");
+        read.addEventListener("success", () => resolve(read.result));
+      });
+    });
+    return JSON.stringify({ local: { ...localStorage }, indexed, cookie: document.cookie });
+  });
+
+test("pairs a second browser by its pairing link, keeps tokens away from scripts, and revokes it", async ({
+  page,
+  browser,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await expect(page).not.toHaveURL(/token=/);
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
+  // The page's node is reached through its session cookie: no script can read a token.
+  expect(await readableStorage(page)).not.toContain(node.token);
+  expect(await readableStorage(page)).not.toMatch(/jhd1\.|jhin_session_/);
+
+  await openAuthorizedClients(page);
+  await page.getByRole("button", { name: "Create link" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("textbox", { name: "Client label (optional)" }).fill("Second browser");
+  await dialog.getByRole("button", { name: "Create link" }).click();
+  await expect(
+    dialog.getByRole("heading", { name: "Pairing link — scan to open on another device" }),
+  ).toBeVisible();
+  await expect(dialog.getByRole("img", { name: "Pairing link QR code" })).toBeVisible();
+  const link = await dialog.getByRole("textbox", { name: "Pairing link" }).inputValue();
+  expect(link).toMatch(/\/pair#token=[23456789A-HJ-NP-Z]{12}$/);
+  await page.screenshot({ path: info.outputPath("pairing-link.png") });
+  await dialog.getByRole("button", { name: "Done" }).click();
+
+  // A second browser opens the link and is connected, with no token it can read.
+  const second = await browser.newContext();
+  const other = await second.newPage();
+  await other.goto(link);
+  await expect(other).not.toHaveURL(/token=/);
+  await expect(other.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
+  expect(await readableStorage(other)).not.toMatch(/jhd1\.|jhin_session_/);
+  // The code was used up.
+  const again = await (await browser.newContext()).newPage();
+  await again.goto(link);
+  await expect(again.getByRole("alert")).toContainText("Request a new pairing link");
+
+  // The first browser lists it and revokes it; the second one is dropped at once.
+  const list = page.getByRole("list", { name: /^Authorized clients of / });
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await openAuthorizedClients(page);
+  await expect(list.getByText("Second browser")).toBeVisible();
+  await page.screenshot({ path: info.outputPath("authorized-clients.png") });
+  await list.getByRole("button", { name: "Revoke Second browser" }).click();
+  await expect(list.getByText("Second browser")).toHaveCount(0);
+
+  await other.getByRole("button", { name: "Settings", exact: true }).click();
+  await other
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Nodes", exact: true })
+    .click();
+  await expect(other.getByLabel("Connection closed")).toHaveCount(1);
+  await second.close();
+});
+
+test("pairs from the connect form with a pairing code", async ({ browser }) => {
+  const { code } = await node
+    .client()
+    .call<{ code: string }>("auth.pairing.create", { label: "Typed code" });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  // A page of the node without a session shows the connect form.
+  await page.goto(node.ui);
+  await page.getByRole("textbox", { name: "Node URL" }).fill(node.rpc);
+  await page
+    .getByRole("textbox", { name: "Pairing code or token" })
+    .fill(`${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8)}`);
+  await page.getByRole("button", { name: "Connect" }).click();
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
+  const { clients } = await node
+    .client()
+    .call<{ clients: { label: string; method: string }[] }>("auth.clients.list");
+  expect(clients).toContainEqual(
+    expect.objectContaining({ label: "Typed code", method: "pairing" }),
+  );
+  await context.close();
+});

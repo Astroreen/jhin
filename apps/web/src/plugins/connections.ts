@@ -4,8 +4,14 @@ import { definePlugin, toDisposable, z } from "@jhin/sdk";
 import { copyText } from "@jhin/ui";
 
 import { builtin } from "../lib/builtin.ts";
-
-const STORAGE_KEY = "jhin.nodes";
+import { createNodeStore } from "../lib/node-store.ts";
+import {
+  closeSession,
+  currentSession,
+  looksLikePairingCode,
+  openSession,
+  pairWithCode,
+} from "../lib/session.ts";
 
 const WebSocketUrl = z
   .string()
@@ -14,21 +20,24 @@ const WebSocketUrl = z
     "must be a ws:// or wss:// URL",
   );
 
-const Saved = z.object({ url: WebSocketUrl, token: z.string().min(1), label: z.string().min(1) });
+/**
+ * A saved node: with a token, or `session` for the page's own node, whose
+ * token is in an httpOnly cookie the page never reads (security.md D421).
+ */
+const Saved = z.union([
+  z.object({ url: WebSocketUrl, token: z.string().min(1), label: z.string().min(1) }),
+  z.object({ url: WebSocketUrl, session: z.literal(true), label: z.string().min(1) }),
+]);
 type Saved = z.infer<typeof Saved>;
 
 /** Saved nodes; entries that do not parse are dropped instead of breaking the client. */
-function load(): Saved[] {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
-  } catch {
-    return [];
-  }
-  return (Array.isArray(raw) ? raw : []).flatMap((entry) => {
+function parseSaved(raw: unknown): Saved[] {
+  const byUrl = new Map<string, Saved>();
+  for (const entry of Array.isArray(raw) ? raw : []) {
     const parsed = Saved.safeParse(entry);
-    return parsed.success ? [parsed.data] : [];
-  });
+    if (parsed.success && !byUrl.has(parsed.data.url)) byUrl.set(parsed.data.url, parsed.data);
+  }
+  return [...byUrl.values()];
 }
 
 /** The node that served this page, when it did: `ws(s)://<host>/rpc`. */
@@ -36,12 +45,10 @@ function sameOriginUrl(): string {
   return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/rpc`;
 }
 
-// Tokens are kept in localStorage: any script on this origin can read them,
-// including user client plugins. Recorded as a known limit in the plan.
-
 /**
- * A token in the URL fragment (`#token=…`) connects this page's own node;
- * the fragment never reaches the server and is removed at once.
+ * A token or pairing code in the URL fragment (`#token=…`, T3's pairing link
+ * `/pair#token=<CODE>`) is for this page's own node; the fragment never
+ * reaches the server and is removed at once (D422).
  */
 function takeTokenFromUrl(): string | undefined {
   const params = new URLSearchParams(location.hash.slice(1));
@@ -49,19 +56,22 @@ function takeTokenFromUrl(): string | undefined {
   if (token === null) return undefined;
   params.delete("token");
   const rest = params.toString();
-  history.replaceState(
-    null,
-    "",
-    `${location.pathname}${location.search}${rest === "" ? "" : `#${rest}`}`,
-  );
+  // The pairing page has done its work: the client opens at its root.
+  const path = location.pathname === "/pair" ? "/" : location.pathname;
+  history.replaceState(null, "", `${path}${location.search}${rest === "" ? "" : `#${rest}`}`);
   return token;
 }
 
+const sameSaved = (a: Saved, b: Saved) =>
+  ("token" in a ? a.token : undefined) === ("token" in b ? b.token : undefined) &&
+  "session" in a === "session" in b;
+
 export const connectionsPlugin = builtin(
   "jhin.connections",
-  { provides: { [CONNECTIONS_CAPABILITY]: "1.0.0" } },
+  { provides: { [CONNECTIONS_CAPABILITY]: "1.2.0" } },
   definePlugin({
-    activate(context) {
+    async activate(context) {
+      const store = createNodeStore();
       const listeners = new Set<() => void>();
       const nodes = new Map<string, { saved: Saved; readonly client: RpcClient }>();
       let snapshot: readonly NodeConnection[] = [];
@@ -79,35 +89,42 @@ export const connectionsPlugin = builtin(
         for (const listener of Array.from(listeners)) listener();
       };
       const persist = () =>
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify([...nodes.values()].map((node) => node.saved)),
-        );
+        void store
+          .save([...nodes.values()].map((node) => node.saved))
+          .catch((error: unknown) =>
+            context.log.error("saving nodes failed", { error: String(error) }),
+          );
 
       const open = (saved: Saved) => {
-        const client = createRpcClient({ connect: () => connectWebSocket(saved.url, saved.token) });
+        // A session node sends no token: the browser adds its cookie to the upgrade.
+        const token = "token" in saved ? saved.token : undefined;
+        const client = createRpcClient({ connect: () => connectWebSocket(saved.url, token) });
         client.onState(changed);
         nodes.set(saved.url, { saved, client });
       };
+      const keep = (saved: Saved) => {
+        const existing = nodes.get(saved.url);
+        // The same node with the same credential stays connected (e.g. a reload with #token=).
+        if (existing === undefined || !sameSaved(existing.saved, saved)) {
+          existing?.client.close();
+          open(saved);
+          persist();
+          changed();
+        }
+        return snapshot.find((node) => node.id === saved.url)!;
+      };
+      const labelOf = (url: string, label?: string) =>
+        label ?? (URL.canParse(url) ? new URL(url).host : url);
 
       const connections: Connections = {
         list: () => snapshot,
         get: (id) => snapshot.find((node) => node.id === id),
-        add({ url, token, label }) {
-          const saved = Saved.parse({
-            url,
-            token,
-            label: label ?? (URL.canParse(url) ? new URL(url).host : url),
-          });
-          const existing = nodes.get(saved.url);
-          // The same node with the same token stays connected (e.g. a reload with #token=).
-          if (existing === undefined || existing.saved.token !== saved.token) {
-            existing?.client.close();
-            open(saved);
-            persist();
-            changed();
-          }
-          return snapshot.find((node) => node.id === saved.url)!;
+        add: ({ url, token, label }) =>
+          keep(Saved.parse({ url, token, label: labelOf(url, label) })),
+        async pair({ url, code, label }) {
+          WebSocketUrl.parse(url);
+          const { token } = await pairWithCode(url, code, `Browser on ${location.host}`);
+          return keep(Saved.parse({ url, token, label: labelOf(url, label) }));
         },
         rename(id, label) {
           const node = nodes.get(id);
@@ -118,41 +135,75 @@ export const connectionsPlugin = builtin(
           changed();
         },
         remove(id) {
-          nodes.get(id)?.client.close();
+          const node = nodes.get(id);
+          node?.client.close();
+          // Forgetting the page's own node signs this page out of it.
+          if (node !== undefined && "session" in node.saved) void closeSession();
           nodes.delete(id);
           persist();
           changed();
         },
+        refusedCredential: () => refused,
         subscribe(listener) {
           listeners.add(listener);
           return toDisposable(() => listeners.delete(listener));
         },
       };
 
-      for (const saved of load()) open(saved);
-      const token = takeTokenFromUrl();
-      if (token !== undefined)
-        connections.add({ url: sameOriginUrl(), token, label: location.host });
+      try {
+        for (const saved of parseSaved(await store.load())) open(saved);
+      } catch (error) {
+        context.log.error("saved nodes unreadable", { error: String(error) });
+      }
+      // The page's own node: a credential in the fragment opens its session;
+      // without one, a session it opened before still counts.
+      const own = sameOriginUrl();
+      let refused: string | undefined;
+      const credential = takeTokenFromUrl();
+      try {
+        if (credential !== undefined) {
+          const session = await currentSession();
+          if (session === undefined) {
+            // No node serves this page (a `jhin client` page): the token is kept here.
+            if (!looksLikePairingCode(credential)) {
+              keep({ url: own, token: credential, label: location.host });
+            } else {
+              refused =
+                "This page is not served by a node: open the pairing link on the node's own address.";
+            }
+          } else {
+            // A reload with the same `#token=` keeps the session it opened, instead of
+            // issuing one more device token; a pairing code always pairs.
+            if (session !== true || looksLikePairingCode(credential)) await openSession(credential);
+            keep({ url: own, session: true, label: location.host });
+          }
+        } else if (!nodes.has(own) && (await currentSession()) === true) {
+          keep({ url: own, session: true, label: location.host });
+        }
+      } catch (error) {
+        context.log.warn("this page's node refused its credential", { error: String(error) });
+        refused = error instanceof Error ? error.message : String(error);
+      }
       changed();
 
       // Another tab changed the saved nodes: this one follows, instead of
       // dropping that tab's changes with its next save.
-      const onStorage = (event: StorageEvent) => {
-        if (event.key !== STORAGE_KEY) return;
-        const stored = new Map(load().map((saved) => [saved.url, saved]));
-        for (const [url, node] of nodes) {
-          const saved = stored.get(url);
-          if (saved === undefined || saved.token !== node.saved.token) {
-            node.client.close();
-            nodes.delete(url);
-          } else {
-            node.saved = saved;
+      const stopFollowing = store.onChange(() => {
+        void store.load().then((raw) => {
+          const stored = new Map(parseSaved(raw).map((saved) => [saved.url, saved]));
+          for (const [url, node] of nodes) {
+            const saved = stored.get(url);
+            if (saved === undefined || !sameSaved(saved, node.saved)) {
+              node.client.close();
+              nodes.delete(url);
+            } else {
+              node.saved = saved;
+            }
           }
-        }
-        for (const saved of stored.values()) if (!nodes.has(saved.url)) open(saved);
-        changed();
-      };
-      window.addEventListener("storage", onStorage);
+          for (const saved of stored.values()) if (!nodes.has(saved.url)) open(saved);
+          changed();
+        });
+      });
 
       context.services.provide(CONNECTIONS_CAPABILITY, connections);
 
@@ -204,7 +255,7 @@ export const connectionsPlugin = builtin(
 
       context.subscriptions.add({
         dispose() {
-          window.removeEventListener("storage", onStorage);
+          stopFollowing();
           for (const node of nodes.values()) node.client.close();
           nodes.clear();
         },

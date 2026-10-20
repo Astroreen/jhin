@@ -55,8 +55,11 @@ and the delivery log), the browser preview (`plugins/preview` and
 `@jhin/preview-api`: the server browser's tabs, their control by agents and
 viewers, page operations, snapshots, recordings, viewport presets, URL
 normalisation and the tools' wording) and pairing (`plugins/auth-token`:
-pairing codes, the pairing and session endpoints). Files derived from T3 Code
-say so in a header comment.
+pairing codes, the pairing and session endpoints; the web client's pairing
+links, saved nodes in IndexedDB, Authorized clients settings and QR code
+component). `apps/web/src/lib/qr-code.ts` is Project Nayuki's QR Code
+generator (MIT, copyright Project Nayuki) as T3 Code vendors it; its notice is
+kept in the file. Files derived from T3 Code say so in a header comment.
 
 ```
 MIT License

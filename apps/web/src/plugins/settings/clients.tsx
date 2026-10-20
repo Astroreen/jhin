@@ -1,0 +1,368 @@
+// The authorized clients of a node and its pairing links (security.md D424),
+// following T3 Code's connections settings (MIT, see THIRD_PARTY_NOTICES.md):
+// apps/web/src/components/settings/ConnectionsSettings.tsx — its wording, the
+// "Create pairing link" dialog and the QR code of the link.
+import type { NodeConnection } from "@jhin/client-api";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+  Input,
+  Label,
+  Spinner,
+  copyText,
+} from "@jhin/ui";
+import { CopyIcon, PlusIcon } from "lucide-react";
+import { useCallback, useEffect, useId, useState } from "react";
+
+import { useExternal } from "../../lib/hooks.ts";
+import { QRCodeSvg } from "../../lib/qr-code-svg.tsx";
+import { httpBase } from "../../lib/session.ts";
+import { SettingsEmpty, SettingsSection } from "../../lib/settings-layout.tsx";
+import { useSettingsServices } from "./index.tsx";
+
+interface Client {
+  readonly id: string;
+  readonly label: string;
+  readonly permissions: readonly string[];
+  readonly method: "pairing" | "issued";
+  readonly createdAt: number;
+  readonly expiresAt?: number;
+  readonly lastSeenAt?: number;
+  readonly current: boolean;
+}
+
+interface PairingLink {
+  readonly id: string;
+  readonly label?: string;
+  readonly permissions: readonly string[];
+  readonly expiresAt: number;
+}
+
+interface CreatedLink extends PairingLink {
+  readonly code: string;
+  readonly url: string;
+}
+
+const when = (time: number) => new Date(time).toLocaleString();
+
+function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCreated(): void }) {
+  const id = useId();
+  const [label, setLabel] = useState("");
+  const [permissions, setPermissions] = useState<readonly string[] | undefined>();
+  const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
+  const [bases, setBases] = useState<readonly string[]>([httpBase(props.node.url)]);
+  const [base, setBase] = useState(httpBase(props.node.url));
+  const [error, setError] = useState<string | undefined>();
+  const [created, setCreated] = useState<CreatedLink | undefined>();
+
+  useEffect(() => {
+    const { client } = props.node;
+    client.call<{ permissions: { permission: string }[] }>("auth.permissions.list").then(
+      ({ permissions: listed }) => {
+        const all = listed.map((entry) => entry.permission);
+        setPermissions(all);
+        setChosen(new Set(all));
+      },
+      (failure: unknown) => setError((failure as Error).message),
+    );
+    // The node's own address, next to the one this device reaches it at.
+    client.call<{ url: string }>("http.info").then(
+      ({ url }) => setBases((current) => [...new Set([...current, url])]),
+      () => undefined,
+    );
+  }, [props.node]);
+
+  const everything = permissions !== undefined && chosen.size === permissions.length;
+  return (
+    <Dialog onOpenChange={(open) => (open ? undefined : props.onClose())} open>
+      <DialogPopup className="sm:max-w-md">
+        {created === undefined ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (chosen.size === 0) {
+                setError("Select at least one permission.");
+                return;
+              }
+              props.node.client
+                .call<CreatedLink>("auth.pairing.create", {
+                  ...(label.trim() === "" ? {} : { label: label.trim() }),
+                  // Every permission ticked: what this device holds, as T3's standard scopes.
+                  ...(everything ? {} : { permissions: [...chosen] }),
+                  baseUrl: base,
+                })
+                .then(
+                  (link) => {
+                    setCreated(link);
+                    props.onCreated();
+                  },
+                  (failure: unknown) => setError((failure as Error).message),
+                );
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Create pairing link</DialogTitle>
+              <DialogDescription>
+                Generate a one-time link that another device can use to pair with this backend as an
+                authorized client.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogPanel className="flex flex-col gap-4">
+              <Label className="flex flex-col items-stretch gap-1.5" htmlFor={`${id}-label`}>
+                Client label (optional)
+                <Input
+                  id={`${id}-label`}
+                  onChange={(event) => setLabel(event.target.value)}
+                  placeholder="e.g. Living room iPad"
+                  value={label}
+                />
+              </Label>
+              {bases.length > 1 ? (
+                <fieldset className="flex flex-col gap-1.5">
+                  <legend className="mb-1.5 text-sm font-medium">Reach this machine via</legend>
+                  {bases.map((option) => (
+                    <Label className="flex items-center gap-2 font-normal" key={option}>
+                      <input
+                        checked={base === option}
+                        name={`${id}-base`}
+                        onChange={() => setBase(option)}
+                        type="radio"
+                      />
+                      <code className="text-xs">{option}</code>
+                    </Label>
+                  ))}
+                </fieldset>
+              ) : null}
+              <fieldset className="flex flex-col gap-1.5">
+                <legend className="text-sm font-medium">Permissions</legend>
+                <p className="mb-1.5 text-xs text-muted-foreground">
+                  Limit what the paired client can do.
+                </p>
+                {permissions === undefined ? (
+                  <Spinner size="sm" tone="muted" />
+                ) : (
+                  <div className="grid max-h-56 grid-cols-2 gap-1.5 overflow-y-auto">
+                    {permissions.map((permission) => (
+                      <Label className="flex items-center gap-2 font-normal" key={permission}>
+                        <Checkbox
+                          checked={chosen.has(permission)}
+                          onCheckedChange={(checked) =>
+                            setChosen((current) => {
+                              const next = new Set(current);
+                              if (checked) next.add(permission);
+                              else next.delete(permission);
+                              return next;
+                            })
+                          }
+                        />
+                        <code className="truncate text-xs">{permission}</code>
+                      </Label>
+                    ))}
+                  </div>
+                )}
+              </fieldset>
+              {error === undefined ? null : (
+                <p className="text-destructive text-sm" role="alert">
+                  {error}
+                </p>
+              )}
+            </DialogPanel>
+            <DialogFooter>
+              <Button onClick={props.onClose} type="button" variant="outline">
+                Cancel
+              </Button>
+              <Button disabled={permissions === undefined} type="submit">
+                Create link
+              </Button>
+            </DialogFooter>
+          </form>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>Pairing link — scan to open on another device</DialogTitle>
+              <DialogDescription>Valid once, until {when(created.expiresAt)}.</DialogDescription>
+            </DialogHeader>
+            <DialogPanel className="flex flex-col items-center gap-4">
+              <QRCodeSvg
+                className="rounded-md"
+                marginSize={2}
+                size={208}
+                title="Pairing link QR code"
+                value={created.url}
+              />
+              <div className="flex w-full items-center gap-2">
+                <Input aria-label="Pairing link" readOnly value={created.url} />
+                <Button
+                  aria-label="Copy pairing link"
+                  onClick={() => void copyText(created.url)}
+                  size="icon-sm"
+                  variant="outline"
+                >
+                  <CopyIcon className="size-3.5" />
+                </Button>
+              </div>
+              <div className="flex w-full items-center gap-2">
+                <Input aria-label="Pairing code" readOnly value={created.code} />
+                <Button
+                  aria-label="Copy pairing code"
+                  onClick={() => void copyText(created.code)}
+                  size="icon-sm"
+                  variant="outline"
+                >
+                  <CopyIcon className="size-3.5" />
+                </Button>
+              </div>
+            </DialogPanel>
+            <DialogFooter>
+              <Button onClick={props.onClose}>Done</Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogPopup>
+    </Dialog>
+  );
+}
+
+function NodeClients({ node }: { node: NodeConnection }) {
+  const [clients, setClients] = useState<readonly Client[] | undefined>();
+  const [links, setLinks] = useState<readonly PairingLink[]>([]);
+  const [error, setError] = useState<string | undefined>();
+  const [creating, setCreating] = useState(false);
+  const load = useCallback(() => {
+    Promise.all([
+      node.client.call<{ clients: Client[] }>("auth.clients.list"),
+      node.client.call<{ links: PairingLink[] }>("auth.pairing.list"),
+    ]).then(
+      ([listed, open]) => {
+        setClients(listed.clients);
+        setLinks(open.links);
+        setError(undefined);
+      },
+      (failure: unknown) => setError((failure as Error).message),
+    );
+  }, [node]);
+  useEffect(load, [load]);
+  const run = (method: string, input: unknown) =>
+    node.client
+      .call(method, input)
+      .then(load, (failure: unknown) => setError((failure as Error).message));
+
+  return (
+    <SettingsSection
+      headerAction={
+        <div className="flex items-center gap-1">
+          {clients !== undefined && clients.some((client) => !client.current) ? (
+            <Button
+              onClick={() => void run("auth.clients.revoke-others", {})}
+              size="xs"
+              variant="ghost-muted"
+            >
+              Revoke others
+            </Button>
+          ) : null}
+          <Button onClick={() => setCreating(true)} size="xs" variant="ghost-muted">
+            <PlusIcon className="size-3" />
+            <span>Create link</span>
+          </Button>
+        </div>
+      }
+      title={`Authorized clients — ${node.label}`}
+    >
+      {error !== undefined ? (
+        <p className="px-4 text-sm text-destructive-foreground" role="alert">
+          {error}
+        </p>
+      ) : clients === undefined ? (
+        <div className="px-4">
+          <Spinner size="sm" tone="muted" />
+        </div>
+      ) : clients.length === 0 && links.length === 0 ? (
+        <SettingsEmpty>No pairing links or client sessions.</SettingsEmpty>
+      ) : (
+        <ul aria-label={`Authorized clients of ${node.label}`} className="flex flex-col">
+          {links.map((link) => (
+            <li
+              className="flex items-start justify-between gap-3 px-3 py-2.5 sm:px-4"
+              key={link.id}
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{link.label ?? "Pairing link"}</p>
+                <p className="text-xs text-muted-foreground">
+                  Not connected yet. Expires {when(link.expiresAt)}.
+                </p>
+              </div>
+              <Button
+                aria-label={`Revoke pairing link ${link.label ?? link.id}`}
+                onClick={() => void run("auth.pairing.revoke", { id: link.id })}
+                size="xs"
+                variant="outline"
+              >
+                Revoke
+              </Button>
+            </li>
+          ))}
+          {clients.map((client) => (
+            <li
+              className="flex items-start justify-between gap-3 px-3 py-2.5 sm:px-4"
+              key={client.id}
+            >
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 truncate text-sm font-medium">
+                  {client.label}
+                  {client.current ? (
+                    <Badge size="sm" variant="secondary">
+                      This device
+                    </Badge>
+                  ) : null}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {client.lastSeenAt === undefined
+                    ? "Not connected yet."
+                    : `Connected ${when(client.lastSeenAt)}`}
+                  {client.expiresAt === undefined ? "" : ` · Expires ${when(client.expiresAt)}`}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  Granted scopes: <code>{client.permissions.join(", ")}</code>
+                </p>
+              </div>
+              {client.current ? null : (
+                <Button
+                  aria-label={`Revoke ${client.label}`}
+                  onClick={() => void run("auth.clients.revoke", { id: client.id })}
+                  size="xs"
+                  variant="outline"
+                >
+                  Revoke
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {creating ? (
+        <CreateLinkDialog node={node} onClose={() => setCreating(false)} onCreated={load} />
+      ) : null}
+    </SettingsSection>
+  );
+}
+
+export function ClientsSection() {
+  const { connections } = useSettingsServices();
+  const nodes = useExternal(connections, connections.list).filter((node) => node.state === "open");
+  if (nodes.length === 0) return <SettingsEmpty>No node connected.</SettingsEmpty>;
+  return (
+    <div className="flex flex-col gap-8">
+      {nodes.map((node) => (
+        <NodeClients key={node.id} node={node} />
+      ))}
+    </div>
+  );
+}
