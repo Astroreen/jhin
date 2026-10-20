@@ -11,6 +11,10 @@
     "plugins/*": {
       "entry": ["src/index.ts"],
     },
+    "plugins/agent-claude": {
+      // Measurements run by hand against the real Claude Code.
+      "entry": ["src/index.ts", "scripts/*.ts"],
+    },
     "apps/jhin": {
       "entry": ["bin/jhin.js", "src/main.ts"],
       // Distribution plugins are resolved by name from "jhinDistribution".

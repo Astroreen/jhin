@@ -63,6 +63,9 @@ One word per concept. Use these terms in code, docs, commits and UI.
   (`jhin.agent-claude`) and a fake one for tests and demos.
 - **Session** — an agent's own conversation state for a thread (Claude Code
   keeps it in a session named after the thread); a turn resumes it.
+- **Live session** — an agent process kept running between a thread's turns,
+  so the next turn goes to it instead of starting the agent and resuming the
+  session; it ends when idle too long, with its thread or on request.
 - **Agent registry** — the runtimes of a node (`agent.registry@1`); a thread
   records which one, with which model, runs its turns.
 - **Runtime mode** — how freely an agent acts: `approval-required`,

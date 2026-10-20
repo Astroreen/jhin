@@ -16,7 +16,7 @@ import {
   CLAUDE_AGENT_ID,
   claudePlugin,
   createClaudeRuntime,
-  type Config,
+  Config,
   type QueryFunction,
 } from "../src/index.ts";
 import {
@@ -62,20 +62,21 @@ async function node(...scripts: Script[]) {
     client.close();
     await kernel.stop();
   });
-  return { client, calls, storage };
+  return { client, calls, storage, kernel };
 }
 
-/** Resolves with the thread's events once one of type `type` is recorded. */
+/** Resolves with the thread's events (all of them, from its start) once `count` of type `type` are recorded. */
 function until(
   client: Awaited<ReturnType<typeof node>>["client"],
   threadId: string,
   type: string,
+  count = 1,
 ): Promise<StoredEvent[]> {
   const events: StoredEvent[] = [];
   return new Promise((resolve) => {
     client.subscribe(`thread/${threadId}`, {}, (event) => {
       events.push(event);
-      if (event.type === type) resolve(events);
+      if (events.filter((seen) => seen.type === type).length === count) resolve(events);
     });
   });
 }
@@ -133,10 +134,161 @@ describe("jhin.agent-claude: the plugin", () => {
     });
     expect(calls[0]!.options).toMatchObject({ sessionId: thread.id });
 
-    const second = until(client, thread.id, "agent.turn.completed");
+    const second = until(client, thread.id, "agent.turn.completed", 2);
     await client.call("threads.send", { threadId: thread.id, text: "Again?" });
     await second;
     expect(calls[1]!.options).toMatchObject({ resume: thread.id });
+  });
+
+  it("keeps the thread's Claude Code between turns until the thread is archived", async () => {
+    const answering: Script = async function* (player) {
+      yield init();
+      yield result();
+      while ((await player.nextPrompt()) !== undefined) {
+        yield init();
+        yield result();
+      }
+    };
+    const { client, calls } = await node(answering);
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    for (const [index, text] of ["one", "two"].entries()) {
+      const completed = until(client, thread.id, "agent.turn.completed", index + 1);
+      await client.call("threads.send", { threadId: thread.id, text });
+      await completed;
+    }
+    expect(calls).toHaveLength(1);
+    expect(await client.call("claude.sessions.list", {})).toEqual([
+      expect.objectContaining({ threadId: thread.id, busy: false }),
+    ]);
+
+    // A rename is no archive: the session stays.
+    await client.call("threads.update", { threadId: thread.id, title: "Renamed" });
+    expect(await client.call("claude.sessions.list", {})).toHaveLength(1);
+    expect(calls[0]!.closed).toBe(false);
+
+    await client.call("threads.archive", { threadId: thread.id });
+    await calls[0]!.whenClosed;
+    expect(await client.call("claude.sessions.list", {})).toEqual([]);
+  });
+
+  it("ends a deleted thread's Claude Code and forgets its session", async () => {
+    const { client, calls, storage } = await node(async function* (player) {
+      yield init();
+      yield result();
+      await player.nextPrompt();
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    const completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await completed;
+    expect(await storage.storage.kv.get("jhin.agent-claude", `session/${thread.id}`)).toBeDefined();
+
+    await client.call("threads.delete", { threadId: thread.id });
+    await calls[0]!.whenClosed;
+    expect(await client.call("claude.sessions.list", {})).toEqual([]);
+    expect(
+      await storage.storage.kv.get("jhin.agent-claude", `session/${thread.id}`),
+    ).toBeUndefined();
+  });
+
+  it("re-arms idle sessions when the idle minutes change", async () => {
+    const { client, calls, kernel } = await node(async function* (player) {
+      yield init();
+      yield result();
+      await player.nextPrompt();
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    const completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await completed;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      kernel.config.setLayer("node", { "jhin.agent-claude": { sessionIdleMinutes: 1 } });
+      vi.advanceTimersByTime(60_000);
+      await calls[0]!.whenClosed;
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await client.call("claude.sessions.list", {})).toEqual([]);
+  });
+
+  it("ends kept sessions as soon as the setting turns to per-turn", async () => {
+    const { client, calls, kernel } = await node(async function* (player) {
+      yield init();
+      yield result();
+      await player.nextPrompt();
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    const completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await completed;
+    expect(await client.call("claude.sessions.list", {})).toHaveLength(1);
+
+    // Another change to the section leaves it running.
+    kernel.config.setLayer("node", { "jhin.agent-claude": { sessionIdleMinutes: 30 } });
+    expect(calls[0]!.closed).toBe(false);
+    kernel.config.setLayer("node", { "jhin.agent-claude": { session: "per-turn" } });
+    await calls[0]!.whenClosed;
+    expect(await client.call("claude.sessions.list", {})).toEqual([]);
+  });
+
+  it("ends live sessions on request", async () => {
+    const { client, calls } = await node(async function* (player) {
+      yield init();
+      yield result();
+      await player.nextPrompt();
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    const completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await completed;
+    expect(await client.call("claude.sessions.close", { threadId: "elsewhere" })).toEqual({
+      closed: 0,
+    });
+    expect(await client.call("claude.sessions.close", {})).toEqual({ closed: 1 });
+    expect(calls[0]!.closed).toBe(true);
+  });
+
+  it("ends a Claude Code a turn runs on only when forced", async () => {
+    let running!: () => void;
+    const started = new Promise<void>((resolve) => (running = resolve));
+    const { client, calls } = await node(async function* () {
+      yield init();
+      running();
+      // The turn runs until its Claude Code is ended.
+      await new Promise(() => undefined);
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    const failed = until(client, thread.id, "agent.turn.failed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await started;
+
+    expect(await client.call("claude.sessions.close", {})).toEqual({ closed: 0 });
+    expect(await client.call("claude.sessions.close", { threadId: thread.id })).toEqual({
+      closed: 0,
+    });
+    expect(calls[0]!.closed).toBe(false);
+    expect(await client.call("claude.sessions.list", {})).toEqual([
+      expect.objectContaining({ threadId: thread.id, busy: true }),
+    ]);
+
+    expect(await client.call("claude.sessions.close", { force: true })).toEqual({ closed: 1 });
+    expect(calls[0]!.closed).toBe(true);
+    expect((await failed).at(-1)?.payload).toMatchObject({
+      error: expect.stringContaining("Claude Code ended the turn without a result."),
+    });
   });
 
   it("records Claude Code's failure as a failed turn", async () => {
@@ -168,7 +320,11 @@ describe("jhin.agent-claude: context window", () => {
         yield result({ modelUsage: {} });
       },
     );
-    const claude = createClaudeRuntime({ query, sessions: memorySessions(), config: () => ({}) });
+    const claude = createClaudeRuntime({
+      query,
+      sessions: memorySessions(),
+      config: () => Config.parse({}),
+    });
     const request = {
       threadId: "0b6c5e5e-0000-4000-8000-000000000002",
       input: { text: "hi" },
@@ -201,7 +357,7 @@ describe("jhin.agent-claude: status", () => {
     return { query, closed: () => closed };
   };
   const runtime = (query: QueryFunction) =>
-    createClaudeRuntime({ query, sessions: memorySessions(), config: () => ({}) });
+    createClaudeRuntime({ query, sessions: memorySessions(), config: () => Config.parse({}) });
 
   it("is available when signed in, with the account's models", async () => {
     const probe = initializing({ email: "ada@example.com", tokenSource: "claude.ai" }, [
@@ -279,18 +435,18 @@ describe("jhin.agent-claude: status", () => {
       probes++;
       return initializing({ email: "ada@example.com" }).query(params);
     }) as QueryFunction;
-    let config: Config = {};
+    let config = Config.parse({});
     const claude = createClaudeRuntime({ query, sessions: memorySessions(), config: () => config });
     await claude.status!();
     await claude.status!();
     expect(probes).toBe(1);
-    config = { env: { CLAUDE_CONFIG_DIR: "/other" } };
+    config = Config.parse({ env: { CLAUDE_CONFIG_DIR: "/other" } });
     await claude.status!();
     expect(probes).toBe(2);
     // A config change while a probe runs starts a probe of its own instead of joining it.
-    config = { env: { CLAUDE_CONFIG_DIR: "/a" } };
+    config = Config.parse({ env: { CLAUDE_CONFIG_DIR: "/a" } });
     const first = claude.status!();
-    config = { env: { CLAUDE_CONFIG_DIR: "/b" } };
+    config = Config.parse({ env: { CLAUDE_CONFIG_DIR: "/b" } });
     const second = claude.status!();
     await Promise.all([first, second]);
     expect(probes).toBe(4);

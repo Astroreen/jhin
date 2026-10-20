@@ -2,6 +2,8 @@ import * as Os from "node:os";
 
 import {
   AGENT_REGISTRY_CAPABILITY,
+  THREADS_STREAM,
+  ThreadEvents,
   type AgentModel,
   type AgentRegistry,
   type AgentRuntime,
@@ -9,16 +11,33 @@ import {
   type AgentTurn,
 } from "@jhin/agent-api";
 import { definePlugin, z } from "@jhin/sdk";
-import { KV_CAPABILITY, type KeyValueStore } from "@jhin/storage-api";
+import {
+  EVENTLOG_CAPABILITY,
+  KV_CAPABILITY,
+  type EventLog,
+  type KeyValueStore,
+} from "@jhin/storage-api";
 import { query as sdkQuery, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { BUNDLED_DEFAULT_MODEL, BUNDLED_MODELS, manifestContextWindow } from "./models.ts";
-import { claudeEnvironment, claudeTurn, type QueryFunction, type SessionStore } from "./turn.ts";
+import { createLiveSessions, type LiveSessions, type QueryFunction } from "./session.ts";
+import { CLAUDE_AGENT_ID, claudeEnvironment, claudeTurn, type SessionStore } from "./turn.ts";
 
-export { claudeTurn, permissionMode, transcript, type QueryFunction } from "./turn.ts";
+export {
+  CLAUDE_AGENT_ID,
+  claudeTurn,
+  permissionMode,
+  transcript,
+  type QueryFunction,
+} from "./turn.ts";
+export {
+  SessionTakenOver,
+  createLiveSessions,
+  type LiveSessionInfo,
+  type LiveSessions,
+} from "./session.ts";
 export * from "./mapping.ts";
 
-export const CLAUDE_AGENT_ID = "jhin.agent-claude";
 export const CONFIG_SECTION = "jhin.agent-claude";
 const NAMESPACE = "jhin.agent-claude";
 
@@ -57,6 +76,22 @@ export const Config = z
     appendSystemPrompt: z.string().optional().meta({
       title: "Appended system prompt",
       description: "Instructions appended to Claude Code's system prompt",
+    }),
+    session: z
+      .union([
+        z.literal("keep-alive").meta({ title: "Keep running between turns" }),
+        z.literal("per-turn").meta({ title: "Start for every turn" }),
+      ])
+      .default("keep-alive")
+      .meta({
+        title: "Session",
+        description:
+          "Keep running: a thread's Claude Code stays up between turns, so the next answer starts sooner, at the cost of a process (and its memory) per thread with a recent turn. Start for every turn: each turn starts Claude Code and resumes the thread's session",
+      }),
+    sessionIdleMinutes: z.number().int().nonnegative().default(10).meta({
+      title: "Idle minutes",
+      description:
+        "Minutes a kept Claude Code waits for the thread's next turn before it exits; 0 keeps it until the thread is archived or deleted or the node stops",
     }),
   })
   .meta({ title: "Claude Code", description: "The Claude Code agent runtime of this node." });
@@ -166,8 +201,24 @@ export function createClaudeRuntime(options: {
   readonly sessions: SessionStore;
   readonly config: () => Config;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
-}): AgentRuntime & { dispose(): void } {
-  const turns = new Set<AgentTurn>();
+}): AgentRuntime & {
+  readonly live: LiveSessions;
+  /** Settles once no turn of the thread started so far is running. */
+  settled(threadId: string): Promise<void>;
+  dispose(): void;
+} {
+  const turns = new Map<AgentTurn, { threadId: string; done: Promise<void> }>();
+  const live = createLiveSessions({
+    query: options.query,
+    keepAlive: () => {
+      const config = options.config();
+      return {
+        keepAlive: config.session === "keep-alive",
+        idleMs: config.sessionIdleMinutes * 60_000,
+      };
+    },
+    ...(options.log === undefined ? {} : { log: options.log }),
+  });
   /** Context windows Claude Code reported in results, by model. */
   const windows = new Map<string, number>();
   /** The last probe and the config it ran with: another binary or environment probes again. */
@@ -188,6 +239,7 @@ export function createClaudeRuntime(options: {
       : (all[0]?.id ?? BUNDLED_DEFAULT_MODEL);
   };
   return {
+    live,
     agentId: CLAUDE_AGENT_ID,
     name: "Claude Code",
     get models() {
@@ -226,13 +278,14 @@ export function createClaudeRuntime(options: {
       const model = request.model ?? defaultModel();
       const turn = claudeTurn(request, {
         query: options.query,
+        live,
         sessions: options.sessions,
         settings: config,
         defaultModel: model,
         contextWindow: (name) => windows.get(name) ?? manifestContextWindow(name),
         ...(options.log === undefined ? {} : { log: options.log }),
       });
-      turns.add(turn);
+      turns.set(turn, { threadId: request.threadId, done: turn.done });
       // Forgotten once its query ended, whether or not anyone read its items.
       void turn.done.then(() => turns.delete(turn));
       const items = turn.items;
@@ -249,11 +302,70 @@ export function createClaudeRuntime(options: {
         })(),
       };
     },
+    settled: async (threadId) => {
+      const running = [...turns.values()].filter((turn) => turn.threadId === threadId);
+      await Promise.all(running.map((turn) => turn.done));
+    },
     dispose() {
-      for (const turn of turns) turn.interrupt();
+      for (const turn of turns.keys()) turn.interrupt();
+      live.dispose();
     },
   };
 }
+
+/**
+ * Which threads have a Claude session, in `storage.kv`. Writes of one thread run one after
+ * another, so `forget` (its thread was deleted) lands after any `set` already on its way,
+ * and later `set`s write nothing: a turn still letting go of its session when the thread
+ * was deleted would otherwise write the record back. The guard is dropped once `settled`
+ * says no turn of the thread is left to write.
+ */
+export function sessionRecords(kv: KeyValueStore): SessionStore & {
+  forget(threadId: string, settled?: Promise<void>): Promise<void>;
+} {
+  const forgotten = new Set<string>();
+  /** The last write of each thread still running; the next waits for it. */
+  const writes = new Map<string, Promise<void>>();
+  const write = (threadId: string, run: () => Promise<unknown>): Promise<void> => {
+    const next = (writes.get(threadId) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(run)
+      .then(() => undefined);
+    writes.set(threadId, next);
+    const settle = () => {
+      if (writes.get(threadId) === next) writes.delete(threadId);
+    };
+    next.then(settle, settle);
+    return next;
+  };
+  const key = (threadId: string) => `session/${threadId}`;
+  return {
+    has: async (threadId) => (await kv.get(NAMESPACE, key(threadId))) !== undefined,
+    set: (threadId) =>
+      write(threadId, async () => {
+        if (forgotten.has(threadId)) return;
+        await kv.set(NAMESPACE, key(threadId), { at: new Date().toISOString() });
+      }),
+    delete: (threadId) => write(threadId, () => kv.delete(NAMESPACE, key(threadId))),
+    forget: (threadId, settled = Promise.resolve()) => {
+      forgotten.add(threadId);
+      const removed = write(threadId, () => kv.delete(NAMESPACE, key(threadId)));
+      void Promise.all([removed, settled]).then(
+        () => forgotten.delete(threadId),
+        () => forgotten.delete(threadId),
+      );
+      return removed;
+    },
+  };
+}
+
+const LiveSession = z.object({
+  threadId: z.string(),
+  model: z.string().optional(),
+  permissionMode: z.string().optional(),
+  busy: z.boolean().describe("A turn runs on it now"),
+  idleSince: z.string().optional().describe("When its last turn ended (ISO 8601)"),
+});
 
 /**
  * The plugin, running Claude Code through `query` (the SDK's in the distribution).
@@ -264,15 +376,9 @@ export function claudePlugin(query: QueryFunction) {
     activate(context) {
       context.config.define(CONFIG_SECTION, Config);
       const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
+      const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
       const registry = context.services.get<AgentRegistry>(AGENT_REGISTRY_CAPABILITY);
-      const sessions: SessionStore = {
-        has: async (threadId) => (await kv.get(NAMESPACE, `session/${threadId}`)) !== undefined,
-        set: (threadId) =>
-          kv.set(NAMESPACE, `session/${threadId}`, { at: new Date().toISOString() }),
-        delete: async (threadId) => {
-          await kv.delete(NAMESPACE, `session/${threadId}`);
-        },
-      };
+      const sessions = sessionRecords(kv);
       const runtime = createClaudeRuntime({
         query,
         sessions,
@@ -281,6 +387,74 @@ export function claudePlugin(query: QueryFunction) {
       });
       context.subscriptions.add(registry.register(runtime));
       context.onDeactivate(() => runtime.dispose());
+      // Held sessions end with their turn or wait for their next one as the setting says then.
+      context.subscriptions.add(
+        context.config.onDidChange(CONFIG_SECTION, () => {
+          // Turned to per-turn: kept sessions end now. Another idle time: theirs runs from
+          // their last turn with the new length.
+          if (context.config.get<Config>(CONFIG_SECTION).session === "per-turn") {
+            runtime.live.closeIdle();
+          } else {
+            runtime.live.rearmIdle();
+          }
+        }),
+      );
+
+      // A deleted or archived thread takes no more turns: its Claude Code exits. A deleted
+      // thread's session record goes too (Claude Code's own session file stays).
+      context.subscriptions.add(
+        log.subscribe(THREADS_STREAM, (event) => {
+          const payload = event.payload as { id?: unknown; archivedAt?: unknown } | null;
+          if (typeof payload?.id !== "string") return;
+          if (event.type === ThreadEvents.threadDeleted) {
+            runtime.live.close(payload.id, true);
+            void sessions.forget(payload.id, runtime.settled(payload.id)).catch((error: unknown) =>
+              context.log.warn("could not forget the claude session", {
+                threadId: payload.id,
+                error: String(error),
+              }),
+            );
+          } else if (
+            event.type === ThreadEvents.threadUpdated &&
+            typeof payload.archivedAt === "string"
+          ) {
+            runtime.live.close(payload.id, true);
+          }
+        }),
+      );
+
+      context.commands.register({
+        name: "claude.sessions.list",
+        description:
+          "Threads whose Claude Code keeps running between turns (the `session` setting keep-alive)",
+        input: z.object({}),
+        output: z.array(LiveSession),
+        permissions: ["threads.read"],
+        handler: () => runtime.live.list(),
+      });
+      context.commands.register({
+        name: "claude.sessions.close",
+        description:
+          "Ends the running Claude Code of a thread, or of every thread, that no turn runs on; `force` ends busy ones too (their turn fails). The thread's next turn resumes its session",
+        input: z.object({
+          threadId: z.string().optional(),
+          force: z
+            .boolean()
+            .default(false)
+            .describe("Also end a Claude Code a turn is running on; that turn fails"),
+        }),
+        output: z.object({ closed: z.number().int() }),
+        permissions: ["threads.write"],
+        handler: ({ threadId, force }) => {
+          if (threadId !== undefined) {
+            return { closed: runtime.live.close(threadId, force) ? 1 : 0 };
+          }
+          if (!force) return { closed: runtime.live.closeIdle() };
+          const closed = runtime.live.list().length;
+          runtime.live.dispose();
+          return { closed };
+        },
+      });
     },
   });
 }

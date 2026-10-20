@@ -47,10 +47,11 @@
     "version": "0.1.0",
     "apiVersion": 1,
     "name": "Claude Code",
-    "description": "Runs turns with Claude Code (the Claude Agent SDK): tools, approvals, questions, plans and sessions resumed per thread",
+    "description": "Runs turns with Claude Code (the Claude Agent SDK): tools, approvals, questions, plans and a session per thread, kept running between turns or resumed",
     "side": "server",
     "requires": {
       "agent.registry": "^1",
+      "storage.eventlog": "^1",
       "storage.kv": "^1"
     },
     "entry": "src/index.ts"
