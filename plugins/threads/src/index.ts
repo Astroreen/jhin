@@ -710,9 +710,13 @@ export default definePlugin({
     // its record is still there, D208) is finished now: the thread is gone.
     for (const thread of await listThreads()) {
       if ((await lastEvent(threadStream(thread.id)))?.type !== ThreadEvents.threadDeleted) continue;
-      await writeIndexed(`thread/${thread.id}`, undefined, ThreadEvents.threadDeleted, {
-        id: thread.id,
-      });
+      await writeIndexed(
+        `thread/${thread.id}`,
+        undefined,
+        ThreadEvents.threadDeleted,
+        { id: thread.id },
+        [{ namespace: NAMESPACE, key: `queue/${thread.id}`, delete: true }],
+      );
     }
 
     for (const thread of await listThreads()) {
