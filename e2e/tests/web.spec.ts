@@ -226,5 +226,6 @@ test("D440: the entry chunk stays under 500 kB; the markdown renderer loads with
   const gap = await log.evaluate(
     (element) => element.scrollHeight - element.scrollTop - element.clientHeight,
   );
+  // 40 px is the timeline's own "at the end" threshold (useStickToEnd in thread-view.tsx).
   expect(gap).toBeLessThanOrEqual(40);
 });

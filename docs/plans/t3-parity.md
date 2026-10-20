@@ -733,10 +733,12 @@ Workstream W14 of `t3-roadmap.md` (D440–D459). The reference is T3 Code
   terminal." and a section "Couldn't load this section.", each with "Try
   again". A load is one per component: a retry, or the next instance to
   mount after a failure (the next message), starts one new load that every
-  instance shows; re-rendering a failed instance starts none. The page's
-  entry chunk went from 1,021 kB to 436 kB minified. The shared `@jhin/ui`
-  module (519 kB) stays one chunk: user client plugins import all of it by name (D16), so it
-  cannot be split by use. Neither can Shiki's C++ grammar (797 kB), which
+  instance shows; re-rendering a failed instance starts none. Which load is
+  current is kept next to the lazy component, for the page's life: a module
+  load cache, which a reload rightly starts over. The page's entry chunk
+  went from 1,021 kB to 436 kB minified. The shared `@jhin/ui` module
+  (519 kB) stays one chunk: user client plugins import all of it by name
+  (D16), so it cannot be split by use. Neither can Shiki's C++ grammar (797 kB), which
   loads only for a C++ code block.
 
 The proof of D440: `apps/web/test/lazy-chunk.browser.test.tsx` (the loading
@@ -757,8 +759,8 @@ tests of the timeline, the terminal and the settings pages, and
   both conditions can apply." Saving is never blocked. "Both can apply" is
   T3's cheap test: either rule has no `when` (always), or both have the same
   text. Another rule of the same command is no conflict (T3 compares rows
-  and would name the row's own command). The keys are compared as the
-  platform presses them (`keybindingConflicts` in `apps/web/src/lib/keybindings.ts`, the same key
+  and would name the row's own command). The keys are compared as the platform presses them
+  (`keybindingConflicts` in `apps/web/src/lib/keybindings.ts`, the same key
   the resolver uses to let the last rule win), so `mod+k` and `ctrl+k`
   conflict on Linux, where T3 compares the strings. A search hides rows, not
   their conflicts. T3 also warns while a key is recorded, before saving;
