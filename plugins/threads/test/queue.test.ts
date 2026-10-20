@@ -380,6 +380,53 @@ describe("jhin.threads: the queue under failures (D202)", () => {
   });
 });
 
+describe("jhin.threads: writes that go together (D202, D205)", () => {
+  it("takes a promoted message out of its queue in the write that records the steer", async () => {
+    const { client, thread, storage, watched } = await holding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "a", messageId: "a" });
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    const writes: { types: string[]; keys: string[] }[] = [];
+    log.append = async (stream, batch, options) => {
+      writes.push({
+        types: batch.map((event) => event.type),
+        keys: (options?.records ?? []).map((record) => record.key),
+      });
+      return append(stream, batch, options);
+    };
+    await client.call("threads.queue.steer", { threadId: thread.id, messageId: "a" });
+    await untilCount(watched, ThreadEvents.turnCompleted, 1);
+
+    expect(writes.find((write) => write.types[0] === ThreadEvents.turnSteered)).toEqual({
+      types: [ThreadEvents.turnSteered, ThreadEvents.queueUpdated],
+      keys: [`queue/${thread.id}`],
+    });
+  });
+
+  it("does not hold again on restart a queue the user resumed", async () => {
+    const first = await holding();
+    await first.client.call("threads.queue.add", { threadId: first.thread.id, text: "after" });
+    await first.client.call("threads.interrupt", { threadId: first.thread.id });
+    await first.watched.untilMatch(() => lastQueue(first.events)?.held !== undefined);
+    await first.stop();
+    // Resumed just before the node stopped, before its next turn started.
+    const key = `queue/${first.thread.id}`;
+    const kept = (await first.storage.storage.kv.get("jhin.threads", key)) as {
+      messages: unknown[];
+      held: { turnId: string };
+    };
+    await first.storage.storage.kv.set("jhin.threads", key, {
+      messages: kept.messages,
+      resumedPast: kept.held.turnId,
+    } as never);
+
+    const again = await node({ storage: first.storage, data: first.data });
+    const watched = watch(again.client, first.thread.id);
+    await untilCount(watched, ThreadEvents.turnCompleted, 1);
+    expect(started(watched.events)).toEqual(["/hold on", "after"]);
+  });
+});
+
 describe("jhin.threads: steering (D204, D205)", () => {
   it("steers a message into the running turn and records it before the answer", async () => {
     const { client, thread, events, until } = await holding();

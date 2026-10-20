@@ -160,4 +160,29 @@ describe("jhin.agent-claude: steering (D206)", () => {
     ];
     expect(transcript(history)).toContain("User: start\nUser: steer");
   });
+
+  it("ends at the passed-over result when Claude Code goes idle without answering the steer", async () => {
+    const state = (value: "running" | "idle") =>
+      ({ type: "system", subtype: "session_state_changed", state: value }) as SDKMessage;
+    const { turn } = start(async function* (player) {
+      const first = player.call.prompt[0]!.uuid;
+      yield state("running");
+      yield marked([first], init());
+      yield* streamedBlock("m1", 0, "text", ["working"]);
+      await player.nextPrompt();
+      yield marked([first], aborted());
+      // It took the steer and had nothing to add.
+      yield state("idle");
+      await player.nextPrompt();
+    });
+
+    let sent = false;
+    const items = await drain(turn, (item) => {
+      if (item.kind === "message.completed" && !sent) {
+        sent = true;
+        turn.steer!({ text: "never mind" });
+      }
+    });
+    expect(answers(items)).toEqual(["working"]);
+  });
 });

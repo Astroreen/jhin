@@ -781,7 +781,8 @@ and resetting it clears them), with a screenshot.
   first and holds the queue with `reason: "refused"` and the error; resuming
   tries it again. Archiving a thread stops its turn, so its queue is held;
   deleting it drops the queue. When the node starts, every free thread with
-  a queue that is not held starts its next message.
+  a queue that is not held starts its next message; a queue the user resumed
+  past its stopped or failed turn (`resumedPast`) is not held again.
 - **D203. Editing, reordering and cancelling queued messages**, T3's
   commands: `threads.queue.edit` (`messageId`, `text`, `attachments?`:
   absent keeps the images, `[]` removes them; a message left with neither
@@ -807,7 +808,7 @@ and resetting it clears them), with a screenshot.
   (`outcome`: `steered`, `started`, `queued`). An agent that cannot steer
   refuses it (`STEER_UNSUPPORTED`). `threads.queue.steer` (T3's
   promote-to-steer) moves a queued message into the running turn the same
-  way; it leaves the queue only once the agent took it, and without a running
+  way; it leaves the queue in the write that records the steer, and without a running
   turn it is refused (`TURN_NOT_RUNNING`). The queue is locked only to read
   the message and to remove it, not while the agent takes it, and the message
   does not start a turn of its own meanwhile.
@@ -817,7 +818,8 @@ and resetting it clears them), with a screenshot.
   result whose `terminal_reason` is `aborted_streaming` or `aborted_tools`;
   that result does not end the turn, which goes on with the steer. Frames
   marked with the steer's uuid are the turn's, and the turn ends at the
-  first result after its last steer that is not such an abort. A steer that
+  first result after its last steer that is not such an abort, or at the
+  result it passed over when Claude Code reports idle with nothing more. A steer that
   comes while the turn waits for its Claude Code goes in right after the
   turn's message; one after the turn read its result is refused. T3's move of
   foreground subagents to the background before a steer is not ported
@@ -953,6 +955,10 @@ and resetting it clears them), with a screenshot.
 - Steering a Claude Code that does not mark its frames (an older CLI): its
   first result after a steer ends the turn, so a steer it took only after
   answering loses its answer.
+- A slow `threads.title` hook holds the queue: `threads.queue.add` on a
+  free thread with nothing queued starts its turn under the queue's lock,
+  and a thread's first message runs the hook. Edits of that thread's queue
+  wait for it.
 - Idempotent sends: `threads.queue.add` ignores a `messageId` already queued,
   but a message that already left the queue (started or cancelled) is taken
   again; `threads.send` takes no id.

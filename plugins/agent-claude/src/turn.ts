@@ -698,6 +698,8 @@ export function claudeTurn(
     if (interrupted) return;
     // Claude Code exited (or its stream closed) mid-turn without a result: not an answer.
     if (result === undefined) throw new Error("Claude Code ended the turn without a result.");
+    // Stopped by a steer that needed no more answer: the turn is complete.
+    if (steered.length > 0 && isAbortedResult(result)) return;
     // Aborted without our interrupt (that returned above): Claude Code stopped on its own.
     if (isAbortedResult(result)) {
       throw new Error(resultError(result) ?? "Claude Code stopped the turn.");

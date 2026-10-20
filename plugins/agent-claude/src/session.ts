@@ -684,6 +684,8 @@ export function createLiveSessions(options: {
       let ended = false;
       /** The uuids of the messages steered into the turn, oldest first. */
       const steers: string[] = [];
+      /** The last result passed over because a steer goes on after it. */
+      let passed: SDKMessage | undefined;
       const ours = (stamp: readonly string[]) =>
         (uuid !== undefined && stamp.includes(uuid)) ||
         steers.some((steer) => stamp.includes(steer));
@@ -742,19 +744,31 @@ export function createLiveSessions(options: {
                 continue;
               }
             }
+            // A result passed over for a steer, then idle with nothing more: Claude Code
+            // has nothing left to say for the turn, which ends with that result.
+            if (passed !== undefined && stateOf(sent) === "idle") {
+              ended = true;
+              yield passed;
+              return;
+            }
             if (sent.type === "result") {
               // Claude Code stopped to take a steer: the turn goes on with it.
-              if (steers.length > 0 && !stopping && isSteerAbort(sent)) continue;
+              if (steers.length > 0 && !stopping && isSteerAbort(sent)) {
+                passed = sent;
+                continue;
+              }
               // Answered before Claude Code took the last steer, which it answers next.
               const stamp = stampOf(sent);
               const last = steers.at(-1);
               if (last !== undefined && !stopping && stamp !== undefined && !stamp.includes(last)) {
+                passed = sent;
                 continue;
               }
               ended = true;
               yield sent;
               return;
             }
+            if (stateOf(sent) === undefined) passed = undefined;
             yield sent;
           }
           ended = true;

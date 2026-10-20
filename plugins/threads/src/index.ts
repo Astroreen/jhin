@@ -299,7 +299,12 @@ const QueueHold = z.object({
   at: z.string(),
 });
 
-const Queue = z.object({ messages: z.array(QueuedMessage), held: QueueHold.optional() });
+const Queue = z.object({
+  messages: z.array(QueuedMessage),
+  held: QueueHold.optional(),
+  /** The stopped or failed turn the user resumed the queue past: a restart does not hold it again. */
+  resumedPast: z.string().optional(),
+});
 type Queue = z.infer<typeof Queue>;
 
 /** A queue as `threads.queue.updated` carries it: images by name and type only. */
@@ -315,7 +320,7 @@ const QueueView = z.object({
 });
 type QueueView = z.infer<typeof QueueView>;
 
-const viewOf = (queue: Queue): QueueView => ({
+const viewOf = ({ resumedPast: _resumedPast, ...queue }: Queue): QueueView => ({
   messages: queue.messages.map((message) => ({
     ...message,
     attachments: (message.attachments ?? []).map(({ kind, name, mimeType }) => ({
@@ -2131,7 +2136,6 @@ export default definePlugin({
       const value = await kv.get(NAMESPACE, queueKey(threadId));
       return value === undefined ? { messages: [] } : Queue.parse(value);
     };
-    /** Writes a queue with its `threads.queue.updated` event in one write; an empty queue holds nothing. */
     /** The event and the record that write a queue; an empty queue holds nothing. */
     const queueWrite = (threadId: string, queue: Queue) => {
       const next: Queue = queue.messages.length === 0 ? { messages: [] } : queue;
@@ -2282,7 +2286,8 @@ export default definePlugin({
     async function steerInto(
       threadId: string,
       messageId: string,
-      { text, attachments }: Pick<Outgoing, "text" | "attachments">,
+      /** The message, or `queued` to take it from the queue and out of it in the same write. */
+      message: Pick<Outgoing, "text" | "attachments"> | "queued",
     ): Promise<boolean> {
       const current = active.get(threadId);
       if (current === undefined) return false;
@@ -2292,37 +2297,60 @@ export default definePlugin({
           agentId: current.agentId,
         });
       }
-      // A turn still starting takes it once it has.
+      // A turn still starting takes it once it has; nothing is locked meanwhile.
       await current.started;
-      const turn = current.turn;
-      if (
-        turn?.steer === undefined ||
-        current.ending ||
-        current.interrupted ||
-        active.get(threadId) !== current
-      ) {
-        return false;
-      }
-      const input: TurnInput = { text, ...(attachments === undefined ? {} : { attachments }) };
-      try {
-        turn.steer(input);
-      } catch {
-        // It ended before it took the message.
-        return false;
-      }
-      // Recorded at once, before anything the agent answers to it.
-      const recording = log
-        .append(threadStream(threadId), [
-          {
-            type: ThreadEvents.turnSteered,
-            payload: { turnId: current.turnId, messageId, input: input as unknown as Json },
-          },
-        ])
-        .catch(failed("could not record a steer", threadId));
-      current.steering.add(recording);
-      await recording;
-      current.steering.delete(recording);
-      return true;
+      const steer = async (
+        { text, attachments }: Pick<Outgoing, "text" | "attachments">,
+        alongside?: { event: NewEvent; record: RecordWrite },
+      ) => {
+        const turn = current.turn;
+        if (
+          turn?.steer === undefined ||
+          current.ending ||
+          current.interrupted ||
+          active.get(threadId) !== current
+        ) {
+          return false;
+        }
+        const input: TurnInput = { text, ...(attachments === undefined ? {} : { attachments }) };
+        try {
+          turn.steer(input);
+        } catch {
+          // It ended before it took the message.
+          return false;
+        }
+        // Recorded at once, before anything the agent answers to it; a queued
+        // message leaves its queue in the same write.
+        const recording = log
+          .append(
+            threadStream(threadId),
+            [
+              {
+                type: ThreadEvents.turnSteered,
+                payload: { turnId: current.turnId, messageId, input: input as unknown as Json },
+              },
+              ...(alongside === undefined ? [] : [alongside.event]),
+            ],
+            alongside === undefined ? undefined : { records: [alongside.record] },
+          )
+          .catch(failed("could not record a steer", threadId));
+        current.steering.add(recording);
+        await recording;
+        current.steering.delete(recording);
+        return true;
+      };
+      if (message !== "queued") return steer(message);
+      // Locked only now, with the agent ready: the message as it is, taken out
+      // of the queue in the write that records the steer.
+      return changeQueue(threadId, async (queue) => {
+        const queued = queue.messages.find((item) => item.id === messageId);
+        if (queued === undefined) throw notQueued(threadId, messageId);
+        const { event, record } = queueWrite(threadId, {
+          ...queue,
+          messages: queue.messages.filter((item) => item.id !== messageId),
+        });
+        return steer(queued, { event, record });
+      });
     }
 
     /**
@@ -2477,10 +2505,17 @@ export default definePlugin({
       output: QueueView,
       permissions: ["threads.write"],
       handler: async ({ threadId }) => {
+        const last = (await getThread(threadId)).lastTurn;
         const view = await changeQueue(threadId, async (queue) => {
           if (queue.held === undefined) return viewOf(queue);
-          const { held: _held, ...rest } = queue;
-          return viewOf(await writeQueue(threadId, rest));
+          const { held, ...rest } = queue;
+          const past = held.turnId ?? last?.turnId;
+          return viewOf(
+            await writeQueue(threadId, {
+              ...rest,
+              ...(past === undefined ? {} : { resumedPast: past }),
+            }),
+          );
         });
         void deliver(threadId);
         return view;
@@ -2495,18 +2530,15 @@ export default definePlugin({
       output: z.object({ messageId: z.string(), turnId: z.string() }),
       permissions: ["threads.write"],
       handler: async ({ threadId, messageId }) => {
-        // The queue is held only to read the message: the agent is waited for
-        // outside it, so a slow start blocks no other change of the queue.
-        const message = await changeQueue(threadId, async (queue) => {
-          const found = queue.messages.find((item) => item.id === messageId);
-          if (found === undefined) throw notQueued(threadId, messageId);
-          // Not delivered as a turn of its own meanwhile.
-          steering.add(messageId);
-          return found;
-        });
+        const queue = await readQueue(threadId);
+        if (!queue.messages.some((item) => item.id === messageId)) {
+          throw notQueued(threadId, messageId);
+        }
+        // Not delivered as a turn of its own while the agent takes it.
+        steering.add(messageId);
         try {
           const turnId = active.get(threadId)?.turnId;
-          if (turnId === undefined || !(await steerInto(threadId, messageId, message))) {
+          if (turnId === undefined || !(await steerInto(threadId, messageId, "queued"))) {
             throw new ThreadsError(
               "TURN_NOT_RUNNING",
               "No turn of this thread is running to steer",
@@ -2515,12 +2547,6 @@ export default definePlugin({
               },
             );
           }
-          await changeQueue(threadId, (queue) =>
-            writeQueue(threadId, {
-              ...queue,
-              messages: queue.messages.filter((item) => item.id !== messageId),
-            }),
-          );
           return { messageId, turnId };
         } finally {
           steering.delete(messageId);
@@ -2680,7 +2706,10 @@ export default definePlugin({
         const thread = await kv.get(NAMESPACE, `thread/${threadId}`);
         if (!parsed.success || thread === undefined) continue;
         const last = Thread.parse(thread).lastTurn;
-        if (last?.status === "interrupted" || last?.status === "failed") {
+        if (
+          (last?.status === "interrupted" || last?.status === "failed") &&
+          last.turnId !== parsed.data.resumedPast
+        ) {
           await holdQueue(threadId, last.turnId, last.status);
         } else void deliver(threadId);
       }
