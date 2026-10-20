@@ -181,10 +181,21 @@ describe("checkpoints in the view", () => {
   });
 });
 
-/** A node: answers `git.status` from `answer`, records subscriptions to its stream. */
-function fakeNode(answer: (params: unknown) => Promise<unknown>) {
+/**
+ * A node: answers `git.status` from `answer`, records subscriptions to its
+ * stream. `relay` is how it answers `mesh.relay` for a member: with the
+ * relay's name, or with the error it throws.
+ */
+function fakeNode(
+  answer: (params: unknown) => Promise<unknown>,
+  relay: (params: { node: string; stream: string }) => Promise<unknown> = async ({
+    node,
+    stream,
+  }) => ({ stream: `relay/${node}/${stream}` }),
+) {
   const subscriptions: {
     disposed: boolean;
+    stream: string;
     after: number | undefined;
     onEvent: (event: StoredEvent) => void;
     onError: ((error: unknown) => void) | undefined;
@@ -197,11 +208,21 @@ function fakeNode(answer: (params: unknown) => Promise<unknown>) {
       options: { after?: number; onError?: (error: unknown) => void },
       onEvent: (event: StoredEvent) => void,
     ) {
-      if (stream !== SOURCE_CONTROL_STREAM) throw new Error(`unexpected stream ${stream}`);
-      const entry = { disposed: false, after: options.after, onEvent, onError: options.onError };
+      if (!stream.endsWith(SOURCE_CONTROL_STREAM)) throw new Error(`unexpected stream ${stream}`);
+      const entry = {
+        disposed: false,
+        stream,
+        after: options.after,
+        onEvent,
+        onError: options.onError,
+      };
       subscriptions.push(entry);
       for (const resolve of waiting.splice(0)) resolve();
       return { lastSequence: 0, dispose: () => void (entry.disposed = true) };
+    },
+    call: async (method: string, params: unknown) => {
+      if (method !== "mesh.relay") throw new Error(`unexpected call ${method}`);
+      return relay(params as { node: string; stream: string });
     },
   } as unknown as RpcClient;
   const connection: NodeConnection = {
@@ -376,18 +397,52 @@ describe("the source control store", () => {
     store.dispose();
   });
 
-  it("reads a mesh member again whenever its thread catalog changes", async () => {
+  it("follows a mesh member's stream through the connection's relay (D503)", async () => {
+    const node = fakeNode(async () => snapshot(3));
+    const store = createSourceControlStore(node.connections, node.threads, quiet);
+    const target = { node: "ws://a/rpc", remote: "node-c" };
+    const feed = follow(store, target);
+    expect((await feed.next()).status).toBe("ready");
+    await node.subscribed();
+    expect(node.subscriptions.map(({ stream, after }) => [stream, after])).toEqual([
+      ["relay/node-c/source-control", 3],
+    ]);
+    const changed = feed.next();
+    node.append(SourceControlEvents.statusChanged, status({ ahead: 7 }));
+    expect((await changed).projects.get("app")?.ahead).toBe(7);
+    // git.status went to the member.
+    expect(node.calls.every((call) => call.target.remote === "node-c")).toBe(true);
+    store.dispose();
+  });
+
+  it.each([
+    ["the connection has no relays", "COMMAND_NOT_FOUND"],
+    ["the member shares nothing", "STREAM_NOT_SHARED"],
+  ])("reads a mesh member again on catalog changes when %s (D118)", async (_, code) => {
     let head = 0;
-    const node = fakeNode(async () => snapshot(++head, [status({ branch: `b${head}` })]));
+    const node = fakeNode(
+      async () => snapshot(++head, [status({ branch: `b${head}` })]),
+      async ({ node: member, stream }) => {
+        if (code === "COMMAND_NOT_FOUND") throw Object.assign(new Error("no relays"), { code });
+        return { stream: `relay/${member}/${stream}` };
+      },
+    );
     const store = createSourceControlStore(node.connections, node.threads, quiet);
     const target = { node: "ws://a/rpc", remote: "node-c" };
     const feed = follow(store, target);
     expect((await feed.next()).projects.get("app")?.branch).toBe("b1");
+    if (code === "STREAM_NOT_SHARED") {
+      await node.subscribed();
+      const reread = feed.next();
+      node.subscriptions[0]!.onError?.(Object.assign(new Error("not shared"), { code }));
+      expect((await reread).projects.get("app")?.branch).toBe("b2");
+    }
     const next = feed.next();
     node.catalogChanged();
-    expect((await next).projects.get("app")?.branch).toBe("b2");
-    // A member's stream is not shared (D26): nothing subscribes to it.
-    expect(node.subscriptions).toEqual([]);
+    expect((await next).projects.get("app")?.branch).toBe(
+      code === "STREAM_NOT_SHARED" ? "b3" : "b2",
+    );
+    expect(node.subscriptions).toHaveLength(code === "STREAM_NOT_SHARED" ? 1 : 0);
     expect(node.calls.every((call) => call.target.remote === "node-c")).toBe(true);
     store.dispose();
   });

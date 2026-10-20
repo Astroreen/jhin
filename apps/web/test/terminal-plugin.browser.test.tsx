@@ -59,13 +59,23 @@ afterEach(async () => {
 /** A node whose `terminals` stream says `terminals`; the route is thread t1 on it. */
 async function start(
   terminals: TerminalSummary[],
-  options: { endsWith?: string; plugins?: readonly TestPlugin[]; threads?: ThreadsCatalog } = {},
+  options: {
+    endsWith?: string;
+    plugins?: readonly TestPlugin[];
+    threads?: ThreadsCatalog;
+    /** What the `terminals` stream of the mesh member `node-c` says, through the relay. */
+    member?: TerminalSummary[];
+  } = {},
 ) {
   const calls: { method: string; params: unknown }[] = [];
   const client = {
     state: "open",
     call: async (method: string, params: unknown) => {
       calls.push({ method, params });
+      if (method === "mesh.relay") {
+        const { node, stream } = params as { node: string; stream: string };
+        return { stream: `relay/${node}/${stream}` };
+      }
       // A running session with nothing printed yet.
       if (method === "terminals.get") return { ...summary({}), history: "", sequence: 1 };
       return {};
@@ -74,12 +84,12 @@ async function start(
       if (stream === terminalStream("t1", "term-1") && options.endsWith !== undefined) {
         onEvent({ stream, sequence: 2, type: options.endsWith, payload: {}, at: "" });
       }
-      if (stream === TERMINALS_STREAM) {
+      if (stream === TERMINALS_STREAM || stream === `relay/node-c/${TERMINALS_STREAM}`) {
         onEvent({
           stream,
           sequence: 1,
           type: TerminalEvents.sessions,
-          payload: { terminals },
+          payload: { terminals: stream === TERMINALS_STREAM ? terminals : (options.member ?? []) },
           at: "",
         });
       }
@@ -155,12 +165,15 @@ async function start(
   return { slots, visited, calls, stored, client, nextNavigation };
 }
 
-function renderIndicator(slots: ReturnType<typeof createSlotRegistry>) {
+function renderIndicator(
+  slots: ReturnType<typeof createSlotRegistry>,
+  target: ThreadIndicatorProps["target"] = { node: A },
+) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   const props: ThreadIndicatorProps = {
-    target: { node: A },
+    target,
     thread: { id: "t1", projectId: "p", title: "t1", createdAt: "2026-10-19T10:00:00.000Z" },
     active: false,
   };
@@ -196,6 +209,32 @@ describe("the card's terminal indicator (sidebar.thread.indicators)", () => {
       terminalIds: ["term-2"],
       activeTerminalId: "term-2",
     });
+  });
+
+  it("shows a program running on a mesh member's terminal, read through the relay (D504)", async () => {
+    const { slots, visited, calls } = await start([], {
+      member: [summary({ hasRunningSubprocess: true, label: "sleep" })],
+    });
+    const button = await new Promise<HTMLButtonElement>((resolve) => {
+      const container = renderIndicator(slots, { node: A, remote: "node-c" });
+      const found = () => container.querySelector("button");
+      const ready = found();
+      if (ready !== null) return resolve(ready);
+      const observer = new MutationObserver(() => {
+        const shown = found();
+        if (shown === null) return;
+        observer.disconnect();
+        resolve(shown);
+      });
+      observer.observe(container, { childList: true, subtree: true });
+    });
+    expect(button.getAttribute("aria-label")).toBe("1 terminal process running. Open terminal");
+    expect(calls).toContainEqual({
+      method: "mesh.relay",
+      params: { node: "node-c", stream: TERMINALS_STREAM },
+    });
+    act(() => button.click());
+    expect(visited).toEqual([{ node: A, remote: "node-c", thread: "t1" }]);
   });
 
   it("is not there while the terminals only wait at a prompt", async () => {

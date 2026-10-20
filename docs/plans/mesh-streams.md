@@ -1,6 +1,6 @@
 # Mesh live streams
 
-Status: **in progress**. Workstream W17 of `t3-roadmap.md`: the streams of a
+Status: **implemented** (the stack in the PR plan below). Workstream W17 of `t3-roadmap.md`: the streams of a
 mesh member reach a client connected to another node, so the source control
 and the terminals of threads on members work like local ones, and the event
 log streams that only grow (`source-control`, `mesh/outbox`) are trimmed.

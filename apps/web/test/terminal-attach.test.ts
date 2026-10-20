@@ -14,7 +14,15 @@ import {
   type RpcClient,
 } from "@jhin/rpc";
 import { TerminalEvents, terminalStream } from "@jhin/terminal-api";
-import { connectInMemory, createTestKernel, mockCapability, type TestKernel } from "@jhin/testing";
+import { MESH_STREAMS_CAPABILITY } from "@jhin/mesh-api";
+import {
+  connectInMemory,
+  createMemoryNetwork,
+  createTestKernel,
+  mockCapability,
+  startMeshNode,
+  type TestKernel,
+} from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import terminal from "../../../plugins/terminal/src/index.ts";
@@ -23,6 +31,7 @@ import {
   attachTerminal,
   type TerminalSink,
 } from "../src/plugins/terminal/attach.ts";
+import { terminalChannel } from "../src/plugins/terminal/channel.ts";
 
 const manifest = JSON.parse(
   Fs.readFileSync(new URL("../../../plugins/terminal/package.json", import.meta.url), "utf8"),
@@ -480,5 +489,84 @@ describe("attaching a terminal (the drawer's viewport)", () => {
       sink: view.sink,
     });
     await view.shows("Terminal cwd does not exist");
+  });
+});
+
+describe("a terminal of a thread on a mesh member (D504)", () => {
+  /** A client of a, and c with the terminal plugin, joined to a's mesh. */
+  async function member(options: { relays?: boolean } = {}) {
+    const network = createMemoryNetwork();
+    const a = startMeshNode(network, "a");
+    const c = startMeshNode(network, "c");
+    const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-web-terminal-member-"));
+    const kernel = await createTestKernel({
+      plugins: [
+        mockCapability(LIVE_STREAMS_CAPABILITY, c.live, "1.1.0"),
+        mockCapability(MESH_STREAMS_CAPABILITY, c.meshStreams),
+        { manifest, definition: terminal },
+      ],
+      config: { node: { "jhin.terminal": { shell: "/bin/sh" } } },
+    });
+    c.use(kernel);
+    await c.join(a);
+    const connection = a.connect();
+    if (options.relays === false) {
+      // A node from before relays: mesh.relay is no command there.
+      const call = connection.client.call.bind(connection.client);
+      connection.client.call = (async (method: string, params?: unknown) =>
+        method === "mesh.relay"
+          ? Promise.reject(
+              Object.assign(new Error("no such command"), { code: "COMMAND_NOT_FOUND" }),
+            )
+          : call(method, params)) as typeof connection.client.call;
+    }
+    stops.push(async () => {
+      connection.client.close();
+      await kernel.stop();
+      a.dispose();
+      c.dispose();
+      Fs.rmSync(cwd, { recursive: true, force: true });
+    });
+    return { channel: terminalChannel(connection.client, "c"), client: connection.client, cwd };
+  }
+
+  it("opens the member's shell through the connected node and streams it through the relay", async () => {
+    const { channel, client, cwd } = await member();
+    expect(terminalChannel(client, "c")).toBe(channel);
+    const view = recorder();
+    const attached = attachTerminal({
+      client: channel,
+      threadId: "t",
+      terminalId: "term-1",
+      cwd,
+      size,
+      sink: view.sink,
+    });
+    attached.write("echo member-$((6*7))\r");
+    await view.shows("member-42");
+    // It runs on c: the connected node has no terminal plugin at all.
+    await expect(
+      client.call("terminals.get", { threadId: "t", terminalId: "term-1" }),
+    ).rejects.toMatchObject({ code: "COMMAND_NOT_FOUND" });
+
+    attached.write("exit\r");
+    await view.until(() => view.log.some((entry) => entry.kind === "ended"));
+    expect(view.screen()).toContain("Process exited");
+    attached.dispose();
+  });
+
+  it("says so in the terminal when the connected node cannot relay", async () => {
+    const { channel, cwd } = await member({ relays: false });
+    const view = recorder();
+    const attached = attachTerminal({
+      client: channel,
+      threadId: "t",
+      terminalId: "term-1",
+      cwd,
+      size,
+      sink: view.sink,
+    });
+    await view.shows("This node cannot stream terminals of other nodes of its mesh");
+    attached.dispose();
   });
 });
