@@ -479,7 +479,7 @@ export const chatPlugin = builtin(
             {
               key: "mod+shift+enter",
               command: "chat.queue.steer-next",
-              when: "!terminalFocus && queuedMessages && turnRunning",
+              when: "!terminalFocus && queuedMessages && turnRunning && !composerHasText",
             },
             {
               key: "alt+arrowup",

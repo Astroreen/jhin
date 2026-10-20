@@ -1038,6 +1038,7 @@ export function Composer(props: ComposerProps) {
       const actions = props.queueActions;
       if (
         next === undefined ||
+        editing !== undefined ||
         !props.running ||
         props.canSteer !== true ||
         actions === undefined
@@ -1089,6 +1090,14 @@ export function Composer(props: ComposerProps) {
     const subscription = keybindings.setContext("queuedMessages", true);
     return () => subscription.dispose();
   }, [keybindings, queueShortcuts]);
+  // Typed text owns ⌘/Ctrl+Shift+Enter (the other send when ⌘/Ctrl+Enter
+  // sends): the steer-next shortcut gives way to it.
+  const typed = prompt.trim() !== "" || attachments.length > 0;
+  useEffect(() => {
+    if (keybindings === undefined || !typed) return;
+    const subscription = keybindings.setContext("composerHasText", true);
+    return () => subscription.dispose();
+  }, [keybindings, typed]);
 
   const addFiles = async (files: readonly File[]) => {
     const images = files.filter((file) => file.type.startsWith("image/"));

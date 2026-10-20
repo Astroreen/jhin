@@ -47,7 +47,7 @@ export function dispatchMode(
 
 const failure = (error: unknown): SendOutcome => ({
   kind: "failed",
-  message: (error as Error).message ?? String(error),
+  message: (error as Error | null)?.message ?? String(error),
 });
 
 /**
