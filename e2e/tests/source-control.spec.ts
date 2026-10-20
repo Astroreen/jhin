@@ -151,4 +151,19 @@ test("D113–D120: a card shows its thread's branch, pull request and diff; the 
 
   await page.getByRole("button", { name: "Toggle diff panel" }).click();
   await expect(panel).toBeHidden();
+
+  // D443: checked out elsewhere (not by the thread), the hover card warns, as T3's does.
+  git(dir, "switch", "--quiet", "feature/toolbar");
+  await card.hover();
+  const warning = page.getByText("You're currently checked out on another branch.");
+  await expect(warning).toBeVisible();
+  // The slot's lines come after the project's, as T3 orders them.
+  const lines = page.locator("[data-thread-branch-detail]").locator("..");
+  await expect(lines).toHaveText(/acme\s*main\s*You're currently checked out on another branch\.$/);
+  await shot(page, info, "source-control-branch-mismatch");
+  git(dir, "switch", "--quiet", "main");
+  await page.mouse.move(600, 400);
+  await card.hover();
+  await expect(page.locator("[data-thread-branch-detail]")).toHaveText("main");
+  await expect(warning).toBeHidden();
 });

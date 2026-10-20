@@ -28,6 +28,7 @@ import {
   MACHINES_CAPABILITY,
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  THREAD_DETAILS_SLOT,
   THREADS_CAPABILITY,
   type Connections,
   type Keybindings,
@@ -613,7 +614,15 @@ export const sidebarPlugin = builtin(
       };
 
       /** The details T3 shows when the pointer rests on a thread (SidebarThreadTooltip). */
-      function ThreadDetails({ entry, hosts }: { entry: Entry; hosts: boolean }) {
+      function ThreadDetails({
+        entry,
+        hosts,
+        active,
+      }: {
+        entry: Entry;
+        hosts: boolean;
+        active: boolean;
+      }) {
         const { thread, project, node } = entry;
         const agentId = thread.agentId ?? thread.lastTurn?.agentId;
         return (
@@ -638,6 +647,17 @@ export const sidebarPlugin = builtin(
                   <div className="min-w-0 truncate text-foreground/75">{node.label}</div>
                 </div>
               ) : null}
+              <Slot
+                name={THREAD_DETAILS_SLOT}
+                props={
+                  {
+                    target: node.target,
+                    thread,
+                    ...(project === undefined ? {} : { project }),
+                    active,
+                  } satisfies ThreadIndicatorProps
+                }
+              />
               {agentId === undefined ? null : (
                 <div className="flex min-w-0 items-center gap-2">
                   <AgentIcon agentId={agentId} className="size-3 shrink-0 opacity-60 grayscale" />
@@ -1246,7 +1266,7 @@ export const sidebarPlugin = builtin(
                   sideOffset={4}
                   variant="glass"
                 >
-                  <ThreadDetails entry={entry} hosts={hosts} />
+                  <ThreadDetails active={active} entry={entry} hosts={hosts} />
                 </TooltipPopup>
               </Tooltip>
               <ContextMenuPopup>

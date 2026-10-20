@@ -1,10 +1,11 @@
 // The indicators follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
-// apps/web/src/components/Sidebar.tsx (the card's branch row and its diff count) and
-// ThreadStatusIndicators.tsx (ThreadPullRequestBadgeControl, PullRequestBadge and the
-// mini list item its tooltip shows).
+// apps/web/src/components/Sidebar.tsx (the card's branch row and its diff count, and
+// SidebarThreadTooltip's branch lines) and ThreadStatusIndicators.tsx
+// (ThreadPullRequestBadgeControl, PullRequestBadge and the mini list item its tooltip shows).
 import type { ThreadIndicatorProps } from "@jhin/client-api";
 import type { PullRequest } from "@jhin/source-control-api";
 import { InlineButton, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
+import { CircleAlertIcon, GitBranchIcon } from "lucide-react";
 import type { MouseEvent, ReactElement } from "react";
 
 import { ComposerControl } from "../../lib/composer-control.tsx";
@@ -146,5 +147,39 @@ export function createCardIndicators(services: SourceControlServices) {
     );
   }
 
-  return { Branch, PullRequestIndicator, DiffCount };
+  /** The hover card's branch line (T3's SidebarThreadTooltip, GitBranchIcon). */
+  function BranchDetail({ target, thread }: ThreadIndicatorProps) {
+    const view = useSourceControl(store, target);
+    const branch = view.threads.get(thread.id)?.branch;
+    if (branch === undefined || branch === null) return null;
+    return (
+      <div className="flex min-w-0 items-center gap-2" data-thread-branch-detail>
+        <GitBranchIcon aria-hidden className="size-3 shrink-0 stroke-muted-foreground" />
+        <MiddleTruncate className="flex text-foreground/75" value={branch} />
+      </div>
+    );
+  }
+
+  /**
+   * T3's warning under it (resolveLocalCheckoutBranchMismatch): the project has
+   * another branch checked out than the thread's. Threads have no worktree of
+   * their own yet, so every thread works in the project's checkout.
+   */
+  function BranchMismatch({ target, thread }: ThreadIndicatorProps) {
+    const view = useSourceControl(store, target);
+    const branch = view.threads.get(thread.id)?.branch;
+    const current = view.projects.get(thread.projectId);
+    if (branch == null || current?.isRepo !== true || current.branch == null) return null;
+    if (current.branch === branch) return null;
+    return (
+      <div className="flex min-w-0 items-start gap-2 text-warning" data-thread-branch-mismatch>
+        <CircleAlertIcon aria-hidden className="mt-0.5 size-3 shrink-0 stroke-current" />
+        <div className="min-w-0 flex-1 wrap-break-word leading-5">
+          You're currently checked out on another branch.
+        </div>
+      </div>
+    );
+  }
+
+  return { Branch, PullRequestIndicator, DiffCount, BranchDetail, BranchMismatch };
 }
