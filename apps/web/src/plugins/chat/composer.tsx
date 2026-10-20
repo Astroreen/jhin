@@ -947,7 +947,15 @@ export function Composer(props: ComposerProps) {
   // Sent or removed meanwhile: what was typed stays, as a new message.
   const editedGone = editing !== undefined && !queued.some((item) => item.id === editing.id);
   useEffect(() => {
-    if (editedGone) setEditing(undefined);
+    if (!editedGone || editing === undefined) return;
+    // What was typed stays, as a new message, and the draft set aside comes
+    // back after it, so neither is lost.
+    const { draft } = editing;
+    if (draft.prompt.trim() !== "" || draft.attachments.length > 0) {
+      setPrompt((typed) => (draft.prompt.trim() === "" ? typed : `${typed}\n\n${draft.prompt}`));
+      setAttachments((typed) => [...typed, ...draft.attachments]);
+    }
+    setEditing(undefined);
   }, [editedGone]);
 
   // The draft as typed now, for an edit that starts after a network call: what
@@ -1045,8 +1053,9 @@ export function Composer(props: ComposerProps) {
       }
       return true;
     },
-    // Declines while a queued message is edited, or with text before the caret,
-    // so the key keeps moving the caret (as in T3).
+    // Declines while a queued message is edited, or with text before the caret
+    // (as in T3); the shortcut is bound only while something is queued and
+    // nothing edited (`queuedMessages`).
     editLatest() {
       const latest = queued.at(-1);
       const caret = textarea.current?.selectionStart ?? 0;
@@ -1072,6 +1081,14 @@ export function Composer(props: ComposerProps) {
     const subscription = keybindings.setContext("turnRunning", true);
     return () => subscription.dispose();
   }, [keybindings, props.running]);
+  // The queue's shortcuts apply only with something queued and nothing edited,
+  // so otherwise their keys keep their usual meaning (Alt+↑ moves the caret).
+  const queueShortcuts = queued.length > 0 && editing === undefined;
+  useEffect(() => {
+    if (keybindings === undefined || !queueShortcuts) return;
+    const subscription = keybindings.setContext("queuedMessages", true);
+    return () => subscription.dispose();
+  }, [keybindings, queueShortcuts]);
 
   const addFiles = async (files: readonly File[]) => {
     const images = files.filter((file) => file.type.startsWith("image/"));

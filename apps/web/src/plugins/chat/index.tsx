@@ -476,8 +476,16 @@ export const chatPlugin = builtin(
               when: "!terminalFocus && !editableFocus",
             },
             { key: "mod+l", command: "chat.composer.focus", when: "!terminalFocus" },
-            { key: "mod+shift+enter", command: "chat.queue.steer-next", when: "!terminalFocus" },
-            { key: "alt+arrowup", command: "chat.queue.edit-latest", when: "composerFocus" },
+            {
+              key: "mod+shift+enter",
+              command: "chat.queue.steer-next",
+              when: "!terminalFocus && queuedMessages && turnRunning",
+            },
+            {
+              key: "alt+arrowup",
+              command: "chat.queue.edit-latest",
+              when: "composerFocus && queuedMessages",
+            },
           ]),
         );
       }
