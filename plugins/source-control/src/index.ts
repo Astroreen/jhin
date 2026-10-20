@@ -26,6 +26,8 @@ import {
   SourceControlEvents,
   StatusSnapshot,
   ThreadBranch,
+  ThreadPullRequest,
+  pullRequestChains,
   type GitActionProgress,
   type PullRequestProvider,
   type SourceControl,
@@ -65,9 +67,11 @@ import {
   GITHUB_TEMPLATE_PATHS,
   GitHubUnavailable,
   createPullRequest,
+  pullRequestAt,
   pullRequestFor,
   remoteHost,
 } from "./github.ts";
+import { createLinks } from "./links.ts";
 import { watchTree, type TreeWatcher } from "./watch.ts";
 import { agentWriter } from "./writer.ts";
 
@@ -81,6 +85,7 @@ export {
   splitUpstream,
 } from "./actions.ts";
 export { agentWriter, parseJsonObject, plainWriter } from "./writer.ts";
+export { pullRequestUrl } from "./links.ts";
 
 export const CONFIG_SECTION = "jhin.source-control";
 const NAMESPACE = "jhin.source-control";
@@ -260,6 +265,35 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     await log.append(SOURCE_CONTROL_STREAM, [{ type, payload: payload as Json }]);
   };
 
+  // --- Pull requests linked to threads (D267–D270) ------------------------------------
+
+  /** The project's repository of a thread, once it is known. */
+  const repoOfThread = async (threadId: string): Promise<Repo | undefined> => {
+    const projectId = await threadProject(threadId).catch(() => undefined);
+    return projectId === undefined ? undefined : repos.get(projectId);
+  };
+  const links = createLinks({
+    kv,
+    append,
+    remoteOf: async (threadId) => {
+      const repo = await repoOfThread(threadId);
+      return repo === undefined
+        ? null
+        : ((await statusOf(repo).catch(() => undefined))?.remoteUrl ?? null);
+    },
+    read: async (threadId, link) => {
+      const hosts = config().githubHosts.map((host) => host.toLowerCase());
+      if (!hosts.includes(link.host)) return undefined;
+      const repo = await repoOfThread(threadId);
+      const cwd =
+        repo?.location?.isRepo === true
+          ? repo.location.root
+          : (repo?.project.path ?? process.cwd());
+      return pullRequestAt(config().ghPath, cwd, link.url);
+    },
+    warn: (message, fields) => context.log.warn(message, fields),
+  });
+
   // --- Thread branches ---------------------------------------------------------
 
   const loadThreads = () =>
@@ -284,6 +318,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
 
   const removeThread = async (threadId: string) => {
     await loadThreads();
+    await links.remove(threadId);
     if (!threads.delete(threadId)) return;
     lastTurns.delete(threadId);
     await kv.delete(NAMESPACE, `thread/${threadId}`);
@@ -715,6 +750,12 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       for (const repo of repos.values()) {
         if (repo.provider !== null) void lookUpPullRequests(repo, { force: false });
       }
+      void links
+        .threads()
+        .then((ids) => Promise.all(ids.map((id) => links.sync(id))))
+        .catch((error: unknown) =>
+          context.log.warn("reading linked pull requests failed", { error: String(error) }),
+        );
     }, seconds * 1000);
     prTimer.unref?.();
   };
@@ -884,6 +925,19 @@ export function activateSourceControl(context: PluginContext): SourceControl {
               }),
               progress,
             });
+            // The pull request the action created or opened is linked to its thread (T3's
+            // linkCreatedPullRequest); a failure to link never fails the action.
+            const created = result.pr.pullRequest;
+            if (input.threadId !== undefined && created !== undefined) {
+              await links
+                .link(input.threadId, { url: created.url }, "created", created)
+                .catch((error: unknown) =>
+                  context.log.warn("failed to link created pull request to thread", {
+                    threadId: input.threadId,
+                    error: String(error),
+                  }),
+                );
+            }
             return { ...result, actionId };
           } finally {
             const after = await refresh(repo).catch(() => undefined);
@@ -992,11 +1046,16 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       await Promise.all([loadProjects(), loadThreads()]);
       const chosen = projectId === undefined ? [...repos.values()] : [await repoOf(projectId)];
       const projects = await Promise.all(chosen.map((repo) => listedStatus(repo, reread === true)));
+      const listed = [...threads.values()].filter(
+        (thread) => projectId === undefined || thread.projectId === projectId,
+      );
+      const ids = new Set(listed.map((thread) => thread.threadId));
       return {
         head,
         projects,
-        threads: [...threads.values()].filter(
-          (thread) => projectId === undefined || thread.projectId === projectId,
+        threads: listed,
+        links: (await links.all()).filter(
+          (entry) => projectId === undefined || ids.has(entry.threadId),
         ),
       };
     },
@@ -1105,6 +1164,87 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     permissions: ["git.write"],
     handler: async ({ projectId, ...options }) =>
       service.runAction(projectId ?? (await threadProject(options.threadId!)), options),
+  });
+
+  const LinkInput = z.object({
+    threadId: z.string().min(1),
+    url: z.string().min(1).optional().meta({ description: "The pull request's URL" }),
+    repository: z
+      .string()
+      .min(1)
+      .optional()
+      .meta({ description: "owner/repo, with number, when no url is given" }),
+    number: z.number().int().positive().optional(),
+    host: z
+      .string()
+      .min(1)
+      .optional()
+      .meta({ description: "The forge's host; the project's remote's when absent" }),
+  });
+  const target = (input: z.output<typeof LinkInput>) => ({
+    url: input.url,
+    repository: input.repository,
+    number: input.number,
+    host: input.host,
+  });
+  const ensureThread = async (threadId: string) => {
+    await threadProject(threadId);
+  };
+
+  context.commands.register({
+    name: "git.pr.link",
+    title: "Link pull request",
+    description:
+      "Register every pull request you open for this thread, including each layer of a stack, right after creating it. Links a pull request to a thread so its state shows beside the thread. Pass the url, or repository plus number. Linking an already-linked pull request succeeds with alreadyLinked=true",
+    input: LinkInput.extend({
+      source: z.enum(["manual", "agent"]).optional().meta({
+        description: "Who links it: `manual` from a person, `agent` (the default) from an agent",
+      }),
+    }),
+    output: z.object({ pullRequest: ThreadPullRequest, alreadyLinked: z.boolean() }),
+    permissions: ["git.write"],
+    handler: async ({ source, ...input }) => {
+      await ensureThread(input.threadId);
+      return links.link(input.threadId, target(input), source ?? "agent");
+    },
+  });
+
+  context.commands.register({
+    name: "git.pr.unlink",
+    title: "Unlink pull request",
+    description: "Unlinks a pull request from a thread, by url or by repository plus number",
+    input: LinkInput,
+    output: z.object({ key: z.string(), wasLinked: z.boolean() }),
+    permissions: ["git.write"],
+    handler: async (input) => {
+      await ensureThread(input.threadId);
+      return links.unlink(input.threadId, target(input));
+    },
+  });
+
+  context.commands.register({
+    name: "git.pr.list",
+    description:
+      "The pull requests linked to a thread with their last known state, and how they chain into stacks (bottom to top); `refresh` reads them from the forge again",
+    input: z.object({ threadId: z.string().min(1), refresh: z.boolean().optional() }),
+    output: z.object({
+      pullRequests: z.array(ThreadPullRequest),
+      chains: z.array(z.object({ numbers: z.array(z.number()), keys: z.array(z.string()) })),
+    }),
+    permissions: ["git.read"],
+    handler: async ({ threadId, refresh: reread }) => {
+      await ensureThread(threadId);
+      if (reread === true) await links.sync(threadId, { all: true });
+      const pullRequests = await links.list(threadId);
+      const byKey = new Map(pullRequests.map((link) => [link.key, link]));
+      return {
+        pullRequests,
+        chains: pullRequestChains(pullRequests).map((chain) => ({
+          keys: [...chain.keys],
+          numbers: chain.keys.map((key) => byKey.get(key)!.number),
+        })),
+      };
+    },
   });
 
   context.commands.register({

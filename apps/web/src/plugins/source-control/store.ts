@@ -12,6 +12,7 @@ import {
   type ProjectStatus,
   type StatusSnapshot,
   type ThreadBranch,
+  type ThreadPullRequest,
 } from "@jhin/source-control-api";
 
 /** What a client knows of one node's repositories and threads' branches. */
@@ -24,9 +25,28 @@ export interface SourceControlView {
   readonly error?: string;
   readonly projects: ReadonlyMap<string, ProjectStatus>;
   readonly threads: ReadonlyMap<string, ThreadBranch>;
+  /** The pull requests linked to each thread that has any (D267). */
+  readonly links: ReadonlyMap<string, readonly ThreadPullRequest[]>;
 }
 
-const LOADING: SourceControlView = { status: "loading", projects: new Map(), threads: new Map() };
+const LOADING: SourceControlView = {
+  status: "loading",
+  projects: new Map(),
+  threads: new Map(),
+  links: new Map(),
+};
+
+const withLinks = (
+  view: SourceControlView,
+  threadId: string,
+  change: (list: readonly ThreadPullRequest[]) => readonly ThreadPullRequest[],
+): SourceControlView => {
+  const links = new Map(view.links);
+  const next = change(links.get(threadId) ?? []);
+  if (next.length === 0) links.delete(threadId);
+  else links.set(threadId, next);
+  return { ...view, links };
+};
 
 /** Applies one event of a node's `source-control` stream to a view. */
 export function applySourceControlEvent(
@@ -53,7 +73,26 @@ export function applySourceControlEvent(
     case SourceControlEvents.threadRemoved: {
       const threads = new Map(view.threads);
       threads.delete(String(payload?.["threadId"]));
-      return { ...view, threads };
+      const links = new Map(view.links);
+      links.delete(String(payload?.["threadId"]));
+      return { ...view, threads, links };
+    }
+    case SourceControlEvents.pullRequestLinked:
+    case SourceControlEvents.pullRequestUpdated: {
+      const threadId = payload?.["threadId"];
+      const link = payload?.["pullRequest"] as ThreadPullRequest | undefined;
+      if (typeof threadId !== "string" || typeof link?.key !== "string") return view;
+      return withLinks(view, threadId, (list) =>
+        list.some((item) => item.key === link.key)
+          ? list.map((item) => (item.key === link.key ? link : item))
+          : [...list, link],
+      );
+    }
+    case SourceControlEvents.pullRequestUnlinked: {
+      const threadId = payload?.["threadId"];
+      const key = payload?.["key"];
+      if (typeof threadId !== "string" || typeof key !== "string") return view;
+      return withLinks(view, threadId, (list) => list.filter((item) => item.key !== key));
     }
     default:
       return view;
@@ -65,6 +104,7 @@ function viewOf(snapshot: StatusSnapshot): SourceControlView {
     status: "ready",
     projects: new Map(snapshot.projects.map((project) => [project.projectId, project])),
     threads: new Map(snapshot.threads.map((thread) => [thread.threadId, thread])),
+    links: new Map((snapshot.links ?? []).map((entry) => [entry.threadId, entry.pullRequests])),
   };
 }
 

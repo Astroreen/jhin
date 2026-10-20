@@ -4,8 +4,9 @@ Status: **implemented** (status, diffs, branches, pull requests, the card's
 indicators, the branch toolbar and the diff panel); W3 (checkpoints,
 reverting, worktrees, D240–D259) **in progress**: the turn hooks and a
 thread's own working directory (D241, D242) are done; git actions (W4 of
-`t3-roadmap.md`, D260–D266) **implemented**; linking and watching pull
-requests and other forges (D267–D279) **in progress**. This file records how
+`t3-roadmap.md`, D260–D266) and linked pull requests (D267–D270)
+**implemented**; watching pull requests and other forges (D271–D279) **in
+progress**. This file records how
 Jhin reads the git repositories of a node's projects, how the web client
 shows them as T3 Code does, what was left out and what is deferred.
 
@@ -511,6 +512,64 @@ quick action, "Initialize Git"); Playwright `e2e/tests/git-actions.spec.ts`
 (a real node: the menu, the commit dialog, committing, pushing and creating a
 pull request that then shows on the card, with screenshots).
 
+### Pull requests linked to threads (W4, D267–D270)
+
+- **D267. A thread has linked pull requests**, several, in the order they
+  were linked, as T3 Code's `thread.pullRequests`
+  (`packages/contracts/src/threadPullRequest.ts`,
+  `packages/shared/src/threadPullRequests.ts` at D53). A link is identified
+  by host, repository and number (its key `host/owner/repo#number`,
+  lowercased), carries its URL, who linked it (`manual`, `created`, `agent`),
+  when, and the forge's last snapshot of it (state, title, head and base,
+  draft, checks, when it merged or closed). Links live in `storage.kv` and go
+  with their thread. Changes are D34's `git.pr.linked`, `git.pr.unlinked` and
+  `git.pr.updated` events on the node's `source-control` stream, and
+  `git.status` returns every thread's links, so a client follows them as it
+  follows statuses (D114, D118).
+- **D268. Commands**: `git.pr.link` (`git.write`; by `url`, or `repository`
+  and `number` on `host`, the project's remote's when absent; `source`
+  `manual` or `agent`, the default; linking a linked one answers
+  `alreadyLinked`), `git.pr.unlink` (`wasLinked`) and `git.pr.list`
+  (`git.read`; the links and their chains, `refresh` reads them again), so an
+  agent reaches them as MCP tools (`git_pr_link`, …) with T3's description
+  ("Register every pull request you open for this thread, including each
+  layer of a stack, right after creating it.") and messages ("This is not a
+  recognised pull request URL. Pass repository and number instead.", "Pass
+  either url, or both repository and number.", "This thread's project has no
+  recognised remote. Pass host or url."). A git action with a thread links
+  the pull request it created or opened (`created`, T3's
+  `linkCreatedPullRequest`); failing to link never fails the action.
+- **D269. Snapshots are read from the forge** (`gh pr view <url>` for hosts in
+  `githubHosts`) when a link is made and then every
+  `pullRequestRefreshSeconds` while the pull request is open or unread; a
+  merged or closed one is read again only on `git.pr.list` with `refresh`.
+  Only a change is written and published.
+- **D270. Stacks are derived as T3 derives them**: a linked pull request's
+  parent is the one of the same repository whose head is its base; a head two
+  share chains nothing; chains come newest first (`pullRequestChains` in
+  `@jhin/source-control-api`). The card's pull request indicator shows the
+  links before the branch's pull request, with T3's badge: one link its own
+  badge ("PR #3, status pending" until read), a single chain "Stack of N pull
+  requests, {state}" with the layer count, otherwise the current one's number
+  as "+N" ("…, and K more linked; overall {state}"), the state aggregated as
+  T3 does (draft, open, merged, closed); its tooltip lists them by chain with
+  "stack · N". The thread's menu gets T3's "Link pull request" dialog ("Pull
+  request URL or #42", "Paste a pull request URL or enter 123 / #123.", "Use a
+  pull request URL, 123, or #123.", "Could not link the pull request.") and
+  "Unlink #N from thread" per link (`jhin.source-control.link-pull-request`,
+  `jhin.source-control.unlink-pull-requests` in `thread.actions`).
+  T3's right panel of pull requests, its chat header rows and native stacks
+  of a forge are not ported (Deferred).
+
+The proof: `plugins/source-control/test/links.test.ts` (linking by URL and by
+number, reading the snapshot from a fake `gh`, `alreadyLinked`, listing,
+unlinking, the messages, the action's pull request linked as `created`,
+links gone with their thread; URLs of every forge, chains);
+`apps/web/test/source-control.test.ts` (the view follows the link events,
+T3's badge, the dialog's input); Playwright `e2e/tests/git-actions.spec.ts`
+(linking `#43` stacked on the action's pull request makes the card a stack,
+with a screenshot).
+
 ## Deferred
 
 - **Checkpoints and per-turn diffs** (T3's "Latest turn" and "Turn N"
@@ -525,9 +584,10 @@ pull request that then shows on the card, with screenshots).
   workspace selector, "Start from origin", worktree cleanup): needs a thread
   to carry a working directory of its own and the agent runtimes to run in
   it (`agent.runtime@1.1` gets the project's directory).
-- Linking pull requests to threads (`git.pr.linked`, D34), several pull
-  requests per thread and stacks; watching a pull request (W4, D267–D279, in
-  progress).
+- Watching a pull request and other forges (W4, D271–D279, in progress).
+- T3's right panel of a thread's pull requests, its chat header rows, native
+  stacks of a forge (and their "Dismiss from thread") and the instructions
+  that tell agents to link what they open.
 - Git actions (D266): T3's "Publish repository", writing style settings, the
   thread details panel and opening a file from the commit dialog. Writer
   turns go through `agent.runtime@1`'s `startTurn` under a throwaway thread

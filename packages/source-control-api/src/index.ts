@@ -19,6 +19,12 @@ export const SourceControlEvents = {
   threadChanged: "source-control.thread.changed",
   /** `{ threadId }`: the thread went away. */
   threadRemoved: "source-control.thread.removed",
+  /** `{ threadId, pullRequest }`: a pull request was linked to a thread (D34, D267). */
+  pullRequestLinked: "git.pr.linked",
+  /** `{ threadId, key }`: a pull request was unlinked from a thread. */
+  pullRequestUnlinked: "git.pr.unlinked",
+  /** `{ threadId, pullRequest }`: a linked pull request's state (or its watch) changed. */
+  pullRequestUpdated: "git.pr.updated",
 } as const;
 
 export const FileChangeStatus = z.enum([
@@ -83,6 +89,9 @@ export const PullRequest = z.object({
   headBranch: z.string(),
   baseBranch: z.string(),
   updatedAt: z.string().optional(),
+  /** When it merged or closed (ISO 8601), if it did. */
+  mergedAt: z.string().optional(),
+  closedAt: z.string().optional(),
   checks: PullRequestChecks,
 });
 export type PullRequest = z.output<typeof PullRequest>;
@@ -149,11 +158,44 @@ export const ThreadBranch = z.object({
 });
 export type ThreadBranch = z.output<typeof ThreadBranch>;
 
+// --- Pull requests linked to threads (D267–D271) ----------------------------------------------
+
+/** Who linked a pull request to a thread, as T3 Code tells them apart. */
+export const PullRequestLinkSource = z.enum(["manual", "created", "agent"]);
+export type PullRequestLinkSource = z.output<typeof PullRequestLinkSource>;
+
+/** A pull request linked to a thread: identified by host, repository and number. */
+export const ThreadPullRequest = z.object({
+  /** `host/owner/repo#number`, lowercased: the identity links are compared by. */
+  key: z.string(),
+  host: z.string(),
+  /** `owner/repo` (GitLab: the project's full path). */
+  repository: z.string(),
+  number: z.number().int().positive(),
+  url: z.string(),
+  source: PullRequestLinkSource,
+  linkedAt: z.string(),
+  /** What the forge last said about it; `null` until it was read. */
+  snapshot: PullRequest.nullable(),
+  /** When `snapshot` was read. */
+  syncedAt: z.string().optional(),
+});
+export type ThreadPullRequest = z.output<typeof ThreadPullRequest>;
+
+/** The pull requests linked to a thread, in the order they were linked. */
+export const ThreadPullRequests = z.object({
+  threadId: z.string(),
+  pullRequests: z.array(ThreadPullRequest),
+});
+export type ThreadPullRequests = z.output<typeof ThreadPullRequests>;
+
 /** What `git.status` returns: everything to show, and the stream head it reflects. */
 export const StatusSnapshot = z.object({
   head: z.number().int().nonnegative(),
   projects: z.array(ProjectStatus),
   threads: z.array(ThreadBranch),
+  /** The pull requests linked to each thread that has any (D267). */
+  links: z.array(ThreadPullRequests).optional(),
 });
 export type StatusSnapshot = z.output<typeof StatusSnapshot>;
 
@@ -205,7 +247,9 @@ export type SourceControlErrorCode =
   /** A git action that cannot run now: a detached `HEAD`, nothing to commit, no remote. */
   | "ACTION_UNAVAILABLE"
   /** The forge refused or failed to create the pull request. */
-  | "PULL_REQUEST_FAILED";
+  | "PULL_REQUEST_FAILED"
+  /** A pull request to link is named by neither a URL nor a repository and number. */
+  | "PULL_REQUEST_INVALID";
 
 /** The service of `source-control.git@1`, for other server plugins. */
 export interface SourceControl {
@@ -369,3 +413,129 @@ export const SOURCE_CONTROL_ACTIONS_STREAM = "source-control/actions";
 
 /** Event type of every `GitActionProgress` on `SOURCE_CONTROL_ACTIONS_STREAM`. */
 export const GIT_ACTION_PROGRESS = "source-control.action.progress";
+
+/** Where a pull request lives, read from its URL. */
+export interface PullRequestReference {
+  readonly host: string;
+  readonly repository: string;
+  readonly number: number;
+}
+
+const PULL_REQUEST_PATHS: readonly RegExp[] = [
+  // GitHub, Forgejo and Gitea: /owner/repo/pull/7, /owner/repo/pulls/7
+  /^\/([^/]+\/[^/]+)\/pulls?\/(\d+)\/?$/,
+  // GitLab: /group/sub/repo/-/merge_requests/7
+  /^\/(.+?)\/-\/merge_requests\/(\d+)\/?$/,
+  // Bitbucket: /workspace/repo/pull-requests/7
+  /^\/([^/]+\/[^/]+)\/pull-requests\/(\d+)\/?$/,
+  // Azure DevOps: /org/project/_git/repo/pullrequest/7
+  /^\/(.+?\/_git\/[^/]+)\/pullrequest\/(\d+)\/?$/,
+];
+
+/** The host, repository and number of a pull request URL, or `undefined` for anything else. */
+/** The parts of an http(s) URL this contract needs; no `URL` here, the package is isomorphic. */
+function splitUrl(
+  url: string,
+): { protocol: string; credentials: boolean; host: string; path: string } | undefined {
+  const match = /^([a-z][a-z0-9+.-]*):\/\/([^/?#@]*@)?([^/?#:]+)(:\d+)?([^?#]*)/i.exec(url.trim());
+  if (match === null) return undefined;
+  return {
+    protocol: match[1]!.toLowerCase(),
+    credentials: match[2] !== undefined,
+    host: `${match[3]!}${match[4] ?? ""}`.toLowerCase(),
+    path: match[5] || "/",
+  };
+}
+
+/** The host, repository and number of a pull request URL, or `undefined` for anything else. */
+export function parsePullRequestUrl(url: string): PullRequestReference | undefined {
+  const parsed = splitUrl(url);
+  if (parsed === undefined || parsed.credentials) return undefined;
+  if (parsed.protocol !== "https" && parsed.protocol !== "http") return undefined;
+  const path = parsed.path.replace(/\/(files|commits|checks|diffs|overview)\/?$/, "");
+  for (const pattern of PULL_REQUEST_PATHS) {
+    const match = pattern.exec(path);
+    if (match === null) continue;
+    return {
+      host: parsed.host,
+      repository: decodeURIComponent(match[1]!),
+      number: Number(match[2]),
+    };
+  }
+  return undefined;
+}
+
+/** The host and `owner/repo` of a remote URL (`https://…`, `git@host:owner/repo.git`, `ssh://…`). */
+export function repositoryOfRemote(url: string): { host: string; repository: string } | undefined {
+  const scp = /^[^@/]+@([^:/]+):(.+?)(?:\.git)?\/?$/.exec(url.trim());
+  if (scp) return { host: scp[1]!.toLowerCase(), repository: scp[2]!.replace(/^\/+/, "") };
+  const parsed = splitUrl(url);
+  if (parsed === undefined) return undefined;
+  const repository = parsed.path.replace(/^\/+/, "").replace(/(?:\.git)?\/?$/, "");
+  if (repository === "") return undefined;
+  // `ssh://git@host:22/…` names the host without its port.
+  return { host: parsed.host.replace(/:\d+$/, ""), repository };
+}
+
+/** The identity links are compared by: `host/owner/repo#number`, lowercased. */
+export const pullRequestKey = (reference: PullRequestReference): string =>
+  `${reference.host}/${reference.repository}#${reference.number}`.toLowerCase();
+
+/** A chain of linked pull requests, bottom (the one closest to the base) to top. */
+export interface PullRequestChain {
+  /** Keys, bottom to top. */
+  readonly keys: readonly string[];
+}
+
+/**
+ * Chains linked pull requests into stacks, as T3 Code derives them: a pull
+ * request's parent is the one of the same repository whose head is its base.
+ * A head two of them share is ambiguous and chains nothing. Chains come
+ * newest first (by their latest update or link).
+ */
+export function pullRequestChains(links: readonly ThreadPullRequest[]): PullRequestChain[] {
+  const repoOf = (link: ThreadPullRequest) => `${link.host}/${link.repository}`.toLowerCase();
+  const byHead = new Map<string, ThreadPullRequest | null>();
+  for (const link of links) {
+    const head = link.snapshot?.headBranch;
+    if (!head) continue;
+    const id = `${repoOf(link)}\u0000${head}`;
+    byHead.set(id, byHead.has(id) ? null : link);
+  }
+  const parentOf = (link: ThreadPullRequest) => {
+    const base = link.snapshot?.baseBranch;
+    if (!base) return undefined;
+    const parent = byHead.get(`${repoOf(link)}\u0000${base}`);
+    return parent === null || parent === link ? undefined : parent;
+  };
+  const children = new Map<string, ThreadPullRequest[]>();
+  const roots: ThreadPullRequest[] = [];
+  for (const link of links) {
+    const parent = parentOf(link);
+    if (parent === undefined) roots.push(link);
+    else children.set(parent.key, [...(children.get(parent.key) ?? []), link]);
+  }
+  const chains: { keys: string[]; latest: string }[] = [];
+  const seen = new Set<string>();
+  for (const root of roots) {
+    const keys: string[] = [];
+    let latest = "";
+    const walk = (link: ThreadPullRequest) => {
+      if (seen.has(link.key)) return;
+      seen.add(link.key);
+      keys.push(link.key);
+      const at = link.snapshot?.updatedAt ?? link.linkedAt;
+      if (at > latest) latest = at;
+      for (const child of children.get(link.key) ?? []) walk(child);
+    };
+    walk(root);
+    chains.push({ keys, latest });
+  }
+  // A cycle (a base that is a later head) has no root: each of its links stands alone.
+  for (const link of links) {
+    if (!seen.has(link.key)) chains.push({ keys: [link.key], latest: link.linkedAt });
+  }
+  return chains
+    .toSorted((a, b) => (a.latest < b.latest ? 1 : a.latest > b.latest ? -1 : 0))
+    .map(({ keys }) => ({ keys }));
+}

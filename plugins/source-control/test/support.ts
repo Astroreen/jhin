@@ -81,6 +81,8 @@ export function fakeGh(): {
   fail(code: number, stderr: string): void;
   /** Answers again after `fail`. */
   recover(): void;
+  /** What `gh pr view <url ending in number>` prints. */
+  view(number: number, value: unknown): void;
   /** Makes `gh pr create` print `stderr` and exit with `code`. */
   failCreate(code: number, stderr: string): void;
   /** The body file `gh pr create` was given for `head`. */
@@ -107,6 +109,12 @@ if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
   echo "https://github.com/acme/demo/pull/42"
   exit 0
 fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  number="$(basename "$3")"
+  if [ -f "${dir}/view-$number.json" ]; then cat "${dir}/view-$number.json"; exit 0; fi
+  echo "no pull requests found" >&2
+  exit 1
+fi
 if [ "$1" = "pr" ] && [ "$2" = "list" ] && [ "$3" = "--head" ]; then
   if [ -f "${dir}/pr-$4.json" ]; then cat "${dir}/pr-$4.json"; else echo "[]"; fi
   exit 0
@@ -129,6 +137,8 @@ exit 1
       Fs.writeFileSync(Path.join(dir, "exit"), String(code));
     },
     recover: () => Fs.rmSync(Path.join(dir, "exit")),
+    view: (number, value) =>
+      Fs.writeFileSync(Path.join(dir, `view-${number}.json`), JSON.stringify(value)),
     failCreate(code, stderr) {
       Fs.writeFileSync(Path.join(dir, "create-stderr"), stderr);
       Fs.writeFileSync(Path.join(dir, "create-exit"), String(code));

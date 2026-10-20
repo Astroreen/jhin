@@ -13,7 +13,8 @@ const GH_ENV = {
   NO_COLOR: "1",
 };
 const GH_TIMEOUT_MS = 20_000;
-const FIELDS = "number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,statusCheckRollup";
+const FIELDS =
+  "number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup";
 
 /** The host of a remote URL (`https://github.com/o/r.git`, `git@github.com:o/r.git`, `ssh://…`). */
 export function remoteHost(url: string): string | undefined {
@@ -103,6 +104,8 @@ interface RawPullRequest {
   readonly headRefName?: unknown;
   readonly baseRefName?: unknown;
   readonly updatedAt?: unknown;
+  readonly mergedAt?: unknown;
+  readonly closedAt?: unknown;
   readonly statusCheckRollup?: readonly RawCheck[] | null;
 }
 
@@ -125,28 +128,19 @@ function toPullRequest(raw: RawPullRequest): PullRequest | undefined {
     headBranch: typeof raw.headRefName === "string" ? raw.headRefName : "",
     baseBranch: typeof raw.baseRefName === "string" ? raw.baseRefName : "",
     ...(typeof raw.updatedAt === "string" ? { updatedAt: raw.updatedAt } : {}),
+    ...(typeof raw.mergedAt === "string" && raw.mergedAt !== "" ? { mergedAt: raw.mergedAt } : {}),
+    ...(typeof raw.closedAt === "string" && raw.closedAt !== "" ? { closedAt: raw.closedAt } : {}),
     checks: rollupChecks(Array.isArray(raw.statusCheckRollup) ? raw.statusCheckRollup : []),
   };
 }
 
 const SIGNED_OUT = /gh auth login|not logged in|authentication|GH_TOKEN/i;
 
-/**
- * The newest pull request whose head is `branch`, any state, or `null`.
- * Throws `GitHubUnavailable` when `gh` is missing, signed out or fails.
- */
-export async function pullRequestFor(
-  ghPath: string,
-  cwd: string,
-  branch: string,
-): Promise<PullRequest | null> {
+/** Runs `gh` and parses its JSON answer; throws `GitHubUnavailable` when it cannot answer. */
+async function ghJson(ghPath: string, cwd: string, args: readonly string[]): Promise<unknown> {
   let result;
   try {
-    result = await run(
-      ghPath,
-      ["pr", "list", "--head", branch, "--state", "all", "--limit", "1", "--json", FIELDS],
-      { cwd, env: GH_ENV, timeoutMs: GH_TIMEOUT_MS },
-    );
+    result = await run(ghPath, args, { cwd, env: GH_ENV, timeoutMs: GH_TIMEOUT_MS });
   } catch (error) {
     if (error instanceof SpawnError && (error.code === "ENOENT" || error.code === "EACCES")) {
       throw new GitHubUnavailable("missing", "GitHub CLI (gh) is not installed on this node");
@@ -163,15 +157,49 @@ export async function pullRequestFor(
     }
     throw new GitHubUnavailable("failed", message || `gh exited with code ${result.code}`);
   }
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(result.stdout);
+    return JSON.parse(result.stdout);
   } catch {
     throw new GitHubUnavailable("failed", "gh answered something that is not JSON");
   }
+}
+
+/**
+ * The newest pull request whose head is `branch`, any state, or `null`.
+ * Throws `GitHubUnavailable` when `gh` is missing, signed out or fails.
+ */
+export async function pullRequestFor(
+  ghPath: string,
+  cwd: string,
+  branch: string,
+): Promise<PullRequest | null> {
+  const parsed = await ghJson(ghPath, cwd, [
+    "pr",
+    "list",
+    "--head",
+    branch,
+    "--state",
+    "all",
+    "--limit",
+    "1",
+    "--json",
+    FIELDS,
+  ]);
   if (!Array.isArray(parsed)) throw new GitHubUnavailable("failed", "gh answered no list");
   const first = parsed[0] as RawPullRequest | undefined;
   return first === undefined ? null : (toPullRequest(first) ?? null);
+}
+
+/** A pull request by its URL (`gh pr view <url>`), whichever repository it is in. */
+export async function pullRequestAt(
+  ghPath: string,
+  cwd: string,
+  url: string,
+): Promise<PullRequest> {
+  const parsed = await ghJson(ghPath, cwd, ["pr", "view", url, "--json", FIELDS]);
+  const pr = toPullRequest((parsed ?? {}) as RawPullRequest);
+  if (pr === undefined) throw new GitHubUnavailable("failed", "gh answered no pull request");
+  return pr;
 }
 
 /** Where GitHub looks for a pull request template, as T3's source-control-github reads it. */

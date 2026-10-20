@@ -12,6 +12,7 @@ import {
   type Connections,
   type Keybindings,
   type Navigation,
+  type ThreadActionProps,
   type ThreadIndicatorProps,
   type ThreadsCatalog,
 } from "@jhin/client-api";
@@ -21,8 +22,10 @@ import {
   Tooltip,
   TooltipPopup,
   TooltipTrigger,
+  UI_DIALOGS_CAPABILITY,
   UI_SLOTS_CAPABILITY,
   UI_TOASTS_CAPABILITY,
+  type Dialogs,
   type SlotRegistry,
   type Toasts,
 } from "@jhin/ui";
@@ -34,6 +37,7 @@ import { createBranchToolbar } from "./branch-toolbar.tsx";
 import { createDiffPanel, DIFF_PANEL } from "./diff-panel.tsx";
 import { createGitActionsControl, createRunningActions } from "./git-actions.tsx";
 import { createCardIndicators } from "./indicators.tsx";
+import { createLinkActions } from "./links.tsx";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
 import { createSourceControlStore } from "./store.ts";
 
@@ -53,7 +57,11 @@ export const sourceControlPlugin = builtin(
       [NAVIGATION_CAPABILITY]: "^1",
       [THREADS_CAPABILITY]: "^1",
     },
-    optional: { [KEYBINDINGS_CAPABILITY]: "^1", [UI_TOASTS_CAPABILITY]: "^1" },
+    optional: {
+      [KEYBINDINGS_CAPABILITY]: "^1",
+      [UI_TOASTS_CAPABILITY]: "^1",
+      [UI_DIALOGS_CAPABILITY]: "^1",
+    },
   },
   definePlugin({
     activate(context) {
@@ -63,6 +71,7 @@ export const sourceControlPlugin = builtin(
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
+      const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
       const store = context.subscriptions.add(
         createSourceControlStore(connections, threads, context.log),
       );
@@ -179,6 +188,22 @@ export const sourceControlPlugin = builtin(
         slots.contribute<ChatComposerContextProps>("chat.composer.context", {
           id: "jhin.source-control.branch-toolbar",
           component: createBranchToolbar(services),
+        }),
+      );
+      // Linking pull requests from the thread's menu, before archiving and deleting it.
+      const { LinkPullRequest, UnlinkPullRequests } = createLinkActions(services, dialogs);
+      context.subscriptions.add(
+        slots.contribute<ThreadActionProps>("thread.actions", {
+          id: "jhin.source-control.link-pull-request",
+          order: 44,
+          component: LinkPullRequest,
+        }),
+      );
+      context.subscriptions.add(
+        slots.contribute<ThreadActionProps>("thread.actions", {
+          id: "jhin.source-control.unlink-pull-requests",
+          order: 45,
+          component: UnlinkPullRequests,
         }),
       );
       // T3's order in the header: the git actions, then the panel toggles.
