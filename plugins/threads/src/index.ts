@@ -1146,26 +1146,42 @@ export default definePlugin({
         const root = Path.resolve(project.path);
         const target = Path.resolve(root, path);
         const relativePath = Path.relative(root, target);
-        if (relativePath === "" || relativePath.startsWith("..") || Path.isAbsolute(relativePath)) {
-          throw new ThreadsError("PATH_OUTSIDE_PROJECT", "The path must be inside the project", {
-            projectId,
-            path,
-          });
-        }
-        // A link inside the project must not lead the write out of it.
+        const outside = (relative: string) =>
+          relative === ".." || relative.startsWith(`..${Path.sep}`) || Path.isAbsolute(relative);
+        const refuse = () =>
+          new ThreadsError(
+            "PATH_OUTSIDE_PROJECT",
+            "The path must be inside the project, and not a link",
+            { projectId, path },
+          );
+        if (relativePath === "" || outside(relativePath)) throw refuse();
+        // A link inside the project must not lead the write out of it: not a folder
+        // on the way (resolved here), nor the file itself (never followed below).
         const realRoot = await Fs.promises.realpath(root);
         let parent = Path.dirname(target);
         while (!(await pathExists(parent))) parent = Path.dirname(parent);
         const realParent = await Fs.promises.realpath(parent);
-        const fromRoot = Path.relative(realRoot, realParent);
-        if (fromRoot.startsWith("..") || Path.isAbsolute(fromRoot)) {
-          throw new ThreadsError("PATH_OUTSIDE_PROJECT", "The path must be inside the project", {
-            projectId,
-            path,
-          });
-        }
+        if (outside(Path.relative(realRoot, realParent))) throw refuse();
         await Fs.promises.mkdir(Path.dirname(target), { recursive: true });
-        await Fs.promises.writeFile(target, contents, "utf8");
+        let file: Fs.promises.FileHandle;
+        try {
+          file = await Fs.promises.open(
+            target,
+            Fs.constants.O_WRONLY |
+              Fs.constants.O_CREAT |
+              Fs.constants.O_TRUNC |
+              Fs.constants.O_NOFOLLOW,
+            0o644,
+          );
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ELOOP") throw refuse();
+          throw error;
+        }
+        try {
+          await file.writeFile(contents, "utf8");
+        } finally {
+          await file.close();
+        }
         return { path: target, relativePath: relativePath.split(Path.sep).join("/") };
       },
     });
