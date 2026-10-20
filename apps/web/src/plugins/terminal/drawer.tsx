@@ -31,6 +31,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import {
   DEFAULT_THREAD_TERMINAL_HEIGHT,
   MAX_TERMINALS_PER_GROUP,
@@ -38,7 +39,15 @@ import {
   type ThreadTerminalGroup,
   type ThreadTerminalUiState,
 } from "../../lib/terminal-state.ts";
-import { TerminalViewport } from "./viewport.tsx";
+
+// xterm.js is a chunk of its own, loaded when a terminal first shows (D440).
+const TerminalViewport = lazyChunk(
+  () => import("./viewport.tsx").then((module) => module.TerminalViewport),
+  {
+    loading: () => null,
+    failed: (_props, retry) => <ChunkFailed retry={retry}>Couldn't load the terminal.</ChunkFailed>,
+  },
+);
 
 const MIN_DRAWER_HEIGHT = 180;
 const MAX_DRAWER_HEIGHT_RATIO = 0.75;

@@ -49,7 +49,7 @@ import {
   type TimelineTurn,
   type WorkEntry,
 } from "../../lib/timeline.ts";
-import { ChatMarkdown } from "./markdown.tsx";
+import { MessageText } from "./message-text.tsx";
 import { ProposedPlanCard, type SavePlan } from "./proposed-plan-card.tsx";
 
 function MessageCopyButton({ text, label = "Copy message" }: { text: string; label?: string }) {
@@ -148,7 +148,7 @@ function UserMessage({
                 : undefined
             }
           >
-            <ChatMarkdown className="text-foreground" lineBreaks text={turn.text} />
+            <MessageText className="text-foreground" lineBreaks text={turn.text} />
           </div>
         )}
       </article>
@@ -187,7 +187,7 @@ function AssistantMessage(props: {
   return (
     <div className={cn("group/assistant relative min-w-0 px-1 py-0.5", props.paddingClass)}>
       <article aria-busy={streaming} aria-label="Agent">
-        <ChatMarkdown
+        <MessageText
           streaming={streaming}
           text={item.text || (streaming ? "" : "(empty response)")}
         />
@@ -352,7 +352,7 @@ function WorkEntryRow({ entry, live }: { entry: WorkEntry; live: boolean }) {
         <div className="mt-0.5 mb-1.5 cursor-auto pb-2">
           {entry.kind === "reasoning" ? (
             <div className="ms-7 flex max-h-96 flex-col gap-3 overflow-auto px-0.5 py-1 select-text">
-              <ChatMarkdown className="text-foreground" lineBreaks text={entry.text} />
+              <MessageText className="text-foreground" lineBreaks text={entry.text} />
             </div>
           ) : (
             <pre className="ms-7 max-h-64 cursor-text overflow-auto font-mono text-2xs leading-relaxed whitespace-pre-wrap break-words text-secondary-label select-text">

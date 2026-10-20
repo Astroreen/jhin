@@ -721,6 +721,34 @@ the node config form each changing a node's icon, kept in its node file).
 Workstream W14 of `t3-roadmap.md` (D440–D459). The reference is T3 Code
 `eb7b35ac` (D53).
 
+- **D440. The web client loads its heavy parts on use.** As T3 splits its
+  routes and lazy-loads its panels, the message renderer (react-markdown,
+  remark-gfm, Shiki), the terminal viewport (xterm.js) and each settings
+  section are chunks of their own (`lazyChunk` in
+  `apps/web/src/lib/lazy-chunk.tsx`, over `React.lazy`). Until the renderer
+  has loaded, a message shows its plain text in the same box; a terminal or
+  a settings section shows nothing for that moment. A chunk that fails to
+  load (the network, or a node serving a newer build) fails in its place
+  only: a message keeps its plain text, a terminal says "Couldn't load the
+  terminal." and a section "Couldn't load this section.", each with "Try
+  again". A load is one per component: a retry, or the next instance to
+  mount after a failure (the next message), starts one new load that every
+  instance shows; re-rendering a failed instance starts none. The page's
+  entry chunk went from 1,021 kB to 436 kB minified. The shared `@jhin/ui`
+  module (519 kB) stays one chunk: user client plugins import all of it by name (D16), so it
+  cannot be split by use. Neither can Shiki's C++ grammar (797 kB), which
+  loads only for a C++ code block.
+
+The proof of D440: `apps/web/test/lazy-chunk.browser.test.tsx` (the loading
+view until the chunk loads, the failed view and a retry, a later mount
+loading again, several instances recovering from one retry, no load per
+re-render); `e2e/tests/web.spec.ts` ("D440": the entry chunk is under
+500 kB without xterm.js or micromark, and a message fetches the markdown
+chunk and renders bold text, while xterm.js is never fetched, and a long
+thread opened afresh is still at its end once its markdown is in); the browser
+tests of the timeline, the terminal and the settings pages, and
+`e2e/tests/terminal.spec.ts`, which render the lazy parts.
+
 - **D441. Conflicting keybindings warn on the settings page**, as T3's
   KeybindingConflictWarning does: a row whose keys another rule has, where
   both can apply, shows T3's amber triangle before its shortcut, named
@@ -729,8 +757,8 @@ Workstream W14 of `t3-roadmap.md` (D440–D459). The reference is T3 Code
   both conditions can apply." Saving is never blocked. "Both can apply" is
   T3's cheap test: either rule has no `when` (always), or both have the same
   text. Another rule of the same command is no conflict (T3 compares rows
-  and would name the row's own command). The keys are compared as the platform presses them
-  (`keybindingConflicts` in `apps/web/src/lib/keybindings.ts`, the same key
+  and would name the row's own command). The keys are compared as the
+  platform presses them (`keybindingConflicts` in `apps/web/src/lib/keybindings.ts`, the same key
   the resolver uses to let the last rule win), so `mod+k` and `ctrl+k`
   conflict on Linux, where T3 compares the strings. A search hides rows, not
   their conflicts. T3 also warns while a key is recorded, before saving;
@@ -953,7 +981,6 @@ stopped its menu says so and its kinds are disabled), with a screenshot.
   devices.
 - Attachments as blobs: images travel as data URLs inside the turn's first
   event, hence the 20 MB per message (D54).
-- Code splitting of the web client: the main chunk is over 500 kB minified.
 - Scoped tokens. Done in `security.md` (D410–D416): device tokens carry
   their grants, so `projects.browse`, `host.config.read` and
   `host.identity` are given on purpose, and mesh calls carry their caller's

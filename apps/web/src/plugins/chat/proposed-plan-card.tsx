@@ -30,7 +30,7 @@ import {
   stripDisplayedPlanMarkdown,
 } from "../../lib/proposed-plan.ts";
 import { useCopy } from "../../lib/hooks.ts";
-import { ChatMarkdown } from "./markdown.tsx";
+import { MessageText } from "./message-text.tsx";
 import { ChatContext } from "./services.ts";
 
 /** Writes the plan into the thread's project (`projects.write-file`); resolves with the path written. */
@@ -149,7 +149,7 @@ export function ProposedPlanCard({
       </div>
       <div className="mt-4">
         <div className={cn("relative", isCollapsed && "max-h-104 overflow-hidden")}>
-          <ChatMarkdown
+          <MessageText
             text={
               isCollapsed
                 ? buildCollapsedProposedPlanPreviewMarkdown(planMarkdown, { maxLines: 10 })
