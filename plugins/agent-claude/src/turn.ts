@@ -29,6 +29,7 @@ import type {
 
 import {
   createLiveSessions,
+  type Attachment,
   type Lease,
   type LiveSessions,
   type QueryFunction,
@@ -83,7 +84,26 @@ export interface ClaudeTurnDependencies {
   /** The context window of a model when Claude Code has not reported one yet. */
   readonly contextWindow?: (model: string) => number | undefined;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
+  /** The node's MCP server for a Claude Code started for the thread (D340); none when unset. */
+  readonly mcp?: {
+    attach(threadId: string): Attachment;
+    /** Whether a tool of it only reads (`threads_list`); `threads_send` does not. */
+    readOnly(tool: string): boolean;
+  };
 }
+
+/** The name Claude Code knows the node's MCP server by; its tools are `mcp__jhin__<tool>`. */
+export const MCP_SERVER_NAME = "jhin";
+
+/** The tools of the node's MCP server, approved without asking (T3's `mcp__t3-code__*`). */
+const MCP_TOOL_PREFIX = `mcp__${MCP_SERVER_NAME}__`;
+
+/** What the appended system prompt says about the node's MCP server (T3's orchestration section). */
+export const JHIN_MCP_INSTRUCTIONS = `
+
+## Jhin tools
+
+The \`${MCP_SERVER_NAME}\` MCP server exposes this Jhin node's commands as tools: a command \`threads.send\` is the tool \`threads_send\` (Claude Code shows it as \`mcp__${MCP_SERVER_NAME}__threads_send\`). Use them when the user asks you to work with Jhin itself: list and read projects and threads (\`projects_list\`, \`threads_list\`, \`threads_get\`, \`threads_events\`), start a thread in a project (\`threads_create\`) and send it a message (\`threads_send\`). Calls act for the current thread and only reach what this thread's agent may do. Threads you start are ordinary top-level threads the user sees in the sidebar: start one only when the user asks for a separate thread.`;
 
 /** The environment Claude Code runs with: the node's, plus the config's `env`. */
 export function claudeEnvironment(
@@ -486,7 +506,15 @@ export function claudeTurn(
         toolUseID,
       };
     }
-    if (!asksForApproval(runtimeMode, interactionMode)) {
+    // The node's own tools that only read, as T3 pre-approves its server's read-only tools;
+    // one that writes (threads_respond could answer this very request) asks like any tool
+    // (D340). Not through `allowedTools`: the SDK warns on every query whose bare
+    // allowedTools entry shadows canUseTool.
+    const nodeTool =
+      deps.mcp !== undefined &&
+      toolName.startsWith(MCP_TOOL_PREFIX) &&
+      deps.mcp.readOnly(toolName.slice(MCP_TOOL_PREFIX.length));
+    if (!asksForApproval(runtimeMode, interactionMode) || nodeTool) {
       return { behavior: "allow", updatedInput: toolInput, toolUseID };
     }
     startTool(toolUseID, toolName, toolInput);
@@ -541,6 +569,7 @@ export function claudeTurn(
       preset: "claude_code",
       append:
         "You are running inside Jhin, a self-hosted AI harness; the user reads your answers in its web client." +
+        (deps.mcp === undefined ? "" : JHIN_MCP_INSTRUCTIONS) +
         (deps.settings.appendSystemPrompt === undefined
           ? ""
           : `\n${deps.settings.appendSystemPrompt}`),
@@ -552,6 +581,7 @@ export function claudeTurn(
     const lease = await live.lease({
       threadId: request.threadId,
       options: options(resume),
+      ...(deps.mcp === undefined ? {} : { attach: deps.mcp.attach }),
       message: userMessage(text, request.input.attachments, (attachment) =>
         deps.log?.("claude takes no such attachment, skipped", {
           name: attachment.name,

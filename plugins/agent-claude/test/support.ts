@@ -9,6 +9,8 @@ interface Call {
   readonly prompt: SDKUserMessage[];
   /** Live changes, in order: `model:<id>`, `mode:<permission mode>`. */
   readonly controls: string[];
+  /** The MCP servers registered over the control channel (`setMcpServers`), in order. */
+  readonly mcpServers: Record<string, unknown>[];
   interrupts: number;
   closed: boolean;
   /** Resolves when the query is closed. */
@@ -36,11 +38,15 @@ export type Script = (player: Player) => AsyncGenerator<SDKMessage, void, undefi
 /**
  * A scripted stand-in for the SDK's `query`: every call plays the next script, and the
  * script's end is Claude Code exiting. `refuseControls` makes setModel and
- * setPermissionMode fail, as an older CLI would.
+ * setPermissionMode fail, as an older CLI would. `mcp` says how setMcpServers answers:
+ * every server connected, every one failed, or never.
  */
 export function scriptedQuery(...scripts: Script[]) {
   const calls: Call[] = [];
-  const state = { refuseControls: false };
+  const state: { refuseControls: boolean; mcp: "connect" | "fail" | "silent" } = {
+    refuseControls: false,
+    mcp: "connect",
+  };
   const query: QueryFunction = ({ prompt, options }) => {
     const script = scripts[calls.length];
     if (script === undefined) throw new Error(`no script for query ${calls.length + 1}`);
@@ -50,6 +56,7 @@ export function scriptedQuery(...scripts: Script[]) {
       options,
       prompt: [],
       controls: [],
+      mcpServers: [],
       interrupts: 0,
       closed: false,
       whenClosed: new Promise((resolve) => (closeCall = resolve)),
@@ -104,6 +111,19 @@ export function scriptedQuery(...scripts: Script[]) {
       },
       setModel: (model) => control(`model:${model}`),
       setPermissionMode: (mode) => control(`mode:${mode}`),
+      setMcpServers: (servers) => {
+        call.mcpServers.push(servers);
+        const names = Object.keys(servers);
+        if (state.mcp === "silent") return new Promise(() => {});
+        return Promise.resolve({
+          added: state.mcp === "connect" ? names : [],
+          removed: [],
+          errors:
+            state.mcp === "connect"
+              ? {}
+              : Object.fromEntries(names.map((name) => [name, "connection refused"])),
+        });
+      },
     };
   };
   return { query, calls, state };

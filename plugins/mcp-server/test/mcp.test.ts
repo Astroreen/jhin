@@ -2,6 +2,7 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
+import { MCP_SERVER_CAPABILITY, type McpServer } from "@jhin/mcp-api";
 import { toolName } from "@jhin/mcp-bridge";
 import { connectWebSocket, createRpcClient } from "@jhin/rpc";
 import { definePlugin, z, type PluginDefinition } from "@jhin/sdk";
@@ -24,7 +25,7 @@ import auth from "../../auth-token/src/index.ts";
 import http from "../../http/src/index.ts";
 import threads from "../../threads/src/index.ts";
 import transport from "../../transport-ws/src/index.ts";
-import mcp from "../src/index.ts";
+import mcp, { localEndpoint } from "../src/index.ts";
 
 const manifest = (dir: string) =>
   JSON.parse(Fs.readFileSync(new URL(`../../${dir}/package.json`, import.meta.url), "utf8")).jhin;
@@ -38,6 +39,9 @@ afterEach(async () => {
   await kernel?.stop();
   kernel = undefined;
 });
+
+/** The `mcp.server@1` service, as a plugin that uses it gets it. */
+let server: McpServer | undefined;
 
 async function startNode() {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-mcp-"));
@@ -73,6 +77,25 @@ async function startNode() {
           },
         }),
       },
+      {
+        manifest: testManifest("app.agent", { optional: { "mcp.server": "^1" } }),
+        definition: definePlugin({
+          activate(context) {
+            server = context.services.tryGet<McpServer>(MCP_SERVER_CAPABILITY);
+            context.commands.register({
+              name: "app.whoami",
+              description: "Who calls",
+              input: z.object({}),
+              output: z.object({ id: z.string().optional(), threadId: z.string().optional() }),
+              permissions: ["threads.read"],
+              handler: (_input, invocation) => ({
+                ...(invocation.caller === undefined ? {} : { id: invocation.caller.id }),
+                ...(invocation.threadId === undefined ? {} : { threadId: invocation.threadId }),
+              }),
+            });
+          },
+        }),
+      },
     ],
     config: { node: { "jhin.http": { port: 0 } } },
   });
@@ -82,11 +105,15 @@ async function startNode() {
   return { kernel, url, token };
 }
 
-async function mcpClient(url: string, token: string): Promise<Client> {
+async function mcpClient(
+  url: string,
+  token: string,
+  headers: Record<string, string> = {},
+): Promise<Client> {
   const client = new Client({ name: "jhin-test", version: "0.0.0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`${url}/mcp`), {
-      requestInit: { headers: { authorization: `Bearer ${token}` } },
+      requestInit: { headers: { ...headers, authorization: `Bearer ${token}` } },
     }) as unknown as Transport,
   );
   return client;
@@ -146,6 +173,57 @@ describe("jhin.mcp-server", () => {
       code: "THREAD_NOT_FOUND",
     });
     await client.close();
+  });
+
+  it("gives an agent a credential of its own, limited to its permissions and revoked on dispose", async () => {
+    const node = await startNode();
+    expect(server?.url).toBe(`${node.url}/mcp`);
+    const credential = server!.issue({
+      id: "jhin.agent-claude:thread-1",
+      permissions: ["threads.read"],
+      threadId: "thread-1",
+    });
+    expect(credential.url).toBe(`${node.url}/mcp`);
+    expect(credential.headers["x-jhin-thread"]).toBe("thread-1");
+    const token = credential.headers["Authorization"]!.replace(/^Bearer /, "");
+    // A header naming another thread does not move the credential off its own.
+    const client = await mcpClient(node.url, token, { "x-jhin-thread": "thread-2" });
+
+    // Only the tools it may run: no auth.token.show, no threads.send.
+    const names = (await client.listTools()).tools.map((tool) => tool.name);
+    expect(names).toContain("threads_list");
+    expect(names).toContain("app_whoami");
+    expect(names).not.toContain("auth_token_show");
+    expect(names).not.toContain("threads_send");
+
+    const whoami = await client.callTool({ name: "app_whoami", arguments: {} });
+    expect(whoami.structuredContent).toEqual({
+      id: "jhin.agent-claude:thread-1",
+      threadId: "thread-1",
+    });
+    const refused = await client.callTool({ name: "auth_token_show", arguments: {} });
+    expect(refused.isError).toBe(true);
+    // Not even there for it; the kernel would refuse the call anyway.
+    expect(refused.content).toEqual([{ type: "text", text: "Unknown tool auth_token_show" }]);
+    await client.close();
+
+    credential.dispose();
+    await expect(mcpClient(node.url, token)).rejects.toThrow();
+    expect(() => server!.issue({ id: "agent", permissions: ["*"] })).toThrow();
+  });
+
+  it("takes the thread from the header for the node's own token", async () => {
+    const node = await startNode();
+    const client = await mcpClient(node.url, node.token, { "x-jhin-thread": "thread-3" });
+    const whoami = await client.callTool({ name: "app_whoami", arguments: {} });
+    expect(whoami.structuredContent).toEqual({ id: "owner", threadId: "thread-3" });
+    await client.close();
+  });
+
+  it("names the endpoint by loopback when HTTP listens on every address", () => {
+    expect(localEndpoint("http://0.0.0.0:4100")).toBe("http://127.0.0.1:4100/mcp");
+    expect(localEndpoint("http://[::]:4100")).toBe("http://[::1]:4100/mcp");
+    expect(localEndpoint("http://192.168.1.5:4100")).toBe("http://192.168.1.5:4100/mcp");
   });
 
   it("refuses MCP requests without the token", async () => {

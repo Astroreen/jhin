@@ -40,6 +40,7 @@ the same PR.
 | `@jhin/host-api`           | contracts of what a host gives plugins (`host.paths@1`, `host.identity@1`, `host.plugins@1`) |
 | `@jhin/http-api`           | contract of `http.server@1`                                                                  |
 | `@jhin/auth-api`           | contract of `auth.verifier@1`                                                                |
+| `@jhin/mcp-api`            | contract of `mcp.server@1`: the MCP endpoint and agent credentials                           |
 | `@jhin/storage-api`        | contracts of `storage.kv@1`, `storage.eventlog@1`, an in-memory version, the contract tests  |
 | `@jhin/agent-api`          | contracts of `agent.runtime@1`, `agent.registry@1` and the thread event types                |
 | `@jhin/source-control-api` | contract of `source-control.git@1` and its events                                            |
@@ -54,7 +55,7 @@ the same PR.
 | `jhin.auth-token`     | `auth.verifier@1` (static bearer token)                | `auth.token.show`, `auth.token.rotate`                                                                            | `foundation.md`                 |
 | `jhin.transport-ws`   | `rpc.streams@1`; every command over WS                 | —                                                                                                                 | `foundation.md`                 |
 | `jhin.storage-sqlite` | `storage.kv@1`, `storage.eventlog@1`                   | —                                                                                                                 | `foundation.md`                 |
-| `jhin.mcp-server`     | every command as an MCP tool                           | —                                                                                                                 | `foundation.md#D39`             |
+| `jhin.mcp-server`     | `mcp.server@1`; every command as an MCP tool           | —                                                                                                                 | `foundation.md#D39`             |
 | `jhin.mesh`           | nodes of one owner, relay, addresses                   | `mesh.invite`, `mesh.join`, `mesh.nodes`, `mesh.call`, `mesh.resolve`, `mesh.open`, `mesh.close`, `mesh.config.*` | `foundation.md`                 |
 | `jhin.threads`        | `agent.registry@1`; projects, threads, turns as events | `projects.*`, `threads.*`, `agents.list`                                                                          | `foundation.md`, `t3-parity.md` |
 | `jhin.agent-claude`   | Claude Code as an agent runtime                        | `claude.sessions.list`, `claude.sessions.close`                                                                   | `providers.md`                  |

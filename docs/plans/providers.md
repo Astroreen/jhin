@@ -193,12 +193,64 @@ specific to Claude: the runtime is a plugin on the public API.
   first unmarked result. A stopped turn ends on the next idle or result,
   whatever its marks; a turn that ended on idle keeps the session.
 
+### Follow-ups (W9, `docs/plans/t3-roadmap.md`)
+
+- **D340. Claude Code gets the node's own MCP server**, as T3 Code gives it
+  its orchestration server (`claudeMcpQueryOverrides`, `McpSessionRegistry`).
+  The plugin `jhin.mcp-server` provides `mcp.server@1` (`@jhin/mcp-api`): the
+  endpoint's URL on the node's own machine (loopback when HTTP listens on
+  every address, as T3's endpoint) and `issue({ id, permissions, threadId })`,
+  a credential for one agent process: a random 32-byte bearer token that the
+  plugin keeps only as a SHA-256 hash (in its scoped state, so a reload of the
+  plugin keeps it), accepted at `/mcp` besides the node's own token and
+  revoked by disposing it. A call made with it runs as `id` with those
+  permissions, for its thread (below); `tools/list` shows a caller only the tools it may run. `jhin.agent-claude` lists
+  `mcp.server@^1` as optional: every Claude Code it starts for a thread (live
+  or per turn, never the status probe) gets a credential of its own, revoked
+  when that Claude Code ends, and the server as `jhin` (`type: "http"`, a
+  65-minute tool timeout, T3's, so a long wait is ended by the server and not
+  by Claude Code's 60 s default). The server goes in through the control
+  channel (`setMcpServers`) and not the command line, so the token is in
+  neither Claude Code's argv nor the environment of the commands it runs
+  (T3's reason). Its tools whose command needs nothing but read
+  permissions (`*.read`, `projects.browse`) are approved without asking, as
+  T3's read-only sessions pre-approve only its read-only tools; the others
+  follow the thread's runtime mode like any tool (they ask unless it has full
+  access). T3 pre-approves all of its own outside read-only sessions; Jhin's
+  writing tools include `threads_respond`, with which an agent could answer
+  its own approval request, and deleting threads and projects. The approval
+  is the permission callback's, not `allowedTools`, whose bare
+  entries make the SDK warn on every query. The appended system prompt
+  (part of the launch key, D99) says what they are for. An MCP request names
+  the thread whose agent calls in `x-jhin-thread`; the credential carries the
+  same and wins, so an agent cannot act for another thread, while one made
+  with the node's own token may name any (`Invocation.threadId`, new and
+  optional, which W10's commands act on). A Claude Code that does not answer
+  the registration within 90 s (T3's limit) fails the turn; one that cannot
+  connect the server runs without it, with a warning. The config's `mcp` (on by default) turns it off; whether the server is
+  attached is part of the launch key (D99), so changing it restarts a live
+  session. Credentials live in memory only: a node restart ends them with the
+  Claude Codes that held them, and deactivating `jhin.agent-claude` ends its
+  Claude Codes and so revokes theirs.
+- **D341. What a thread's agent may do through it:** `threads.read`,
+  `threads.write`, `projects.read`, `projects.write`, `projects.browse`,
+  `git.read`, `git.write` and `mesh.read`, the reach of T3's orchestration,
+  worktree and pull-request tools. Not the node's token (`auth.admin`), config
+  (`host.config.*` and `host.inspect`, which shows it: it can hold secrets),
+  plugins, mesh administration and calls to other nodes, nor terminals
+  (Claude Code runs its own shell). Within that reach an agent is not held to
+  its own thread: like T3's tools, these act on any thread or project of the
+  node (the user's own records, which Claude Code could reach through the
+  user's token on disk anyway); `Invocation.threadId` says who acted, it does
+  not fence it in. A workstream that adds commands meant for
+  agents (W10's delegated tasks) adds their permissions to this list.
+
 ## Not ported
 
 - T3's usage-limit and reset-credit probes, rollback and fork of a session,
   workflow and goal tracking, background-task rosters, the `$skill` dispatch,
-  its own MCP server attached to Claude, and the per-model option descriptors
-  (effort, fast mode, context size) of its model picker.
+  and the per-model option descriptors (effort, fast mode, context size) of
+  its model picker.
 
 ## Deferred
 
@@ -227,8 +279,8 @@ specific to Claude: the runtime is a plugin on the public API.
   config's `effort` applies.
 - A proposed-plan card with "implement this plan" (shown as a message today;
   also in `t3-parity.md`).
-- Attaching the node's own MCP server to Claude, so it can drive Jhin (threads,
-  projects) the way T3 Code attaches its orchestration tools.
+- Choosing a thread agent's permissions per thread or in config: D341 is one
+  list for every Claude Code.
 - Slash commands and skills from Claude Code's initialization in the
   composer.
 - Subagent transcripts inside their tool call; today only the result shows.

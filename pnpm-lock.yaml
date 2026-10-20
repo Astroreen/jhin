@@ -367,6 +367,8 @@ importers:
         specifier: 'catalog:'
         version: 7.8.0
 
+  packages/mcp-api: {}
+
   packages/mcp-bridge:
     dependencies:
       '@jhin/sdk':
@@ -515,6 +517,9 @@ importers:
       '@jhin/agent-api':
         specifier: workspace:*
         version: link:../../packages/agent-api
+      '@jhin/mcp-api':
+        specifier: workspace:*
+        version: link:../../packages/mcp-api
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -590,6 +595,9 @@ importers:
       '@jhin/http-api':
         specifier: workspace:*
         version: link:../../packages/http-api
+      '@jhin/mcp-api':
+        specifier: workspace:*
+        version: link:../../packages/mcp-api
       '@jhin/mcp-bridge':
         specifier: workspace:*
         version: link:../../packages/mcp-bridge
