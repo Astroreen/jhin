@@ -49,6 +49,11 @@ const CONFIG_SECTION = "jhin.threads";
 const DRAIN_TIMEOUT_MS = 5000;
 /** How long archiving or deleting a thread waits for its turn to end after the interrupt. */
 export const STOP_TIMEOUT_MS = 5000;
+/**
+ * How long a turn hook may take: one that has not answered by then is given up
+ * on (logged), so a hook that hangs never holds its thread (D241).
+ */
+export const TURN_HOOK_TIMEOUT_MS = 60_000;
 /** How long an agent runtime's `status()` answer is reused. */
 const STATUS_TTL_MS = 30_000;
 /** The title a thread gets until its first message names it. */
@@ -343,17 +348,34 @@ function expandHome(path: string): string {
     : path;
 }
 
-/** A thread's own working directory: an existing absolute directory, stored normalised. */
-function worktreeDirectory(given: string): string {
-  const path = Path.resolve(given);
-  if (!Path.isAbsolute(given) || !Fs.existsSync(path) || !Fs.statSync(path).isDirectory()) {
-    throw new ThreadsError(
-      "WORKTREE_PATH_INVALID",
-      `${given} is not an existing absolute directory`,
-      { path: given },
-    );
-  }
+/**
+ * A thread's own working directory: an existing absolute directory, stored by
+ * its real path, so it compares equal with the paths git reports.
+ */
+async function worktreeDirectory(given: string): Promise<string> {
+  const invalid = () =>
+    new ThreadsError("WORKTREE_PATH_INVALID", `${given} is not an existing absolute directory`, {
+      path: given,
+    });
+  if (!Path.isAbsolute(given)) throw invalid();
+  const path = await Fs.promises.realpath(given).catch(() => undefined);
+  const stat = path === undefined ? undefined : await Fs.promises.stat(path).catch(() => undefined);
+  if (path === undefined || stat?.isDirectory() !== true) throw invalid();
   return path;
+}
+
+/** Settles with `task`, or once `ms` passed without it (then `expired` runs). */
+function withDeadline(task: Promise<unknown>, ms: number, expired: () => void): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  return Promise.race([
+    task.then(() => undefined),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        expired();
+        resolve();
+      }, ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
 }
 
 export default definePlugin({
@@ -806,9 +828,18 @@ export default definePlugin({
         }
         try {
           // Before the agent touches anything (a checkpoint of the working tree, D240).
-          await context.hooks.run(ThreadHooks.turnStart, hookInput, () => undefined);
+          await withDeadline(
+            context.hooks.run(ThreadHooks.turnStart, hookInput, () => undefined),
+            TURN_HOOK_TIMEOUT_MS,
+            () =>
+              context.log.error("a turn start hook did not answer; the agent starts", {
+                threadId: thread.id,
+                turnId,
+              }),
+          );
           // A worktree removed under the thread, and not brought back by a hook (D242).
           if (
+            thread.worktreePath !== undefined &&
             !(await Fs.promises.stat(hookInput.cwd).then(
               (stat) => stat.isDirectory(),
               () => false,
@@ -887,15 +918,23 @@ export default definePlugin({
             ...hookInput,
             status: ending.status as TurnEndHookInput["status"],
           };
-          await context.hooks
-            .run(ThreadHooks.turnEnd, endInput, () => undefined)
-            .catch((error: unknown) =>
-              context.log.error("a turn end hook failed", {
+          await withDeadline(
+            context.hooks
+              .run(ThreadHooks.turnEnd, endInput, () => undefined)
+              .catch((error: unknown) =>
+                context.log.error("a turn end hook failed", {
+                  threadId: thread.id,
+                  turnId,
+                  error: String(error),
+                }),
+              ),
+            TURN_HOOK_TIMEOUT_MS,
+            () =>
+              context.log.error("a turn end hook did not answer; the turn ends", {
                 threadId: thread.id,
                 turnId,
-                error: String(error),
               }),
-            );
+          );
           await recordEnd(ending.type, {
             turnId,
             ...(ending.error === undefined ? {} : { error: ending.error }),
@@ -1315,7 +1354,7 @@ export default definePlugin({
         const settings =
           worktreePath === undefined
             ? rest
-            : { ...rest, worktreePath: worktreeDirectory(worktreePath) };
+            : { ...rest, worktreePath: await worktreeDirectory(worktreePath) };
         await getProject(projectId);
         if (removedProjects.has(projectId)) {
           throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
@@ -1400,7 +1439,7 @@ export default definePlugin({
       }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: ({ threadId, title, worktreePath, ...settings }) => {
+      handler: async ({ threadId, title, worktreePath, ...settings }) => {
         if (settings.agentId !== undefined && registry.get(settings.agentId) === undefined) {
           throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${settings.agentId} on this node`, {
             agentId: settings.agentId,
@@ -1409,7 +1448,7 @@ export default definePlugin({
         const directory =
           worktreePath === undefined || worktreePath === null
             ? worktreePath
-            : worktreeDirectory(worktreePath);
+            : await worktreeDirectory(worktreePath);
         // A running turn keeps the directory it started in; the next one runs in this one.
         return updateThread(threadId, (thread) => {
           const next: Thread = {

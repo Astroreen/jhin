@@ -12,9 +12,10 @@ import {
 } from "@jhin/agent-api";
 import { definePlugin, type PluginContext } from "@jhin/sdk";
 import { testManifest } from "@jhin/testing";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { fakeTurn } from "../../agent-fake/src/index.ts";
+import { TURN_HOOK_TIMEOUT_MS } from "../src/index.ts";
 import { node, watch } from "./support.ts";
 
 interface Thread {
@@ -167,6 +168,56 @@ describe("jhin.threads: turn hooks", () => {
   });
 });
 
+describe("jhin.threads: turn hooks that never answer", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** A promise with its resolver. */
+  const latch = () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => (resolve = done));
+    return { promise, resolve };
+  };
+
+  it("starts the agent once a start hook has not answered in time", async () => {
+    const called = latch();
+    const hooks = plugin("acme.stuck-start", (context) => {
+      context.hooks.around(ThreadHooks.turnStart, () => {
+        called.resolve();
+        return new Promise(() => undefined);
+      });
+    });
+    const { client } = await node({ plugins: [hooks] });
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const sent = client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await called.promise;
+    vi.advanceTimersByTime(TURN_HOOK_TIMEOUT_MS);
+    await sent;
+    await until("agent.turn.completed");
+  });
+
+  it("ends the turn once an end hook has not answered in time", async () => {
+    const called = latch();
+    const hooks = plugin("acme.stuck-end", (context) => {
+      context.hooks.around(ThreadHooks.turnEnd, () => {
+        called.resolve();
+        return new Promise(() => undefined);
+      });
+    });
+    const { client } = await node({ plugins: [hooks] });
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await called.promise;
+    vi.advanceTimersByTime(TURN_HOOK_TIMEOUT_MS);
+    await until("agent.turn.completed");
+  });
+});
+
 describe("jhin.threads: a thread's own working directory", () => {
   it("runs the thread's turns in its worktree, and in the project's directory again once cleared", async () => {
     const seen: TurnRequest[] = [];
@@ -227,6 +278,35 @@ describe("jhin.threads: a thread's own working directory", () => {
     expect((await until("agent.turn.failed")).payload).toMatchObject({
       error: expect.stringContaining("no longer exists"),
     });
+  });
+
+  it("stores a worktree by its real path, and leaves a missing project directory to the agent", async () => {
+    const seen: string[] = [];
+    const agent: AgentRuntime = {
+      agentId: "acme.agent",
+      startTurn(request) {
+        seen.push(request.cwd);
+        return fakeTurn(request);
+      },
+    };
+    const { client } = await node({ agent: false, plugins: [plugin("acme.p", () => {}, agent)] });
+    const worktree = directory();
+    const link = Path.join(directory(), "link");
+    Fs.symlinkSync(worktree, link);
+    const linked = await client.call<Thread>("threads.create", { worktreePath: link });
+    expect(linked.worktreePath).toBe(worktree);
+
+    const project = directory();
+    const { id: projectId } = await client.call<{ id: string }>("projects.create", {
+      path: project,
+    });
+    const thread = await client.call<Thread>("threads.create", { projectId });
+    const { until } = watch(client, thread.id);
+    Fs.rmSync(project, { recursive: true });
+    // Not a worktree the thread lost: the agent is asked, as before (D242).
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await until("agent.turn.completed");
+    expect(seen).toEqual([project]);
   });
 
   it("moves a running thread's next turn, not the one running", async () => {

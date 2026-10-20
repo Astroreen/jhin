@@ -233,8 +233,10 @@ with screenshots).
   turn's last event is recorded, with the same input and how the turn ends
   (`completed`, `interrupted`, `failed`); a hook that throws is logged and the
   turn still ends. A client that sees a turn end therefore sees what the end
-  hooks did (a checkpoint). The hooks hold the thread like the rest of the turn:
-  a stop waits for them.
+  hooks did (a checkpoint). The hooks hold the thread like the rest of the turn
+  (a stop waits for them), but at most `TURN_HOOK_TIMEOUT_MS` (60 s): a hook that
+  has not answered by then is logged and given up on, the agent then starts or
+  the turn ends.
 - **D242. A thread may have a working directory of its own** (`worktreePath`, T3's
   field): an existing absolute directory, usually a git worktree of its project,
   set with `threads.create` or `threads.update` (`null` clears it; a running turn
