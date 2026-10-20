@@ -1,3 +1,4 @@
+import * as Crypto from "node:crypto";
 import * as Os from "node:os";
 
 import {
@@ -16,10 +17,12 @@ import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
   type EventLog,
+  type Json,
   type KeyValueStore,
 } from "@jhin/storage-api";
 import { query as sdkQuery, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
+import { claudeConfigDir, deleteSessionFiles } from "./files.ts";
 import { BUNDLED_DEFAULT_MODEL, BUNDLED_MODELS, manifestContextWindow } from "./models.ts";
 import {
   createLiveSessions,
@@ -130,6 +133,12 @@ export const Config = z
       writeOnly: true,
       advanced: true,
     }),
+    inheritEnv: z.array(z.string()).default(["*"]).meta({
+      title: "Inherited environment",
+      description:
+        "The node's environment variables Claude Code gets: names, or prefixes ending in * (e.g. LC_*). * passes all of them; a narrower list keeps variables meant for the node away from Claude Code and the commands it runs",
+      advanced: true,
+    }),
     appendSystemPrompt: z.string().optional().meta({
       title: "Appended system prompt",
       description: "Instructions appended to Claude Code's system prompt",
@@ -163,6 +172,19 @@ export type Config = z.output<typeof Config>;
 interface Probe {
   readonly status: AgentRuntimeStatus;
   readonly models?: readonly AgentModel[];
+}
+
+/** A probe as kept, with when it ran and the configuration (`key`) it ran with. */
+export interface StoredProbe {
+  readonly at: number;
+  readonly key: string;
+  readonly probe: Probe;
+}
+
+/** Where the last probe is kept across restarts (D344). */
+export interface ProbeStore {
+  load(): Promise<StoredProbe | undefined>;
+  save(probe: StoredProbe): Promise<void>;
 }
 
 /**
@@ -199,7 +221,7 @@ async function probe(query: QueryFunction, config: Config): Promise<Probe> {
         ...(config.binaryPath === undefined
           ? {}
           : { pathToClaudeCodeExecutable: config.binaryPath }),
-        ...(config.env === undefined ? {} : { env: claudeEnvironment(config.env) }),
+        env: claudeEnvironment(config.env, config.inheritEnv),
       },
     }) as Initializing;
     if (running.initializationResult === undefined) return { status: { available: true } };
@@ -262,6 +284,8 @@ export function createClaudeRuntime(options: {
   readonly query: QueryFunction;
   readonly sessions: SessionStore;
   readonly config: () => Config;
+  /** The last probe, kept so a restarted node answers its first look at once (D344). */
+  readonly probes?: ProbeStore;
   /** The node's MCP server, when it runs one (D340). */
   readonly mcp?: McpServer;
   /** Whether a tool of the node's MCP server only reads: every permission it needs does. */
@@ -288,10 +312,15 @@ export function createClaudeRuntime(options: {
   /** Context windows Claude Code reported in results, by model. */
   const windows = new Map<string, number>();
   /** The last probe and the config it ran with: another binary or environment probes again. */
-  let probed: { at: number; key: string; probe: Probe } | undefined;
+  let probed: StoredProbe | undefined;
+  /** The stored probe, read once: what a restarted node answers while it probes again. */
+  let stored: Promise<StoredProbe | undefined> | undefined;
   const probeKey = () => {
-    const { binaryPath, env } = options.config();
-    return JSON.stringify({ binaryPath, env });
+    const { binaryPath, env, inheritEnv } = options.config();
+    // Kept in storage.kv (D344): a hash, never the config's environment (it can hold secrets).
+    return Crypto.createHash("sha256")
+      .update(JSON.stringify({ binaryPath, env, inheritEnv }))
+      .digest("hex");
   };
   /** The probe running now, by the config it runs with: a probe is joined only for its config. */
   const probing = new Map<string, Promise<Probe>>();
@@ -324,6 +353,11 @@ export function createClaudeRuntime(options: {
           running = probe(options.query, options.config())
             .then((result) => {
               probed = { at: Date.now(), key, probe: result };
+              void options.probes
+                ?.save(probed)
+                .catch((error: unknown) =>
+                  options.log?.("could not keep the claude code probe", { error: String(error) }),
+                );
               return result;
             })
             .finally(() => probing.delete(key));
@@ -331,6 +365,12 @@ export function createClaudeRuntime(options: {
         }
         return running;
       };
+      if (probed === undefined && options.probes !== undefined) {
+        stored ??= options.probes.load().catch(() => undefined);
+        const kept = await stored;
+        // A probe that ran meanwhile is newer than the kept one.
+        if (probed === undefined && kept !== undefined) probed = kept;
+      }
       if (probed === undefined || probed.key !== key) return (await refresh()).status;
       // A stale answer is given at once while a new probe runs: picking the default agent
       // (D96) never waits for Claude Code to start. "Unavailable" goes stale sooner, so a
@@ -434,6 +474,30 @@ export function sessionRecords(kv: KeyValueStore): SessionStore & {
   };
 }
 
+/** A kept probe, as `storage.kv` gives it back: anything else is not used. */
+const StoredProbe = z.object({
+  at: z.number(),
+  key: z.string(),
+  probe: z.object({
+    status: z.object({ available: z.boolean(), message: z.string().optional() }),
+    models: z
+      .array(z.object({ id: z.string(), name: z.string(), description: z.string().optional() }))
+      .optional(),
+  }),
+});
+
+/** The last probe in `storage.kv`, read back only when it has the shape of one (D344). */
+export function probeRecords(kv: KeyValueStore): ProbeStore {
+  return {
+    load: async () => {
+      const kept = await kv.get(NAMESPACE, "probe");
+      return StoredProbe.safeParse(kept).data as StoredProbe | undefined;
+    },
+    // Plain data (status, models): JSON as it is.
+    save: (kept) => kv.set(NAMESPACE, "probe", kept as unknown as Json),
+  };
+}
+
 const LiveSession = z.object({
   threadId: z.string(),
   model: z.string().optional(),
@@ -458,6 +522,7 @@ export function claudePlugin(query: QueryFunction) {
       const runtime = createClaudeRuntime({
         query,
         sessions,
+        probes: probeRecords(kv),
         ...(mcp === undefined ? {} : { mcp }),
         readOnlyTool: (tool) => {
           const command = context.commands
@@ -495,13 +560,30 @@ export function claudePlugin(query: QueryFunction) {
           const payload = event.payload as { id?: unknown; archivedAt?: unknown } | null;
           if (typeof payload?.id !== "string") return;
           if (event.type === ThreadEvents.threadDeleted) {
-            runtime.live.close(payload.id, true);
-            void sessions.forget(payload.id, runtime.settled(payload.id)).catch((error: unknown) =>
+            const threadId = payload.id;
+            runtime.live.close(threadId, true);
+            const settled = runtime.settled(threadId);
+            void sessions.forget(threadId, settled).catch((error: unknown) =>
               context.log.warn("could not forget the claude session", {
-                threadId: payload.id,
+                threadId,
                 error: String(error),
               }),
             );
+            // Its files too, once no turn of it is left to write them (D345).
+            const { env, inheritEnv } = context.config.get<Config>(CONFIG_SECTION);
+            const configDir = claudeConfigDir(env, inheritEnv);
+            // Claude Code writes its last lines to the file while it shuts down.
+            void Promise.all([settled, runtime.live.ended(threadId)])
+              .then(() => deleteSessionFiles(threadId, configDir))
+              .then(
+                (removed) =>
+                  context.events.emit("claude.session.files.deleted", { threadId, removed }),
+                (error: unknown) =>
+                  context.log.warn("could not delete the claude session files", {
+                    threadId,
+                    error: String(error),
+                  }),
+              );
           } else if (
             event.type === ThreadEvents.threadUpdated &&
             typeof payload.archivedAt === "string"

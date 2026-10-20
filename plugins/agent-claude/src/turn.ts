@@ -29,6 +29,7 @@ import type {
 
 import {
   createLiveSessions,
+  inheritedEnvironment,
   type Attachment,
   type Lease,
   type LiveSessions,
@@ -72,6 +73,7 @@ interface ClaudeSettings {
   readonly effort?: "low" | "medium" | "high" | "xhigh" | "max" | undefined;
   readonly env?: Readonly<Record<string, string>> | undefined;
   readonly appendSystemPrompt?: string | undefined;
+  readonly inheritEnv?: readonly string[] | undefined;
 }
 
 export interface ClaudeTurnDependencies {
@@ -105,11 +107,12 @@ export const JHIN_MCP_INSTRUCTIONS = `
 
 The \`${MCP_SERVER_NAME}\` MCP server exposes this Jhin node's commands as tools: a command \`threads.send\` is the tool \`threads_send\` (Claude Code shows it as \`mcp__${MCP_SERVER_NAME}__threads_send\`). Use them when the user asks you to work with Jhin itself: list and read projects and threads (\`projects_list\`, \`threads_list\`, \`threads_get\`, \`threads_events\`), start a thread in a project (\`threads_create\`) and send it a message (\`threads_send\`). Calls act for the current thread and only reach what this thread's agent may do. Threads you start are ordinary top-level threads the user sees in the sidebar: start one only when the user asks for a separate thread.`;
 
-/** The environment Claude Code runs with: the node's, plus the config's `env`. */
+/** The environment Claude Code runs with: the node's variables the allow-list lets through, plus the config's `env`. */
 export function claudeEnvironment(
-  env: Readonly<Record<string, string>>,
+  env: Readonly<Record<string, string>> = {},
+  inherit?: readonly string[],
 ): Record<string, string | undefined> {
-  return { ...process.env, ...env };
+  return { ...inheritedEnvironment(inherit), ...env };
 }
 
 /** Without live sessions: every turn starts Claude Code and ends it. */
@@ -317,8 +320,12 @@ export function claudeTurn(
   // --- Items --------------------------------------------------------------------
   const startedTools = new Map<string, { name: string; input: unknown }>();
   const declined = new Set<string>();
-  /** Texts streamed per API message, so the message's snapshot does not repeat them. */
-  const streamedTexts = new Map<string, Set<string>>();
+  /**
+   * Blocks a `content_block_stop` completed whose snapshot has not come yet, counted by
+   * kind and text per API message: the snapshot of each finds its own and adds nothing, and
+   * two blocks with one text stay two items (D342).
+   */
+  const awaitingSnapshot = new Map<string, Map<string, number>>();
   const blocks = new Map<number, { itemId: string; kind: "message" | "reasoning"; text: string }>();
   let messageId: string | undefined;
   let tasks: TaskList = new Map();
@@ -326,13 +333,16 @@ export function claudeTurn(
   const contextWindow = deps.contextWindow?.(model);
   let snapshotIndex = 0;
 
-  /** Completes a message or reasoning item, once per text of an API message. */
-  const complete = (id: string, itemId: string, kind: "message" | "reasoning", text: string) => {
-    const seen = streamedTexts.get(id) ?? new Set<string>();
-    if (seen.has(text)) return;
-    seen.add(text);
-    streamedTexts.set(id, seen);
+  const complete = (itemId: string, kind: "message" | "reasoning", text: string) =>
     out.push({ kind: `${kind}.completed`, itemId, text });
+  /** Whether a snapshot's block was completed already by its stop; takes it if so. */
+  const snapshotOfStopped = (id: string, kind: string, text: string) => {
+    const counts = awaitingSnapshot.get(id);
+    const key = `${kind}\u0000${text}`;
+    const count = counts?.get(key) ?? 0;
+    if (count === 0) return false;
+    counts!.set(key, count - 1);
+    return true;
   };
 
   const startTool = (id: string, name: string, input: unknown) => {
@@ -400,7 +410,11 @@ export function claudeTurn(
           if (block === undefined) return;
           blocks.delete(event.index);
           if (block.text.trim().length === 0 || messageId === undefined) return;
-          complete(messageId, block.itemId, block.kind, block.text);
+          complete(block.itemId, block.kind, block.text);
+          const counts = awaitingSnapshot.get(messageId) ?? new Map<string, number>();
+          const key = `${block.kind}\u0000${block.text}`;
+          counts.set(key, (counts.get(key) ?? 0) + 1);
+          awaitingSnapshot.set(messageId, counts);
         }
         return;
       }
@@ -413,6 +427,7 @@ export function claudeTurn(
             const text = block.type === "text" ? block.text : block.thinking;
             const kind = block.type === "text" ? "message" : "reasoning";
             if (text.trim().length === 0) continue;
+            if (snapshotOfStopped(id, kind, text)) continue;
             // The snapshot of a block can come before its content_block_stop: it completes
             // the streamed item, and the stop finds nothing left to do.
             const streamed =
@@ -421,11 +436,11 @@ export function claudeTurn(
                 : undefined;
             if (streamed !== undefined) {
               blocks.delete(streamed[0]);
-              complete(id, streamed[1].itemId, kind, text);
+              complete(streamed[1].itemId, kind, text);
               continue;
             }
             // Not streamed (partial messages off, or a replayed frame): the snapshot is the item.
-            complete(id, `${id}:s${snapshotIndex++}`, kind, text);
+            complete(`${id}:s${snapshotIndex++}`, kind, text);
           }
         }
         return;
@@ -582,6 +597,7 @@ export function claudeTurn(
       threadId: request.threadId,
       options: options(resume),
       ...(deps.mcp === undefined ? {} : { attach: deps.mcp.attach }),
+      ...(deps.settings.inheritEnv === undefined ? {} : { inherit: deps.settings.inheritEnv }),
       message: userMessage(text, request.input.attachments, (attachment) =>
         deps.log?.("claude takes no such attachment, skipped", {
           name: attachment.name,

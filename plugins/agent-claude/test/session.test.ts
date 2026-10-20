@@ -13,6 +13,7 @@ import {
   sessionRecords,
   transcript,
   Config,
+  type QueryFunction,
 } from "../src/index.ts";
 import {
   drain,
@@ -133,9 +134,20 @@ describe("jhin.agent-claude: live sessions", () => {
     expect(calls[0]!.closed).toBe(true);
     expect(calls[1]!.options).toMatchObject({
       resume: THREAD,
-      permissionMode: "bypassPermissions",
+      permissionMode: "default",
       allowDangerouslySkipPermissions: true,
     });
+    expect(calls[1]!.controls).toEqual(["mode:bypassPermissions"]);
+  });
+
+  it("starts Claude Code in full access directly when it refuses the switch (D343)", async () => {
+    const { claude, turn, calls, state } = node([answering("one"), answering("two")]);
+    state.refuseControls = true;
+    expect(answers(await turn({ runtimeMode: "full-access" }))).toEqual(["two"]);
+    expect(calls[0]!.closed).toBe(true);
+    expect(calls[0]!.prompt).toEqual([]);
+    expect(calls[1]!.options).toMatchObject({ permissionMode: "bypassPermissions" });
+    expect(claude.live.list()).toMatchObject([{ permissionMode: "bypassPermissions" }]);
   });
 
   it("starts Claude Code again, resuming, when it cannot change the model live", async () => {
@@ -195,6 +207,32 @@ describe("jhin.agent-claude: live sessions", () => {
       resume: THREAD,
       env: { CLAUDE_CONFIG_DIR: "/other", PATH: process.env["PATH"] },
     });
+  });
+
+  it("passes only the node's variables the allow-list names (D346)", async () => {
+    process.env["JHIN_TEST_NODE_ONLY"] = "secret";
+    process.env["JHIN_TEST_LC_ONE"] = "one";
+    try {
+      const { turn, calls, settings } = node([answering("one", "two"), answering("three")], {
+        inheritEnv: ["PATH", "JHIN_TEST_LC_*"],
+        env: { EXTRA: "from config" },
+      });
+      await turn();
+      expect(calls[0]!.options.env).toEqual({
+        PATH: process.env["PATH"],
+        JHIN_TEST_LC_ONE: "one",
+        EXTRA: "from config",
+        CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
+      });
+      // The default passes every variable, as before the list.
+      settings.config = Config.parse({ env: { EXTRA: "from config" } });
+      await turn();
+      expect(calls).toHaveLength(2);
+      expect(calls[1]!.options.env).toMatchObject({ JHIN_TEST_NODE_ONLY: "secret" });
+    } finally {
+      delete process.env["JHIN_TEST_NODE_ONLY"];
+      delete process.env["JHIN_TEST_LC_ONE"];
+    }
   });
 
   it("ends an idle Claude Code after the configured minutes", async () => {
@@ -698,5 +736,54 @@ describe("jhin.agent-claude: session records", () => {
     release();
     await Promise.all([inFlight, forgotten]);
     expect(await records.has(THREAD)).toBe(false);
+  });
+});
+
+describe("jhin.agent-claude: session files (D345)", () => {
+  it("waits for every Claude Code of the thread to exit, also one a later launch replaced", async () => {
+    let exitFirst!: () => void;
+    const firstExited = new Promise<void>((resolve) => (exitFirst = resolve));
+    let launches = 0;
+    // The first Claude Code goes on writing (its output open) after it was asked to close.
+    const query = (({ prompt }: Parameters<QueryFunction>[0]) => {
+      const lingering = launches++ === 0;
+      let closed!: () => void;
+      const whenClosed = new Promise<void>((resolve) => (closed = resolve));
+      return {
+        async *[Symbol.asyncIterator]() {
+          for await (const _sent of prompt) {
+            yield init();
+            yield result();
+          }
+          await (lingering ? firstExited : whenClosed);
+        },
+        interrupt: async () => undefined,
+        close: () => closed(),
+      };
+    }) as unknown as QueryFunction;
+    const live = createLiveSessions({ query, keepAlive: () => ({ keepAlive: true, idleMs: 0 }) });
+    const lease = async (cwd: string) => {
+      const held = await live.lease({
+        threadId: THREAD,
+        options: { cwd },
+        message: {
+          type: "user",
+          message: { role: "user", content: "hi" },
+          parent_tool_use_id: null,
+        },
+      });
+      for await (const _message of held.messages);
+      held.release(true);
+    };
+    await lease("/a");
+    await lease("/b");
+    live.close(THREAD);
+    const order: string[] = [];
+    const ended = live.ended(THREAD).then(() => order.push("ended"));
+    await new Promise((resolve) => setImmediate(resolve));
+    order.push("first exits");
+    exitFirst();
+    await ended;
+    expect(order).toEqual(["first exits", "ended"]);
   });
 });

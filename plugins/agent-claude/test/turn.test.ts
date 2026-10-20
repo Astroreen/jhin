@@ -85,10 +85,12 @@ describe("jhin.agent-claude: a turn", () => {
       sessionId: THREAD,
       cwd: "/work",
       model: "claude-fable-5-1",
-      permissionMode: "bypassPermissions",
+      // Started in default and switched before the message, so the SDK does not warn (D343).
+      permissionMode: "default",
       allowDangerouslySkipPermissions: true,
       includePartialMessages: true,
     });
+    expect(calls[0]!.controls).toEqual(["mode:bypassPermissions"]);
     expect(calls[0]!.options.resume).toBeUndefined();
     expect(calls[0]!.prompt[0]!.message.content).toBe("hello");
     expect(calls[0]!.closed).toBe(true);
@@ -106,6 +108,43 @@ describe("jhin.agent-claude: a turn", () => {
     const items = await drain(turn);
     expect(items.filter((item) => item.kind === "message.completed")).toEqual([
       { kind: "message.completed", itemId: "m1:0", text: "Hi" },
+    ]);
+  });
+
+  it("keeps two blocks of one API message with the same text as two items (D342)", async () => {
+    const { turn } = start([
+      async function* () {
+        yield init();
+        yield* streamedBlock("m1", 0, "text", ["Done."]);
+        yield* streamedBlock("m1", 1, "text", ["Done."], { start: false, snapshotLast: true });
+        yield result();
+      },
+    ]);
+    const items = await drain(turn);
+    expect(items.filter((item) => item.kind === "message.completed")).toEqual([
+      { kind: "message.completed", itemId: "m1:0", text: "Done." },
+      { kind: "message.completed", itemId: "m1:1", text: "Done." },
+    ]);
+  });
+
+  it("keeps two identical snapshots of one API message apart when nothing streamed", async () => {
+    const snapshot = {
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: { id: "m1", content: [{ type: "text", text: "Same" }] },
+    } as never;
+    const { turn } = start([
+      async function* () {
+        yield init();
+        yield snapshot;
+        yield snapshot;
+        yield result();
+      },
+    ]);
+    const items = await drain(turn);
+    expect(items.filter((item) => item.kind === "message.completed")).toEqual([
+      { kind: "message.completed", itemId: "m1:s0", text: "Same" },
+      { kind: "message.completed", itemId: "m1:s1", text: "Same" },
     ]);
   });
 
