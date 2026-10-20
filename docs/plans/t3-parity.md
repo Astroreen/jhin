@@ -590,17 +590,23 @@ It lands as a stack of PRs, each named below with the decisions it carries.
   and the "Plan actions" menu: "Copy to clipboard", "Download as markdown"
   (the title's slug, `.md`) and "Save to workspace", which writes the file
   into the project through `projects.write-file` (`{ projectId, path,
-  contents }`; a relative path inside the project, under `threads.write`).
+  contents }`; a relative path inside the project, under `projects.write`,
+  refusing a path that leads out through a link, the file itself included).
 - **D306. "Implement this plan".** After a plan-mode turn that proposed a
   plan and asks nothing, the composer shows T3's "Plan ready" banner with the
-  plan's title. With an empty prompt the send button reads "Implement": it
-  sends "PLEASE IMPLEMENT THIS PLAN:\n" and the plan in build mode
+  plan's title. With an empty prompt the send button reads "Implement", and
+  it is the form's submit button, so Enter in the empty composer implements
+  too, as in T3: it sends "PLEASE IMPLEMENT THIS PLAN:\n" and the plan in build mode
   (`interactionMode: "default"`), and its menu ("Implementation actions")
   offers "Implement in a new thread", which creates a thread titled
   "Implement <title>" in the same project with the same agent and model and
   sends it there. With text typed, the button reads "Refine" and sends it in
   plan mode. Both are commands (`chat.plan.implement`,
-  `chat.plan.implement-new-thread`).
+  `chat.plan.implement-new-thread`, on the open thread or the one named);
+  a new thread whose first message the connection dropped says so
+  (`uncertain`). `agent.runtime@1.2` is a version of the contract, not of a
+  manifest entry: its additions are optional fields and items a runtime may
+  never use, so a consumer reads them where they are and does without them.
 
 - **D307–D309.** Free for this workstream's follow-ups.
 

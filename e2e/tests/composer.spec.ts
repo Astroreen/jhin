@@ -67,7 +67,8 @@ test("implements the plan in build mode, or refines it with what was typed", asy
   await expect(page.getByRole("button", { name: "Refine" })).toBeVisible();
   await message.fill("");
 
-  await page.getByRole("button", { name: "Implement", exact: true }).click();
+  // Enter in an empty composer implements it, as T3's submit button does.
+  await message.press("Enter");
   const log = page.getByRole("log", { name: "Messages" });
   await expect(log.getByRole("article", { name: "You" }).last()).toContainText(
     "PLEASE IMPLEMENT THIS PLAN:",

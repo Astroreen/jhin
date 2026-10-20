@@ -427,7 +427,7 @@ export const chatPlugin = builtin(
           title,
           description,
           input: PlanTarget,
-          output: z.object({ threadId: z.string() }),
+          output: z.object({ threadId: z.string(), uncertain: z.string().optional() }),
           handler: async (input) => {
             const route = navigation.current();
             const node = input.node ?? route.node;

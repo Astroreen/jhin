@@ -182,6 +182,8 @@ describe("jhin.threads: thread management", () => {
     Fs.writeFileSync(Path.join(data, "secret.txt"), "keep");
     Fs.symlinkSync(Path.join(data, "secret.txt"), Path.join(dir, "linked.md"));
     Fs.symlinkSync(Path.join(data, "nowhere.md"), Path.join(dir, "dangling.md"));
+    // A folder on the way that is a link leading nowhere outside.
+    Fs.symlinkSync(Path.join(data, "missing-folder"), Path.join(dir, "gone"));
     for (const path of [
       "../escape.md",
       Path.join(data, "abs.md"),
@@ -189,6 +191,7 @@ describe("jhin.threads: thread management", () => {
       ".",
       "linked.md",
       "dangling.md",
+      "gone/x.md",
     ]) {
       await expect(
         client.call("projects.write-file", { projectId: project.id, path, contents: "x" }),
@@ -198,6 +201,7 @@ describe("jhin.threads: thread management", () => {
     expect(Fs.existsSync(Path.join(data, "through-link.md"))).toBe(false);
     expect(Fs.readFileSync(Path.join(data, "secret.txt"), "utf8")).toBe("keep");
     expect(Fs.existsSync(Path.join(data, "nowhere.md"))).toBe(false);
+    expect(Fs.existsSync(Path.join(data, "missing-folder"))).toBe(false);
     // A name that only starts with two dots is inside.
     await client.call("projects.write-file", {
       projectId: project.id,

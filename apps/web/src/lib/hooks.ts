@@ -141,9 +141,9 @@ export function useNow(intervalMs = 60_000): number {
 
 /** Copies text; `copied` is true for a moment after a successful copy. */
 export function useCopy(
-  onError?: (error: unknown) => void,
-  resetMs = 1200,
+  options: { readonly onError?: (error: unknown) => void; readonly resetMs?: number } = {},
 ): { copied: boolean; copy(text: string): void } {
+  const { onError, resetMs = 1200 } = options;
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;

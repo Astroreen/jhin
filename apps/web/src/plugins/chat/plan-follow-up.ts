@@ -29,7 +29,7 @@ class PlanError extends Error {
 export async function implementPlan(
   deps: { readonly threads: Pick<ThreadsCatalog, "call">; readonly navigation?: Navigation },
   input: { readonly target: NodeTarget; readonly threadId: string; readonly newThread: boolean },
-): Promise<{ readonly threadId: string }> {
+): Promise<{ readonly threadId: string; readonly uncertain?: string }> {
   const { threads, navigation } = deps;
   const { target, threadId } = input;
   const [events, { thread }] = await Promise.all([
@@ -71,5 +71,10 @@ export async function implementPlan(
     ...(target.remote === undefined ? {} : { remote: target.remote }),
     thread: started.threadId,
   });
-  return { threadId: started.threadId };
+  // The connection dropped the first message's answer: the new thread shows
+  // whether it arrived, and the caller says so.
+  return {
+    threadId: started.threadId,
+    ...(started.uncertain === undefined ? {} : { uncertain: started.uncertain.message }),
+  };
 }
