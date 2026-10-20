@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { TerminalViewport } from "../src/plugins/terminal/viewport.tsx";
 
+const ESC = String.fromCharCode(27);
 const cleanups: (() => void)[] = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
@@ -111,20 +112,54 @@ describe("the terminal viewport", () => {
     expect(view.writes).toEqual(["e"]);
   });
 
-  it("answers queries in live output, never those in the replay", async () => {
-    // A cursor position query (DSR 6) in the replay, then one in live output.
+  /**
+   * Live output that ends with a query only it can be answered with: a
+   * cursor position report at row 5, column 7. Every reply to what came
+   * before (the replay, then this output) is written by the time it is.
+   */
+  const SENTINEL = `${ESC}[5;7H${ESC}[6n`;
+  const SENTINEL_REPLY = `${ESC}[5;7R`;
+
+  /** A node whose kept output is `history`; once followed, `live` is sent as live output. */
+  async function replayThenLive(history: string, live: string) {
     let following!: () => void;
     const followed = new Promise<void>((resolve) => (following = resolve));
-    const view = render({ history: "$ \u001b[6n", onFollow: () => following() });
+    const view = render({ history, onFollow: () => following() });
     await followed;
     // Parsed after the replay: xterm takes writes in order.
-    view.output("\u001b[6n");
-    await view.sent((data) => data.endsWith("R"));
-    // One answer: to the live query; the replayed one stayed unanswered.
-    const ESC = String.fromCharCode(27);
-    const reports = view.writes.filter(
-      (data) => data.startsWith(`${ESC}[`) && /^\[\d+;\d+R$/.test(data.slice(1)),
-    );
-    expect(reports).toHaveLength(1);
+    view.output(`${live}${SENTINEL}`);
+    await view.sent((data) => data === SENTINEL_REPLY);
+    return view.writes;
+  }
+
+  it("answers queries in live output, never those in the replay", async () => {
+    // A cursor position query (DSR 6) in the replay; the cursor is at row 1, column 3 then.
+    expect(await replayThenLive(`$ ${ESC}[6n`, "")).toEqual([SENTINEL_REPLY]);
+    // The same query live is answered.
+    expect(await replayThenLive("$ ", `${ESC}[6n`)).toEqual([`${ESC}[1;3R`, SENTINEL_REPLY]);
+  });
+
+  // Every query this xterm answers, from replay.ts's list. DA3, XTWINOPS
+  // reports (off by default) and XTVERSION are muted too, but this xterm does
+  // not answer them, so there is nothing to see here.
+  const ANSWERED = {
+    "DSR 5 (status)": `${ESC}[5n`,
+    "DSR 6 (cursor position)": `${ESC}[6n`,
+    "DEC DSR 6": `${ESC}[?6n`,
+    DA1: `${ESC}[c`,
+    DA2: `${ESC}[>c`,
+    DECRQM: `${ESC}[4$p`,
+    "DECRQM (DEC mode)": `${ESC}[?25$p`,
+    DECRQSS: `${ESC}P$qm${ESC}\\`,
+    "OSC 4 (palette colour)": `${ESC}]4;1;?\u0007`,
+    "OSC 10 (foreground)": `${ESC}]10;?\u0007`,
+    "OSC 11 (background)": `${ESC}]11;?\u0007`,
+  };
+
+  it.each(Object.entries(ANSWERED))("does not answer %s in the replay", async (_name, query) => {
+    // Answered live: it is a query this xterm replies to.
+    expect(await replayThenLive("", query)).toHaveLength(2);
+    // Not answered when replayed.
+    expect(await replayThenLive(query, "")).toEqual([SENTINEL_REPLY]);
   });
 });
