@@ -60,6 +60,8 @@ export interface RunOptions {
   readonly timeoutMs?: number;
   /** Written to the program's stdin. */
   readonly input?: string;
+  /** Called with output as it arrives (a commit's hooks print while they run). */
+  readonly onOutput?: (stream: "stdout" | "stderr", text: string) => void;
 }
 
 /** A spawn error such as ENOENT: the program is missing. */
@@ -105,8 +107,12 @@ export function run(
       }
       out.push(chunk);
       size += chunk.length;
+      options.onOutput?.("stdout", chunk.toString("utf8"));
     });
-    child.stderr!.on("data", (chunk: Buffer) => err.push(chunk));
+    child.stderr!.on("data", (chunk: Buffer) => {
+      err.push(chunk);
+      options.onOutput?.("stderr", chunk.toString("utf8"));
+    });
     child.on("error", (error: NodeJS.ErrnoException) => {
       clearTimeout(timer);
       reject(new SpawnError(error.code ?? "SPAWN_FAILED", error.message));

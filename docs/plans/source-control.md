@@ -3,7 +3,9 @@
 Status: **implemented** (status, diffs, branches, pull requests, the card's
 indicators, the branch toolbar and the diff panel); W3 (checkpoints,
 reverting, worktrees, D240–D259) **in progress**: the turn hooks and a
-thread's own working directory (D241, D242) are done. This file records how
+thread's own working directory (D241, D242) are done; git actions (W4 of
+`t3-roadmap.md`, D260–D266) **implemented**; linking and watching pull
+requests and other forges (D267–D279) **in progress**. This file records how
 Jhin reads the git repositories of a node's projects, how the web client
 shows them as T3 Code does, what was left out and what is deferred.
 
@@ -399,6 +401,105 @@ with screenshots).
   for turn 0, otherwise resuming at the target turn's last answer); others start
   the next turn from the thread's transcript (D91).
 
+### Git actions (W4, D260–D266)
+
+- **D260. The reference for git actions is T3 Code `eb7b35ac` (D53)**:
+  `apps/web/src/components/GitActionsControl.tsx` and `.logic.ts` (the quick
+  action, its menu, the dialogs and toasts), `apps/server/src/git/GitManager.ts`
+  (`runStackedAction`), `apps/server/src/vcs/GitVcsDriverCore.ts` (staging,
+  pushing, pulling), `packages/shared/src/git.ts` (feature branch names) and
+  `packages/provider-core/src/server/textGenerationPrompts.ts` (the prompts).
+  T3 renders the control in its thread details panel at D53 and in the chat
+  header in its `toolbar` presentation; Jhin has no thread details panel yet,
+  so it is the toolbar presentation.
+- **D261. `git.action.run`** (`git.write`) runs one of T3's stacked actions,
+  `commit`, `push`, `create_pr`, `commit_push`, `commit_push_pr`, in a project
+  or a thread's project: a feature branch (`featureBranch`, commit actions
+  only), the commit, the push and the pull request, each only when the action
+  includes it (`create_pr` pushes first when the branch has no upstream or is
+  ahead), stopping at the first failure. As in T3: the commit takes every
+  change (`git add -A`) or only `filePaths` (`git reset`, then those paths);
+  what it would hold is read through a temporary index, so the user's own
+  staging is untouched until the commit; `commitMessage`'s first line is the
+  subject; a push goes to the branch's own name on its push remote
+  (`branch.<b>.pushRemote`, `remote.pushDefault`, `origin`, the first remote)
+  with `-u` when it has no upstream, never with force, and a branch cut from
+  another (`origin/dev`) gets its own remote branch and
+  `branch.<b>.gh-merge-base`; a pull request goes into `gh-merge-base`, else
+  the upstream's other branch, else the default branch, else `main`; an open
+  one for the branch is opened instead of created. The result is T3's
+  (`branch`, `commit`, `push`, `pr` with their statuses, and the toast: title,
+  description, call to action "Push", "View PR" or "Create PR"). Errors carry
+  `ACTION_UNAVAILABLE` (T3's messages: "Cannot push from detached HEAD.",
+  "Cannot create a feature branch because there are no changes to commit.",
+  "Cannot push because no git remote is configured for this repository.", …),
+  `GIT_FAILED` (git's own refusal, a commit hook's included) and
+  `PULL_REQUEST_FAILED` (the forge's). Actions of one project run one at a
+  time. A thread named with `threadId` is moved to a branch the action
+  created. `git.pull` pulls fast-forward only ("Pulled", "Already up to
+  date"); `git.init` makes a project's folder a repository (T3's "Initialize
+  Git"). `source-control.git` becomes 1.1 (`runAction`, `pull`).
+- **D262. Commit messages and pull requests are written by an agent of the
+  node**, as T3 writes them with its text generation: T3's prompts, in a turn
+  of its own (no thread history, every tool call declined) of the
+  `writerAgent` (config), else the thread's agent, else the first available
+  runtime of `agent.registry@1`; the answer's JSON (`subject`, `body`,
+  `branch`; `title`, `body`) is sanitized as T3 does (one line, no trailing
+  period, 72 characters). Unlike T3, an agent that is missing, fails or
+  answers no JSON does not fail the action: a plain writer names the files
+  ("Update greet.ts", "Update 3 files") and lists the commits under T3's
+  "## Summary" and "## Testing" headings. A repository's pull request
+  template (`.github/pull_request_template.md` and GitHub's other places, read
+  at the base) is handed to the writer.
+- **D263. Progress is a live stream**, `source-control/actions`
+  (`rpc.streams@1`, `git.read`): T3's `GitActionProgressEvent` as
+  `source-control.action.progress` events (`action_started` with its phases,
+  `phase_started` with T3's labels "Preparing feature branch...",
+  "Generating commit message...", "Committing...", "Pushing...",
+  "Preparing PR...", "Generating PR content...", "Creating pull request...",
+  `hook_output` with each line a commit hook prints, `action_finished`,
+  `action_failed`), under the `actionId` the client chose. The node keeps the
+  last 500; nothing survives a restart. A mesh member's live streams are not
+  mirrored (W17), so its actions show "Starting source control action..."
+  until they end.
+- **D264. A status says what the actions need**: `aheadOfDefault` (commits the
+  default branch lacks, 0 on the default branch; T3's `aheadOfDefaultCount`)
+  and `hasPrimaryRemote`, both optional. Without an upstream the client counts
+  `aheadOfDefault` as ahead, as T3 does.
+- **D265. The control is the contribution `jhin.source-control.git-actions`
+  to `chat.header.actions`** (order -100, before the diff toggle), for a
+  thread or draft of a repository: T3's quick action ("Commit, push & PR",
+  "Commit & push", "Push & create PR", "Create PR", "Pull", or a disabled one
+  whose popover says why), the menu "Git action options" (Commit, Push,
+  Create PR, each disabled with T3's reason), the "Commit changes" dialog
+  (branch, files with their counts, "Edit" to exclude files, the optional
+  message, "Commit on new branch", "Commit"), T3's default branch dialog
+  ("Commit & push to default ref?", "Check out feature branch & continue"),
+  the running action's phase, its elapsed time and a hook's last line on the
+  button, and the result as a toast with its call to action ("Action
+  failed" on failure). A project that is no repository shows "Initialize Git".
+- **D266. What is not ported**: T3's "Publish repository" (creating the
+  repository on a forge; the quick action says "Add an "origin" remote before
+  pushing." instead), its writing style settings (Conventional Commits, custom
+  instructions, the repository's conventions), the thread details panel's
+  presentation and opening a changed file in an editor from the commit dialog
+  (Deferred).
+
+The proof: `plugins/source-control/test/actions.test.ts` (temporary
+repositories pushing to a bare one and a fake `gh`: a commit with a message,
+only some files, a written message, commit and push with an upstream and its
+progress on the live stream, a refusing commit hook and its output, a
+feature branch named after the changes moving the thread, the refusals, an
+up-to-date push, commit, push and pull request with "View PR" and opening the
+existing one, a branch cut from `dev` targeting `dev` with the template, a
+refused pull request, pull, `aheadOfDefault`; branch names, messages,
+upstreams, the writer's JSON and plain messages);
+`apps/web/test/source-control.browser.test.tsx` (the quick action, the
+result toast, the default branch dialog going to a feature branch, a disabled
+quick action, "Initialize Git"); Playwright `e2e/tests/git-actions.spec.ts`
+(a real node: the menu, the commit dialog, committing, pushing and creating a
+pull request that then shows on the card, with screenshots).
+
 ## Deferred
 
 - **Checkpoints and per-turn diffs** (T3's "Latest turn" and "Turn N"
@@ -413,9 +514,15 @@ with screenshots).
   workspace selector, "Start from origin", worktree cleanup): needs a thread
   to carry a working directory of its own and the agent runtimes to run in
   it (`agent.runtime@1.1` gets the project's directory).
-- **Git actions** (T3's GitActionsControl: commit, push, create a pull
-  request, stacked actions) and linking pull requests to threads
-  (`git.pr.linked`, D34), several pull requests per thread and stacks.
+- Linking pull requests to threads (`git.pr.linked`, D34), several pull
+  requests per thread and stacks; watching a pull request (W4, D267–D279, in
+  progress).
+- Git actions (D266): T3's "Publish repository", writing style settings, the
+  thread details panel and opening a file from the commit dialog. Writer
+  turns go through `agent.runtime@1`'s `startTurn` under a throwaway thread
+  id, so a runtime that keeps live sessions (Claude Code) keeps one for it
+  until its idle time ends; a one-shot text generation operation of the
+  runtime would avoid it (W9).
 - Other forges (GitLab, Bitbucket, Azure DevOps, Forgejo), GitHub
   Enterprise hosts beyond `githubHosts`, and forks: `gh pr list --head`
   matches the branch name only, so a same-named branch of a fork can match.
