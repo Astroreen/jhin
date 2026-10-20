@@ -21,6 +21,24 @@ it again. They come back to the intent after every compaction. When ceremony
 outgrows progress, the owner and an agent that has the context hear about it.
 A working team can be saved and installed elsewhere like a plugin.
 
+### Two ways to work
+
+Jhin offers two ways of getting work done with AI, and they stay separate:
+
+- **Threads** (T3 Code's way) are for many projects at once, each with an
+  agent the owner works alongside. The owner watches every turn, and can
+  interrupt, stop, correct or steer it directly. The unit is a thread, and the
+  owner is in the loop of every turn.
+- **Civilization** is for large, long projects. Agents work for days, and
+  nobody watches every turn. The owner sets the intent and missions, talks to
+  the lead, answers what agents escalate, and watches health and progress.
+  The owner is above the loop, not in it. Steering a single agent turn by turn
+  is not how a civilization is run; the owner steers through the lead,
+  missions and intent, and can stop a team as a whole.
+
+The web client switches between them (D741). Everything in this plan belongs
+to the Civilization side and never shows up among the owner's threads.
+
 ## Rules for every workstream
 
 - Read `AGENTS.md` (trailhead), `docs/map.md`, `docs/README.md`, this plan,
@@ -52,8 +70,9 @@ A working team can be saved and installed elsewhere like a plugin.
 | A5  | Teams and team bundles                  | A1, A2      | D681–D700 |
 | A6  | Orchestration and refocus               | A1, A3, W10 | D701–D720 |
 | A7  | Health: ceremony against progress       | A2, A3      | D721–D740 |
+| A8  | Modes and the Civilization shell        | `main`      | D742–D760 |
 
-A1, A3 and A4 start together. A2 starts once A1 has settled its contract
+A1, A3, A4 and A8 start together. A2 starts once A1 has settled its contract
 (`agent-api` types and the `agents.*` commands), A5 and A7 once A2 has, and
 A6 once A3 has and W10 has landed.
 
@@ -75,6 +94,24 @@ A6 once A3 has and W10 has landed.
   (`builder`) names its runtime and model. Turns of defined agents record
   both `agentId` and `runtimeId`. A record without `runtimeId` is read as
   `runtimeId = agentId`.
+- **D741. Threads and Civilization are two modes of the client, and their
+  data stays apart.** A **mode** is a client contribution with its own layout
+  (sidebar and main area slots). The app chrome shows a mode switcher, the
+  mode is part of the route, and a keybinding switches it. Threads mode is
+  today's T3 Code layout, unchanged. Civilization mode is contributed by the
+  agents plugins. Users can add their own modes.
+  - Agent generations run on the same thread machinery (turns, runtimes,
+    event log), so nothing is built twice. They are marked as belonging to an
+    agent, so the thread lists and catalogs of Threads mode leave them out by
+    default (an additive filter; old clients see what they saw before).
+  - In Civilization mode an agent's generation is **observed, not driven**:
+    its transcript is readable, but there is no composer on it. The owner
+    talks to the lead (a conversation of its own), answers asks in an inbox
+    (A2), edits intent and missions (A3), and can stop or resume an agent or a
+    whole team. Correcting one agent mid-turn is Threads mode's job.
+  - A8 builds the mode capability, the switcher and the Civilization shell.
+    A1, A3, A5 and A7 contribute their views into that shell, not into the
+    Threads layout.
 
 ### A1. Agent entity (D602–D620)
 
@@ -98,9 +135,11 @@ config, and its state is storage:
 - commands: `agents.list` (additive), `agents.get`, `agents.define`,
   `agents.update`, `agents.remove`, `agents.rotate`, `agents.generations`.
   Events go to an `agents` stream.
-- client: agents show in the sidebar under their project, with their role
-  and a status (idle, working, waiting for the owner). A thread that is a
-  generation shows its agent in the header.
+- generations are threads marked with their agent (D741): Threads mode's
+  lists leave them out.
+- client, in Civilization mode (D741): a roster of agents with their role
+  and a status (idle, working, waiting for the owner), and an agent's page
+  with its generations, readable but without a composer, and stop and resume.
 
 Decisions are recorded here as they are taken.
 
@@ -118,7 +157,7 @@ Decisions are recorded here as they are taken.
   MCP can use them. Claude Code gets the node's MCP server attached (W9 owns
   that seam).
 - **The owner is addressable** (`jhin://<nodeId>/owner`): `agents.ask` to the
-  owner becomes a request in the client and a notification. Answering it
+  owner becomes an item in Civilization mode's inbox and a notification. Answering it
   answers the agent.
 - Every message carries a `traceId` and the sender's address, so a chain of
   asks can be followed in logs ([just following orders](../lore/just-following-orders.md)):
@@ -135,7 +174,7 @@ Decisions are recorded here as they are taken.
 - Stored as events in the project, editable through commands
   (`missions.*`, `slices.*`) and readable as Markdown, so humans and agents
   read the same thing.
-- client: a mission view with its waves, from which you zoom from mission to
+- client, in Civilization mode (D741): a mission view with its waves, from which you zoom from mission to
   slice to the thread of the agent working on it.
 - The **process per level** (for example spec → build → test for a slice,
   merging between slices, release between missions) is data on the mission,
@@ -195,11 +234,32 @@ What `docs/README.md` does by hand, as a plugin for any project:
 - A threshold crossed raises a **health warning** (event and notification to
   the owner) and asks **an agent that has the team's context** (its lead by
   default) to analyse it. A random agent is never asked.
-- client: a Health view with the warnings and a drill-down into the events
+- client, in Civilization mode (D741): a Health view with the warnings and a drill-down into the events
   behind them.
 - Recursive proof loops (proof edits after a slice is done) and repeated
   wrong ideas ([mind virus](../lore/mind-viruses.md)) are the first two
   named detectors.
+
+### A8. Modes and the Civilization shell (D742–D760)
+
+- A client capability for **modes** (`client.modes@1` or similar): a mode
+  has an id, a title, an icon and its own sidebar and main-area slots. The
+  mode is in the route (`navigation`), a keybinding and the command palette
+  switch it, and each mode remembers its own last place.
+- The **mode switcher** sits in the app chrome. With a single mode it is
+  hidden, so a node without the agents plugins looks like today.
+- **Threads mode**: today's layout moved under the mode, with no change of
+  behaviour, slot ids or contribution ids (AGENTS.md rule 8). Check the
+  e2e tests before and after. W14 changes the sidebar in parallel, so keep
+  the move mechanical and rebase often.
+- **Civilization shell**: the layout and the empty slots the other
+  workstreams fill. Sidebar sections: projects run as civilizations, teams
+  and agents (A1, A5), missions (A3), inbox (A2) and health (A7). Main area:
+  the conversation with the lead, plus whatever the sidebar opens. Ship it
+  with empty states that say which workstream fills each slot.
+- The server-side filter of D741: thread lists and catalogs leave out
+  threads marked as an agent's generation unless asked to include them. If
+  A1 has not landed the mark yet, agree on the field with A1.
 
 ## Deferred
 

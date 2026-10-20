@@ -22,8 +22,8 @@ from the latest nightly; the plan that ports it names the tag it used.
   `GLOSSARY.md`, the plan the workstream continues and this file first.
 - Decisions are numbered from the workstream's range below, so parallel
   branches never take the same number. A workstream that needs more numbers
-  takes the next free block of 20 after D740 and writes it here.
-  D600–D740 belong to the agent workstreams A1–A7 in `agents.md`.
+  takes the next free block of 20 after D760 and writes it here.
+  D600–D760 belong to the agent workstreams A1–A8 in `agents.md`.
 - Each workstream records its decisions in the plan it continues (or in a new
   plan named below), moves the items it finishes out of that plan's
   Deferred list, and adds what it leaves to Deferred.
