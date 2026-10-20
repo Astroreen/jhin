@@ -883,7 +883,7 @@ and resetting it clears them), with a screenshot.
   `threads.queue.updated` and `agent.turn.steered`; `agent.runtime@1.2`
   (`steering`, `AgentTurn.steer`); `storage.eventlog@1.1` (`records`); the
   error codes `QUEUED_MESSAGE_NOT_FOUND`, `STEER_UNSUPPORTED`,
-  `TURN_NOT_RUNNING` and `THREAD_EXISTS`, and `STORAGE_MISMATCH` when the
+  `TURN_NOT_RUNNING`, `STEER_IN_PROGRESS` and `THREAD_EXISTS`, and `STORAGE_MISMATCH` when the
   threads plugin starts; `messageId` on `agent.turn.started` for a queued
   message's turn. `threads.send` keeps refusing a busy thread
   (`TURN_IN_PROGRESS`).
@@ -970,6 +970,9 @@ and resetting it clears them), with a screenshot.
 - A browser component test of the composer's queue banner (the `mod-enter`
   send shortcut with something queued, the "Retry" label of a refused
   message): the e2e spec covers the flows with the default shortcut only.
+- A steered message whose removal from the queue could not be written, twice
+  (the steer's write and its retry), is kept from running again only in
+  memory: a node restarted before it would start sends it once more.
 - Idempotent sends: `threads.queue.add` ignores a `messageId` already queued,
   but a message that already left the queue (started or cancelled) is taken
   again; `threads.send` takes no id.

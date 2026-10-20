@@ -2556,6 +2556,14 @@ export default definePlugin({
         if (!queue.messages.some((item) => item.id === messageId)) {
           throw notQueued(threadId, messageId);
         }
+        // Promoted once at a time: a second call would clear the guard early.
+        if (steering.has(`${threadId}:${messageId}`)) {
+          throw new ThreadsError(
+            "STEER_IN_PROGRESS",
+            "This queued message is already being steered into the turn",
+            { threadId, messageId },
+          );
+        }
         // Not delivered as a turn of its own while the agent takes it.
         steering.add(`${threadId}:${messageId}`);
         try {
