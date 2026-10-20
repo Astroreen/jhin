@@ -544,11 +544,6 @@ export function createLiveSessions(options: {
   /** Puts the turn's model, effort and mode on a running session; false when it cannot. */
   const adapt = async (live: Live, launch: Options) => {
     try {
-      if (launch.effort !== live.effort) {
-        if (live.query.applyFlagSettings === undefined) return false;
-        await live.query.applyFlagSettings({ effortLevel: launch.effort ?? null });
-        live.effort = launch.effort;
-      }
       if (launch.model !== live.model) {
         if (live.query.setModel === undefined) return false;
         await live.query.setModel(launch.model);
@@ -560,6 +555,12 @@ export function createLiveSessions(options: {
         }
         await live.query.setPermissionMode(launch.permissionMode);
         live.permissionMode = launch.permissionMode;
+      }
+      // Last: a session the model or mode cannot go to keeps its effort when it is kept.
+      if (launch.effort !== live.effort) {
+        if (live.query.applyFlagSettings === undefined) return false;
+        await live.query.applyFlagSettings({ effortLevel: launch.effort ?? null });
+        live.effort = launch.effort;
       }
       return !live.closed;
     } catch (error) {
@@ -732,6 +733,8 @@ export function createLiveSessions(options: {
           // Still queued: it will run, so it is stopped again as soon as it starts, or now
           // when its first frame came before the receipt.
           if (uuid !== undefined && receipt?.still_queued?.includes(uuid) === true) {
+            // Not once the turn let go: the session may run a later turn's message by then.
+            if (released) return receipt;
             if (begun) void session.query.interrupt().catch(() => undefined);
             else interruptOnStart = true;
           }
@@ -740,6 +743,7 @@ export function createLiveSessions(options: {
         release(keep) {
           if (released) return;
           released = true;
+          interruptOnStart = false;
           // The turn reads no more: its messages end, also when it lets go mid-turn.
           holder.end();
           if (session.holder === holder) session.holder = undefined;

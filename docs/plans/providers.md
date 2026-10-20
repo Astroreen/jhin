@@ -350,13 +350,9 @@ specific to Claude: the runtime is a plugin on the public API.
   composer.
 - Subagent transcripts; today only the `Agent` tool's result shows. T3 shows
   a Claude subagent as a child thread of the parent (`subagentProjection`'s
-  `makeSubagentChildThread`, the parent's subagent rows), not inside the tool
-  call. Jhin's child threads (`parentThreadId`, `relationshipToParent:
-  "subagent"`) come with W10's delegated tasks (its plan
-  `orchestration.md`, D363, not in `main` yet),
-  which also defers the subagent rows; the transcript lands there once both
-  are in `main`, and it needs a way for a runtime to write a child thread's
-  items, which `agent.runtime@1` does not have (W9 left it).
+  `makeSubagentChildThread`), not inside the tool call. Jhin has no child
+  threads yet (W10's delegated tasks bring them), nor a way for a runtime to
+  write another thread's items through `agent.runtime@1`.
 - Codex and OpenCode runtimes.
 - A snapshot frame Claude Code would send twice for one unstreamed block
   (not seen so far) shows twice: since D342 identical texts are not merged.

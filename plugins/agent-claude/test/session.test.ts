@@ -934,6 +934,42 @@ describe("jhin.agent-claude: W9 live sessions", () => {
     expect(calls[0]!.interrupts).toBe(2);
   });
 
+  it("does not interrupt again once the stopped turn let go (D350)", async () => {
+    let giveReceipt!: (receipt: unknown) => void;
+    const late = new Promise((resolve) => (giveReceipt = resolve));
+    const { claude, calls, state } = node([
+      async function* (player) {
+        const uuid = player.call.prompt[0]!.uuid;
+        yield answeringUuid(uuid, init());
+        yield* streamedBlock("m1", 0, "text", ["half"]);
+        await player.interrupted;
+        yield answeringUuid(
+          uuid,
+          result({
+            subtype: "error_during_execution",
+            errors: [],
+            terminal_reason: "aborted_streaming",
+          }),
+        );
+        await player.nextPrompt();
+      },
+    ]);
+    state.receipt = () => late;
+    const turn = claude.startTurn({
+      threadId: THREAD,
+      turnId: "t1",
+      input: { text: "count" },
+      history: [],
+      cwd: "/work",
+      model: "claude-haiku-5-5",
+    });
+    for await (const item of turn.items) if (item.kind === "message.completed") turn.interrupt();
+    // The receipt comes after the turn ended: the session may run another turn by now.
+    giveReceipt({ still_queued: [calls[0]!.prompt[0]!.uuid] });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(calls[0]!.interrupts).toBe(1);
+  });
+
   it("changes the effort of the running Claude Code live (D349)", async () => {
     const { turn, calls, settings } = node([answering("one", "two", "three")]);
     await turn();
