@@ -728,8 +728,8 @@ Workstream W14 of `t3-roadmap.md` (D440–D459). The reference is T3 Code
   both conditions can apply." Saving is never blocked. "Both can apply" is
   T3's cheap test: either rule has no `when` (always), or both have the same
   text. Another rule of the same command is no conflict (T3 compares rows
-  and would name the row's own command). The keys are compared as the
-  platform presses them (`keybindingConflicts` in `apps/web/src/lib/keybindings.ts`, the same key
+  and would name the row's own command). The keys are compared as the platform presses them
+  (`keybindingConflicts` in `apps/web/src/lib/keybindings.ts`, the same key
   the resolver uses to let the last rule win), so `mod+k` and `ctrl+k`
   conflict on Linux, where T3 compares the strings. A search hides rows, not
   their conflicts. T3 also warns while a key is recorded, before saving;
@@ -754,10 +754,12 @@ and resetting it clears them), with a screenshot.
   member shows the kind to every client, as T3 keeps the icon on the
   environment's server. An unreachable member's menu says "Connect to this
   node to change its icon." and its kinds are disabled. Without a
-  contribution to the slot the member has no menu button.
+  contribution to the slot (hidden ones do not count) the member has no
+  menu button; a contribution that renders nothing still counts.
 
 The proof of D442: `apps/web/test/machines.browser.test.tsx` (the submenu in
-both slots) and `e2e/tests/mesh.spec.ts` ("D442": a and b in one mesh, b's
+both slots; a member's submenu setting the kind on the member, and doing
+nothing while the member is out of reach) and `e2e/tests/mesh.spec.ts` ("D442": a and b in one mesh, b's
 menu in a's settings changes b's icon, kept in b's node file; once b is
 stopped its menu says so and its kinds are disabled), with a screenshot.
 

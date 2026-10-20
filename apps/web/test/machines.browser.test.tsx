@@ -6,16 +6,24 @@ import {
   targetKey,
   type Connections,
   type NodeConnection,
+  type NodeMemberActionProps,
   type NodeMachines,
   type NodeTarget,
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import { definePlugin, toDisposable, type Logger } from "@jhin/sdk";
 import { createTestKernel, mockCapability, testManifest, type TestKernel } from "@jhin/testing";
-import { UI_SLOTS_CAPABILITY, createSlotRegistry, type SlotRegistry } from "@jhin/ui";
+import {
+  Menu,
+  MenuPopup,
+  UI_SLOTS_CAPABILITY,
+  createSlotRegistry,
+  type SlotRegistry,
+} from "@jhin/ui";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import { MachineIcon } from "../src/lib/machine-icon.tsx";
 import { useMachineKind } from "../src/lib/machines.ts";
@@ -294,5 +302,54 @@ describe("the node-machines plugin", () => {
     expect(t.slots.list("node.member.actions").map((item) => item.id)).toEqual([
       "jhin.node-machines.member-icon",
     ]);
+  });
+
+  it("gives a mesh member's menu the Icon submenu, set on the member, idle while out of reach (D442)", async () => {
+    const t = await start();
+    const IconMenu = t.slots.list("node.member.actions")[0]!
+      .component as React.ComponentType<NodeMemberActionProps>;
+    const connection = t.connections.list()[0]!;
+    const render = async (reachable: boolean) => {
+      const container = document.createElement("div");
+      document.body.append(container);
+      const root = createRoot(container);
+      await act(async () =>
+        root.render(
+          <Menu open>
+            <MenuPopup>
+              <IconMenu
+                connection={connection}
+                member={{ nodeId: "b", name: "b", self: false, reachable }}
+              />
+            </MenuPopup>
+          </Menu>,
+        ),
+      );
+      (page.getByRole("menuitem", { name: "Icon" }).element() as HTMLElement).focus();
+      await userEvent.keyboard("{ArrowRight}");
+      return () => {
+        act(() => root.unmount());
+        container.remove();
+      };
+    };
+
+    const close = await render(true);
+    const cloud = t.changed({ node: A, remote: "b" });
+    await userEvent.click(page.getByRole("menuitemradio", { name: "Cloud VM" }));
+    expect(await cloud).toBe("cloud");
+    expect(t.calls.find((call) => call.method === "host.config.patch")?.target).toEqual({
+      node: A,
+      remote: "b",
+    });
+    close();
+
+    const calls = t.calls.length;
+    const closeUnreachable = await render(false);
+    expect(page.getByText("Connect to this node to change its icon.").element()).toBeTruthy();
+    expect(
+      page.getByRole("menuitemradio", { name: "Laptop" }).element().getAttribute("aria-disabled"),
+    ).toBe("true");
+    expect(t.calls.length).toBe(calls);
+    closeUnreachable();
   });
 });
