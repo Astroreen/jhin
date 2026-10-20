@@ -136,3 +136,37 @@ test("D80: edits a config section as a form and saves it to the node file, keepi
     /"retries": 4/,
   );
 });
+
+test("D441: a shortcut that another command has warns of the conflict", async ({ page }, info) => {
+  node = await startNode();
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Keybindings" })
+    .click();
+  const conflict = page.getByRole("img", { name: /^Conflicts with / });
+  await expect(
+    page.getByRole("button", { name: "Change shortcut of Toggle sidebar" }),
+  ).toBeVisible();
+  await expect(conflict).toHaveCount(0);
+
+  // Give "Toggle sidebar" (always) the palette's ⌘/Ctrl+K: both rows warn.
+  await page.getByRole("button", { name: "Change shortcut of Toggle sidebar" }).click();
+  await page.getByRole("textbox", { name: "New shortcut for Toggle sidebar" }).press("Control+k");
+  await expect(page.getByRole("img", { name: "Conflicts with Command palette." })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Conflicts with Toggle sidebar." })).toBeVisible();
+  await page.getByRole("img", { name: "Conflicts with Command palette." }).hover();
+  await expect(
+    page.getByText(
+      "Conflicts with Command palette. The most recent matching binding wins when both conditions can apply.",
+    ),
+  ).toBeVisible();
+  const shot = info.outputPath("keybinding-conflict.png");
+  await page.screenshot({ path: shot });
+  await info.attach("keybinding-conflict", { path: shot, contentType: "image/png" });
+
+  // Reset: the conflict goes with it.
+  await page.getByRole("button", { name: "Reset shortcut of Toggle sidebar" }).click();
+  await expect(conflict).toHaveCount(0);
+});

@@ -5,11 +5,26 @@ import {
   type ActiveKeybinding,
   type KeybindingRule,
 } from "@jhin/client-api";
-import { Badge, Button, Input, Kbd, KbdGroup } from "@jhin/ui";
+import {
+  Badge,
+  Button,
+  Input,
+  Kbd,
+  KbdGroup,
+  Tooltip,
+  TooltipPopup,
+  TooltipTrigger,
+} from "@jhin/ui";
+import { TriangleAlertIcon } from "lucide-react";
 import { useState } from "react";
 
 import { useCommands, useExternal } from "../../lib/hooks.ts";
-import { formatShortcutLabel, keyFromEvent, parseShortcut } from "../../lib/keybindings.ts";
+import {
+  formatShortcutLabel,
+  keybindingConflicts,
+  keyFromEvent,
+  parseShortcut,
+} from "../../lib/keybindings.ts";
 import { readSection } from "../../lib/settings.ts";
 import { SettingsEmpty, SettingsRow, SettingsSection } from "../../lib/settings-layout.tsx";
 import { useSettingsServices } from "./index.tsx";
@@ -40,6 +55,34 @@ function ShortcutPill({ shortcutKey }: { shortcutKey: string }) {
     <KbdGroup>
       <Kbd>{formatShortcutLabel(shortcut)}</Kbd>
     </KbdGroup>
+  );
+}
+
+/** A rule's keys also run other commands where both can apply (T3's KeybindingConflictWarning). */
+function ConflictWarning({ labels }: { labels: readonly string[] }) {
+  if (labels.length === 0) return null;
+  const description =
+    labels.length === 1
+      ? `Conflicts with ${labels[0]}.`
+      : `Conflicts with ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? ", and more" : ""}.`;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-label={description}
+            className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-warning/25"
+            role="img"
+            tabIndex={0}
+          />
+        }
+      >
+        <TriangleAlertIcon aria-hidden className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        {description} The most recent matching binding wins when both conditions can apply.
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 
@@ -74,6 +117,18 @@ export function KeybindingsSection() {
       rules: custom().filter((rule) => rule.command !== command),
     });
 
+  const labelOf = (command: string) => titles.get(command) ?? commandLabel(command);
+  /** Every rule's conflicts, over all rules: a search hides rows, not conflicts. */
+  const conflicts = new Map(
+    active.map((rule, index) => [
+      rule,
+      [
+        ...new Set(
+          keybindingConflicts(active, index).map((other) => labelOf(active[other]!.command)),
+        ),
+      ].toSorted(),
+    ]),
+  );
   const normalized = query.trim().toLowerCase();
   const rows = active.filter((rule) => {
     if (normalized === "") return true;
@@ -109,8 +164,10 @@ export function KeybindingsSection() {
               className="group/row rounded-none"
               control={
                 <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  <ConflictWarning labels={conflicts.get(rule) ?? []} />
                   {rule.source === "config" ? (
                     <Button
+                      aria-label={`Reset shortcut of ${labelOf(rule.command)}`}
                       className="opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
                       onClick={() => reset(rule.command)}
                       size="xs"

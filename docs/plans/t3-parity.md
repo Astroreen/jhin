@@ -528,6 +528,32 @@ a cloud node: different icons on their cards, in the project filter, the
 palette and the add-project picker, none with one node; the Icon menu and
 the node config form each changing a node's icon, kept in its node file).
 
+### Sidebar and client follow-ups (W14)
+
+Workstream W14 of `t3-roadmap.md` (D440–D459). The reference is T3 Code
+`eb7b35ac` (D53).
+
+- **D441. Conflicting keybindings warn on the settings page**, as T3's
+  KeybindingConflictWarning does: a row whose keys another rule has, where
+  both can apply, shows T3's amber triangle before its shortcut, named
+  "Conflicts with Command palette." (up to three commands, then ", and
+  more"), and its tooltip adds "The most recent matching binding wins when
+  both conditions can apply." Saving is never blocked. "Both can apply" is
+  T3's cheap test: either rule has no `when` (always), or both have the same
+  text. Another rule of the same command is no conflict (T3 compares rows
+  and would name the row's own command). The keys are compared as the platform presses them
+  (`keybindingConflicts` in `apps/web/src/lib/keybindings.ts`, the same key
+  the resolver uses to let the last rule win), so `mod+k` and `ctrl+k`
+  conflict on Linux, where T3 compares the strings. A search hides rows, not
+  their conflicts. T3 also warns while a key is recorded, before saving;
+  here a recorded key is saved at once, so the warning follows it.
+
+The proof of D441: `apps/web/test/keybindings.test.ts` ("keybindingConflicts",
+conditions that can both apply, keys as pressed on Linux and on a Mac, rules
+without a valid shortcut) and `e2e/tests/config.spec.ts` ("D441": giving
+"Toggle sidebar" the palette's Ctrl+K warns on both rows, with the tooltip,
+and resetting it clears them), with a screenshot.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -578,7 +604,6 @@ the node config form each changing a node's icon, kept in its node file).
   connection opens again or the page reloads (D132).
 - Visits and drafts are per device; syncing them, and device settings, across
   devices.
-- Warnings for conflicting keybindings in the settings page.
 - Idempotent thread creation (an id chosen by the client): a
   `threads.create` whose answer the connection dropped can leave an empty
   thread behind.
