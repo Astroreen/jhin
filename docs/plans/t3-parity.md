@@ -967,6 +967,9 @@ and resetting it clears them), with a screenshot.
 - Thumbnails of queued images: `threads.queue.updated` carries their names
   and types only (the data stays in the queue's record), so a queued row shows
   text, not T3's thumbnails, until attachments are blobs (W6).
+- A browser component test of the composer's queue banner (the `mod-enter`
+  send shortcut with something queued, the "Retry" label of a refused
+  message): the e2e spec covers the flows with the default shortcut only.
 - Idempotent sends: `threads.queue.add` ignores a `messageId` already queued,
   but a message that already left the queue (started or cancelled) is taken
   again; `threads.send` takes no id.
