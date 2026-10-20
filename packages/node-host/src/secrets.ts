@@ -91,13 +91,6 @@ function schemasOfItem(schema: Schema, index: number): unknown[] {
 const described = (schemas: unknown[]): unknown[] | undefined =>
   schemas.length === 0 ? undefined : schemas;
 
-/**
- * Calls `visit` for every value a secret (and returns what it gives), walking
- * `value` along every schema that describes it, so a union hides what any of
- * its branches would: hiding too much is safe, hiding too little is not. An
- * unknown schema (`undefined`: no plugin defines the section) makes every
- * scalar a secret.
- */
 /** Keywords that say nothing of a value's shape. */
 const ANNOTATIONS = new Set([
   "title",
@@ -119,6 +112,13 @@ const opaque = (schema: Schema) => Object.keys(schema).every((key) => ANNOTATION
 /** What `visit` learns of a secret: where it is, and whether it sits inside a list. */
 type Visit = (value: unknown, path: readonly string[], inList: boolean) => unknown;
 
+/**
+ * Calls `visit` for every value a secret (and returns what it gives), walking
+ * `value` along every schema that describes it, so a union hides what any of
+ * its branches would: hiding too much is safe, hiding too little is not. An
+ * unknown schema (`undefined`: no plugin defines the section) makes every
+ * scalar a secret.
+ */
 function mapSecrets(
   schemas: readonly unknown[] | undefined,
   value: unknown,
