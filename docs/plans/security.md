@@ -86,11 +86,12 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
 
 - **D415. Subscriptions to the event log need a permission.** `rpc.streams`
   1.1 adds `guard(name, permissions)`: a stream of the event log (or every
-  stream under a prefix ending in `/`) needs these permissions to subscribe,
+  stream under a prefix ending in `/`) needs these permissions (or what a
+  function of the stream returns) to subscribe,
   checked like a live stream's (D141). A stream nobody guards needs
   `events.read`. First-party guards: `threads` and `thread/` need
-  `threads.read`, `mirror/` (copies of members' threads, D26) needs
-  `threads.read`, `mesh` needs `mesh.read`, `mesh/outbox` needs
+  `threads.read`, `mirror/<owner>/<stream>` (copies of members' streams,
+  D26) needs what the copied stream needs, `mesh` needs `mesh.read`, `mesh/outbox` needs
   `mesh.admin`, `source-control` needs `git.read`; terminal streams keep
   `terminals.read` (D141). A plugin guards its streams through the optional
   `rpc.streams@^1.1`. The owner's `*` holds them all, so nothing changes for
@@ -107,7 +108,10 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   unchanged. A `scope` that is not a list of grants holds nothing. An absent
   one is trusted to the member grants on purpose: members are one owner's
   nodes (D22), and a node that wants less from them narrows
-  `memberPermissions`.
+  `memberPermissions`. The settings fan-out (`mesh.config.patch`, D20) is
+  such a call: its changes are queued and delivered later, when the
+  caller's grants are gone, so they run with the node's own authority; the
+  command therefore needs `host.config.write` itself, besides `mesh.admin`.
 
 ### Secrets
 

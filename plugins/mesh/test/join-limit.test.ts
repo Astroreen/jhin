@@ -92,3 +92,24 @@ describe("/mesh/join rate limit behind a reverse proxy", () => {
     expect(same).toContain(429);
   });
 });
+
+describe("config fan-out authority (security.md D416)", () => {
+  it("needs host.config.write from its caller, since delivery runs with the node's own", async () => {
+    await node({});
+    const narrow = connectInMemory(kernel!, {
+      caller: { id: "client:narrow", permissions: ["mesh.*"] },
+    }).client;
+    await expect(
+      narrow.call("mesh.config.patch", {
+        nodes: "all",
+        layer: "node",
+        section: "jhin.example",
+        values: { greeting: "x" },
+      }),
+    ).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+      details: { missing: ["host.config.write"] },
+    });
+    narrow.close();
+  });
+});

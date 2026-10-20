@@ -47,7 +47,15 @@ export default definePlugin({
     const trace = context.services.tryGet<HostTrace>(HOST_TRACE_CAPABILITY);
     /** Open connections and whom each acts as (undefined until its token is checked). */
     const sockets = new Map<WebSocket, string | undefined>();
+    /**
+     * Principals revoked while some token was still being checked: a socket
+     * whose check ends after the revoke is closed then (security.md D414).
+     */
+    let checking = 0;
+    let revocations = 0;
+    const revokedWhileChecking: { readonly seq: number; readonly principal: string }[] = [];
     const closeAll = (principal: string, reason: string) => {
+      if (checking > 0) revokedWhileChecking.push({ seq: ++revocations, principal });
       for (const [socket, owner] of sockets) {
         if (owner === principal) socket.close(CLOSE_UNAUTHENTICATED, reason);
       }
@@ -69,8 +77,21 @@ export default definePlugin({
         sockets.delete(socket);
         expiry?.dispose();
       });
-      const caller = await verifier.verify(token === undefined ? {} : { token });
-      if (caller === undefined) {
+      checking++;
+      const since = revocations;
+      let caller: Awaited<ReturnType<AuthVerifier["verify"]>>;
+      let revoked = false;
+      try {
+        caller = await verifier.verify(token === undefined ? {} : { token });
+      } finally {
+        checking--;
+      }
+      if (caller !== undefined) {
+        const id = caller.id;
+        revoked = revokedWhileChecking.some((entry) => entry.seq > since && entry.principal === id);
+      }
+      if (checking === 0) revokedWhileChecking.length = 0;
+      if (caller === undefined || revoked) {
         context.log.warn("connection refused: bad or missing token");
         socket.close(CLOSE_UNAUTHENTICATED, "unauthenticated");
         return;

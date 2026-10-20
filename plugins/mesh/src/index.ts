@@ -172,8 +172,18 @@ export default definePlugin({
     if (live?.guard !== undefined) {
       context.subscriptions.add(live.guard(MESH_STREAM, ["mesh.read"]));
       context.subscriptions.add(live.guard(OUTBOX_STREAM, ["mesh.admin"]));
-      // Copies of members' threads and mesh streams (D26).
-      context.subscriptions.add(live.guard("mirror/", ["threads.read"]));
+      // Copies of members' streams (D26) need what the stream itself needs.
+      context.subscriptions.add(
+        live.guard("mirror/", (stream) => {
+          // `mirror/<owner>/<stream>`, where a relay's copy may itself be a mirror.
+          let copied = stream;
+          while (copied.startsWith("mirror/")) copied = copied.split("/").slice(2).join("/");
+          if (copied === MESH_STREAM) return ["mesh.read"];
+          return copied === "threads" || copied.startsWith("thread/")
+            ? ["threads.read"]
+            : ["mesh.admin"];
+        }),
+      );
     }
 
     const transport: MeshTransport = {

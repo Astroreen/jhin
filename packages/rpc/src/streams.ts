@@ -46,9 +46,13 @@ export interface LiveStreams {
    * Since 1.1: a subscriber to the event log's stream `name`, or to every
    * stream starting with `name` when it ends in `/`, needs `permissions`.
    * A stream no guard names needs `events.read`. A name guarded twice is
-   * refused.
+   * refused. `permissions` may be a function of the stream, for a prefix
+   * whose streams need different permissions.
    */
-  guard(name: string, permissions: readonly string[]): Disposable;
+  guard(
+    name: string,
+    permissions: readonly string[] | ((stream: string) => readonly string[]),
+  ): Disposable;
   /** Since 1.1: what a subscriber to the event log's `stream` needs, when a guard says. */
   guardOf(stream: string): readonly string[] | undefined;
 }
@@ -68,7 +72,7 @@ function lookup<T>(entries: ReadonlyMap<string, T>, stream: string): T | undefin
 
 export function createLiveStreams(): LiveStreams {
   const sources = new Map<string, ServedStream>();
-  const guards = new Map<string, readonly string[]>();
+  const guards = new Map<string, (stream: string) => readonly string[]>();
   return {
     serve(name, source, options = {}) {
       if (name.length === 0) throw new Error("A live stream needs a name");
@@ -83,13 +87,15 @@ export function createLiveStreams(): LiveStreams {
     guard(name, permissions) {
       if (name.length === 0) throw new Error("A guarded stream needs a name");
       if (guards.has(name)) throw new Error(`The stream ${name} is already guarded`);
-      const entry = [...permissions];
+      const fixed = typeof permissions === "function" ? undefined : [...permissions];
+      const entry =
+        typeof permissions === "function" ? permissions : () => fixed as readonly string[];
       guards.set(name, entry);
       return toDisposable(() => {
         if (guards.get(name) === entry) guards.delete(name);
       });
     },
-    guardOf: (stream) => lookup(guards, stream),
+    guardOf: (stream) => lookup(guards, stream)?.(stream),
   };
 }
 

@@ -341,3 +341,37 @@ describe("device tokens (security.md D411–D414)", () => {
     ]);
   });
 });
+
+describe("a revoke while a token is checked (security.md D414)", () => {
+  it("drops a connection whose principal was revoked before its check ended", async () => {
+    let called!: () => void;
+    const checking = new Promise<void>((resolve) => (called = resolve));
+    let answer!: (principal: { id: string; permissions: string[] }) => void;
+    const verified = new Promise<{ id: string; permissions: string[] }>(
+      (resolve) => (answer = resolve),
+    );
+    const kernel = await createTestKernel({
+      plugins: [
+        mockCapability("auth.verifier", {
+          verify: () => {
+            called();
+            return verified;
+          },
+        }),
+        { manifest: manifest("http"), definition: http },
+        { manifest: manifest("transport-ws"), definition: transport },
+        echo,
+      ],
+      config: { node: { "jhin.http": { port: 0 } } },
+    });
+    kernels.push(kernel);
+    const { url } = (await kernel.commands.execute("http.info", {})) as { url: string };
+    const device = connect(`${url.replace(/^http/, "ws")}/rpc`, "a-token-being-checked");
+
+    await checking;
+    kernel.events.emit("auth.client.revoked", { principal: "client:a" });
+    answer({ id: "client:a", permissions: ["*"] });
+    await closed(device);
+    expect(device.closeReason).toMatchObject({ code: "UNAUTHENTICATED" });
+  });
+});

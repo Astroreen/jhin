@@ -215,6 +215,15 @@ describe("guarded streams of the event log (security.md D415)", () => {
     for (const { client } of [reader, stranger, patterned]) client.close();
   });
 
+  it("asks a guard given as a function per stream", () => {
+    const live = createLiveStreams();
+    live.guard("mirror/", (stream) =>
+      stream.endsWith("/mesh") ? ["mesh.read"] : ["threads.read"],
+    );
+    expect(live.guardOf("mirror/n1/mesh")).toEqual(["mesh.read"]);
+    expect(live.guardOf("mirror/n1/thread/7")).toEqual(["threads.read"]);
+  });
+
   it("refuses a name guarded twice and frees it on dispose", () => {
     const live = createLiveStreams();
     const first = live.guard("a/", ["x"]);
