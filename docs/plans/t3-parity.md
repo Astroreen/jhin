@@ -554,6 +554,136 @@ without a valid shortcut) and `e2e/tests/config.spec.ts` ("D441": giving
 "Toggle sidebar" the palette's Ctrl+K warns on both rows, with the tooltip,
 and resetting it clears them), with a screenshot.
 
+### Server-side queue and steering (W1, `t3-roadmap.md`)
+
+- **D200. The reference is T3 Code's server queue** (D53's tag,
+  `eb7b35ac`): `apps/server/src/orchestration-v2/Orchestrator.ts` (queued runs
+  with a `queuePosition`, `queueHeld` after a stop or a failure,
+  `queue.resume`, `queued-run.edit`, `queued-run.reorder`,
+  `queued-run.cancel`, `queued-message.promote-to-steer`), `QueuedRunOrder.ts`,
+  the client's `QueuedRunsControl.tsx` and `composerDispatch.ts` (the
+  "Follow-up behavior" setting), and `ClaudeAdapterV2.ts` (`steerTurn`). T3's
+  automatic completion deliveries (delegated tasks) and restarts of a turn
+  with the new message are not part of it (W10 and Deferred).
+- **D201. A thread's queue lives on its node.** A message sent while the
+  thread runs a turn is stored in the node's `storage.kv`
+  (`jhin.threads`, `queue/<threadId>`) with the agent, model and modes it
+  was typed with, so it outlives the page that sent it and a restart of the
+  node. `threads.queue.add` (`threadId`, `text`, `attachments?`, the agent
+  settings, an optional `messageId` the caller chooses) starts a turn at once
+  when the thread is free and its queue empty and not held, and answers
+  `{ messageId, turnId }`; otherwise the message joins the end of the queue
+  (`{ messageId }`). Adding a `messageId` already queued changes nothing. Each
+  change of the queue appends `threads.queue.updated` to the thread's stream
+  with the whole queue (`messages` in order, each with its text, settings,
+  times and its attachments' names and types; the images stay in the
+  record) and `held`, so a client follows a thread's queue from the stream it
+  already reads, and `threads.queue.list` returns it with the images.
+- **D202. Delivery, and a queue held as T3 holds it.** When a turn ends the
+  node starts the first queued message as the thread's next turn, through
+  the same path as `threads.send` (titles, settings, D68's reservation): the
+  message leaves the queue when its turn is reserved. A turn that was
+  interrupted or failed, also one the node closed after a restart, holds
+  the queue (`held: { reason: "interrupted" | "failed", turnId }`), as T3's
+  `queueHeld` does after a stop, until `threads.queue.resume`. A queued
+  message the node cannot start (the thread archived, its agent gone) stays
+  first and holds the queue with `reason: "refused"` and the error; resuming
+  tries it again. Archiving a thread stops its turn, so its queue is held;
+  deleting it drops the queue. When the node starts, every free thread with
+  a queue that is not held starts its next message.
+- **D203. Editing, reordering and cancelling queued messages**, T3's
+  commands: `threads.queue.edit` (`messageId`, `text`, `attachments?`; a
+  message left with neither is refused, `MESSAGE_EMPTY`),
+  `threads.queue.reorder` (`messageId`, `beforeMessageId`: the message it
+  goes before, `null` for the end) and `threads.queue.cancel`. A message not
+  in the queue (sent or cancelled meanwhile) is `QUEUED_MESSAGE_NOT_FOUND`.
+  Changes to a queue run one at a time with the thread's other changes, so
+  a reorder and the delivery of the first message never cross.
+- **D204. `agent.runtime@1.2` (additive): steering.** A runtime that takes
+  messages into a running turn says so (`steering: true`) and its turns have
+  `steer(input)`: synchronous, it hands the message to the running turn, or
+  throws when the turn can take nothing more (it ended or is ending).
+  `agents.list` reports `steering`. The fake agent steers: a `/hold` turn
+  steered answers "Echo: <message>" and completes.
+- **D205. `threads.steer` and `threads.queue.steer`.** `threads.steer` sends
+  a message into the thread's running turn; the turn records it as
+  `agent.turn.steered` (`{ turnId, messageId, input }`) right after the agent
+  took it, before anything the agent answers to it. On a free thread it
+  starts a turn, as `threads.queue.add` does; when the turn ends before the
+  agent took the message, the message is queued first instead, as T3 starts
+  the follow-up turn when a steer comes too late. The answer says which
+  (`outcome`: `steered`, `started`, `queued`). An agent that cannot steer
+  refuses it (`STEER_UNSUPPORTED`). `threads.queue.steer` (T3's
+  promote-to-steer) moves a queued message into the running turn the same
+  way; it leaves the queue only once the agent took it.
+- **D206. Steering Claude Code**, as T3's `steerTurn`: the message goes into
+  the live query the turn holds (D98) as a user message with
+  `priority: "now"`. Claude Code then ends its current response with a
+  result whose `terminal_reason` is `aborted_streaming` or `aborted_tools`;
+  that result does not end the turn, which goes on with the steer. Frames
+  marked with the steer's uuid are the turn's, and the turn ends at the
+  first result after its last steer that is not such an abort. A steer that
+  comes while the turn waits for its Claude Code goes in right after the
+  turn's message; one after the turn read its result is refused. T3's move of
+  foreground subagents to the background before a steer is not ported
+  (Deferred).
+- **D207. `threads.create` with an id the caller chooses** (`threadId`,
+  letters, digits, `_` and `-`, up to 128) is idempotent: asked again with
+  the same id and project it returns the thread it made as it is (a later
+  call's title and agent settings change nothing), also when two calls come
+  at once. An id of another project's thread or of a deleted
+  thread is refused (`THREAD_EXISTS`). A creation that stopped after the
+  thread's first event is finished by the next call with that id, with the
+  thread that event recorded. The web client chooses the id of every thread
+  it starts and asks again with it when the connection dropped the answer;
+  after any other failure the draft takes a new id, since a thread deleted
+  after its refused first message keeps its id taken.
+- **D208. One write for a record and its index event:
+  `storage.eventlog@1.1`** (additive) takes `records` with an append: entries
+  of the `storage.kv` the same plugin provides, set or deleted in the same
+  transaction as the events. The threads plugin requires it and writes each
+  thread and project record together with its `threads` index event, so a
+  client following the index never misses a change the records show
+  (`threads.catalog`), nor sees one they do not. A thread's deletion keeps
+  its record until the index announces it; the thread takes no messages
+  meanwhile (D68). SQLite and the in-memory storage implement it. The records
+  go to the store the event log belongs to, so `storage.kv` and
+  `storage.eventlog` must come from one plugin: the threads plugin checks
+  that when it starts, with an append of no events and one record, and
+  refuses to start otherwise (`STORAGE_MISMATCH`). A creation that loses the
+  race for its id to another process sharing the storage (`CONFLICT` on the
+  stream's first event) looks at the stream again, as a second call would.
+- **D209. The composer queues or steers, as T3's "Follow-up behavior"
+  says.** While a turn runs, sending queues the message (the device setting
+  "Follow-up behavior": Queue, the default, or Steer) and ⌘/Ctrl+Enter
+  (`chat.composer.send-alternate`, T3's `composer.sendAlternate`) does the
+  other for one message. Steering falls back to queueing for an agent that
+  cannot steer. The client's own queue goes: the composer calls
+  `threads.queue.add` or `threads.steer`, and a thread's queue is what its
+  stream's last `threads.queue.updated` says, on every client of the node.
+- **D210. The queue banner is T3's `QueuedRunsControl`.** "Queued" with the
+  count above the composer; each row has a grip to drag it or move it with
+  ↑/↓ ("Reorder queued message (drag, or press the arrow keys)"), "Edit
+  queued message" (the composer takes its text and images, saving runs
+  `threads.queue.edit`, "Cancel" leaves it), "Steer" (enabled while the
+  running turn's agent steers; "Send as a steer instead") and "Remove from
+  queue". A held queue says why ("The turn was stopped", "The turn failed",
+  or the refusal) with "Resume". Client commands with T3's keys:
+  `chat.queue.steer-next` (⌘/Ctrl+Shift+Enter, T3's
+  `thread.steerQueuedMessage`) and `chat.queue.edit-latest` (Alt+↑ with the
+  caret at the composer's start, T3's `thread.editQueuedMessage`). A steered
+  message shows in the timeline as a user message inside its turn.
+- **D211. Public API this adds:** the commands `threads.queue.add`,
+  `threads.queue.list`, `threads.queue.edit`, `threads.queue.reorder`,
+  `threads.queue.cancel`, `threads.queue.resume`, `threads.queue.steer` and
+  `threads.steer`; `threadId` of `threads.create`; the events
+  `threads.queue.updated` and `agent.turn.steered`; `agent.runtime@1.2`
+  (`steering`, `AgentTurn.steer`); `storage.eventlog@1.1` (`records`); the
+  error codes `QUEUED_MESSAGE_NOT_FOUND`, `STEER_UNSUPPORTED` and
+  `THREAD_EXISTS`; `STORAGE_MISMATCH` when the threads plugin starts.
+  `threads.send` keeps refusing a busy thread
+  (`TURN_IN_PROGRESS`).
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -569,7 +699,7 @@ and resetting it clears them), with a screenshot.
   (`docs/plans/providers.md`).
 - A server-side message queue and steering: follow-ups wait in the client
   while a turn runs, go out only while the page is open, and are lost if it
-  closes.
+  closes. W1 is moving them to the node (D200–D206, D209, D210).
 - Git and source control: done in `source-control.md` (D110–D120) for the
   branch, diff and pull request on the cards, the branch toolbar and the diff
   panel; checkpoints and reverting to a turn, worktrees, git actions
@@ -604,13 +734,6 @@ and resetting it clears them), with a screenshot.
   connection opens again or the page reloads (D132).
 - Visits and drafts are per device; syncing them, and device settings, across
   devices.
-- Idempotent thread creation (an id chosen by the client): a
-  `threads.create` whose answer the connection dropped can leave an empty
-  thread behind.
-- One write for a record and its index event: a thread's or project's record
-  is written, then its event appended to the index. If the append fails, the
-  clients following the index miss that change until they load the catalog
-  again (`threads.catalog` reads the records).
 - Attachments as blobs: images travel as data URLs inside the turn's first
   event, hence the 20 MB per message (D54).
 - Code splitting of the web client: the main chunk is over 500 kB minified.
@@ -624,6 +747,19 @@ and resetting it clears them), with a screenshot.
   `host.config.read` can go to a caller that may not see them. The marker
   exists now (`writeOnly`, `config-ui.md` D83) and the form masks such
   values; the redaction is still to do.
+
+- Steering (W1): moving Claude's foreground subagents to the background
+  before a steer (T3 does, so a steer does not cancel them; here the steer's
+  `priority: "now"` may stop them), restarting a turn with the new message
+  for agents that cannot steer (T3's `restart` dispatch), and steering a
+  turn that waits for an approval or an answer (the agent gets the message
+  once it goes on).
+- Idempotent sends: `threads.queue.add` ignores a `messageId` already queued,
+  but a message that already left the queue (started or cancelled) is taken
+  again; `threads.send` takes no id.
+
+Done since in `t3-roadmap.md`'s W1: idempotent thread creation (D207) and
+one write for a record and its index event (D208).
 
 Done since in `terminal.md` (D140–D148): the terminal drawer (node-pty and
 xterm.js), the `terminalFocus` context key and the card's terminal indicator.

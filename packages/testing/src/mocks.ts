@@ -25,7 +25,7 @@ export function mockCapability(
 }
 
 /**
- * A plugin providing in-memory `storage.kv@1` and `storage.eventlog@1`.
+ * A plugin providing in-memory `storage.kv@1` and `storage.eventlog@1.1`.
  * The returned `storage` lets a test read what plugins wrote.
  */
 export function memoryStoragePlugin(): TestPlugin & { readonly storage: MemoryStorage } {
@@ -33,7 +33,7 @@ export function memoryStoragePlugin(): TestPlugin & { readonly storage: MemorySt
   return {
     storage,
     manifest: testManifest("mock.storage", {
-      provides: { [KV_CAPABILITY]: "1.0.0", [EVENTLOG_CAPABILITY]: "1.0.0" },
+      provides: { [KV_CAPABILITY]: "1.0.0", [EVENTLOG_CAPABILITY]: "1.1.0" },
     }),
     definition: definePlugin({
       activate(context) {

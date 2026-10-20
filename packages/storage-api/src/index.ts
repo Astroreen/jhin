@@ -6,6 +6,7 @@ export {
   assertCount,
   assertEvents,
   assertName,
+  assertRecords,
   compareKeys,
   copyJson,
   createNotifier,
@@ -15,6 +16,7 @@ export {
   type Json,
   type KeyValueStore,
   type NewEvent,
+  type RecordWrite,
   type StorageErrorCode,
   type StoredEvent,
 } from "./types.ts";

@@ -3,7 +3,7 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 
 import type { RpcClient } from "@jhin/rpc";
-import type { StoredEvent } from "@jhin/storage-api";
+import type { EventLog, Json, KeyValueStore, StoredEvent } from "@jhin/storage-api";
 import {
   connectInMemory,
   createTestKernel,
@@ -104,4 +104,33 @@ export function watch(client: RpcClient, threadId: string) {
     return new Promise<StoredEvent>((resolve) => matchers.push({ test, resolve }));
   };
   return { events, until, untilMatch };
+}
+
+/**
+ * Runs `hook` before each record the threads plugin writes or removes
+ * (`value` undefined), whether through `storage.kv` or with an append's
+ * `records` (D208); a hook that throws fails that write.
+ */
+export function onRecordWrite(
+  storage: { readonly kv: KeyValueStore; readonly log: EventLog },
+  hook: (key: string, value: Json | undefined) => void | Promise<void>,
+) {
+  const { kv, log } = storage;
+  const set = kv.set.bind(kv);
+  const remove = kv.delete.bind(kv);
+  const append = log.append.bind(log);
+  kv.set = async (namespace, key, value) => {
+    await hook(key, value);
+    return set(namespace, key, value);
+  };
+  kv.delete = async (namespace, key) => {
+    await hook(key, undefined);
+    return remove(namespace, key);
+  };
+  log.append = async (stream, events, options) => {
+    for (const record of options?.records ?? []) {
+      await hook(record.key, "delete" in record ? undefined : record.value);
+    }
+    return append(stream, events, options);
+  };
 }

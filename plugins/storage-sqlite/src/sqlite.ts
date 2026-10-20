@@ -5,6 +5,7 @@ import {
   assertCount,
   assertEvents,
   assertName,
+  assertRecords,
   createNotifier,
   parseStored,
   type EventLog,
@@ -167,7 +168,12 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
       assertName("stream", stream);
       assertEvents(events);
       assertCount("expectedHead", options.expectedHead);
+      const records = options.records ?? [];
+      assertRecords(records);
       const payloads = events.map((event) => serialize(event.payload));
+      const values = records.map((record) =>
+        "delete" in record ? undefined : serialize(record.value),
+      );
       let stored: StoredEvent[];
       db.exec("BEGIN IMMEDIATE");
       try {
@@ -191,6 +197,12 @@ export function openSqliteStorage(file: string, now: () => Date = () => new Date
             payload: JSON.parse(payloads[index]!) as Json,
             at,
           };
+        });
+        // In the same transaction: the records and the events land together.
+        records.forEach((record, index) => {
+          const value = values[index];
+          if (value === undefined) statements.kvDelete.run(record.namespace, record.key);
+          else statements.kvSet.run(record.namespace, record.key, value);
         });
         db.exec("COMMIT");
       } catch (error) {
