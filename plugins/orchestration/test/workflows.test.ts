@@ -136,6 +136,39 @@ return { echoed, failed, piped, counted, stubborn }`;
     });
   });
 
+  it("needs the workflows.run permission besides threads.write", async () => {
+    const { kernel, client } = await node();
+    const parent = await parentThread(client);
+    await expect(
+      kernel.commands.execute(
+        "workflows.run",
+        {
+          script: "export const meta = { name: 'x', description: 'y' }\nreturn 1",
+          parentThreadId: parent.id,
+        },
+        { caller: { id: "agent", permissions: ["threads.read", "threads.write"] } },
+      ),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+  });
+
+  it("stops an agent that asks the user: nobody answers inside a workflow", async () => {
+    const { client } = await node();
+    const feed = orchestrationFeed(client);
+    const parent = await parentThread(client);
+    const { workflowId } = await client.call<{ workflowId: string }>("workflows.run", {
+      script:
+        "export const meta = { name: 'ask', description: 'Asks' }\nreturn { answer: await agent('/ask', { label: 'asker' }) }",
+      parentThreadId: parent.id,
+    });
+    const done = await feed.workflow(workflowId, (record) => record.status !== "running");
+    expect(done).toMatchObject({
+      status: "completed",
+      result: { answer: null },
+      logs: ["Agent asker asked the user something and was stopped: a workflow agent cannot ask."],
+    });
+    expect((done.agents as WorkflowView["agents"])[0]).toMatchObject({ status: "cancelled" });
+  });
+
   it("stops the agents a script left running when it ends", async () => {
     const { client } = await node();
     const feed = orchestrationFeed(client);

@@ -187,7 +187,9 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   `pipeline(items, ...stages)` (no barrier; a stage gets `(previous, item,
   index)`; a throw drops the item to `null`), `phase(title)`, `log(message)`
   and `args`. Each `agent()` is a delegated task of the workflow's parent
-  thread (D363, labelled by `label`), run to its end; it returns the task's
+  thread (D363, labelled by `label`), run to its end (nobody answers inside
+  a workflow, so an agent that asks the user or waits for an approval is
+  cancelled, and the run's log says so); it returns the task's
   summary, or `null` when the task did not complete. With `schema` (a JSON
   Schema with `type: "object"` and `properties` at its root, `required` ⊆
   `properties`) the prompt asks for one JSON object matching it, and the
@@ -205,9 +207,14 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   running when it ends (it threw, or returned without waiting) is cancelled.
 - **D375. A script runs with the node's rights.** Node's `vm` is no security
   boundary and the hooks are the node's own functions (a script reaches
-  `process` through them), so `workflows.run` needs `threads.write` and a
-  calling thread in `full-access` mode: a thread that must ask before a
-  command cannot run one (`RUNTIME_MODE_ESCALATION_DENIED`).
+  `process` through them): whoever runs a script runs arbitrary code on the
+  node, and can stall it after the script's first `await`, where
+  `workflows.stop` no longer helps (D374). So `workflows.run` needs its own
+  permission, `workflows.run`, besides `threads.write`, and a calling thread
+  in `full-access` mode (`RUNTIME_MODE_ESCALATION_DENIED` otherwise). The
+  owner's token holds it; a thread's agent does not (W9's
+  `AGENT_PERMISSIONS`), so an agent acting on injected content cannot run
+  one. Granting it to agents waits for scoped permissions (W13).
 - **D376. Following and stopping a workflow.** A run's record
   (`workflow/<id>`, mirrored as `orchestration.workflow.updated`) holds its
   meta, `status` (`running`, `completed`, `failed`, `stopped`), the phases
@@ -238,6 +245,9 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   saved workflows by name and `scriptPath`, custom `agentType`s.
 - Delegating to an agent on another mesh node (`target.node`): today a task
   runs on the parent's node.
+- Pruning old task and workflow records: they stay in `storage.kv` (and in
+  memory) for good; `tasks.list` and `workflows.list` without a thread list
+  them all.
 - Running workflow scripts out of process (a worker or a child process),
   which would bound their asynchronous part too and give them no node
   rights.

@@ -49,6 +49,12 @@ export const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1000;
 const MAX_AGENTS_PER_WORKFLOW = 1000;
 const MAX_ITEMS_PER_CALL = 4096;
+/**
+ * Running a script is running code on the node (D375), so it takes a permission
+ * of its own. The node's owner token holds it; a thread's agent does not
+ * (`AGENT_PERMISSIONS` of jhin.agent-claude), until scoped grants (W13).
+ */
+export const WORKFLOWS_RUN_PERMISSION = "workflows.run";
 /** How long a workflow body may run before its first `await` (D374). */
 const SCRIPT_SYNC_TIMEOUT_MS = 1000;
 const MAX_WORKFLOW_LOGS = 200;
@@ -379,6 +385,8 @@ export default definePlugin({
     const threadListeners = new Set<(thread: ThreadRecord) => void>();
     const writes = new Map<string, Promise<unknown>>();
     const running = new Map<string, AbortController>();
+    /** The latest record of each thread the `threads` index reported. */
+    const seenThreads = new Map<string, ThreadRecord>();
     let disposed = false;
 
     /** One write after another per record: the store and the stream keep its order. */
@@ -559,6 +567,7 @@ export default definePlugin({
         const parsed = ThreadRecord.safeParse(event.payload);
         if (!parsed.success) return;
         const thread = parsed.data;
+        if (thread.parentThreadId !== undefined) seenThreads.set(thread.id, thread);
         for (const listener of threadListeners) listener(thread);
         for (const task of tasks.values()) {
           if (task.childThreadId === thread.id) {
@@ -696,7 +705,12 @@ export default definePlugin({
 
     // --- Views -------------------------------------------------------------------------
 
-    async function view(task: Task, waitTimedOut = false): Promise<z.input<typeof TaskView>> {
+    /** `fresh` reads the child thread; otherwise its last record in the index counts. */
+    async function view(
+      task: Task,
+      waitTimedOut = false,
+      fresh = false,
+    ): Promise<z.input<typeof TaskView>> {
       const nested =
         [...tasks.values()].some(
           (child) => child.parentThreadId === task.childThreadId && !isTerminal(child),
@@ -707,8 +721,14 @@ export default definePlugin({
         );
       let hasPendingChildRuns = false;
       if (isTerminal(task)) {
-        const child = await getThread(task.childThreadId).catch(() => undefined);
-        hasPendingChildRuns = child?.running !== undefined && child.running !== task.childTurnId;
+        if (fresh) {
+          const child = await getThread(task.childThreadId).catch(() => undefined);
+          hasPendingChildRuns = child?.running !== undefined && child.running !== task.childTurnId;
+        } else {
+          const turn = seenThreads.get(task.childThreadId)?.lastTurn;
+          hasPendingChildRuns =
+            turn !== undefined && turn.turnId !== task.childTurnId && !ENDED_TURN.has(turn.status);
+        }
       }
       const workState = !isTerminal(task)
         ? "working"
@@ -741,12 +761,18 @@ export default definePlugin({
     /** Resolves once the task ended (or asks a question, with `questions`), or after `timeoutMs`. */
     function waitFor(
       taskId: string,
-      options: { timeoutMs?: number; questions: boolean; signal?: AbortSignal },
+      options: {
+        timeoutMs?: number;
+        /** `questions`: also when it asks the user something; `any`: also when it waits for an approval. */
+        waiting: "none" | "questions" | "any";
+        signal?: AbortSignal;
+      },
     ): Promise<{ timedOut: boolean }> {
       const done = (task: Task | undefined) =>
         task === undefined ||
         task.endedAt !== undefined ||
-        (options.questions && task.hasPendingQuestion);
+        (options.waiting === "questions" && task.hasPendingQuestion) ||
+        (options.waiting === "any" && task.status === "waiting");
       if (done(tasks.get(taskId))) return Promise.resolve({ timedOut: false });
       return new Promise((resolve) => {
         let timer: NodeJS.Timeout | undefined;
@@ -1048,7 +1074,7 @@ export default definePlugin({
             Number.isFinite(input.timeoutMs) ? input.timeoutMs! : DEFAULT_WAIT_TIMEOUT_MS,
           ),
         );
-        const { timedOut } = await waitFor(task.taskId, { timeoutMs, questions: true });
+        const { timedOut } = await waitFor(task.taskId, { timeoutMs, waiting: "questions" });
         let latest = tasks.get(task.taskId) ?? task;
         // Not over when the wait returned: its end wakes the parent after all.
         if (latest.endedAt === undefined && latest.wake === "none") {
@@ -1074,7 +1100,7 @@ export default definePlugin({
         ) {
           task = await saveTask({ ...task, delivery: "acknowledged" });
         }
-        return view(task);
+        return view(task, false, true);
       },
     });
 
@@ -1367,9 +1393,16 @@ export default definePlugin({
               resolve(seen.get(id)!);
             };
             // Ended before the listener knew its id.
-            void getThread(threadId).then(({ thread }) => {
-              if (thread.lastTurn?.turnId === turnId) listener(thread);
-            });
+            void getThread(threadId).then(
+              ({ thread }) => {
+                if (thread.lastTurn?.turnId === turnId) listener(thread);
+              },
+              // Gone (or unreadable): the retry has no answer to wait for.
+              () => {
+                signal.removeEventListener("abort", onAbort);
+                resolve("interrupted");
+              },
+            );
           }));
         if (status !== "completed") return undefined;
         const events = await log.read(threadStream(threadId));
@@ -1444,7 +1477,19 @@ export default definePlugin({
       }
       await setAgent({ taskId: task.taskId, status: task.status });
       if (signal.aborted) await cancelTask(task, "The workflow was stopped");
-      await waitFor(task.taskId, { questions: false, signal });
+      await waitFor(task.taskId, { waiting: "any", signal });
+      // Nobody answers inside a workflow: an agent that asks the user stops there.
+      if ((tasks.get(task.taskId) ?? task).status === "waiting" && !signal.aborted) {
+        await cancelTask(task, "A workflow agent cannot ask the user");
+        await updateWorkflow(workflow.workflowId, (current) => ({
+          ...current,
+          logs: [
+            ...current.logs,
+            `Agent ${options.label ?? options.index} asked the user something and was stopped: a workflow agent cannot ask.`,
+          ].slice(-MAX_WORKFLOW_LOGS),
+        }));
+        await waitFor(task.taskId, { waiting: "none", signal });
+      }
       const done = tasks.get(task.taskId) ?? task;
       await setAgent({ status: done.status });
       if (done.status !== "completed" || signal.aborted) return null;
@@ -1577,7 +1622,7 @@ export default definePlugin({
     context.commands.register({
       name: "workflows.run",
       description:
-        "Runs a workflow script that orchestrates several agents, as the Workflow tool does. The script begins with `export const meta = { name, description, phases? }` (a pure literal) and its body is plain JavaScript using agent(prompt, {label, phase, schema, model, agentId, isolation}), parallel(thunks), pipeline(items, ...stages), phase(title), log(message) and args. Each agent is a delegated task of the calling thread. Returns at once with a workflowId; the workflow's end wakes the calling thread with a message, so end the turn instead of polling. Date.now(), new Date() and Math.random() are unavailable.",
+        "Runs a workflow script that orchestrates several agents, as the Workflow tool does. The script begins with `export const meta = { name, description, phases? }` (a pure literal) and its body is plain JavaScript using agent(prompt, {label, phase, schema, model, agentId, isolation}), parallel(thunks), pipeline(items, ...stages), phase(title), log(message) and args. Each agent is a delegated task of the calling thread. Returns at once with a workflowId; the workflow's end wakes the calling thread with a message, so end the turn instead of polling. Date.now(), new Date() and Math.random() are unavailable. The script runs inside the node with the node's rights (it can reach the node's own functions and block it after its first await), so it needs the workflows.run permission and a full-access calling thread.",
       input: z.object({
         script: z
           .string()
@@ -1587,7 +1632,7 @@ export default definePlugin({
         parentThreadId: z.string().min(1).optional(),
       }),
       output: z.object({ workflowId: z.string(), name: z.string(), status: WorkflowStatus }),
-      permissions: ["threads.write"],
+      permissions: ["threads.write", WORKFLOWS_RUN_PERMISSION],
       handler: async ({ script, args, parentThreadId: named }, invocation) => {
         const parentThreadId = requireThread(callerThread(named, invocation), "workflows.run");
         const { thread: parent } = await getThread(parentThreadId, invocation);
@@ -1716,8 +1761,10 @@ export default definePlugin({
       if (parsed.success) workflows.set(parsed.data.workflowId, parsed.data);
     }
     // Workflows do not resume (Deferred): one that ran when the node stopped failed.
+    const orphaned = new Set<string>();
     for (const workflow of workflows.values()) {
       if (workflow.status === "running") {
+        orphaned.add(workflow.workflowId);
         await saveWorkflow({
           ...workflow,
           status: "failed",
@@ -1727,11 +1774,6 @@ export default definePlugin({
         });
       }
     }
-    const orphaned = new Set(
-      [...workflows.values()]
-        .filter((workflow) => workflow.status === "failed" && workflow.endedAt !== undefined)
-        .map((workflow) => workflow.workflowId),
-    );
     // After activation, so the commands this calls are all there.
     void (async () => {
       // The agents of a run that ended with the node (or a reload) stop too.
