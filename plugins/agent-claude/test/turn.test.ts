@@ -262,8 +262,8 @@ describe("jhin.agent-claude: a turn", () => {
   it("never starts Claude Code when stopped before the session lookup ends", async () => {
     const sessions = memorySessions();
     let stop = () => {};
-    const lookup = sessions.has;
-    sessions.has = async (threadId) => {
+    const lookup = sessions.get;
+    sessions.get = async (threadId) => {
       const found = await lookup(threadId);
       stop();
       return found;

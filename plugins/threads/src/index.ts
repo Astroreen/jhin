@@ -31,6 +31,7 @@ import {
   type TurnInput,
   type TurnEndHookInput,
   type TurnHookInput,
+  visibleThreadEvents,
 } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
@@ -43,6 +44,7 @@ import {
   type KeyValueStore,
   type NewEvent,
   type RecordWrite,
+  type StoredEvent,
 } from "@jhin/storage-api";
 
 export { THREADS_STREAM };
@@ -494,6 +496,8 @@ export default definePlugin({
       context.subscriptions.add(live.guard("thread/", ["threads.read"]));
     }
     const active = new Map<string, Running>();
+    /** Rollbacks under way (D220): they hold their thread as a turn does. */
+    const rollingBack = new Map<string, Promise<void>>();
     /**
      * Threads being deleted, and those whose deletion failed after it was
      * recorded: no turn starts on them. Kept apart from archives, so an archive
@@ -839,6 +843,11 @@ export default definePlugin({
           turnId: current.turnId,
         });
       }
+      if (rollingBack.has(threadId)) {
+        throw new ThreadsError("TURN_IN_PROGRESS", "The thread is rolling back its turns", {
+          threadId,
+        });
+      }
       if (deleted.has(threadId)) {
         throw new ThreadsError("THREAD_NOT_FOUND", `No thread ${threadId}`, { threadId });
       }
@@ -986,7 +995,8 @@ export default definePlugin({
           agentId: runtime.agentId,
           cwd: thread.worktreePath ?? project.path,
         };
-        const history = await log.read(stream);
+        // What the thread still shows: a rollback's dropped turns are not history (D221).
+        const history = visibleThreadEvents(await log.read(stream));
         // The record says the turn runs before its first event is written: a node
         // that stops in between finds it on restart and closes it.
         await setTurnStatus(thread.id, turnId, runtime.agentId, "running");
@@ -1241,6 +1251,8 @@ export default definePlugin({
      * waits on storage and the turn start hooks, as recording its end would.
      */
     async function stopTurn(threadId: string): Promise<void> {
+      // A rollback under way is never cut short: it ends by itself (D220).
+      await rollingBack.get(threadId);
       const current = active.get(threadId);
       if (current === undefined) return;
       current.interrupted = true;
@@ -2750,6 +2762,145 @@ export default definePlugin({
           outcome: sent.turnId === undefined ? ("queued" as const) : ("started" as const),
         };
       },
+    });
+
+    // --- History (D220–D221) ----------------------------------------------------
+    /** How a turn ended, by the type of its last event. */
+    const ENDINGS: Record<string, TurnStatus> = {
+      [ThreadEvents.turnCompleted]: "completed",
+      [ThreadEvents.turnInterrupted]: "interrupted",
+      [ThreadEvents.turnFailed]: "failed",
+    };
+    const turnIdOf = (event: { payload: unknown }) =>
+      (event.payload as { turnId?: unknown } | null)?.turnId;
+
+    /** The record's `lastTurn` for a turn of the thread's visible events, once it ended. */
+    function endedTurn(events: readonly StoredEvent[], turnId: string): Thread["lastTurn"] {
+      const ofTurn = events.filter((event) => turnIdOf(event) === turnId);
+      const started = ofTurn.find((event) => event.type === ThreadEvents.turnStarted);
+      const ended = ofTurn.findLast((event) => ENDINGS[event.type] !== undefined);
+      const agentId = (started?.payload as { agentId?: unknown } | null)?.agentId;
+      return {
+        turnId,
+        // A turn with no end recorded was closed by a restart (or never got one): stopped.
+        status: ended === undefined ? "interrupted" : ENDINGS[ended.type]!,
+        at: (ended ?? started)?.at ?? now(),
+        agentId: typeof agentId === "string" ? agentId : "",
+      };
+    }
+
+    /** The events a thread still shows and its visible turns, oldest first. */
+    async function visibleTurns(threadId: string) {
+      const events = visibleThreadEvents(await log.read(threadStream(threadId)));
+      const turns = events
+        .filter((event) => event.type === ThreadEvents.turnStarted)
+        .map(turnIdOf)
+        .filter((turnId): turnId is string => typeof turnId === "string");
+      return { events, turns };
+    }
+
+    const turnNotFound = (threadId: string, turnId: string) =>
+      new ThreadsError("TURN_NOT_FOUND", `The thread shows no turn ${turnId}`, {
+        threadId,
+        turnId,
+      });
+
+    /**
+     * Drops the turns after `toTurnId` (every turn without it): one event on the
+     * thread's stream, the log itself untouched. The caller holds the thread, so
+     * no turn starts, and no archive or deletion writes, meanwhile.
+     */
+    async function dropTurns(
+      thread: Thread,
+      toTurnId: string | undefined,
+    ): Promise<{ thread: Thread; turnIds: string[] }> {
+      const { events, turns } = await visibleTurns(thread.id);
+      const kept = toTurnId === undefined ? 0 : turns.indexOf(toTurnId) + 1;
+      if (toTurnId !== undefined && kept === 0) throw turnNotFound(thread.id, toTurnId);
+      const dropped = turns.slice(kept);
+      if (dropped.length === 0) {
+        // Nothing to drop, but a rollback whose record update failed after its
+        // event was written left the record naming a dropped turn: mend it.
+        const last = turns.at(-1);
+        if (thread.lastTurn === undefined || thread.lastTurn.turnId === last) {
+          return { thread, turnIds: [] };
+        }
+        const shown = last === undefined ? undefined : endedTurn(events, last);
+        const mended = await updateThread(thread.id, (latest) => {
+          const { lastTurn: _lastTurn, ...rest } = latest;
+          return { ...rest, ...(shown === undefined ? {} : { lastTurn: shown }) };
+        });
+        return { thread: mended, turnIds: [] };
+      }
+      return context.hooks.run(
+        ThreadHooks.rollback,
+        { thread, turnIds: dropped, ...(toTurnId === undefined ? {} : { toTurnId }) },
+        // A hook may wrap, delay or refuse the rollback, not change what it drops: the
+        // event and the record are written from what the thread shows.
+        async () => {
+          await log.append(threadStream(thread.id), [
+            {
+              type: ThreadEvents.threadRolledBack,
+              payload: {
+                turnIds: dropped,
+                ...(toTurnId === undefined ? {} : { toTurnId: toTurnId }),
+              },
+            },
+          ]);
+          const last = toTurnId === undefined ? undefined : endedTurn(events, toTurnId);
+          const next = await updateThread(thread.id, (latest) => {
+            const { lastTurn: _lastTurn, ...rest } = latest;
+            return {
+              ...rest,
+              updatedAt: now(),
+              ...(last === undefined ? {} : { lastTurn: last }),
+            };
+          });
+          return { thread: next, turnIds: dropped };
+        },
+      );
+    }
+
+    /**
+     * A rollback on its own: it holds the thread while it drops, so no turn
+     * starts and no archive or deletion writes meanwhile (they wait for it).
+     */
+    async function rollback(
+      threadId: string,
+      toTurnId: string | undefined,
+    ): Promise<{ thread: Thread; turnIds: string[] }> {
+      const read = await getThread(threadId);
+      if (read.archivedAt !== undefined) throw archivedError(threadId);
+      // Checking that the thread is free and holding it is one synchronous step.
+      if (active.has(threadId) || rollingBack.has(threadId)) {
+        throw new ThreadsError("TURN_IN_PROGRESS", "The thread is running a turn", { threadId });
+      }
+      if (deleted.has(threadId)) {
+        throw new ThreadsError("THREAD_NOT_FOUND", `No thread ${threadId}`, { threadId });
+      }
+      if (archiving.has(threadId)) throw archivedError(threadId);
+      let release!: () => void;
+      rollingBack.set(threadId, new Promise<void>((done) => (release = done)));
+      try {
+        const thread = await getThread(threadId);
+        if (thread.archivedAt !== undefined) throw archivedError(threadId);
+        return await dropTurns(thread, toTurnId);
+      } finally {
+        rollingBack.delete(threadId);
+        release();
+        // Messages queued while it held the thread go on (D202).
+        void deliver(threadId);
+      }
+    }
+
+    context.commands.register({
+      name: "threads.rollback",
+      description:
+        "Drops the turns of a thread after `turnId` (every turn without it); their events stay in the log, marked dropped. Refused while a turn runs",
+      input: z.object({ threadId: z.string(), turnId: z.string().optional() }),
+      output: z.object({ thread: Thread, turnIds: z.array(z.string()) }),
+      permissions: ["threads.write"],
+      handler: ({ threadId, turnId }) => rollback(threadId, turnId),
     });
 
     context.commands.register({

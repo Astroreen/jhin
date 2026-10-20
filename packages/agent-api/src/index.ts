@@ -42,7 +42,11 @@ export interface TurnRequest {
   readonly threadId: string;
   readonly turnId: string;
   readonly input: TurnInput;
-  /** Every earlier event of the thread, oldest first. */
+  /**
+   * Every earlier event the thread still shows, oldest first: without the
+   * turns a rollback dropped (`visibleThreadEvents`; since `agent.registry` 1.1). A runtime
+   * that keeps its own conversation checks it against this.
+   */
   readonly history: readonly StoredEvent[];
   /** Where the agent works: the thread's worktree, else its project's directory. */
   readonly cwd: string;
@@ -256,6 +260,12 @@ export const ThreadEvents = {
   turnCompleted: "agent.turn.completed",
   turnInterrupted: "agent.turn.interrupted",
   turnFailed: "agent.turn.failed",
+  /**
+   * Thread stream: `{ turnIds, toTurnId? }`, the turns a rollback dropped
+   * (oldest first) and the turn kept last. Their events stay in the log;
+   * readers skip them (`visibleThreadEvents`).
+   */
+  threadRolledBack: "threads.thread.rolled-back",
 } as const;
 
 /**
@@ -282,6 +292,12 @@ export const ThreadHooks = {
    * the turn still ends.
    */
   turnEnd: "threads.turn.end",
+  /**
+   * `{ thread, turnIds, toTurnId? }`, around a rollback's recording (D220): a
+   * hook may restore what the dropped turns changed, delay or refuse it; it
+   * cannot change which turns are dropped.
+   */
+  rollback: "threads.rollback",
 } as const;
 
 /** What the turn hooks get: the turn and where its agent runs. */
@@ -297,6 +313,24 @@ export interface TurnHookInput {
 export interface TurnEndHookInput extends TurnHookInput {
   /** How the turn ends. */
   readonly status: "completed" | "interrupted" | "failed";
+}
+
+/**
+ * The events a thread still shows: those of turns a rollback dropped and the
+ * rollback events themselves are left out (turn ids are never reused).
+ */
+export function visibleThreadEvents<T extends StoredEvent>(events: readonly T[]): T[] {
+  const dropped = new Set<unknown>();
+  for (const event of events) {
+    if (event.type !== ThreadEvents.threadRolledBack) continue;
+    const turnIds = (event.payload as { turnIds?: unknown } | null)?.turnIds;
+    if (Array.isArray(turnIds)) for (const turnId of turnIds) dropped.add(turnId);
+  }
+  return events.filter(
+    (event) =>
+      event.type !== ThreadEvents.threadRolledBack &&
+      (dropped.size === 0 || !dropped.has((event.payload as { turnId?: unknown } | null)?.turnId)),
+  );
 }
 
 export const threadStream = (threadId: string) => `thread/${threadId}`;
