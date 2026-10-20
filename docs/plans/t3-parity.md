@@ -928,8 +928,8 @@ The proof of D443: `apps/web/test/source-control.browser.test.tsx` (the
 branch line and the warning; none while the branch is checked out, without
 a branch, a repository or a checked-out branch) and
 `e2e/tests/source-control.spec.ts` (git switches the project's checkout
-under the thread, the hover card warns, and stops once switched back), with
-a screenshot.
+under the thread, the hover card warns after the project and branch lines,
+and stops once switched back), with a screenshot.
 
 ## Not ported (out of scope)
 
