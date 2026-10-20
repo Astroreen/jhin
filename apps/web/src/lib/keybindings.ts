@@ -376,6 +376,41 @@ export function formatShortcutLabel(
     .join("+");
 }
 
+/** The keys a shortcut presses on `platform`, so ⌘K and mod+K match on a Mac. */
+function pressedKeys(shortcut: KeybindingShortcut, platform: string): string {
+  const mac = isMacPlatform(platform);
+  const meta = shortcut.metaKey || (shortcut.modKey && mac);
+  const ctrl = shortcut.ctrlKey || (shortcut.modKey && !mac);
+  return `${shortcut.key}|${meta}|${ctrl}|${shortcut.shiftKey}|${shortcut.altKey}`;
+}
+
+/**
+ * The other rules a rule conflicts with (T3's keybindingConflictLabels): the
+ * same keys, and `when` clauses that can both apply, which T3 tells cheaply:
+ * either has none (always), or both are the same text. `rules[index]` is the
+ * rule asked about; the answer is indices into `rules`.
+ */
+export function keybindingConflicts(
+  rules: readonly KeybindingRuleInput[],
+  index: number,
+  platform: string = currentPlatform(),
+): number[] {
+  const rule = rules[index];
+  const shortcut = rule === undefined ? null : parseShortcut(rule.key);
+  if (rule === undefined || shortcut === null) return [];
+  const keys = pressedKeys(shortcut, platform);
+  const when = rule.when?.trim() ?? "";
+  const conflicts: number[] = [];
+  rules.forEach((other, otherIndex) => {
+    if (otherIndex === index) return;
+    const otherShortcut = parseShortcut(other.key);
+    if (otherShortcut === null || pressedKeys(otherShortcut, platform) !== keys) return;
+    const otherWhen = other.when?.trim() ?? "";
+    if (when === "" || otherWhen === "" || when === otherWhen) conflicts.push(otherIndex);
+  });
+  return conflicts;
+}
+
 /**
  * The label of the first shortcut of `command` that applies in `context` and
  * is not shadowed by a later rule with the same keys.
@@ -386,18 +421,14 @@ export function shortcutLabelForCommand(
   context: Readonly<Record<string, boolean>> = {},
   platform: string = currentPlatform(),
 ): string | undefined {
-  const mac = isMacPlatform(platform);
   const claimed = new Set<string>();
   for (let index = rules.length - 1; index >= 0; index -= 1) {
     const rule = rules[index]!;
     if (rule.whenAst !== undefined && !evaluateWhen(rule.whenAst, context)) continue;
-    const { shortcut } = rule;
-    const meta = shortcut.metaKey || (shortcut.modKey && mac);
-    const ctrl = shortcut.ctrlKey || (shortcut.modKey && !mac);
-    const conflictKey = `${shortcut.key}|${meta}|${ctrl}|${shortcut.shiftKey}|${shortcut.altKey}`;
+    const conflictKey = pressedKeys(rule.shortcut, platform);
     if (claimed.has(conflictKey)) continue;
     claimed.add(conflictKey);
-    if (rule.command === command) return formatShortcutLabel(shortcut, platform);
+    if (rule.command === command) return formatShortcutLabel(rule.shortcut, platform);
   }
   return undefined;
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   evaluateWhen,
   formatShortcutLabel,
+  keybindingConflicts,
   keyFromEvent,
   matchesShortcut,
   mergeKeybindings,
@@ -208,5 +209,44 @@ describe("keyFromEvent", () => {
     const key = keyFromEvent(event, LINUX);
     expect(key).not.toBeNull();
     expect(matchesShortcut(event, parseShortcut(key!)!, LINUX)).toBe(true);
+  });
+});
+
+describe("keybindingConflicts (D441)", () => {
+  it("finds rules with the same keys whose conditions can both apply", () => {
+    const rules = [
+      { key: "mod+k", command: "palette.toggle" },
+      { key: "mod+k", command: "chat.clear", when: "composerFocus" },
+      { key: "mod+k", command: "terminal.clear", when: "terminalFocus" },
+      { key: "mod+k", command: "terminal.find", when: "terminalFocus" },
+      { key: "mod+j", command: "terminal.toggle" },
+    ];
+    // No condition applies always, so it conflicts with every rule on its keys.
+    expect(keybindingConflicts(rules, 0, LINUX)).toEqual([1, 2, 3]);
+    // Different conditions are taken to exclude each other, as T3 tells it cheaply.
+    expect(keybindingConflicts(rules, 1, LINUX)).toEqual([0]);
+    expect(keybindingConflicts(rules, 2, LINUX)).toEqual([0, 3]);
+    expect(keybindingConflicts(rules, 4, LINUX)).toEqual([]);
+  });
+
+  it("compares the keys pressed on the platform, not how the rule spells them", () => {
+    const rules = [
+      { key: "mod+shift+p", command: "a" },
+      { key: "ctrl+shift+p", command: "b" },
+      { key: "Shift+Mod+P", command: "c" },
+    ];
+    expect(keybindingConflicts(rules, 0, LINUX)).toEqual([1, 2]);
+    // On a Mac, mod is ⌘: Ctrl+Shift+P is other keys.
+    expect(keybindingConflicts(rules, 0, MAC)).toEqual([2]);
+  });
+
+  it("leaves rules without a valid shortcut alone", () => {
+    const rules = [
+      { key: "", command: "a" },
+      { key: "", command: "b" },
+      { key: "mod+", command: "c" },
+    ];
+    expect(keybindingConflicts(rules, 0, LINUX)).toEqual([]);
+    expect(keybindingConflicts(rules, 5, LINUX)).toEqual([]);
   });
 });
