@@ -93,4 +93,25 @@ describe("device token store (security.md D411)", () => {
         .map((record) => record.label),
     ).toEqual(["new"]);
   });
+
+  it("changes nothing when a write fails, so a failed revoke leaves the token as it was", () => {
+    const file = tempFile();
+    const store = createClientStore(file);
+    const { record, token } = store.issue({
+      label: "x",
+      permissions: ["*"],
+      method: "issued",
+      now: 1,
+    });
+    // A directory where the temporary file goes makes the next write fail.
+    Fs.mkdirSync(`${file}.${process.pid}.tmp`);
+
+    expect(() => store.remove([record.id])).toThrow();
+    expect(store.get(record.id)?.id).toBe(record.id);
+    expect(store.verify(token, 2)?.id).toBe(record.id);
+    expect(() =>
+      store.issue({ label: "y", permissions: ["*"], method: "issued", now: 3 }),
+    ).toThrow();
+    expect(store.list().map((entry) => entry.label)).toEqual(["x"]);
+  });
 });
