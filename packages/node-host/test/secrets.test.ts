@@ -42,18 +42,81 @@ describe("config secrets (security.md D417)", () => {
     });
   });
 
-  it("puts stored values back where the marker is, by key and by position", () => {
+  it("puts stored values back where a secret's marker is, by key and by position", () => {
+    const schema = schemaOf(
+      z.object({
+        a: z.string().meta({ writeOnly: true }),
+        list: z.array(z.string().meta({ writeOnly: true })),
+        plain: z.string(),
+      }),
+    );
     expect(
       restoreSecrets(
+        schema,
         { a: SECRET_REDACTED, list: ["new", SECRET_REDACTED], plain: "x" },
         { a: "old-a", list: ["one", "two"] },
       ),
     ).toEqual({ a: "old-a", list: ["new", "two"], plain: "x" });
   });
 
+  it("keeps the marker as a value where no secret is", () => {
+    const schema = schemaOf(z.object({ shown: z.string() }));
+    expect(restoreSecrets(schema, { shown: SECRET_REDACTED }, { shown: "old" })).toEqual({
+      shown: SECRET_REDACTED,
+    });
+  });
+
   it("refuses a marker where nothing is stored, naming where", () => {
-    expect(() => restoreSecrets({ env: { B: SECRET_REDACTED } }, { env: {} }, ["s"])).toThrow(
+    const schema = schemaOf(
+      z.object({ env: z.record(z.string(), z.string().meta({ writeOnly: true })) }),
+    );
+    expect(() =>
+      restoreSecrets(schema, { env: { B: SECRET_REDACTED } }, { env: {} }, ["s"]),
+    ).toThrow(
       expect.objectContaining({ code: "CONFIG_SECRET_MISSING", details: { path: "s.env.B" } }),
     );
+  });
+
+  it("follows tuples, key patterns and conditional branches", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        pair: {
+          type: "array",
+          prefixItems: [{ type: "string" }, { type: "string", writeOnly: true }],
+        },
+        vars: {
+          type: "object",
+          patternProperties: { "^SECRET_": { type: "string", writeOnly: true } },
+        },
+        mode: {
+          if: { properties: { kind: { const: "key" } } },
+          then: { properties: { key: { type: "string", writeOnly: true } } },
+        },
+      },
+    };
+    expect(
+      redactSecrets(schema, {
+        pair: ["user", "pw"],
+        vars: { SECRET_A: "s", PLAIN: "p" },
+        mode: { kind: "key", key: "k" },
+      }),
+    ).toEqual({
+      pair: ["user", SECRET_REDACTED],
+      vars: { SECRET_A: SECRET_REDACTED, PLAIN: "p" },
+      mode: { kind: "key", key: SECRET_REDACTED },
+    });
+  });
+
+  it("hides every scalar of a section whose schema is unknown, and restores them", () => {
+    const value = { a: "x", n: 1, list: ["y"], nested: { b: true } };
+    const hidden = redactSecrets(undefined, value);
+    expect(hidden).toEqual({
+      a: SECRET_REDACTED,
+      n: SECRET_REDACTED,
+      list: [SECRET_REDACTED],
+      nested: { b: SECRET_REDACTED },
+    });
+    expect(restoreSecrets(undefined, hidden, value)).toEqual(value);
   });
 });

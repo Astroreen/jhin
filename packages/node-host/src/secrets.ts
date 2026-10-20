@@ -27,10 +27,12 @@ function deref(schema: unknown, root: Schema, depth = 0): Schema {
   return deref(target, root, depth + 1);
 }
 
+/** Schemas a value at this level must also match: unions, intersections, conditional branches. */
 function branchesOf(schema: Schema): unknown[] {
-  return ["anyOf", "oneOf", "allOf"].flatMap((key) =>
-    Array.isArray(schema[key]) ? (schema[key] as unknown[]) : [],
-  );
+  return ["anyOf", "oneOf", "allOf", "then", "else"].flatMap((key) => {
+    const value = schema[key];
+    return Array.isArray(value) ? value : isObject(value) ? [value] : [];
+  });
 }
 
 /** A secret here: marked itself, or on a branch (the non-null branch of a nullable field). */
@@ -39,74 +41,159 @@ function isSecret(schema: Schema, root: Schema): boolean {
   return branchesOf(schema).some((branch) => deref(branch, root)["writeOnly"] === true);
 }
 
-/**
- * `value` with every value under a `writeOnly` schema replaced by the
- * marker. A union redacts what any of its branches would: hiding too much
- * is safe, hiding too little is not.
- */
-export function redactSecrets(schemaRef: unknown, value: unknown, root?: Schema): unknown {
-  if (value === undefined || value === null) return value;
-  const top = root ?? (isObject(schemaRef) ? schemaRef : {});
-  const schema = deref(schemaRef, top);
-  if (isSecret(schema, top)) return SECRET_REDACTED;
-  let result: unknown = value;
-  for (const branch of branchesOf(schema)) result = redactSecrets(branch, result, top);
-  if (Array.isArray(result)) {
-    return schema["items"] === undefined
-      ? result
-      : result.map((item) => redactSecrets(schema["items"], item, top));
+/** The schemas that describe `key` of an object: its property, matching patterns, else additional ones. */
+function schemasOfKey(schema: Schema, key: string): unknown[] {
+  const found: unknown[] = [];
+  const properties = schema["properties"];
+  if (isObject(properties) && Object.hasOwn(properties, key)) found.push(properties[key]);
+  const patterns = schema["patternProperties"];
+  if (isObject(patterns)) {
+    for (const [pattern, item] of Object.entries(patterns)) {
+      try {
+        if (new RegExp(pattern, "u").test(key)) found.push(item);
+      } catch {
+        // A pattern this engine cannot read names no key.
+      }
+    }
   }
-  if (isObject(result)) {
-    const properties = isObject(schema["properties"]) ? schema["properties"] : {};
-    const additional = schema["additionalProperties"];
-    return Object.fromEntries(
-      Object.entries(result).map(([key, item]) => [
-        key,
-        Object.hasOwn(properties, key)
-          ? redactSecrets(properties[key], item, top)
-          : isObject(additional)
-            ? redactSecrets(additional, item, top)
-            : item,
-      ]),
-    );
+  if (found.length === 0 && isObject(schema["additionalProperties"])) {
+    found.push(schema["additionalProperties"]);
   }
-  return result;
+  return found;
+}
+
+/** The schemas that describe item `index` of a list: a tuple's own, else `items`. */
+function schemasOfItem(schema: Schema, index: number): unknown[] {
+  const prefix = schema["prefixItems"];
+  if (Array.isArray(prefix) && index < prefix.length) return [prefix[index]];
+  return schema["items"] === undefined || typeof schema["items"] === "boolean"
+    ? []
+    : [schema["items"]];
 }
 
 /**
- * `incoming` with every marker replaced by what `stored` holds at the same
- * place (by key, by position in a list). A marker where nothing is stored
- * fails with `CONFIG_SECRET_MISSING`.
+ * Calls `visit` for every value a secret (and returns what it gives), walking
+ * `value` along every schema that describes it, so a union hides what any of
+ * its branches would: hiding too much is safe, hiding too little is not. An
+ * unknown schema (`undefined`: no plugin defines the section) makes every
+ * scalar a secret.
  */
-export function restoreSecrets(
-  incoming: unknown,
-  stored: unknown,
-  path: readonly string[] = [],
+function mapSecrets(
+  schemas: readonly unknown[] | undefined,
+  value: unknown,
+  root: Schema,
+  path: readonly string[],
+  visit: (value: unknown, path: readonly string[]) => unknown,
 ): unknown {
-  if (incoming === SECRET_REDACTED) {
-    if (stored === undefined || stored === null) {
-      throw Object.assign(
-        new Error(`No secret is stored at ${path.join(".")} to keep; enter it again`),
-        { code: "CONFIG_SECRET_MISSING", details: { path: path.join(".") } },
+  if (value === undefined || value === null) return value;
+  const known = schemas?.map((schema) => deref(schema, root));
+  if (known === undefined) {
+    if (Array.isArray(value)) {
+      return value.map((item, index) =>
+        mapSecrets(undefined, item, root, [...path, String(index)], visit),
       );
     }
-    return stored;
+    if (isObject(value)) {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [
+          key,
+          mapSecrets(undefined, item, root, [...path, key], visit),
+        ]),
+      );
+    }
+    return visit(value, path);
   }
-  if (Array.isArray(incoming)) {
-    return incoming.map((item, index) =>
-      restoreSecrets(item, Array.isArray(stored) ? stored[index] : undefined, [
-        ...path,
-        String(index),
-      ]),
+  // Every schema that applies here, its branches included.
+  const all: Schema[] = [];
+  const add = (schema: Schema) => {
+    if (all.includes(schema)) return;
+    all.push(schema);
+    for (const branch of branchesOf(schema)) add(deref(branch, root));
+  };
+  for (const schema of known) add(schema);
+  if (all.some((schema) => isSecret(schema, root))) return visit(value, path);
+  if (Array.isArray(value)) {
+    return value.map((item, index) =>
+      mapSecrets(
+        all.flatMap((schema) => schemasOfItem(schema, index)),
+        item,
+        root,
+        [...path, String(index)],
+        visit,
+      ),
     );
   }
-  if (isObject(incoming)) {
+  if (isObject(value)) {
     return Object.fromEntries(
-      Object.entries(incoming).map(([key, item]) => [
+      Object.entries(value).map(([key, item]) => [
         key,
-        restoreSecrets(item, isObject(stored) ? stored[key] : undefined, [...path, key]),
+        mapSecrets(
+          all.flatMap((schema) => schemasOfKey(schema, key)),
+          item,
+          root,
+          [...path, key],
+          visit,
+        ),
       ]),
     );
   }
-  return incoming;
+  return value;
+}
+
+const rootOf = (schema: unknown): Schema => (isObject(schema) ? schema : {});
+
+/**
+ * `value` with every value under a `writeOnly` schema replaced by the marker.
+ * `schema` undefined: the section's schema is unknown, so every scalar is.
+ */
+export function redactSecrets(schema: unknown, value: unknown): unknown {
+  return mapSecrets(
+    schema === undefined ? undefined : [schema],
+    value,
+    rootOf(schema),
+    [],
+    () => SECRET_REDACTED,
+  );
+}
+
+function at(value: unknown, path: readonly string[]): unknown {
+  let current = value;
+  for (const key of path) {
+    if (Array.isArray(current)) current = current[Number(key)];
+    else if (isObject(current)) current = current[key];
+    else return undefined;
+  }
+  return current;
+}
+
+/**
+ * `incoming` with the marker replaced, wherever its schema says a secret is,
+ * by what `stored` holds at the same place (by key, by position in a list).
+ * The marker anywhere else is a value like any other. A marker where nothing
+ * is stored fails with `CONFIG_SECRET_MISSING`; `label` prefixes its path.
+ */
+export function restoreSecrets(
+  schema: unknown,
+  incoming: unknown,
+  stored: unknown,
+  label: readonly string[] = [],
+): unknown {
+  return mapSecrets(
+    schema === undefined ? undefined : [schema],
+    incoming,
+    rootOf(schema),
+    [],
+    (value, path) => {
+      if (value !== SECRET_REDACTED) return value;
+      const kept = at(stored, path);
+      if (kept === undefined || kept === null) {
+        const where = [...label, ...path].join(".");
+        throw Object.assign(new Error(`No secret is stored at ${where} to keep; enter it again`), {
+          code: "CONFIG_SECRET_MISSING",
+          details: { path: where },
+        });
+      }
+      return kept;
+    },
+  );
 }

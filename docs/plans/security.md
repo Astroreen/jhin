@@ -120,7 +120,11 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   by T3's marker `••••••` (`SECRET_REDACTED`) in the effective value and in
   both layers; an unset secret stays absent. `host.config.patch` and
   `mesh.config.patch` treat the marker as "keep what is stored": by key, by
-  position in a list. A marker where nothing is stored is refused
+  position in a list, and only where the schema has a secret (elsewhere the
+  marker is a value like any other). The walk follows `$ref`, unions and
+  intersections, `if`/`then`/`else`, tuples (`prefixItems`), `items`,
+  `properties`, `patternProperties` and `additionalProperties`; a section
+  no plugin defines has no schema, so all of its scalars are redacted. A marker where nothing is stored is refused
   (`CONFIG_SECRET_MISSING`). The settings page's `<hidden secret>`
   placeholder sends the marker, so a saved form keeps its secrets without
   ever receiving them. T3 keeps secrets in a secret store apart from the

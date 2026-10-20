@@ -498,18 +498,10 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     const file = layer === "node" ? home.config : projectConfig;
     // A redacted secret sent back keeps what the file holds (security.md D417).
     const stored = readLayer(file, log)?.[section];
-    const restored = Object.entries(values).map(
-      ([key, value]) =>
-        [
-          key,
-          restoreSecrets(
-            value,
-            typeof stored === "object" && stored !== null
-              ? (stored as Record<string, unknown>)[key]
-              : undefined,
-            [section, key],
-          ),
-        ] as const,
+    const schema = (kernel.config.jsonSchema() as { properties: Record<string, unknown> })
+      .properties[section];
+    const restored = Object.entries(
+      restoreSecrets(schema, values, stored, [section]) as Record<string, unknown>,
     );
     let text = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n";
     for (const [key, value] of restored) {
