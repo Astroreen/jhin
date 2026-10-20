@@ -352,7 +352,8 @@ left of T3 Code is split into workstreams in `t3-roadmap.md`.
   shown. Active threads never dragged stay on top, newest first; the
   dragged ones follow by key. A drop runs `sidebar.thread.move` (node,
   thread, section and its index there), so dragging is a command too, and
-  the row stays where it was dropped until the nodes have it. Rows drag
+  the row stays where it was dropped until the nodes have it. Until then, as
+  in T3, no row drags, and the dropped row says it is busy (`aria-busy`). Rows drag
   with dnd-kit, T3's library, once the pointer moved 6 px; the badge on the
   dragged row says what the drop does ("Pin", "Unpin", "Settle",
   "Un-settle", "Wake"). A drop is several node commands, one per thread it

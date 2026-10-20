@@ -743,6 +743,8 @@ export const sidebarPlugin = builtin(
         sortable?: SortableBag | undefined;
         /** While this row is dragged: what dropping it would do. */
         verb?: DropVerb | null | undefined;
+        /** Dropped here, while the nodes are told: the row is busy until they have it. */
+        busy?: boolean | undefined;
       }) {
         const { entry, active, hosts, now, sortable } = props;
         const { thread, project, node, section } = entry;
@@ -1204,6 +1206,7 @@ export const sidebarPlugin = builtin(
                     <ContextMenuTrigger
                       render={
                         <div
+                          aria-busy={props.busy === true ? true : undefined}
                           aria-current={active ? "page" : undefined}
                           aria-label={label}
                           className={rowClassName}
@@ -1272,6 +1275,7 @@ export const sidebarPlugin = builtin(
         hosts: boolean;
         now: number;
         disabled: boolean;
+        busy: boolean;
       }) {
         const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
           id: props.entry.key,
@@ -1283,6 +1287,7 @@ export const sidebarPlugin = builtin(
         return (
           <ThreadRow
             active={props.active}
+            busy={props.busy}
             entry={props.entry}
             hosts={props.hosts}
             // Keyed by variant, so a card that becomes a slim row is a new row.
@@ -1914,6 +1919,7 @@ export const sidebarPlugin = builtin(
         const row = (entry: Entry) => (
           <SortableThreadRow
             active={entry.key === current}
+            busy={drop?.key === entry.key}
             disabled={drop !== undefined}
             entry={entry}
             hosts={hosts}
