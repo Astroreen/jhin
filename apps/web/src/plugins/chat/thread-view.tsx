@@ -184,16 +184,19 @@ export function ThreadView(props: {
   ): Promise<boolean> => {
     setError(undefined);
     const message = { text, attachments, settings: selection };
-    const outcome = await sendMessage(
-      chat.threads,
-      target,
-      threadId,
-      message,
-      running ? dispatchMode(settings.followUpBehavior, alternate, canSteer) : "send",
-    );
+    const mode = running ? dispatchMode(settings.followUpBehavior, alternate, canSteer) : "send";
+    const outcome = await sendMessage(chat.threads, target, threadId, message, mode);
     if (outcome.kind === "failed") {
       setError(outcome.message);
       return false;
+    }
+    // Asked to steer, but it waits in the queue: say so rather than let it look steered.
+    if (outcome.kind === "queued" && mode === "steer") {
+      chat.toasts?.show({
+        type: "info",
+        title: "Queued instead",
+        description: "The turn ended first, or its agent takes no steering: it goes next.",
+      });
     }
     return true;
   };

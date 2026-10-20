@@ -80,19 +80,20 @@ export async function sendMessage(
           queued: { kind: "queued" },
           started: { kind: "sent" },
         };
-        const outcome = outcomes[String(sent?.outcome)];
+        const answer = String(sent?.outcome);
+        const outcome = Object.hasOwn(outcomes, answer) ? outcomes[answer] : undefined;
         return (
           outcome ?? failure(new Error(`The node answered a steer with ${String(sent?.outcome)}`))
         );
       } catch (error) {
-        if ((error as { code?: unknown }).code !== "STEER_UNSUPPORTED") throw error;
+        if ((error as { code?: unknown } | null)?.code !== "STEER_UNSUPPORTED") throw error;
       }
     } else if (mode === "send" || mode === "start") {
       try {
         await threads.call(target, "threads.send", input);
         return { kind: "sent" };
       } catch (error) {
-        if ((error as { code?: unknown }).code !== "TURN_IN_PROGRESS") throw error;
+        if ((error as { code?: unknown } | null)?.code !== "TURN_IN_PROGRESS") throw error;
         if (mode === "start") return { kind: "busy" };
       }
     }

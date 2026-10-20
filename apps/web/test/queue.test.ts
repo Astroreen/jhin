@@ -127,15 +127,18 @@ describe("dropping a queued message (D210)", () => {
 });
 
 describe("an answer to a steer the client does not know", () => {
-  it("is a failure, so the draft stays", async () => {
-    const node = { call: async <T>(): Promise<T> => ({ outcome: "teleported" }) as T };
-    const outcome = await sendMessage(
-      node,
-      { node: "ws://a/rpc" },
-      "t",
-      { text: "hi", attachments: [], settings: {} },
-      "steer",
-    );
-    expect(outcome).toMatchObject({ kind: "failed" });
-  });
+  it.each(["teleported", "constructor", undefined])(
+    "%s is a failure, so the draft stays",
+    async (answer) => {
+      const node = { call: async <T>(): Promise<T> => ({ outcome: answer }) as T };
+      const outcome = await sendMessage(
+        node,
+        { node: "ws://a/rpc" },
+        "t",
+        { text: "hi", attachments: [], settings: {} },
+        "steer",
+      );
+      expect(outcome).toMatchObject({ kind: "failed" });
+    },
+  );
 });

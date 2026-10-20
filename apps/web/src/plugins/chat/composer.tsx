@@ -1180,7 +1180,9 @@ export function Composer(props: ComposerProps) {
     if (!hasContent) return;
     const text = prompt;
     const images = attachments;
-    if (editing !== undefined && props.queueActions !== undefined) {
+    if (editing !== undefined) {
+      // An edit is saved, never sent as a new message beside the queued one.
+      if (props.queueActions === undefined) return;
       setBusy(true);
       try {
         if (await props.queueActions.edit(editing.id, text, images)) {
