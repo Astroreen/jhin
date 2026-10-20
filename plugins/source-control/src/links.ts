@@ -21,7 +21,7 @@ import { SourceControlError } from "./git.ts";
 const NAMESPACE = "jhin.source-control";
 
 /** How a link is named: a URL, or a repository and number (on `host`, else the project's). */
-interface LinkTarget {
+export interface LinkTarget {
   readonly url?: string | undefined;
   readonly repository?: string | undefined;
   readonly number?: number | undefined;
@@ -52,6 +52,8 @@ export interface Links {
     snapshot?: PullRequest,
   ): Promise<{ pullRequest: ThreadPullRequest; alreadyLinked: boolean }>;
   unlink(threadId: string, target: LinkTarget): Promise<{ key: string; wasLinked: boolean }>;
+  /** The link a target names, if the thread has it. */
+  find(threadId: string, target: LinkTarget): Promise<ThreadPullRequest | undefined>;
   /** Reads the linked pull requests again: the open ones and the unread, or all with `all`. */
   sync(threadId: string, options?: { all?: boolean }): Promise<void>;
   /** Every thread with links, for the periodic read. */
@@ -241,6 +243,11 @@ export function createLinks(deps: LinksDeps): Links {
         await deps.append(SourceControlEvents.pullRequestUnlinked, { threadId, key });
         return { key, wasLinked: true };
       });
+    },
+    async find(threadId, target) {
+      await load();
+      const key = pullRequestKey(await resolve(threadId, target));
+      return (links.get(threadId) ?? []).find((link) => link.key === key);
     },
     async sync(threadId, options = {}) {
       await load();

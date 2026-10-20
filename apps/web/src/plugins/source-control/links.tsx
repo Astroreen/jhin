@@ -8,7 +8,7 @@ import {
   type ThreadPullRequest,
 } from "@jhin/source-control-api";
 import { MenuItem, type Dialogs } from "@jhin/ui";
-import { GitPullRequestArrowIcon, UnlinkIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, GitPullRequestArrowIcon, UnlinkIcon } from "lucide-react";
 
 import { useSourceControl, type SourceControlServices } from "./services.ts";
 
@@ -90,5 +90,34 @@ export function createLinkActions(services: SourceControlServices, dialogs: Dial
     ));
   }
 
-  return { LinkPullRequest, UnlinkPullRequests };
+  /** T3's "Watch for changes" and "Stop watching" for each open linked pull request. */
+  function WatchPullRequests({ target, thread }: ThreadActionProps) {
+    const view = useSourceControl(store, target);
+    const links = (view.links.get(thread.id) ?? []).filter(
+      (link) => (link.snapshot?.state ?? "open") === "open",
+    );
+    const toggle = (link: ThreadPullRequest) =>
+      void threads
+        .call(target, link.watch === undefined ? "git.pr.watch" : "git.pr.unwatch", {
+          threadId: thread.id,
+          url: link.url,
+        })
+        .catch((error: unknown) =>
+          toasts?.show({
+            type: "error",
+            title: "Could not change the watch",
+            description: error instanceof Error ? error.message : "An error occurred.",
+          }),
+        );
+    return links.map((link) => (
+      <MenuItem key={link.key} onClick={() => toggle(link)}>
+        {link.watch === undefined ? <EyeIcon /> : <EyeOffIcon />}
+        {link.watch === undefined
+          ? `Watch #${link.number} for changes`
+          : `Stop watching #${link.number}`}
+      </MenuItem>
+    ));
+  }
+
+  return { LinkPullRequest, UnlinkPullRequests, WatchPullRequests };
 }

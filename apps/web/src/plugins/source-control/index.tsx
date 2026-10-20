@@ -191,12 +191,22 @@ export const sourceControlPlugin = builtin(
         }),
       );
       // Linking pull requests from the thread's menu, before archiving and deleting it.
-      const { LinkPullRequest, UnlinkPullRequests } = createLinkActions(services, dialogs);
+      const { LinkPullRequest, UnlinkPullRequests, WatchPullRequests } = createLinkActions(
+        services,
+        dialogs,
+      );
       context.subscriptions.add(
         slots.contribute<ThreadActionProps>("thread.actions", {
           id: "jhin.source-control.link-pull-request",
           order: 44,
           component: LinkPullRequest,
+        }),
+      );
+      context.subscriptions.add(
+        slots.contribute<ThreadActionProps>("thread.actions", {
+          id: "jhin.source-control.watch-pull-requests",
+          order: 44.5,
+          component: WatchPullRequests,
         }),
       );
       context.subscriptions.add(

@@ -10,7 +10,7 @@ import {
   type ThreadPullRequest,
 } from "@jhin/source-control-api";
 import { InlineButton, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
-import { CircleAlertIcon, GitBranchIcon } from "lucide-react";
+import { CircleAlertIcon, EyeIcon, GitBranchIcon } from "lucide-react";
 import type { MouseEvent, ReactElement } from "react";
 
 import { ComposerControl } from "../../lib/composer-control.tsx";
@@ -164,6 +164,12 @@ function LinkedPullRequestsBadge({ links }: { links: readonly ThreadPullRequest[
                 <span className="min-w-0 truncate text-foreground/75">
                   {link.snapshot?.title ?? link.repository}
                 </span>
+                {link.watch === undefined ? null : (
+                  <EyeIcon
+                    aria-label="Watching: the agent wakes when checks finish, someone comments, or the branch conflicts"
+                    className="size-3 shrink-0 text-muted-foreground"
+                  />
+                )}
                 {depth === 0 && size > 1 ? (
                   <span className="ml-auto shrink-0 text-muted-foreground">stack · {size}</span>
                 ) : null}
