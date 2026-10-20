@@ -741,6 +741,26 @@ without a valid shortcut) and `e2e/tests/config.spec.ts` ("D441": giving
 "Toggle sidebar" the palette's Ctrl+K warns on both rows, with the tooltip,
 and resetting it clears them), with a screenshot.
 
+- **D442. A mesh member has a menu too, with T3's Icon submenu.** T3 gives
+  every saved environment its "More actions" menu with "Icon" first. In
+  settings → Nodes each member of a connection's mesh gets a "More actions
+  for <name>" menu, which renders the new slot `node.member.actions`
+  (`NodeMemberActionProps`: the connection and the member, additive). It is
+  a slot of its own, not `node.actions`: the connection's items (rename on
+  this device, copy address, disconnect) and any plugin's would act on the
+  connection. `jhin.node-machines` contributes the same Icon submenu there
+  (`jhin.node-machines.member-icon`). It runs `node.set-machine` with
+  `remote`, which writes the member's own node file through the mesh, so the
+  member shows the kind to every client, as T3 keeps the icon on the
+  environment's server. An unreachable member's menu says "Connect to this
+  node to change its icon." and its kinds are disabled. Without a
+  contribution to the slot the member has no menu button.
+
+The proof of D442: `apps/web/test/machines.browser.test.tsx` (the submenu in
+both slots) and `e2e/tests/mesh.spec.ts` ("D442": a and b in one mesh, b's
+menu in a's settings changes b's icon, kept in b's node file; once b is
+stopped its menu says so and its kinds are disabled), with a screenshot.
+
 ### Server-side queue and steering (W1, `t3-roadmap.md`)
 
 - **D200. The reference is T3 Code's server queue** (D53's tag,
@@ -870,26 +890,6 @@ and resetting it clears them), with a screenshot.
   `THREAD_EXISTS`; `STORAGE_MISMATCH` when the threads plugin starts.
   `threads.send` keeps refusing a busy thread
   (`TURN_IN_PROGRESS`).
-
-- **D442. A mesh member has a menu too, with T3's Icon submenu.** T3 gives
-  every saved environment its "More actions" menu with "Icon" first. In
-  settings → Nodes each member of a connection's mesh gets a "More actions
-  for <name>" menu, which renders the new slot `node.member.actions`
-  (`NodeMemberActionProps`: the connection and the member, additive). It is
-  a slot of its own, not `node.actions`: the connection's items (rename on
-  this device, copy address, disconnect) and any plugin's would act on the
-  connection. `jhin.node-machines` contributes the same Icon submenu there
-  (`jhin.node-machines.member-icon`). It runs `node.set-machine` with
-  `remote`, which writes the member's own node file through the mesh, so the
-  member shows the kind to every client, as T3 keeps the icon on the
-  environment's server. An unreachable member's menu says "Connect to this
-  node to change its icon." and its kinds are disabled. Without a
-  contribution to the slot the member has no menu button.
-
-The proof of D442: `apps/web/test/machines.browser.test.tsx` (the submenu in
-both slots) and `e2e/tests/mesh.spec.ts` ("D442": a and b in one mesh, b's
-menu in a's settings changes b's icon, kept in b's node file; once b is
-stopped its menu says so and its kinds are disabled), with a screenshot.
 
 ## Not ported (out of scope)
 
