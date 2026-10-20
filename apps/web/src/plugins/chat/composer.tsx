@@ -967,8 +967,8 @@ export function Composer(props: ComposerProps) {
 
   // The draft as typed now, for an edit that starts after a network call: what
   // is typed while the queued message loads is what comes back after the edit.
-  const current = useRef({ prompt, attachments });
-  current.current = { prompt, attachments };
+  const typedNow = useRef({ prompt, attachments });
+  typedNow.current = { prompt, attachments };
   /** An edit or a steer from a shortcut is on its way: one at a time. */
   const queueBusy = useRef(false);
   const startEdit = async (messageId: string) => {
@@ -977,7 +977,7 @@ export function Composer(props: ComposerProps) {
     try {
       const message = await props.queueActions.load(messageId);
       if (message === undefined) return;
-      setEditing({ id: messageId, draft: current.current });
+      setEditing({ id: messageId, draft: typedNow.current });
       setPrompt(message.text);
       setAttachments(message.attachments);
       textarea.current?.focus();
