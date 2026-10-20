@@ -352,7 +352,8 @@ specific to Claude: the runtime is a plugin on the public API.
   a Claude subagent as a child thread of the parent (`subagentProjection`'s
   `makeSubagentChildThread`, the parent's subagent rows), not inside the tool
   call. Jhin's child threads (`parentThreadId`, `relationshipToParent:
-  "subagent"`) come with W10's delegated tasks (`orchestration.md`, D363),
+  "subagent"`) come with W10's delegated tasks (its plan
+  `orchestration.md`, D363, not in `main` yet),
   which also defers the subagent rows; the transcript lands there once both
   are in `main`, and it needs a way for a runtime to write a child thread's
   items, which `agent.runtime@1` does not have (W9 left it).

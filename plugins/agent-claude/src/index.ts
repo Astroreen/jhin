@@ -48,6 +48,7 @@ export {
   type QueryFunction,
 } from "./turn.ts";
 export {
+  BackgroundWorkRunning,
   SessionTakenOver,
   createLiveSessions,
   type Attachment,

@@ -596,6 +596,7 @@ export function createLiveSessions(options: {
       }
       if (live !== undefined) {
         live.busy = true;
+        const closeWhenDone = live.closeWhenDone;
         live.closeWhenDone = false;
         clearTimeout(live.timer);
         live.timer = undefined;
@@ -607,8 +608,9 @@ export function createLiveSessions(options: {
         if (!adapted && live.background > 0 && !live.closed) {
           // It stays as it was, idle with its work, and the turn is refused (D348).
           live.busy = false;
+          live.closeWhenDone = closeWhenDone;
           live.idleSince = idleSince ?? new Date();
-          arm(live, options.keepAlive().idleMs);
+          if (!closeWhenDone) arm(live, options.keepAlive().idleMs);
           throw new BackgroundWorkRunning();
         }
         if (!adapted) {
@@ -727,9 +729,11 @@ export function createLiveSessions(options: {
           const receipt = (await session.query.interrupt()) as
             | { still_queued?: readonly string[] }
             | undefined;
-          // Still queued: it will run, so it is stopped again as soon as it starts.
-          if (!begun && uuid !== undefined && receipt?.still_queued?.includes(uuid) === true) {
-            interruptOnStart = true;
+          // Still queued: it will run, so it is stopped again as soon as it starts, or now
+          // when its first frame came before the receipt.
+          if (uuid !== undefined && receipt?.still_queued?.includes(uuid) === true) {
+            if (begun) void session.query.interrupt().catch(() => undefined);
+            else interruptOnStart = true;
           }
           return receipt;
         },

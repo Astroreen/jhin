@@ -873,6 +873,67 @@ describe("jhin.agent-claude: W9 live sessions", () => {
     expect(answers(await turn())).toEqual(["two"]);
   });
 
+  it("keeps a refused per-turn session ending with its work (D348)", async () => {
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => (finish = resolve));
+    const { turn, calls } = node([workingInBackground(done)], { session: "per-turn" });
+    await turn();
+    await expect(turn({ runtimeMode: "full-access" })).rejects.toThrow(
+      "Claude is still running background agents or commands",
+    );
+    finish();
+    await calls[0]!.whenClosed;
+  });
+
+  it("does not end a session running background work for the cap, and 0 is no cap (D347)", async () => {
+    const other = (n: number) => `0b6c5e5e-0000-4000-8000-00000000020${n}`;
+    const working = node([workingInBackground(new Promise(() => undefined)), answering("b")], {
+      maxLiveSessions: 1,
+    });
+    await working.turn({ threadId: other(1) });
+    await working.turn({ threadId: other(2) });
+    expect(working.calls[0]!.closed).toBe(false);
+    expect(working.claude.live.list()).toHaveLength(2);
+
+    const uncapped = node([answering("a"), answering("b"), answering("c")], {
+      maxLiveSessions: 0,
+    });
+    for (const n of [1, 2, 3]) await uncapped.turn({ threadId: other(n) });
+    expect(uncapped.claude.live.list()).toHaveLength(3);
+  });
+
+  it("interrupts again at once when the message started before the receipt came (D350)", async () => {
+    const { claude, calls, state } = node([
+      async function* (player) {
+        const uuid = player.call.prompt[0]!.uuid;
+        yield answeringUuid(uuid, init());
+        yield* streamedBlock("m1", 0, "text", ["half"]);
+        // Only a second interrupt ends it.
+        await player.interruptedTimes(2);
+        yield answeringUuid(
+          uuid,
+          result({
+            subtype: "error_during_execution",
+            errors: [],
+            terminal_reason: "aborted_streaming",
+          }),
+        );
+        await player.nextPrompt();
+      },
+    ]);
+    state.receipt = (call) => ({ still_queued: [call.prompt[0]!.uuid] });
+    const turn = claude.startTurn({
+      threadId: THREAD,
+      turnId: "t1",
+      input: { text: "count" },
+      history: [],
+      cwd: "/work",
+      model: "claude-haiku-5-5",
+    });
+    for await (const item of turn.items) if (item.kind === "message.completed") turn.interrupt();
+    expect(calls[0]!.interrupts).toBe(2);
+  });
+
   it("changes the effort of the running Claude Code live (D349)", async () => {
     const { turn, calls, settings } = node([answering("one", "two", "three")]);
     await turn();

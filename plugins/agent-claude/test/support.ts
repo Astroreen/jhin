@@ -22,6 +22,8 @@ interface Player {
   readonly call: Call;
   /** Resolves when a turn first interrupts the query. */
   readonly interrupted: Promise<void>;
+  /** Resolves once the query was interrupted `count` times. */
+  interruptedTimes(count: number): Promise<void>;
   /** The next message of the prompt stream, as a live session gets its next turn; `undefined` once it ends. */
   nextPrompt(): Promise<SDKUserMessage | undefined>;
   /** Calls the turn's canUseTool, as Claude Code does before running a tool. */
@@ -68,9 +70,14 @@ export function scriptedQuery(...scripts: Script[]) {
     };
     calls.push(call);
     let interrupt!: () => void;
+    const waiting: { count: number; resolve: () => void }[] = [];
     const player: Player = {
       call,
       interrupted: new Promise<void>((resolve) => (interrupt = resolve)),
+      interruptedTimes: (count) =>
+        call.interrupts >= count
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => waiting.push({ count, resolve })),
       nextPrompt: async () => {
         const next = await prompts.next();
         if (next.done === true) return undefined;
@@ -108,6 +115,7 @@ export function scriptedQuery(...scripts: Script[]) {
       interrupt: async () => {
         call.interrupts++;
         interrupt();
+        for (const waiter of waiting) if (call.interrupts >= waiter.count) waiter.resolve();
         return state.receipt?.(call);
       },
       close: () => {
