@@ -53,7 +53,7 @@ describe("config secrets (security.md D417)", () => {
     expect(
       restoreSecrets(
         schema,
-        { a: SECRET_REDACTED, list: ["new", SECRET_REDACTED], plain: "x" },
+        { a: SECRET_REDACTED, list: ["new", `${SECRET_REDACTED}#/list/1`], plain: "x" },
         { a: "old-a", list: ["one", "two"] },
         undefined,
       ),
@@ -251,5 +251,21 @@ describe("config secrets (security.md D417)", () => {
     expect(scrub("pin 123 does not match 1234 or a123", ["123"])).toBe(
       `pin ${SECRET_REDACTED} does not match 1234 or a123`,
     );
+  });
+
+  it("reads keywords beside a $ref, so a referenced field marked writeOnly is a secret", () => {
+    const schema = {
+      type: "object",
+      $defs: { token: { type: "string" } },
+      properties: { token: { $ref: "#/$defs/token", writeOnly: true } },
+    };
+    expect(redactSecrets(schema, { token: "t" })).toEqual({ token: SECRET_REDACTED });
+  });
+
+  it("refuses a plain marker inside a list, where a position may have moved", () => {
+    const schema = schemaOf(z.object({ keys: z.array(z.string().meta({ writeOnly: true })) }));
+    expect(() =>
+      restoreSecrets(schema, { keys: [SECRET_REDACTED] }, { keys: ["a"] }, undefined),
+    ).toThrow(expect.objectContaining({ code: "CONFIG_SECRET_MISSING" }));
   });
 });

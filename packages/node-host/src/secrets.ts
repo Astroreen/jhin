@@ -28,7 +28,9 @@ function deref(schema: unknown, root: Schema, depth = 0): Schema {
       ? target[decodeURIComponent(part.replace(/~1/g, "/").replace(/~0/g, "~"))]
       : undefined;
   }
-  return deref(target, root, depth + 1);
+  // Keywords beside `$ref` apply too (2020-12): `{ $ref, writeOnly: true }` is a secret.
+  const { $ref: _ref, ...siblings } = schema;
+  return { ...deref(target, root, depth + 1), ...siblings };
 }
 
 /** Schemas a value at this level must also match: unions, intersections, conditional branches. */
@@ -253,6 +255,14 @@ export function restoreSecrets(
     (value, path) => {
       if (!isRedactedSecret(value)) return value;
       // An addressed marker is the secret at that place, wherever it was moved to.
+      // Inside a list only an addressed marker says which secret it is: the node
+      // never sends a plain one there, and a position may have moved.
+      if (value === SECRET_REDACTED && path.some((part) => /^\d+$/.test(part))) {
+        throw Object.assign(
+          new Error(`A secret in a list needs its addressed marker; enter it again`),
+          { code: "CONFIG_SECRET_MISSING", details: { path: [...label, ...path].join(".") } },
+        );
+      }
       const address =
         value === SECRET_REDACTED ? path : fromPointer(value.slice(SECRET_REDACTED.length + 1));
       // An address names a secret of the layer, nothing else.

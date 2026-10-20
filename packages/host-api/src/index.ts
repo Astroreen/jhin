@@ -99,7 +99,7 @@ export const SECRET_REDACTED = "••••••";
 
 /**
  * True for the marker, alone or with the address of the secret it stands
- * for (`••••••#keys.1`): a secret inside a list carries its place in the
+ * for as a JSON Pointer (`••••••#/keys/1`): a secret inside a list carries its place in the
  * section, so it stays the same secret when the list is reordered.
  */
 export const isRedactedSecret = (value: unknown): value is string =>
