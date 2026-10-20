@@ -951,8 +951,13 @@ export function Composer(props: ComposerProps) {
   }, [drafts, props.draftKey, prompt, attachments, editing]);
 
   const queued = props.queue?.messages ?? [];
+  /** The queue as the latest render had it, for checks after an await. */
+  const queuedNow = useRef(queued);
+  queuedNow.current = queued;
   // Sent or removed meanwhile: what was typed stays, as a new message.
   const editedGone = editing !== undefined && !queued.some((item) => item.id === editing.id);
+  // Runs when the edited message disappears (false → true); `editing` is read
+  // as it is at that moment, which is the edit that lost its message.
   useEffect(() => {
     if (!editedGone || editing === undefined) return;
     // What was typed stays, as a new message, and the draft set aside comes
@@ -976,7 +981,10 @@ export function Composer(props: ComposerProps) {
     queueBusy.current = true;
     try {
       const message = await props.queueActions.load(messageId);
-      if (message === undefined) return;
+      // Sent or removed while it loaded: there is nothing left to edit.
+      if (message === undefined || !queuedNow.current.some((item) => item.id === messageId)) {
+        return;
+      }
       setEditing({ id: messageId, draft: typedNow.current });
       setPrompt(message.text);
       setAttachments(message.attachments);

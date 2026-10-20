@@ -975,7 +975,9 @@ and resetting it clears them), with a screenshot.
   memory: a node restarted before it would start sends it once more.
 - Idempotent sends: `threads.queue.add` ignores a `messageId` already queued,
   but a message that already left the queue (started or cancelled) is taken
-  again; `threads.send` takes no id.
+  again; `threads.send` takes no id. So a client that retries a send whose
+  answer was lost can run it twice; the web client retries only after a
+  definite refusal (`TURN_IN_PROGRESS`, `STEER_UNSUPPORTED`), when nothing ran.
 
 Done since in `t3-roadmap.md`'s W1 (D200–D211): the server-side queue and
 steering, idempotent thread creation and one write for a record and its
