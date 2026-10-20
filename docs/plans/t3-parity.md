@@ -10,7 +10,8 @@ Make the web client look and behave like T3 Code, and give the agent API what
 that UI needs, without giving up a rule of `AGENTS.md`: everything is a plugin
 on the public API, every operation is a command, UI is slots and
 contributions. Features of T3 Code that only make sense for its hosted product
-(accounts, billing, hosted pairing, desktop updates) are out of scope.
+(accounts, billing, pairing through a T3 account) are out of scope; what is
+left of T3 Code is split into workstreams in `t3-roadmap.md`.
 
 ## Decisions
 
@@ -527,8 +528,10 @@ the node config form each changing a node's icon, kept in its node file).
 
 ## Not ported (out of scope)
 
-- T3 accounts, sign-in, billing, hosted pairing and hosted environments.
-- Desktop-only features: window chrome, auto update, native menus.
+- T3 accounts, sign-in, billing, hosted environments, and pairing and
+  remote access through a T3 account (T3 Connect). Pairing a device with a
+  node without T3 is planned (`t3-roadmap.md`, W13), and so is the desktop
+  app with its window chrome, native menus and auto update (W18).
 - T3's provider settings (API keys, CLI paths): they belong to the agent
   plugins that need them.
 
