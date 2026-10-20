@@ -11,10 +11,13 @@ import {
   type Principal,
 } from "@jhin/auth-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
+import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import { UNGUARDED_STREAM_PERMISSION } from "@jhin/rpc";
 import { definePlugin, holdsPermission, isGrant, z, type Invocation } from "@jhin/sdk";
 
 import { ClientRecord, createClientStore } from "./clients.ts";
+import { serveAuthHttp } from "./http.ts";
+import { createPairingStore, type PairingStore } from "./pairing.ts";
 
 /** The single owner of a node (D22): every permission. */
 const OWNER: Principal = { id: OWNER_PRINCIPAL_ID, permissions: ["*"] };
@@ -22,6 +25,9 @@ const OWNER: Principal = { id: OWNER_PRINCIPAL_ID, permissions: ["*"] };
 /** T3's sessions last 30 days (security.md D411). */
 const DEFAULT_TTL_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** T3's pairing tokens last 5 minutes by default (security.md D419). */
+const DEFAULT_PAIRING_MINUTES = 5;
+const MAX_PAIRING_MINUTES = 24 * 60;
 /** The longest a token may be issued for; `null` asks for one that never expires. */
 const MAX_TTL_DAYS = 3650;
 
@@ -182,6 +188,136 @@ export default definePlugin({
         };
       },
     });
+    /** A device token for a code that was just used up (D420); its label wins, as in T3. */
+    const issuePaired = (permissions: readonly string[], label: string) => {
+      const now = Date.now();
+      const { record, token: issued } = clients.issue({
+        label,
+        permissions,
+        method: "pairing",
+        now,
+        expiresAt: now + DEFAULT_TTL_DAYS * DAY_MS,
+      });
+      context.log.warn("device paired", { client: record.id, label, permissions });
+      return {
+        id: record.id,
+        token: issued,
+        permissions: record.permissions,
+        ...(record.expiresAt === undefined ? {} : { expiresAt: record.expiresAt }),
+      };
+    };
+    // Open codes outlive a reload of this plugin, not a restart of the node.
+    const pairing =
+      context.state.get<PairingStore>("pairing") ??
+      (() => {
+        const created = createPairingStore();
+        context.state.set("pairing", created);
+        return created;
+      })();
+    const http = context.services.tryGet<HttpServer>(HTTP_SERVER_CAPABILITY);
+    const PairingLink = z.object({
+      id: z.string(),
+      label: z.string().optional(),
+      permissions: z.array(z.string()),
+      createdAt: z.number(),
+      expiresAt: z.number(),
+    });
+
+    context.commands.register({
+      name: "auth.pairing.create",
+      description:
+        "A one-time pairing code and link another device uses to pair with this node as an authorized client",
+      input: z.object({
+        label: z.string().trim().min(1).optional(),
+        /** Defaults to every grant the caller holds. */
+        permissions: Grants.optional(),
+        ttlMinutes: z.number().positive().max(MAX_PAIRING_MINUTES).optional(),
+        /** Where the device reaches this node, e.g. https://jhin.example.com; defaults to its HTTP address. */
+        baseUrl: z
+          .string()
+          .refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol))
+          .optional(),
+      }),
+      output: PairingLink.extend({ code: z.string(), url: z.string().optional() }),
+      permissions: ["auth.write"],
+      handler: ({ label, permissions, ttlMinutes, baseUrl }, invocation) => {
+        const granted = permissions ?? [...(invocation.caller?.permissions ?? ["*"])];
+        const missing = notHeld(invocation, granted);
+        if (missing.length > 0) {
+          throw failure(
+            "PERMISSION_NOT_HELD",
+            `A pairing code cannot give ${missing.join(", ")}: the caller does not hold it`,
+            { missing },
+          );
+        }
+        const now = Date.now();
+        const { link, code } = pairing.create({
+          ...(label === undefined ? {} : { label }),
+          permissions: granted,
+          now,
+          expiresAt: now + (ttlMinutes ?? DEFAULT_PAIRING_MINUTES) * 60_000,
+        });
+        const base = baseUrl ?? http?.url;
+        context.log.warn("pairing code created", { link: link.id, label, permissions: granted });
+        return {
+          ...link,
+          permissions: [...link.permissions],
+          code,
+          // The code rides in the fragment, which never reaches a server (D422).
+          ...(base === undefined ? {} : { url: `${base.replace(/\/+$/, "")}/pair#token=${code}` }),
+        };
+      },
+    });
+    context.commands.register({
+      name: "auth.pairing.list",
+      description: "Pairing codes not used and not expired yet, without the codes",
+      input: z.object({}),
+      output: z.object({ links: z.array(PairingLink) }),
+      permissions: ["auth.read"],
+      handler: () => ({
+        links: pairing
+          .list(Date.now())
+          .map((link) => ({ ...link, permissions: [...link.permissions] })),
+      }),
+    });
+    context.commands.register({
+      name: "auth.pairing.revoke",
+      description: "Ends a pairing code before it is used",
+      input: z.object({ id: z.string().min(1) }),
+      output: z.object({ revoked: z.boolean() }),
+      permissions: ["auth.write"],
+      handler: ({ id }) => ({ revoked: pairing.revoke(id) }),
+    });
+
+    if (http !== undefined) {
+      context.subscriptions.add(
+        serveAuthHttp({
+          http,
+          log: context.log,
+          pair(code, label) {
+            const link = pairing.consume(code, Date.now());
+            return link === undefined
+              ? undefined
+              : issuePaired(link.permissions, link.label ?? label ?? "Paired device");
+          },
+          async openSession(credential) {
+            const link = pairing.consume(credential, Date.now());
+            if (link !== undefined) return issuePaired(link.permissions, link.label ?? "Browser");
+            // A token (e.g. the owner's from `#token=`) opens a session with its own grants.
+            const principal = await verifier.verify({ token: credential });
+            return principal === undefined
+              ? undefined
+              : issuePaired(principal.permissions, "Browser");
+          },
+          verify: (given) => verifier.verify({ token: given }),
+          closeSession(given) {
+            const record = clients.verify(given, Date.now());
+            if (record !== undefined) revoke([record.id]);
+          },
+        }),
+      );
+    }
+
     context.commands.register({
       name: "auth.clients.list",
       description:

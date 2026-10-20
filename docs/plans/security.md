@@ -181,6 +181,8 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   standard scopes) and follow D413. Only the code's SHA-256 is kept (T3
   keeps it in clear). `auth.pairing.list` and `auth.pairing.revoke {id}`
   manage open codes; both need `auth.read` / `auth.write`.
+  Open codes live in the plugin's kernel-scoped state: they outlive a
+  reload of `jhin.auth-token`, not a restart of the node.
 - **D420. Pairing exchanges the code for a device token over HTTP.**
   `POST /auth/pair {code, label?}` (no token: the device has none yet)
   returns `{id, token, permissions, expiresAt}` with
@@ -193,8 +195,12 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   code or a token, and answers with the cookie `jhin_session_<port>`
   (`HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` on HTTPS) holding a device
   token the page's scripts never see; `DELETE /auth/session` revokes it and
-  clears the cookie. The WebSocket upgrade from the page then authenticates
-  by the cookie, under D418's origin rule.
+  clears the cookie; `GET /auth/session` tells the page whether it has one.
+  `POST`/`DELETE` are refused (403) from any page but the node's own. The
+  WebSocket upgrade from the page then authenticates by the cookie when no
+  token is offered, and such an upgrade needs the node's own or a listed
+  origin even while the list is empty (D418). The endpoints and pairing
+  commands need `http.server@^1.2`, optional for `jhin.auth-token`.
 - **D422. The pairing URL is T3's: `<base>/pair#token=<CODE>`.** The code is
   in the fragment, so it never reaches a server log; the web client accepts
   `#token=` on any path, and also an owner or device token there (as

@@ -44,11 +44,12 @@ contracts, rules and messages of delegated tasks, thread launches and their
 capabilities, and the script contract of workflows), scheduled tasks
 (`packages/scheduler-api`, `plugins/scheduler`: triggers and their next runs,
 run bookkeeping, webhook tokens, signatures, prompt placeholders, rate limits
-and the delivery log) and the browser preview (`plugins/preview` and
+and the delivery log), the browser preview (`plugins/preview` and
 `@jhin/preview-api`: the server browser's tabs, their control by agents and
 viewers, page operations, snapshots, recordings, viewport presets, URL
-normalisation and the tools' wording). Files derived from T3 Code say so in a
-header comment.
+normalisation and the tools' wording) and pairing (`plugins/auth-token`:
+pairing codes, the pairing and session endpoints). Files derived from T3 Code
+say so in a header comment.
 
 ```
 MIT License

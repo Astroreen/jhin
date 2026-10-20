@@ -33,3 +33,20 @@ export const AuthEvents = {
   /** `{ principal }`: a device token was revoked; its connections are dropped. */
   clientRevoked: "auth.client.revoked",
 } as const;
+
+/**
+ * The httpOnly cookie that holds the device token of the node's own web page
+ * (security.md D421), one per port as T3 Code names its session cookies.
+ */
+export const sessionCookieName = (port: string | number): string => `jhin_session_${port}`;
+
+/** The value of cookie `name` in a `Cookie` header, if it is there. */
+export function readCookie(header: string | undefined, name: string): string | undefined {
+  for (const part of (header ?? "").split(";")) {
+    const index = part.indexOf("=");
+    if (index > 0 && part.slice(0, index).trim() === name) {
+      return decodeURIComponent(part.slice(index + 1).trim());
+    }
+  }
+  return undefined;
+}

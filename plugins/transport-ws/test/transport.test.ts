@@ -350,6 +350,8 @@ describe("device tokens (security.md D411–D414)", () => {
     expect(permissions.find((entry) => entry.permission === "auth.write")?.commands).toEqual([
       "auth.clients.revoke",
       "auth.clients.revoke-others",
+      "auth.pairing.create",
+      "auth.pairing.revoke",
       "auth.tokens.issue",
     ]);
   });
@@ -481,5 +483,143 @@ describe("Origin allowlist (security.md D418)", () => {
     expect(originAllowed("not an origin", "node:7777", [])).toBe(false);
     // `null` (a sandboxed frame, a file: page) is refused even while nothing is listed.
     expect(originAllowed("null", "node:7777", [])).toBe(false);
+  });
+});
+
+describe("pairing (security.md D419–D422)", () => {
+  const httpUrl = (node: Node) => node.url.replace(/^ws/, "http").replace(/\/rpc$/, "");
+  const createCode = (node: Node, input: Record<string, unknown> = {}) =>
+    node.kernel.commands.execute("auth.pairing.create", input) as Promise<{
+      id: string;
+      code: string;
+      url: string;
+      expiresAt: number;
+    }>;
+  const post = (url: string, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+
+  it("exchanges a one-time code for a scoped device token over HTTP", async () => {
+    const node = await startNode();
+    const { code, url } = await createCode(node, {
+      label: "Living room iPad",
+      permissions: ["app.*"],
+    });
+    expect(url).toBe(`${httpUrl(node)}/pair#token=${code}`);
+
+    const paired = await post(
+      `${httpUrl(node)}/auth/pair`,
+      { code, label: "ignored" },
+      {
+        origin: "https://client.example",
+      },
+    );
+    expect(paired.status).toBe(200);
+    expect(paired.headers.get("cache-control")).toBe("no-store");
+    expect(paired.headers.get("access-control-allow-origin")).toBe("*");
+    const issued = (await paired.json()) as { id: string; token: string; permissions: string[] };
+    expect(issued.permissions).toEqual(["app.*"]);
+
+    const device = connect(node.url, issued.token);
+    expect(await device.call("app.write", { text: "paired" })).toEqual({ text: "paired" });
+    const { clients: listed } = (await node.kernel.commands.execute("auth.clients.list", {})) as {
+      clients: { id: string; label: string; method: string }[];
+    };
+    // The code's label wins over the device's, as in T3.
+    expect(listed).toContainEqual(
+      expect.objectContaining({ id: issued.id, label: "Living room iPad", method: "pairing" }),
+    );
+
+    const again = await post(`${httpUrl(node)}/auth/pair`, { code });
+    expect(again.status).toBe(401);
+    expect(await again.json()).toMatchObject({ code: "PAIRING_CODE_INVALID" });
+  });
+
+  it("gives a pairing code no more than its creator holds", async () => {
+    const node = await startNode();
+    await expect(
+      node.kernel.commands.execute(
+        "auth.pairing.create",
+        { permissions: ["*"] },
+        { caller: { id: "someone", permissions: ["auth.write", "app.read"] } },
+      ),
+    ).rejects.toMatchObject({ code: "PERMISSION_NOT_HELD" });
+    // Without permissions named: the creator's own grants.
+    const { code } = (await node.kernel.commands.execute(
+      "auth.pairing.create",
+      {},
+      { caller: { id: "someone", permissions: ["auth.write", "app.read"] } },
+    )) as { code: string };
+    const issued = (await (await post(`${httpUrl(node)}/auth/pair`, { code })).json()) as {
+      permissions: string[];
+    };
+    expect(issued.permissions).toEqual(["auth.write", "app.read"]);
+  });
+
+  it("opens the page's own session as an httpOnly cookie the page never reads", async () => {
+    const node = await startNode({ allowedOrigins: [] });
+    const own = httpUrl(node);
+    const { code } = await createCode(node);
+
+    const foreign = await post(
+      `${own}/auth/session`,
+      { credential: code },
+      {
+        origin: "https://evil.example",
+      },
+    );
+    expect(foreign.status).toBe(403);
+
+    const opened = await post(`${own}/auth/session`, { credential: code }, { origin: own });
+    expect(opened.status).toBe(200);
+    const body = (await opened.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ authenticated: true });
+    expect(body).not.toHaveProperty("token");
+    const setCookie = opened.headers.get("set-cookie")!;
+    expect(setCookie).toMatch(/^jhin_session_\d+=jhd1\./);
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Lax");
+    const cookie = setCookie.split(";")[0]!;
+
+    expect(
+      await (await fetch(`${own}/auth/session`, { headers: { cookie } })).json(),
+    ).toMatchObject({ authenticated: true, permissions: ["*"] });
+
+    // The cookie authenticates a socket from the node's own page, never from another one,
+    // even while no origin is listed.
+    const open = (origin: string) =>
+      new Promise<number | "open">((resolve, reject) => {
+        const socket = new WebSocket(node.url, ["jhin.v1"], { origin, headers: { cookie } });
+        socket.once("message", () => {
+          socket.close();
+          resolve("open");
+        });
+        socket.once("unexpected-response", (_request, response) =>
+          resolve(response.statusCode ?? 0),
+        );
+        socket.once("close", (status) => resolve(status));
+        socket.once("error", reject);
+      });
+    expect(await open(own)).toBe("open");
+    expect(await open("https://elsewhere.example")).toBe(403);
+
+    // Signing out revokes the token behind the cookie.
+    const signedOut = await fetch(`${own}/auth/session`, {
+      method: "DELETE",
+      headers: { cookie, origin: own },
+    });
+    expect(signedOut.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect((await fetch(`${own}/auth/session`, { headers: { cookie } })).status).toBe(401);
+  });
+
+  it("turns the owner's token from #token= into a session too", async () => {
+    const node = await startNode();
+    const opened = await post(`${httpUrl(node)}/auth/session`, { credential: node.token });
+    expect(await opened.json()).toMatchObject({ authenticated: true, permissions: ["*"] });
+    const refused = await post(`${httpUrl(node)}/auth/session`, { credential: "nope" });
+    expect(refused.status).toBe(401);
   });
 });
