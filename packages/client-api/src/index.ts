@@ -221,6 +221,33 @@ export interface NodeCatalog {
   readonly threads: readonly ThreadRecord[];
 }
 
+/**
+ * `client.undo@1`: T3 Code's undo notice for thread actions (provided by
+ * `jhin.thread-actions`). An action run through `run` that succeeds is offered
+ * for undo in the sidebar for a few seconds ("Unpinned 1 thread, ⌘Z to undo");
+ * the command `thread.undo` takes back the latest group.
+ */
+export const UNDO_CAPABILITY = "client.undo";
+
+export interface ThreadUndoService {
+  /**
+   * Runs `perform` (true when it did something) and, if it did, offers
+   * `revert`. `kind` and `key` name what it claims: a later run of the same
+   * kind on the same key voids the earlier one's undo.
+   */
+  run(options: {
+    readonly kind: string;
+    readonly key: string;
+    readonly action: "Settled" | "Snoozed" | "Unpinned" | "Archived" | "Discarded";
+    /** The toast title when the undo fails, e.g. "Failed to undo unpin". */
+    readonly failureTitle: string;
+    readonly perform: () => Promise<boolean>;
+    readonly revert: () => Promise<unknown>;
+  }): Promise<boolean>;
+  /** Voids the undo of `kind` on `key`: an action undid it another way. */
+  invalidate(kind: string, key: string): void;
+}
+
 /** `client.visits@1`: when the user last looked at each thread, on this device. */
 export const VISITS_CAPABILITY = "client.visits";
 
@@ -333,6 +360,12 @@ export interface ChatDrawerProps {
  * the project and the node and before the agent, such as the thread's branch.
  */
 export const THREAD_DETAILS_SLOT = "sidebar.thread.details";
+
+/**
+ * The `sidebar.notices` slot: notes at the top of the sidebar's footer, as
+ * T3 Code shows its undo notice there (no props).
+ */
+export const SIDEBAR_NOTICES_SLOT = "sidebar.notices";
 
 /**
  * What the `sidebar.thread.indicators` slot gives each contribution: a

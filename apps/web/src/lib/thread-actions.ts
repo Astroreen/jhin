@@ -184,7 +184,8 @@ export function threadActions(services: ThreadActionServices) {
         return false;
       }
     },
-    async archive(target: NodeTarget, thread: ThreadRecord): Promise<void> {
+    /** Archives a thread after asking when the settings say so; true once it is archived. */
+    async archive(target: NodeTarget, thread: ThreadRecord): Promise<boolean> {
       if (
         settings().confirmArchive &&
         dialogs !== undefined &&
@@ -194,25 +195,15 @@ export function threadActions(services: ThreadActionServices) {
           confirmLabel: "Archive",
         }))
       ) {
-        return;
+        return false;
       }
       try {
         await threads.call(target, "threads.archive", { threadId: thread.id });
         leave(target, thread);
-        toasts?.show({
-          type: "success",
-          title: "Thread archived",
-          description: thread.title,
-          action: {
-            label: "Undo",
-            onClick: () =>
-              void threads
-                .call(target, "threads.unarchive", { threadId: thread.id })
-                .catch((error: unknown) => fail("Failed to unarchive thread", error)),
-          },
-        });
+        return true;
       } catch (error) {
         fail("Failed to archive thread", error);
+        return false;
       }
     },
     async unarchive(target: NodeTarget, thread: ThreadRecord): Promise<void> {

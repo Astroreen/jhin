@@ -2,11 +2,16 @@
 // apps/web/src/hooks/useThreadActionMenu.ts, apps/web/src/components/threadActionMenu.logic.ts
 // and apps/web/src/components/Sidebar.tsx.
 import {
+  KEYBINDINGS_CAPABILITY,
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  SIDEBAR_NOTICES_SLOT,
   THREAD_PARK_HOOK,
+  UNDO_CAPABILITY,
   THREADS_CAPABILITY,
   VISITS_CAPABILITY,
+  targetKey,
+  type Keybindings,
   type MeshMembership,
   type Navigation,
   type NodeTarget,
@@ -15,11 +20,15 @@ import {
   type ThreadParkInput,
   type ThreadRecord,
   type ThreadSection,
+  type ThreadUndoService,
   type ThreadsCatalog,
   type ThreadVisits,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
+  Alert,
+  AlertDescription,
+  InlineButton,
   MenuItem,
   MenuSeparator,
   MenuShortcut,
@@ -57,7 +66,9 @@ import { builtin } from "../lib/builtin.ts";
 import { CustomSnoozeDialogHost, createCustomSnoozeRequests } from "../lib/custom-snooze.tsx";
 import { canSnooze, threadSection } from "../lib/sidebar-order.ts";
 import { snoozePresets } from "../lib/snooze.ts";
+import { useExternal } from "../lib/hooks.ts";
 import { threadActions, type ThreadArrangement } from "../lib/thread-actions.ts";
+import { createThreadUndo, undoNoticeText, type UndoAction } from "../lib/thread-undo.ts";
 
 const At = { node: z.string(), remote: z.string().optional() };
 const ThreadRef = z.object({ ...At, threadId: z.string() });
@@ -95,9 +106,13 @@ function ActionItem(props: {
  * `thread.actions` and `project.actions` menus that run them. The sidebar and
  * the thread view only show those menus; plugins add their own items.
  */
+/** A stable source when no keybindings plugin is active. */
+const NO_KEYBINDINGS = { subscribe: () => ({ dispose() {} }) };
+
 export const threadActionsPlugin = builtin(
   "jhin.thread-actions",
   {
+    provides: { [UNDO_CAPABILITY]: "1.0.0" },
     requires: {
       [UI_SLOTS_CAPABILITY]: "^1",
       [THREADS_CAPABILITY]: "^1",
@@ -108,6 +123,7 @@ export const threadActionsPlugin = builtin(
       [UI_TOASTS_CAPABILITY]: "^1",
       [UI_DIALOGS_CAPABILITY]: "^1",
       [VISITS_CAPABILITY]: "^1",
+      [KEYBINDINGS_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -128,6 +144,64 @@ export const threadActionsPlugin = builtin(
         dialogs,
         visits,
       });
+      const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
+      const undo = createThreadUndo({
+        fail: (title, error) =>
+          toasts?.show({ type: "error", title, description: (error as Error).message }),
+      });
+      context.subscriptions.add({ dispose: () => undo.dispose() });
+      const undoService: ThreadUndoService = {
+        async run({ kind, key, action, failureTitle, perform, revert }) {
+          const claim = undo.begin(kind, key);
+          const done = await perform();
+          if (done && claim.isCurrent()) {
+            undo.show({ action, claim, failureTitle, undo: async () => void (await revert()) });
+          } else claim.finish();
+          return done;
+        },
+        invalidate: (kind, key) => undo.invalidate(kind, key),
+      };
+      context.services.provide(UNDO_CAPABILITY, undoService);
+
+      /** T3's SidebarThreadUndoNotice: what was just done, and how to take it back. */
+      function UndoNoticeView() {
+        const notice = useExternal(undo, undo.notice);
+        const shortcut = useExternal(keybindings ?? NO_KEYBINDINGS, () =>
+          keybindings?.labelFor("thread.undo"),
+        );
+        if (notice === undefined) return null;
+        return (
+          <Alert role="status" variant="sidebar">
+            <AlertDescription>
+              {undoNoticeText(notice)},{" "}
+              <InlineButton onClick={() => undo.undoLatest()}>
+                {shortcut === undefined ? "Undo" : `${shortcut} to undo`}
+              </InlineButton>
+            </AlertDescription>
+          </Alert>
+        );
+      }
+      context.subscriptions.add(
+        slots.contribute(SIDEBAR_NOTICES_SLOT, {
+          id: "jhin.thread-actions.undo-notice",
+          component: UndoNoticeView,
+        }),
+      );
+      context.commands.register({
+        name: "thread.undo",
+        title: "Undo",
+        description:
+          "Undoes the latest thread action the sidebar offers to undo (unpin, settle, snooze, archive), while its notice shows",
+        input: z.object({}),
+        output: z.object({ undone: z.boolean() }),
+        handler: () => ({ undone: undo.undoLatest() }),
+      });
+      if (keybindings !== undefined)
+        context.subscriptions.add(
+          keybindings.addDefaults([
+            { key: "mod+z", command: "thread.undo", when: "!terminalFocus && !editableFocus" },
+          ]),
+        );
 
       const threadOf = (input: z.infer<typeof ThreadRef>) => {
         const target = targetOf(input);
@@ -210,7 +284,14 @@ export const threadActionsPlugin = builtin(
         ThreadRef,
         (input) => {
           const { target, thread } = threadOf(input);
-          return actions.archive(target, thread);
+          return undoable(
+            input,
+            "archive",
+            "Archived",
+            "Failed to undo archive",
+            () => actions.archive(target, thread),
+            () => threads.call(target, "threads.unarchive", { threadId: thread.id }),
+          );
         },
       );
       register(
@@ -220,6 +301,7 @@ export const threadActionsPlugin = builtin(
         ThreadRef,
         (input) => {
           const { target, thread } = threadOf(input);
+          undo.invalidate("archive", undoKey(input));
           return actions.unarchive(target, thread);
         },
       );
@@ -235,6 +317,18 @@ export const threadActionsPlugin = builtin(
       );
       // Where the sidebar keeps a thread (D75–D77): kept on its node.
       const customSnooze = createCustomSnoozeRequests();
+      const undoKey = (input: z.infer<typeof ThreadRef>) =>
+        `${targetKey(targetOf(input))}|${input.threadId}`;
+      /** Runs an action and, once it succeeded, offers to undo it (T3's undo notice, D450). */
+      const undoable = (
+        input: z.infer<typeof ThreadRef>,
+        kind: string,
+        action: UndoAction,
+        failureTitle: string,
+        perform: () => Promise<boolean>,
+        revert: () => Promise<unknown>,
+      ): Promise<boolean> =>
+        undoService.run({ kind, key: undoKey(input), action, failureTitle, perform, revert });
       const arrangeThread = (
         input: z.infer<typeof ThreadRef>,
         change: ThreadArrangement,
@@ -259,10 +353,43 @@ export const threadActionsPlugin = builtin(
         "Settle thread",
         "Moves a thread to the Settled shelf until it is un-settled or runs again",
         ThreadRef,
-        (input) =>
-          park(input, "settle", () =>
-            arrangeThread(input, { method: "settle" }, "Failed to settle thread"),
-          ),
+        (input) => {
+          const { target, thread } = threadOf(input);
+          // Settling unpins and wakes: their own undos are void, this one restores both.
+          undo.invalidate("pin", undoKey(input));
+          undo.invalidate("snooze", undoKey(input));
+          const wake = thread.snoozedUntil;
+          return undoable(
+            input,
+            "settle",
+            "Settled",
+            "Failed to undo settle",
+            () =>
+              park(input, "settle", () =>
+                arrangeThread(input, { method: "settle" }, "Failed to settle thread"),
+              ),
+            async () => {
+              await threads.call(target, "threads.arrange", {
+                steps: [
+                  { op: "unsettle", threadId: thread.id },
+                  ...(thread.pinnedAt === undefined
+                    ? []
+                    : [
+                        {
+                          op: "pin",
+                          threadId: thread.id,
+                          ...(thread.pinOrderKey === undefined
+                            ? {}
+                            : { orderKey: thread.pinOrderKey }),
+                        },
+                      ]),
+                ],
+              });
+              if (wake !== undefined && Date.parse(wake) > Date.now())
+                await threads.call(target, "threads.snooze", { threadId: thread.id, until: wake });
+            },
+          );
+        },
       );
       register(
         "thread.set-auto-settle",
@@ -281,14 +408,20 @@ export const threadActionsPlugin = builtin(
         "Un-settle thread",
         "Brings a thread back from the Settled shelf to the top of the active threads",
         ThreadRef,
-        (input) => arrangeThread(input, { method: "unsettle" }, "Failed to un-settle thread"),
+        (input) => {
+          undo.invalidate("settle", undoKey(input));
+          return arrangeThread(input, { method: "unsettle" }, "Failed to un-settle thread");
+        },
       );
       register(
         "thread.pin",
         "Pin thread",
         "Pins a thread above the active ones",
         ThreadRef,
-        (input) => arrangeThread(input, { method: "pin" }, "Failed to pin thread"),
+        (input) => {
+          undo.invalidate("pin", undoKey(input));
+          return arrangeThread(input, { method: "pin" }, "Failed to pin thread");
+        },
       );
       register(
         "thread.unpin",
@@ -297,7 +430,19 @@ export const threadActionsPlugin = builtin(
         ThreadRef,
         (input) => {
           const { target, thread } = threadOf(input);
-          return actions.unpin(target, thread);
+          const orderKey = thread.pinOrderKey;
+          return undoable(
+            input,
+            "pin",
+            "Unpinned",
+            "Failed to undo unpin",
+            () => actions.unpin(target, thread),
+            () =>
+              threads.call(target, "threads.pin", {
+                threadId: thread.id,
+                ...(orderKey === undefined ? {} : { orderKey }),
+              }),
+          );
         },
       );
       register(
@@ -309,13 +454,29 @@ export const threadActionsPlugin = builtin(
           threadOf(input);
           const until = input.until ?? (await customSnooze.request());
           if (until === undefined) return;
-          await park(input, "snooze", () =>
-            arrangeThread(input, { method: "snooze", until }, "Failed to snooze thread"),
+          const { target, thread } = threadOf(input);
+          await undoable(
+            input,
+            "snooze",
+            "Snoozed",
+            "Failed to wake thread",
+            () =>
+              park(input, "snooze", () =>
+                arrangeThread(input, { method: "snooze", until }, "Failed to snooze thread"),
+              ),
+            () => threads.call(target, "threads.unsnooze", { threadId: thread.id }),
           );
         },
       );
-      register("thread.unsnooze", "Wake thread", "Wakes a snoozed thread now", ThreadRef, (input) =>
-        arrangeThread(input, { method: "unsnooze" }, "Failed to wake thread"),
+      register(
+        "thread.unsnooze",
+        "Wake thread",
+        "Wakes a snoozed thread now",
+        ThreadRef,
+        (input) => {
+          undo.invalidate("snooze", undoKey(input));
+          return arrangeThread(input, { method: "unsnooze" }, "Failed to wake thread");
+        },
       );
       context.subscriptions.add(
         slots.contribute("app.global", {

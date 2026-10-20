@@ -410,3 +410,75 @@ test("D445: a thread's Auto-settle behavior, kept on the node", async ({ page },
   ).toEqual({ settled: false });
   await expect(page.getByRole("button", { name: "Settled (0)" })).toBeVisible();
 });
+
+test("D450: undo an unpin, a settle and an archive from the sidebar's notice", async ({
+  page,
+}, info) => {
+  const x = await start({ mode: "ui" });
+  await addThread(x, "first");
+  await addThread(x, "second");
+  const threads = await x.client().call<{ id: string; title: string }[]>("threads.list", {});
+  const second = threads.find((thread) => thread.title === "second")!;
+  await x.client().call("threads.pin", { threadId: second.id, orderKey: "n" });
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(cardTitles(page)).toHaveText(["second", "first"]);
+
+  // Unpin from the card: the footer offers to undo it, with the shortcut.
+  await threadRow(page, "second").hover();
+  await threadRow(page, "second").getByRole("button", { name: "Unpin thread" }).click();
+  const notice = page.getByRole("status").filter({ hasText: /to undo$|Undo$/ });
+  await expect(notice).toHaveText("Unpinned 1 thread, Ctrl+Z to undo");
+  const shot = info.outputPath("undo-notice.png");
+  await page.screenshot({ path: shot });
+  await info.attach("undo-notice", { path: shot, contentType: "image/png" });
+  await page.keyboard.press("Control+z");
+  await expect(notice).toHaveCount(0);
+  await expect(
+    threadRow(page, "second").getByRole("button", { name: "Unpin thread" }),
+  ).toBeAttached();
+  const { thread: repinned } = await x
+    .client()
+    .call<{ thread: { pinOrderKey?: string } }>("threads.get", { threadId: second.id });
+  expect(repinned.pinOrderKey).toBe("n");
+
+  // Settling a pinned thread and undoing it brings it back pinned.
+  await threadRow(page, "second").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Settle thread" }).click();
+  await expect(page.getByRole("button", { name: "Settled (1)" })).toBeVisible();
+  await expect(notice).toHaveText("Settled 1 thread, Ctrl+Z to undo");
+  await notice.getByRole("button", { name: "Ctrl+Z to undo" }).click();
+  await expect(page.getByRole("button", { name: "Settled (0)" })).toBeVisible();
+  await expect(cardTitles(page)).toHaveText(["second", "first"]);
+
+  // Archiving says so in the same place.
+  await threadRow(page, "first").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Archive thread" }).click();
+  await expect(notice).toHaveText("Archived 1 thread, Ctrl+Z to undo");
+  await notice.getByRole("button", { name: "Ctrl+Z to undo" }).click();
+  await expect(cardTitles(page)).toHaveText(["second", "first"]);
+});
+
+test("D451: discard a new thread's draft from its card, and undo it", async ({ page }, info) => {
+  const x = await start({ mode: "ui" });
+  await page.goto(`${x.ui}#token=${x.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("half a thought");
+  const draft = page.getByTestId("sidebar-draft-row");
+  await expect(draft).toBeVisible();
+
+  await draft.hover();
+  const shot = info.outputPath("discard-draft.png");
+  await page.screenshot({ path: shot });
+  await info.attach("discard-draft", { path: shot, contentType: "image/png" });
+  await draft.getByRole("button", { name: "Discard draft" }).click();
+  await expect(draft).toHaveCount(0);
+  await expect(message).toHaveCount(0);
+  const notice = page.getByRole("status").filter({ hasText: "Discarded" });
+  await expect(notice).toHaveText("Discarded 1 draft, Ctrl+Z to undo");
+
+  // Undo: the draft is back, with its text.
+  await notice.getByRole("button", { name: "Ctrl+Z to undo" }).click();
+  await expect(draft).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveText("half a thought");
+});
