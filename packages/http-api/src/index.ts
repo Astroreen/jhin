@@ -29,4 +29,11 @@ export interface HttpServer {
    * Forwarded headers are never trusted by default.
    */
   clientAddress(request: IncomingMessage): string;
+  /**
+   * Since 1.2: the host (`name:port`) the client asked for: `X-Forwarded-Host`
+   * when the socket's peer is one of `jhin.http.trustProxy`, else `Host`.
+   * Undefined without either. Origin checks compare a browser's `Origin`
+   * with it (security.md D418).
+   */
+  requestedHost(request: IncomingMessage): string | undefined;
 }

@@ -13,10 +13,11 @@ import {
   type TestKernel,
 } from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { WebSocket } from "ws";
 
 import auth from "../../auth-token/src/index.ts";
 import http from "../../http/src/index.ts";
-import transport from "../src/index.ts";
+import transport, { originAllowed } from "../src/index.ts";
 
 const manifest = (dir: string) =>
   JSON.parse(Fs.readFileSync(new URL(`../../${dir}/package.json`, import.meta.url), "utf8")).jhin;
@@ -58,7 +59,9 @@ afterEach(async () => {
   for (const kernel of kernels.splice(0)) await kernel.stop();
 });
 
-async function startNode(options: { tokenFile?: string } = {}): Promise<Node> {
+async function startNode(
+  options: { tokenFile?: string; allowedOrigins?: string[] } = {},
+): Promise<Node> {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-transport-"));
   if (options.tokenFile !== undefined) {
     Fs.mkdirSync(Path.join(data, "jhin.auth-token"), { recursive: true });
@@ -84,7 +87,14 @@ async function startNode(options: { tokenFile?: string } = {}): Promise<Node> {
       real("transport-ws", transport),
       echo,
     ],
-    config: { node: { "jhin.http": { port: 0 } } },
+    config: {
+      node: {
+        "jhin.http": { port: 0 },
+        ...(options.allowedOrigins === undefined
+          ? {}
+          : { "jhin.transport-ws": { allowedOrigins: options.allowedOrigins } }),
+      },
+    },
   });
   kernels.push(kernel);
   const failed = kernel.inspect().plugins.filter((plugin) => plugin.status !== "active");
@@ -373,5 +383,50 @@ describe("a revoke while a token is checked (security.md D414)", () => {
     answer({ id: "client:a", permissions: ["*"] });
     await closed(device);
     expect(device.closeReason).toMatchObject({ code: "UNAUTHENTICATED" });
+  });
+});
+
+describe("Origin allowlist (security.md D418)", () => {
+  /** Opens a socket as a browser page on `origin` would; resolves with the HTTP status or "open". */
+  const openFrom = (node: Node, origin: string | undefined) =>
+    new Promise<number | "open">((resolve, reject) => {
+      const socket = new WebSocket(
+        node.url,
+        ["jhin.v1", `jhin.token.${node.token}`],
+        origin === undefined ? {} : { origin },
+      );
+      socket.once("open", () => {
+        socket.close();
+        resolve("open");
+      });
+      socket.once("unexpected-response", (_request, response) => resolve(response.statusCode ?? 0));
+      socket.once("error", reject);
+    });
+
+  it("lets any page connect with a token while no origin is listed", async () => {
+    const node = await startNode();
+    expect(await openFrom(node, "https://elsewhere.example")).toBe("open");
+    expect(await openFrom(node, undefined)).toBe("open");
+  });
+
+  it("refuses other pages with 403 once origins are listed, keeping the node's own and listed ones", async () => {
+    const node = await startNode({ allowedOrigins: ["https://client.example"] });
+    const own = new URL(node.url.replace(/^ws/, "http")).origin;
+
+    expect(await openFrom(node, "https://elsewhere.example")).toBe(403);
+    expect(await openFrom(node, "null")).toBe(403);
+    expect(await openFrom(node, own)).toBe("open");
+    expect(await openFrom(node, "https://client.example")).toBe("open");
+    // The CLI and other nodes send no Origin.
+    expect(await openFrom(node, undefined)).toBe("open");
+  });
+
+  it("compares origins by scheme, host and port", () => {
+    const listed = ["https://client.example"];
+    expect(originAllowed("https://client.example", "node:7777", listed)).toBe(true);
+    expect(originAllowed("http://client.example", "node:7777", listed)).toBe(false);
+    expect(originAllowed("https://client.example:8443", "node:7777", listed)).toBe(false);
+    expect(originAllowed("http://node:7777", "node:7777", listed)).toBe(true);
+    expect(originAllowed("not an origin", "node:7777", [])).toBe(false);
   });
 });

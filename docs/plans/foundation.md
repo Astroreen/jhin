@@ -257,10 +257,8 @@ and engineering practices.
   a bare `pnpm pack`/`publish` is an environment flag, so a manual
   `JHIN_PACK_STAGED=1 pnpm publish` still bypasses it. Repacked tarballs are
   not byte-reproducible yet (file times and order come from the local `tar`).
-- An `Origin` allowlist on the WebSocket transport: today the upgrade is
-  authenticated by token only, so a page in the owner's browser that knows a
-  token can call commands. It must still let `jhin client` and other nodes'
-  web clients connect cross-origin (D21).
+- An `Origin` allowlist on the WebSocket transport. Done in `security.md`
+  (D418): `jhin.transport-ws.allowedOrigins`.
 - Keeping node tokens somewhere safer than `localStorage` in the web client:
   any script on the client's origin (including user client plugins) can read
   them today.

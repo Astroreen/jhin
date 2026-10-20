@@ -9,7 +9,7 @@ import {
 } from "@jhin/http-api";
 import { definePlugin, toDisposable, z } from "@jhin/sdk";
 
-import { clientAddress, trustList } from "./client-address.ts";
+import { clientAddress, trustList, trusted } from "./client-address.ts";
 
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
 const Config = z
@@ -127,6 +127,18 @@ export default definePlugin({
         return toDisposable(() => {
           if (upgrades.get(path) === handler) upgrades.delete(path);
         });
+      },
+      requestedHost(request) {
+        const forwarded = request.headers["x-forwarded-host"];
+        const peer = request.socket.remoteAddress;
+        if (forwarded !== undefined && peer !== undefined && trusted(trust, peer)) {
+          // A chain of proxies lists the first host the client asked for first.
+          const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)
+            ?.split(",")[0]
+            ?.trim();
+          if (first !== undefined && first !== "") return first.toLowerCase();
+        }
+        return request.headers.host?.toLowerCase();
       },
       clientAddress: (request) =>
         clientAddress(request.socket.remoteAddress, request.headers, {

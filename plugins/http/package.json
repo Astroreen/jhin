@@ -47,7 +47,7 @@
     "description": "One HTTP listener per node; plugins add routes and upgrade handlers",
     "side": "server",
     "provides": {
-      "http.server": "1.1.0"
+      "http.server": "1.2.0"
     },
     "entry": "src/index.ts"
   }

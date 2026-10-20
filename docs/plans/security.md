@@ -165,7 +165,11 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   `jhin client` and other nodes' web clients still connect cross-origin
   (D21), and only from listed origins once the owner lists any. A refused
   upgrade gets 403 before the WebSocket opens. Requests without `Origin`
-  (the CLI, nodes, MCP clients) are not browsers and are not checked.
+  (the CLI, nodes, MCP clients) are not browsers and are not checked. An
+  `Origin` that is no URL (`null`, from a sandboxed frame or a `file:` page)
+  is always refused. The host the client asked for comes from
+  `http.server` 1.2's `requestedHost`, so a node behind a reverse proxy
+  compares with the proxy's host.
 
 ### Pairing
 

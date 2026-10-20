@@ -42,7 +42,7 @@ export function trustList(entries: readonly string[]): Net.BlockList {
   return list;
 }
 
-function trusted(list: Net.BlockList, address: string): boolean {
+export function trusted(list: Net.BlockList, address: string): boolean {
   const family = Net.isIP(address);
   if (family === 0) return false;
   return list.check(address, family === 4 ? "ipv4" : "ipv6");
