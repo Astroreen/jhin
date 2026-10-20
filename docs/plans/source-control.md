@@ -418,7 +418,8 @@ with screenshots).
   only), the commit, the push and the pull request, each only when the action
   includes it (`create_pr` pushes first when the branch has no upstream or is
   ahead), stopping at the first failure. As in T3: the commit takes every
-  change (`git add -A`) or only `filePaths` (`git reset`, then those paths);
+  change (`git add -A`) or only `filePaths` (staged, then committed with
+  `--only`, so whatever else the user staged stays staged);
   what it would hold is read through a temporary index, so the user's own
   staging is untouched until the commit; `commitMessage`'s first line is the
   subject; a push goes to the branch's own name on its push remote
@@ -434,8 +435,9 @@ with screenshots).
   "Cannot create a feature branch because there are no changes to commit.",
   "Cannot push because no git remote is configured for this repository.", …),
   `GIT_FAILED` (git's own refusal, a commit hook's included) and
-  `PULL_REQUEST_FAILED` (the forge's). Actions of one project run one at a
-  time. A thread named with `threadId` is moved to a branch the action
+  `PULL_REQUEST_FAILED` (the forge's). Actions, pulls and checkouts of one
+  project run one at a time, so none moves `HEAD` under another; a failure
+  before the first step still ends the action's progress with `action_failed`. A thread named with `threadId` is moved to a branch the action
   created. `git.pull` pulls fast-forward only ("Pulled", "Already up to
   date"); `git.init` makes a project's folder a repository (T3's "Initialize
   Git"). `source-control.git` becomes 1.1 (`runAction`, `pull`).
@@ -446,7 +448,8 @@ with screenshots).
   runtime of `agent.registry@1`; the answer's JSON (`subject`, `body`,
   `branch`; `title`, `body`) is sanitized as T3 does (one line, no trailing
   period, 72 characters). Unlike T3, an agent that is missing, fails or
-  answers no JSON does not fail the action: a plain writer names the files
+  answers no JSON, or takes longer than `writerTimeoutSeconds` (120; its
+  turn is interrupted), does not fail the action: a plain writer names the files
   ("Update greet.ts", "Update 3 files") and lists the commits under T3's
   "## Summary" and "## Testing" headings. A repository's pull request
   template (`.github/pull_request_template.md` and GitHub's other places, read

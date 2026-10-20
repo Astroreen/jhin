@@ -4,7 +4,10 @@ import type { GitActionProgress, GitActionResult, PullResult } from "@jhin/sourc
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
+import type { AgentItem, AgentRuntime } from "@jhin/agent-api";
+
 import {
+  agentWriter,
   parseCommitMessage,
   parseJsonObject,
   plainWriter,
@@ -69,6 +72,44 @@ describe("jhin.source-control: git actions", () => {
     });
     expect(git(dir, "show", "--name-only", "--format=", "HEAD").trim()).toBe("a.txt");
     expect(git(dir, "status", "--porcelain").trim()).toBe("?? b.txt");
+  });
+
+  it("leaves what else the user staged staged when committing only some files", async () => {
+    const { dir } = withRemote();
+    write(dir, "a.txt", "a\n");
+    write(dir, "staged.txt", "s\n");
+    git(dir, "add", "staged.txt");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    await sc.client.call("git.action.run", {
+      projectId,
+      action: "commit",
+      commitMessage: "Add a",
+      filePaths: ["a.txt"],
+    });
+    expect(git(dir, "show", "--name-only", "--format=", "HEAD").trim()).toBe("a.txt");
+    expect(git(dir, "status", "--porcelain").trim()).toBe("A  staged.txt");
+  });
+
+  it("ends the progress of an action that fails before its steps", async () => {
+    const { dir } = withRemote();
+    git(dir, "switch", "--quiet", "--detach");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const progress: GitActionProgress[] = [];
+    let failed!: () => void;
+    const done = new Promise<void>((resolve) => (failed = resolve));
+    sc.client.subscribe("source-control/actions", {}, (event: StoredEvent) => {
+      const payload = event.payload as GitActionProgress;
+      if (payload.actionId !== "act-d") return;
+      progress.push(payload);
+      if (payload.kind === "action_failed") failed();
+    });
+    await expect(
+      sc.client.call("git.action.run", { projectId, action: "push", actionId: "act-d" }),
+    ).rejects.toMatchObject({ message: "Cannot push from detached HEAD." });
+    await done;
+    expect(progress.map((event) => event.kind)).toEqual(["action_started", "action_failed"]);
   });
 
   it("writes the message itself when none is given", async () => {
@@ -403,5 +444,75 @@ describe("git action helpers", () => {
         includeBranch: true,
       }),
     ).toEqual({ subject: "Update 2 files", body: "", branch: "Update 2 files" });
+  });
+});
+
+describe("the agent writer", () => {
+  /** A runtime whose turn never ends unless interrupted, and says whether it was. */
+  function stalling() {
+    let interrupted = false;
+    let stop!: () => void;
+    const stopped = new Promise<void>((resolve) => (stop = resolve));
+    const runtime: AgentRuntime = {
+      agentId: "stall",
+      startTurn: () => ({
+        // Yields nothing, and ends only once interrupted.
+        items: {
+          [Symbol.asyncIterator]: () => ({
+            next: async (): Promise<IteratorResult<AgentItem>> => {
+              await stopped;
+              return { done: true, value: undefined };
+            },
+          }),
+        },
+        interrupt: () => {
+          interrupted = true;
+          stop();
+        },
+      }),
+    };
+    return { runtime, interrupted: () => interrupted };
+  }
+
+  it("falls back to a plain message when the agent's turn passes its deadline", async () => {
+    const { runtime, interrupted } = stalling();
+    // The deadline is started with the turn; it is reached once the turn has begun.
+    let started!: (reach: () => void) => void;
+    const begun = new Promise<() => void>((resolve) => (started = resolve));
+    const warnings: string[] = [];
+    const writer = agentWriter({
+      runtime: async () => runtime,
+      cwd: "/",
+      deadline: () => {
+        let reach!: () => void;
+        const reached = new Promise<void>((resolve) => (reach = resolve));
+        started(reach);
+        return { reached, dispose: () => undefined };
+      },
+      warn: (message) => warnings.push(message),
+    });
+    const written = writer.commitMessage({
+      branch: "main",
+      summary: " a.ts | 1 +\n",
+      patch: "",
+      includeBranch: false,
+    });
+    (await begun)();
+    expect(await written).toEqual({ subject: "Update a.ts", body: "" });
+    expect(interrupted()).toBe(true);
+    expect(warnings).toEqual(["the writer failed"]);
+  });
+
+  it("titles a plain pull request after its one commit, body lines aside", async () => {
+    expect(
+      await plainWriter.pullRequest({
+        base: "main",
+        head: "feature",
+        commits: "Add a\n- with a body line",
+        subjects: ["Add a"],
+        stat: "",
+        patch: "",
+      }),
+    ).toEqual({ title: "Add a", body: "## Summary\n- Add a\n\n## Testing\n- Not run" });
   });
 });

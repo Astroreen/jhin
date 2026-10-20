@@ -19,6 +19,8 @@ interface PullRequestInput {
   readonly head: string;
   /** `git log` subjects and bodies of the branch's commits. */
   readonly commits: string;
+  /** The subjects alone, newest first. */
+  readonly subjects: readonly string[];
   readonly stat: string;
   readonly patch: string;
   /** The repository's template for a pull request's body. */
@@ -143,21 +145,30 @@ export const plainWriter: Writer = {
     };
   },
   async pullRequest(input) {
-    const subjects = input.commits
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line !== "");
+    const subjects = input.subjects.filter((line) => line !== "");
     const title = subjects.length === 1 ? subjects[0]! : input.head;
     const summary = (subjects.length === 0 ? [title] : subjects).map((line) => `- ${line}`);
     return { title, body: ["## Summary", ...summary, "", "## Testing", "- Not run"].join("\n") };
   },
 };
 
+/** When a writer's turn has taken too long: a promise that resolves then, and how to drop it. */
+export interface Deadline {
+  readonly reached: Promise<void>;
+  dispose(): void;
+}
+
 /**
  * Asks an agent runtime for the JSON the prompts describe, in a turn of its
- * own that reads nothing of any thread; every tool call it asks for is declined.
+ * own that reads nothing of any thread; every tool call it asks for is
+ * declined. A turn still running at `deadline` is interrupted and fails.
  */
-async function ask(runtime: AgentRuntime, cwd: string, prompt: string): Promise<string> {
+async function ask(
+  runtime: AgentRuntime,
+  cwd: string,
+  prompt: string,
+  deadline: Deadline | undefined,
+): Promise<string> {
   const turn = runtime.startTurn({
     threadId: `jhin.source-control.writer-${randomUUID()}`,
     turnId: randomUUID(),
@@ -167,18 +178,32 @@ async function ask(runtime: AgentRuntime, cwd: string, prompt: string): Promise<
     runtimeMode: "approval-required",
     interactionMode: "default",
   });
-  let text = "";
-  for await (const item of turn.items) {
-    if (item.kind === "message.completed") text = item.text;
-    if (item.kind !== "request.opened") continue;
-    turn.respond?.(
-      item.requestId,
-      item.request.kind === "approval"
-        ? { kind: "approval", decision: "decline" }
-        : { kind: "user-input", answers: {} },
-    );
+  const consume = async () => {
+    let text = "";
+    for await (const item of turn.items) {
+      if (item.kind === "message.completed") text = item.text;
+      if (item.kind !== "request.opened") continue;
+      turn.respond?.(
+        item.requestId,
+        item.request.kind === "approval"
+          ? { kind: "approval", decision: "decline" }
+          : { kind: "user-input", answers: {} },
+      );
+    }
+    return text;
+  };
+  if (deadline === undefined) return consume();
+  try {
+    return await Promise.race([
+      consume(),
+      deadline.reached.then((): never => {
+        turn.interrupt();
+        throw new Error("the writer took too long");
+      }),
+    ]);
+  } finally {
+    deadline.dispose();
   }
-  return text;
 }
 
 /**
@@ -188,13 +213,15 @@ async function ask(runtime: AgentRuntime, cwd: string, prompt: string): Promise<
 export function agentWriter(options: {
   runtime: () => Promise<AgentRuntime | undefined>;
   cwd: string;
+  /** Starts the time a turn may take; a turn past it falls back to `plainWriter`. */
+  deadline?: () => Deadline;
   warn: (message: string, fields: Record<string, unknown>) => void;
 }): Writer {
   const answer = async (prompt: string): Promise<Record<string, unknown> | undefined> => {
     const runtime = await options.runtime();
     if (runtime === undefined) return undefined;
     try {
-      const parsed = parseJsonObject(await ask(runtime, options.cwd, prompt));
+      const parsed = parseJsonObject(await ask(runtime, options.cwd, prompt, options.deadline?.()));
       if (parsed === undefined) {
         options.warn("the writer answered no JSON", { agentId: runtime.agentId });
       }

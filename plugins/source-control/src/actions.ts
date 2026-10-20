@@ -290,10 +290,6 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
     ...(wantsPr ? (["pr"] as const) : []),
   ];
   run.progress({ kind: "action_started", phases });
-  if (run.featureBranch !== true && branch === null) {
-    if (wantsPush) fail("Cannot push from detached HEAD.");
-    if (wantsPr) fail(`Cannot create a ${terms.singular} from detached HEAD.`);
-  }
 
   const result: Omit<GitActionResult, "actionId" | "toast"> = {
     action,
@@ -309,6 +305,10 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
   };
 
   try {
+    if (run.featureBranch !== true && branch === null) {
+      if (wantsPush) fail("Cannot push from detached HEAD.");
+      if (wantsPr) fail(`Cannot create a ${terms.singular} from detached HEAD.`);
+    }
     let suggestion: { subject: string; body: string } | undefined =
       run.commitMessage === undefined ? undefined : parseCommitMessage(run.commitMessage);
 
@@ -358,18 +358,22 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
           suggestion = { subject: sanitizeSubject(written.subject), body: written.body.trim() };
         }
         enter("commit", "Committing...");
-        if (run.filePaths === undefined) {
-          await git(["add", "-A"]);
-        } else {
-          await git(["reset", "--quiet"], { ok: [0, 1] });
-          await git(["--literal-pathspecs", "add", "-A", "--", ...run.filePaths]);
-        }
+        // Only these files: staged, then committed with `--only`, so whatever else the user
+        // staged stays staged and out of the commit.
+        const only = run.filePaths === undefined ? [] : ["--only", "--", ...run.filePaths];
+        await git([
+          "--literal-pathspecs",
+          "add",
+          "-A",
+          "--",
+          ...(run.filePaths === undefined ? ["."] : run.filePaths),
+        ]);
         const message = [
           "-m",
           suggestion.subject,
           ...(suggestion.body ? ["-m", suggestion.body] : []),
         ];
-        await git(["commit", ...message], {
+        await git(["--literal-pathspecs", "commit", ...message, ...only], {
           timeoutMs: COMMIT_TIMEOUT_MS,
           // Hooks print to stderr (git hands their stdout there too); stdout is the commit's summary.
           onOutput: (stream, text) => {
@@ -531,7 +535,8 @@ async function pullRequestContent(
       : undefined;
   const range = baseRef === undefined ? ["-n", "50", "HEAD"] : [`${baseRef}..HEAD`];
   const [commits, stat, patch] = await Promise.all([
-    git(["log", "--format=%s%n%b", ...range], { maxBytes: 12_000 }),
+    // Each commit ends in a record separator, its subject and body apart by a unit separator.
+    git(["log", "--format=%s%x1f%b%x1e", ...range], { maxBytes: 12_000 }),
     baseRef === undefined
       ? Promise.resolve({ stdout: "" })
       : git(["diff", "--stat", `${baseRef}...HEAD`], { maxBytes: 12_000 }),
@@ -541,10 +546,21 @@ async function pullRequestContent(
   ]);
   const template =
     baseRef === undefined ? undefined : await run.forge?.template?.(baseRef).catch(() => undefined);
+  const entries = commits.stdout
+    .split("\x1e")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "")
+    .map((entry) => {
+      const [subject = "", body = ""] = entry.split("\x1f");
+      return { subject: subject.trim(), body: body.trim() };
+    });
   const written = await run.writer.pullRequest({
     base,
     head,
-    commits: commits.stdout,
+    commits: entries
+      .map((entry) => (entry.body ? `${entry.subject}\n${entry.body}` : entry.subject))
+      .join("\n\n"),
+    subjects: entries.map((entry) => entry.subject),
     stat: stat.stdout,
     patch: patch.stdout,
     ...(template === undefined ? {} : { template }),
