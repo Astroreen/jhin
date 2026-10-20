@@ -65,7 +65,9 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   external MCP client) names it instead: `parentThreadId` on
   `tasks.delegate`/`workflows.run`, `threadId` on
   `orchestration.capabilities`, `callerThreadId` on `orchestration.launch`.
-  When both are given they must agree. Unlike T3, a delegation does not need
+  When both are given they must agree. A caller with no thread at all is
+  the owner (node token, `*`): it reads, cancels and stops any task or
+  workflow of the node, and the `*.list` commands list them all. Unlike T3, a delegation does not need
   a turn of the parent to be running (`parent_not_active`): the CLI delegates
   from an idle thread.
 
@@ -110,7 +112,11 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   an `orchestration.task.updated` event of the `orchestration` stream, so a
   client follows tasks without polling. On activation the plugin reconciles
   the records of unfinished tasks with their threads (a node that restarted
-  closed their turns), and cancels the agents of a workflow that ended with
+  closed their turns) from the child's own stream, by the task's turn id, so a
+  child that took later turns meanwhile still resolves it; a task recorded
+  without its turn (the node stopped mid-delegation) takes the child's first
+  turn, or fails with "The node stopped before the child task started." if
+  there is none, and cancels the agents of a workflow that ended with
   the node or a reload.
 - **D366. `mode: "async"` (default) or `"wait"`.** `wait` returns once the
   task is terminal, asks a question, or `timeoutMs` (default 10 minutes, at
@@ -123,7 +129,10 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   only its own tasks (`TASK_NOT_FOUND`: "Delegated task X does not belong to
   thread Y."). Reading a terminal task acknowledges its delivery (D368).
   `tasks.cancel` stops the child like a user's Stop (`threads.interrupt`)
-  and cancels the tasks and workflows the child started, recursively; it
+  and cancels the tasks and workflows the child started, recursively; as
+  in T3 the child stops even when the task is already terminal (a later turn
+  of it included). Deleting a parent thread cancels its running tasks and
+  stops its workflows; it
   answers `cancel_requested`, or the status of a task already terminal (its
   result stays). Unlike T3 there is no `task_not_cancellable`: a task whose
   turn already stopped is recorded cancelled. `tasks.list` lists a thread's
@@ -214,7 +223,9 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   in `full-access` mode (`RUNTIME_MODE_ESCALATION_DENIED` otherwise). The
   owner's token holds it; a thread's agent does not (W9's
   `AGENT_PERMISSIONS`), so an agent acting on injected content cannot run
-  one. Granting it to agents waits for scoped permissions (W13).
+  one. Granting it to agents waits for scoped permissions (W13). A mesh
+  member (`node:<id>` caller, which holds every permission today) cannot
+  start one either.
 - **D376. Following and stopping a workflow.** A run's record
   (`workflow/<id>`, mirrored as `orchestration.workflow.updated`) holds its
   meta, `status` (`running`, `completed`, `failed`, `stopped`), the phases

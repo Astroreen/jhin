@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { childTitle } from "../src/index.ts";
+import { node as threadsNode } from "../../threads/test/support.ts";
 import {
   node,
   orchestrationFeed,
@@ -341,6 +342,100 @@ describe("delegated tasks", () => {
       status: "interrupted",
       delivery: "pending",
     });
+  });
+
+  it("resolves a task from its child's stream after a restart, also when the child moved on", async () => {
+    const first = await node();
+    const parent = await parentThread(first.client);
+    const task = await first.client.call<TaskView>("tasks.delegate", {
+      task: "/hold across",
+      parentThreadId: parent.id,
+    });
+    await first.stop();
+    // The child takes another turn while orchestration is not running.
+    const bare = await threadsNode({ storage: first.storage, data: first.data });
+    const childEvents = watch(bare.client, task.childThreadId);
+    await bare.client.call("threads.send", { threadId: task.childThreadId, text: "later" });
+    await childEvents.until("agent.turn.completed");
+    await bare.stop();
+    const second = await node({ storage: first.storage, data: first.data });
+    const feed = orchestrationFeed(second.client);
+    expect(await feed.task(task.taskId, (record) => record.endedAt !== undefined)).toMatchObject({
+      status: "interrupted",
+      summary: "Child task ended with status interrupted.",
+    });
+  });
+
+  it("fails a task the node recorded before its turn started", async () => {
+    const first = await node();
+    const parent = await parentThread(first.client);
+    const child = await first.client.call<{ id: string }>("threads.create", {
+      title: "Child",
+      parentThreadId: parent.id,
+      relationshipToParent: "subagent",
+    });
+    await first.stop();
+    const at = new Date(0).toISOString();
+    await first.storage.storage.kv.set("jhin.orchestration", "task/never", {
+      taskId: "never",
+      parentThreadId: parent.id,
+      childThreadId: child.id,
+      title: "Child",
+      agentId: "jhin.agent-fake",
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      status: "running",
+      hasPendingQuestion: false,
+      wake: "always",
+      delivery: "none",
+      createdAt: at,
+      updatedAt: at,
+    });
+    const second = await node({ storage: first.storage, data: first.data });
+    const feed = orchestrationFeed(second.client);
+    expect(await feed.task("never", (record) => record.endedAt !== undefined)).toMatchObject({
+      status: "failed",
+      summary: "The node stopped before the child task started.",
+    });
+  });
+
+  it("stops a deleted parent's tasks and workflows", async () => {
+    const { client } = await node();
+    const feed = orchestrationFeed(client);
+    const parent = await parentThread(client);
+    const task = await client.call<TaskView>("tasks.delegate", {
+      task: "/hold",
+      parentThreadId: parent.id,
+    });
+    const { workflowId } = await client.call<{ workflowId: string }>("workflows.run", {
+      script: "export const meta = { name: 'w', description: 'd' }\nreturn agent('/hold')",
+      parentThreadId: parent.id,
+    });
+    await feed.workflow(workflowId, (record) =>
+      (record.agents as { status: string }[]).some((agent) => agent.status === "running"),
+    );
+    await client.call("threads.delete", { threadId: parent.id });
+    expect(await feed.task(task.taskId, (record) => record.endedAt !== undefined)).toMatchObject({
+      status: "cancelled",
+    });
+    expect(await feed.workflow(workflowId, (record) => record.status !== "running")).toMatchObject({
+      status: "stopped",
+    });
+  });
+
+  it("keeps a child thread in its parent's project", async () => {
+    const { client, data } = await node();
+    const parent = await parentThread(client);
+    const other = await client.call<{ id: string }>("projects.create", {
+      name: "Other",
+      path: data,
+    });
+    await expect(
+      client.call("threads.create", { projectId: other.id, title: "x", parentThreadId: parent.id }),
+    ).rejects.toMatchObject({ code: "PARENT_PROJECT_MISMATCH" });
+    await expect(
+      client.call("threads.create", { title: "x", parentThreadId: "nope" }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
   });
 
   it("titles a child after its prompt", () => {

@@ -530,10 +530,46 @@ export default definePlugin({
       if (wakes) void deliver(latest.parentThreadId);
     }
 
-    async function reconcile(task: Task): Promise<void> {
+    const ENDINGS: Record<string, TaskStatus> = {
+      [ThreadEvents.turnCompleted]: "completed",
+      [ThreadEvents.turnInterrupted]: "interrupted",
+      [ThreadEvents.turnFailed]: "failed",
+    };
+
+    /**
+     * Brings a task up to date from its child's own stream, so a turn that
+     * ended (or a task that never got one) while nobody followed is resolved
+     * even after the child moved on. `startup`: no send of it is under way.
+     */
+    async function reconcile(task: Task, startup = false): Promise<void> {
       try {
         const { thread } = await getThread(task.childThreadId);
-        await follow(task, thread);
+        let current = tasks.get(task.taskId) ?? task;
+        if (current.endedAt !== undefined) return;
+        const events = await log.read(threadStream(task.childThreadId));
+        const turnOf = (event: StoredEvent) =>
+          (event.payload as { turnId?: unknown } | null)?.turnId;
+        let turnId = current.childTurnId;
+        if (turnId === undefined) {
+          if (!startup) return;
+          // The node stopped between sending the task and recording its turn.
+          const started = events.find((event) => event.type === ThreadEvents.turnStarted);
+          if (started === undefined || typeof turnOf(started) !== "string") {
+            await finish(current, "failed", "The node stopped before the child task started.");
+            return;
+          }
+          turnId = turnOf(started) as string;
+          current = await saveTask({ ...current, childTurnId: turnId });
+        }
+        const ending = events.find(
+          (event) => ENDINGS[event.type] !== undefined && turnOf(event) === turnId,
+        );
+        if (ending !== undefined) {
+          const status = current.status === "cancelled" ? "cancelled" : ENDINGS[ending.type]!;
+          await finish(current, status, resultOfTurn(events, turnId, status));
+          return;
+        }
+        await follow(current, thread);
       } catch (error) {
         if (error instanceof OrchestrationError && error.code === "THREAD_NOT_FOUND") {
           const latest = tasks.get(task.taskId) ?? task;
@@ -595,6 +631,15 @@ export default definePlugin({
       await dispose(threadId);
       for (const task of tasks.values()) {
         if (task.childThreadId === threadId) await reconcile(task).catch(() => undefined);
+        // Nobody is left to read their results: the work of a deleted thread stops.
+        if (task.parentThreadId === threadId && !isTerminal(task)) {
+          await cancelTask(task, "The parent thread was deleted");
+        }
+      }
+      for (const workflow of workflows.values()) {
+        if (workflow.parentThreadId === threadId && workflow.status === "running") {
+          await stopWorkflow(workflow);
+        }
       }
     }
 
@@ -949,7 +994,11 @@ export default definePlugin({
         ));
       } catch (error) {
         // The caller gets the error: the parent is not woken for it as well.
-        task = await saveTask({ ...task, wake: "none", delivery: "disposed" });
+        task = await saveTask({
+          ...(tasks.get(task.taskId) ?? task),
+          wake: "none",
+          delivery: "disposed",
+        });
         await finish(
           task,
           "failed",
@@ -1107,7 +1156,7 @@ export default definePlugin({
     context.commands.register({
       name: "tasks.cancel",
       description:
-        "Stops a task delegated by the calling thread and drops its wake-up message. Its child thread stops like a user's Stop, and the tasks and workflows it started stop too. A terminal task returns its status, and its published result stays available.",
+        "Stops a task delegated by the calling thread and drops its wake-up message. Its child thread stops like a user's Stop, and the tasks and workflows it started stop too. Its child thread stops even when the task is already terminal (a later turn there included, as in T3); a terminal task returns its status, and its published result stays available.",
       input: z.object({
         taskId: z.string().min(1),
         reason: z.string().max(2000).optional(),
@@ -1634,6 +1683,15 @@ export default definePlugin({
       output: z.object({ workflowId: z.string(), name: z.string(), status: WorkflowStatus }),
       permissions: ["threads.write", WORKFLOWS_RUN_PERMISSION],
       handler: async ({ script, args, parentThreadId: named }, invocation) => {
+        // A mesh member's calls hold every permission (foundation Deferred): it
+        // runs no code here until scoped mesh calls (W13).
+        if (invocation.caller?.id.startsWith("node:") === true) {
+          throw new OrchestrationError(
+            "PERMISSION_DENIED",
+            "A workflow script runs code on this node, so another node of the mesh cannot start one.",
+            { caller: invocation.caller.id },
+          );
+        }
         const parentThreadId = requireThread(callerThread(named, invocation), "workflows.run");
         const { thread: parent } = await getThread(parentThreadId, invocation);
         // A script reaches the node's own functions (D375): only a thread that
@@ -1789,7 +1847,7 @@ export default definePlugin({
       }
       for (const task of tasks.values()) {
         if (task.endedAt === undefined) {
-          await reconcile(task).catch((error: unknown) =>
+          await reconcile(task, true).catch((error: unknown) =>
             context.log.warn("could not reconcile a delegated task", {
               taskId: task.taskId,
               error: String(error),

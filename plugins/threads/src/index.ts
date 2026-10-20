@@ -1257,6 +1257,17 @@ export default definePlugin({
       permissions: ["threads.write"],
       handler: async ({ projectId, title, ...settings }) => {
         await getProject(projectId);
+        if (settings.parentThreadId !== undefined) {
+          // A child shares its parent's project (docs/plans/orchestration.md, D363).
+          const parent = await getThread(settings.parentThreadId);
+          if (parent.projectId !== projectId) {
+            throw new ThreadsError(
+              "PARENT_PROJECT_MISMATCH",
+              `Thread ${parent.id} is in another project than ${projectId}`,
+              { parentThreadId: parent.id, projectId },
+            );
+          }
+        }
         if (removedProjects.has(projectId)) {
           throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
         }

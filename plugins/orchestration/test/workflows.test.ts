@@ -151,6 +151,21 @@ return { echoed, failed, piped, counted, stubborn }`;
     ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
   });
 
+  it("refuses a script from another node of the mesh", async () => {
+    const { kernel, client } = await node();
+    const parent = await parentThread(client);
+    await expect(
+      kernel.commands.execute(
+        "workflows.run",
+        {
+          script: "export const meta = { name: 'x', description: 'y' }\nreturn 1",
+          parentThreadId: parent.id,
+        },
+        { caller: { id: "node:other", permissions: ["*"] } },
+      ),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+  });
+
   it("stops an agent that asks the user: nobody answers inside a workflow", async () => {
     const { client } = await node();
     const feed = orchestrationFeed(client);
