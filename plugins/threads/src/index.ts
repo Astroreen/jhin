@@ -2703,13 +2703,18 @@ export default definePlugin({
       for (const entry of await kv.list(NAMESPACE, { prefix: "queue/" })) {
         const threadId = entry.key.slice("queue/".length);
         const parsed = Queue.safeParse(entry.value);
-        const thread = await kv.get(NAMESPACE, `thread/${threadId}`);
-        if (!parsed.success || thread === undefined) continue;
-        const last = Thread.parse(thread).lastTurn;
+        // One unreadable record costs its own queue, never the others'.
+        const thread = Thread.safeParse(await kv.get(NAMESPACE, `thread/${threadId}`));
+        if (!parsed.success || !thread.success) {
+          context.log.warn("a queue left as it is: its record does not read", { threadId });
+          continue;
+        }
+        const last = thread.data.lastTurn;
         if (
           (last?.status === "interrupted" || last?.status === "failed") &&
           last.turnId !== parsed.data.resumedPast
         ) {
+          // holdQueue logs its own failure: the next queue is resumed all the same.
           await holdQueue(threadId, last.turnId, last.status);
         } else void deliver(threadId);
       }
