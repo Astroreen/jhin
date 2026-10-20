@@ -259,6 +259,11 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
 - Pruning old task and workflow records: they stay in `storage.kv` (and in
   memory) for good; `tasks.list` and `workflows.list` without a thread list
   them all.
+- Smaller workflow events: every change appends the whole record (agents,
+  logs, result) to the `orchestration` stream; deltas would keep it small.
+- Ending a `mode: "wait"` delegation when its caller goes away: commands
+  get no cancellation signal today, so the wait runs to its timeout (at most
+  60 minutes) and the task goes on either way.
 - Running workflow scripts out of process (a worker or a child process),
   which would bound their asynchronous part too and give them no node
   rights.

@@ -832,6 +832,10 @@ export default definePlugin({
         };
         const onAbort = () => stop(false);
         listeners.add(listener);
+        if (options.signal?.aborted === true) {
+          stop(false);
+          return;
+        }
         options.signal?.addEventListener("abort", onAbort);
         if (options.timeoutMs !== undefined)
           timer = setTimeout(() => stop(true), options.timeoutMs);
@@ -1435,6 +1439,10 @@ export default definePlugin({
           seen.get(turnId) ??
           (await new Promise<string>((resolve) => {
             const onAbort = () => resolve("interrupted");
+            if (signal.aborted) {
+              resolve("interrupted");
+              return;
+            }
             signal.addEventListener("abort", onAbort, { once: true });
             ended = (id) => {
               if (id !== turnId) return;
