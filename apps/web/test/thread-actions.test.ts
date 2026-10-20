@@ -97,9 +97,9 @@ describe("startThread", () => {
     const twice = fakeNode({ create: dropped });
     const lost = startThread(
       {
-        call: async (target, method, params) => {
+        call: async (to, method, params) => {
           if (method === "threads.create") throw dropped;
-          return twice.call(target, method, params);
+          return twice.call(to, method, params);
         },
       },
       target,

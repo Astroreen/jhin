@@ -86,6 +86,24 @@ export function GeneralSection() {
           resetAction={reset("sendShortcut", "send shortcut")}
           title="Send shortcut"
         />
+        <SettingsRow
+          control={
+            <Choice
+              label="Follow-up behavior"
+              onChange={(followUpBehavior) => set({ followUpBehavior })}
+              options={[
+                { value: "queue", label: "Queue" },
+                { value: "steer", label: "Steer" },
+              ]}
+              value={chat.followUpBehavior}
+            />
+          }
+          description={`Queue follow-ups while the agent runs or steer the current run. Press ${
+            chat.sendShortcut === "mod-enter" ? "⌘/Ctrl + Shift + Enter" : "⌘/Ctrl + Enter"
+          } to do the opposite for one message.`}
+          resetAction={reset("followUpBehavior", "follow-up behavior")}
+          title="Follow-up behavior"
+        />
       </SettingsSection>
       <SettingsSection title="Confirmations">
         <SettingsRow

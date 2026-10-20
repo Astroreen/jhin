@@ -19,10 +19,15 @@ import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread, threadMayExist } from "../../lib/thread-actions.ts";
 import { proposedPlanTitle } from "../../lib/proposed-plan.ts";
 import { actionablePlan, openRequests } from "../../lib/timeline.ts";
-import { Composer, type ComposerHandleApi, type Selection } from "./composer.tsx";
-import { sendMessage, useFollowUps } from "./follow-ups.ts";
+import {
+  Composer,
+  type ComposerHandleApi,
+  type QueueActions,
+  type Selection,
+} from "./composer.tsx";
 import { ChatHeader } from "./header.tsx";
-import { useChat } from "./services.ts";
+import { dispatchMode, sendMessage } from "./send.ts";
+import { useAgents, useChat } from "./services.ts";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
 import { TimelineView } from "./timeline.tsx";
@@ -144,6 +149,9 @@ export function ThreadView(props: {
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),
       togglePlanMode: () => handle.current?.togglePlanMode(),
+      sendAlternate: () => handle.current?.sendAlternate(),
+      steerNext: () => handle.current?.steerNext() ?? false,
+      editLatest: () => handle.current?.editLatest() ?? false,
     };
     handle.current?.focus();
     return () => {
@@ -151,9 +159,11 @@ export function ThreadView(props: {
     };
   }, [chat]);
 
-  // Follow-ups typed while a turn runs go out one by one as turns end, also
-  // while this thread is not on screen (the chat plugin's queues send them).
-  const followUps = useFollowUps(chat.followUps, target, threadId);
+  // Follow-ups typed while a turn runs wait in the thread's queue on its node
+  // (D201) and go out one by one as turns end, whoever is watching.
+  const agents = useAgents(target);
+  const canSteer =
+    running && agents?.find((agent) => agent.agentId === lastTurn?.agentId)?.steering === true;
   // A first message the connection dropped: offered again until the thread shows it.
   const unconfirmed = useUnconfirmed(
     chat.unconfirmed,
@@ -162,17 +172,63 @@ export function ThreadView(props: {
     (message) => sendMessage(chat.threads, target, threadId, message),
   );
 
-  const send = async (text: string, attachments: readonly TurnAttachment[]): Promise<boolean> => {
+  const send = async (
+    text: string,
+    attachments: readonly TurnAttachment[],
+    alternate = false,
+  ): Promise<boolean> => {
     setError(undefined);
     const message = { text, attachments, settings: selection };
-    const outcome = await sendMessage(chat.threads, target, threadId, message);
-    if (outcome.kind === "busy") {
-      followUps.add({ id: crypto.randomUUID(), ...message });
-    } else if (outcome.kind === "failed") {
+    const outcome = await sendMessage(
+      chat.threads,
+      target,
+      threadId,
+      message,
+      running ? dispatchMode(settings.followUpBehavior, alternate, canSteer) : "send",
+    );
+    if (outcome.kind === "failed") {
       setError(outcome.message);
       return false;
     }
     return true;
+  };
+
+  /** What the queue banner and the composer do to the thread's queue on its node. */
+  const call = async (method: string, input: Record<string, unknown>, title: string) => {
+    try {
+      await chat.threads.call(target, method, { threadId, ...input });
+      return true;
+    } catch (failure) {
+      chat.toasts?.show({ type: "error", title, description: (failure as Error).message });
+      return false;
+    }
+  };
+  const queueActions: QueueActions = {
+    remove: (messageId) => call("threads.queue.cancel", { messageId }, "Not removed"),
+    resume: () => call("threads.queue.resume", {}, "Queue not resumed"),
+    steer: (messageId) => call("threads.queue.steer", { messageId }, "Not steered"),
+    reorder: (messageId, beforeMessageId) =>
+      call("threads.queue.reorder", { messageId, beforeMessageId }, "Not moved"),
+    edit: (messageId, text, attachments) =>
+      call("threads.queue.edit", { messageId, text, attachments }, "Queued message not saved"),
+    load: async (messageId) => {
+      try {
+        const queue = await chat.threads.call<{
+          messages: { id: string; text: string; attachments?: TurnAttachment[] }[];
+        }>(target, "threads.queue.list", { threadId });
+        const message = queue.messages.find((item) => item.id === messageId);
+        return message === undefined
+          ? undefined
+          : { text: message.text, attachments: message.attachments ?? [] };
+      } catch (failure) {
+        chat.toasts?.show({
+          type: "error",
+          title: "Queued message not loaded",
+          description: (failure as Error).message,
+        });
+        return undefined;
+      }
+    },
   };
 
   const changeSelection = (next: Selection) => {
@@ -393,8 +449,7 @@ export function ThreadView(props: {
                     draftKey={threadDraftKey(target, threadId)}
                     handleRef={handle}
                     history={history}
-                    onDequeue={followUps.remove}
-                    onResumeQueue={followUps.resume}
+                    canSteer={canSteer}
                     onRespond={respond}
                     onSelectionChange={changeSelection}
                     onSend={send}
@@ -404,9 +459,8 @@ export function ThreadView(props: {
                         .call(target, "threads.interrupt", { threadId })
                         .catch((failure: unknown) => setError((failure as Error).message))
                     }
-                    queue={followUps.queue}
-                    queuePaused={followUps.paused}
-                    queueSending={followUps.sending}
+                    queue={timeline.queue}
+                    queueActions={queueActions}
                     requests={requests}
                     running={running}
                     selection={selection}
@@ -468,6 +522,9 @@ export function DraftView(props: {
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),
       togglePlanMode: () => handle.current?.togglePlanMode(),
+      sendAlternate: () => handle.current?.sendAlternate(),
+      steerNext: () => handle.current?.steerNext() ?? false,
+      editLatest: () => handle.current?.editLatest() ?? false,
     };
     handle.current?.focus();
     return () => {
@@ -561,7 +618,6 @@ export function DraftView(props: {
                 draftKey={`${targetKey(target)}|draft|${project.id}`}
                 handleRef={handle}
                 history={[]}
-                onDequeue={() => undefined}
                 onRespond={async () => false}
                 onSelectionChange={(next) => {
                   setSelection(next);
@@ -569,7 +625,6 @@ export function DraftView(props: {
                 }}
                 onSend={send}
                 onStop={() => undefined}
-                queue={[]}
                 requests={[]}
                 running={false}
                 selection={selection}

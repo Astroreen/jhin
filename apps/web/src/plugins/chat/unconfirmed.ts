@@ -1,9 +1,9 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-import type { QueuedMessage, SendOutcome } from "./follow-ups.ts";
+import type { OutgoingMessage, SendOutcome } from "./send.ts";
 
 /** A message that may not have reached its thread: the connection dropped the call. */
-export type UnconfirmedMessage = Omit<QueuedMessage, "id">;
+export type UnconfirmedMessage = OutgoingMessage;
 
 /**
  * Messages that may not have reached their thread, by thread: the thread's

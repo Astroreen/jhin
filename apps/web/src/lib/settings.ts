@@ -21,6 +21,8 @@ export const ChatSettings = z.object({
   timestampFormat: z.enum(["locale", "12-hour", "24-hour"]).default("locale"),
   /** Enter sends (Shift+Enter is a new line), or ⌘/Ctrl+Enter sends. */
   sendShortcut: z.enum(["enter", "mod-enter"]).default("enter"),
+  /** What a message sent while a turn runs does (T3's followUpBehavior, D209). */
+  followUpBehavior: z.enum(["queue", "steer"]).default("queue"),
   /** Ask before archiving a thread. */
   confirmArchive: z.boolean().default(false),
   /** Ask before deleting a thread or removing a project. */

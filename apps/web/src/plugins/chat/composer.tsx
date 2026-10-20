@@ -39,10 +39,14 @@ import {
   SearchIcon,
   ShieldIcon,
   XIcon,
+  CornerUpRightIcon,
+  GripVerticalIcon,
+  PencilIcon,
   type LucideIcon,
 } from "lucide-react";
 import {
   useEffect,
+  useId,
   useImperativeHandle,
   useRef,
   useState,
@@ -62,7 +66,7 @@ import {
 import { formatTokens } from "../../lib/format.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { isMacPlatform, currentPlatform } from "../../lib/keybindings.ts";
-import type { RequestItem } from "../../lib/timeline.ts";
+import type { RequestItem, ThreadQueue } from "../../lib/timeline.ts";
 import { ComposerBanner } from "./banner.tsx";
 import {
   ComposerControl,
@@ -71,7 +75,7 @@ import {
   ComposerControlSeparator,
   ComposerSelectControl,
 } from "../../lib/composer-control.tsx";
-import type { QueuedMessage, QueuePause } from "./follow-ups.ts";
+import { dispatchMode } from "./send.ts";
 import { useAgents, useChat } from "./services.ts";
 import { ComposerSurface } from "./surface.tsx";
 
@@ -106,6 +110,26 @@ export interface ComposerHandleApi {
   toggleModelPicker(): void;
   cycleRuntimeMode(): void;
   togglePlanMode(): void;
+  /** Sends the message the other way while a turn runs: queued instead of steered, or back. */
+  sendAlternate(): void;
+  /** Steers the first queued message into the running turn; false when it cannot. */
+  steerNext(): boolean;
+  /** Edits the last queued message in the composer; false when it cannot (T3's editLatest). */
+  editLatest(): boolean;
+}
+
+/** What can be done to the thread's queue on its node (D201–D205); true when it was done. */
+export interface QueueActions {
+  remove(messageId: string): Promise<boolean>;
+  resume(): Promise<boolean>;
+  steer(messageId: string): Promise<boolean>;
+  /** Moves a message before another one, or to the end (`null`). */
+  reorder(messageId: string, beforeMessageId: string | null): Promise<boolean>;
+  edit(messageId: string, text: string, attachments: readonly TurnAttachment[]): Promise<boolean>;
+  /** A queued message with its images, for editing. */
+  load(
+    messageId: string,
+  ): Promise<{ text: string; attachments: readonly TurnAttachment[] } | undefined>;
 }
 
 function SendIcon() {
@@ -316,27 +340,68 @@ function PlanFollowUpBanner({ planTitle }: { planTitle: string | null }) {
   );
 }
 
+const QUEUED_MESSAGE_DRAG_TYPE = "application/x-jhin-queued-message";
+
+/** Why a held queue waits, in T3's words. */
+function heldText(held: NonNullable<ThreadQueue["held"]>): string {
+  if (held.reason === "refused") return `Not sent: ${held.error ?? "the node refused it"}`;
+  return `${held.reason === "interrupted" ? "The turn was stopped" : "The turn failed"}: the queue waits`;
+}
+
+/** T3's QueuedRunsControl: the thread's queue on its node, above the composer. */
 function QueueBanner(props: {
-  queue: readonly QueuedMessage[];
-  /** Why the queue waits for the user, if it does. */
-  paused: QueuePause | undefined;
-  /** The first message is on its way. */
-  sending: boolean;
-  onRemove(id: string): void;
-  onResume(): void;
+  queue: ThreadQueue;
+  /** The running turn takes steers. */
+  canSteer: boolean;
+  running: boolean;
+  /** The message being edited in the composer. */
+  editing: string | undefined;
+  actions: QueueActions;
+  onEdit(messageId: string): void;
+  onCancelEdit(): void;
+  steerShortcut?: string;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const listId = useId();
+  /** The message an action is under way for: one at a time, as in T3. */
+  const [busyId, setBusyId] = useState<string | undefined>();
+  const [drag, setDrag] = useState<{ id: string; insertIndex: number | null } | undefined>();
+  // Drags start from the grip, not from text dragged out of a row.
+  const armed = useRef<string | undefined>(undefined);
+  const { messages, held } = props.queue;
+  const run = async (messageId: string, action: () => Promise<boolean>) => {
+    setBusyId(messageId);
+    try {
+      await action();
+    } finally {
+      setBusyId(undefined);
+    }
+  };
+  const move = (messageId: string, beforeMessageId: string | null) =>
+    void run(messageId, () => props.actions.reorder(messageId, beforeMessageId));
+  const drop = (messageId: string, insertIndex: number | null) => {
+    setDrag(undefined);
+    armed.current = undefined;
+    const from = messages.findIndex((message) => message.id === messageId);
+    if (insertIndex === null || from === -1 || busyId !== undefined) return;
+    if (insertIndex === from || insertIndex === from + 1) return;
+    move(messageId, messages[insertIndex]?.id ?? null);
+  };
+  const count = messages.length;
   return (
     <ComposerBanner.Attachment>
       <ComposerBanner.Root
-        aria-label={`${props.queue.length} queued messages`}
+        aria-label={`${count} queued message${count === 1 ? "" : "s"}`}
         aria-live="polite"
         className="relative z-0"
         role="region"
       >
         <ComposerBanner.Row
+          aria-controls={listId}
           aria-expanded={expanded}
+          aria-label={expanded ? "Collapse queued messages" : "Expand queued messages"}
           onClick={() => setExpanded(!expanded)}
+          onPointerDown={(event) => event.preventDefault()}
           render={<button type="button" />}
         >
           <ComposerBanner.Icon>
@@ -344,61 +409,195 @@ function QueueBanner(props: {
           </ComposerBanner.Icon>
           <ComposerBanner.Content className="text-muted-foreground">Queued</ComposerBanner.Content>
           <ComposerBanner.Actions>
-            <ComposerBanner.Count>{props.queue.length}</ComposerBanner.Count>
+            <ComposerBanner.Count>{count}</ComposerBanner.Count>
             <ComposerBanner.ToggleIcon expanded={expanded} />
           </ComposerBanner.Actions>
         </ComposerBanner.Row>
-        {props.paused === undefined ? null : (
+        {held === undefined ? null : (
           <ComposerBanner.Row className="relative">
             <ComposerBanner.Icon />
             <ComposerBanner.Content>
               <span className="min-w-0 flex-1 truncate text-destructive-foreground" role="alert">
-                {props.paused.kind === "failed"
-                  ? `Not sent: ${props.paused.message}`
-                  : `${props.paused.message}: the queue waits`}
+                {heldText(held)}
               </span>
             </ComposerBanner.Content>
             <ComposerBanner.Actions>
-              <Button onClick={props.onResume} size="xs" variant="outline">
-                {props.paused.kind === "failed" ? "Retry" : "Resume"}
+              <Button
+                disabled={busyId !== undefined}
+                onClick={() => void run("", props.actions.resume)}
+                size="xs"
+                variant="outline"
+              >
+                {held.reason === "refused" ? "Retry" : "Resume"}
               </Button>
             </ComposerBanner.Actions>
           </ComposerBanner.Row>
         )}
-        {expanded ? (
-          <ComposerBanner.Scroll className="max-h-32">
-            <ComposerBanner.Children render={<ol />}>
-              {props.queue.map((message, index) => {
-                // The first message on its way can no longer be taken back.
-                const sending = props.sending && index === 0;
-                return (
-                  <ComposerBanner.Row
-                    className="relative rounded-sm"
-                    key={message.id}
-                    render={<li />}
-                  >
-                    <ComposerBanner.Icon>
-                      {sending ? <Spinner aria-label="Sending" size="sm" /> : null}
-                    </ComposerBanner.Icon>
-                    <ComposerBanner.Content className="text-foreground/80">
-                      <span className="min-w-0 flex-1 truncate">
-                        {message.text || `${message.attachments.length} image(s)`}
-                      </span>
-                    </ComposerBanner.Content>
-                    <ComposerBanner.Actions>
-                      {sending ? null : (
-                        <ComposerBanner.Dismiss
-                          aria-label="Remove queued message"
-                          onClick={() => props.onRemove(message.id)}
-                        />
-                      )}
-                    </ComposerBanner.Actions>
-                  </ComposerBanner.Row>
-                );
-              })}
-            </ComposerBanner.Children>
-          </ComposerBanner.Scroll>
-        ) : null}
+        <ComposerBanner.Scroll className={cn("max-h-32", !expanded && "hidden")}>
+          <ComposerBanner.Children id={listId} render={<ol />}>
+            {messages.map((message, index) => {
+              const editing = message.id === props.editing;
+              const images = message.attachments.length;
+              const preview = message.text.trim() || `${images} image${images === 1 ? "" : "s"}`;
+              return (
+                <ComposerBanner.Row
+                  aria-current={editing ? "true" : undefined}
+                  className={cn(
+                    "relative rounded-sm",
+                    editing && "bg-accent text-accent-foreground",
+                    drag?.id === message.id && "opacity-50",
+                  )}
+                  draggable={busyId === undefined}
+                  key={message.id}
+                  onDragEnd={() => {
+                    armed.current = undefined;
+                    setDrag(undefined);
+                  }}
+                  onDragOver={(event) => {
+                    if (drag === undefined) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "move";
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const insertIndex =
+                      event.clientY < rect.top + rect.height / 2 ? index : index + 1;
+                    if (drag.insertIndex !== insertIndex) setDrag({ ...drag, insertIndex });
+                  }}
+                  onDragStart={(event) => {
+                    if (armed.current !== message.id) {
+                      event.preventDefault();
+                      return;
+                    }
+                    event.dataTransfer.setData(QUEUED_MESSAGE_DRAG_TYPE, message.id);
+                    event.dataTransfer.effectAllowed = "move";
+                    setDrag({ id: message.id, insertIndex: null });
+                  }}
+                  onDrop={(event) => {
+                    if (drag === undefined) return;
+                    event.preventDefault();
+                    drop(drag.id, drag.insertIndex);
+                  }}
+                  render={<li />}
+                >
+                  {drag?.insertIndex === index ? (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-0 top-0 h-0.5 rounded bg-primary/70"
+                    />
+                  ) : null}
+                  {index === count - 1 && drag?.insertIndex === count ? (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 rounded bg-primary/70"
+                    />
+                  ) : null}
+                  <ComposerBanner.Icon aria-hidden={false}>
+                    <Button
+                      aria-label="Reorder queued message (drag, or press the arrow keys)"
+                      className="cursor-grab active:cursor-grabbing disabled:cursor-default"
+                      disabled={busyId !== undefined}
+                      onKeyDown={(event) => {
+                        if (busyId !== undefined) return;
+                        if (event.key === "ArrowUp" && index > 0) {
+                          event.preventDefault();
+                          move(message.id, messages[index - 1]!.id);
+                        }
+                        if (event.key === "ArrowDown" && index < count - 1) {
+                          event.preventDefault();
+                          move(message.id, messages[index + 2]?.id ?? null);
+                        }
+                      }}
+                      onPointerDown={() => {
+                        armed.current = message.id;
+                      }}
+                      size="icon-xs"
+                      variant="ghost-muted"
+                    >
+                      <GripVerticalIcon />
+                    </Button>
+                  </ComposerBanner.Icon>
+                  <ComposerBanner.Content className="text-foreground/80">
+                    {editing ? <span className="sr-only">Editing queued message: </span> : null}
+                    <Tooltip>
+                      <TooltipTrigger render={<span className="min-w-0 flex-1 truncate" />}>
+                        {preview}
+                      </TooltipTrigger>
+                      <TooltipPopup className="max-w-96 break-words" side="top">
+                        {preview}
+                      </TooltipPopup>
+                    </Tooltip>
+                  </ComposerBanner.Content>
+                  <ComposerBanner.Actions>
+                    {editing ? (
+                      <Button
+                        aria-label="Cancel editing queued message"
+                        onClick={props.onCancelEdit}
+                        size="xs"
+                        variant="ghost"
+                      >
+                        Cancel
+                      </Button>
+                    ) : (
+                      <>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                aria-label="Edit queued message"
+                                disabled={busyId !== undefined || props.editing !== undefined}
+                                onClick={() => props.onEdit(message.id)}
+                                size="icon-xs"
+                                variant="ghost-muted"
+                              />
+                            }
+                          >
+                            <PencilIcon />
+                          </TooltipTrigger>
+                          <TooltipPopup>Edit in the composer</TooltipPopup>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger render={<span className="flex shrink-0" />}>
+                            <Button
+                              disabled={busyId !== undefined || !props.canSteer}
+                              onClick={() =>
+                                void run(message.id, () => props.actions.steer(message.id))
+                              }
+                              size="xs"
+                              variant="ghost-muted"
+                            >
+                              <CornerUpRightIcon />
+                              Steer
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipPopup>
+                            {!props.running
+                              ? "There is no active run to steer"
+                              : !props.canSteer
+                                ? "This agent takes no steering"
+                                : `Send as a steer instead${index === 0 && props.steerShortcut !== undefined ? ` (${props.steerShortcut})` : ""}`}
+                          </TooltipPopup>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <ComposerBanner.Dismiss
+                                aria-label="Remove queued message"
+                                disabled={busyId !== undefined}
+                                onClick={() =>
+                                  void run(message.id, () => props.actions.remove(message.id))
+                                }
+                              />
+                            }
+                          />
+                          <TooltipPopup>Remove from queue</TooltipPopup>
+                        </Tooltip>
+                      </>
+                    )}
+                  </ComposerBanner.Actions>
+                </ComposerBanner.Row>
+              );
+            })}
+          </ComposerBanner.Children>
+        </ComposerBanner.Scroll>
       </ComposerBanner.Root>
     </ComposerBanner.Attachment>
   );
@@ -657,17 +856,22 @@ export interface ComposerProps {
   readonly requests: readonly RequestItem[];
   readonly history: readonly PromptHistoryEntry[];
   readonly usage?: TokenUsage | undefined;
-  readonly queue: readonly QueuedMessage[];
-  /** Why the queue waits for the user, if it does. */
-  readonly queuePaused?: QueuePause | undefined;
-  /** The queue's first message is on its way. */
-  readonly queueSending?: boolean;
-  onDequeue(id: string): void;
-  onResumeQueue?(): void;
+  /** The thread's queue on its node (D201); absent for a thread not created yet. */
+  readonly queue?: ThreadQueue | undefined;
+  readonly queueActions?: QueueActions;
+  /** The running turn takes steers (D204). */
+  readonly canSteer?: boolean;
   /** Why sending is not possible now (a disconnected node), if it is not. */
   readonly unavailable?: string | undefined;
-  /** False when sending failed: the draft is restored. */
-  onSend(text: string, attachments: readonly TurnAttachment[]): Promise<boolean>;
+  /**
+   * False when sending failed: the draft is restored. `alternate` sends it the
+   * other way than the "Follow-up behavior" setting while a turn runs.
+   */
+  onSend(
+    text: string,
+    attachments: readonly TurnAttachment[],
+    alternate?: boolean,
+  ): Promise<boolean>;
   onStop(): void;
   /** False when the answer was not delivered: what was typed stays. */
   onRespond(requestId: string, response: AgentResponse): Promise<boolean>;
@@ -703,10 +907,45 @@ export function Composer(props: ComposerProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const historyPosition = useRef<PromptHistoryPosition | null>(null);
 
-  useEffect(
-    () => drafts.set(props.draftKey, { prompt, attachments }),
-    [drafts, props.draftKey, prompt, attachments],
-  );
+  /**
+   * The queued message the composer edits (D210), with the draft it put
+   * aside: saving or cancelling brings the draft back.
+   */
+  const [editing, setEditing] = useState<
+    | {
+        readonly id: string;
+        readonly draft: { prompt: string; attachments: readonly TurnAttachment[] };
+      }
+    | undefined
+  >();
+
+  useEffect(() => {
+    // A queued message being edited is not the thread's draft.
+    if (editing === undefined) drafts.set(props.draftKey, { prompt, attachments });
+  }, [drafts, props.draftKey, prompt, attachments, editing]);
+
+  const queued = props.queue?.messages ?? [];
+  // Sent or removed meanwhile: what was typed stays, as a new message.
+  const editedGone = editing !== undefined && !queued.some((item) => item.id === editing.id);
+  useEffect(() => {
+    if (editedGone) setEditing(undefined);
+  }, [editedGone]);
+
+  const startEdit = async (messageId: string) => {
+    if (props.queueActions === undefined || editing !== undefined) return;
+    const message = await props.queueActions.load(messageId);
+    if (message === undefined) return;
+    setEditing({ id: messageId, draft: { prompt, attachments } });
+    setPrompt(message.text);
+    setAttachments(message.attachments);
+    textarea.current?.focus();
+  };
+  const cancelEdit = () => {
+    if (editing === undefined) return;
+    setPrompt(editing.draft.prompt);
+    setAttachments(editing.draft.attachments);
+    setEditing(undefined);
+  };
 
   const agent =
     agents?.find((candidate) => candidate.agentId === props.selection.agentId) ??
@@ -755,6 +994,24 @@ export function Composer(props: ComposerProps) {
     toggleModelPicker: () => setPickerOpen((open) => !open),
     cycleRuntimeMode,
     togglePlanMode,
+    sendAlternate: () => void send(true),
+    steerNext() {
+      const next = queued[0];
+      if (next === undefined || props.canSteer !== true || props.queueActions === undefined) {
+        return false;
+      }
+      void props.queueActions.steer(next.id);
+      return true;
+    },
+    // Declines while a queued message is edited, or with text before the caret,
+    // so the key keeps moving the caret (as in T3).
+    editLatest() {
+      const latest = queued.at(-1);
+      const caret = textarea.current?.selectionStart ?? 0;
+      if (latest === undefined || editing !== undefined || caret !== 0) return false;
+      void startEdit(latest.id);
+      return true;
+    },
   }));
 
   // Context keys for shortcuts: whether the composer has focus and a turn runs.
@@ -822,7 +1079,20 @@ export function Composer(props: ComposerProps) {
       setBusy(false);
     }
   };
-  const send = async () => {
+  /** What sending does now: starts a turn, or queues or steers while one runs (D209). */
+  const followUp =
+    editing !== undefined || !props.running
+      ? undefined
+      : dispatchMode(settings.followUpBehavior, false, props.canSteer === true);
+  const sendLabel =
+    editing !== undefined
+      ? "Save queued message"
+      : followUp === "queue"
+        ? "Queue message"
+        : followUp === "steer"
+          ? "Steer message"
+          : "Send message";
+  const send = async (alternate = false) => {
     if (busy || props.unavailable !== undefined || approval !== undefined) return;
     if (question !== undefined) {
       await submitAnswers();
@@ -835,13 +1105,26 @@ export function Composer(props: ComposerProps) {
     if (!hasContent) return;
     const text = prompt;
     const images = attachments;
+    if (editing !== undefined && props.queueActions !== undefined) {
+      setBusy(true);
+      try {
+        if (await props.queueActions.edit(editing.id, text, images)) {
+          setPrompt(editing.draft.prompt);
+          setAttachments(editing.draft.attachments);
+          setEditing(undefined);
+        }
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     // Cleared first, restored if sending fails (as T3 Code does).
     setPrompt("");
     setAttachments([]);
     historyPosition.current = null;
     setBusy(true);
     try {
-      const sent = await props.onSend(text, images);
+      const sent = await props.onSend(text, images, alternate);
       if (!sent) {
         setPrompt(text);
         setAttachments(images);
@@ -962,8 +1245,21 @@ export function Composer(props: ComposerProps) {
         return;
       }
     }
-    if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
-    if (settings.sendShortcut === "mod-enter" && !event.metaKey && !event.ctrlKey) return;
+    if (event.key !== "Enter" || event.altKey) return;
+    const withMod = event.metaKey || event.ctrlKey;
+    // While a turn runs the send key with ⌘/Ctrl (and Shift when ⌘/Ctrl sends)
+    // does the opposite of "Follow-up behavior" (T3's composer.sendAlternate).
+    if (
+      props.running &&
+      editing === undefined &&
+      (settings.sendShortcut === "enter" ? withMod && !event.shiftKey : withMod && event.shiftKey)
+    ) {
+      event.preventDefault();
+      void send(true);
+      return;
+    }
+    if (event.shiftKey) return;
+    if (settings.sendShortcut === "mod-enter" && !withMod) return;
     event.preventDefault();
     void send();
   };
@@ -1016,13 +1312,18 @@ export function Composer(props: ComposerProps) {
             questions={questions}
             selected={answers}
           />
-        ) : props.queue.length > 0 ? (
+        ) : props.queue !== undefined &&
+          props.queue.messages.length > 0 &&
+          props.queueActions !== undefined ? (
           <QueueBanner
-            onRemove={props.onDequeue}
-            onResume={() => props.onResumeQueue?.()}
-            paused={props.queuePaused}
+            actions={props.queueActions}
+            canSteer={props.canSteer === true}
+            editing={editing?.id}
+            onCancelEdit={cancelEdit}
+            onEdit={(messageId) => void startEdit(messageId)}
             queue={props.queue}
-            sending={props.queueSending === true}
+            running={props.running}
+            steerShortcut={`${mod}Shift+Enter`}
           />
         ) : planFollowUp !== undefined ? (
           <PlanFollowUpBanner planTitle={planFollowUp.title} />
@@ -1312,7 +1613,7 @@ export function Composer(props: ComposerProps) {
                               </Menu>
                             </div>
                           )
-                        ) : props.running && !hasContent ? (
+                        ) : props.running && !hasContent && editing === undefined ? (
                           <Tooltip>
                             <TooltipTrigger
                               render={
@@ -1334,15 +1635,17 @@ export function Composer(props: ComposerProps) {
                           <Tooltip>
                             <TooltipTrigger render={<span className="inline-flex" />}>
                               <button
-                                aria-label={props.running ? "Queue message" : "Send message"}
+                                aria-label={sendLabel}
                                 className={SEND_BUTTON}
                                 disabled={busy || !hasContent || props.unavailable !== undefined}
                                 type="submit"
                               >
                                 {busy ? (
                                   <Spinner size="sm" />
-                                ) : props.running ? (
+                                ) : followUp === "queue" ? (
                                   <ListOrderedIcon className="size-4" />
+                                ) : followUp === "steer" ? (
+                                  <CornerUpRightIcon className="size-4" />
                                 ) : (
                                   <SendIcon />
                                 )}
@@ -1350,9 +1653,13 @@ export function Composer(props: ComposerProps) {
                             </TooltipTrigger>
                             <TooltipPopup side="top">
                               {props.unavailable ??
-                                (props.running
-                                  ? "Queue message: it is sent when this turn ends"
-                                  : `Send (${settings.sendShortcut === "mod-enter" ? `${mod}Enter` : "Enter"})`)}
+                                (editing !== undefined
+                                  ? "Save the queued message"
+                                  : followUp === "queue"
+                                    ? "Queue message: it is sent when this turn ends"
+                                    : followUp === "steer"
+                                      ? "Steer: the running turn takes this message now"
+                                      : `Send (${settings.sendShortcut === "mod-enter" ? `${mod}Enter` : "Enter"})`)}
                             </TooltipPopup>
                           </Tooltip>
                         )}

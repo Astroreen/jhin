@@ -14,7 +14,6 @@ import type { Dialogs, SlotRegistry, Toasts } from "@jhin/ui";
 import { createContext, useContext, useEffect, useSyncExternalStore } from "react";
 
 import type { Drafts } from "../../lib/composer.ts";
-import type { FollowUpQueues } from "./follow-ups.ts";
 import type { Unconfirmed } from "./unconfirmed.ts";
 
 /** Agents of each node, from `agents.list`, refreshed when a picker opens or after a while. */
@@ -116,8 +115,6 @@ export interface ChatServices {
   readonly lastSelection: ReturnType<typeof createLastSelection>;
   /** When threads were seen on this device; absent without a `client.visits` provider. */
   readonly visits: ThreadVisits | undefined;
-  /** Follow-ups queued per thread; they outlive the thread's view. */
-  readonly followUps: FollowUpQueues;
   /** First messages that may not have reached their new thread. */
   readonly unconfirmed: Unconfirmed;
   /** What commands can do to the composer on screen. */
@@ -132,6 +129,12 @@ export interface ComposerHandle {
         toggleModelPicker(): void;
         cycleRuntimeMode(): void;
         togglePlanMode(): void;
+        /** Sends the composer's message the other way while a turn runs (queue or steer). */
+        sendAlternate(): void;
+        /** Steers the first queued message into the running turn; false when there is none. */
+        steerNext(): boolean;
+        /** Loads the last queued message into the composer to edit it; false when it cannot. */
+        editLatest(): boolean;
       }
     | undefined;
 }

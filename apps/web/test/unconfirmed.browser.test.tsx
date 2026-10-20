@@ -2,7 +2,7 @@ import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { SendOutcome } from "../src/plugins/chat/follow-ups.ts";
+import type { SendOutcome } from "../src/plugins/chat/send.ts";
 import {
   createUnconfirmed,
   useUnconfirmed,

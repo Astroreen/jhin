@@ -140,8 +140,9 @@ left of T3 Code is split into workstreams in `t3-roadmap.md`.
   interrupted turns with their reason and a retry. The composer has the model
   picker, access mode, plan/build toggle, image attachments, a context meter
   from token usage, prompt history (↑/↓), drafts per thread, approval and
-  question banners, and a queue of follow-ups sent while a turn runs (client
-  side, see Deferred). The chat plugin keeps the queues: each follows its
+  question banners, and a queue of follow-ups sent while a turn runs (kept on
+  the node since D201; what follows describes the client queue it replaced).
+  The chat plugin kept the queues: each follows its
   thread's record and sends its next message when the record shows the turn
   ended, whether the thread is on screen or not, with the agent, model and
   modes it was typed with. As in T3 Code, a turn that was stopped or failed
@@ -856,8 +857,10 @@ and resetting it clears them), with a screenshot.
 - **D209. The composer queues or steers, as T3's "Follow-up behavior"
   says.** While a turn runs, sending queues the message (the device setting
   "Follow-up behavior": Queue, the default, or Steer) and ⌘/Ctrl+Enter
-  (`chat.composer.send-alternate`, T3's `composer.sendAlternate`) does the
-  other for one message. Steering falls back to queueing for an agent that
+  (⌘/Ctrl+Shift+Enter when ⌘/Ctrl+Enter sends; the command
+  `chat.composer.send-alternate`, T3's `composer.sendAlternate`) does the
+  other for one message. The send button says which ("Queue message",
+  "Steer message"). Steering falls back to queueing for an agent that
   cannot steer. The client's own queue goes: the composer calls
   `threads.queue.add` or `threads.steer`, and a thread's queue is what its
   stream's last `threads.queue.updated` says, on every client of the node.
@@ -898,9 +901,6 @@ and resetting it clears them), with a screenshot.
 
 - Real agent adapters for Codex and OpenCode. Claude Code is done
   (`docs/plans/providers.md`).
-- A server-side message queue and steering: follow-ups wait in the client
-  while a turn runs, go out only while the page is open, and are lost if it
-  closes. W1 is moving them to the node (D200–D206, D209, D210).
 - Git and source control: done in `source-control.md` (D110–D120) for the
   branch, diff and pull request on the cards, the branch toolbar and the diff
   panel; checkpoints and reverting to a turn, worktrees, git actions
@@ -968,8 +968,9 @@ and resetting it clears them), with a screenshot.
   but a message that already left the queue (started or cancelled) is taken
   again; `threads.send` takes no id.
 
-Done since in `t3-roadmap.md`'s W1: idempotent thread creation (D207) and
-one write for a record and its index event (D208).
+Done since in `t3-roadmap.md`'s W1 (D200–D211): the server-side queue and
+steering, idempotent thread creation and one write for a record and its
+index event.
 
 Done since in `terminal.md` (D140–D148): the terminal drawer (node-pty and
 xterm.js), the `terminalFocus` context key and the card's terminal indicator.

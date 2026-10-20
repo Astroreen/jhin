@@ -415,4 +415,6 @@ export interface AgentInfo {
   readonly version?: string;
   /** The agent a thread without a chosen agent runs. */
   readonly default: boolean;
+  /** Its turns take messages while they run (a steer); absent from older nodes. */
+  readonly steering?: boolean;
 }

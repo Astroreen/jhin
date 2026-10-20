@@ -64,13 +64,48 @@ export interface ProposedPlanItem {
   readonly at: string;
 }
 
+/** A message the user steered into the running turn (D205): a user message inside the turn. */
+interface SteerItem {
+  readonly kind: "steer";
+  readonly messageId: string;
+  readonly text: string;
+  readonly attachments: readonly TurnAttachment[];
+  readonly at: string;
+}
+
 type TimelineItem =
   | MessageItem
   | ReasoningItem
   | ToolItem
   | RequestItem
   | PlanItem
-  | ProposedPlanItem;
+  | ProposedPlanItem
+  | SteerItem;
+
+/** A message waiting in the thread's queue on its node (D201), as the stream announces it. */
+interface QueuedMessage {
+  readonly id: string;
+  readonly text: string;
+  /** Images by name and type: `threads.queue.list` has their data. */
+  readonly attachments: readonly { readonly name: string; readonly mimeType: string }[];
+  readonly agentId?: string;
+  readonly model?: string;
+  readonly runtimeMode?: string;
+  readonly interactionMode?: string;
+  readonly createdAt: string;
+}
+
+/** The thread's queue: its messages in order, and why it waits, if it does (D202). */
+export interface ThreadQueue {
+  readonly messages: readonly QueuedMessage[];
+  readonly held?: {
+    readonly reason: "interrupted" | "failed" | "refused";
+    readonly turnId?: string;
+    readonly error?: string;
+  };
+}
+
+const EMPTY_QUEUE: ThreadQueue = { messages: [] };
 
 export interface TimelineTurn {
   readonly turnId: string;
@@ -93,6 +128,8 @@ export interface Timeline {
   readonly turns: readonly TimelineTurn[];
   /** The thread was deleted on its node. */
   readonly deleted: boolean;
+  /** What waits in the thread's queue; empty when nothing does. */
+  readonly queue?: ThreadQueue;
 }
 
 interface Payload {
@@ -116,6 +153,9 @@ interface Payload {
   readonly steps?: readonly PlanStep[];
   readonly markdown?: string;
   readonly usage?: TokenUsage;
+  readonly messageId?: string;
+  readonly messages?: readonly QueuedMessage[];
+  readonly held?: ThreadQueue["held"];
 }
 
 /**
@@ -152,7 +192,8 @@ export function createTimeline() {
   /** The last event folded in: events delivered again are not folded twice. */
   let sequence = 0;
   let deleted = false;
-  let timeline: Timeline = { turns: [], deleted: false };
+  let queue = EMPTY_QUEUE;
+  let timeline: Timeline = { turns: [], deleted: false, queue };
 
   const find = (turn: MutableTurn, key: string): TimelineItem | undefined => {
     const index = positions.get(turn)?.get(key);
@@ -172,6 +213,7 @@ export function createTimeline() {
   function apply(events: readonly StoredEvent[]): Timeline {
     changed.clear();
     const wasDeleted = deleted;
+    const queued = queue;
     for (const event of events) {
       if (event.sequence <= sequence) continue;
       sequence = event.sequence;
@@ -180,6 +222,13 @@ export function createTimeline() {
         continue;
       }
       const payload = (event.payload ?? {}) as Payload;
+      if (event.type === ThreadEvents.queueUpdated) {
+        queue = {
+          messages: payload.messages ?? [],
+          ...(payload.held === undefined ? {} : { held: payload.held }),
+        };
+        continue;
+      }
       if (event.type === ThreadEvents.turnStarted) {
         if (payload.turnId === undefined) continue;
         const turn: MutableTurn = {
@@ -206,6 +255,17 @@ export function createTimeline() {
       if (turn === undefined) continue;
       const itemId = payload.itemId;
       switch (event.type) {
+        case ThreadEvents.turnSteered: {
+          if (payload.messageId === undefined) break;
+          put(turn, `steer:${payload.messageId}`, {
+            kind: "steer",
+            messageId: payload.messageId,
+            text: payload.input?.text ?? "",
+            attachments: payload.input?.attachments ?? [],
+            at: event.at,
+          });
+          break;
+        }
         case ThreadEvents.itemStarted: {
           if (itemId === undefined || payload.tool === undefined) break;
           put(turn, itemId, {
@@ -351,7 +411,7 @@ export function createTimeline() {
       }
     }
     // Nothing this batch held changed anything: the same timeline.
-    if (changed.size === 0 && deleted === wasDeleted) return timeline;
+    if (changed.size === 0 && deleted === wasDeleted && queue === queued) return timeline;
     for (const turn of changed) {
       // A turn that ended with a request still open never got it answered.
       const items =
@@ -364,7 +424,7 @@ export function createTimeline() {
             );
       snapshots.set(turn, { ...turn, items });
     }
-    timeline = { turns: turns.map((turn) => snapshots.get(turn)!), deleted };
+    timeline = { turns: turns.map((turn) => snapshots.get(turn)!), deleted, queue };
     return timeline;
   }
 
@@ -398,7 +458,8 @@ export type TurnBlock =
   | { readonly kind: "message"; readonly item: MessageItem; readonly final: boolean }
   | { readonly kind: "work"; readonly entries: readonly WorkEntry[] }
   | { readonly kind: "plan"; readonly item: PlanItem }
-  | { readonly kind: "proposed-plan"; readonly item: ProposedPlanItem };
+  | { readonly kind: "proposed-plan"; readonly item: ProposedPlanItem }
+  | { readonly kind: "steer"; readonly item: SteerItem };
 
 /**
  * A turn's items as rendered: consecutive work entries become one work block;
@@ -427,6 +488,9 @@ export function turnBlocks(turn: TimelineTurn): TurnBlock[] {
     } else if (item.kind === "proposed-plan") {
       flush();
       blocks.push({ kind: "proposed-plan", item });
+    } else if (item.kind === "steer") {
+      flush();
+      blocks.push({ kind: "steer", item });
     } else if (item.kind === "request" && item.state === "open") {
       continue;
     } else {
