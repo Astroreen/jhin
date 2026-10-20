@@ -165,6 +165,8 @@ export interface ThreadRecord {
   readonly model?: string;
   readonly runtimeMode?: string;
   readonly interactionMode?: string;
+  /** The thread's own working directory (a git worktree); its project's when absent. */
+  readonly worktreePath?: string;
   readonly lastTurn?: {
     readonly turnId: string;
     readonly status: TurnStatus;
