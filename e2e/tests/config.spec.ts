@@ -167,6 +167,6 @@ test("D441: a shortcut that another command has warns of the conflict", async ({
   await info.attach("keybinding-conflict", { path: shot, contentType: "image/png" });
 
   // Reset: the conflict goes with it.
-  await page.getByRole("button", { name: "Reset" }).click();
+  await page.getByRole("button", { name: "Reset shortcut of Toggle sidebar" }).click();
   await expect(conflict).toHaveCount(0);
 });

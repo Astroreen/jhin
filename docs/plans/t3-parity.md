@@ -540,7 +540,8 @@ Workstream W14 of `t3-roadmap.md` (D440–D459). The reference is T3 Code
   more"), and its tooltip adds "The most recent matching binding wins when
   both conditions can apply." Saving is never blocked. "Both can apply" is
   T3's cheap test: either rule has no `when` (always), or both have the same
-  text. The keys are compared as the platform presses them
+  text. Another rule of the same command is no conflict (T3 compares rows
+  and would name the row's own command). The keys are compared as the platform presses them
   (`keybindingConflicts` in `apps/web/src/lib/keybindings.ts`, the same key
   the resolver uses to let the last rule win), so `mod+k` and `ctrl+k`
   conflict on Linux, where T3 compares the strings. A search hides rows, not

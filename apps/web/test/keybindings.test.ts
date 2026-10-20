@@ -240,6 +240,16 @@ describe("keybindingConflicts (D441)", () => {
     expect(keybindingConflicts(rules, 0, MAC)).toEqual([2]);
   });
 
+  it("does not count a rule of the same command as a conflict", () => {
+    const rules = [
+      { key: "mod+b", command: "ui.sidebar.toggle", when: "composerFocus" },
+      { key: "mod+b", command: "ui.sidebar.toggle" },
+      { key: "mod+b", command: "chat.bold", when: "composerFocus" },
+    ];
+    expect(keybindingConflicts(rules, 0, LINUX)).toEqual([2]);
+    expect(keybindingConflicts(rules, 1, LINUX)).toEqual([2]);
+  });
+
   it("leaves rules without a valid shortcut alone", () => {
     const rules = [
       { key: "", command: "a" },

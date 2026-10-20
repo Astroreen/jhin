@@ -167,6 +167,7 @@ export function KeybindingsSection() {
                   <ConflictWarning labels={conflicts.get(rule) ?? []} />
                   {rule.source === "config" ? (
                     <Button
+                      aria-label={`Reset shortcut of ${labelOf(rule.command)}`}
                       className="opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
                       onClick={() => reset(rule.command)}
                       size="xs"

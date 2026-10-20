@@ -402,7 +402,8 @@ export function keybindingConflicts(
   const when = rule.when?.trim() ?? "";
   const conflicts: number[] = [];
   rules.forEach((other, otherIndex) => {
-    if (otherIndex === index) return;
+    // Two rules of one command on the same keys run the same thing: no conflict.
+    if (otherIndex === index || other.command === rule.command) return;
     const otherShortcut = parseShortcut(other.key);
     if (otherShortcut === null || pressedKeys(otherShortcut, platform) !== keys) return;
     const otherWhen = other.when?.trim() ?? "";
