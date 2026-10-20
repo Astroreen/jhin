@@ -554,6 +554,9 @@ importers:
       '@jhin/host-api':
         specifier: workspace:*
         version: link:../../packages/host-api
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk

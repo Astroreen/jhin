@@ -11,9 +11,10 @@ import {
   type Principal,
 } from "@jhin/auth-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
+import { UNGUARDED_STREAM_PERMISSION } from "@jhin/rpc";
 import { definePlugin, holdsPermission, isGrant, z, type Invocation } from "@jhin/sdk";
 
-import { createClientStore, type ClientRecord } from "./clients.ts";
+import { ClientRecord, createClientStore } from "./clients.ts";
 
 /** The single owner of a node (D22): every permission. */
 const OWNER: Principal = { id: OWNER_PRINCIPAL_ID, permissions: ["*"] };
@@ -22,21 +23,11 @@ const OWNER: Principal = { id: OWNER_PRINCIPAL_ID, permissions: ["*"] };
 const DEFAULT_TTL_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** What a subscription to a stream of the event log nobody guards needs (`@jhin/rpc`, D415). */
-const UNGUARDED_STREAM_PERMISSION = "events.read";
-
 const Grants = z
   .array(z.string().refine(isGrant, "must be a permission, a pattern such as git.* or *"))
   .min(1);
 
-const Client = z.object({
-  id: z.string(),
-  label: z.string(),
-  permissions: z.array(z.string()),
-  method: z.enum(["pairing", "issued"]),
-  createdAt: z.number(),
-  expiresAt: z.number().optional(),
-  lastSeenAt: z.number().optional(),
+const Client = ClientRecord.omit({ secretHash: true }).extend({
   /** The token the caller itself connected with. */
   current: z.boolean(),
 });
@@ -74,7 +65,12 @@ export default definePlugin({
       .get<HostPaths>(HOST_PATHS_CAPABILITY)
       .dataDir(context.plugin.id);
     const file = Path.join(dataDir, "token");
-    const clients = createClientStore(Path.join(dataDir, "clients.json"));
+    const clients = createClientStore(Path.join(dataDir, "clients.json"), (moved, error) =>
+      context.log.error("device tokens unreadable; none are accepted until they are issued again", {
+        moved,
+        error,
+      }),
+    );
     const existing = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8").trim() : "";
     let token: string;
     if (existing.length >= MIN_TOKEN_LENGTH) {

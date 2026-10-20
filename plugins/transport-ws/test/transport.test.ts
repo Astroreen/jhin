@@ -280,6 +280,19 @@ describe("device tokens (security.md D411–D414)", () => {
     expect(again.closeReason).toMatchObject({ code: "UNAUTHENTICATED" });
   });
 
+  it("drops a connection when its token expires", async () => {
+    const node = await startNode();
+    // Expires within a millisecond: refused at connect, or dropped right after it.
+    const { token } = (await node.kernel.commands.execute("auth.tokens.issue", {
+      label: "brief",
+      permissions: ["app.*"],
+      ttlDays: 1e-9,
+    })) as { token: string };
+    const device = connect(node.url, token);
+    await closed(device);
+    expect(device.closeReason).toMatchObject({ code: "UNAUTHENTICATED" });
+  });
+
   it("keeps device tokens open when the owner token rotates", async () => {
     const node = await startNode();
     const device = connect(node.url, (await issue(node, ["app.*"])).token);

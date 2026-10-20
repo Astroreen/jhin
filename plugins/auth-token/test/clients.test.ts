@@ -57,4 +57,20 @@ describe("device token store (security.md D411)", () => {
     expect(store.remove([record.id, "unknown"]).map((gone) => gone.id)).toEqual([record.id]);
     expect(store.verify(token, 2)).toBeUndefined();
   });
+
+  it("moves a file it cannot read aside instead of overwriting it, and accepts no token from it", () => {
+    for (const content of ["{ truncated", '{ "clients": [{ "id": 1 }] }']) {
+      const file = tempFile();
+      Fs.writeFileSync(file, content);
+      const reported: string[] = [];
+      const store = createClientStore(file, (moved) => reported.push(moved));
+
+      expect(reported).toEqual([`${file}.corrupt`]);
+      expect(Fs.readFileSync(`${file}.corrupt`, "utf8")).toBe(content);
+      expect(store.list()).toEqual([]);
+      // A new token starts a new file; the old one stays where it was moved.
+      store.issue({ label: "x", permissions: ["*"], method: "issued", now: 1 });
+      expect(Fs.readFileSync(`${file}.corrupt`, "utf8")).toBe(content);
+    }
+  });
 });

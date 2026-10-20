@@ -65,7 +65,11 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   already has"); a pattern is held only by a grant that covers all of it.
   `auth.permissions.list` returns every permission the node's commands need,
   with the commands that need each, plus `events.read` (D415), so a client
-  offers them as checkboxes without a hard-coded list.
+  offers them as checkboxes without a hard-coded list. Every first-party
+  stream guard names a permission some command needs too (`threads.read`,
+  `mesh.read`, `mesh.admin`, `git.read`, `terminals.read`), so the list has
+  them; a plugin that guards a stream with a permission no command uses
+  does not show in it (Deferred).
 - **D414. Revoking takes effect at once; expiry too.** A revoked or expired
   device token is refused at the next connect, and its open connections are
   closed with 4401: the kernel event `auth.client.revoked {principal}` tells
@@ -97,7 +101,10 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   nodes with no more than it holds here. A forward without `scope` (a node
   older than this) runs with `memberPermissions`. The link protocol's own
   methods (`mesh.gossip`, `mesh.mirror`, foundation PR 10 notes) are
-  unchanged.
+  unchanged. A `scope` that is not a list of grants holds nothing. An absent
+  one is trusted to the member grants on purpose: members are one owner's
+  nodes (D22), and a node that wants less from them narrows
+  `memberPermissions`.
 
 ### Secrets
 
@@ -251,6 +258,11 @@ and QR code.
   provides it depends on `auth.verifier` (an optional edge that closes a
   cycle is dropped, D14). The settings page reads the list again after its
   own changes.
+- `auth.permissions.list` reads commands only: a stream guarded with a
+  permission no command needs is not offered (the token plugin cannot see
+  `rpc.streams`, as above).
+- An unreadable `clients.json` is moved aside to `clients.json.corrupt` and
+  no device token works until new ones are issued; nothing repairs it.
 - `lastSeenAt` is written to `clients.json` on every connect; a node with
   many devices reconnecting often would batch it.
 - Titles for permissions in the UI (T3's "View terminals", "Use

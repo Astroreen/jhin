@@ -544,4 +544,43 @@ describe("scoped mesh calls (security.md D416)", () => {
       permissions: ["git.*"],
     });
   });
+
+  it("gives a forwarded call whose scope is not a list of grants nothing", async () => {
+    const network = createMemoryNetwork();
+    const { a } = await chain(network);
+    // b forwards to a over their link, as a relay would, with a scope that is no list.
+    const [mine, theirs] = createPeerPair();
+    a.mesh.accept(theirs, "b");
+    serveRpc(mine, {
+      caller: { id: "a", permissions: ["*"] },
+      logger: noopLogger,
+      hello: () => ({}),
+      newTraceId: () => "t",
+      execute: async () => null,
+    });
+    const link = createCaller(mine);
+    for (const scope of ["*", { all: true }, 7]) {
+      expect(
+        await link.call("mesh.forward", {
+          origin: "b",
+          target: "a",
+          method: "app.scope",
+          params: {},
+          hops: 1,
+          scope,
+        }),
+      ).toMatchObject({ caller: "node:b", permissions: [] });
+    }
+    // A list keeps only its strings.
+    expect(
+      await link.call("mesh.forward", {
+        origin: "b",
+        target: "a",
+        method: "app.scope",
+        params: {},
+        hops: 1,
+        scope: ["git.read", 3],
+      }),
+    ).toMatchObject({ permissions: ["git.read"] });
+  });
 });

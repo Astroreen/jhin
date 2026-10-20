@@ -331,9 +331,14 @@ export function createMesh(options: MeshOptions): Mesh {
   async function forward(request: Forward, trace?: string): Promise<unknown> {
     if (request.target === selfId) {
       const members = options.memberPermissions?.() ?? ["*"];
-      const scope = Array.isArray(request.scope)
-        ? request.scope.filter((grant): grant is string => typeof grant === "string")
-        : undefined;
+      // Absent: a node older than D416, capped by the member grants alone. Anything
+      // else that is not a list of grants holds nothing.
+      const scope =
+        request.scope === undefined
+          ? undefined
+          : Array.isArray(request.scope)
+            ? request.scope.filter((grant): grant is string => typeof grant === "string")
+            : [];
       const invocation: Invocation = {
         caller: {
           id: `node:${request.origin}`,

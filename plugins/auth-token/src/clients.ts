@@ -50,12 +50,30 @@ export interface ClientStore {
   remove(ids: readonly string[]): ClientRecord[];
 }
 
-export function createClientStore(file: string): ClientStore {
+/**
+ * Reads the tokens kept in `file`. A file that does not parse gives no
+ * access: it is moved aside to `<file>.corrupt` (and `onCorrupt` told), so
+ * the node still starts and the next write does not silently replace it.
+ */
+export function createClientStore(
+  file: string,
+  onCorrupt: (moved: string, error: string) => void = () => {},
+): ClientStore {
   let records: ClientRecord[] = [];
   if (Fs.existsSync(file)) {
-    const parsed = File.safeParse(JSON.parse(Fs.readFileSync(file, "utf8")));
-    // A file we cannot read gives no access, rather than someone else's.
-    if (parsed.success) records = parsed.data.clients;
+    let error: string | undefined;
+    try {
+      const parsed = File.safeParse(JSON.parse(Fs.readFileSync(file, "utf8")));
+      if (parsed.success) records = parsed.data.clients;
+      else error = parsed.error.message;
+    } catch (thrown) {
+      error = String(thrown);
+    }
+    if (error !== undefined) {
+      const moved = `${file}.corrupt`;
+      Fs.renameSync(file, moved);
+      onCorrupt(moved, error);
+    }
   }
   const save = () => {
     const temporary = `${file}.${process.pid}.tmp`;
