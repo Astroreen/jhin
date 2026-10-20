@@ -122,19 +122,22 @@ specific to Claude: the runtime is a plugin on the public API.
   instead of starting a Claude Code of its own. The live sessions of a node
   are listed by `claude.sessions.list` and ended by `claude.sessions.close`
   (one thread or all). Turning `session` to `per-turn` ends every kept session
-  no turn holds at once; a held one ends with its turn. The section's defaults
-  live in its schema only; the runtime reads the parsed section.
+  no turn holds at once; a held one ends with its turn. A new
+  `sessionIdleMinutes` re-arms the sessions already idle, counted from their
+  last turn. The section's defaults live in its schema only; the runtime reads
+  the parsed section.
 - **D99. A live session takes a turn's settings when it can.** Everything a
   running Claude Code cannot change — the working directory, effort, binary,
-  environment, system prompt and `allowDangerouslySkipPermissions` — forms
-  its launch key (T3's `claudeEffectiveQueryPolicyKey`); a turn with another
-  key ends it and starts Claude Code again with `resume`, so entering or
-  leaving full access, or a config change, restarts it. A different model
-  goes in with `setModel` and a different permission mode with
-  `setPermissionMode`; the mode Claude Code last reported (`system/init`,
-  `system/status`) counts, so a session Claude moved into plan mode by
-  itself goes back to the thread's mode, as in T3. When either control
-  fails (an older CLI) the session is replaced.
+  environment (the node's when the config names none, with the state reports
+  of D104), system prompt and `allowDangerouslySkipPermissions` — forms its
+  launch key (T3's `claudeEffectiveQueryPolicyKey`); a turn with another key
+  ends it and starts Claude Code again with `resume`, so entering or leaving
+  full access, or a config change, restarts it. A different model goes in with
+  `setModel` and a different permission mode with `setPermissionMode`; the
+  mode Claude Code last reported (`system/init`, `system/status`) counts, so a
+  session Claude moved into plan mode by itself goes back to the thread's
+  mode, as in T3. When either control fails (an older CLI) the session is
+  replaced.
 - **D100. An interrupt stops the turn, not the session.** Claude Code answers
   it with an aborted result and stays up for the next turn; one that does
   not take the interrupt is ended. A turn that lets go of its session before
@@ -152,11 +155,13 @@ specific to Claude: the runtime is a plugin on the public API.
   delete lands after a write already on its way, and a later write is skipped;
   that guard is dropped once no turn of the thread is left running.
   Deactivating the plugin ends every live session.
-- **D102. Turns Claude missed are handed to it.** A thread that ran on
-  Claude, went to another agent and came back gives Claude, in front of the
-  new message, a transcript of the turns after Claude's last one (the
-  user's messages and the agents' answers), since Claude's session never saw
-  them. The turns are told apart by the `agentId` of `agent.turn.started`.
+- **D102. Turns Claude missed are handed to it.** A thread that ran on Claude,
+  went to another agent and came back gives Claude, in front of the new
+  message, a transcript of the turns after Claude's last one (the user's
+  messages and the agents' answers), since Claude's session never saw them.
+  The turns are told apart by the `agentId` of `agent.turn.started`. A session
+  with no turn of Claude's in the history (its record written on init, then
+  the turn failed) gets no transcript: it already holds what Claude saw.
 - **D103. Claude Code runs with the node's environment.** It gets the node
   process's whole environment plus the config's `env`, as `claude` started
   in the node's shell would: its sign-in (`ANTHROPIC_API_KEY`,

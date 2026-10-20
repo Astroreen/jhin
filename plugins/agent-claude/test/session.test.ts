@@ -147,6 +147,52 @@ describe("jhin.agent-claude: live sessions", () => {
     expect(calls[1]!.options).toMatchObject({ resume: THREAD, model: "claude-opus-5-5" });
   });
 
+  it("counts a changed idle time from the last turn of sessions already idle", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const { claude, turn, calls, settings } = node([answering("one"), answering("two")], {
+      sessionIdleMinutes: 10,
+    });
+    await turn();
+    vi.advanceTimersByTime(3 * 60_000);
+    // Shorter: 5 minutes from the last turn, of which 3 have passed.
+    settings.config = Config.parse({ sessionIdleMinutes: 5 });
+    claude.live.rearmIdle();
+    vi.advanceTimersByTime(2 * 60_000 - 1);
+    expect(calls[0]!.closed).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(calls[0]!.closed).toBe(true);
+
+    await turn();
+    // Longer: the old 5 minutes no longer end it.
+    settings.config = Config.parse({ sessionIdleMinutes: 20 });
+    claude.live.rearmIdle();
+    vi.advanceTimersByTime(19 * 60_000);
+    expect(calls[1]!.closed).toBe(false);
+    vi.advanceTimersByTime(60_000);
+    expect(calls[1]!.closed).toBe(true);
+  });
+
+  it("launches with the node's environment, part of the launch key", async () => {
+    const { turn, calls } = node([answering("one"), answering("two")]);
+    await turn();
+    expect(calls[0]!.options.env).toMatchObject({
+      PATH: process.env["PATH"],
+      CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
+    });
+    process.env["JHIN_TEST_LAUNCH_KEY"] = "changed";
+    try {
+      await turn();
+    } finally {
+      delete process.env["JHIN_TEST_LAUNCH_KEY"];
+    }
+    // Another environment needs another process: resumed, not reused.
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.options).toMatchObject({
+      resume: THREAD,
+      env: { JHIN_TEST_LAUNCH_KEY: "changed" },
+    });
+  });
+
   it("ends an idle Claude Code after the configured minutes", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { claude, turn, calls } = node([answering("one"), answering("two")], {
@@ -573,6 +619,16 @@ describe("jhin.agent-claude: turns Claude missed", () => {
   it("hands nothing when Claude ran the thread's last turn", () => {
     expect(transcript(history.slice(0, 2), "jhin.agent-claude")).toBeUndefined();
     expect(transcript(history, "jhin.agent-claude")).toContain("User: to fake");
+  });
+
+  it("replays nothing into a session whose turns are not in the history", async () => {
+    // The record was written on init and that turn failed: the session holds what Claude
+    // saw, the history has no turn of Claude's to count from.
+    expect(transcript(history.slice(2), "jhin.agent-claude")).toBeUndefined();
+    const { turn, calls, sessions } = node([answering("back")]);
+    sessions.ids.add(THREAD);
+    await turn({ history: history.slice(2), input: { text: "and now?" } });
+    expect(prompts(calls[0]!)).toEqual(["and now?"]);
   });
 });
 

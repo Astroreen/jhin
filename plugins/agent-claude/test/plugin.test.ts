@@ -195,6 +195,29 @@ describe("jhin.agent-claude: the plugin", () => {
     ).toBeUndefined();
   });
 
+  it("re-arms idle sessions when the idle minutes change", async () => {
+    const { client, calls, kernel } = await node(async function* (player) {
+      yield init();
+      yield result();
+      await player.nextPrompt();
+    });
+    const thread = await client.call<{ id: string }>("threads.create", {
+      agentId: CLAUDE_AGENT_ID,
+    });
+    const completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await completed;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      kernel.config.setLayer("node", { "jhin.agent-claude": { sessionIdleMinutes: 1 } });
+      vi.advanceTimersByTime(60_000);
+      await calls[0]!.whenClosed;
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await client.call("claude.sessions.list", {})).toEqual([]);
+  });
+
   it("ends kept sessions as soon as the setting turns to per-turn", async () => {
     const { client, calls, kernel } = await node(async function* (player) {
       yield init();

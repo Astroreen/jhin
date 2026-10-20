@@ -184,10 +184,11 @@ export function transcript(history: TurnRequest["history"], since?: string): str
       if (typeof payload["text"] === "string") turn?.lines.push(`Assistant: ${payload["text"]}`);
     }
   }
-  const missed =
-    since === undefined
-      ? turns
-      : turns.slice(turns.findLastIndex((turn) => turn.agentId === since) + 1);
+  const last = since === undefined ? -1 : turns.findLastIndex((turn) => turn.agentId === since);
+  // A session with no turn of Claude's in the history (its record was written on init, then
+  // the turn failed) already holds what Claude saw: nothing to replay.
+  if (since !== undefined && last === -1) return undefined;
+  const missed = turns.slice(last + 1);
   const lines = missed.flatMap((turn) => turn.lines);
   if (lines.length === 0) return undefined;
   return [

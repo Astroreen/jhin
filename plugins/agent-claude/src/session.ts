@@ -77,6 +77,11 @@ export interface LiveSessions {
   close(threadId: string): boolean;
   /** Ends every live session no turn holds; held ones end with their turn's release. */
   closeIdle(): number;
+  /**
+   * Arms the idle timers of the sessions no turn holds again, with the idle time the
+   * setting says now, counted from each one's last turn.
+   */
+  rearmIdle(): void;
   list(): LiveSessionInfo[];
   /** Ends every live session. */
   dispose(): void;
@@ -162,6 +167,19 @@ function launchKey(options: Options): string {
   return JSON.stringify(launch);
 }
 
+/**
+ * The options a session launches with: the environment Claude Code gets (the node's when
+ * the caller names none), with running and idle reports on. Idle is Claude Code's own word
+ * that it took every message, the way out for a turn whose frames it does not mark (D104).
+ * The environment is part of the launch key, like everything a process cannot change.
+ */
+function withStateReports(options: Options): Options {
+  return {
+    ...options,
+    env: { ...(options.env ?? process.env), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
+  };
+}
+
 /** The longest delay setTimeout takes. */
 const MAX_TIMER = 2 ** 31 - 1;
 
@@ -231,6 +249,17 @@ export function createLiveSessions(options: {
     }
   };
 
+  /** Ends an idle session once it has waited `idleMs` since its last turn (0: never). */
+  const arm = (live: Live, idleMs: number) => {
+    clearTimeout(live.timer);
+    live.timer = undefined;
+    if (idleMs <= 0 || live.idleSince === undefined) return;
+    const left = Math.max(0, live.idleSince.getTime() + idleMs - Date.now());
+    // setTimeout fires at once past its limit (about 24.8 days): that is the most.
+    live.timer = setTimeout(() => close(live), Math.min(left, MAX_TIMER));
+    live.timer.unref?.();
+  };
+
   const open = (threadId: string, key: string, launch: Options): Live => {
     // At most one Claude Code per thread, so none is ever out of reach.
     const existing = sessions.get(threadId);
@@ -241,9 +270,6 @@ export function createLiveSessions(options: {
       prompt: input.read(),
       options: {
         ...launch,
-        // Running and idle reports: idle is Claude Code's own word that it took every
-        // message, the way out for a turn whose frames it does not mark (D104).
-        env: { ...(launch.env ?? process.env), CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
         // Set once per process: Claude Code asks whichever turn holds the session.
         canUseTool: (toolName, toolInput, permission) =>
           live.holder?.canUseTool?.(toolName, toolInput, permission) ??
@@ -327,7 +353,8 @@ export function createLiveSessions(options: {
   };
 
   return {
-    async lease({ threadId, options: launch, message }) {
+    async lease({ threadId, options: requested, message }) {
+      const launch = withStateReports(requested);
       const key = launchKey(launch);
       const self = {};
       latest.set(threadId, self);
@@ -447,11 +474,7 @@ export function createLiveSessions(options: {
           const policy = options.keepAlive();
           if (!(keep || wentIdle) || !policy.keepAlive || session.closed) return close(session);
           session.idleSince = new Date();
-          if (policy.idleMs > 0) {
-            // setTimeout fires at once past its limit (about 24.8 days): that is the most.
-            session.timer = setTimeout(() => close(session), Math.min(policy.idleMs, MAX_TIMER));
-            session.timer.unref?.();
-          }
+          arm(session, policy.idleMs);
         },
       };
     },
@@ -460,6 +483,10 @@ export function createLiveSessions(options: {
       if (live === undefined) return false;
       close(live);
       return true;
+    },
+    rearmIdle() {
+      const { idleMs } = options.keepAlive();
+      for (const live of sessions.values()) if (!live.busy) arm(live, idleMs);
     },
     closeIdle() {
       let closed = 0;

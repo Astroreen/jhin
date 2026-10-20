@@ -387,12 +387,15 @@ export function claudePlugin(query: QueryFunction) {
       });
       context.subscriptions.add(registry.register(runtime));
       context.onDeactivate(() => runtime.dispose());
-      // Turned to per-turn: kept sessions end now, not when their idle time runs out (held
-      // ones end with their turn).
+      // Held sessions end with their turn or wait for their next one as the setting says then.
       context.subscriptions.add(
         context.config.onDidChange(CONFIG_SECTION, () => {
+          // Turned to per-turn: kept sessions end now. Another idle time: theirs runs from
+          // their last turn with the new length.
           if (context.config.get<Config>(CONFIG_SECTION).session === "per-turn") {
             runtime.live.closeIdle();
+          } else {
+            runtime.live.rearmIdle();
           }
         }),
       );
