@@ -769,10 +769,12 @@ and resetting it clears them), with a screenshot.
 - **D202. Delivery, and a queue held as T3 holds it.** When a turn ends the
   node starts the first queued message as the thread's next turn, through
   the same path as `threads.send` (titles, settings, D68's reservation): the
-  message leaves the queue when its turn is reserved. A turn that was
+  message leaves the queue as its turn starts and goes back first if the
+  node refuses it. A turn that was
   interrupted or failed, also one the node closed after a restart, holds
   the queue (`held: { reason: "interrupted" | "failed", turnId }`), as T3's
-  `queueHeld` does after a stop, until `threads.queue.resume`. A queued
+  `queueHeld` does after a stop, until `threads.queue.resume`; the hold is
+  written with the turn's last event, so no queued message starts after it. A queued
   message the node cannot start (the thread archived, its agent gone) stays
   first and holds the queue with `reason: "refused"` and the error; resuming
   tries it again. Archiving a thread stops its turn, so its queue is held;
@@ -784,8 +786,8 @@ and resetting it clears them), with a screenshot.
   `threads.queue.reorder` (`messageId`, `beforeMessageId`: the message it
   goes before, `null` for the end) and `threads.queue.cancel`. A message not
   in the queue (sent or cancelled meanwhile) is `QUEUED_MESSAGE_NOT_FOUND`.
-  Changes to a queue run one at a time with the thread's other changes, so
-  a reorder and the delivery of the first message never cross.
+  Changes to a queue run one at a time, its delivery included, so a reorder
+  and the delivery of the first message never cross.
 - **D204. `agent.runtime@1.2` (additive): steering.** A runtime that takes
   messages into a running turn says so (`steering: true`) and its turns have
   `steer(input)`: synchronous, it hands the message to the running turn, or
@@ -802,7 +804,8 @@ and resetting it clears them), with a screenshot.
   (`outcome`: `steered`, `started`, `queued`). An agent that cannot steer
   refuses it (`STEER_UNSUPPORTED`). `threads.queue.steer` (T3's
   promote-to-steer) moves a queued message into the running turn the same
-  way; it leaves the queue only once the agent took it.
+  way; it leaves the queue only once the agent took it, and without a running
+  turn it is refused (`TURN_NOT_RUNNING`).
 - **D206. Steering Claude Code**, as T3's `steerTurn`: the message goes into
   the live query the turn holds (D98) as a user message with
   `priority: "now"`. Claude Code then ends its current response with a
@@ -866,9 +869,10 @@ and resetting it clears them), with a screenshot.
   `threads.steer`; `threadId` of `threads.create`; the events
   `threads.queue.updated` and `agent.turn.steered`; `agent.runtime@1.2`
   (`steering`, `AgentTurn.steer`); `storage.eventlog@1.1` (`records`); the
-  error codes `QUEUED_MESSAGE_NOT_FOUND`, `STEER_UNSUPPORTED` and
-  `THREAD_EXISTS`; `STORAGE_MISMATCH` when the threads plugin starts.
-  `threads.send` keeps refusing a busy thread
+  error codes `QUEUED_MESSAGE_NOT_FOUND`, `STEER_UNSUPPORTED`,
+  `TURN_NOT_RUNNING` and `THREAD_EXISTS`, and `STORAGE_MISMATCH` when the
+  threads plugin starts; `messageId` on `agent.turn.started` for a queued
+  message's turn. `threads.send` keeps refusing a busy thread
   (`TURN_IN_PROGRESS`).
 
 ## Not ported (out of scope)
@@ -941,6 +945,9 @@ and resetting it clears them), with a screenshot.
   for agents that cannot steer (T3's `restart` dispatch), and steering a
   turn that waits for an approval or an answer (the agent gets the message
   once it goes on).
+- Steering a Claude Code that does not mark its frames (an older CLI): its
+  first result after a steer ends the turn, so a steer it took only after
+  answering loses its answer.
 - Idempotent sends: `threads.queue.add` ignores a `messageId` already queued,
   but a message that already left the queue (started or cancelled) is taken
   again; `threads.send` takes no id.

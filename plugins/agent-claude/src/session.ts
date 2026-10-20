@@ -4,10 +4,12 @@
 // the next turn when its launch options match (claudeEffectiveQueryPolicyKey, openQuery),
 // the model and permission mode applied to it live (setModel, setPermissionMode, including
 // the mode Claude switched to by itself), replaced otherwise; messages bound to the turn
-// whose prompt they answer by its uuid (T3's prompt uuids and echo tracking); and
+// whose prompt they answer by its uuid (T3's prompt uuids and echo tracking);
 // ProviderSessionManager's release of an idle session; the node's MCP server registered
-// over the control channel (ClaudeAgentSdkQueryRunner.open's setMcpServers). T3's
-// continuation turns, wake buffers and background-work guards are not ported.
+// over the control channel (ClaudeAgentSdkQueryRunner.open's setMcpServers); and steering
+// a running turn with a message of priority "now", whose aborted result does not end the
+// turn (steerTurn, isClaudeActiveSteeringAbortResult). T3's continuation turns, wake
+// buffers and background-work guards are not ported.
 import type {
   CanUseTool,
   EffortLevel,
@@ -60,6 +62,11 @@ export interface Lease {
   /** Whether Claude Code was already running for an earlier turn. */
   readonly reused: boolean;
   interrupt(): Promise<unknown>;
+  /**
+   * Hands Claude Code another message for the running turn (a steer, D206): it stops what
+   * it streams and goes on with the message. Throws once the turn's messages ended.
+   */
+  steer(message: SDKUserMessage): void;
   /**
    * Ends the turn's hold, once. `keep` (the turn reached its result) leaves Claude Code
    * running for the next turn when the setting keeps sessions; anything else ends it.
@@ -270,6 +277,14 @@ class BypassRefused extends Error {
     super("Claude Code did not switch to bypassPermissions", { cause });
   }
 }
+
+/**
+ * A result Claude Code sends when a steer stopped what it was doing: the turn goes on with
+ * the steer (T3's isClaudeActiveSteeringAbortResult).
+ */
+const isSteerAbort = (message: SDKMessage) =>
+  message.type === "result" &&
+  (message.terminal_reason === "aborted_streaming" || message.terminal_reason === "aborted_tools");
 
 /** Ends a turn whose message Claude Code took without answering it (nothing marked as its). */
 class NoAnswer extends Error {
@@ -665,6 +680,13 @@ export function createLiveSessions(options: {
       let begun = false;
       /** The interrupt came before Claude Code took the message: stop it once it starts (D350). */
       let interruptOnStart = false;
+      /** The turn's messages ended: it takes no steer any more. */
+      let ended = false;
+      /** The uuids of the messages steered into the turn, oldest first. */
+      const steers: string[] = [];
+      const ours = (stamp: readonly string[]) =>
+        (uuid !== undefined && stamp.includes(uuid)) ||
+        steers.some((steer) => stamp.includes(steer));
       /** Ended on an idle report: nothing of the turn is left in flight. */
       let wentIdle = false;
       const uuid = message.uuid;
@@ -684,9 +706,7 @@ export function createLiveSessions(options: {
             if (!begun) {
               const stamp = stampOf(sent);
               const state = stateOf(sent);
-              if (
-                stamp === undefined ? !session.stamps : uuid !== undefined && stamp.includes(uuid)
-              ) {
+              if (stamp === undefined ? !session.stamps : ours(stamp)) {
                 begun = true;
                 if (interruptOnStart) {
                   interruptOnStart = false;
@@ -702,6 +722,7 @@ export function createLiveSessions(options: {
                 if (state === "idle" && (idleCounts || stopping)) {
                   wentIdle = true;
                   if (unmarked.at(-1)?.type === "result") {
+                    ended = true;
                     yield* unmarked;
                     return;
                   }
@@ -714,17 +735,38 @@ export function createLiveSessions(options: {
                 else unmarked.push(sent);
                 // Without idle reports an unmarked result is the only end in sight.
                 if (sent.type === "result" && (!session.reportsState || stopping)) {
+                  ended = true;
                   yield* unmarked;
                   return;
                 }
                 continue;
               }
             }
+            if (sent.type === "result") {
+              // Claude Code stopped to take a steer: the turn goes on with it.
+              if (steers.length > 0 && !stopping && isSteerAbort(sent)) continue;
+              // Answered before Claude Code took the last steer, which it answers next.
+              const stamp = stampOf(sent);
+              const last = steers.at(-1);
+              if (last !== undefined && !stopping && stamp !== undefined && !stamp.includes(last)) {
+                continue;
+              }
+              ended = true;
+              yield sent;
+              return;
+            }
             yield sent;
-            if (sent.type === "result") return;
           }
+          ended = true;
           if (failure !== undefined) throw failure.error;
         })(),
+        steer: (sent) => {
+          if (ended || released || session.closed) {
+            throw new Error("The turn has ended: Claude Code takes no more messages for it.");
+          }
+          if (sent.uuid !== undefined) steers.push(sent.uuid);
+          session.input.push({ ...sent, priority: "now" });
+        },
         interrupt: async () => {
           stopping = true;
           const receipt = (await session.query.interrupt()) as

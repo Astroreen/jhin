@@ -319,6 +319,8 @@ specific to Claude: the runtime is a plugin on the public API.
   drop the message before it runs; an older CLI sends no receipt and keeps
   D104's behaviour.
 
+Done since: steering a running turn (`t3-parity.md` D204–D206).
+
 ## Not ported
 
 - T3's usage-limit and reset-credit probes, rollback and fork of a session,
@@ -328,8 +330,6 @@ specific to Claude: the runtime is a plugin on the public API.
 
 ## Deferred
 
-- Steering a running turn and queueing follow-ups into it; the live session
-  (D98) is where a steer would go.
 - Dropping a message an interrupt did not reach before it runs
   (`cancel_async_message`): the SDK has no call for it, so D350 interrupts it
   again once it starts.

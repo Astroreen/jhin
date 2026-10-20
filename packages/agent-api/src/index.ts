@@ -164,6 +164,13 @@ export interface AgentTurn {
    * next item is pulled, so a runtime listens for it before yielding.
    */
   respond?(requestId: string, response: AgentResponse): void;
+  /**
+   * Since 1.2, for runtimes with `steering`: hands a message to the running
+   * turn, which takes it into the work it is doing (a steer). Throws when the
+   * turn can take nothing more (it ended or is ending): the message then goes
+   * to a turn of its own.
+   */
+  steer?(input: TurnInput): void;
 }
 
 export interface AgentModel {
@@ -182,7 +189,7 @@ export interface AgentRuntimeStatus {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1).
+ * but `agentId` and `startTurn` is optional (added in 1.1 and 1.2).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
@@ -196,6 +203,8 @@ export interface AgentRuntime {
   readonly runtimeModes?: readonly RuntimeMode[];
   /** Interaction modes it honours; `["default"]` when absent. */
   readonly interactionModes?: readonly InteractionMode[];
+  /** Since 1.2: its turns take messages while they run (`AgentTurn.steer`). */
+  readonly steering?: boolean;
   /** Whether it can run turns now; assumed available when absent. */
   status?(): Promise<AgentRuntimeStatus>;
   startTurn(request: TurnRequest): AgentTurn;
@@ -222,8 +231,12 @@ export const ThreadEvents = {
   projectUpdated: "threads.project.updated",
   /** `threads` index: `{ id }`. */
   projectDeleted: "threads.project.deleted",
-  /** `{ turnId, agentId, input, model?, runtimeMode?, interactionMode? }` */
+  /** `{ turnId, agentId, input, model?, runtimeMode?, interactionMode?, messageId? }` */
   turnStarted: "agent.turn.started",
+  /** `{ turnId, messageId, input }`: a message the running turn took (a steer, D205). */
+  turnSteered: "agent.turn.steered",
+  /** Thread stream: the thread's queue after a change (D201). */
+  queueUpdated: "threads.queue.updated",
   /** `{ turnId, itemId, kind: "tool", tool }`; messages and reasoning start with their first delta. */
   itemStarted: "agent.item.started",
   /** `{ turnId, itemId, kind: "message" | "reasoning" | "tool", text }` */
