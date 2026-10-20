@@ -83,6 +83,13 @@ function schemasOfItem(schema: Schema, index: number): unknown[] {
 }
 
 /**
+ * A key or item no schema describes (a typo in a file, a list without
+ * `items`) is unknown: it is treated as a secret, not shown in clear.
+ */
+const described = (schemas: unknown[]): unknown[] | undefined =>
+  schemas.length === 0 ? undefined : schemas;
+
+/**
  * Calls `visit` for every value a secret (and returns what it gives), walking
  * `value` along every schema that describes it, so a union hides what any of
  * its branches would: hiding too much is safe, hiding too little is not. An
@@ -126,7 +133,7 @@ function mapSecrets(
   if (Array.isArray(value)) {
     return value.map((item, index) =>
       mapSecrets(
-        all.flatMap((schema) => schemasOfItem(schema, index)),
+        described(all.flatMap((schema) => schemasOfItem(schema, index))),
         item,
         root,
         [...path, String(index)],
@@ -139,7 +146,7 @@ function mapSecrets(
       Object.entries(value).map(([key, item]) => [
         key,
         mapSecrets(
-          all.flatMap((schema) => schemasOfKey(schema, key)),
+          described(all.flatMap((schema) => schemasOfKey(schema, key))),
           item,
           root,
           [...path, key],
@@ -279,8 +286,7 @@ export function secretTexts(schema: unknown, value: unknown): string[] {
   mapSecrets(schema === undefined ? undefined : [schema], value, rootOf(schema), [], (secret) => {
     if (typeof secret === "string" || typeof secret === "number" || typeof secret === "boolean") {
       const text = String(secret);
-      // Short values ("1", "on") would scrub ordinary words too.
-      if (text.length >= 4) found.push(text);
+      if (text !== "") found.push(text);
     } else if (secret !== null && typeof secret === "object") {
       found.push(...secretTexts(undefined, secret));
     }
@@ -307,7 +313,19 @@ export function secretPaths(schema: unknown, value: unknown): string[][] {
 
 /** `text` with every one of `secrets` replaced by the marker. */
 export function scrub(text: string, secrets: readonly string[]): string {
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return [...secrets]
     .toSorted((a, b) => b.length - a.length)
-    .reduce((current, secret) => current.split(secret).join(SECRET_REDACTED), text);
+    .reduce(
+      (current, secret) =>
+        // A short secret ("123") is replaced where it stands as a word; hiding a
+        // few extra digits of a message is safe, quoting a secret is not.
+        secret.length >= 4
+          ? current.split(secret).join(SECRET_REDACTED)
+          : current.replace(
+              new RegExp(`(?<![\\p{L}\\p{N}])${escape(secret)}(?![\\p{L}\\p{N}])`, "gu"),
+              SECRET_REDACTED,
+            ),
+      text,
+    );
 }

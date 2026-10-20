@@ -90,9 +90,11 @@ describe("config secrets (security.md D417)", () => {
         },
         vars: {
           type: "object",
+          properties: { PLAIN: { type: "string" } },
           patternProperties: { "^SECRET_": { type: "string", writeOnly: true } },
         },
         mode: {
+          properties: { kind: { type: "string" } },
           if: { properties: { kind: { const: "key" } } },
           // oxlint-disable-next-line unicorn/no-thenable -- JSON Schema's own keyword
           then: { properties: { key: { type: "string", writeOnly: true } } },
@@ -195,6 +197,7 @@ describe("config secrets (security.md D417)", () => {
       properties: {
         a: {
           type: "object",
+          properties: { kind: { type: "number" } },
           dependentSchemas: { kind: { properties: { key: { writeOnly: true } } } },
         },
         b: { type: "object", unevaluatedProperties: { type: "string", writeOnly: true } },
@@ -232,5 +235,21 @@ describe("config secrets (security.md D417)", () => {
     expect(() =>
       restoreSecrets(schema, { env: { constructor: SECRET_REDACTED } }, { env: {} }, undefined),
     ).toThrow(expect.objectContaining({ code: "CONFIG_SECRET_MISSING" }));
+  });
+
+  it("hides a key the schema does not describe, as an unknown one, and restores it", () => {
+    const schema = schemaOf(z.object({ name: z.string() }));
+    const stored = { name: "n", tokn: "typo-secret" };
+    const shown = redactSecrets(schema, stored);
+    expect(shown).toEqual({ name: "n", tokn: SECRET_REDACTED });
+    expect(restoreSecrets(schema, shown as Record<string, unknown>, stored, undefined)).toEqual(
+      stored,
+    );
+  });
+
+  it("scrubs a short secret where it stands as a word", () => {
+    expect(scrub("pin 123 does not match 1234 or a123", ["123"])).toBe(
+      `pin ${SECRET_REDACTED} does not match 1234 or a123`,
+    );
   });
 });

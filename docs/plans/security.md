@@ -124,8 +124,10 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   (`@jhin/host-api`) tells either form. The walk follows `$ref`, unions and
   intersections, `if`/`then`/`else`, `dependentSchemas`, tuples
   (`prefixItems`), `items`, `contains`, `properties`, `patternProperties`,
-  `additionalProperties` and `unevaluatedProperties`; a section no plugin
-  defines has no schema, so all of its scalars are redacted.
+  `additionalProperties` and `unevaluatedProperties`. What no schema
+  describes is unknown and redacted like a secret: every scalar of a
+  section no plugin defines, a key the section's schema does not name (a
+  typo in a file), an item of a list without `items`.
 
   `host.config.patch` and `mesh.config.patch` treat the marker as "keep
   what is stored", only where the schema has a secret (elsewhere the marker
@@ -139,8 +141,9 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
 
   An invalid section reports `Config section <s> is invalid` with its
   issues: an issue about a secret says only that it is not valid, and the
-  others have every secret's text (of 4 characters or more) replaced by the
-  marker, since a refinement may quote it. Other errors (a section no
+  others have every secret's text replaced by the marker, since a
+  refinement may quote it (a secret under 4 characters where it stands as
+  a word; hiding a few extra characters is safe). Other errors (a section no
   plugin defines) are reported as they are.
 
   The settings page's `<hidden secret>` placeholder sends the marker, so a

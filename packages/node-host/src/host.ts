@@ -311,8 +311,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         permissions: ["host.config.read"],
         handler: ({ section }) => {
           // Secrets never leave the node (security.md D417).
-          const schema = (kernel.config.jsonSchema() as { properties: Record<string, unknown> })
-            .properties[section];
+          const schema = sectionSchema(section);
           const hide = (value: unknown) => redactSecrets(schema, value);
           const raw = {
             node: readLayer(home.config, log)?.[section],
@@ -493,6 +492,13 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
 
   /** Last write time per layer and section, so a stale change from elsewhere can lose (D50). */
   const writesFile = Path.join(home.root, "config-writes.json");
+  /** One section's JSON Schema, or undefined when no plugin defines it (D417 reads it). */
+  function sectionSchema(section: string): unknown {
+    return (kernel.config.jsonSchema() as { properties: Record<string, unknown> }).properties[
+      section
+    ];
+  }
+
   function patchConfig(
     layer: "node" | "project",
     section: string,
@@ -526,8 +532,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     const file = layer === "node" ? home.config : projectConfig;
     // A redacted secret sent back keeps what the file holds (security.md D417).
     const stored = readLayer(file, log)?.[section];
-    const schema = (kernel.config.jsonSchema() as { properties: Record<string, unknown> })
-      .properties[section];
+    const schema = sectionSchema(section);
     // The page shows the effective value: a secret only another layer sets stays there.
     let effective: unknown;
     try {
