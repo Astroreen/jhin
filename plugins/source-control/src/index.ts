@@ -39,6 +39,7 @@ import {
   type EventLog,
   type Json,
   type KeyValueStore,
+  appendKeepingNewest,
   keepNewest,
   type StoredEvent,
 } from "@jhin/storage-api";
@@ -308,18 +309,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   let indexChain: Promise<unknown> = Promise.resolve();
   let threadsLoaded: Promise<void> | undefined;
 
-  /** Never throws: an untrimmed history only costs disk. */
-  const trim = () =>
-    keepNewest(log, SOURCE_CONTROL_STREAM, HISTORY).catch((error: unknown) =>
-      context.log.warn("source control history not trimmed", { error: String(error) }),
-    );
+  const onTrimError = (error: unknown) =>
+    context.log.warn("source control history not trimmed", { error: String(error) });
   const append = async (type: string, payload: unknown) => {
     if (stopped) return;
-    const [stored] = await log.append(SOURCE_CONTROL_STREAM, [{ type, payload: payload as Json }]);
-    if (stored !== undefined && stored.sequence % TRIM_EVERY === 0) await trim();
+    await appendKeepingNewest(log, SOURCE_CONTROL_STREAM, [{ type, payload: payload as Json }], {
+      keep: HISTORY,
+      every: TRIM_EVERY,
+      onTrimError,
+    });
   };
   /** The trim at start; the first `git.status` waits for it. */
-  const started = trim();
+  const started = keepNewest(log, SOURCE_CONTROL_STREAM, HISTORY).catch(onTrimError);
 
   // --- Pull requests linked to threads (D267–D270) ------------------------------------
 

@@ -154,6 +154,32 @@ export async function keepNewest(log: EventLog, stream: string, count: number): 
   return head > count ? log.trim(stream, head - count) : 0;
 }
 
+/**
+ * Appends to a stream that keeps only its newest `keep` events (D497):
+ * whenever an append ends on a multiple of `every`, the stream is trimmed,
+ * and the append resolves after that. A failed trim is passed to `onTrimError`
+ * and fails nothing: an untrimmed history only costs disk.
+ */
+export async function appendKeepingNewest(
+  log: EventLog,
+  stream: string,
+  events: readonly NewEvent[],
+  options: { keep: number; every: number; onTrimError(error: unknown): void },
+): Promise<StoredEvent[]> {
+  const stored = await log.append(stream, events);
+  const first = stored[0]?.sequence;
+  const last = stored.at(-1)?.sequence;
+  // A batch may step over a multiple of `every` without ending on one.
+  if (
+    first !== undefined &&
+    last !== undefined &&
+    Math.floor(last / options.every) > Math.floor((first - 1) / options.every)
+  ) {
+    await keepNewest(log, stream, options.keep).catch(options.onTrimError);
+  }
+  return stored;
+}
+
 /** Code point order (= UTF-8 byte order), the one ordering every implementation uses. */
 export function compareKeys(a: string, b: string): number {
   const left = [...a];

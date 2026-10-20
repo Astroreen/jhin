@@ -1,5 +1,11 @@
 import type { Logger } from "@jhin/sdk";
-import { keepNewest, type EventLog, type Json, type KeyValueStore } from "@jhin/storage-api";
+import {
+  appendKeepingNewest,
+  keepNewest,
+  type EventLog,
+  type Json,
+  type KeyValueStore,
+} from "@jhin/storage-api";
 
 /** The history of every queued config change and what became of it (D50). */
 export const OUTBOX_STREAM = "mesh/outbox";
@@ -73,16 +79,16 @@ export interface Outbox {
 export function createOutbox(options: OutboxOptions): Outbox {
   const { kv, log } = options;
 
-  /** Never throws: an untrimmed history only costs disk. */
-  const trim = () =>
-    keepNewest(log, OUTBOX_STREAM, OUTBOX_HISTORY).catch((error: unknown) =>
-      options.logger.warn("config outbox history not trimmed", { error: String(error) }),
-    );
+  const onTrimError = (error: unknown) =>
+    options.logger.warn("config outbox history not trimmed", { error: String(error) });
+  const trim = () => keepNewest(log, OUTBOX_STREAM, OUTBOX_HISTORY).catch(onTrimError);
   /** Appends to the history, trimming it now and then. */
-  const history = async (type: string, payload: Json) => {
-    const [stored] = await log.append(OUTBOX_STREAM, [{ type, payload }]);
-    if (stored !== undefined && stored.sequence % TRIM_EVERY === 0) await trim();
-  };
+  const history = (type: string, payload: Json) =>
+    appendKeepingNewest(log, OUTBOX_STREAM, [{ type, payload }], {
+      keep: OUTBOX_HISTORY,
+      every: TRIM_EVERY,
+      onTrimError,
+    });
 
   /**
    * Keys carry a number that only grows: queue time, but always above the last

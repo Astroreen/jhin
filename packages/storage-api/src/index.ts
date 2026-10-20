@@ -3,6 +3,7 @@ export {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
   StorageError,
+  appendKeepingNewest,
   assertCount,
   assertEvents,
   assertName,

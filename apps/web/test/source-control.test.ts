@@ -309,10 +309,13 @@ describe("the source control store", () => {
     expect((await changed).projects.get("app")?.ahead).toBe(1);
     const reloaded = feed.next();
     node.append(SourceControlEvents.statusChanged, status({ ahead: 99 }), 1);
+    // Later events of the same tick are not applied either, nor do they start over again.
+    node.append(SourceControlEvents.statusChanged, status({ ahead: 98 }), 1);
     // Not applied: read again instead (head 8) and followed from there.
     expect((await reloaded).projects.get("app")?.ahead).toBe(8);
     await node.subscribed(2);
     expect(node.subscriptions.map((entry) => entry.after)).toEqual([4, 8]);
+    expect(node.calls).toHaveLength(2);
     feed.subscription.dispose();
     store.dispose();
   });

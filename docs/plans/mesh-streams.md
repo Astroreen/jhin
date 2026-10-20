@@ -132,6 +132,23 @@ terminals of threads on mesh members (terminal).
   relays as the plugin does. Tests drive the real terminal and source
   control plugins on a member through it.
 
+## PR plan
+
+A stack of three PRs, each based on the one before:
+
+1. **Trimming** (`feat/w17-mesh-streams`): D495–D498. Done when the storage
+   contract trims memory and `node:sqlite` streams keeping their head,
+   `source-control` and `mesh/outbox` keep their newest 1000 events, and the
+   client's feed starts over on a gap.
+2. **Relays** (`feat/w17-mesh-relays`): D499–D502, D505. Done when a client
+   of a reads a terminal's output and the `source-control` stream of c,
+   two hops away, through relays, with the real plugins on c on the
+   in-memory mesh, and an unshared stream is refused.
+3. **Client** (`feat/w17-member-streams-ui`): D503, D504. Done when the
+   card, the branch toolbar and the terminal drawer of a thread on a member
+   are live, proven against the in-memory mesh and in Playwright over real
+   node processes, with screenshots.
+
 ## Deferred
 
 - Mirrors of trimmed streams: a mirror copies from sequence 1 and treats a

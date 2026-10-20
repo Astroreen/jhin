@@ -228,13 +228,16 @@ export function createSourceControlStore(
         .then((snapshot) => {
           if (!current()) return;
           let last = snapshot.head;
+          /** A gap was seen: nothing more is applied until the feed has started over. */
+          let restarting = false;
           subscription = client.subscribe(
             SOURCE_CONTROL_STREAM,
             { after: snapshot.head, onError: failed },
             (event) => {
-              if (!current()) return;
-              // A gap: the stream was trimmed past where it resumed (D498). Start over.
+              if (!current() || restarting) return;
+              // A gap: the stream was trimmed past where it resumed (D498). Start over, once.
               if (event.sequence > last + 1) {
+                restarting = true;
                 restart();
                 return;
               }
