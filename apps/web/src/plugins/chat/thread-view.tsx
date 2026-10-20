@@ -190,8 +190,11 @@ export function ThreadView(props: {
       setError(outcome.message);
       return false;
     }
-    // Asked to steer, but it waits in the queue: say so rather than let it look steered.
-    if (outcome.kind === "queued" && mode === "steer") {
+    // Asked to steer, but it waits in the queue (the agent takes no steering,
+    // or the turn ended first): say so rather than let it look steered.
+    const askedToSteer =
+      running && dispatchMode(settings.followUpBehavior, alternate, true) === "steer";
+    if (outcome.kind === "queued" && askedToSteer) {
       chat.toasts?.show({
         type: "info",
         title: "Queued instead",
