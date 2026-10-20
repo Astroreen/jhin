@@ -964,6 +964,9 @@ and resetting it clears them), with a screenshot.
   free thread with nothing queued starts its turn under the queue's lock,
   and a thread's first message runs the hook. Edits of that thread's queue
   wait for it.
+- Thumbnails of queued images: `threads.queue.updated` carries their names
+  and types only (the data stays in the queue's record), so a queued row shows
+  text, not T3's thumbnails, until attachments are blobs (W6).
 - Idempotent sends: `threads.queue.add` ignores a `messageId` already queued,
   but a message that already left the queue (started or cancelled) is taken
   again; `threads.send` takes no id.
