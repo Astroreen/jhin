@@ -26,6 +26,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/approve <command>" asks for approval before running it;
  * - "/ask" asks a question and answers with the choice;
  * - "/plan" publishes a three-step plan and completes it;
+ * - in plan mode, anything else is answered with a proposed plan titled after it;
  * - anything else is answered "Echo: <text>", one word per delta.
  */
 export function fakeTurn(request: TurnRequest): AgentTurn {
@@ -153,6 +154,15 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
         steps: steps.map((step) => ({ text: step, status: "completed" })),
       };
       yield* say("Plan done");
+      return;
+    }
+    if (request.interactionMode === "plan") {
+      yield* say("Here is my plan.");
+      yield {
+        kind: "plan.proposed",
+        itemId: nextId(),
+        markdown: `# ${text.trim() || "Plan"}\n\n1. Read the code\n2. Change it\n3. Test it\n`,
+      };
       return;
     }
     yield* say(`Echo: ${text}`);

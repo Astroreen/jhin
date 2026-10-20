@@ -159,6 +159,34 @@ describe("jhin.threads: thread management", () => {
     expect(Fs.existsSync(dir)).toBe(true);
   });
 
+  it("writes a file inside a project, never outside it", async () => {
+    const { client, data } = await node();
+    const dir = Path.join(data, "app");
+    Fs.mkdirSync(dir);
+    Fs.symlinkSync(data, Path.join(dir, "out"));
+    const project = await client.call<{ id: string }>("projects.create", { path: dir });
+
+    expect(
+      await client.call("projects.write-file", {
+        projectId: project.id,
+        path: "docs/plans/cache.md",
+        contents: "# Cache\n",
+      }),
+    ).toEqual({
+      path: Path.join(dir, "docs", "plans", "cache.md"),
+      relativePath: "docs/plans/cache.md",
+    });
+    expect(Fs.readFileSync(Path.join(dir, "docs", "plans", "cache.md"), "utf8")).toBe("# Cache\n");
+
+    for (const path of ["../escape.md", Path.join(data, "abs.md"), "out/through-link.md", "."]) {
+      await expect(
+        client.call("projects.write-file", { projectId: project.id, path, contents: "x" }),
+      ).rejects.toMatchObject({ code: "PATH_OUTSIDE_PROJECT" });
+    }
+    expect(Fs.existsSync(Path.join(data, "escape.md"))).toBe(false);
+    expect(Fs.existsSync(Path.join(data, "through-link.md"))).toBe(false);
+  });
+
   it("browses folders for a project picker", async () => {
     const { client, data } = await node();
     Fs.mkdirSync(Path.join(data, "repo", ".git"), { recursive: true });
@@ -414,6 +442,25 @@ describe("jhin.threads: turn items and requests", () => {
     expect(events.filter((event) => event.type === "agent.plan.updated")).toHaveLength(2);
     expect(events.find((event) => event.type === "agent.item.started")?.payload).toMatchObject({
       tool: { kind: "command", detail: "npm test" },
+    });
+  });
+
+  it("records a proposed plan as an event of its own", async () => {
+    const { client } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    const { events, until } = watch(client, thread.id);
+
+    await client.call("threads.send", {
+      threadId: thread.id,
+      text: "Add a cache",
+      interactionMode: "plan",
+    });
+    await until("agent.turn.completed");
+
+    const proposed = events.find((event) => event.type === "agent.plan.proposed");
+    expect(proposed?.payload).toMatchObject({
+      itemId: expect.any(String),
+      markdown: expect.stringContaining("# Add a cache"),
     });
   });
 

@@ -512,7 +512,7 @@ export function claudeTurn(
     if (toolName === EXIT_PLAN_TOOL) {
       const plan = proposedPlan(toolInput);
       if (plan !== undefined) {
-        out.push({ kind: "message.completed", itemId: `${toolUseID}:plan`, text: plan });
+        out.push({ kind: "plan.proposed", itemId: `${toolUseID}:plan`, markdown: plan });
       }
       return {
         behavior: "deny",
