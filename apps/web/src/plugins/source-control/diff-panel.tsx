@@ -213,7 +213,13 @@ export function createDiffPanel(services: SourceControlServices) {
     const [wrap, setWrap] = useState(false);
     const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-    const [state, setState] = useState<{ key: string; diff?: Diff; error?: string }>({ key: "" });
+    const [state, setState] = useState<{
+      key: string;
+      /** The scope the answer is for: another scope's diff is never shown under this one. */
+      scope?: DiffSelection["kind"];
+      diff?: Diff;
+      error?: string;
+    }>({ key: "" });
     const [refreshing, setRefreshing] = useState(false);
     const [reloads, setReloads] = useState(0);
     const isRepo = status?.isRepo ?? true;
@@ -240,19 +246,23 @@ export function createDiffPanel(services: SourceControlServices) {
           ? { threadId, scope, turn: selectedTurn!.turn, ignoreWhitespace }
           : { projectId, scope, ignoreWhitespace };
       void threads.call<Diff>(target, "git.diff", request).then(
-        (diff) => current && setState({ key: fetchKey, diff }),
-        (error: unknown) => current && setState({ key: fetchKey, error: (error as Error).message }),
+        (diff) => current && setState({ key: fetchKey, scope, diff }),
+        (error: unknown) =>
+          current && setState({ key: fetchKey, scope, error: (error as Error).message }),
       );
       return () => {
         current = false;
       };
     }, [fetchKey, isRepo, waitingForTurns]);
 
-    const diff = state.key === fetchKey || scope !== "turn" ? state.diff : undefined;
+    // A git scope keeps showing its last diff while the status that changed is read
+    // again; a turn, or another scope, waits for its own.
+    const diff =
+      state.key === fetchKey || (scope !== "turn" && state.scope === scope)
+        ? state.diff
+        : undefined;
     const files = diff === undefined ? [] : parsePatch(diff.patch);
-    const loading =
-      waitingForTurns ||
-      (state.key !== fetchKey && diff === undefined && state.error === undefined);
+    const loading = waitingForTurns || (state.key !== fetchKey && diff === undefined);
     const allCollapsed = files.length > 0 && files.every((file) => collapsed.has(file.path));
     const refresh = () => {
       if (scope === "turn") {
@@ -483,7 +493,7 @@ export function createDiffPanel(services: SourceControlServices) {
                   : "Loading changes..."
             }
           />
-        ) : state.error !== undefined && diff === undefined ? (
+        ) : state.key === fetchKey && state.error !== undefined && diff === undefined ? (
           <div className="px-3 py-2">
             <p className="mb-2 text-2xs text-error/80">{state.error}</p>
           </div>

@@ -121,15 +121,17 @@ export function createCardIndicators(services: SourceControlServices) {
 
   /**
    * T3's diff count (`+12 −3`): the thread's latest checkpointed turn (T3's
-   * `latestRunDiff`, D249); for a thread without checkpoints, the uncommitted
+   * `latestRunDiff`, D249); for a thread without a ready latest one, the uncommitted
    * changes of its project while its branch is the one checked out (D117).
    */
   function DiffCount({ target, thread }: ThreadIndicatorProps) {
     const view = useSourceControl(store, target);
     const latest = view.checkpoints.get(thread.id);
     let counts: { insertions: number; deletions: number } | undefined;
-    if (latest !== undefined) {
-      counts = latest.status === "ready" ? latest : undefined;
+    // A latest turn whose changes are unknown (`error`) or reverted past (`stale`)
+    // counts nothing of its own: the directory's uncommitted changes show instead.
+    if (latest?.status === "ready") {
+      counts = latest;
     } else {
       const status = view.projects.get(thread.projectId);
       const branch = view.threads.get(thread.id)?.branch;

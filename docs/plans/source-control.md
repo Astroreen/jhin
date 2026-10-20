@@ -319,7 +319,8 @@ with screenshots).
 - **D249. The card's diff count is the thread's latest turn** (T3's
   `latestRunDiff`, a stub in `eb7b35ac`): the `+A −D` of the latest checkpointed
   turn of the thread, nothing when it changed nothing. A thread without
-  checkpoints keeps D117's count (its directory's uncommitted changes while its
+  checkpoints, or whose latest one is not `ready` (`error`, `stale`), keeps
+  D117's count (its directory's uncommitted changes while its
   branch is checked out).
 
 #### Worktrees

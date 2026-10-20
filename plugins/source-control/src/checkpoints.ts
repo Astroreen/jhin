@@ -111,7 +111,8 @@ async function parentsAndTimes(git: Git, refs: readonly string[]) {
     .split("\n")
     .filter((line) => line !== "")
     .map((line) => {
-      const [parent, time] = line.trim().split(" ");
+      // A checkpoint taken before the first commit has no parent: the line starts with " ".
+      const [parent = "", time] = line.split(" ");
       return { parent: parent === "" ? undefined : parent, time };
     });
 }

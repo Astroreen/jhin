@@ -300,6 +300,17 @@ describe("checkpoints in the client", () => {
     expect(card.container.textContent).toBe("+7 −2");
     card.unmount();
 
+    // A latest turn whose changes are unknown: the uncommitted changes of the checkout.
+    const failed = createCardIndicators(
+      services({
+        ...viewWith(status()),
+        checkpoints: new Map([["t1", checkpoint(3, { status: "error" })]]),
+      }).value,
+    );
+    const fallback = mount(<failed.DiffCount active={false} target={target} thread={thread} />);
+    expect(fallback.container.textContent).toBe("+1,234 −5");
+    fallback.unmount();
+
     // A latest turn that changed nothing shows nothing, whatever is uncommitted.
     const quiet = createCardIndicators(services(withCheckpoints(checkpoint(3))).value);
     const empty = mount(<quiet.DiffCount active={false} target={target} thread={thread} />);
@@ -394,3 +405,66 @@ describe("checkpoints in the client", () => {
     none.unmount();
   });
 });
+
+describe("the diff panel across scopes", () => {
+  it("never shows a turn's diff under a git scope while that scope loads", async () => {
+    const second: TurnCheckpoint = {
+      threadId: "t1",
+      turnId: "turn-1",
+      turn: 1,
+      ref: "refs/jhin/checkpoints/t1/1",
+      status: "ready",
+      files: [],
+      fileCount: 1,
+      insertions: 1,
+      deletions: 0,
+      capturedAt: "2026-10-20T10:00:00.000Z",
+    };
+    let answer!: (diff: Diff) => void;
+    const turnPatch =
+      "diff --git a/turn.ts b/turn.ts\n--- a/turn.ts\n+++ b/turn.ts\n@@ -0,0 +1 @@\n+t\n";
+    const { value } = services(
+      { ...viewWith(status()), checkpoints: new Map([["t1", second]]) },
+      { "git.checkpoints": { checkpoints: [second] } },
+    );
+    const answers: Record<string, () => Promise<unknown>> = {
+      turn: async () => ({ ...diffOf(turnPatch), scope: "turn" }),
+      uncommitted: () => new Promise<Diff>((resolve) => (answer = resolve)),
+    };
+    const calls = value.threads.call;
+    value.threads.call = (async (to: unknown, method: string, params?: unknown) => {
+      if (method === "git.diff") return answers[(params as { scope: string }).scope]!();
+      return calls(to as never, method, params);
+    }) as typeof calls;
+    const key = selectionKey(target, { thread: "t1" });
+    value.selections.set(key, { kind: "turn", reveal: 0 });
+    const Panel = createDiffPanel(value);
+    const panel = mount(<Panel />);
+    for (let index = 0; index < 3; index++) await act(async () => undefined);
+    expect(panel.container.querySelector('[data-diff-file="turn.ts"]')).not.toBeNull();
+
+    act(() => value.selections.set(key, { kind: "uncommitted" }));
+    await act(async () => undefined);
+    expect(panel.container.querySelector('[data-diff-file="turn.ts"]')).toBeNull();
+    expect(
+      panel.container.querySelector('[aria-label="Loading uncommitted changes..."]'),
+    ).not.toBeNull();
+    await act(async () => answer(diffOf("")));
+    expect(panel.container.textContent).toContain("No net changes in this selection.");
+    panel.unmount();
+  });
+});
+
+function diffOf(patch: string): Diff {
+  return {
+    projectId: "app",
+    scope: "uncommitted",
+    baseRef: null,
+    headRef: null,
+    patch,
+    truncated: false,
+    files: [],
+    insertions: 0,
+    deletions: 0,
+  };
+}

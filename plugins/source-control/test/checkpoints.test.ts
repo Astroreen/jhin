@@ -221,6 +221,27 @@ describe("jhin.source-control: checkpoints", () => {
     });
   });
 
+  it("snapshots a repository without commits, and one whose first commit came during the turn", async () => {
+    const dir = temp("jhin-sc-unborn-");
+    git(dir, "init", "--quiet", "--initial-branch=main");
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(dir);
+    const { id: threadId } = await sc.client.call<{ id: string }>("threads.create", { projectId });
+
+    await turn(sc, threadId, "/write first.txt one");
+    expect((await sc.until(checkpointEvent(threadId, 1))).payload).toMatchObject({
+      status: "ready",
+      files: [{ path: "first.txt", status: "added" }],
+    });
+    // HEAD is born between the turns: the second turn's own file is still its own.
+    git(dir, "add", ".");
+    git(dir, "commit", "--quiet", "-m", "first");
+    await turn(sc, threadId, "/write second.txt two");
+    const second = (await sc.until(checkpointEvent(threadId, 2))).payload as TurnCheckpoint;
+    expect(second.status).toBe("ready");
+    expect(second.files.map((file) => file.path)).toEqual(["second.txt"]);
+  });
+
   it("takes no checkpoints outside a repository or in the scratch project", async () => {
     const plain = temp("jhin-sc-plain-");
     const sc = await node({ watch: false });
