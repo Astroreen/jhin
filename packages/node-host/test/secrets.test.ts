@@ -106,7 +106,7 @@ describe("config secrets (security.md D417)", () => {
         mode: { kind: "key", key: "k" },
       }),
     ).toEqual({
-      pair: ["user", SECRET_REDACTED],
+      pair: ["user", `${SECRET_REDACTED}#pair.1`],
       vars: { SECRET_A: SECRET_REDACTED, PLAIN: "p" },
       mode: { kind: "key", key: SECRET_REDACTED },
     });
@@ -118,7 +118,7 @@ describe("config secrets (security.md D417)", () => {
     expect(hidden).toEqual({
       a: SECRET_REDACTED,
       n: SECRET_REDACTED,
-      list: [SECRET_REDACTED],
+      list: [`${SECRET_REDACTED}#list.0`],
       nested: { b: SECRET_REDACTED },
     });
     expect(restoreSecrets(undefined, hidden as Record<string, unknown>, value, undefined)).toEqual(
@@ -158,5 +158,20 @@ describe("config secrets (security.md D417)", () => {
     expect(scrub("hunter22 is not a valid key for visible", secrets)).toBe(
       `${SECRET_REDACTED} is not a valid key for visible`,
     );
+  });
+
+  it("keeps the right secret when a list is reordered or shortened", () => {
+    const schema = schemaOf(z.object({ keys: z.array(z.string().meta({ writeOnly: true })) }));
+    const stored = { keys: ["first", "second", "third"] };
+    const shown = redactSecrets(schema, stored) as { keys: string[] };
+    expect(shown.keys).toEqual([
+      `${SECRET_REDACTED}#keys.0`,
+      `${SECRET_REDACTED}#keys.1`,
+      `${SECRET_REDACTED}#keys.2`,
+    ]);
+    // The first removed and the last moved up front.
+    expect(
+      restoreSecrets(schema, { keys: [shown.keys[2], shown.keys[1]] }, stored, undefined),
+    ).toEqual({ keys: ["third", "second"] });
   });
 });

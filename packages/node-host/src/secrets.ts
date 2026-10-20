@@ -6,7 +6,7 @@
  * (apps/server/src/settingsSecrets.ts).
  */
 
-import { SECRET_REDACTED } from "@jhin/host-api";
+import { SECRET_REDACTED, isRedactedSecret } from "@jhin/host-api";
 
 type Schema = Record<string, unknown>;
 
@@ -156,7 +156,11 @@ export function redactSecrets(schema: unknown, value: unknown): unknown {
     value,
     rootOf(schema),
     [],
-    () => SECRET_REDACTED,
+    // Inside a list, the marker names its secret's place, so a reorder keeps it.
+    (_value, path) =>
+      path.some((part) => /^\d+$/.test(part))
+        ? `${SECRET_REDACTED}#${path.join(".")}`
+        : SECRET_REDACTED,
   );
 }
 
@@ -220,10 +224,13 @@ export function restoreSecrets(
     rootOf(schema),
     [],
     (value, path) => {
-      if (value !== SECRET_REDACTED) return value;
-      const kept = at(stored, path);
+      if (!isRedactedSecret(value)) return value;
+      // An addressed marker is the secret at that place, wherever it was moved to.
+      const address =
+        value === SECRET_REDACTED ? path : value.slice(SECRET_REDACTED.length + 1).split(".");
+      const kept = at(stored, address);
       if (kept !== undefined && kept !== null) return kept;
-      const other = at(elsewhere, path);
+      const other = at(elsewhere, address);
       if (other !== undefined && other !== null) return UNCHANGED;
       const where = [...label, ...path].join(".");
       throw Object.assign(new Error(`No secret is stored at ${where} to keep; enter it again`), {
@@ -248,6 +255,22 @@ export function secretTexts(schema: unknown, value: unknown): string[] {
     }
     return secret;
   });
+  return found;
+}
+
+/** Where secrets are in `value`, as dotted paths (`env.A`, `keys.0`). */
+export function secretPaths(schema: unknown, value: unknown): string[] {
+  const found: string[] = [];
+  mapSecrets(
+    schema === undefined ? undefined : [schema],
+    value,
+    rootOf(schema),
+    [],
+    (secret, path) => {
+      found.push(path.join("."));
+      return secret;
+    },
+  );
   return found;
 }
 

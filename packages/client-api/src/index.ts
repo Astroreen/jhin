@@ -16,6 +16,7 @@ export {
   MACHINE_KIND_LABELS,
   MACHINE_KINDS,
   SECRET_REDACTED,
+  isRedactedSecret,
   type MachineKind,
 } from "@jhin/host-api";
 

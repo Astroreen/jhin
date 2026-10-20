@@ -19,7 +19,7 @@ import {
   Textarea,
   cn,
 } from "@jhin/ui";
-import { SECRET_REDACTED } from "@jhin/client-api";
+import { isRedactedSecret } from "@jhin/client-api";
 import { ChevronRightIcon, PlusIcon, XIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
@@ -156,8 +156,8 @@ function LeafControl(props: {
       const shown =
         value instanceof Unparsed
           ? value.text
-          : value === SECRET_REDACTED
-            ? SECRET_REDACTED
+          : isRedactedSecret(value)
+            ? value
             : numberText.trim() !== "" && Number(numberText) === value
               ? numberText
               : typeof value === "number"

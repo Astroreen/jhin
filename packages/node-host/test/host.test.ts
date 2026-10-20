@@ -544,7 +544,7 @@ export default definePlugin({
     );
     Fs.writeFileSync(
       Path.join(home, "config.jsonc"),
-      '{ "acme.vault": { "user": "me", "key": "s3cret", "pin": 1234, "env": { "A": "a-value" }, "keys": ["k-one", "k-two"] }, "acme.strict": { "token": "strict-token" }, "acme.gone": { "password": "gone-secret" } }\n',
+      '{ "acme.vault": { "user": "me", "key": "s3cret", "pin": 1234, "env": { "A": "a-value" }, "keys": ["k-one", "k-two"] }, "acme.strict": { "token": "xyz" }, "acme.gone": { "password": "gone-secret" } }\n',
     );
     const cwd = tempDir("cwd");
     Fs.mkdirSync(Path.join(cwd, ".jhin"));
@@ -560,7 +560,8 @@ export default definePlugin({
       key: "••••••",
       pin: "••••••",
       env: { A: "••••••" },
-      keys: ["••••••", "••••••"],
+      // Inside a list, a marker names its secret's place.
+      keys: ["••••••#keys.0", "••••••#keys.1"],
     };
     const read = await host.execute("host.config.get", { section: "acme.vault" });
     expect(read.value).toMatchObject({
@@ -576,7 +577,11 @@ export default definePlugin({
     // A refinement quoting the value it refused does not leak it.
     const strict = await host.execute("host.config.get", { section: "acme.strict" });
     expect(strict.value.error).toEqual(expect.any(String));
-    expect(JSON.stringify(strict.value)).not.toContain("strict-token");
+    // Even a secret too short to scrub ("xyz") is not quoted: its issue says so instead.
+    expect(JSON.stringify(strict.value)).not.toContain("xyz");
+    expect(strict.value.issues).toEqual([
+      { path: "token", message: "Not valid (a secret, so its message is not shown)" },
+    ]);
 
     // The form sends a whole top-level key back: the markers keep what is stored.
     const saved = await host.execute("host.config.patch", {
@@ -586,8 +591,8 @@ export default definePlugin({
         key: "••••••",
         pin: "••••••",
         env: { A: "••••••", B: "b-value" },
-        // The first secret of the list kept, the second replaced.
-        keys: ["••••••", "k-three"],
+        // The second secret moved first and kept, the first replaced.
+        keys: ["••••••#keys.1", "k-three"],
       },
     });
     expect(saved.value).toMatchObject({ applied: true });
@@ -597,9 +602,8 @@ export default definePlugin({
     expect(file).toContain('"b-value"');
     expect(file).not.toContain("••••••");
     expect(file).toContain("1234");
-    expect(file).toContain('"k-one"');
-    expect(file).toContain('"k-three"');
-    expect(file).not.toContain('"k-two"');
+    expect(file).toMatch(/"k-two",\s*"k-three"/);
+    expect(file).not.toContain('"k-one"');
 
     // A secret only the project file sets is never copied into the node file.
     const project = await host.execute("host.config.patch", {

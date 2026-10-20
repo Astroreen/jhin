@@ -50,7 +50,7 @@ import { readNodeId, resolveHome, type JhinHome } from "./home.ts";
 import { createFileModuleLoader } from "./loader.ts";
 import { createNodeLogger, type NodeLogger } from "./logger.ts";
 import { detectMachineKind, systemProbe } from "./machine.ts";
-import { redactSecrets, restoreSecrets, scrub, secretTexts } from "./secrets.ts";
+import { redactSecrets, restoreSecrets, scrub, secretPaths, secretTexts } from "./secrets.ts";
 import { buildOutputFilter, watch, type WatchTarget } from "./watcher.ts";
 
 export interface NodeHostOptions {
@@ -321,6 +321,13 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           const files = { node: hide(raw.node), project: hide(raw.project) };
           // A refinement's message may quote the value it refused.
           const secrets = [...secretTexts(schema, raw.node), ...secretTexts(schema, raw.project)];
+          const secretAt = new Set([
+            ...secretPaths(schema, raw.node),
+            ...secretPaths(schema, raw.project),
+          ]);
+          /** An issue about a secret says so without its own message, which may quote it. */
+          const aboutSecret = (path: string) =>
+            [...secretAt].some((secret) => path === secret || path.startsWith(`${secret}.`));
           const comments: ConfigComment[] = [];
           const seen = new Set<string>();
           for (const file of [home.config, projectConfig]) {
@@ -339,13 +346,19 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
                 ? (error.details["issues"] as { path: string; message: string }[])
                 : undefined;
             return {
-              error: scrub(error instanceof Error ? error.message : String(error), secrets),
+              // With issues listed, the summary is said without their messages.
+              error:
+                issues === undefined
+                  ? scrub(error instanceof Error ? error.message : String(error), secrets)
+                  : `Config section ${section} is invalid (${issues.length} ${issues.length === 1 ? "issue" : "issues"})`,
               ...(issues === undefined
                 ? {}
                 : {
                     issues: issues.map((issue) => ({
                       path: issue.path,
-                      message: scrub(issue.message, secrets),
+                      message: aboutSecret(issue.path)
+                        ? "Not valid (a secret, so its message is not shown)"
+                        : scrub(issue.message, secrets),
                     })),
                   }),
               layers: files,

@@ -124,8 +124,13 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   schema has a secret. A secret only another layer (or a default) holds is
   never copied into this one: its key is left out of the change and the other
   layer keeps providing it (a list item cannot be left out, so it is
-  refused). Messages of an invalid section (`error`, `issues`) have every
-  secret's text replaced by the marker, since a refinement may quote it (elsewhere the
+  refused). Inside a list the marker names its secret's place
+  (`••••••#keys.1`), so a reordered or shortened list keeps each secret;
+  `isRedactedSecret` (`@jhin/host-api`) tells either form. An invalid
+  section's `error` is the kernel's summary, an issue about a secret says
+  only that it is not valid, and other issues have every secret's text (of
+  4 characters or more) replaced by the marker, since a refinement may quote
+  it (elsewhere the
   marker is a value like any other). The walk follows `$ref`, unions and
   intersections, `if`/`then`/`else`, tuples (`prefixItems`), `items`,
   `properties`, `patternProperties` and `additionalProperties`; a section
