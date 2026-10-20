@@ -343,10 +343,10 @@ the rest of it is unchanged since D53's tag.
 - **D383. Where a run goes:** a task bound to a thread sends its prompt to
   that thread with the thread's own agent and settings (T3 #18467); an
   unbound task creates a thread in its project, titled after the task, with
-  the task's agent, model and modes, and sends the prompt there. A bound
-  thread that is running a turn gets the prompt once that turn ends (T3 sends
-  in `queue` mode); the run is `running` until then. When W1's server-side
-  queue lands, a bound run goes through it instead. A run counts as succeeded
+  the task's agent, model and modes, and sends the prompt there. A bound run
+  goes into the thread's queue (`threads.queue.add`, W1's D201, with the
+  run's own message id), as T3 sends in `queue` mode: it starts at once on a
+  free thread, else after the turns queued before it. A run counts as succeeded
   once the thread accepted the message, not when the turn ends (as in T3),
   and reports the thread it went to. Deleting a thread deletes the tasks
   bound to it (T3 #22070).
@@ -406,8 +406,6 @@ the rest of it is unchanged since D53's tag.
 - A public webhook URL through a relay, held deliveries while the node is
   offline and their maximum age (`maxDeliveryAgeMinutes`): T3 does this with
   T3 Connect; Jhin's remote access is W13.
-- Sending a bound run through W1's server-side queue instead of waiting for
-  the thread's turn to end in the scheduler.
 - Inheriting the calling thread's project and binding a task to it by
   default (`bindToCurrentThread`): an MCP call does not say which thread it
   comes from until the node's MCP server is attached to Claude Code (W9).

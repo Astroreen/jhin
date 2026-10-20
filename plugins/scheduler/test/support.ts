@@ -4,7 +4,7 @@ import * as Path from "node:path";
 
 import { LIVE_STREAMS_CAPABILITY, createLiveStreams, type RpcClient } from "@jhin/rpc";
 import { SCHEDULER_STREAM, type ScheduledTask } from "@jhin/scheduler-api";
-import { definePlugin } from "@jhin/sdk";
+import { definePlugin, z } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
@@ -62,7 +62,7 @@ export interface Node {
  * server on a free port with `http`.
  */
 export async function node(
-  options: { storage?: MemoryStorage; http?: boolean } = {},
+  options: { storage?: MemoryStorage; http?: boolean; threads?: HeldThreads } = {},
 ): Promise<Node> {
   const storage = options.storage ?? createMemoryStorage();
   const streams = createLiveStreams();
@@ -89,8 +89,12 @@ export async function node(
       },
       mockCapability(LIVE_STREAMS_CAPABILITY, streams, "1.1.0"),
       ...(options.http === true ? [{ manifest: manifest("http"), definition: http }] : []),
-      { manifest: manifest("threads"), definition: threads },
-      { manifest: manifest("agent-fake"), definition: agent },
+      ...(options.threads === undefined
+        ? [
+            { manifest: manifest("threads"), definition: threads },
+            { manifest: manifest("agent-fake"), definition: agent },
+          ]
+        : [options.threads.plugin]),
       { manifest: manifest("scheduler"), definition: scheduler },
     ],
     config: { node: { "jhin.http": { port: 0 } } },
@@ -163,6 +167,79 @@ export async function node(
         )
       ).payload as ScheduledTask,
     stop,
+  };
+}
+
+/**
+ * Threads that hold every message queued to them until `release`: what a run
+ * looks like that has gone out but not come back (the node stops, or it
+ * crashes, meanwhile). Projects: only the scratch project.
+ */
+export interface HeldThreads {
+  readonly plugin: { manifest: unknown; definition: ReturnType<typeof definePlugin> };
+  /** Every `threads.queue.add`, as it came. */
+  readonly queued: { threadId: string; text: string; messageId: string }[];
+  /** Resolves once `count` messages were queued. */
+  queuedCount(count: number): Promise<void>;
+  /** Lets every held message (and every later one) through. */
+  release(): void;
+}
+
+export function heldThreads(): HeldThreads {
+  const queued: HeldThreads["queued"] = [];
+  const waiting: (() => void)[] = [];
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let created = 0;
+  const counters: { count: number; resolve(): void }[] = [];
+  const check = () => {
+    for (const counter of counters.splice(0)) {
+      if (queued.length >= counter.count) counter.resolve();
+      else counters.push(counter);
+    }
+  };
+  return {
+    queued,
+    queuedCount: (count) =>
+      new Promise((resolve) => {
+        counters.push({ count, resolve });
+        check();
+      }),
+    release: () => {
+      release();
+      for (const resolve of waiting.splice(0)) resolve();
+    },
+    plugin: {
+      manifest: testManifest("test.held-threads", {
+        side: "server",
+        provides: { "agent.registry": "1.0.0" },
+      }),
+      definition: definePlugin({
+        activate(context) {
+          context.services.provide("agent.registry", {});
+          const any = z.any();
+          const command = (name: string, handler: (input: never) => unknown) =>
+            context.commands.register({
+              name,
+              description: name,
+              input: any,
+              output: any,
+              handler,
+            });
+          command("projects.list", () => [{ id: "scratch" }]);
+          command("threads.create", () => ({ id: `thread-${++created}` }));
+          command("threads.get", ({ threadId }: { threadId: string }) => ({
+            thread: { id: threadId, projectId: "scratch" },
+          }));
+          command("threads.queue.add", async (input: HeldThreads["queued"][number]) => {
+            queued.push(input);
+            check();
+            await released;
+            return { messageId: input.messageId };
+          });
+        },
+      }),
+    },
   };
 }
 

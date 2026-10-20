@@ -7,7 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { connectInMemory } from "@jhin/testing";
 
 import { renderWebhookPrompt } from "../src/template.ts";
-import { node, prompts } from "./support.ts";
+import { heldThreads, node, prompts } from "./support.ts";
 
 const post = (url: string, body: string, headers: Record<string, string> = {}) =>
   fetch(url, {
@@ -246,11 +246,11 @@ describe("jhin.scheduler: webhooks", () => {
     ["holds at most 20 deliveries for a busy thread, then runs them in order", false],
     ["fails the deliveries still waiting when the scheduler stops", true],
   ])("%s", async (_name, stopFirst) => {
-    const { client, task, stop, storage } = await node({ http: true });
-    const thread = await client.call<{ id: string }>("threads.create", {});
-    await client.call("threads.send", { threadId: thread.id, text: "/hold on" });
+    // The first delivery's run goes out and is held there; the rest wait behind it.
+    const held = heldThreads();
+    const { client, task, stop, storage } = await node({ http: true, threads: held });
     const created = await webhookTask(client, {
-      threadId: thread.id,
+      threadId: "thread-1",
       prompt: "Event {{body.n}}",
     });
     const statuses: number[] = [];
@@ -276,18 +276,21 @@ describe("jhin.scheduler: webhooks", () => {
 
     // Stopped meanwhile, a node marks what waits as failed instead of running it.
     if (stopFirst) {
-      await stop();
+      const stopping = stop();
+      held.release();
+      await stopping;
       const kept = await storage.kv.list("jhin.scheduler", { prefix: `delivery/${created.id}/` });
       const outcomes = kept.map(({ value }) => (value as unknown as Delivery).outcome);
-      expect(outcomes.filter((o) => o === "dispatch_failed")).toHaveLength(20);
+      // The one already going out finishes; the 19 behind it never run.
+      expect(outcomes.filter((o) => o === "dispatch_failed")).toHaveLength(19);
+      expect(held.queued).toHaveLength(1);
       return;
     }
-    // The first delivery waits for the held turn; the rest wait behind it.
-    await client.call("threads.interrupt", { threadId: thread.id });
-    await task((t) => t.id === created.id && t.runCount === 1);
-    const sent = await prompts(client, thread.id);
-    expect(sent[0]).toBe("/hold on");
-    expect(sent[1]).toMatch(/^Event <webhook-data-[0-9a-f]+>0</);
+    held.release();
+    await task((t) => t.id === created.id && t.runCount === 20);
+    expect(held.queued.map((q) => q.text.match(/>(\d+)</)?.[1])).toEqual(
+      Array.from({ length: 20 }, (_, n) => String(n)),
+    );
   });
 
   it("shows the URL token only to callers that may change tasks, never on the stream", async () => {
@@ -321,15 +324,16 @@ describe("jhin.scheduler: webhooks", () => {
   });
 
   it("marks deliveries a crash left unstarted as failed on the next start", async () => {
-    const first = await node({ http: true });
-    const thread = await first.client.call<{ id: string }>("threads.create", {});
-    await first.client.call("threads.send", { threadId: thread.id, text: "/hold on" });
-    const created = await webhookTask(first.client, { threadId: thread.id });
+    const held = heldThreads();
+    const first = await node({ http: true, threads: held });
+    const created = await webhookTask(first.client, { threadId: "thread-1" });
     expect((await post(created.webhook.url!, "{}")).status).toBe(202);
     expect((await post(created.webhook.url!, "{}")).status).toBe(202);
+    await held.queuedCount(1);
     // What a crash leaves behind: the log as it was while both waited.
     const prefix = `delivery/${created.id}/`;
     const left = structuredClone(await first.storage.kv.list("jhin.scheduler", { prefix }));
+    held.release();
     await first.stop();
     for (const { key, value } of left) await first.storage.kv.set("jhin.scheduler", key, value);
 

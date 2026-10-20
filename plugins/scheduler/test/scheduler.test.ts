@@ -2,7 +2,7 @@ import type { ScheduledTask } from "@jhin/scheduler-api";
 import { connectInMemory } from "@jhin/testing";
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { fakeClock, node, prompts } from "./support.ts";
+import { fakeClock, heldThreads, node, prompts } from "./support.ts";
 
 /** A local time: Friday 2026-10-23 is weekday 5. */
 const local = (day: number, hour: number, minute = 0) => new Date(2026, 9, day, hour, minute);
@@ -208,11 +208,13 @@ describe("jhin.scheduler: the scheduler stream", () => {
 });
 
 describe("jhin.scheduler: runs into a thread", () => {
-  it("sends to its thread once the running turn ends, and refuses a second run meanwhile", async () => {
+  it("queues into its thread's queue: the run is done once queued, the turn follows the running one", async () => {
     fakeClock(local(19, 10));
-    const { client, task, until } = await node();
+    const { client, until } = await node();
     const thread = await client.call<{ id: string; projectId: string }>("threads.create", {});
-    await client.call("threads.send", { threadId: thread.id, text: "/hold on" });
+    // A turn waiting for an approval keeps the thread busy.
+    await client.call("threads.send", { threadId: thread.id, text: "/approve ls" });
+    const opened = await until(`thread/${thread.id}`, (e) => e.type === "agent.request.opened");
     const created = await client.call<ScheduledTask>("scheduler.tasks.create", {
       prompt: "Any news?",
       threadId: thread.id,
@@ -220,21 +222,49 @@ describe("jhin.scheduler: runs into a thread", () => {
     });
     expect(created).toMatchObject({ threadId: thread.id, projectId: thread.projectId });
 
-    const run = client.call<{ task: ScheduledTask; threadId: string | null }>(
-      "scheduler.tasks.run",
-      { id: created.id },
+    const { task: done, threadId } = await client.call<{
+      task: ScheduledTask;
+      threadId: string | null;
+    }>("scheduler.tasks.run", { id: created.id });
+    expect(threadId).toBe(thread.id);
+    expect(done).toMatchObject({ lastRunStatus: "succeeded", runCount: 1 });
+    const { messages } = await client.call<{ messages: { text: string }[] }>("threads.queue.list", {
+      threadId: thread.id,
+    });
+    expect(messages.map((m) => m.text)).toEqual(["Any news?"]);
+
+    // The running turn ends; the queued run goes next.
+    await client.call("threads.respond", {
+      threadId: thread.id,
+      requestId: (opened.payload as { requestId: string }).requestId,
+      response: { kind: "approval", decision: "accept" },
+    });
+    await until(
+      `thread/${thread.id}`,
+      (e) =>
+        e.type === "agent.turn.started" &&
+        (e.payload as { input: { text: string } }).input.text === "Any news?",
     );
+    expect(await prompts(client, thread.id)).toEqual(["/approve ls", "Any news?"]);
+  });
+
+  it("refuses a second run while one is still going out", async () => {
+    fakeClock(local(19, 10));
+    const held = heldThreads();
+    const { client, task } = await node({ threads: held });
+    const created = await client.call<ScheduledTask>("scheduler.tasks.create", {
+      prompt: "Any news?",
+      threadId: "thread-1",
+      schedule: { type: "interval", everyMs: 60 * MINUTE },
+    });
+    const run = client.call("scheduler.tasks.run", { id: created.id });
     await task((t) => t.id === created.id && t.lastRunStatus === "running");
     await expect(client.call("scheduler.tasks.run", { id: created.id })).rejects.toMatchObject({
       code: "RUN_IN_PROGRESS",
     });
-
-    await client.call("threads.interrupt", { threadId: thread.id });
-    const { task: done, threadId } = await run;
-    expect(threadId).toBe(thread.id);
-    expect(done).toMatchObject({ lastRunStatus: "succeeded", runCount: 1 });
-    await until(`thread/${thread.id}`, (event) => event.type === "agent.turn.completed");
-    expect(await prompts(client, thread.id)).toEqual(["/hold on", "Any news?"]);
+    held.release();
+    await run;
+    expect(held.queued.map((q) => q.text)).toEqual(["Any news?"]);
   });
 
   it("records a run that could not send as failed", async () => {
@@ -326,12 +356,11 @@ describe("jhin.scheduler: runs into a thread", () => {
 
   it("records runs a restart cut short as failed and schedules the next", async () => {
     fakeClock(local(19, 10));
-    const first = await node();
-    const thread = await first.client.call<{ id: string }>("threads.create", {});
-    await first.client.call("threads.send", { threadId: thread.id, text: "/hold on" });
+    const held = heldThreads();
+    const first = await node({ threads: held });
     const created = await first.client.call<ScheduledTask>("scheduler.tasks.create", {
       prompt: "Any news?",
-      threadId: thread.id,
+      threadId: "thread-1",
       schedule: { type: "interval", everyMs: 10 * MINUTE },
     });
     void first.client.call("scheduler.tasks.run", { id: created.id }).catch(() => undefined);
@@ -340,10 +369,13 @@ describe("jhin.scheduler: runs into a thread", () => {
     const left = structuredClone(
       await first.storage.kv.get("jhin.scheduler", `task/${created.id}`),
     );
+    held.release();
     await first.stop();
     await first.storage.kv.set("jhin.scheduler", `task/${created.id}`, left!);
 
-    const second = await node({ storage: first.storage });
+    const next = heldThreads();
+    next.release();
+    const second = await node({ storage: first.storage, threads: next });
     const recovered = await second.task(
       (t) => t.id === created.id && t.lastRunError === "Run was interrupted by a node restart.",
     );
@@ -354,7 +386,6 @@ describe("jhin.scheduler: runs into a thread", () => {
     });
 
     // A run asked for at once waits for the recovery and is never taken for a stale one.
-    await second.client.call("threads.interrupt", { threadId: thread.id });
     const { task: ran } = await second.client.call<{ task: ScheduledTask }>("scheduler.tasks.run", {
       id: created.id,
     });

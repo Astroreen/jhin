@@ -83,8 +83,6 @@ interface RunResult {
 
 const iso = (time: number | Date) => new Date(time).toISOString();
 
-const codeOf = (error: unknown) => (error as { code?: unknown } | null)?.code;
-
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 const notFound = (id: string) =>
@@ -275,37 +273,11 @@ function activateScheduler(context: PluginContext): void {
 
   // --- Threads -------------------------------------------------------------
 
-  /** Wakes whoever waits for a change of a thread's record (its turn ended, it went away). */
-  const threadWaiters = new Map<string, Set<{ wake(): void; fail(error: Error): void }>>();
-  const waitForThread = (threadId: string) => {
-    let waiter!: { wake(): void; fail(error: Error): void };
-    const changed = new Promise<void>((resolve, reject) => {
-      waiter = { wake: resolve, fail: reject };
-    });
-    // Only a send the thread refused awaits this: an unawaited failure is no error.
-    changed.catch(() => undefined);
-    if (stopped) waiter.fail(new SchedulerError("STOPPED", "The scheduler stopped."));
-    const set = threadWaiters.get(threadId) ?? new Set();
-    set.add(waiter);
-    threadWaiters.set(threadId, set);
-    return {
-      changed,
-      cancel: () => {
-        set.delete(waiter);
-        if (set.size === 0 && threadWaiters.get(threadId) === set) threadWaiters.delete(threadId);
-      },
-    };
-  };
-
   context.subscriptions.add(
     log.subscribe(THREADS_STREAM, (event) => {
-      if (event.type !== ThreadEvents.threadUpdated && event.type !== ThreadEvents.threadDeleted) {
-        return;
-      }
+      if (event.type !== ThreadEvents.threadDeleted) return;
       const threadId = (event.payload as { id?: unknown } | null)?.id;
-      if (typeof threadId !== "string") return;
-      for (const waiter of threadWaiters.get(threadId) ?? []) waiter.wake();
-      if (event.type === ThreadEvents.threadDeleted) void deleteForThread(threadId);
+      if (typeof threadId === "string") void deleteForThread(threadId);
     }),
   );
 
@@ -327,37 +299,21 @@ function activateScheduler(context: PluginContext): void {
     context.commands.execute(name, input) as Promise<T>;
 
   /**
-   * Sends to a thread, once its running turn ended if it runs one (T3 sends
-   * in `queue` mode). Listening starts before each try, so an end that lands
-   * in between is not missed.
-   */
-  const sendWhenFree = async (threadId: string, text: string): Promise<void> => {
-    for (;;) {
-      const wait = waitForThread(threadId);
-      try {
-        await execute("threads.send", { threadId, text });
-        return;
-      } catch (error) {
-        if (codeOf(error) !== "TURN_IN_PROGRESS") throw error;
-        await wait.changed;
-      } finally {
-        wait.cancel();
-      }
-    }
-  };
-
-  /**
    * Where a run goes (D383). `onThread` hears the thread as soon as it is
    * known, so a new thread whose first message failed is still reported.
    */
   const dispatch = async (
     task: StoredTask,
     prompt: string,
+    messageId: string,
     onThread: (threadId: string) => void,
   ): Promise<void> => {
+    // A bound run goes into the thread's queue (W1, D201), as T3 sends in
+    // `queue` mode: it starts at once on a free thread, else after the turns
+    // queued before it. The message id is the run's, so a retry queues it once.
     if (task.threadId !== null) {
       onThread(task.threadId);
-      await sendWhenFree(task.threadId, prompt);
+      await execute("threads.queue.add", { threadId: task.threadId, text: prompt, messageId });
       return;
     }
     const settings = {
@@ -449,7 +405,8 @@ function activateScheduler(context: PluginContext): void {
       let threadId: string | null = null;
       let error: string | null = null;
       try {
-        await dispatch(started, webhook?.prompt ?? started.prompt, (thread) => {
+        const messageId = `scheduled:${id.slice(0, 64)}:${startedAt}`;
+        await dispatch(started, webhook?.prompt ?? started.prompt, messageId, (thread) => {
           threadId = thread;
         });
       } catch (cause) {
@@ -650,8 +607,6 @@ function activateScheduler(context: PluginContext): void {
     stopped = true;
     clearTimeout(timer);
     timer = undefined;
-    const stopping = new SchedulerError("STOPPED", "The scheduler stopped.");
-    for (const set of threadWaiters.values()) for (const waiter of set) waiter.fail(stopping);
     await recovered;
     await Promise.allSettled([...activeRuns.values(), ticking, arming]);
     // Deliveries still queued are marked failed, not run.
