@@ -334,6 +334,8 @@ function activateScheduler(context: PluginContext): void {
   // --- Runs ----------------------------------------------------------------
 
   const activeRuns = new Map<string, Promise<unknown>>();
+  /** Numbers this activation's runs, for their message ids. */
+  let runSequence = 0;
 
   /**
    * Runs a task once. The task is read again first: deleted, paused or
@@ -405,7 +407,8 @@ function activateScheduler(context: PluginContext): void {
       let threadId: string | null = null;
       let error: string | null = null;
       try {
-        const messageId = `scheduled:${id.slice(0, 64)}:${startedAt}`;
+        // Unique per run, even for two runs in one millisecond.
+        const messageId = `scheduled:${id.slice(0, 64)}:${startedAt}-${++runSequence}`;
         await dispatch(started, webhook?.prompt ?? started.prompt, messageId, (thread) => {
           threadId = thread;
         });
@@ -995,8 +998,8 @@ function activateScheduler(context: PluginContext): void {
         await markDeliveryFailed(key, "The scheduler stopped before this delivery ran.");
         return;
       }
-      // A manual or scheduled run of the task goes first.
-      await activeRuns.get(task.id)?.catch(() => undefined);
+      // A manual or scheduled run of the task goes first, and any that starts meanwhile.
+      while (activeRuns.has(task.id)) await activeRuns.get(task.id)?.catch(() => undefined);
       try {
         const result = await runTask(task.id, "webhook", {
           prompt: rendered.prompt,
@@ -1237,6 +1240,7 @@ function activateScheduler(context: PluginContext): void {
     output: z.object({ deliveries: z.array(DeliverySummary) }),
     permissions: read,
     handler: async ({ id }) => {
+      await getTask(id);
       const kept = await kv.list(NAMESPACE, { prefix: deliveryPrefix(id) });
       return {
         deliveries: kept
@@ -1252,8 +1256,10 @@ function activateScheduler(context: PluginContext): void {
       "One request to a webhook task's URL: its query, headers (credentials redacted), body and the prompt it filled in",
     input: z.object({ id: z.string(), deliveryId: z.string() }),
     output: Delivery,
-    permissions: read,
+    // The body, query and prompt a sender chose may carry anything: as private as the URL.
+    permissions: write,
     handler: async ({ id, deliveryId }) => {
+      await getTask(id);
       const kept = await kv.list(NAMESPACE, { prefix: deliveryPrefix(id) });
       const found = kept.find(({ key }) => key.endsWith(`/${deliveryId}`));
       if (found === undefined) {

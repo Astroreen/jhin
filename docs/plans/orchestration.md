@@ -358,7 +358,8 @@ the rest of it is unchanged since D53's tag.
   for webhook tasks and while the task runs), plus
   `scheduler.webhooks.rotate` (a new URL token) and
   `scheduler.deliveries.list` / `scheduler.deliveries.get` (the delivery
-  log). Reading takes `scheduler.read`; creating, changing, running a
+  log; one delivery in full, with its body and prompt, takes the same rights
+  as its URL). Reading takes `scheduler.read`; creating, changing, running a
   task and rotating its URL take `scheduler.write` and `threads.write`, since a
   task sends messages to threads (deleting takes `scheduler.write`), and only
   a caller holding both sees a webhook's URL token. A create with a `clientRequestId` is idempotent: the

@@ -305,6 +305,16 @@ describe("jhin.scheduler: webhooks", () => {
     expect(
       (await reader.call<ScheduledTask>("scheduler.tasks.get", { id: created.id })).webhook?.path,
     ).toBeNull();
+    // A delivery in full is as private as the URL; the list of outcomes is not.
+    expect(await reader.call("scheduler.deliveries.list", { id: created.id })).toEqual({
+      deliveries: [],
+    });
+    await expect(
+      reader.call("scheduler.deliveries.get", { id: created.id, deliveryId: "x" }),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    await expect(reader.call("scheduler.deliveries.list", { id: "gone" })).rejects.toMatchObject({
+      code: "TASK_NOT_FOUND",
+    });
     const event = await until("scheduler", (e) => e.type === "scheduler.task.updated");
     expect(JSON.stringify(event.payload)).not.toContain(created.webhook.path!.split("/").at(-1));
     // Pattern grants count like the kernel counts them.
