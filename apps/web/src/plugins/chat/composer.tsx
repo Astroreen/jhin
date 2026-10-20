@@ -1091,7 +1091,14 @@ export function Composer(props: ComposerProps) {
   }, [keybindings, props.running]);
   // The queue's shortcuts apply only with something queued and nothing edited,
   // so otherwise their keys keep their usual meaning (Alt+↑ moves the caret).
+  /** The caret is at the composer's start: Alt+↑ edits the last queued message there, as in T3. */
+  const [caretAtStart, setCaretAtStart] = useState(true);
   const queueShortcuts = queued.length > 0 && editing === undefined;
+  useEffect(() => {
+    if (keybindings === undefined || !queueShortcuts || !caretAtStart) return;
+    const subscription = keybindings.setContext("composerCaretAtStart", true);
+    return () => subscription.dispose();
+  }, [keybindings, queueShortcuts, caretAtStart]);
   useEffect(() => {
     if (keybindings === undefined || !queueShortcuts) return;
     const subscription = keybindings.setContext("queuedMessages", true);
@@ -1481,6 +1488,10 @@ export function Composer(props: ComposerProps) {
                         }}
                         onFocus={() => setFocused(true)}
                         onKeyDown={onKeyDown}
+                        onSelect={(event) => {
+                          const field = event.currentTarget;
+                          setCaretAtStart(field.selectionStart === 0 && field.selectionEnd === 0);
+                        }}
                         onPaste={onPaste}
                         placeholder={placeholder}
                         ref={textarea}

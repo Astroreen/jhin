@@ -108,6 +108,12 @@ test("holds the queue after a stop until it is resumed, and steers with the othe
   await message.fill("shortcut follow-up");
   await message.press("Enter");
   await expect(rows(page)).toHaveText([/shortcut follow-up/]);
+  // With text before the caret, Alt+↑ is the browser's: nothing is loaded.
+  await message.fill("half typed");
+  await message.press("End");
+  await message.press("Alt+ArrowUp");
+  await expect(message).toHaveValue("half typed");
+  await message.fill("");
   await message.press("Alt+ArrowUp");
   await expect(message).toHaveValue("shortcut follow-up");
   await rows(page).getByRole("button", { name: "Cancel editing queued message" }).click();

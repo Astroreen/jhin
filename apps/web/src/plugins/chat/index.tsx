@@ -484,7 +484,7 @@ export const chatPlugin = builtin(
             {
               key: "alt+arrowup",
               command: "chat.queue.edit-latest",
-              when: "composerFocus && queuedMessages",
+              when: "composerFocus && queuedMessages && composerCaretAtStart",
             },
           ]),
         );
