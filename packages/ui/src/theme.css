@@ -9,6 +9,8 @@
 
 @custom-variant dark (&:is(.dark, .dark *));
 @custom-variant light (&:not(.dark, .dark *));
+/* The desktop app's window controls overlay is visible (docs/plans/desktop.md, D515). */
+@custom-variant wco (&:is(.wco, .wco *));
 
 /* Secondary hovering pointers reveal sidebar actions on touch-primary devices. */
 @custom-variant any-hover {
@@ -597,6 +599,47 @@
 pre,
 code {
   font-family: var(--font-mono);
+}
+
+/*
+ * Window chrome of the desktop app (T3 Code's index.css; docs/plans/desktop.md,
+ * D515). `.wco` is set while the native window controls are drawn over the
+ * page; `.drag-region` marks top bars the window is dragged by. Neither does
+ * anything in a browser.
+ */
+.wco {
+  --native-titlebar-height: env(titlebar-area-height, 0px);
+  --workspace-topbar-height: max(40px, env(titlebar-area-height, 52px));
+  --workspace-controls-top: env(titlebar-area-y, 0px);
+  --workspace-controls-left: calc(env(titlebar-area-x, 0px) + 0.75rem);
+  --workspace-controls-right: calc(
+    100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
+  );
+  --workspace-native-controls-inset: calc(
+    100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem
+  );
+}
+
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+/* Electron 44 inherits app-region. Reset children to the initial value so they
+   do not add drag rectangles over fixed controls. Explicit `none` is treated
+   as `no-drag` and breaks titlebar dragging; `initial` emits no rectangle.
+   The base layer lets explicit drag/no-drag utilities take precedence. */
+@layer base {
+  .drag-region > * {
+    -webkit-app-region: initial;
+  }
+}
+
+.drag-region button,
+.drag-region input,
+.drag-region textarea,
+.drag-region select,
+.drag-region a {
+  -webkit-app-region: no-drag;
 }
 
 /* Scrollbar styling */

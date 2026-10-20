@@ -9,6 +9,7 @@ export const MESH_CAPABILITY = "client.mesh";
 export const THREADS_CAPABILITY = "client.threads";
 export const SETTINGS_CAPABILITY = "client.settings";
 export const MACHINES_CAPABILITY = "client.machines";
+export const NOTIFICATIONS_CAPABILITY = "client.notifications";
 
 // The machine kinds a node reports, for client plugins (they import this package, not the host's).
 export {
@@ -545,6 +546,18 @@ export interface DeviceSettings {
   patch(section: string, values: Readonly<Record<string, unknown>>): void;
   /** Forgets everything this device set in a section. */
   reset(section: string): void;
+}
+
+/**
+ * `client.notifications@1`: the thread notifications this page shows. The
+ * desktop app turns their count into its dock or taskbar badge
+ * (docs/plans/desktop.md, D518).
+ */
+export interface ThreadNotifications {
+  /** System notifications shown while the page was in the background and not cleared since. */
+  count(): number;
+  /** Called when the count changes. */
+  subscribe(listener: () => void): Disposable;
 }
 
 /** `ui.keybindings@1`: keyboard shortcuts that run client commands. */

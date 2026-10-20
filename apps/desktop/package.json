@@ -1,0 +1,26 @@
+{
+  "name": "@jhin/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Jhin desktop app: an Electron shell that runs a local node and the web client",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "vp build && vp build --config vite.preload.config.ts",
+    "start": "electron .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@jhin/plugin-desktop": "workspace:*",
+    "electron-updater": "catalog:",
+    "jhin-ai": "workspace:*"
+  },
+  "devDependencies": {
+    "@jhin/desktop-api": "workspace:*",
+    "@jhin/sdk": "workspace:*",
+    "@types/node": "catalog:",
+    "electron": "catalog:",
+    "vite": "catalog:"
+  },
+  "productName": "Jhin"
+}

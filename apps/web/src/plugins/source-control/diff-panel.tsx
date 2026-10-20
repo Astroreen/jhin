@@ -145,7 +145,7 @@ function DiffPanelShell(props: { header?: React.ReactNode; children: React.React
       className="flex h-full w-[42vw] min-w-[360px] max-w-[560px] shrink-0 flex-col border-l border-border bg-background"
       data-diff-panel
     >
-      <div className="flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background px-4">
+      <div className="drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background px-4 wco:pr-(--workspace-native-controls-inset)">
         {props.header}
       </div>
       {props.children}

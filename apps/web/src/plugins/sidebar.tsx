@@ -2719,7 +2719,7 @@ export const sidebarPlugin = builtin(
             : `New thread (${shortcut("chat.new")})`;
         return (
           <>
-            <div className="relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2 pr-3">
+            <div className="drag-region relative flex h-[var(--workspace-topbar-height)] shrink-0 flex-row items-center gap-2 pr-3">
               <div className="relative z-10 ml-[calc(var(--workspace-controls-left)+1px)] flex shrink-0 items-center md:hidden">
                 <SidebarTrigger
                   aria-label="Toggle main sidebar"

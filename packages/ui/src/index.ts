@@ -165,6 +165,12 @@ export {
   useSidebar,
   useSidebarVisibility,
 } from "./components/sidebar.tsx";
+export {
+  SettingResetButton,
+  SettingsEmpty,
+  SettingsRow,
+  SettingsSection,
+} from "./components/settings-layout.tsx";
 export { Skeleton } from "./components/skeleton.tsx";
 export { Spinner } from "./components/spinner.tsx";
 export { Switch } from "./components/switch.tsx";

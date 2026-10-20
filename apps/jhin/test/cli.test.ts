@@ -119,6 +119,45 @@ export default definePlugin({
     expect(JSON.parse(greet.stdout)).toEqual({ message: "HELLO, ADA!", count: 1 });
   });
 
+  it("--plugin-dir loads a plugin package from outside the plugin folders", async () => {
+    const home = homeWith({});
+    const outside = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-cli-plugin-"));
+    Fs.writeFileSync(
+      Path.join(outside, "package.json"),
+      JSON.stringify({
+        type: "module",
+        jhin: {
+          id: "acme.outside",
+          version: "1.0.0",
+          apiVersion: 1,
+          side: "server",
+          entry: "index.ts",
+        },
+      }),
+    );
+    Fs.writeFileSync(
+      Path.join(outside, "index.ts"),
+      `import { definePlugin, z } from "@jhin/sdk";
+export default definePlugin({
+  activate(context) {
+    context.commands.register({
+      name: "acme.where",
+      description: "Where this plugin was loaded from",
+      input: z.object({}),
+      output: z.object({ here: z.boolean() }),
+      handler: () => ({ here: true }),
+    });
+  },
+});
+`,
+    );
+
+    const result = await jhin(home, "acme.where", "--plugin-dir", outside);
+
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toEqual({ here: true });
+  });
+
   it("writes JSON logs with nodeId and plugin fields", async () => {
     const home = homeWith({});
 
