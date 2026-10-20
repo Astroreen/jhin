@@ -7,7 +7,6 @@
 import {
   DndContext,
   PointerSensor,
-  closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -30,6 +29,7 @@ import {
   NAVIGATION_CAPABILITY,
   THREAD_DETAILS_SLOT,
   THREADS_CAPABILITY,
+  targetKey,
   type Connections,
   type Keybindings,
   type MeshMembership,
@@ -140,6 +140,8 @@ import { useMachineKind } from "../lib/machines.ts";
 import { createShownNodes, showsHosts, type NodeWithCatalog } from "../lib/nodes.ts";
 import { ProjectIcon } from "../lib/project-icon.tsx";
 import {
+  createSidebarCollisionDetection,
+  DRAG_BOUNDARY_LABEL_CLASS,
   dropVerb,
   itemId,
   markerId,
@@ -402,6 +404,8 @@ interface DragState {
   readonly key: string;
   readonly from: ThreadSection;
   readonly over: DropSection | null;
+  /** Where the pointer was when the row started to drag (T3's activationY). */
+  readonly activationY: number | null;
 }
 
 /** A drop shown in place until its node commands are done (T3's optimistic drop). */
@@ -1906,7 +1910,13 @@ export const sidebarPlugin = builtin(
         const onDragStart = (event: DragStartEvent) => {
           const entry = entries.get(String(event.active.id));
           if (entry !== undefined) {
-            dragState.set({ key: entry.key, from: entry.section, over: null });
+            const activator = event.activatorEvent as Partial<PointerEvent> | null;
+            dragState.set({
+              key: entry.key,
+              from: entry.section,
+              over: null,
+              activationY: typeof activator?.clientY === "number" ? activator.clientY : null,
+            });
           }
         };
         const onDragOver = (event: DragOverEvent) => {
@@ -1928,13 +1938,43 @@ export const sidebarPlugin = builtin(
               : target.section === "active"
                 ? target.activeOrder
                 : undefined;
-          run("sidebar.thread.move", {
-            ...entry.node.target,
-            threadId: entry.thread.id,
-            section: target.section,
-            ...(order === undefined ? {} : { index: order.indexOf(entry.key) }),
-          });
+          // The move says itself what failed (T3's titles).
+          void context.commands
+            .execute("sidebar.thread.move", {
+              ...entry.node.target,
+              threadId: entry.thread.id,
+              section: target.section,
+              ...(order === undefined ? {} : { index: order.indexOf(entry.key) }),
+            })
+            .catch(() => undefined);
         };
+
+        /** Whether dropping the dragged row over `id` would do anything (T3's isValidTarget). */
+        const changesSomething = (state: DragState, id: string) => {
+          const target = resolveDropTarget(items, state.key, id);
+          if (target === null) return false;
+          const every = everyThread();
+          const keysOf = (pick: (item: Entry) => string | undefined) =>
+            new Map([...every.values()].map((item) => [item.key, pick(item)]));
+          return (
+            planDrop({
+              key: state.key,
+              from: state.from,
+              target,
+              pinnedOrder: keys(list.pinned),
+              activeOrder: keys(list.active),
+              pinnedKeysById: keysOf((item) => item.thread.pinOrderKey),
+              activeKeysById: keysOf((item) => item.thread.activeOrderKey),
+            }).kind !== "none"
+          );
+        };
+        const collisionDetection =
+          drag === undefined
+            ? createSidebarCollisionDetection(() => true)
+            : createSidebarCollisionDetection((id) => changesSomething(drag, id), {
+                items,
+                activationY: drag.activationY,
+              });
 
         const row = (entry: Entry) => (
           <SortableThreadRow
@@ -1957,7 +1997,12 @@ export const sidebarPlugin = builtin(
               marker={marker}
             >
               {drag === undefined ? null : (
-                <div className="absolute inset-x-2 top-1 flex h-4 items-center gap-2">
+                <div
+                  className={cn(
+                    DRAG_BOUNDARY_LABEL_CLASS,
+                    "absolute inset-x-2 top-1 flex h-4 items-center gap-2",
+                  )}
+                >
                   <span
                     className={cn(
                       "shrink-0 text-xs font-medium",
@@ -2059,7 +2104,7 @@ export const sidebarPlugin = builtin(
               </div>
             ) : null}
             <DndContext
-              collisionDetection={closestCenter}
+              collisionDetection={collisionDetection}
               onDragCancel={() => dragState.set(undefined)}
               onDragEnd={onDragEnd}
               onDragOver={onDragOver}
@@ -2581,21 +2626,54 @@ export const sidebarPlugin = builtin(
                   activeKeysById: keysOf((item) => item.thread.activeOrderKey),
                 });
           if (plan.kind === "none") return {};
-          const call = (item: Entry, method: string, rest: Record<string, unknown> = {}) =>
-            threads.call(item.node.target, `threads.${method}`, {
-              threadId: item.thread.id,
-              ...rest,
-            });
-          const reorder = async (
-            assignments: readonly OrderAssignment[],
-            into: "pinned" | "active",
-          ) => {
+          // One write per node the drop touches (D449): its steps go as one `threads.arrange`.
+          type Step = { op: string; threadId: string } & Record<string, unknown>;
+          const steps = new Map<string, { target: NodeTarget; steps: Step[] }>();
+          const addStep = (item: Entry, op: string, rest: Record<string, unknown> = {}) => {
+            const node = targetKey(item.node.target);
+            const forNode = steps.get(node) ?? { target: item.node.target, steps: [] };
+            forNode.steps.push({ op, threadId: item.thread.id, ...rest });
+            steps.set(node, forNode);
+          };
+          const reorder = (assignments: readonly OrderAssignment[], into: "pinned" | "active") => {
             for (const assignment of assignments) {
               const item = every.get(assignment.id);
               if (item !== undefined)
-                await call(item, "reorder", { list: into, orderKey: assignment.orderKey });
+                addStep(item, "reorder", { list: into, orderKey: assignment.orderKey });
             }
           };
+          // T3's failure titles, by what the drop does to the thread.
+          let failedTitle = "Failed to settle thread";
+          switch (plan.kind) {
+            case "pin":
+              addStep(entry, "pin", plan.orderKey === undefined ? {} : { orderKey: plan.orderKey });
+              reorder(plan.assignments, "pinned");
+              failedTitle = "Failed to pin thread";
+              break;
+            case "reorder-pinned":
+              reorder(plan.assignments, "pinned");
+              failedTitle = "Failed to reorder pinned threads";
+              break;
+            case "move-active":
+              if (plan.unsnooze) addStep(entry, "unsnooze");
+              if (plan.unpin) addStep(entry, "unpin");
+              if (plan.unsettle) addStep(entry, "unsettle");
+              reorder(plan.assignments, "active");
+              failedTitle = plan.unsnooze
+                ? "Failed to wake thread"
+                : plan.unpin
+                  ? "Failed to unpin thread"
+                  : plan.unsettle
+                    ? "Failed to un-settle thread"
+                    : "Failed to reorder active threads";
+              break;
+          }
+          // The dropped thread's node first: its write is the drop, the others' only order.
+          const writes = [...steps.values()].toSorted(
+            (a, b) =>
+              Number(targetKey(b.target) === targetKey(target)) -
+              Number(targetKey(a.target) === targetKey(target)),
+          );
           // Shown where it was dropped until the nodes have it (T3's optimistic drop).
           const drop: OptimisticDrop = {
             key,
@@ -2611,28 +2689,18 @@ export const sidebarPlugin = builtin(
           };
           optimistic.set(drop);
           try {
-            switch (plan.kind) {
-              case "settle":
-                await settle(entry);
-                break;
-              case "pin":
-                await call(
-                  entry,
-                  "pin",
-                  plan.orderKey === undefined ? {} : { orderKey: plan.orderKey },
-                );
-                await reorder(plan.assignments, "pinned");
-                break;
-              case "reorder-pinned":
-                await reorder(plan.assignments, "pinned");
-                break;
-              case "move-active":
-                if (plan.unsnooze) await call(entry, "unsnooze");
-                if (plan.unpin) await call(entry, "unpin");
-                if (plan.unsettle) await call(entry, "unsettle");
-                await reorder(plan.assignments, "active");
-                break;
-            }
+            if (plan.kind === "settle") await settle(entry);
+            else
+              for (const write of writes)
+                await threads.call(write.target, "threads.arrange", { steps: write.steps });
+          } catch (error) {
+            if (plan.kind !== "settle")
+              toasts?.show({
+                type: "error",
+                title: failedTitle,
+                description: (error as Error).message,
+              });
+            throw error;
           } finally {
             if (optimistic.get() === drop) optimistic.set(undefined);
           }

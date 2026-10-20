@@ -358,18 +358,18 @@ left of T3 Code is split into workstreams in `t3-roadmap.md`.
   in T3, no row drags, and the dropped row says it is busy (`aria-busy`).
   Rows drag with dnd-kit, T3's library, once the pointer moved 6 px; the
   badge on the dragged row says what the drop does ("Pin", "Unpin", "Settle",
-  "Un-settle", "Wake"). A drop is several node commands, one per thread it
-  writes, run in turn: one that is refused (another device unpinned a
+  "Un-settle", "Wake"). A drop was several node commands (one write since
+  D449), one per thread it writes, run in turn: one that is refused (another device unpinned a
   neighbour meanwhile, `THREAD_NOT_PINNED`) stops the rest, its error shows
   as a toast, and the list shows what the nodes have; dropping again writes
-  the keys anew (one write per drop is deferred). `threads.unsettle` leaves
+  the keys anew (one write per drop since D449). `threads.unsettle` leaves
   a thread that is not settled alone (T3's command would move it to the top
   and switch the rule off for it), and `threads.reorder` refuses an active
   place for a thread on a shelf, settled by the rule or snoozed, so no key
   waits there to place it when it comes back; a drop un-settles or wakes it
   first. As in T3 there is no keyboard dragging: the menu and the shortcuts
-  do the same. Collision is dnd-kit's closest centre, not
-  T3's own detection around the pinned boundary (Deferred).
+  do the same. Collision is T3's own detection around the pinned boundary
+  since D448.
 - **D79. One clock for the sidebar and its commands.** The list was drawn
   with a minute tick while the shortcuts and `sidebar.thread.*` read
   `Date.now()`, so near a threshold (three days, a snooze's end) a shortcut
@@ -875,6 +875,42 @@ D446": threads the node settles going onto the shelf live; "D445": the
 submenu turning auto-settle off on the node, after which a closed pull
 request settles nothing), with screenshots.
 
+- **D448. T3's own collision detection around the pinned boundary.** A row
+  dragged near the divider between the pinned and the active threads uses
+  T3's createSidebarCollisionDetection (`createSidebarCollisionDetection` in
+  `apps/web/src/lib/sidebar-drag.ts`) instead of dnd-kit's plain closest
+  centre: over the divider's label (`sidebar-drag-boundary-label`, measured
+  live) the side changes only when the pointer moves across it, up into the
+  pinned threads or down into the active ones, so a still pointer never
+  flips back as the destination opens; and a nearest target where the drop
+  would do nothing (`planDrop` says `none`) leaves the row where it is.
+- **D449. One write per drop.** `threads.arrange { steps }` runs several
+  arrangement steps (settle, unsettle, pin, unpin, unsnooze, reorder) as
+  one command: it holds every record the steps touch (in one order, so two
+  drops never wait on each other), checks and changes them in memory with
+  the single commands' own rules (`changes.*` in the threads plugin), and
+  writes only when every step held: the records and their index events in
+  one transaction (`storage.eventlog@1.1`'s records, D208).
+  A step refused (another device unpinned a neighbour meanwhile,
+  `THREAD_NOT_PINNED`) leaves every thread as it was. `sidebar.thread.move`
+  sends one `threads.arrange` per node the drop touches, the dropped
+  thread's node first; a drop onto the Settled shelf stays `thread.settle`
+  (one step, through `thread.park`). The single commands stay. A failure
+  toasts T3's titles ("Failed to pin thread", "Failed to unpin thread",
+  "Failed to un-settle thread", "Failed to wake thread", "Failed to reorder
+  pinned threads", "Failed to reorder active threads"). T3 itself writes a
+  drop as several commands; this closes D78's gap. A drop across nodes is
+  one write per node.
+
+The proof of D448–D449: `apps/web/test/sidebar-drag.test.ts` (the side
+sticking to the last crossing, against closest centre, and a drop that does
+nothing leaving the row in place); `plugins/threads/test/arrangement.test.ts`
+("a drop as one write": the steps' records appended in one batch, a refused
+step leaving every thread as it was, no write for steps that change
+nothing); `apps/web/test/sidebar-arrange.browser.test.tsx` (one
+`threads.arrange` per drop with its steps, nothing landing when a step is
+refused); `e2e/tests/sidebar.spec.ts` (the drag test, twice).
+
 ### Server-side queue and steering (W1, `t3-roadmap.md`)
 
 - **D200. The reference is T3 Code's server queue** (D53's tag,
@@ -1239,12 +1275,9 @@ and as events arrive).
   request linked to a thread keeps it from settling by inactivity: the
   threads plugin does not know a thread's pull request (linking them is
   W4's); per-project overrides of the settle settings (T3 resolves them per
-  project; a Jhin node has one project config layer, D19); one write per drop (a drop is a command per thread it orders, so two
-  devices dragging at once, or a failure partway, leave the steps done
-  before it; D78), the Working shelf, multi-select and sweeping actions over
-  several rows, undo of a pin, T3's own collision detection around the
-  pinned boundary, the jump-number hints and discarding a draft from its
-  card. The card's branch, diff and pull request are `source-control.md`'s
+  project; a Jhin node has one project config layer, D19); the Working
+  shelf, multi-select and sweeping actions over several rows, undo of a pin,
+  the jump-number hints and discarding a draft from its card. The card's branch, diff and pull request are `source-control.md`'s
   D117 and its terminal indicator `terminal.md`'s D148, all in the
   `sidebar.thread.indicators` slot.
 - Pushing a node's config changes to its clients: a change of

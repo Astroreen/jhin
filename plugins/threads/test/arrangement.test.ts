@@ -405,3 +405,55 @@ describe("jhin.threads: snoozing (D77)", () => {
     expect(ended.snoozedAt).toBe(snoozed.snoozedAt);
   });
 });
+
+describe("jhin.threads: a drop as one write (D449)", () => {
+  it("runs every step and appends their records in one batch", async () => {
+    const { client, index, thread } = await withThread();
+    const other = await client.call<Thread>("threads.create", {});
+    const appended = index.events.length;
+    const { threads } = await client.call<{ threads: Thread[] }>("threads.arrange", {
+      steps: [
+        { op: "pin", threadId: thread.id },
+        { op: "reorder", threadId: thread.id, list: "pinned", orderKey: "n" },
+        { op: "reorder", threadId: other.id, list: "active", orderKey: "c" },
+      ],
+    });
+    expect(threads.map((item) => item.id).toSorted()).toEqual([thread.id, other.id].toSorted());
+    const pinned = threads.find((item) => item.id === thread.id)!;
+    expect(pinned).toMatchObject({ pinnedAt: expect.any(String), pinOrderKey: "n" });
+    await index.untilMatch((event) => (event.payload as unknown as Thread).activeOrderKey === "c");
+    // One append: both records' events share one sequence run, nothing between them.
+    const fresh = index.events.slice(appended);
+    expect(fresh.map((event) => (event.payload as unknown as Thread).id)).toEqual(
+      threads.map((item) => item.id),
+    );
+    expect(fresh[1]!.sequence).toBe(fresh[0]!.sequence + 1);
+  });
+
+  it("leaves every thread as it was when one step is refused", async () => {
+    const { client, thread } = await withThread();
+    const other = await client.call<Thread>("threads.create", {});
+    await expect(
+      client.call("threads.arrange", {
+        steps: [
+          { op: "reorder", threadId: other.id, list: "active", orderKey: "c" },
+          // Another device unpinned it meanwhile: the drop's keys no longer fit.
+          { op: "reorder", threadId: thread.id, list: "pinned", orderKey: "n" },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_PINNED" });
+    const { thread: kept } = await client.call<{ thread: Thread }>("threads.get", {
+      threadId: other.id,
+    });
+    expect(kept.activeOrderKey).toBeUndefined();
+  });
+
+  it("writes nothing for steps that change nothing", async () => {
+    const { client, index, thread } = await withThread();
+    const appended = index.events.length;
+    expect(
+      await client.call("threads.arrange", { steps: [{ op: "unpin", threadId: thread.id }] }),
+    ).toEqual({ threads: [] });
+    expect(index.events.length).toBe(appended);
+  });
+});

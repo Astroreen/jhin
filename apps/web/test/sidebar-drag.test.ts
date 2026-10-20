@@ -6,6 +6,8 @@ import {
   planDrop,
   resolveDropTarget,
   sidebarListItems,
+  createSidebarCollisionDetection,
+  DRAG_BOUNDARY_LABEL_CLASS,
 } from "../src/lib/sidebar-drag.ts";
 
 const items = sidebarListItems({
@@ -122,5 +124,75 @@ describe("what a drop tells the nodes (D78)", () => {
         target: { section: "settled", pinnedOrder: ["p1", "p2"], activeOrder: ["a2"] },
       }),
     ).toEqual({ kind: "settle" });
+  });
+});
+
+describe("collision detection around the pinned boundary (D448)", () => {
+  // p1 pinned, then the divider (its label at y 40–56), then the active a1 and a2.
+  const items = sidebarListItems({
+    pinned: ["p1"],
+    active: ["a1", "a2"],
+    snoozed: undefined,
+    settled: [],
+  });
+  const rect = (top: number, height: number) => ({
+    top,
+    bottom: top + height,
+    left: 0,
+    right: 200,
+    width: 200,
+    height,
+  });
+  const rects = new Map<string, ReturnType<typeof rect>>([
+    ["p1", rect(0, 40)],
+    [markerId("pinned-divider"), rect(40, 0)],
+    ["a1", rect(56, 40)],
+    ["a2", rect(96, 40)],
+    [markerId("settled-header"), rect(300, 32)],
+  ]);
+  const label = rect(44, 16);
+  const containers = [...rects.keys()].map((id) => ({
+    id,
+    key: id,
+    data: { current: undefined },
+    disabled: false,
+    rect: { current: null },
+    node: {
+      current: {
+        getBoundingClientRect: () => rects.get(id),
+        querySelector: (selector: string) =>
+          id === markerId("pinned-divider") && selector === `.${DRAG_BOUNDARY_LABEL_CLASS}`
+            ? { getBoundingClientRect: () => label }
+            : null,
+      },
+    },
+  }));
+  /** The collisions for the dragged row centred at `y`, with the pointer there. */
+  const at = (detect: ReturnType<typeof createSidebarCollisionDetection>, y: number) =>
+    detect({
+      active: { id: "a2" },
+      collisionRect: { ...rect(y - 20, 40) },
+      droppableRects: rects,
+      droppableContainers: containers,
+      pointerCoordinates: { x: 100, y },
+    } as unknown as Parameters<typeof detect>[0]).map((collision) => String(collision.id));
+
+  it("keeps the nearest target of the side the pointer last crossed to", () => {
+    const detect = createSidebarCollisionDetection(() => true, { items, activationY: 116 });
+    const side = (y: number) => resolveDropTarget(items, "a2", at(detect, y)[0]!)?.section;
+    // Below the label: the active side, where the row started.
+    expect(at(detect, 70)[0]).toBe("a1");
+    // Moving up onto the label: the pinned side, though a1's centre is the nearest (closest
+    // centre alone would keep the row among the active ones).
+    expect(side(59)).toBe("pinned");
+    // A still pointer stays on that side even as the rows move under it.
+    expect(side(59)).toBe("pinned");
+    // Moving down across the label again: the active side.
+    expect(side(62)).toBe("active");
+  });
+
+  it("leaves the row in place when the nearest drop would do nothing", () => {
+    const detect = createSidebarCollisionDetection((id) => id !== "a1", { items });
+    expect(at(detect, 76)).toEqual(["a2"]);
   });
 });

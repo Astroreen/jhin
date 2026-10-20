@@ -89,6 +89,41 @@ function world(
   const change = (threadId: string, update: (thread: ThreadRecord) => ThreadRecord) => {
     records = records.map((thread) => (thread.id === threadId ? update(thread) : thread));
   };
+  const apply = (method: string, input: Record<string, unknown> & { threadId: string }) => {
+    const { threadId } = input;
+    switch (method) {
+      case "threads.settle":
+        change(threadId, ({ pinnedAt: _p, pinOrderKey: _k, ...thread }) => ({
+          ...thread,
+          settledOverride: "settled",
+          settledAt: now(),
+        }));
+        break;
+      case "threads.unsettle":
+        change(threadId, ({ settledAt: _s, ...thread }) => ({
+          ...thread,
+          settledOverride: "active",
+          unsettledAt: now(),
+        }));
+        break;
+      case "threads.pin":
+        change(threadId, (thread) => ({
+          ...thread,
+          pinnedAt: now(),
+          ...(input.orderKey === undefined ? {} : { pinOrderKey: input.orderKey as string }),
+        }));
+        break;
+      case "threads.unpin":
+        change(threadId, ({ pinnedAt: _p, pinOrderKey: _k, ...thread }) => thread);
+        break;
+      case "threads.reorder":
+        change(threadId, (thread) => ({
+          ...thread,
+          [input.list === "pinned" ? "pinOrderKey" : "activeOrderKey"]: input.orderKey,
+        }));
+        break;
+    }
+  };
   const projects = [project];
   let shown: NodeCatalog | undefined;
   const catalog: ThreadsCatalog = {
@@ -102,42 +137,22 @@ function world(
       const input = params as Record<string, unknown> & { threadId: string };
       calls.push({ method, params: input });
       await gate;
-      const refused = refuse(method, input);
-      if (refused !== undefined) throw refused;
-      const { threadId } = input;
-      switch (method) {
-        case "threads.settle":
-          change(threadId, ({ pinnedAt: _p, pinOrderKey: _k, ...thread }) => ({
-            ...thread,
-            settledOverride: "settled",
-            settledAt: now(),
-          }));
-          break;
-        case "threads.unsettle":
-          change(threadId, ({ settledAt: _s, ...thread }) => ({
-            ...thread,
-            settledOverride: "active",
-            unsettledAt: now(),
-          }));
-          break;
-        case "threads.pin":
-          change(threadId, (thread) => ({
-            ...thread,
-            pinnedAt: now(),
-            ...(input.orderKey === undefined ? {} : { pinOrderKey: input.orderKey as string }),
-          }));
-          break;
-        case "threads.unpin":
-          change(threadId, ({ pinnedAt: _p, pinOrderKey: _k, ...thread }) => thread);
-          break;
-        case "threads.reorder":
-          change(threadId, (thread) => ({
-            ...thread,
-            [input.list === "pinned" ? "pinOrderKey" : "activeOrderKey"]: input.orderKey,
-          }));
-          break;
+      if (method !== "threads.arrange") {
+        const refused = refuse(method, input);
+        if (refused !== undefined) throw refused;
+        apply(method, input);
+        return undefined as T;
       }
-      return undefined as T;
+      // One write: every step is checked before any lands, as the node does.
+      const steps = (input as unknown as { steps: (Record<string, unknown> & { op: string })[] })
+        .steps;
+      for (const { op, ...step } of steps) {
+        const refused = refuse(`threads.${op}`, step);
+        if (refused !== undefined) throw refused;
+      }
+      for (const { op, ...step } of steps)
+        apply(`threads.${op}`, step as Record<string, unknown> & { threadId: string });
+      return { threads: [] } as T;
     },
     open: async () => "",
   };
@@ -155,6 +170,10 @@ function world(
 }
 
 const LOADING: NodeCatalog = { status: "loading", projects: [], threads: [] };
+
+/** The steps of a `threads.arrange` call. */
+const stepsOf = (call: { params: Record<string, unknown> }) =>
+  call.params.steps as (Record<string, unknown> & { op: string; threadId: string })[];
 
 let kernel: TestKernel | undefined;
 afterEach(async () => {
@@ -254,9 +273,13 @@ describe("moving a thread, as dropping it does (D78)", () => {
       thread("a", 1),
     ]);
     await run("sidebar.thread.move", { node: A, threadId: "a", section: "pinned", index: 1 });
+    // One write for the drop (D449).
     expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({ method: "threads.pin", params: { threadId: "a" } });
-    const key = calls[0]!.params.orderKey as string;
+    expect(calls[0]).toMatchObject({
+      method: "threads.arrange",
+      params: { steps: [{ op: "pin", threadId: "a" }] },
+    });
+    const key = stepsOf(calls[0]!)[0]!.orderKey as string;
     expect(key > "c" && key < "n").toBe(true);
   });
 
@@ -267,17 +290,19 @@ describe("moving a thread, as dropping it does (D78)", () => {
       thread("s", 200, { lastTurn: done(150), settledOverride: "settled", settledAt: ago(150) }),
     ]);
     await run("sidebar.thread.move", { node: A, threadId: "s", section: "active", index: 1 });
-    expect(calls.map((call) => [call.method, call.params.threadId])).toEqual([
-      ["threads.unsettle", "s"],
-      ["threads.reorder", "a1"],
-      ["threads.reorder", "s"],
-      ["threads.reorder", "a2"],
+    expect(calls.map((call) => call.method)).toEqual(["threads.arrange"]);
+    const steps = stepsOf(calls[0]!);
+    expect(steps.map((step) => [step.op, step.threadId])).toEqual([
+      ["unsettle", "s"],
+      ["reorder", "a1"],
+      ["reorder", "s"],
+      ["reorder", "a2"],
     ]);
-    const keys = calls.slice(1).map((call) => call.params.orderKey as string);
+    const keys = steps.slice(1).map((step) => step.orderKey as string);
     expect(keys.toSorted()).toEqual(keys);
   });
 
-  it("stops at a step the node refuses, says why, and shows what the nodes have", async () => {
+  it("writes nothing when the node refuses a step, says why, and shows what the nodes have", async () => {
     const { run, calls, visited } = await start(
       [
         thread("p1", 1, { pinnedAt: ago(1) }),
@@ -295,10 +320,10 @@ describe("moving a thread, as dropping it does (D78)", () => {
     await expect(
       run("sidebar.thread.move", { node: A, threadId: "p3", section: "pinned", index: 0 }),
     ).rejects.toMatchObject({ code: "THREAD_NOT_PINNED" });
-    expect(calls.map((call) => call.params.threadId)).toEqual(["p3", "p1"]);
-    // The drop shown in place is gone: the list is the nodes' (p3 keyed on top, then by creation).
+    expect(stepsOf(calls[0]!).map((step) => step.threadId)).toEqual(["p3", "p1", "p2"]);
+    // The drop shown in place is gone, and no key of it landed: newest first, as before.
     for (const jump of [1, 2, 3]) await run(`sidebar.thread.jump.${jump}`);
-    expect(visited.map((route) => route.thread)).toEqual(["p3", "p1", "p2"]);
+    expect(visited.map((route) => route.thread)).toEqual(["p1", "p2", "p3"]);
   });
 
   it("settles a thread moved to the shelf, and refuses a thread it does not show", async () => {
