@@ -43,7 +43,7 @@
     "description": "Answers \"Echo: <message>\" word by word; /hold, /fail, /think, /tool, /approve, /ask and /plan exercise the rest of a turn",
     "side": "server",
     "provides": {
-      "agent.runtime": "1.1.0"
+      "agent.runtime": "1.2.0"
     },
     "entry": "src/index.ts"
   }

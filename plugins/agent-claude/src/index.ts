@@ -353,6 +353,8 @@ export function createClaudeRuntime(options: {
     },
     runtimeModes: ["approval-required", "auto-accept-edits", "full-access"],
     interactionModes: ["default", "plan"],
+    // A message steered in goes into the live query the turn holds (D206).
+    steering: true,
     async status() {
       const key = probeKey();
       const refresh = () => {
@@ -415,6 +417,7 @@ export function createClaudeRuntime(options: {
       return {
         interrupt: () => turn.interrupt(),
         ...(turn.respond === undefined ? {} : { respond: turn.respond }),
+        ...(turn.steer === undefined ? {} : { steer: turn.steer }),
         items: (async function* () {
           for await (const item of items) {
             if (item.kind === "usage" && item.usage.contextWindow !== undefined) {

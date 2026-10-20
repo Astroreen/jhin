@@ -4,6 +4,7 @@ import {
   type AgentResponse,
   type AgentRuntime,
   type AgentTurn,
+  type TurnInput,
   type TurnRequest,
 } from "@jhin/agent-api";
 import { definePlugin } from "@jhin/sdk";
@@ -28,10 +29,16 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/plan" publishes a three-step plan and completes it;
  * - in plan mode, anything else is answered with a proposed plan titled after it;
  * - anything else is answered "Echo: <text>", one word per delta.
+ * A message steered into a turn (D204) is answered "Echo: <text>" before the
+ * turn ends; it ends a "/hold" turn.
  */
 export function fakeTurn(request: TurnRequest): AgentTurn {
   let interrupted = false;
   const interruption = latch<undefined>();
+  /** Messages steered into the turn and not answered yet; `ended` once it takes no more. */
+  const steers: TurnInput[] = [];
+  let steered = latch<undefined>();
+  let ended = false;
   const answers = new Map<string, ReturnType<typeof latch<AgentResponse | undefined>>>();
   const turnId = request.turnId;
   const text = request.input.text;
@@ -76,7 +83,8 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
     if (text.startsWith("/fail")) throw new Error("fake agent: asked to fail");
     if (text.startsWith("/hold")) {
       yield { kind: "message.delta", itemId: nextId(), text: "Holding" };
-      await interruption.wait();
+      // Until it is interrupted or steered (a steer that came first counts).
+      if (steers.length === 0) await Promise.race([interruption.wait(), steered.wait()]);
       return;
     }
     if (text.startsWith("/think")) {
@@ -168,8 +176,24 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
     yield* say(`Echo: ${text}`);
   }
 
+  async function* all(): AsyncGenerator<AgentItem> {
+    try {
+      yield* items$();
+      // What was steered in is answered before the turn ends.
+      while (!interrupted && steers.length > 0) yield* say(`Echo: ${steers.shift()!.text}`);
+    } finally {
+      ended = true;
+    }
+  }
+
   return {
-    items: items$(),
+    items: all(),
+    steer(input) {
+      if (ended || interrupted) throw new Error("fake agent: the turn has ended");
+      steers.push(input);
+      steered.open(undefined);
+      steered = latch<undefined>();
+    },
     interrupt() {
       interrupted = true;
       interruption.open(undefined);
@@ -190,6 +214,7 @@ export default definePlugin({
       defaultModel: "echo",
       runtimeModes: ["approval-required", "auto-accept-edits", "full-access"],
       interactionModes: ["default", "plan"],
+      steering: true,
       startTurn: fakeTurn,
     };
     context.services.provide(AGENT_RUNTIME_CAPABILITY, runtime);

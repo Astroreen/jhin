@@ -29,6 +29,7 @@ import type {
 
 import {
   createLiveSessions,
+  endedBySteer,
   inheritedEnvironment,
   type Attachment,
   type Lease,
@@ -202,6 +203,11 @@ export function transcript(history: TurnRequest["history"], since?: string): str
       byId.set(payload["turnId"], turn);
       const input = payload["input"] as { text?: unknown } | undefined;
       if (typeof input?.text === "string") turn.lines.push(`User: ${input.text}`);
+    } else if (event.type === ThreadEvents.turnSteered) {
+      // A message steered into a turn is the user's too.
+      const turn = byId.get(payload["turnId"]) ?? turns.at(-1);
+      const input = payload["input"] as { text?: unknown } | undefined;
+      if (typeof input?.text === "string") turn?.lines.push(`User: ${input.text}`);
     } else if (event.type === ThreadEvents.itemCompleted && payload["kind"] === "message") {
       const turn = byId.get(payload["turnId"]) ?? turns.at(-1);
       if (typeof payload["text"] === "string") turn?.lines.push(`Assistant: ${payload["text"]}`);
@@ -291,6 +297,10 @@ export function claudeTurn(
   const live =
     deps.live ?? createLiveSessions({ query: deps.query, keepAlive: () => PER_TURN, ...log(deps) });
   let current: Lease | undefined;
+  /** Messages steered into the turn: each lease of the turn gets them after its own. */
+  const steered: SDKUserMessage[] = [];
+  /** The turn read its result: it takes no steer any more. */
+  let finished = false;
 
   /**
    * Opens a request and waits for its answer: `undefined` when the turn stops first or
@@ -607,6 +617,8 @@ export function claudeTurn(
     });
     current = lease;
     if (interrupted) stop(lease);
+    // Steers that came while the turn waited for its Claude Code go in after its message.
+    for (const message of steered) lease.steer(message);
     let started = false;
     let result: SDKResultMessage | undefined;
     try {
@@ -626,6 +638,7 @@ export function claudeTurn(
         }
         if (message.type === "result") {
           result = message;
+          finished = true;
           break;
         }
         project(message);
@@ -686,6 +699,9 @@ export function claudeTurn(
     if (interrupted) return;
     // Claude Code exited (or its stream closed) mid-turn without a result: not an answer.
     if (result === undefined) throw new Error("Claude Code ended the turn without a result.");
+    // Stopped by a steer that needed no more answer: the turn is complete. Any other
+    // abort, also one after a steer, is Claude Code stopping on its own.
+    if (endedBySteer(result)) return;
     // Aborted without our interrupt (that returned above): Claude Code stopped on its own.
     if (isAbortedResult(result)) {
       throw new Error(resultError(result) ?? "Claude Code stopped the turn.");
@@ -718,6 +734,20 @@ export function claudeTurn(
       const resolve = answers.get(requestId);
       answers.delete(requestId);
       resolve?.(response);
+    },
+    steer(input) {
+      if (interrupted || finished) {
+        throw new Error("The turn has ended: Claude Code takes no more messages for it.");
+      }
+      const message = userMessage(input.text, input.attachments, (attachment) =>
+        deps.log?.("claude takes no such attachment, skipped", {
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+        }),
+      );
+      // Into the running query now, or after the turn's message once it has one.
+      current?.steer(message);
+      steered.push(message);
     },
   };
 }
