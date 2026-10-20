@@ -170,37 +170,90 @@ function at(value: unknown, path: readonly string[]): unknown {
   return current;
 }
 
+/** A marker for a secret only another layer holds: its key is left out of the change. */
+const UNCHANGED = Symbol("unchanged");
+
+/** Drops `UNCHANGED` keys; one in a list cannot be left out, so it is refused. */
+function prune(value: unknown, label: readonly string[]): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item, index) => {
+      if (item === UNCHANGED) {
+        const where = [...label, String(index)].join(".");
+        throw Object.assign(
+          new Error(`No secret is stored at ${where} in this layer; enter it again`),
+          { code: "CONFIG_SECRET_MISSING", details: { path: where } },
+        );
+      }
+      return prune(item, [...label, String(index)]);
+    });
+  }
+  if (isObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== UNCHANGED)
+        .map(([key, item]) => [key, prune(item, [...label, key])]),
+    );
+  }
+  return value;
+}
+
 /**
- * `incoming` with the marker replaced, wherever its schema says a secret is,
- * by what the first of `sources` holding one has at the same place (by key,
- * by position in a list). The marker anywhere else is a value like any
- * other. A marker no source has a value for fails with
- * `CONFIG_SECRET_MISSING`; `label` prefixes its path.
+ * `incoming` (some top-level keys of a section) with the marker replaced,
+ * wherever its schema says a secret is, by what the layer being changed
+ * (`stored`) holds at the same place, by key or by position in a list. The
+ * marker anywhere else is a value like any other. A secret only another
+ * layer holds (`elsewhere`, the effective value) is never copied into this
+ * one: its key is left out, so the other layer keeps providing it. A marker
+ * no layer has a value for fails with `CONFIG_SECRET_MISSING`; `label`
+ * prefixes its path.
  */
 export function restoreSecrets(
   schema: unknown,
-  incoming: unknown,
-  sources: readonly unknown[],
+  incoming: Record<string, unknown>,
+  stored: unknown,
+  elsewhere: unknown,
   label: readonly string[] = [],
-): unknown {
-  return mapSecrets(
+): Record<string, unknown> {
+  const restored = mapSecrets(
     schema === undefined ? undefined : [schema],
     incoming,
     rootOf(schema),
     [],
     (value, path) => {
       if (value !== SECRET_REDACTED) return value;
-      const kept = sources
-        .map((source) => at(source, path))
-        .find((found) => found !== undefined && found !== null);
-      if (kept === undefined || kept === null) {
-        const where = [...label, ...path].join(".");
-        throw Object.assign(new Error(`No secret is stored at ${where} to keep; enter it again`), {
-          code: "CONFIG_SECRET_MISSING",
-          details: { path: where },
-        });
-      }
-      return kept;
+      const kept = at(stored, path);
+      if (kept !== undefined && kept !== null) return kept;
+      const other = at(elsewhere, path);
+      if (other !== undefined && other !== null) return UNCHANGED;
+      const where = [...label, ...path].join(".");
+      throw Object.assign(new Error(`No secret is stored at ${where} to keep; enter it again`), {
+        code: "CONFIG_SECRET_MISSING",
+        details: { path: where },
+      });
     },
   );
+  return prune(restored, label) as Record<string, unknown>;
+}
+
+/** The scalar values under a secret, as text, to scrub them from messages. */
+export function secretTexts(schema: unknown, value: unknown): string[] {
+  const found: string[] = [];
+  mapSecrets(schema === undefined ? undefined : [schema], value, rootOf(schema), [], (secret) => {
+    if (typeof secret === "string" || typeof secret === "number" || typeof secret === "boolean") {
+      const text = String(secret);
+      // Short values ("1", "on") would scrub ordinary words too.
+      if (text.length >= 4) found.push(text);
+    } else if (secret !== null && typeof secret === "object") {
+      found.push(...secretTexts(undefined, secret));
+    }
+    return secret;
+  });
+  return found;
+}
+
+/** `text` with every one of `secrets` replaced by the marker. */
+export function scrub(text: string, secrets: readonly string[]): string {
+  return [...secrets]
+    .toSorted((a, b) => b.length - a.length)
+    .reduce((current, secret) => current.split(secret).join(SECRET_REDACTED), text);
 }

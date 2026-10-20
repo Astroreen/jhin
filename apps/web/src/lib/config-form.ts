@@ -434,8 +434,10 @@ function check(
     out.push({ path: join(path), message: "Enter the secret: there is no stored one here" });
     return;
   }
-  // A secret the node keeps (security.md D417): saved back as it came, it stays.
-  if (value === SECRET_REDACTED && raw !== false && isSecret(resolve(raw, root), root)) return;
+  // A secret the node keeps (security.md D417): saved back as it came, it stays. The
+  // node decides where a secret is (it follows every schema keyword), so the marker
+  // passes here wherever it is; where the node has none, it is checked as a value there.
+  if (value === SECRET_REDACTED) return;
   if (raw === false) {
     out.push({ path: join(path), message: "Not allowed here" });
     return;

@@ -120,8 +120,12 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   by T3's marker `••••••` (`SECRET_REDACTED`) in the effective value and in
   both layers; an unset secret stays absent. `host.config.patch` and
   `mesh.config.patch` treat the marker as "keep what is stored": by key, by
-  position in a list, from the layer being changed or else the effective
-  value the page was shown, and only where the schema has a secret (elsewhere the
+  position in a list, from the layer being changed, and only where the
+  schema has a secret. A secret only another layer (or a default) holds is
+  never copied into this one: its key is left out of the change and the other
+  layer keeps providing it (a list item cannot be left out, so it is
+  refused). Messages of an invalid section (`error`, `issues`) have every
+  secret's text replaced by the marker, since a refinement may quote it (elsewhere the
   marker is a value like any other). The walk follows `$ref`, unions and
   intersections, `if`/`then`/`else`, tuples (`prefixItems`), `items`,
   `properties`, `patternProperties` and `additionalProperties`; a section

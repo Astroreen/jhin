@@ -290,7 +290,7 @@ describe("secrets (D83)", () => {
     expect(fields.get("name")?.secret).toBe(false);
   });
 
-  it("accepts the node's marker for a stored secret, of any type, and only there (security.md D417)", () => {
+  it("accepts the node's marker for a stored secret, of any type (security.md D417)", () => {
     const typed = served(
       z.object({
         count: z.number().meta({ writeOnly: true }).optional(),
@@ -300,7 +300,8 @@ describe("secrets (D83)", () => {
       }),
     );
     expect(validate(typed, { count: SECRET_REDACTED, keys: SECRET_REDACTED })).toEqual([]);
-    expect(validate(typed, { size: SECRET_REDACTED })).not.toEqual([]);
+    // The node, not the form, decides where a secret is.
+    expect(validate(typed, { size: SECRET_REDACTED })).toEqual([]);
     // Shown in JSON as the placeholder, and sent back as the marker the node gave.
     expect(redact(typed, { count: SECRET_REDACTED }, typed)).toEqual({ count: HIDDEN });
     expect(restore({ count: HIDDEN }, { count: SECRET_REDACTED })).toEqual({

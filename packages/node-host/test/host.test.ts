@@ -525,6 +525,16 @@ export default definePlugin({
         pin: z.number().meta({ writeOnly: true }).nullable().optional(),
         env: z.record(z.string(), z.string().meta({ writeOnly: true })).optional(),
         keys: z.array(z.string().meta({ writeOnly: true })).optional(),
+        project: z.string().optional().meta({ writeOnly: true }),
+      }),
+    );
+    context.config.define(
+      "acme.strict",
+      z.object({
+        token: z
+          .string()
+          .meta({ writeOnly: true })
+          .superRefine((value, ctx) => ctx.addIssue({ code: "custom", message: "refused " + value })),
       }),
     );
   },
@@ -534,9 +544,15 @@ export default definePlugin({
     );
     Fs.writeFileSync(
       Path.join(home, "config.jsonc"),
-      '{ "acme.vault": { "user": "me", "key": "s3cret", "pin": 1234, "env": { "A": "a-value" }, "keys": ["k-one", "k-two"] } }\n',
+      '{ "acme.vault": { "user": "me", "key": "s3cret", "pin": 1234, "env": { "A": "a-value" }, "keys": ["k-one", "k-two"] }, "acme.strict": { "token": "strict-token" }, "acme.gone": { "password": "gone-secret" } }\n',
     );
-    host = new HostProcess({ home, cwd: tempDir("cwd") });
+    const cwd = tempDir("cwd");
+    Fs.mkdirSync(Path.join(cwd, ".jhin"));
+    Fs.writeFileSync(
+      Path.join(cwd, ".jhin", "config.jsonc"),
+      '{ "acme.vault": { "project": "project-secret" } }\n',
+    );
+    host = new HostProcess({ home, cwd });
     await host.ready();
 
     const hidden = {
@@ -547,8 +563,20 @@ export default definePlugin({
       keys: ["••••••", "••••••"],
     };
     const read = await host.execute("host.config.get", { section: "acme.vault" });
-    expect(read.value).toMatchObject({ value: hidden, layers: { node: hidden } });
-    expect(JSON.stringify(read.value)).not.toMatch(/s3cret|1234|a-value|k-one|k-two/);
+    expect(read.value).toMatchObject({
+      value: { ...hidden, project: "••••••" },
+      layers: { node: hidden, project: { project: "••••••" } },
+    });
+    expect(JSON.stringify(read.value)).not.toMatch(
+      /s3cret|1234|a-value|k-one|k-two|project-secret/,
+    );
+    // A section no plugin defines shows no value in clear.
+    const gone = await host.execute("host.config.get", { section: "acme.gone" });
+    expect(gone.value.layers.node).toEqual({ password: "••••••" });
+    // A refinement quoting the value it refused does not leak it.
+    const strict = await host.execute("host.config.get", { section: "acme.strict" });
+    expect(strict.value.error).toEqual(expect.any(String));
+    expect(JSON.stringify(strict.value)).not.toContain("strict-token");
 
     // The form sends a whole top-level key back: the markers keep what is stored.
     const saved = await host.execute("host.config.patch", {
@@ -572,6 +600,17 @@ export default definePlugin({
     expect(file).toContain('"k-one"');
     expect(file).toContain('"k-three"');
     expect(file).not.toContain('"k-two"');
+
+    // A secret only the project file sets is never copied into the node file.
+    const project = await host.execute("host.config.patch", {
+      layer: "node",
+      section: "acme.vault",
+      values: { project: "••••••", user: "you" },
+    });
+    expect(project.value).toMatchObject({ applied: true });
+    const after = Fs.readFileSync(Path.join(home, "config.jsonc"), "utf8");
+    expect(after).toContain('"you"');
+    expect(after).not.toContain("project-secret");
 
     // A marker where nothing is stored is refused.
     const missing = await host.execute("host.config.patch", {

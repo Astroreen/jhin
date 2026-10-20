@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { SECRET_REDACTED } from "@jhin/host-api";
 
-import { redactSecrets, restoreSecrets } from "../src/secrets.ts";
+import { redactSecrets, restoreSecrets, scrub, secretTexts } from "../src/secrets.ts";
 
 const schemaOf = (type: z.ZodType) => z.toJSONSchema(type, { io: "input", unrepresentable: "any" });
 
@@ -51,17 +51,22 @@ describe("config secrets (security.md D417)", () => {
       }),
     );
     expect(
-      restoreSecrets(schema, { a: SECRET_REDACTED, list: ["new", SECRET_REDACTED], plain: "x" }, [
+      restoreSecrets(
+        schema,
+        { a: SECRET_REDACTED, list: ["new", SECRET_REDACTED], plain: "x" },
         { a: "old-a", list: ["one", "two"] },
-      ]),
+        undefined,
+      ),
     ).toEqual({ a: "old-a", list: ["new", "two"], plain: "x" });
   });
 
   it("keeps the marker as a value where no secret is", () => {
     const schema = schemaOf(z.object({ shown: z.string() }));
-    expect(restoreSecrets(schema, { shown: SECRET_REDACTED }, [{ shown: "old" }])).toEqual({
-      shown: SECRET_REDACTED,
-    });
+    expect(restoreSecrets(schema, { shown: SECRET_REDACTED }, { shown: "old" }, undefined)).toEqual(
+      {
+        shown: SECRET_REDACTED,
+      },
+    );
   });
 
   it("refuses a marker where nothing is stored, naming where", () => {
@@ -69,7 +74,7 @@ describe("config secrets (security.md D417)", () => {
       z.object({ env: z.record(z.string(), z.string().meta({ writeOnly: true })) }),
     );
     expect(() =>
-      restoreSecrets(schema, { env: { B: SECRET_REDACTED } }, [{ env: {} }], ["s"]),
+      restoreSecrets(schema, { env: { B: SECRET_REDACTED } }, { env: {} }, undefined, ["s"]),
     ).toThrow(
       expect.objectContaining({ code: "CONFIG_SECRET_MISSING", details: { path: "s.env.B" } }),
     );
@@ -116,13 +121,42 @@ describe("config secrets (security.md D417)", () => {
       list: [SECRET_REDACTED],
       nested: { b: SECRET_REDACTED },
     });
-    expect(restoreSecrets(undefined, hidden, [value])).toEqual(value);
+    expect(restoreSecrets(undefined, hidden as Record<string, unknown>, value, undefined)).toEqual(
+      value,
+    );
   });
 
-  it("keeps a secret from the next source when the first has none", () => {
-    const schema = schemaOf(z.object({ key: z.string().meta({ writeOnly: true }) }));
-    expect(restoreSecrets(schema, { key: SECRET_REDACTED }, [{}, { key: "effective" }])).toEqual({
-      key: "effective",
-    });
+  it("leaves out a secret only another layer holds, never copying it into this one", () => {
+    const schema = schemaOf(
+      z.object({
+        key: z.string().meta({ writeOnly: true }),
+        env: z.record(z.string(), z.string().meta({ writeOnly: true })),
+        keys: z.array(z.string().meta({ writeOnly: true })),
+      }),
+    );
+    const effective = { key: "project-key", env: { A: "project-a" }, keys: ["project-k"] };
+    expect(
+      restoreSecrets(
+        schema,
+        { key: SECRET_REDACTED, env: { A: SECRET_REDACTED, B: "new" } },
+        {},
+        effective,
+      ),
+    ).toEqual({ env: { B: "new" } });
+    // A list cannot leave one item out.
+    expect(() => restoreSecrets(schema, { keys: [SECRET_REDACTED] }, {}, effective, ["s"])).toThrow(
+      expect.objectContaining({ code: "CONFIG_SECRET_MISSING", details: { path: "s.keys.0" } }),
+    );
+  });
+
+  it("finds the text of secrets and scrubs it from messages", () => {
+    const schema = schemaOf(
+      z.object({ key: z.string().meta({ writeOnly: true }), name: z.string() }),
+    );
+    const secrets = secretTexts(schema, { key: "hunter22", name: "visible" });
+    expect(secrets).toEqual(["hunter22"]);
+    expect(scrub("hunter22 is not a valid key for visible", secrets)).toBe(
+      `${SECRET_REDACTED} is not a valid key for visible`,
+    );
   });
 });

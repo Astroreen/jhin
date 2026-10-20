@@ -50,7 +50,7 @@ import { readNodeId, resolveHome, type JhinHome } from "./home.ts";
 import { createFileModuleLoader } from "./loader.ts";
 import { createNodeLogger, type NodeLogger } from "./logger.ts";
 import { detectMachineKind, systemProbe } from "./machine.ts";
-import { redactSecrets, restoreSecrets } from "./secrets.ts";
+import { redactSecrets, restoreSecrets, scrub, secretTexts } from "./secrets.ts";
 import { buildOutputFilter, watch, type WatchTarget } from "./watcher.ts";
 
 export interface NodeHostOptions {
@@ -314,10 +314,13 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           const schema = (kernel.config.jsonSchema() as { properties: Record<string, unknown> })
             .properties[section];
           const hide = (value: unknown) => redactSecrets(schema, value);
-          const files = {
-            node: hide(readLayer(home.config, log)?.[section]),
-            project: hide(readLayer(projectConfig, log)?.[section]),
+          const raw = {
+            node: readLayer(home.config, log)?.[section],
+            project: readLayer(projectConfig, log)?.[section],
           };
+          const files = { node: hide(raw.node), project: hide(raw.project) };
+          // A refinement's message may quote the value it refused.
+          const secrets = [...secretTexts(schema, raw.node), ...secretTexts(schema, raw.project)];
           const comments: ConfigComment[] = [];
           const seen = new Set<string>();
           for (const file of [home.config, projectConfig]) {
@@ -336,8 +339,15 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
                 ? (error.details["issues"] as { path: string; message: string }[])
                 : undefined;
             return {
-              error: error instanceof Error ? error.message : String(error),
-              ...(issues === undefined ? {} : { issues }),
+              error: scrub(error instanceof Error ? error.message : String(error), secrets),
+              ...(issues === undefined
+                ? {}
+                : {
+                    issues: issues.map((issue) => ({
+                      path: issue.path,
+                      message: scrub(issue.message, secrets),
+                    })),
+                  }),
               layers: files,
               comments,
             };
@@ -500,16 +510,14 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     const stored = readLayer(file, log)?.[section];
     const schema = (kernel.config.jsonSchema() as { properties: Record<string, unknown> })
       .properties[section];
-    // The page shows the effective value, so a secret another layer sets is kept too.
+    // The page shows the effective value: a secret only another layer sets stays there.
     let effective: unknown;
     try {
       effective = kernel.config.get(section);
     } catch {
       // An invalid section has no effective value to keep a secret from.
     }
-    const restored = Object.entries(
-      restoreSecrets(schema, values, [stored, effective], [section]) as Record<string, unknown>,
-    );
+    const restored = Object.entries(restoreSecrets(schema, values, stored, effective, [section]));
     let text = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n";
     for (const [key, value] of restored) {
       text = applyEdits(
