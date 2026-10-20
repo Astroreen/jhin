@@ -17,7 +17,15 @@ import {
 } from "@jhin/client-api";
 import { toDisposable } from "@jhin/sdk";
 import { createTestKernel, mockCapability, type TestKernel } from "@jhin/testing";
-import { UI_SLOTS_CAPABILITY, createSlotRegistry } from "@jhin/ui";
+import {
+  SidebarProvider,
+  SlotsProvider,
+  UI_SLOTS_CAPABILITY,
+  createSlotRegistry,
+  type SlotRegistry,
+} from "@jhin/ui";
+import { act, type ComponentType } from "react";
+import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { sidebarPlugin } from "../src/plugins/sidebar.tsx";
@@ -49,6 +57,8 @@ function world(
   threads: ThreadRecord[],
   /** An error the node answers a call with, e.g. another device's unpin meanwhile. */
   refuse: (method: string, params: Record<string, unknown>) => Error | undefined = () => undefined,
+  /** What a call waits for before the node answers it. */
+  gate: Promise<void> = Promise.resolve(),
 ) {
   const connection = {
     id: A,
@@ -57,8 +67,10 @@ function world(
     state: "open",
     client: {},
   } as unknown as NodeConnection;
+  // Snapshots are stable while nothing changes, as the sidebar's views need them.
+  const connected = [connection];
   const connections: Connections = {
-    list: () => [connection],
+    list: () => connected,
     get: (id) => (id === A ? connection : undefined),
     add: () => {
       throw new Error("not used");
@@ -66,8 +78,9 @@ function world(
     remove: () => undefined,
     subscribe: () => toDisposable(() => undefined),
   };
+  const noMembers: never[] = [];
   const mesh: MeshMembership = {
-    members: () => [],
+    members: () => noMembers,
     subscribe: () => toDisposable(() => undefined),
   };
   let records = threads;
@@ -76,15 +89,19 @@ function world(
   const change = (threadId: string, update: (thread: ThreadRecord) => ThreadRecord) => {
     records = records.map((thread) => (thread.id === threadId ? update(thread) : thread));
   };
+  const projects = [project];
+  let shown: NodeCatalog | undefined;
   const catalog: ThreadsCatalog = {
-    catalog: (target: NodeTarget): NodeCatalog =>
-      targetKey(target) === A
-        ? { status: "ready", projects: [project], threads: records }
-        : { status: "loading", projects: [], threads: [] },
+    catalog: (target: NodeTarget): NodeCatalog => {
+      if (targetKey(target) !== A) return LOADING;
+      if (shown?.threads !== records) shown = { status: "ready", projects, threads: records };
+      return shown;
+    },
     subscribe: () => toDisposable(() => undefined),
     async call<T>(_target: NodeTarget, method: string, params?: unknown): Promise<T> {
       const input = params as Record<string, unknown> & { threadId: string };
       calls.push({ method, params: input });
+      await gate;
       const refused = refuse(method, input);
       if (refused !== undefined) throw refused;
       const { threadId } = input;
@@ -137,6 +154,8 @@ function world(
   return { connections, mesh, threads: catalog, navigation, visited, calls };
 }
 
+const LOADING: NodeCatalog = { status: "loading", projects: [], threads: [] };
+
 let kernel: TestKernel | undefined;
 afterEach(async () => {
   await kernel?.stop();
@@ -148,14 +167,16 @@ async function start(
   threads: ThreadRecord[],
   route: Route = {},
   refuse?: Parameters<typeof world>[1],
+  gate?: Promise<void>,
 ) {
-  const w = world(threads, refuse);
+  const w = world(threads, refuse, gate);
   w.navigation.navigate(route);
   w.visited.length = 0;
+  const slots: SlotRegistry = createSlotRegistry();
   kernel = await createTestKernel({
     side: "client",
     plugins: [
-      mockCapability(UI_SLOTS_CAPABILITY, createSlotRegistry()),
+      mockCapability(UI_SLOTS_CAPABILITY, slots),
       mockCapability(CONNECTIONS_CAPABILITY, w.connections),
       mockCapability(NAVIGATION_CAPABILITY, w.navigation),
       mockCapability(MESH_CAPABILITY, w.mesh),
@@ -165,7 +186,7 @@ async function start(
     ],
   });
   const run = (name: string, input: unknown = {}) => kernel!.commands.execute(name, input);
-  return { ...w, run };
+  return { ...w, run, slots };
 }
 
 const thread = (id: string, createdHoursAgo: number, extra: Partial<ThreadRecord> = {}) =>
@@ -287,5 +308,42 @@ describe("moving a thread, as dropping it does (D78)", () => {
     await expect(
       run("sidebar.thread.move", { node: A, threadId: "nope", section: "pinned" }),
     ).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
+  });
+
+  it("keeps the dropped row busy until the nodes have the drop (D78)", async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const { run, slots } = await start([thread("a1", 1), thread("a2", 2)], {}, undefined, gate);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const Sidebar = slots.list("app.sidebar")[0]!.component as ComponentType;
+    await act(async () =>
+      root.render(
+        <SlotsProvider registry={slots}>
+          <SidebarProvider>
+            <Sidebar />
+          </SidebarProvider>
+        </SlotsProvider>,
+      ),
+    );
+    const row = (title: string) =>
+      container.querySelector(`[data-testid="sidebar-row-card"][aria-label^="${title},"]`)!;
+    expect(row("a2").getAttribute("aria-busy")).toBeNull();
+
+    let moved!: Promise<unknown>;
+    await act(async () => {
+      moved = run("sidebar.thread.move", { node: A, threadId: "a2", section: "active", index: 0 });
+    });
+    expect(row("a2").getAttribute("aria-busy")).toBe("true");
+    expect(row("a1").getAttribute("aria-busy")).toBeNull();
+
+    await act(async () => {
+      release();
+      await moved;
+    });
+    expect(row("a2").getAttribute("aria-busy")).toBeNull();
+    act(() => root.unmount());
+    container.remove();
   });
 });
