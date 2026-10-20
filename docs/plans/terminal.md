@@ -111,9 +111,14 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
   closed" when the node reports the run the tab saw it in (closed elsewhere
   meanwhile); only when the run is another one (the node started over) does
   the tab open a new shell. What xterm.js would answer to queries in
-  replayed output (cursor position, device attributes, window and mode
-  reports, colours) is not sent: while a replay is parsed, handlers on
-  xterm's parser take those queries so xterm does not reply. Typing is
+  replayed output (cursor position, status, device attributes, mode reports,
+  settings, version, colours) is not sent: while a replay is parsed,
+  handlers on xterm's parser take the sequences that are only queries, and
+  for colour sequences (`OSC 4`, `10`–`12`), which may set and query in one,
+  xterm applies them in place and only the reply it emits in that same task
+  is dropped. Window operations (`CSI … t`) are left alone: the same byte
+  also resizes and keeps the title stack, and this xterm does not answer
+  their reports. Typing is
   never dropped: keys pressed while the kept output is replayed go to the
   shell (a new split's prompt is often replayed while the user already
   types), and what is typed before the terminal is open (its shell

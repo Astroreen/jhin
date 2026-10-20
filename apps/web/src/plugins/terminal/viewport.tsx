@@ -107,7 +107,9 @@ export function TerminalViewport(props: {
       },
     });
 
-    const input = terminal.onData((data) => attachment.write(data));
+    const input = terminal.onData((data) => {
+      if (!muted.isReply()) attachment.write(data);
+    });
 
     const themeObserver = new MutationObserver(() => {
       terminal.options.theme = terminalThemeFromApp(containerRef.current);

@@ -8,6 +8,15 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 import { TerminalViewport } from "../src/plugins/terminal/viewport.tsx";
 
 const ESC = String.fromCharCode(27);
+const BEL = String.fromCharCode(7);
+/**
+ * Live output that ends with a query only it can be answered with: a
+ * cursor position report at row 5, column 7. Every reply to what came
+ * before (the replay, then this output) and every key sent meanwhile is
+ * written by the time its reply is.
+ */
+const SENTINEL = `${ESC}[5;7H${ESC}[6n`;
+const SENTINEL_REPLY = `${ESC}[5;7R`;
 const cleanups: (() => void)[] = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
@@ -109,16 +118,11 @@ describe("the terminal viewport", () => {
     // the prompt is replayed, and the user is typing already.
     const view = render({ history: "$ ", onFollow: (container) => type(container, "e") });
     await view.sent((data) => data === "e");
-    expect(view.writes).toEqual(["e"]);
+    view.output(SENTINEL);
+    await view.sent((data) => data === SENTINEL_REPLY);
+    // Once, and before what the next live output made xterm answer.
+    expect(view.writes).toEqual(["e", SENTINEL_REPLY]);
   });
-
-  /**
-   * Live output that ends with a query only it can be answered with: a
-   * cursor position report at row 5, column 7. Every reply to what came
-   * before (the replay, then this output) is written by the time it is.
-   */
-  const SENTINEL = `${ESC}[5;7H${ESC}[6n`;
-  const SENTINEL_REPLY = `${ESC}[5;7R`;
 
   /** A node whose kept output is `history`; once followed, `live` is sent as live output. */
   async function replayThenLive(history: string, live: string) {
@@ -137,6 +141,20 @@ describe("the terminal viewport", () => {
     expect(await replayThenLive(`$ ${ESC}[6n`, "")).toEqual([SENTINEL_REPLY]);
     // The same query live is answered.
     expect(await replayThenLive("$ ", `${ESC}[6n`)).toEqual([`${ESC}[1;3R`, SENTINEL_REPLY]);
+  });
+
+  it("keeps the colours a replayed sequence sets beside a query", async () => {
+    // Sets colour 1 and asks for colour 2 in one sequence: only the question goes.
+    expect(await replayThenLive(`${ESC}]4;1;rgb:12/34/56;2;?${BEL}`, "")).toEqual([SENTINEL_REPLY]);
+    // Colour 1 is set: a live query of it says so.
+    expect(await replayThenLive(`${ESC}]4;1;rgb:12/34/56;2;?${BEL}`, `${ESC}]4;1;?${BEL}`)).toEqual(
+      [`${ESC}]4;1;rgb:1212/3434/5656${ESC}\\`, SENTINEL_REPLY],
+    );
+    // Dynamic colours the same way: the foreground set, the background asked.
+    expect(await replayThenLive(`${ESC}]10;rgb:ab/cd/ef;?${BEL}`, `${ESC}]10;?${BEL}`)).toEqual([
+      `${ESC}]10;rgb:abab/cdcd/efef${ESC}\\`,
+      SENTINEL_REPLY,
+    ]);
   });
 
   // Every query this xterm answers, from replay.ts's list. DA3, XTWINOPS
