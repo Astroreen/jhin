@@ -432,7 +432,6 @@ const PULL_REQUEST_PATHS: readonly RegExp[] = [
   /^\/(.+?\/_git\/[^/]+)\/pullrequest\/(\d+)\/?$/,
 ];
 
-/** The host, repository and number of a pull request URL, or `undefined` for anything else. */
 /** The parts of an http(s) URL this contract needs; no `URL` here, the package is isomorphic. */
 function splitUrl(
   url: string,
@@ -442,7 +441,8 @@ function splitUrl(
   return {
     protocol: match[1]!.toLowerCase(),
     credentials: match[2] !== undefined,
-    host: `${match[3]!}${match[4] ?? ""}`.toLowerCase(),
+    // The host alone, as remotes name it: a link's key is the same whichever way it was named.
+    host: match[3]!.toLowerCase(),
     path: match[5] || "/",
   };
 }
@@ -473,8 +473,7 @@ export function repositoryOfRemote(url: string): { host: string; repository: str
   if (parsed === undefined) return undefined;
   const repository = parsed.path.replace(/^\/+/, "").replace(/(?:\.git)?\/?$/, "");
   if (repository === "") return undefined;
-  // `ssh://git@host:22/…` names the host without its port.
-  return { host: parsed.host.replace(/:\d+$/, ""), repository };
+  return { host: parsed.host, repository };
 }
 
 /** The identity links are compared by: `host/owner/repo#number`, lowercased. */

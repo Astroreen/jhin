@@ -39,6 +39,10 @@ export interface LinksDeps {
 }
 
 export interface Links {
+  /** Stops writing: reads still running when the plugin goes write nothing. */
+  dispose(): void;
+  /** Resolves once the reads started by `link` have ended (for tests and disposal). */
+  settled(): Promise<void>;
   list(threadId: string): Promise<ThreadPullRequest[]>;
   all(): Promise<ThreadPullRequests[]>;
   link(
@@ -78,15 +82,32 @@ export function createLinks(deps: LinksDeps): Links {
   /** Changes to one thread's links run one at a time. */
   const chains = new Map<string, Promise<unknown>>();
 
-  const load = () =>
-    (loaded ??= (async () => {
+  let disposed = false;
+  /** Reads started by `link`, so disposal and tests can wait for them. */
+  const reads = new Set<Promise<unknown>>();
+  /** Links whose last read failed: a failure is reported once, not every period. */
+  const failing = new Set<string>();
+
+  const load = () => {
+    loaded ??= (async () => {
       for (const entry of await deps.kv.list(NAMESPACE, { prefix: "links/" })) {
         const parsed = ThreadPullRequest.array().safeParse(entry.value);
-        if (parsed.success && parsed.data.length > 0) {
-          links.set(entry.key.slice("links/".length), parsed.data);
+        if (!parsed.success) {
+          deps.warn("stored links of a thread cannot be read", {
+            key: entry.key,
+            error: parsed.error.message,
+          });
+          continue;
         }
+        if (parsed.data.length > 0) links.set(entry.key.slice("links/".length), parsed.data);
       }
-    })());
+    })();
+    // A storage hiccup is not kept: the next call reads again.
+    loaded.catch(() => {
+      loaded = undefined;
+    });
+    return loaded;
+  };
 
   function queued<T>(threadId: string, task: () => Promise<T>): Promise<T> {
     const next = (chains.get(threadId) ?? Promise.resolve()).then(task);
@@ -98,6 +119,7 @@ export function createLinks(deps: LinksDeps): Links {
   }
 
   const save = async (threadId: string, list: ThreadPullRequest[]) => {
+    if (disposed) return;
     if (list.length === 0) {
       links.delete(threadId);
       await deps.kv.delete(NAMESPACE, `links/${threadId}`);
@@ -141,19 +163,29 @@ export function createLinks(deps: LinksDeps): Links {
   const readInto = async (threadId: string, link: ThreadPullRequest) => {
     try {
       const snapshot = await deps.read(threadId, link);
+      failing.delete(link.key);
       if (snapshot === undefined) return link;
       return { ...link, snapshot, syncedAt: new Date().toISOString() };
     } catch (error) {
-      deps.warn("reading a linked pull request failed", {
-        threadId,
-        key: link.key,
-        error: String(error),
-      });
+      if (!failing.has(link.key)) {
+        failing.add(link.key);
+        deps.warn("reading a linked pull request failed", {
+          threadId,
+          key: link.key,
+          error: String(error),
+        });
+      }
       return link;
     }
   };
 
   const service: Links = {
+    dispose() {
+      disposed = true;
+    },
+    async settled() {
+      while (reads.size > 0) await Promise.allSettled(reads);
+    },
     async list(threadId) {
       await load();
       return links.get(threadId) ?? [];
@@ -187,7 +219,13 @@ export function createLinks(deps: LinksDeps): Links {
       });
       // Its state comes from the forge, after the link is answered.
       if (!result.alreadyLinked && snapshot === undefined) {
-        void service.sync(threadId).catch(() => undefined);
+        const read = service
+          .sync(threadId)
+          .catch((error: unknown) =>
+            deps.warn("reading a linked pull request failed", { threadId, error: String(error) }),
+          )
+          .finally(() => reads.delete(read));
+        reads.add(read);
       }
       return result;
     },
@@ -217,9 +255,9 @@ export function createLinks(deps: LinksDeps): Links {
           if (index < 0) return;
           const current = list[index]!;
           const next = { ...current, snapshot: read.snapshot, syncedAt: read.syncedAt! };
-          // Only a change is written and published.
-          if (JSON.stringify(current.snapshot) === JSON.stringify(next.snapshot)) return;
           await save(threadId, list.toSpliced(index, 1, next));
+          // When it was read is kept; only a changed snapshot is published.
+          if (JSON.stringify(current.snapshot) === JSON.stringify(next.snapshot)) return;
           await deps.append(SourceControlEvents.pullRequestUpdated, {
             threadId,
             pullRequest: next,
@@ -244,8 +282,13 @@ export function createLinks(deps: LinksDeps): Links {
     async remove(threadId) {
       await load();
       await queued(threadId, async () => {
-        if (!links.has(threadId)) return;
+        const list = links.get(threadId) ?? [];
+        if (list.length === 0) return;
         await save(threadId, []);
+        // Said per link: a client holding them drops them whether or not it knew the thread.
+        for (const link of list) {
+          await deps.append(SourceControlEvents.pullRequestUnlinked, { threadId, key: link.key });
+        }
       });
     },
   };

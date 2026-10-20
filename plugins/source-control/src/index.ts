@@ -85,7 +85,7 @@ export {
   splitUpstream,
 } from "./actions.ts";
 export { agentWriter, parseJsonObject, plainWriter } from "./writer.ts";
-export { pullRequestUrl } from "./links.ts";
+export { createLinks, pullRequestUrl } from "./links.ts";
 
 export const CONFIG_SECTION = "jhin.source-control";
 const NAMESPACE = "jhin.source-control";
@@ -741,6 +741,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   // --- Timers and config ---------------------------------------------------------------
 
   let prTimer: ReturnType<typeof setInterval> | undefined;
+  let linksReading = false;
   const schedulePullRequests = () => {
     if (prTimer !== undefined) clearInterval(prTimer);
     prTimer = undefined;
@@ -750,12 +751,18 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       for (const repo of repos.values()) {
         if (repo.provider !== null) void lookUpPullRequests(repo, { force: false });
       }
-      void links
-        .threads()
-        .then((ids) => Promise.all(ids.map((id) => links.sync(id))))
+      // One thread after another, and no new round while the last one still reads.
+      if (linksReading) return;
+      linksReading = true;
+      void (async () => {
+        for (const id of await links.threads()) await links.sync(id);
+      })()
         .catch((error: unknown) =>
           context.log.warn("reading linked pull requests failed", { error: String(error) }),
-        );
+        )
+        .finally(() => {
+          linksReading = false;
+        });
     }, seconds * 1000);
     prTimer.unref?.();
   };
@@ -772,6 +779,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   context.subscriptions.add({
     dispose() {
       stopped = true;
+      links.dispose();
       if (prTimer !== undefined) clearInterval(prTimer);
       for (const repo of repos.values()) untrack(repo);
     },

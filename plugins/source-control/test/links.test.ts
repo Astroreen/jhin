@@ -9,7 +9,7 @@ import {
 } from "@jhin/source-control-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { pullRequestUrl } from "../src/index.ts";
+import { createLinks, pullRequestUrl } from "../src/index.ts";
 import { fakeGh, ghPullRequest, git, node, repository, temp, write } from "./support.ts";
 
 interface Listed {
@@ -212,5 +212,113 @@ describe("linked pull request helpers", () => {
         ]),
       ),
     ).toEqual([[3], [2], [1]]);
+  });
+});
+
+describe("reading linked pull requests again", () => {
+  /** A key-value store in memory. */
+  function memoryKv() {
+    const data = new Map<string, unknown>();
+    return {
+      get: async (namespace: string, key: string) => data.get(`${namespace}/${key}`) as never,
+      set: async (namespace: string, key: string, value: unknown) => {
+        data.set(`${namespace}/${key}`, value);
+      },
+      delete: async (namespace: string, key: string) => data.delete(`${namespace}/${key}`),
+      list: async (namespace: string, options: { prefix?: string } = {}) =>
+        [...data]
+          .filter(([key]) => key.startsWith(`${namespace}/${options.prefix ?? ""}`))
+          .map(([key, value]) => ({ key: key.slice(namespace.length + 1), value: value as never })),
+    };
+  }
+
+  function setup() {
+    const events: { type: string; payload: unknown }[] = [];
+    const reads: string[] = [];
+    const answers = new Map<number, Record<string, unknown> | Error>();
+    const warnings: string[] = [];
+    const links = createLinks({
+      kv: memoryKv() as never,
+      append: async (type, payload) => {
+        events.push({ type, payload });
+      },
+      remoteOf: async () => "https://github.com/acme/demo.git",
+      read: async (_threadId, link) => {
+        reads.push(link.key);
+        const answer = answers.get(link.number);
+        if (answer instanceof Error) throw answer;
+        return answer === undefined
+          ? undefined
+          : ({
+              number: link.number,
+              title: "T",
+              url: link.url,
+              state: "open",
+              isDraft: false,
+              headBranch: "h",
+              baseBranch: "main",
+              checks: { state: null, passed: 0, failed: 0, pending: 0, total: 0 },
+              ...answer,
+            } as never);
+      },
+      warn: (message) => warnings.push(message),
+    });
+    return { links, events, reads, answers, warnings };
+  }
+
+  it("reads open and unread links, skips merged ones, and publishes only a change", async () => {
+    const { links, events, reads, answers } = setup();
+    answers.set(1, { state: "open" });
+    answers.set(2, { state: "merged" });
+    await links.link("t", { url: "https://github.com/acme/demo/pull/1" }, "manual");
+    await links.link("t", { url: "https://github.com/acme/demo/pull/2" }, "manual");
+    await links.settled();
+    reads.length = 0;
+    events.length = 0;
+    await links.sync("t");
+    expect(reads).toEqual(["github.com/acme/demo#1"]);
+    // Read again, unchanged: its time moves, nothing is published.
+    expect(events).toEqual([]);
+    const before = (await links.list("t"))[0]!.syncedAt;
+    expect(before).toBeDefined();
+    answers.set(1, { state: "closed" });
+    await links.sync("t");
+    expect(events.map((event) => event.type)).toEqual(["git.pr.updated"]);
+    // `all` reads the merged one too.
+    reads.length = 0;
+    await links.sync("t", { all: true });
+    expect(reads).toEqual(["github.com/acme/demo#1", "github.com/acme/demo#2"]);
+  });
+
+  it("does not bring back a link unlinked while it was read, and warns once per failing link", async () => {
+    const { links, answers, warnings } = setup();
+    answers.set(3, new Error("gh is gone"));
+    await links.link("t", { url: "https://github.com/acme/demo/pull/3" }, "manual");
+    await links.settled();
+    await links.sync("t");
+    await links.sync("t");
+    expect(warnings).toEqual(["reading a linked pull request failed"]);
+
+    answers.set(3, { state: "open" });
+    const reading = links.sync("t");
+    await links.unlink("t", { url: "https://github.com/acme/demo/pull/3" });
+    await reading;
+    expect(await links.list("t")).toEqual([]);
+  });
+
+  it("says each link went when its thread goes, and keys a URL with a port as its host", async () => {
+    const { links, events } = setup();
+    const linked = await links.link("t", { url: "https://git.acme.io:8443/a/b/pull/4" }, "manual");
+    expect(linked.pullRequest.key).toBe("git.acme.io/a/b#4");
+    expect(
+      (await links.link("t", { repository: "a/b", number: 4, host: "git.acme.io" }, "agent"))
+        .alreadyLinked,
+    ).toBe(true);
+    await links.settled();
+    events.length = 0;
+    await links.remove("t");
+    expect(events).toEqual([
+      { type: "git.pr.unlinked", payload: { threadId: "t", key: "git.acme.io/a/b#4" } },
+    ]);
   });
 });

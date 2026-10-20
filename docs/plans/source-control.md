@@ -522,7 +522,9 @@ pull request that then shows on the card, with screenshots).
   lowercased), carries its URL, who linked it (`manual`, `created`, `agent`),
   when, and the forge's last snapshot of it (state, title, head and base,
   draft, checks, when it merged or closed). Links live in `storage.kv` and go
-  with their thread. Changes are D34's `git.pr.linked`, `git.pr.unlinked` and
+  with their thread (a `git.pr.unlinked` for each). A link is written before
+  its event: if publishing fails, `git.status` still has it. A link's key
+  takes the host without its port, as a remote names it. Changes are D34's `git.pr.linked`, `git.pr.unlinked` and
   `git.pr.updated` events on the node's `source-control` stream, and
   `git.status` returns every thread's links, so a client follows them as it
   follows statuses (D114, D118).
@@ -543,7 +545,9 @@ pull request that then shows on the card, with screenshots).
   `githubHosts`) when a link is made and then every
   `pullRequestRefreshSeconds` while the pull request is open or unread; a
   merged or closed one is read again only on `git.pr.list` with `refresh`.
-  Only a change is written and published.
+  Threads are read one after another, and a new round waits for the last;
+  `syncedAt` moves with each read, only a changed snapshot is published, and a
+  link whose read fails is reported once until it reads again.
 - **D270. Stacks are derived as T3 derives them**: a linked pull request's
   parent is the one of the same repository whose head is its base; a head two
   share chains nothing; chains come newest first (`pullRequestChains` in
