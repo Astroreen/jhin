@@ -166,7 +166,7 @@ export function redactSecrets(schema: unknown, value: unknown): unknown {
     // Inside a list, the marker names its secret's place, so a reorder keeps it.
     (_value, path) =>
       path.some((part) => /^\d+$/.test(part))
-        ? `${SECRET_REDACTED}#${path.join(".")}`
+        ? `${SECRET_REDACTED}#${toPointer(path)}`
         : SECRET_REDACTED,
   );
 }
@@ -174,12 +174,25 @@ export function redactSecrets(schema: unknown, value: unknown): unknown {
 function at(value: unknown, path: readonly string[]): unknown {
   let current = value;
   for (const key of path) {
-    if (Array.isArray(current)) current = current[Number(key)];
-    else if (isObject(current)) current = current[key];
+    // Own entries only: `constructor` or `toString` is no stored secret.
+    if (Array.isArray(current) && /^\d+$/.test(key)) current = current[Number(key)];
+    else if (isObject(current) && Object.hasOwn(current, key)) current = current[key];
     else return undefined;
   }
   return current;
 }
+
+/** A JSON Pointer (RFC 6901) for a path, so keys with dots or slashes stay whole. */
+const toPointer = (path: readonly string[]) =>
+  path.map((part) => `/${part.replace(/~/g, "~0").replace(/\//g, "~1")}`).join("");
+
+const fromPointer = (pointer: string): string[] | undefined =>
+  pointer.startsWith("/")
+    ? pointer
+        .slice(1)
+        .split("/")
+        .map((part) => part.replace(/~1/g, "/").replace(/~0/g, "~"))
+    : undefined;
 
 /** A marker for a secret only another layer holds: its key is left out of the change. */
 const UNCHANGED = Symbol("unchanged");
@@ -234,9 +247,13 @@ export function restoreSecrets(
       if (!isRedactedSecret(value)) return value;
       // An addressed marker is the secret at that place, wherever it was moved to.
       const address =
-        value === SECRET_REDACTED ? path : value.slice(SECRET_REDACTED.length + 1).split(".");
+        value === SECRET_REDACTED ? path : fromPointer(value.slice(SECRET_REDACTED.length + 1));
       // An address names a secret of the layer, nothing else.
-      if (value !== SECRET_REDACTED && !secretPaths(schema, stored).includes(address.join("."))) {
+      if (
+        address === undefined ||
+        (value !== SECRET_REDACTED &&
+          !secretPaths(schema, stored).some((secret) => toPointer(secret) === toPointer(address)))
+      ) {
         throw Object.assign(new Error(`${value} names no secret of this section`), {
           code: "CONFIG_SECRET_MISSING",
           details: { path: [...label, ...path].join(".") },
@@ -273,15 +290,15 @@ export function secretTexts(schema: unknown, value: unknown): string[] {
 }
 
 /** Where secrets are in `value`, as dotted paths (`env.A`, `keys.0`). */
-export function secretPaths(schema: unknown, value: unknown): string[] {
-  const found: string[] = [];
+export function secretPaths(schema: unknown, value: unknown): string[][] {
+  const found: string[][] = [];
   mapSecrets(
     schema === undefined ? undefined : [schema],
     value,
     rootOf(schema),
     [],
     (secret, path) => {
-      found.push(path.join("."));
+      found.push([...path]);
       return secret;
     },
   );

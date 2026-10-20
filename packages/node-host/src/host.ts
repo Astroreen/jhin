@@ -321,10 +321,12 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           const files = { node: hide(raw.node), project: hide(raw.project) };
           // A refinement's message may quote the value it refused.
           const secrets = [...secretTexts(schema, raw.node), ...secretTexts(schema, raw.project)];
-          const secretAt = new Set([
-            ...secretPaths(schema, raw.node),
-            ...secretPaths(schema, raw.project),
-          ]);
+          // Issue paths are dotted, as the kernel reports them.
+          const secretAt = new Set(
+            [...secretPaths(schema, raw.node), ...secretPaths(schema, raw.project)].map((path) =>
+              path.join("."),
+            ),
+          );
           /** An issue about a secret says so without its own message, which may quote it. */
           const aboutSecret = (path: string) =>
             [...secretAt].some((secret) => path === secret || path.startsWith(`${secret}.`));
@@ -346,12 +348,14 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
                 ? (error.details["issues"] as { path: string; message: string }[])
                 : undefined;
             return {
-              // With issues listed, the summary is said without their messages.
-              // The kernel's own summary, never a message that might quote a value.
+              // An invalid value: the summary without the issues' messages, which may
+              // quote a secret. Anything else (a section no plugin defines) as it is.
               error:
-                issues === undefined
-                  ? `Config section ${section} is invalid`
-                  : `Config section ${section} is invalid (${issues.length} ${issues.length === 1 ? "issue" : "issues"})`,
+                error instanceof KernelError && error.code === "CONFIG_INVALID"
+                  ? `Config section ${section} is invalid${issues === undefined ? "" : ` (${issues.length} ${issues.length === 1 ? "issue" : "issues"})`}`
+                  : error instanceof Error
+                    ? error.message
+                    : String(error),
               ...(issues === undefined
                 ? {}
                 : {

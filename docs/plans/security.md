@@ -118,30 +118,35 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
 - **D417. `host.config.get` redacts secrets.** Every value under a
   `writeOnly` field of a section's JSON Schema (config-ui D83) is replaced
   by T3's marker `••••••` (`SECRET_REDACTED`) in the effective value and in
-  both layers; an unset secret stays absent. `host.config.patch` and
-  `mesh.config.patch` treat the marker as "keep what is stored": by key, by
-  position in a list, from the layer being changed, and only where the
-  schema has a secret. A secret only another layer (or a default) holds is
-  never copied into this one: its key is left out of the change and the other
-  layer keeps providing it (a list item cannot be left out, so it is
-  refused). Inside a list the marker names its secret's place
-  (`••••••#keys.1`), so a reordered or shortened list keeps each secret;
-  `isRedactedSecret` (`@jhin/host-api`) tells either form; an address that
-  names no secret of the layer is refused. An invalid
-  section's `error` is the kernel's summary, an issue about a secret says
-  only that it is not valid, and other issues have every secret's text (of
-  4 characters or more) replaced by the marker, since a refinement may quote
-  it (elsewhere the
-  marker is a value like any other). The walk follows `$ref`, unions and
+  both layers; an unset secret stays absent. Inside a list the marker names
+  its secret's place as a JSON Pointer (`••••••#/keys/1`), so a reordered
+  or shortened list keeps each secret; `isRedactedSecret`
+  (`@jhin/host-api`) tells either form. The walk follows `$ref`, unions and
   intersections, `if`/`then`/`else`, `dependentSchemas`, tuples
-  (`prefixItems`), `items`, `contains`, `unevaluatedProperties`,
-  `properties`, `patternProperties` and `additionalProperties`; a section
-  no plugin defines has no schema, so all of its scalars are redacted. A marker where nothing is stored is refused
-  (`CONFIG_SECRET_MISSING`). The settings page's `<hidden secret>`
-  placeholder sends the marker, so a saved form keeps its secrets without
-  ever receiving them. T3 keeps secrets in a secret store apart from the
-  settings file; Jhin keeps them in the config files (D18) and redacts on
-  the way out.
+  (`prefixItems`), `items`, `contains`, `properties`, `patternProperties`,
+  `additionalProperties` and `unevaluatedProperties`; a section no plugin
+  defines has no schema, so all of its scalars are redacted.
+
+  `host.config.patch` and `mesh.config.patch` treat the marker as "keep
+  what is stored", only where the schema has a secret (elsewhere the marker
+  is a value like any other): by key or by position in a list, or at the
+  marker's own address, which must name a secret; always from the layer
+  being changed, by own keys only. A secret only another layer (or a
+  default) holds is never copied into this one: its key is left out of the
+  change, and the other layer keeps providing it. A marker no layer has a
+  value for, or a list item only another layer holds, is refused
+  (`CONFIG_SECRET_MISSING`).
+
+  An invalid section reports `Config section <s> is invalid` with its
+  issues: an issue about a secret says only that it is not valid, and the
+  others have every secret's text (of 4 characters or more) replaced by the
+  marker, since a refinement may quote it. Other errors (a section no
+  plugin defines) are reported as they are.
+
+  The settings page's `<hidden secret>` placeholder sends the marker, so a
+  saved form keeps its secrets without ever receiving them. T3 keeps
+  secrets in a secret store apart from the settings file; Jhin keeps them
+  in the config files (D18) and redacts on the way out.
 
 ### Browsers
 

@@ -244,6 +244,19 @@ describe("a config section as a form (D80)", () => {
     expect(view.state.value).toMatchObject({ auth: { password: "pw" } });
   });
 
+  it("shows the node's marker in a number secret and saves it back untouched (security.md D417)", async () => {
+    const view = mountForm({ pin: "••••••" });
+    const pin = page.getByLabelText("Pin", { exact: true });
+    expect(pin.element()).toHaveProperty("type", "password");
+    expect(pin.element()).toHaveProperty("value", "••••••");
+    // Untouched, the marker goes back as it came and is no error.
+    expect(view.state.value).toEqual({ pin: "••••••" });
+    expect(page.getByRole("alert").elements()).toEqual([]);
+    // Typed over, it is a number again.
+    await userEvent.fill(pin, "4321");
+    expect(view.state.value).toEqual({ pin: 4321 });
+  });
+
   it("hides secrets in the section's JSON and keeps them through an edit (D83)", async () => {
     const changes: unknown[] = [];
     const container = document.createElement("div");

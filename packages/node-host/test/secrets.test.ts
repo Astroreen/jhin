@@ -106,7 +106,7 @@ describe("config secrets (security.md D417)", () => {
         mode: { kind: "key", key: "k" },
       }),
     ).toEqual({
-      pair: ["user", `${SECRET_REDACTED}#pair.1`],
+      pair: ["user", `${SECRET_REDACTED}#/pair/1`],
       vars: { SECRET_A: SECRET_REDACTED, PLAIN: "p" },
       mode: { kind: "key", key: SECRET_REDACTED },
     });
@@ -118,7 +118,7 @@ describe("config secrets (security.md D417)", () => {
     expect(hidden).toEqual({
       a: SECRET_REDACTED,
       n: SECRET_REDACTED,
-      list: [`${SECRET_REDACTED}#list.0`],
+      list: [`${SECRET_REDACTED}#/list/0`],
       nested: { b: SECRET_REDACTED },
     });
     expect(restoreSecrets(undefined, hidden as Record<string, unknown>, value, undefined)).toEqual(
@@ -165,9 +165,9 @@ describe("config secrets (security.md D417)", () => {
     const stored = { keys: ["first", "second", "third"] };
     const shown = redactSecrets(schema, stored) as { keys: string[] };
     expect(shown.keys).toEqual([
-      `${SECRET_REDACTED}#keys.0`,
-      `${SECRET_REDACTED}#keys.1`,
-      `${SECRET_REDACTED}#keys.2`,
+      `${SECRET_REDACTED}#/keys/0`,
+      `${SECRET_REDACTED}#/keys/1`,
+      `${SECRET_REDACTED}#/keys/2`,
     ]);
     // The first removed and the last moved up front.
     expect(
@@ -182,7 +182,7 @@ describe("config secrets (security.md D417)", () => {
     expect(() =>
       restoreSecrets(
         schema,
-        { keys: [`${SECRET_REDACTED}#name`] },
+        { keys: [`${SECRET_REDACTED}#/name`] },
         { keys: [], name: "n" },
         undefined,
       ),
@@ -204,7 +204,33 @@ describe("config secrets (security.md D417)", () => {
     expect(redactSecrets(schema, { a: { kind: 1, key: "k" }, b: { x: "y" }, c: ["z"] })).toEqual({
       a: { kind: 1, key: SECRET_REDACTED },
       b: { x: SECRET_REDACTED },
-      c: [`${SECRET_REDACTED}#c.0`],
+      c: [`${SECRET_REDACTED}#/c/0`],
     });
+  });
+
+  it("addresses list secrets under keys with dots and slashes", () => {
+    const schema = schemaOf(
+      z.object({
+        hosts: z.record(
+          z.string(),
+          z.object({ keys: z.array(z.string().meta({ writeOnly: true })) }),
+        ),
+      }),
+    );
+    const stored = { hosts: { "a.example.com/x": { keys: ["k"] } } };
+    const shown = redactSecrets(schema, stored) as typeof stored;
+    expect(shown.hosts["a.example.com/x"].keys).toEqual([
+      `${SECRET_REDACTED}#/hosts/a.example.com~1x/keys/0`,
+    ]);
+    expect(restoreSecrets(schema, shown, stored, undefined)).toEqual(stored);
+  });
+
+  it("never takes an inherited property for a stored secret", () => {
+    const schema = schemaOf(
+      z.object({ env: z.record(z.string(), z.string().meta({ writeOnly: true })) }),
+    );
+    expect(() =>
+      restoreSecrets(schema, { env: { constructor: SECRET_REDACTED } }, { env: {} }, undefined),
+    ).toThrow(expect.objectContaining({ code: "CONFIG_SECRET_MISSING" }));
   });
 });

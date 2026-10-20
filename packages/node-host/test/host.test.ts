@@ -561,7 +561,7 @@ export default definePlugin({
       pin: "••••••",
       env: { A: "••••••" },
       // Inside a list, a marker names its secret's place.
-      keys: ["••••••#keys.0", "••••••#keys.1"],
+      keys: ["••••••#/keys/0", "••••••#/keys/1"],
     };
     const read = await host.execute("host.config.get", { section: "acme.vault" });
     expect(read.value).toMatchObject({
@@ -592,7 +592,7 @@ export default definePlugin({
         pin: "••••••",
         env: { A: "••••••", B: "b-value" },
         // The second secret moved first and kept, the first replaced.
-        keys: ["••••••#keys.1", "k-three"],
+        keys: ["••••••#/keys/1", "k-three"],
       },
     });
     expect(saved.value).toMatchObject({ applied: true });
@@ -735,6 +735,7 @@ export default definePlugin({
     const unknown = await host.execute("host.config.get", { section: "acme.none" });
     expect(unknown.value.value).toBeUndefined();
     expect(unknown.value.error).toEqual(expect.any(String));
+    expect(unknown.value.error).not.toMatch(/is invalid/);
 
     // A value the schema refuses says where.
     await host.execute("host.config.patch", {
