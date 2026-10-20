@@ -28,6 +28,8 @@ import {
 import { SourceControlError, createGit, locate, summarize, type Git } from "./git.ts";
 
 const NAMESPACE = "jhin.source-control";
+/** How long a turn's start waits for its checkpoint (the threads plugin fails a turn at 60 s). */
+const START_CHECKPOINT_TIMEOUT_MS = 45_000;
 
 /** A checkpoint as kept: where it was taken, too. */
 const StoredCheckpoint = TurnCheckpoint.extend({ cwd: z.string() });
@@ -135,9 +137,23 @@ export function followTurns(
         });
         const repository = await repositoryOf(input.projectId, input.cwd);
         if (repository !== undefined) {
-          await locked(input.cwd, () =>
-            ensure(repository.git, repository.commonDir, checkpointRef(input.threadId, turn - 1)),
-          );
+          // A start that takes too long is given up on here, well before the threads
+          // plugin's deadline would fail the turn: the turn then ends with an `error` record.
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          await Promise.race([
+            locked(input.cwd, () =>
+              ensure(repository.git, repository.commonDir, checkpointRef(input.threadId, turn - 1)),
+            ),
+            new Promise<void>((resolve) => {
+              timer = setTimeout(() => {
+                context.log.warn("a turn's starting checkpoint took too long; the agent starts", {
+                  threadId: input.threadId,
+                  turnId: input.turnId,
+                });
+                resolve();
+              }, START_CHECKPOINT_TIMEOUT_MS);
+            }),
+          ]).finally(() => clearTimeout(timer));
         }
       } catch (error) {
         context.log.warn("a turn's starting checkpoint could not be written", {
