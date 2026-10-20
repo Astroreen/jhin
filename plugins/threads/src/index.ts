@@ -455,6 +455,7 @@ export default definePlugin({
     };
 
     // --- Records ---------------------------------------------------------------
+    const codeOf = (error: unknown) => (error as { code?: unknown } | null)?.code;
     const getProject = async (id: string): Promise<Project> => {
       const value = await kv.get(NAMESPACE, `project/${id}`);
       if (value === undefined)
@@ -552,6 +553,23 @@ export default definePlugin({
             error: String(error),
           }),
       );
+
+    // D208 needs the records of an append to land in the storage.kv this
+    // plugin reads: both capabilities from one provider. Checked once, with an
+    // append of no events, so a node that mixes providers fails to start
+    // instead of losing records quietly.
+    const probe = `probe/${Crypto.randomUUID()}`;
+    await log.append(THREADS_STREAM, [], {
+      records: [{ namespace: NAMESPACE, key: probe, value: true }],
+    });
+    const seen = (await kv.get(NAMESPACE, probe)) === true;
+    await kv.delete(NAMESPACE, probe);
+    if (!seen) {
+      throw new ThreadsError(
+        "STORAGE_MISMATCH",
+        "storage.eventlog@1.1 writes its records to another store than storage.kv: both must come from one plugin",
+      );
+    }
 
     if ((await kv.get(NAMESPACE, `project/${SCRATCH_PROJECT}`)) === undefined) {
       const path = Path.join(paths.dataDir(context.plugin.id), "scratch");
@@ -1303,6 +1321,7 @@ export default definePlugin({
       projectId: string,
       title: string,
       settings: Omit<Thread, "id" | "projectId" | "title" | "createdAt" | "updatedAt">,
+      retried = false,
     ): Promise<Thread> {
       const stream = threadStream(id);
       const taken = () =>
@@ -1345,12 +1364,18 @@ export default definePlugin({
           ...settings,
         });
         // The stream's first event comes first: a thread record never exists without it.
-        await log.append(
-          stream,
-          [{ type: ThreadEvents.threadCreated, payload: thread as unknown as Json }],
-          // Another node or process taking the id meanwhile is refused.
-          { expectedHead: 0 },
-        );
+        try {
+          await log.append(
+            stream,
+            [{ type: ThreadEvents.threadCreated, payload: thread as unknown as Json }],
+            { expectedHead: 0 },
+          );
+        } catch (error) {
+          // Another process sharing the storage took the id meanwhile: what it
+          // wrote decides, as for any id already taken.
+          if (codeOf(error) !== "CONFLICT" || retried) throw error;
+          return createThread(id, projectId, title, settings, true);
+        }
       }
       // Then the record with the node's index of threads, which other nodes
       // follow to mirror new threads (D26 eager): whoever learns of the thread

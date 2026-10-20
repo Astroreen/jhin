@@ -643,7 +643,13 @@ and resetting it clears them), with a screenshot.
   client following the index never misses a change the records show
   (`threads.catalog`), nor sees one they do not. A thread's deletion keeps
   its record until the index announces it; the thread takes no messages
-  meanwhile (D68). SQLite and the in-memory storage implement it.
+  meanwhile (D68). SQLite and the in-memory storage implement it. The records
+  go to the store the event log belongs to, so `storage.kv` and
+  `storage.eventlog` must come from one plugin: the threads plugin checks
+  that when it starts, with an append of no events and one record, and
+  refuses to start otherwise (`STORAGE_MISMATCH`). A creation that loses the
+  race for its id to another process sharing the storage (`CONFLICT` on the
+  stream's first event) looks at the stream again, as a second call would.
 - **D209. The composer queues or steers, as T3's "Follow-up behavior"
   says.** While a turn runs, sending queues the message (the device setting
   "Follow-up behavior": Queue, the default, or Steer) and ⌘/Ctrl+Enter
@@ -671,7 +677,8 @@ and resetting it clears them), with a screenshot.
   `threads.queue.updated` and `agent.turn.steered`; `agent.runtime@1.2`
   (`steering`, `AgentTurn.steer`); `storage.eventlog@1.1` (`records`); the
   error codes `QUEUED_MESSAGE_NOT_FOUND`, `STEER_UNSUPPORTED` and
-  `THREAD_EXISTS`. `threads.send` keeps refusing a busy thread
+  `THREAD_EXISTS`; `STORAGE_MISMATCH` when the threads plugin starts.
+  `threads.send` keeps refusing a busy thread
   (`TURN_IN_PROGRESS`).
 
 ## Not ported (out of scope)

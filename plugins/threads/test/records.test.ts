@@ -1,5 +1,7 @@
 import { THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
-import type { EventLog } from "@jhin/storage-api";
+import { definePlugin } from "@jhin/sdk";
+import { createMemoryStorage, type EventLog } from "@jhin/storage-api";
+import { testManifest } from "@jhin/testing";
 import { describe, expect, it } from "vite-plus/test";
 
 import { node } from "./support.ts";
@@ -115,5 +117,56 @@ describe("thread and project records (D207, D208)", () => {
     ).toEqual(["scratch"]);
     const index = await storage.storage.log.read(THREADS_STREAM);
     expect(index.filter((event) => event.type === ThreadEvents.projectDeleted)).toHaveLength(1);
+  });
+
+  it("takes the thread another process made with the id meanwhile", async () => {
+    const { client, storage } = await node();
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    log.append = async (stream, events, options) => {
+      if (stream === "thread/raced" && options?.expectedHead === 0) {
+        log.append = append;
+        // Another process sharing the storage creates the thread first.
+        await append(stream, [
+          {
+            type: ThreadEvents.threadCreated,
+            payload: {
+              id: "raced",
+              projectId: "scratch",
+              title: "Theirs",
+              createdAt: new Date().toISOString(),
+            },
+          },
+        ]);
+      }
+      return append(stream, events, options);
+    };
+
+    const thread = await client.call<ThreadRecord>("threads.create", {
+      threadId: "raced",
+      title: "Mine",
+    });
+    expect(thread).toMatchObject({ id: "raced", title: "Theirs" });
+    expect(await storage.storage.log.read("thread/raced")).toHaveLength(1);
+  });
+
+  it("refuses to start when the event log writes its records elsewhere", async () => {
+    const kv = createMemoryStorage();
+    const log = createMemoryStorage();
+    const mixed = {
+      manifest: testManifest("mock.mixed-storage", {
+        provides: { "storage.kv": "1.0.0", "storage.eventlog": "1.1.0" },
+      }),
+      definition: definePlugin({
+        activate(context) {
+          context.services.provide("storage.kv", kv.kv);
+          context.services.provide("storage.eventlog", log.log);
+        },
+      }),
+    };
+    const { client } = await node({ storage: Object.assign(mixed, { storage: kv }) });
+    await expect(client.call("threads.list", {})).rejects.toMatchObject({
+      code: expect.stringMatching(/COMMAND_NOT_FOUND|UNKNOWN_COMMAND|METHOD_NOT_FOUND/),
+    });
   });
 });

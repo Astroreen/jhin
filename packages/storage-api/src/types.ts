@@ -47,7 +47,8 @@ export interface AppendOptions {
   /** Optimistic concurrency: the append fails with CONFLICT unless the stream's head equals this. */
   readonly expectedHead?: number;
   /**
-   * Since 1.1: entries of the `storage.kv` the same plugin provides, written in
+   * Since 1.1: entries of the `storage.kv` the same plugin provides (a provider
+   * of `storage.eventlog@1.1` provides `storage.kv` too), written in
    * the same transaction as the events: all of them and the events are stored,
    * or nothing is. Lets a record and the event announcing it never disagree.
    */
