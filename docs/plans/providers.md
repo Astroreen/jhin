@@ -259,18 +259,20 @@ specific to Claude: the runtime is a plugin on the public API.
   switch is ended and started in `bypassPermissions` directly, warning and
   all.
 - **D344. The first look at the agents is answered from the last probe.**
-  Every probe is kept in `storage.kv` (`probe`, with the binary and
-  environment it ran with), so a node that restarts answers its first
+  Every probe is kept in `storage.kv` (`probe`, with a SHA-256 of the
+  binary, environment and allow-list it ran with: the config's `env` can hold
+  secrets), so a node that restarts answers its first
   `status()` with the stored one, stale, while a new probe runs (T3 keeps a
   provider status cache on disk the same way). Only a node that never probed
   with that configuration waits for Claude Code to start.
 - **D345. A deleted thread's Claude Code session files go too.** Once no
-  turn of the thread is left (D101) and its Claude Code has exited (it
+  turn of the thread is left (D101) and every Claude Code of it has exited,
+  also one a later launch replaced (it
   writes its last lines, title and cost, while it shuts down), the plugin
   removes `<threadId>.jsonl` and the `<threadId>/` folder of subagent
   transcripts from every project folder under Claude Code's `projects`
   directory, in its config directory: the config's `env.CLAUDE_CONFIG_DIR`,
-  else the node's, else `~/.claude`. The SDK's `deleteSession` is not used:
+  else the node's when the allow-list (D346) passes it, else `~/.claude`. The SDK's `deleteSession` is not used:
   it reads only the node's own `CLAUDE_CONFIG_DIR`. Only a thread id that is
   a UUID (as a session id is) is looked for, so no id leaves that directory.
   An archived thread keeps its files: it can be unarchived. The plugin then

@@ -6,12 +6,24 @@ import * as Fs from "node:fs/promises";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
+import { inheritedEnvironment } from "./session.ts";
+
 /** Session ids are UUIDs: nothing else is looked for, so no id leaves the projects folder. */
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Claude Code's config directory: the config's `CLAUDE_CONFIG_DIR`, the node's, else `~/.claude`. */
-export function claudeConfigDir(env: Readonly<Record<string, string>> = {}): string {
-  const configured = (env["CLAUDE_CONFIG_DIR"] ?? process.env["CLAUDE_CONFIG_DIR"] ?? "").trim();
+/**
+ * Claude Code's config directory: the config's `CLAUDE_CONFIG_DIR`, the node's when the
+ * allow-list passes it to Claude Code (D346), else `~/.claude`.
+ */
+export function claudeConfigDir(
+  env: Readonly<Record<string, string>> = {},
+  inherit?: readonly string[],
+): string {
+  const configured = (
+    env["CLAUDE_CONFIG_DIR"] ??
+    inheritedEnvironment(inherit)["CLAUDE_CONFIG_DIR"] ??
+    ""
+  ).trim();
   return configured.length > 0 ? Path.resolve(configured) : Path.join(Os.homedir(), ".claude");
 }
 

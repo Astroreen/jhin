@@ -105,8 +105,8 @@ export interface LiveSessions {
   rearmIdle(): void;
   list(): LiveSessionInfo[];
   /**
-   * Settles once the thread's last Claude Code has exited (its output ended): it writes
-   * its session file until then, also after it was asked to close.
+   * Settles once every Claude Code of the thread has exited (its output ended), also one
+   * a later one replaced: it writes its session file until then, after it was asked to close.
    */
   ended(threadId: string): Promise<void>;
   /** Ends every live session. */
@@ -288,8 +288,8 @@ export function createLiveSessions(options: {
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
 }): LiveSessions {
   const sessions = new Map<string, Live>();
-  /** The exit of each thread's last Claude Code, until it came. */
-  const exits = new Map<string, Promise<void>>();
+  /** The exits of each thread's Claude Codes still running, also those replaced. */
+  const exits = new Map<string, Set<Promise<void>>>();
 
   const close = (live: Live, reason?: Error) => {
     if (live.closed) return;
@@ -471,9 +471,12 @@ export function createLiveSessions(options: {
         close(live);
       }
     })();
-    exits.set(threadId, exited);
+    const running = exits.get(threadId) ?? new Set<Promise<void>>();
+    running.add(exited);
+    exits.set(threadId, running);
     void exited.finally(() => {
-      if (exits.get(threadId) === exited) exits.delete(threadId);
+      running.delete(exited);
+      if (running.size === 0 && exits.get(threadId) === running) exits.delete(threadId);
     });
     return live;
   };
@@ -672,7 +675,9 @@ export function createLiveSessions(options: {
       }
       return closed;
     },
-    ended: (threadId) => exits.get(threadId) ?? Promise.resolve(),
+    ended: async (threadId) => {
+      await Promise.all(exits.get(threadId) ?? []);
+    },
     list: () =>
       [...sessions.values()].map((live) => ({
         threadId: live.threadId,

@@ -1,3 +1,4 @@
+import * as Crypto from "node:crypto";
 import * as Os from "node:os";
 
 import {
@@ -316,7 +317,10 @@ export function createClaudeRuntime(options: {
   let stored: Promise<StoredProbe | undefined> | undefined;
   const probeKey = () => {
     const { binaryPath, env, inheritEnv } = options.config();
-    return JSON.stringify({ binaryPath, env, inheritEnv });
+    // Kept in storage.kv (D344): a hash, never the config's environment (it can hold secrets).
+    return Crypto.createHash("sha256")
+      .update(JSON.stringify({ binaryPath, env, inheritEnv }))
+      .digest("hex");
   };
   /** The probe running now, by the config it runs with: a probe is joined only for its config. */
   const probing = new Map<string, Promise<Probe>>();
@@ -566,7 +570,8 @@ export function claudePlugin(query: QueryFunction) {
               }),
             );
             // Its files too, once no turn of it is left to write them (D345).
-            const configDir = claudeConfigDir(context.config.get<Config>(CONFIG_SECTION).env);
+            const { env, inheritEnv } = context.config.get<Config>(CONFIG_SECTION);
+            const configDir = claudeConfigDir(env, inheritEnv);
             // Claude Code writes its last lines to the file while it shuts down.
             void Promise.all([settled, runtime.live.ended(threadId)])
               .then(() => deleteSessionFiles(threadId, configDir))

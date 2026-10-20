@@ -13,6 +13,7 @@ import {
   sessionRecords,
   transcript,
   Config,
+  type QueryFunction,
 } from "../src/index.ts";
 import {
   drain,
@@ -735,5 +736,54 @@ describe("jhin.agent-claude: session records", () => {
     release();
     await Promise.all([inFlight, forgotten]);
     expect(await records.has(THREAD)).toBe(false);
+  });
+});
+
+describe("jhin.agent-claude: session files (D345)", () => {
+  it("waits for every Claude Code of the thread to exit, also one a later launch replaced", async () => {
+    let exitFirst!: () => void;
+    const firstExited = new Promise<void>((resolve) => (exitFirst = resolve));
+    let launches = 0;
+    // The first Claude Code goes on writing (its output open) after it was asked to close.
+    const query = (({ prompt }: Parameters<QueryFunction>[0]) => {
+      const lingering = launches++ === 0;
+      let closed!: () => void;
+      const whenClosed = new Promise<void>((resolve) => (closed = resolve));
+      return {
+        async *[Symbol.asyncIterator]() {
+          for await (const _sent of prompt) {
+            yield init();
+            yield result();
+          }
+          await (lingering ? firstExited : whenClosed);
+        },
+        interrupt: async () => undefined,
+        close: () => closed(),
+      };
+    }) as unknown as QueryFunction;
+    const live = createLiveSessions({ query, keepAlive: () => ({ keepAlive: true, idleMs: 0 }) });
+    const lease = async (cwd: string) => {
+      const held = await live.lease({
+        threadId: THREAD,
+        options: { cwd },
+        message: {
+          type: "user",
+          message: { role: "user", content: "hi" },
+          parent_tool_use_id: null,
+        },
+      });
+      for await (const _message of held.messages);
+      held.release(true);
+    };
+    await lease("/a");
+    await lease("/b");
+    live.close(THREAD);
+    const order: string[] = [];
+    const ended = live.ended(THREAD).then(() => order.push("ended"));
+    await new Promise((resolve) => setImmediate(resolve));
+    order.push("first exits");
+    exitFirst();
+    await ended;
+    expect(order).toEqual(["first exits", "ended"]);
   });
 });
