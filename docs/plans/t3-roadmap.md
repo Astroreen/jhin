@@ -170,7 +170,7 @@ settings across devices.
 
 Mirroring live streams between mesh members, so the source-control stream
 and terminals of threads on members work like local ones, and truncation of
-`storage.eventlog@1` streams (the source-control stream, `mesh/outbox`).
+`storage.eventlog` streams (the source-control stream, `mesh/outbox`).
 
 ### W18. Desktop app
 

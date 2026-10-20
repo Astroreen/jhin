@@ -558,11 +558,14 @@ export default definePlugin({
     // plugin reads: both capabilities from one provider. Checked once, with an
     // append of no events, so a node that mixes providers fails to start
     // instead of losing records quietly.
-    const probe = `probe/${Crypto.randomUUID()}`;
+    // One key, written fresh every start: a node that stops in between leaves
+    // at most this one behind, which the next start overwrites.
+    const probe = "probe";
+    const mark = Crypto.randomUUID();
     await log.append(THREADS_STREAM, [], {
-      records: [{ namespace: NAMESPACE, key: probe, value: true }],
+      records: [{ namespace: NAMESPACE, key: probe, value: mark }],
     });
-    const seen = (await kv.get(NAMESPACE, probe)) === true;
+    const seen = (await kv.get(NAMESPACE, probe)) === mark;
     await kv.delete(NAMESPACE, probe);
     if (!seen) {
       throw new ThreadsError(
