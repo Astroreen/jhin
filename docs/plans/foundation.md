@@ -412,7 +412,9 @@ Implementation notes (PR 6):
   stops retrying). Subscription ids are chosen by the client, because backlog
   events arrive before `rpc.subscribe` returns. Reserved methods:
   `rpc.hello`, `rpc.subscribe`, `rpc.unsubscribe`; notifications `rpc.ready`,
-  `rpc.event`. Every other method is a command name.
+  `rpc.event`, and for windowed subscriptions `rpc.ack` (client to server)
+  and `rpc.subscription.ended` (`terminal.md`, D470). Every other method is
+  a command name.
 - `jhin.http` provides `http.server@1` for every plugin that needs HTTP (the
   transport now, MCP and the web client later); `jhin.host` also provides
   `host.trace@1` (AsyncLocalStorage, every log line gets `traceId`) and the

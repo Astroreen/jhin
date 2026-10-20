@@ -5,6 +5,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
+import type { TerminalContextSelection } from "../src/plugins/terminal/context.ts";
 import { TerminalViewport } from "../src/plugins/terminal/viewport.tsx";
 
 const ESC = String.fromCharCode(27);
@@ -54,7 +55,11 @@ function type(container: HTMLElement, key: string): void {
  * runs when the viewport subscribes to the stream: the replay is written to
  * xterm by then, not yet parsed.
  */
-function render(options: { history: string; onFollow?: (container: HTMLElement) => void }) {
+function render(options: {
+  history: string;
+  onFollow?: (container: HTMLElement) => void;
+  onAddToChat?: (selection: TerminalContextSelection) => void;
+}) {
   const writes: string[] = [];
   const waiting: { test: (data: string) => boolean; resolve: () => void }[] = [];
   const container = document.createElement("div");
@@ -91,11 +96,15 @@ function render(options: { history: string; onFollow?: (container: HTMLElement) 
         cwd="/work"
         drawerHeight={300}
         focusRequestId={0}
+        onAddToChat={options.onAddToChat}
+        fontFamily=""
+        fontSize={12}
         onSessionExited={() => undefined}
         resizeEpoch={0}
         terminalId="term-1"
         terminalLabel="Terminal 1"
         threadId="t"
+        visible
       />,
     ),
   );
@@ -180,4 +189,74 @@ describe("the terminal viewport", () => {
     // Not answered when replayed.
     expect(await replayThenLive(query, "")).toEqual([SENTINEL_REPLY]);
   });
+
+  /** Resolves with the menu item named `name` once the menu shows it. */
+  function menuItem(name: string): Promise<HTMLElement> {
+    const find = () =>
+      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (item) => item.textContent === name,
+      );
+    const found = find();
+    if (found !== undefined) return Promise.resolve(found);
+    return new Promise((resolve) => {
+      const observer = new MutationObserver(() => {
+        const item = find();
+        if (item === undefined) return;
+        observer.disconnect();
+        resolve(item);
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+  }
+
+  it("adds what is selected to the chat from its context menu (D473)", async () => {
+    const added: TerminalContextSelection[] = [];
+    let following!: () => void;
+    const followed = new Promise<void>((resolve) => (following = resolve));
+    const view = render({
+      history: "line one\r\nline two\r\n$ ",
+      onFollow: () => following(),
+      onAddToChat: (selection) => added.push(selection),
+    });
+    await followed;
+    // Parsed once xterm answers the query after it.
+    view.output(SENTINEL);
+    await view.sent((data) => data === SENTINEL_REPLY);
+    const viewport = view.container.querySelector<HTMLElement>("[data-terminal-viewport]")!;
+    const rightClick = () =>
+      act(() => {
+        viewport.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: 20,
+            clientY: 20,
+          }),
+        );
+      });
+
+    rightClick();
+    // Nothing selected: Add to chat and Copy wait for a selection.
+    expect((await menuItem("Add to chat")).getAttribute("aria-disabled")).toBe("true");
+    for (const name of ["Copy", "Paste", "Select all", "Jump to latest"]) await menuItem(name);
+    act(() => clickMenuItem("Select all"));
+    rightClick();
+    const add = await menuItem("Add to chat");
+    expect(add.getAttribute("aria-disabled")).not.toBe("true");
+    act(() => add.click());
+    expect(added).toHaveLength(1);
+    expect(added[0]).toMatchObject({
+      terminalId: "term-1",
+      terminalLabel: "Terminal 1",
+      lineStart: 1,
+    });
+    expect(added[0]!.text).toContain("line one");
+    expect(added[0]!.text).toContain("line two");
+  });
 });
+
+function clickMenuItem(name: string): void {
+  [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+    .find((item) => item.textContent === name)!
+    .click();
+}

@@ -446,6 +446,20 @@ export const chatPlugin = builtin(
         "Puts the cursor in the message box",
         () => composer.current?.focus(),
       );
+      context.commands.register({
+        name: "chat.composer.insert",
+        title: "Insert into the composer",
+        description:
+          "Puts text into the open thread's message box at the cursor, as the terminal's Add to chat does",
+        input: z.object({ text: z.string().min(1).max(200_000) }),
+        output: z.object({ inserted: z.boolean() }),
+        handler: ({ text }) => {
+          const target = composer.current;
+          if (target === undefined) return { inserted: false };
+          target.insert(text);
+          return { inserted: true };
+        },
+      });
       register(
         "chat.model-picker.toggle",
         "Change model",

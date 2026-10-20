@@ -63,6 +63,7 @@ function setup(options: {
       draft: () => options.draft,
       restore: (draft) => restored.push(draft),
       focus: () => undefined,
+      insert: () => undefined,
       toggleModelPicker: () => undefined,
       cycleRuntimeMode: () => undefined,
       togglePlanMode: () => undefined,

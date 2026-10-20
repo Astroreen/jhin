@@ -111,3 +111,43 @@ test("an exited shell closes its tab, as in T3", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(drawer).toBeHidden();
 });
+
+test("D472–D474: the selection menu adds to the chat, and the terminals move to the right panel", async ({
+  page,
+}, info) => {
+  await startThread(page, "terminal menus");
+  await page.keyboard.press("ControlOrMeta+j");
+  const drawer = page.getByRole("complementary", { name: "Terminal" });
+  const terminal = drawer.getByRole("group", { name: "Terminal 1" });
+  await expect(terminal.locator(".xterm-rows")).toContainText("$");
+  await page.keyboard.type("echo menu-$((2*21))");
+  await page.keyboard.press("Enter");
+  await expect(terminal.locator(".xterm-rows")).toContainText("menu-42");
+
+  // T3's context menu: select everything, then add it to the chat.
+  await terminal.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Select all" }).click();
+  await terminal.click({ button: "right" });
+  const menuShot = info.outputPath("terminal-context-menu.png");
+  await expect(page.getByRole("menuitem", { name: "Add to chat" })).toBeEnabled();
+  await page.screenshot({ path: menuShot });
+  await info.attach("terminal-context-menu", { path: menuShot, contentType: "image/png" });
+  await page.getByRole("menuitem", { name: "Add to chat" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await expect(message).toHaveValue(/@terminal-1:1-\d+/);
+  await expect(message).toHaveValue(/<terminal_context>[\s\S]*menu-42[\s\S]*<\/terminal_context>/);
+
+  // The header's toggle shows the thread's terminals right of the chat.
+  await page.getByRole("button", { name: "Toggle terminal panel" }).click();
+  const panel = page.locator('[data-terminal-owner="right-panel"]');
+  await expect(
+    panel.getByRole("group", { name: "Terminal 1" }).locator(".xterm-rows"),
+  ).toContainText("menu-42");
+  const panelShot = info.outputPath("terminal-right-panel.png");
+  await page.screenshot({ path: panelShot });
+  await info.attach("terminal-right-panel", { path: panelShot, contentType: "image/png" });
+
+  await page.getByRole("button", { name: "Toggle terminal panel" }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(drawer.getByRole("group", { name: "Terminal 1" })).toBeVisible();
+});
