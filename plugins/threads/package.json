@@ -54,7 +54,7 @@
     },
     "requires": {
       "storage.kv": "^1",
-      "storage.eventlog": "^1",
+      "storage.eventlog": "^1.1",
       "host.paths": "^1"
     },
     "optional": {

@@ -38,9 +38,20 @@ export interface StoredEvent extends NewEvent {
   readonly at: string;
 }
 
+/** A change to a `storage.kv` entry made together with an append (`storage.eventlog@1.1`). */
+export type RecordWrite =
+  | { readonly namespace: string; readonly key: string; readonly value: Json }
+  | { readonly namespace: string; readonly key: string; readonly delete: true };
+
 export interface AppendOptions {
   /** Optimistic concurrency: the append fails with CONFLICT unless the stream's head equals this. */
   readonly expectedHead?: number;
+  /**
+   * Since 1.1: entries of the `storage.kv` the same plugin provides, written in
+   * the same transaction as the events: all of them and the events are stored,
+   * or nothing is. Lets a record and the event announcing it never disagree.
+   */
+  readonly records?: readonly RecordWrite[];
 }
 
 /** `storage.eventlog@1`: append-only streams with gap-free per-stream sequences. */
@@ -103,6 +114,15 @@ export function assertEvents(events: readonly NewEvent[]): void {
         },
       );
     }
+  }
+}
+
+/** Checks the records of an append before anything is written. */
+export function assertRecords(records: readonly RecordWrite[]): void {
+  for (const record of records) {
+    assertName("namespace", record.namespace);
+    assertName("key", record.key);
+    if (!("delete" in record)) copyJson(record.value);
   }
 }
 

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { fakeTurn } from "../../agent-fake/src/index.ts";
 import { STOP_TIMEOUT_MS } from "../src/index.ts";
-import { node, watch } from "./support.ts";
+import { node, onRecordWrite, watch } from "./support.ts";
 
 interface Thread {
   id: string;
@@ -97,12 +97,9 @@ describe("jhin.threads: concurrent changes", () => {
     const { events, until } = watch(client, thread.id);
     // The record is removed only once the test says so: the deleted event comes first.
     const removal = latch();
-    const kv = storage.storage.kv;
-    const remove = kv.delete.bind(kv);
-    kv.delete = async (namespace, key) => {
-      if (key === `thread/${thread.id}`) await removal.promise;
-      return remove(namespace, key);
-    };
+    onRecordWrite(storage.storage, async (key, value) => {
+      if (key === `thread/${thread.id}` && value === undefined) await removal.promise;
+    });
 
     const sending = client.call("threads.send", { threadId: thread.id, text: "hi" });
     await slow.asked.promise;
@@ -128,15 +125,12 @@ describe("jhin.threads: concurrent changes", () => {
     // The archived record is written only once the test says so.
     const reached = latch();
     const write = latch();
-    const kv = storage.storage.kv;
-    const set = kv.set.bind(kv);
-    kv.set = async (namespace, key, value) => {
-      if (key === `thread/${thread.id}` && (value as { archivedAt?: unknown }).archivedAt) {
+    onRecordWrite(storage.storage, async (key, value) => {
+      if (key === `thread/${thread.id}` && (value as { archivedAt?: unknown })?.archivedAt) {
         reached.resolve();
         await write.promise;
       }
-      return set(namespace, key, value);
-    };
+    });
 
     const sending = client.call("threads.send", { threadId: thread.id, text: "hi" });
     await slow.asked.promise;
@@ -191,17 +185,14 @@ describe("jhin.threads: concurrent changes", () => {
     const thread = await client.call<Thread>("threads.create", {});
     const { until } = watch(client, thread.id);
     // The renamed record is written once the test says so.
-    const kv = storage.storage.kv;
-    const set = kv.set.bind(kv);
     const renaming = latch();
     const write = latch();
-    kv.set = async (namespace, key, value) => {
-      if (key === `thread/${thread.id}` && (value as { title?: string }).title === "Renamed") {
+    onRecordWrite(storage.storage, async (key, value) => {
+      if (key === `thread/${thread.id}` && (value as { title?: string })?.title === "Renamed") {
         renaming.resolve();
         await write.promise;
       }
-      return set(namespace, key, value);
-    };
+    });
 
     const renamed = client.call("threads.update", { threadId: thread.id, title: "Renamed" });
     await renaming.promise;
@@ -317,16 +308,13 @@ describe("jhin.threads: deletions that fail or overlap", () => {
   it("finishes a deletion that failed after it was recorded, with one deleted event", async () => {
     const { client, storage } = await node();
     const thread = await client.call<Thread>("threads.create", {});
-    const kv = storage.storage.kv;
-    const remove = kv.delete.bind(kv);
     let failed = false;
-    kv.delete = async (namespace, key) => {
-      if (!failed && key === `thread/${thread.id}`) {
+    onRecordWrite(storage.storage, (key, value) => {
+      if (!failed && key === `thread/${thread.id}` && value === undefined) {
         failed = true;
         throw new Error("disk full");
       }
-      return remove(namespace, key);
-    };
+    });
 
     await expect(client.call("threads.delete", { threadId: thread.id })).rejects.toThrow(
       "disk full",
@@ -342,7 +330,7 @@ describe("jhin.threads: deletions that fail or overlap", () => {
     expect(await deletedEvents(storage.storage.log, "threads")).toBe(1);
   });
 
-  it("finishes a deletion whose announcement failed, though its record is gone", async () => {
+  it("finishes a deletion whose announcement failed, its record kept until then", async () => {
     const { client, storage } = await node();
     const thread = await client.call<Thread>("threads.create", {});
     failFirstDeletedEvent(storage.storage.log, "threads");
@@ -350,7 +338,13 @@ describe("jhin.threads: deletions that fail or overlap", () => {
     await expect(client.call("threads.delete", { threadId: thread.id })).rejects.toThrow(
       "disk full",
     );
-    expect(await client.call<Thread[]>("threads.list", {})).toEqual([]);
+    // The record goes with its announcement (D208): still listed, closed to messages.
+    expect((await client.call<Thread[]>("threads.list", {})).map((item) => item.id)).toEqual([
+      thread.id,
+    ]);
+    await expect(
+      client.call("threads.send", { threadId: thread.id, text: "hi" }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_FOUND" });
     expect(await client.call("threads.delete", { threadId: thread.id })).toEqual({ deleted: true });
     expect(await deletedEvents(storage.storage.log, `thread/${thread.id}`)).toBe(1);
     expect(await deletedEvents(storage.storage.log, "threads")).toBe(1);
@@ -402,17 +396,14 @@ describe("jhin.threads: deletions that fail or overlap", () => {
     const { client, storage, data } = await node();
     const project = await client.call<{ id: string }>("projects.create", { path: data });
     // The new thread's record is stored once the test says so.
-    const kv = storage.storage.kv;
-    const set = kv.set.bind(kv);
     const storing = latch();
     const store = latch();
-    kv.set = async (namespace, key, value) => {
+    onRecordWrite(storage.storage, async (key) => {
       if (key.startsWith("thread/")) {
         storing.resolve();
         await store.promise;
       }
-      return set(namespace, key, value);
-    };
+    });
 
     const creating = client.call<Thread>("threads.create", { projectId: project.id });
     await storing.promise;
@@ -432,17 +423,14 @@ describe("jhin.threads: deletions that fail or overlap", () => {
     const { client, storage, data } = await node();
     const project = await client.call<{ id: string }>("projects.create", { path: data });
     // The renamed project is written once the test says so.
-    const kv = storage.storage.kv;
-    const set = kv.set.bind(kv);
     const renaming = latch();
     const write = latch();
-    kv.set = async (namespace, key, value) => {
-      if (key === `project/${project.id}` && (value as { name?: string }).name === "Renamed") {
+    onRecordWrite(storage.storage, async (key, value) => {
+      if (key === `project/${project.id}` && (value as { name?: string })?.name === "Renamed") {
         renaming.resolve();
         await write.promise;
       }
-      return set(namespace, key, value);
-    };
+    });
 
     const renamed = client.call("projects.update", { projectId: project.id, name: "Renamed" });
     await renaming.promise;

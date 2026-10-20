@@ -3,6 +3,7 @@ import {
   assertCount,
   assertEvents,
   assertName,
+  assertRecords,
   compareKeys,
   copyJson,
   createNotifier,
@@ -22,7 +23,7 @@ const copyEvent = (event: StoredEvent): StoredEvent => ({
   payload: copyJson(event.payload),
 });
 
-/** In-memory `storage.kv` and `storage.eventlog`: same contract as the real ones, nothing persisted. */
+/** In-memory `storage.kv@1` and `storage.eventlog@1.1`: same contract as the real ones, nothing persisted. */
 export function createMemoryStorage(now: () => Date = () => new Date()): MemoryStorage {
   const values = new Map<string, Map<string, Json>>();
   const streams = new Map<string, StoredEvent[]>();
@@ -62,6 +63,8 @@ export function createMemoryStorage(now: () => Date = () => new Date()): MemoryS
       assertName("stream", stream);
       assertEvents(events);
       assertCount("expectedHead", options.expectedHead);
+      const records = options.records ?? [];
+      assertRecords(records);
       const existing = streams.get(stream) ?? [];
       if (options.expectedHead !== undefined && options.expectedHead !== existing.length) {
         throw new StorageError(
@@ -69,6 +72,15 @@ export function createMemoryStorage(now: () => Date = () => new Date()): MemoryS
           `Stream ${stream} is at ${existing.length}, expected ${options.expectedHead}`,
           { stream, head: existing.length, expectedHead: options.expectedHead },
         );
+      }
+      // Nothing awaited from here on: the records and the events land together.
+      for (const record of records) {
+        if ("delete" in record) values.get(record.namespace)?.delete(record.key);
+        else {
+          const space = values.get(record.namespace) ?? new Map<string, Json>();
+          space.set(record.key, copyJson(record.value));
+          values.set(record.namespace, space);
+        }
       }
       if (events.length === 0) return [];
       const at = now().toISOString();

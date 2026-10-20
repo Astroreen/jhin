@@ -10,7 +10,7 @@ export interface StorageUnderTest {
 }
 
 /**
- * The behaviour every implementation of storage.kv@1 and storage.eventlog@1
+ * The behaviour every implementation of storage.kv@1 and storage.eventlog@1.1
  * must have. Run it against each implementation:
  * `describeStorageContract("sqlite", () => openSqliteForTest())`.
  */
@@ -231,6 +231,61 @@ export function describeStorageContract(name: string, open: () => Promise<Storag
           { stream: "thread/a", head: 2 },
           { stream: "thread/b", head: 1 },
         ]);
+      });
+    });
+
+    describe("storage.eventlog@1.1 records", () => {
+      it("writes and deletes records together with the events", async () => {
+        const { kv, log } = await open();
+        await kv.set("app", "gone", 1);
+
+        await log.append("index", [{ type: "app.changed", payload: { id: "a" } }], {
+          records: [
+            { namespace: "app", key: "a", value: { title: "A" } },
+            { namespace: "app", key: "gone", delete: true },
+          ],
+        });
+
+        expect(await kv.get("app", "a")).toEqual({ title: "A" });
+        expect(await kv.get("app", "gone")).toBeUndefined();
+        expect(await log.head("index")).toBe(1);
+      });
+
+      it("writes records with an empty batch of events", async () => {
+        const { kv, log } = await open();
+        expect(
+          await log.append("index", [], { records: [{ namespace: "app", key: "a", value: 1 }] }),
+        ).toEqual([]);
+        expect(await kv.get("app", "a")).toBe(1);
+      });
+
+      it("writes no record when the append is refused", async () => {
+        const { kv, log } = await open();
+        await log.append("index", [{ type: "app.a", payload: 1 }]);
+        await kv.set("app", "a", "before");
+
+        await expect(
+          log.append("index", [{ type: "app.b", payload: 2 }], {
+            expectedHead: 0,
+            records: [{ namespace: "app", key: "a", value: "after" }],
+          }),
+        ).rejects.toMatchObject({ code: "CONFLICT" });
+        await expect(
+          log.append("index", [{ type: "Not Dotted", payload: 2 }], {
+            records: [{ namespace: "app", key: "a", value: "after" }],
+          }),
+        ).rejects.toMatchObject({ code: "INVALID" });
+        await expect(
+          log.append("index", [{ type: "app.b", payload: 2 }], {
+            records: [
+              { namespace: "app", key: "a", value: "after" },
+              { namespace: "", key: "b", value: 1 },
+            ],
+          }),
+        ).rejects.toMatchObject({ code: "INVALID" });
+
+        expect(await kv.get("app", "a")).toBe("before");
+        expect(await log.head("index")).toBe(1);
       });
     });
 

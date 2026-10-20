@@ -241,6 +241,11 @@ const Attachment = z.object({
     .max(MAX_ATTACHMENT_BYTES, "is too large"),
 });
 
+/** A thread id a caller chooses (D207): it names the thread's stream, `thread/<id>`. */
+const ThreadIdInput = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/, "must be letters, digits, _ or -, up to 128");
+
 const AgentSettings = {
   agentId: z.string().min(1).optional(),
   model: z.string().min(1).optional(),
@@ -468,6 +473,20 @@ export default definePlugin({
         .toSorted((a, b) => a.createdAt.localeCompare(b.createdAt));
 
     /**
+     * Writes a record (or removes it, `undefined`) together with the `threads`
+     * index event that announces it, in one write (D208): a client following the
+     * index never misses a change the records already show, nor the reverse.
+     */
+    const writeIndexed = (key: string, value: Json | undefined, type: string, payload?: Json) =>
+      log.append(THREADS_STREAM, [{ type, payload: payload ?? (value as Json) }], {
+        records: [
+          value === undefined
+            ? { namespace: NAMESPACE, key, delete: true }
+            : { namespace: NAMESPACE, key, value },
+        ],
+      });
+
+    /**
      * Changes to one record run one at a time, so none overwrites another and
      * none writes back a record removed meanwhile: by thread id, and by
      * `project/<id>` for projects.
@@ -490,10 +509,7 @@ export default definePlugin({
         const changed = change(current);
         if (changed === current) return current;
         const next = Thread.parse(changed);
-        await kv.set(NAMESPACE, `thread/${id}`, next as unknown as Json);
-        await log.append(THREADS_STREAM, [
-          { type: ThreadEvents.threadUpdated, payload: next as unknown as Json },
-        ]);
+        await writeIndexed(`thread/${id}`, next as unknown as Json, ThreadEvents.threadUpdated);
         return next;
       });
     }
@@ -967,10 +983,11 @@ export default definePlugin({
             deletion.recorded = true;
           }
           // After the changes to its record already under way: none writes it back.
-          await queued(thread.id, () => kv.delete(NAMESPACE, `thread/${thread.id}`));
-          await log.append(THREADS_STREAM, [
-            { type: ThreadEvents.threadDeleted, payload: { id: thread.id } },
-          ]);
+          await queued(thread.id, () =>
+            writeIndexed(`thread/${thread.id}`, undefined, ThreadEvents.threadDeleted, {
+              id: thread.id,
+            }),
+          );
           deletions.delete(thread.id);
           // Gone: its record is, so nothing takes it for a thread any more.
           deleted.delete(thread.id);
@@ -986,9 +1003,6 @@ export default definePlugin({
       })();
       return deletion.running;
     }
-
-    const projectEvent = (type: string, payload: Json) =>
-      log.append(THREADS_STREAM, [{ type, payload }]);
 
     // --- Projects --------------------------------------------------------------
     context.commands.register({
@@ -1035,8 +1049,11 @@ export default definePlugin({
           scratch: false,
           createdAt: now(),
         };
-        await kv.set(NAMESPACE, `project/${project.id}`, project);
-        await projectEvent(ThreadEvents.projectCreated, project as unknown as Json);
+        await writeIndexed(
+          `project/${project.id}`,
+          project as unknown as Json,
+          ThreadEvents.projectCreated,
+        );
         return project;
       },
     });
@@ -1060,8 +1077,11 @@ export default definePlugin({
             });
           }
           const next: Project = { ...project, name };
-          await kv.set(NAMESPACE, `project/${projectId}`, next);
-          await projectEvent(ThreadEvents.projectUpdated, next as unknown as Json);
+          await writeIndexed(
+            `project/${projectId}`,
+            next as unknown as Json,
+            ThreadEvents.projectUpdated,
+          );
           return next;
         }),
     });
@@ -1102,9 +1122,12 @@ export default definePlugin({
         const threads = (await listThreads()).filter((thread) => thread.projectId === projectId);
         for (const thread of threads) await deleteThread(thread);
         // After a rename under way: none writes the project back.
-        await queued(`project/${projectId}`, () => kv.delete(NAMESPACE, `project/${projectId}`));
+        await queued(`project/${projectId}`, () =>
+          writeIndexed(`project/${projectId}`, undefined, ThreadEvents.projectDeleted, {
+            id: projectId,
+          }),
+        );
         removed = true;
-        await projectEvent(ThreadEvents.projectDeleted, { id: projectId });
         return { deletedThreads: threads.length };
       } catch (error) {
         // The project is still there: threads can be created in it again.
@@ -1241,21 +1264,27 @@ export default definePlugin({
 
     context.commands.register({
       name: "threads.create",
-      description: "Starts a thread in a project (the scratch project by default)",
+      description:
+        "Starts a thread in a project (the scratch project by default). With a `threadId` chosen by the caller it is idempotent: creating that thread again in the same project returns it",
       input: z.object({
         projectId: z.string().default(SCRATCH_PROJECT),
         title: z.string().min(1).default(DEFAULT_THREAD_TITLE),
+        threadId: ThreadIdInput.optional(),
         ...AgentSettings,
       }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: async ({ projectId, title, ...settings }) => {
+      handler: async ({ projectId, title, threadId, ...settings }) => {
         await getProject(projectId);
         if (removedProjects.has(projectId)) {
           throw new ThreadsError("PROJECT_NOT_FOUND", `No project ${projectId}`, { projectId });
         }
         // A removal of the project that starts meanwhile waits for this thread.
-        const creating = createThread(projectId, title, settings);
+        // Creations of one id run one at a time, so the second finds the first's thread.
+        const creating =
+          threadId === undefined
+            ? createThread(Crypto.randomUUID(), projectId, title, settings)
+            : queued(threadId, () => createThread(threadId, projectId, title, settings));
         const underWay = creations.get(projectId) ?? new Set<Promise<unknown>>();
         creations.set(projectId, underWay.add(creating));
         try {
@@ -1270,29 +1299,63 @@ export default definePlugin({
     });
 
     async function createThread(
+      id: string,
       projectId: string,
       title: string,
       settings: Omit<Thread, "id" | "projectId" | "title" | "createdAt" | "updatedAt">,
     ): Promise<Thread> {
-      const createdAt = now();
-      const thread: Thread = Thread.parse({
-        id: Crypto.randomUUID(),
-        projectId,
-        title,
-        createdAt,
-        updatedAt: createdAt,
-        ...settings,
-      });
-      // The stream's first event comes first: a thread record never exists without it.
-      await log.append(threadStream(thread.id), [
-        { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
-      ]);
-      await kv.set(NAMESPACE, `thread/${thread.id}`, thread as unknown as Json);
-      // Then the node's index of threads, which other nodes follow to mirror new
-      // threads (D26 eager): whoever learns of the thread there can read it.
-      await log.append(THREADS_STREAM, [
-        { type: ThreadEvents.threadCreated, payload: thread as unknown as Json },
-      ]);
+      const stream = threadStream(id);
+      const taken = () =>
+        new ThreadsError("THREAD_EXISTS", `A thread ${id} exists or existed on this node`, {
+          threadId: id,
+        });
+      // The same id again (D207): the thread made by an earlier call whose
+      // answer was lost, when it is the same project's.
+      const existing = await kv.get(NAMESPACE, `thread/${id}`);
+      if (existing !== undefined) {
+        const thread = Thread.parse(existing);
+        if (thread.projectId !== projectId || deleted.has(id)) throw taken();
+        return thread;
+      }
+      // A stream without a record: a deleted thread, whose id is not taken
+      // again, or a creation that stopped after the stream's first event,
+      // which this one finishes with the thread that event recorded.
+      const [first] = await log.read(stream, { limit: 1 });
+      let thread: Thread;
+      if (first !== undefined) {
+        const started = Thread.safeParse(first.payload);
+        const last = (await log.read(stream, { after: (await log.head(stream)) - 1 }))[0];
+        if (
+          first.type !== ThreadEvents.threadCreated ||
+          !started.success ||
+          started.data.projectId !== projectId ||
+          last?.type === ThreadEvents.threadDeleted
+        ) {
+          throw taken();
+        }
+        thread = started.data;
+      } else {
+        const createdAt = now();
+        thread = Thread.parse({
+          id,
+          projectId,
+          title,
+          createdAt,
+          updatedAt: createdAt,
+          ...settings,
+        });
+        // The stream's first event comes first: a thread record never exists without it.
+        await log.append(
+          stream,
+          [{ type: ThreadEvents.threadCreated, payload: thread as unknown as Json }],
+          // Another node or process taking the id meanwhile is refused.
+          { expectedHead: 0 },
+        );
+      }
+      // Then the record with the node's index of threads, which other nodes
+      // follow to mirror new threads (D26 eager): whoever learns of the thread
+      // there can read it.
+      await writeIndexed(`thread/${id}`, thread as unknown as Json, ThreadEvents.threadCreated);
       return thread;
     }
 
