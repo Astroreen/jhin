@@ -16,6 +16,36 @@ export const RPC_UNSUBSCRIBE = "rpc.unsubscribe";
 export const RPC_READY = "rpc.ready";
 /** Server → client notification carrying one event of a subscription. */
 export const RPC_EVENT = "rpc.event";
+/**
+ * Client → server notification: the client is done with the events of a
+ * windowed subscription up to `sequence` (D470).
+ */
+export const RPC_ACK = "rpc.ack";
+/**
+ * Server → client notification: the server ended a subscription, with why
+ * (`SUBSCRIPTION_OVERFLOW`: a windowed subscriber fell too far behind).
+ */
+export const RPC_SUBSCRIPTION_ENDED = "rpc.subscription.ended";
+
+/**
+ * How much of a subscription may be sent and not yet acknowledged (D470):
+ * at most `events` events and `bytes` characters of their JSON, as T3 Code's
+ * terminal output windows (8 events, 64 KiB).
+ */
+export const SubscriptionWindow = z.object({
+  events: z.number().int().min(1).max(1024),
+  bytes: z
+    .number()
+    .int()
+    .min(1024)
+    .max(16 * 1024 * 1024),
+});
+export type SubscriptionWindow = z.infer<typeof SubscriptionWindow>;
+
+export const AckParams = z.object({
+  subscription: z.string().min(1),
+  sequence: z.number().int().nonnegative(),
+});
 
 export const RequestMessage = z.object({
   jsonrpc: z.literal("2.0"),
@@ -51,6 +81,12 @@ export const SubscribeParams = z.object({
   stream: z.string().min(1),
   /** Deliver events with a sequence greater than this; default 0 (everything). */
   after: z.number().int().nonnegative().default(0),
+  /**
+   * Flow control (D470): the client acknowledges each event with `rpc.ack`
+   * and the server keeps at most this much unacknowledged. A server that
+   * does not know it sends everything as it comes.
+   */
+  window: SubscriptionWindow.optional(),
 });
 
 export const UnsubscribeParams = z.object({ subscription: z.string().min(1) });

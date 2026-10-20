@@ -10,17 +10,20 @@ export { createPeerPair, webSocketPeer, type Peer, type WebSocketLike } from "./
 export {
   ErrorCodes,
   PROTOCOL,
+  RPC_ACK,
   RPC_EVENT,
   RPC_HELLO,
   RPC_READY,
   RPC_SUBSCRIBE,
+  RPC_SUBSCRIPTION_ENDED,
   RPC_UNSUBSCRIBE,
   RpcError,
+  SubscriptionWindow,
   TOKEN_PROTOCOL_PREFIX,
   toErrorObject,
   type ErrorObject,
 } from "./protocol.ts";
-export { serveRpc, type RpcServerOptions } from "./server.ts";
+export { MAX_WAITING_CHARACTERS, serveRpc, type RpcServerOptions } from "./server.ts";
 export {
   LIVE_STREAMS_CAPABILITY,
   UNGUARDED_STREAM_PERMISSION,

@@ -4,11 +4,14 @@ import type { StoredEvent } from "@jhin/storage-api";
 import type { Peer } from "./peer.ts";
 import {
   ErrorCodes,
+  RPC_ACK,
   RPC_EVENT,
   RPC_SUBSCRIBE,
+  RPC_SUBSCRIPTION_ENDED,
   RPC_UNSUBSCRIBE,
   RpcError,
   type ErrorObject,
+  type SubscriptionWindow,
 } from "./protocol.ts";
 
 export type ConnectionState = "connecting" | "open" | "closed";
@@ -45,10 +48,19 @@ export interface RpcClient {
     stream: string,
     options: {
       after?: number;
-      /** The node refused the subscription (other than a dropped connection); it is then disposed. */
+      /**
+       * The node refused the subscription (other than a dropped connection),
+       * or ended it (`SUBSCRIPTION_OVERFLOW`, D470); it is then disposed.
+       */
       onError?: (error: RpcError) => void;
+      /**
+       * Flow control (D470): the node sends at most this much before the
+       * client acknowledges it. Each event is acknowledged once `onEvent`
+       * returns, or once the promise it returns settles.
+       */
+      window?: SubscriptionWindow;
     },
-    onEvent: (event: StoredEvent) => void,
+    onEvent: (event: StoredEvent) => void | Promise<void>,
   ): ClientSubscription;
   close(): void;
 }
@@ -61,8 +73,9 @@ interface Pending {
 interface SubscriptionState {
   readonly stream: string;
   lastSequence: number;
-  readonly onEvent: (event: StoredEvent) => void;
+  readonly onEvent: (event: StoredEvent) => void | Promise<void>;
   readonly onError: ((error: RpcError) => void) | undefined;
+  readonly window: SubscriptionWindow | undefined;
   /** Server-side id on the current connection. */
   serverId: string | undefined;
   disposed: boolean;
@@ -151,6 +164,7 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
         subscription: id,
         stream: subscription.stream,
         after: subscription.lastSequence,
+        ...(subscription.window === undefined ? {} : { window: subscription.window }),
       });
     } catch (error) {
       // A dropped connection is retried on reconnect; anything else is final.
@@ -179,7 +193,7 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
       result?: unknown;
       error?: ErrorObject;
       method?: string;
-      params?: { subscription: string; event: StoredEvent };
+      params?: { subscription: string; event: StoredEvent; error?: ErrorObject };
     };
     if (message.method === RPC_EVENT && message.params !== undefined) {
       const { subscription: id, event } = message.params;
@@ -188,7 +202,44 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
         // Exactly once: a resumed subscription may resend the last event.
         if (event.sequence <= subscription.lastSequence) continue;
         subscription.lastSequence = event.sequence;
-        subscription.onEvent(event);
+        const handled = subscription.onEvent(event);
+        if (subscription.window === undefined) continue;
+        const target = peer;
+        const ack = () => {
+          // Only on the connection that sent it: a new one starts its own window.
+          if (target === undefined || peer !== target || subscription.serverId !== id) return;
+          try {
+            target.send(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                method: RPC_ACK,
+                params: { subscription: id, sequence: event.sequence },
+              }),
+            );
+          } catch {
+            // Closed meanwhile: the next connection subscribes afresh.
+          }
+        };
+        if (handled instanceof Promise) void handled.then(ack, ack);
+        else ack();
+      }
+      return;
+    }
+    if (message.method === RPC_SUBSCRIPTION_ENDED && message.params !== undefined) {
+      const { subscription: id, error } = message.params;
+      for (const subscription of subscriptions) {
+        if (subscription.serverId !== id || subscription.disposed) continue;
+        subscription.disposed = true;
+        subscriptions.delete(subscription);
+        subscription.onError?.(
+          new RpcError(
+            error ?? {
+              code: ErrorCodes.SERVER_ERROR,
+              message: "Subscription ended",
+              data: { code: "INTERNAL" },
+            },
+          ),
+        );
       }
       return;
     }
@@ -286,6 +337,7 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
         lastSequence: subscribeOptions.after ?? 0,
         onEvent,
         onError: subscribeOptions.onError,
+        window: subscribeOptions.window,
         serverId: undefined,
         disposed: false,
       };

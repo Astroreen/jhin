@@ -358,7 +358,8 @@ the same T3 Code nightly `eb7b35ac` unless a decision names another source.
 - **D470. Flow control: acknowledged output windows**, T3's
   `withTerminalOutputWindow`. `rpc.subscribe` takes an optional
   `window: {events, bytes}`; with it the server has at most that many
-  events and bytes (as sent, JSON) of the subscription unacknowledged, and
+  events, and characters of their JSON as sent, of the subscription
+  unacknowledged (one event larger than the window still goes alone), and
   the client acknowledges each event with the notification
   `rpc.ack {subscription, sequence}` once its handler is done (a handler
   that returns a promise, such as a terminal writing to xterm, acknowledges
@@ -430,6 +431,17 @@ limit), `apps/web/test/terminal-attach.test.ts` (a re-attach against a
 1.0 node opening a new shell, `restartIfNotRunning`) and the NixOS check
 of D471.
 
+The proof of D470: `packages/rpc/test/flow-control.test.ts` (on the wire:
+at most the window unacknowledged, live events waiting too, one
+acknowledgement freeing several, the window in JSON characters, no window
+sending everything, an overflow ending the subscription with
+`rpc.subscription.ended`; through the client: an event acknowledged when
+its handler's promise settles, the overflow reaching `onError`) and
+`apps/web/test/terminal-attach.test.ts` (a terminal whose output is not
+shown has at most T3's 8 events on their way while the shell printed
+20000 lines, and gets the rest once it shows them; an ended subscription
+read again from a snapshot).
+
 ## Deferred
 
 - Terminals of threads on mesh members (D47): calls could be relayed with
@@ -446,7 +458,6 @@ of D471.
 - `terminals.write` is in effect shell access as the node's user, whoever
   holds it (an MCP client included); grant it only where that is meant.
   D461 narrows what a shell inherits, not what it can read on the machine.
-- Flow control (D470): lands in the next PR of this workstream.
 - Links, the selection menu and "Add to chat", fonts, the right-panel
   terminal and hidden terminals kept mounted (D472–D474): land in the
   following PR of this workstream.

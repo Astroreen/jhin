@@ -18,7 +18,11 @@ import { connectInMemory, createTestKernel, mockCapability, type TestKernel } fr
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import terminal from "../../../plugins/terminal/src/index.ts";
-import { attachTerminal, type TerminalSink } from "../src/plugins/terminal/attach.ts";
+import {
+  TERMINAL_OUTPUT_WINDOW,
+  attachTerminal,
+  type TerminalSink,
+} from "../src/plugins/terminal/attach.ts";
 
 const manifest = JSON.parse(
   Fs.readFileSync(new URL("../../../plugins/terminal/package.json", import.meta.url), "utf8"),
@@ -383,6 +387,84 @@ describe("attaching a terminal (the drawer's viewport)", () => {
     expect(now.status).toBe("running");
     expect(now.pid).not.toBe(opened.pid);
     expect(view.log.some((entry) => entry.kind === "ended")).toBe(false);
+  });
+
+  it("has at most T3's output window on its way, and gets the rest as output is shown (D470)", async () => {
+    const { client, cwd } = await node();
+    const input = { threadId: "t", terminalId: "term-1", cwd };
+    const shown: (() => void)[] = [];
+    let release = false;
+    let written = "";
+    const view = recorder();
+    const sink: TerminalSink = {
+      ...view.sink,
+      write(data, replay) {
+        written += data;
+        view.sink.write(data, replay);
+        // Shown only when the test says so: a slow client.
+        if (replay || release) return undefined;
+        return new Promise<void>((resolve) => shown.push(resolve));
+      },
+    };
+    const attached = attachTerminal({ ...input, client, size, sink });
+    await view.until(() => view.log.some((entry) => entry.kind === "reset"));
+    // Another client, without a window, sees the whole run.
+    const observer = new Promise<void>((resolve) => {
+      let seen = "";
+      client.subscribe(terminalStream("t", "term-1"), {}, (event) => {
+        if (event.type !== TerminalEvents.output) return;
+        seen += (event.payload as { data: string }).data;
+        if (seen.includes("\n20000")) resolve();
+      });
+    });
+    attached.write("seq 1 20000\r");
+    await observer;
+    // Everything sent before this answer arrived first: at most the window.
+    await client.call("terminals.list", {});
+    expect(shown.length).toBeLessThanOrEqual(TERMINAL_OUTPUT_WINDOW.events);
+    expect(written).not.toContain("\n20000");
+
+    // Showing what came lets the rest come.
+    release = true;
+    for (const resolve of shown.splice(0)) resolve();
+    await view.until(() => written.includes("\n20000"));
+    attached.dispose();
+  });
+
+  it("reads the terminal again when the node ends a subscription that fell behind (D470)", async () => {
+    const { client, cwd } = await node();
+    const input = { threadId: "t", terminalId: "term-1", cwd };
+    let ended = false;
+    // The node's first subscription ends at its first event, as an overflow does.
+    const overflowing = new Proxy(client, {
+      get(target, property, receiver) {
+        if (property !== "subscribe") return Reflect.get(target, property, receiver);
+        return (
+          stream: string,
+          options: Parameters<RpcClient["subscribe"]>[1],
+          onEvent: Parameters<RpcClient["subscribe"]>[2],
+        ) => {
+          const subscription = target.subscribe(stream, options, (event) => {
+            if (ended) return onEvent(event);
+            ended = true;
+            subscription.dispose();
+            options.onError?.(
+              Object.assign(new Error("fell too far behind"), {
+                code: "SUBSCRIPTION_OVERFLOW",
+              }) as never,
+            );
+          });
+          return subscription;
+        };
+      },
+    });
+    const view = recorder();
+    const attached = attachTerminal({ ...input, client: overflowing, size, sink: view.sink });
+    await view.until(() => view.log.some((entry) => entry.kind === "reset"));
+    attached.write("echo back-$((20+22))\r");
+    await view.shows("back-42");
+    expect(view.log.filter((entry) => entry.kind === "reset")).toHaveLength(2);
+    expect(view.screen()).not.toContain("fell too far behind");
   });
 
   it("shows why a terminal cannot open", async () => {

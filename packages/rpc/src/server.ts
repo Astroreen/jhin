@@ -10,11 +10,14 @@ import type { EventLog, StoredEvent } from "@jhin/storage-api";
 import type { Peer } from "./peer.ts";
 import { UNGUARDED_STREAM_PERMISSION, type LiveStreams, type StreamSource } from "./streams.ts";
 import {
+  AckParams,
   ErrorCodes,
+  RPC_ACK,
   RPC_EVENT,
   RPC_HELLO,
   RPC_READY,
   RPC_SUBSCRIBE,
+  RPC_SUBSCRIPTION_ENDED,
   RPC_UNSUBSCRIBE,
   RequestMessage,
   SubscribeParams,
@@ -25,6 +28,17 @@ import {
 } from "./protocol.ts";
 
 const BACKLOG_PAGE = 500;
+/**
+ * Most a windowed subscription keeps waiting for acknowledgements, in JSON
+ * characters: past it the subscription ends with `SUBSCRIPTION_OVERFLOW`
+ * and the client reads a snapshot again (D470).
+ */
+export const MAX_WAITING_CHARACTERS = 16 * 1024 * 1024;
+
+/** A subscription of the connection; a windowed one takes acknowledgements. */
+interface Subscription extends Disposable {
+  ack?(sequence: number): void;
+}
 
 export interface RpcServerOptions {
   /** Runs a command; usually `context.commands.execute`. */
@@ -46,7 +60,7 @@ export interface RpcServerOptions {
 /** Serves one connection until its peer closes. */
 export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
   const store = new DisposableStore();
-  const subscriptions = new Map<string, Disposable>();
+  const subscriptions = new Map<string, Subscription>();
   const traced = options.traced ?? (<T>(_trace: string, work: () => Promise<T>) => work());
 
   const reply = (message: ResponseMessage) => {
@@ -61,7 +75,7 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
     reply({ jsonrpc: "2.0", id, error, ...(trace === undefined ? {} : { trace }) });
 
   async function subscribe(params: unknown): Promise<unknown> {
-    const { subscription: id, stream, after } = SubscribeParams.parse(params);
+    const { subscription: id, stream, after, window } = SubscribeParams.parse(params);
     if (subscriptions.has(id)) {
       throw Object.assign(new Error(`Subscription ${id} already exists on this connection`), {
         code: "INVALID",
@@ -85,19 +99,83 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
     let lastSent = after;
     let live = false;
     const buffered: StoredEvent[] = [];
+    // Flow control (D470): what is sent and not acknowledged, and what waits.
+    const unacked: { sequence: number; size: number }[] = [];
+    let unackedSize = 0;
+    const waiting: { sequence: number; text: string }[] = [];
+    let waitingSize = 0;
+    const full = () =>
+      window !== undefined && (unacked.length >= window.events || unackedSize >= window.bytes);
+    const send = (sequence: number, text: string) => {
+      if (window !== undefined) {
+        unacked.push({ sequence, size: text.length });
+        unackedSize += text.length;
+      }
+      peer.send(text);
+    };
     const deliver = (event: StoredEvent) => {
       if (event.sequence <= lastSent) return;
       lastSent = event.sequence;
+      const text = JSON.stringify({
+        jsonrpc: "2.0",
+        method: RPC_EVENT,
+        params: { subscription: id, event },
+      });
+      if (waiting.length === 0 && !full()) {
+        send(event.sequence, text);
+        return;
+      }
+      waiting.push({ sequence: event.sequence, text });
+      waitingSize += text.length;
+      if (waitingSize > MAX_WAITING_CHARACTERS) overflow();
+    };
+    /** The subscriber fell too far behind: the subscription ends, and says why. */
+    const overflow = () => {
+      if (!active()) return;
+      subscription.dispose();
+      subscriptions.delete(id);
+      waiting.length = 0;
+      waitingSize = 0;
       peer.send(
-        JSON.stringify({ jsonrpc: "2.0", method: RPC_EVENT, params: { subscription: id, event } }),
+        JSON.stringify({
+          jsonrpc: "2.0",
+          method: RPC_SUBSCRIPTION_ENDED,
+          params: {
+            subscription: id,
+            error: {
+              code: ErrorCodes.SERVER_ERROR,
+              message: `Subscription ${id} to ${stream} fell too far behind`,
+              data: { code: "SUBSCRIPTION_OVERFLOW", details: { stream } },
+            },
+          },
+        }),
       );
     };
     // Subscribe first, then read the backlog: an event appended in between is
     // in the buffer, in the backlog, or both; `lastSent` drops duplicates.
     const live$ = log.subscribe(stream, (event) => (live ? deliver(event) : buffered.push(event)));
-    subscriptions.set(id, live$);
+    const subscription: Subscription = {
+      dispose: () => live$.dispose(),
+      ...(window === undefined
+        ? {}
+        : {
+            ack(sequence: number) {
+              while (unacked.length > 0 && unacked[0]!.sequence <= sequence) {
+                unackedSize -= unacked.shift()!.size;
+              }
+              while (waiting.length > 0 && !full()) {
+                const next = waiting.shift()!;
+                waitingSize -= next.text.length;
+                send(next.sequence, next.text);
+              }
+            },
+          }),
+    };
+    subscriptions.set(id, subscription);
     // An unsubscribe (or a closed connection) while the backlog is read ends the replay.
-    const active = () => subscriptions.get(id) === live$;
+    function active() {
+      return subscriptions.get(id) === subscription;
+    }
     let head: number;
     try {
       head = await log.head(stream);
@@ -159,8 +237,14 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       // On a two-way link the other side's answers to our own calls arrive here
       // too; they belong to a caller (createCaller / createRpcClient), not to us.
       if (typeof raw === "object" && raw !== null && !("method" in raw)) return;
-      // Notifications (no id), e.g. rpc.event for a subscription this side made: not requests.
-      if (typeof raw === "object" && raw !== null && "method" in raw && !("id" in raw)) return;
+      // Notifications (no id): an acknowledgement of a windowed subscription
+      // (D470); others, e.g. rpc.event for a subscription this side made, are not ours.
+      if (typeof raw === "object" && raw !== null && "method" in raw && !("id" in raw)) {
+        if ((raw as { method: unknown }).method !== RPC_ACK) return;
+        const ack = AckParams.safeParse((raw as { params?: unknown }).params);
+        if (ack.success) subscriptions.get(ack.data.subscription)?.ack?.(ack.data.sequence);
+        return;
+      }
       const parsed = RequestMessage.safeParse(raw);
       if (!parsed.success) {
         const id = (raw as { id?: unknown } | null)?.id;

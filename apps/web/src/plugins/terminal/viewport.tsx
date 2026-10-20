@@ -90,13 +90,17 @@ export function TerminalViewport(props: {
           if (readAutoFocus()) requestAnimationFrame(() => terminal.focus());
         },
         write(data, replay) {
-          if (!replay) {
-            terminal.write(data);
-            return;
-          }
-          replaying += 1;
-          terminal.write(data, () => {
-            replaying -= 1;
+          // Done once xterm parsed it: the node sends more as output is shown (D470).
+          return new Promise<void>((resolve) => {
+            if (!replay) {
+              terminal.write(data, resolve);
+              return;
+            }
+            replaying += 1;
+            terminal.write(data, () => {
+              replaying -= 1;
+              resolve();
+            });
           });
         },
         system: (message) => terminal.write(systemLine(message)),
