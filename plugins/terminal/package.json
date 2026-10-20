@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@jhin/agent-api": "workspace:*",
+    "@jhin/host-api": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/storage-api": "workspace:*",
@@ -51,9 +52,10 @@
     "description": "PTY sessions per thread in its project's folder, their output streamed to clients (T3 Code's terminal)",
     "side": "server",
     "provides": {
-      "terminal.sessions": "1.1.0"
+      "terminal.sessions": "1.2.0"
     },
     "optional": {
+      "host.paths": "^1",
       "rpc.streams": "^1",
       "storage.eventlog": "^1"
     },

@@ -120,6 +120,12 @@ export interface MemoryStreams extends StreamSource {
   drop(stream: string, count: number): void;
   /** Forgets events of `stream` by sequence: one, or a set of them in one pass. */
   remove(stream: string, sequence: number | ReadonlySet<number>): void;
+  /**
+   * Replaces the payload of a kept event, in place (a scrollback cut at a
+   * line): subscribers that already got the event are not told again; a
+   * later read gets the new payload.
+   */
+  update(stream: string, sequence: number, payload: Json): void;
   /** Forgets every event of `stream`; its sequences keep counting. */
   clear(stream: string): void;
   /**
@@ -189,6 +195,12 @@ export function createMemoryStreams(
       }
       list.length = next;
       if (list.length === 0) kept.delete(stream);
+    },
+    update(stream, sequence, payload) {
+      const list = kept.get(stream);
+      const index = list?.findIndex((event) => event.sequence === sequence) ?? -1;
+      if (list === undefined || index === -1) return;
+      list[index] = { ...list[index]!, payload };
     },
     clear(stream) {
       kept.delete(stream);

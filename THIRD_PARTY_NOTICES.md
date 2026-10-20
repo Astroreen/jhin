@@ -30,8 +30,9 @@ tool, question and plan mapping, result errors, the model catalog, live
 sessions kept between turns, the node's MCP server attached to Claude Code),
 the agent credentials of the MCP server plugin (`plugins/mcp-server`), the
 terminal plugin (`plugins/terminal`:
-loading node-pty, the shell's environment, sizes, scrollback and finding the
-program a terminal runs), orchestration (`plugins/orchestration`: the
+loading node-pty, the shell's environment, sizes, scrollback and its
+history files, the limit on exited sessions and finding the program a
+terminal runs), orchestration (`plugins/orchestration`: the
 contracts, rules and messages of delegated tasks, thread launches and their
 capabilities, and the script contract of workflows) and scheduled tasks
 (`packages/scheduler-api`, `plugins/scheduler`: triggers and their next runs,

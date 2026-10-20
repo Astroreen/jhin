@@ -33,6 +33,12 @@ export function attachTerminal(options: {
   readonly cwd: string;
   readonly size: () => { cols: number; rows: number };
   readonly sink: TerminalSink;
+  /**
+   * Starts a new shell for a session whose shell exited, instead of ending
+   * there (T3's `restartIfNotRunning`, D463). The drawer does not: an exited
+   * shell ends its tab, as in T3's web client.
+   */
+  readonly restartIfNotRunning?: boolean;
 }): Disposable & {
   /**
    * Types into the terminal. What is typed before the terminal is open (its
@@ -95,7 +101,16 @@ export function attachTerminal(options: {
       // Read first: a session whose shell ended while nobody watched ends its
       // tab, it is not started again; only a terminal the node lacks is opened.
       const read = await readSnapshot();
-      if ("found" in read) {
+      if ("found" in read && read.found.status === "exited" && options.restartIfNotRunning) {
+        // `terminals.open` starts a new shell for a session whose shell exited.
+        await client.call<TerminalSummary>("terminals.open", {
+          threadId,
+          terminalId,
+          cwd: options.cwd,
+          ...options.size(),
+        });
+        snapshot = await client.call<TerminalSnapshot>("terminals.get", { threadId, terminalId });
+      } else if ("found" in read) {
         snapshot = read.found;
       } else if (seenIn !== undefined && read.missing.instance === seenIn) {
         // Gone while the connection was away, in the same run of the node's

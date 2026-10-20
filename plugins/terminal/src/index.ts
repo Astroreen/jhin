@@ -1,4 +1,7 @@
+import * as Path from "node:path";
+
 import { THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
+import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, createMemoryStreams, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, z } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
@@ -16,7 +19,8 @@ import {
   WriteTerminalInput,
 } from "@jhin/terminal-api";
 
-import { readProcessTable } from "./processes.ts";
+import { createHistoryFiles } from "./history.ts";
+import { createProcessTableReader } from "./processes.ts";
 import { loadNodePty } from "./pty.ts";
 import { TerminalError, createSessions } from "./sessions.ts";
 
@@ -39,6 +43,33 @@ const Config = z
       title: "Scrollback lines",
       description: "How much of a terminal's output the node keeps for clients that open it later.",
     }),
+    env: z
+      .object({
+        strip: z
+          .array(z.string().min(1))
+          .optional()
+          .meta({
+            title: "Variables to strip",
+            description:
+              "Names of the node's environment variables a terminal does not get; NAME_* matches a prefix.",
+            examples: [["ANTHROPIC_API_KEY", "AWS_*"]],
+          }),
+        keep: z
+          .array(z.string().min(1))
+          .optional()
+          .meta({
+            title: "Variables to keep",
+            description:
+              "When set, the only variables of the node's environment a terminal gets; NAME_* matches a prefix.",
+            examples: [["PATH", "HOME", "LANG", "LC_*"]],
+          }),
+      })
+      .optional()
+      .meta({
+        title: "Environment",
+        description:
+          "Narrows the node's environment that terminals get (JHIN_*, VITE_* and the node's ports are always left out). Read when a shell starts.",
+      }),
   })
   .meta({
     title: "Terminal",
@@ -51,13 +82,23 @@ export default definePlugin({
     context.config.define(CONFIG_SECTION, Config);
     const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
     const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
+    const paths = context.services.tryGet<HostPaths>(HOST_PATHS_CAPABILITY);
     const streams = createMemoryStreams({ log: context.log });
     const sessions = createSessions({
       streams,
       pty: loadNodePty,
-      ...(process.platform === "win32" ? {} : { processTable: readProcessTable }),
+      processTable: createProcessTableReader(),
       config: () => context.config.get<Config>(CONFIG_SECTION),
       log: context.log,
+      // Output kept across node restarts (D464), where the node has a data folder.
+      ...(paths === undefined
+        ? {}
+        : {
+            history: createHistoryFiles(
+              Path.join(paths.dataDir(context.plugin.id), "history"),
+              context.log,
+            ),
+          }),
     });
     context.services.provide(TERMINAL_SESSIONS_CAPABILITY, sessions);
     // Sessions end with the plugin: their processes are stopped before it is gone.
@@ -74,15 +115,20 @@ export default definePlugin({
       context.subscriptions.add(live.serve(TERMINAL_STREAM_PREFIX, streams, read));
     }
 
-    // A deleted thread takes its terminals with it.
+    // A deleted or archived thread takes its terminals with it (D143, D466).
     if (log !== undefined) {
       context.subscriptions.add(
         log.subscribe(THREADS_STREAM, (event) => {
-          if (event.type !== ThreadEvents.threadDeleted) return;
-          const threadId = (event.payload as { id?: unknown } | null)?.id;
-          if (typeof threadId !== "string") return;
+          const record = event.payload as { id?: unknown; archivedAt?: unknown } | null;
+          const gone =
+            event.type === ThreadEvents.threadDeleted ||
+            (event.type === ThreadEvents.threadUpdated && typeof record?.archivedAt === "string");
+          const threadId = record?.id;
+          if (!gone || typeof threadId !== "string") return;
+          // An archived thread's later updates (a title) find nothing left to close.
+          if (sessions.list(threadId).length === 0) return;
           void sessions.close({ threadId }).catch((error: unknown) =>
-            context.log.warn("terminals of a deleted thread not closed", {
+            context.log.warn("terminals of a thread not closed", {
               threadId,
               error: String(error),
             }),

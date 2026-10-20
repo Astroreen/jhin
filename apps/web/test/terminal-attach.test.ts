@@ -125,6 +125,35 @@ function recorder() {
 
 const size = () => ({ cols: 80, rows: 24 });
 
+/**
+ * What a `terminal.sessions@1.0` node answers: no `instance` in summaries,
+ * snapshots or `TERMINAL_NOT_FOUND`'s details.
+ */
+function asOneZeroNode(client: RpcClient): RpcClient {
+  const strip = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(strip);
+    if (typeof value !== "object" || value === null) return value;
+    const { instance: _instance, ...rest } = value as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(rest).map(([key, item]) => [key, strip(item)]));
+  };
+  return new Proxy(client, {
+    get(target, property, receiver) {
+      if (property !== "call") return Reflect.get(target, property, receiver);
+      return async (method: string, params?: unknown, options?: { trace?: string }) => {
+        try {
+          return strip(await target.call(method, params, options));
+        } catch (error) {
+          const failure = error as { code?: string; details?: unknown; message: string };
+          throw Object.assign(new Error(failure.message), {
+            code: failure.code,
+            details: strip(failure.details),
+          });
+        }
+      };
+    },
+  });
+}
+
 describe("attaching a terminal (the drawer's viewport)", () => {
   it("opens the shell, streams what it prints, and ends with the process", async () => {
     const { client, cwd } = await node();
@@ -299,6 +328,51 @@ describe("attaching a terminal (the drawer's viewport)", () => {
       {},
     );
     expect(terminals).toMatchObject([{ status: "running" }]);
+  });
+
+  it("opens a new shell against a 1.0 node, which names no run, when its session is gone (D471)", async () => {
+    const { client: other, cwd, kernel, live } = await node();
+    const { client: gated, cut } = gatedClient(kernel, live);
+    const client = asOneZeroNode(gated);
+    const input = { threadId: "t", terminalId: "term-1", cwd };
+    const view = recorder();
+    attachTerminal({ ...input, client, size, sink: view.sink });
+    await view.until(() => view.log.some((entry) => entry.kind === "reset"));
+    const first = await other.call<{ pid: number }>("terminals.get", input);
+
+    const letIn = await cut();
+    // Closed elsewhere while the connection was away: a 1.1 node would say
+    // it is the same run; a 1.0 node cannot, so the session's absence reads
+    // as a node that started over.
+    await other.call("terminals.close", input);
+    letIn();
+
+    await view.until(() => view.log.filter((entry) => entry.kind === "reset").length === 2);
+    expect(view.log.some((entry) => entry.kind === "ended")).toBe(false);
+    const second = await other.call<{ pid: number; status: string }>("terminals.get", input);
+    expect(second.status).toBe("running");
+    expect(second.pid).not.toBe(first.pid);
+  });
+
+  it("starts a new shell for one that exited when asked to restart it (D463)", async () => {
+    const { client, cwd } = await node();
+    const input = { threadId: "t", terminalId: "term-1", cwd };
+    const opened = await client.call<{ pid: number }>("terminals.open", input);
+    const exited = new Promise<void>((resolve) =>
+      client.subscribe(terminalStream("t", "term-1"), {}, (event) => {
+        if (event.type === TerminalEvents.exited) resolve();
+      }),
+    );
+    await client.call("terminals.write", { ...input, data: "exit\r" });
+    await exited;
+
+    const view = recorder();
+    attachTerminal({ ...input, client, size, sink: view.sink, restartIfNotRunning: true });
+    await view.until(() => view.log.some((entry) => entry.kind === "reset"));
+    const now = await client.call<{ pid: number; status: string }>("terminals.get", input);
+    expect(now.status).toBe("running");
+    expect(now.pid).not.toBe(opened.pid);
+    expect(view.log.some((entry) => entry.kind === "ended")).toBe(false);
   });
 
   it("shows why a terminal cannot open", async () => {

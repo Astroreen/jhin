@@ -247,6 +247,178 @@ with the confirmation, an exited shell closing its tab) and `pnpm
 pack:smoke` (the packed CLI opens a terminal with node-pty from the
 installed package).
 
+## Follow-ups (W15)
+
+What the first version left (the review follow-ups, the environment,
+history, limits, flow control and the drawer's own features), ported from
+the same T3 Code nightly `eb7b35ac` unless a decision names another source.
+
+- **D460. The review follow-ups of D140–D143.** `terminals.write` and
+  `terminals.resize` on a PTY that died before node-pty reported its exit
+  answer `TERMINAL_NOT_RUNNING` (node-pty's own error, EBADF or "ioctl
+  failed", goes into its details) instead of throwing node-pty's error.
+  A session is closed once: a second close while the first one runs
+  (`terminals.close`, a deleted or archived thread, deactivation) waits for
+  the first, appends no second `terminal.closed` and stops the process once.
+  The scrollback keeps `jhin.terminal.scrollback` lines exactly: the oldest
+  output event it has to cut into is split after a line break (T3's
+  `BoundedTerminalHistory` cuts lines the same way), and at the byte limit
+  it is cut at a code point, never inside a surrogate pair. A single line
+  longer than the byte limit keeps its end.
+
+- **D461. The shell's environment, narrowed by the owner.** Besides T3's
+  three ports, the plugin now drops what T3's `shouldExcludeTerminalEnvKey`
+  drops, with Jhin's names: `JHIN_*` (T3's `T3CODE_*`) and `VITE_*`, and
+  scrubs an AppImage's runtime variables as T3 does (`APPIMAGE`, `APPDIR`,
+  `ARGV0`, `OWD` and the mount's entries of `PATH`, `LD_LIBRARY_PATH`,
+  `XDG_DATA_DIRS`, `GSETTINGS_SCHEMA_DIR`). Two settings of `jhin.terminal`
+  narrow it further: `env.strip`, names to drop, and `env.keep`, when set
+  the only names passed on (`TERM` and `COLORTERM` are always set). A name
+  ending in `*` matches a prefix (`AWS_*`); names compare without case on
+  Windows, where variables are case-insensitive. Both are read when a shell
+  starts, so a running shell keeps the environment it started with.
+
+- **D462. An environment per terminal** (T3's `env` of `terminal.open`):
+  `terminals.open` takes `env`, at most 128 variables named
+  `[A-Za-z_][A-Za-z0-9_]*` with values up to 8 KiB (T3's limits), set over
+  the node's environment after D461's filters (on Windows it replaces a
+  variable of another case, as T3 does). Like `cwd`, it counts only when a
+  shell starts: an `open` of a running session with a different `env` is
+  refused with the new code `TERMINAL_ENV_MISMATCH` (`terminal.sessions@1.2`),
+  where T3 restarts the shell; a shell is not stopped by a call that only
+  meant to attach (D140's reason). The variables are never in a summary or a
+  snapshot: they may be secrets. T3's provider environments are not ported:
+  Jhin has no provider instances with an environment of their own.
+
+- **D463. Restart on attach is the caller's choice.** T3's `terminal.attach`
+  with `restartIfNotRunning` starts a new process for a session whose
+  process exited; without it the session is shown as it ended. In Jhin
+  `terminals.open` is the attach that restarts (D140), `terminals.get` the
+  one that does not, and `attachTerminal` takes `restartIfNotRunning` for a
+  client that wants the former; the drawer keeps T3's web behaviour (an
+  exited shell ends its tab, D142), so no setting is added.
+
+- **D464. History across node restarts** (T3's history files). With
+  `host.paths@1` the plugin writes each session's kept output to
+  `<data>/jhin.terminal/history/<threadId>/<terminalId>.log`, coalesced:
+  one write per session at most every 250 ms (T3's debounce), the newest
+  content at the time of the write. When `terminals.open` starts a session
+  the node does not have (after a restart, or for the first time), it reads
+  the tail of that file, at most the scrollback's byte limit, skips a
+  partial UTF-8 code point at its start, applies the line limit, and puts it
+  in the stream as one `terminal.output` after `terminal.started`, before
+  the new shell's first output; a file cut that way is written back capped.
+  A process that exits and starts again in the same run starts with empty
+  history, as in T3. `terminals.close` (the drawer's "clears its history"),
+  a deleted or archived thread and an evicted session delete the file;
+  stopping the plugin (a node restart) keeps it, after waiting for the
+  pending writes. Without `host.paths@1` nothing is written.
+
+- **D465. At most 128 exited sessions** (T3's
+  `maxRetainedInactiveSessions`): when a session's process exits and more
+  than 128 sessions have no process, the ones updated longest ago are
+  closed as `terminals.close` closes them (their streams end with
+  `terminal.closed`, their history goes). A running session is never
+  evicted.
+
+- **D466. An archived thread closes its terminals**, as a deleted one does
+  (D143) and as T3's `ResourceCleanupService` does on archive: the plugin
+  follows `threads.thread.updated` in the `threads` index and closes the
+  terminals of a thread whose record has `archivedAt`. Unarchiving does not
+  bring them back; the drawer opens a new shell when shown.
+
+- **D467. `ps` output grows its buffer instead of failing for good.** The
+  read starts with T3's 512 KiB; output cut short at that size doubles the
+  limit for the next read, up to 16 MiB, and the plugin keeps the larger
+  limit for the rest of its run. The warning stays once per run of
+  failures (D144).
+
+- **D468. What a terminal runs on Windows**, as T3 finds it: PowerShell's
+  `Get-CimInstance Win32_Process` (`ProcessId|ParentProcessId|Name`, 1.5 s
+  timeout, the same growing buffer from T3's 256 KiB), with `.exe` dropped
+  from a name and `\` as a path separator. The same parent and child rules
+  as D144 apply.
+
+- **D469. Resizes are coalesced on the `terminals` stream.** A change that
+  is only a size publishes the list at most once per 100 ms, at the end of
+  that window; any other change publishes at once and carries the latest
+  sizes. `terminals.list` and `terminals.get` always answer the current
+  size. The drawer already sends at most one resize per animation frame and
+  only when the size in cells changed.
+
+- **D470. Flow control: acknowledged output windows**, T3's
+  `withTerminalOutputWindow`. `rpc.subscribe` takes an optional
+  `window: {events, bytes}`; with it the server has at most that many
+  events and bytes (as sent, JSON) of the subscription unacknowledged, and
+  the client acknowledges each event with the notification
+  `rpc.ack {subscription, sequence}` once its handler is done (a handler
+  that returns a promise, such as a terminal writing to xterm, acknowledges
+  when it settles). Events beyond the window wait on the server. Waiting
+  events are bounded: past 16 MiB the server ends the subscription with
+  the notification `rpc.subscription.ended {subscription, error}` (code
+  `SUBSCRIPTION_OVERFLOW`), and the client reports it to `onError`; the
+  terminal client then attaches again from a snapshot, which is bounded by
+  the scrollback. The terminal client asks for T3's window, 8 events or
+  64 KiB. Old clients send no window and get every event as it comes; old
+  servers ignore the window and the notifications, so both mix.
+
+- **D471. Proofs that were missing.** A re-attach against a
+  `terminal.sessions@1.0` node (no `instance` in summaries or in
+  `TERMINAL_NOT_FOUND`) is tested: a missing session there opens a shell.
+  node-pty on NixOS: in a `nixos/nix` container (no FHS libraries, as on
+  NixOS), Nix's Node 24.21.0 (`nodejs_24` of nixpkgs-unstable) loads the
+  prebuilt `pty.node` of node-pty `1.2.0-beta.15` and runs a shell in a
+  PTY, so the libraries D145 names are found without `LD_LIBRARY_PATH`. A
+  NixOS machine itself was not at hand; its Node is the same derivation.
+
+- **D472. Links and fonts in the terminal.** Links are T3's
+  `terminal-links.ts`: `http(s)` URLs and file paths found in a line,
+  wrapped lines joined, underlined on hover, opened with ⌘-click (macOS) or
+  Ctrl-click elsewhere. A URL opens in a new browser tab. A path has
+  nowhere to open yet (Jhin has no "open in editor"), so only URLs are
+  activated. The font is a setting of the client section `jhin.terminal`
+  as in T3's appearance settings: `fontFamily` (empty: T3's monospace
+  stack) and `fontSize` (12 px, T3's default), applied to open terminals
+  as it changes.
+
+- **D473. The selection menu and "Add to chat".** Selecting text in a
+  terminal shows T3's selection menu by the selection ("Add to chat",
+  "Copy"); a right-click shows T3's context menu ("Add to chat", "Copy",
+  "Paste", "Select all", "Jump to latest"). "Add to chat" puts the
+  selection into the open thread's composer through the new client command
+  `chat.composer.insert {text}` (the chat plugin; the composer's text at
+  the cursor). The text is T3's legacy wire shape: an inline
+  `@terminal-1:3-5` label, and a `<terminal_context>` block with the
+  numbered lines, which is what T3 sends to agents that do not read inline
+  contexts. T3's inline chip in the composer comes with the rich text
+  composer (W6).
+
+- **D474. The right-panel terminal and terminals that stay mounted.** A
+  thread's terminals can also show in the panel right of the chat
+  (`app.panel`'s `jhin.terminal.panel`, open while the route's panel is
+  `terminal`), with the same tabs, splits and actions as the drawer, toggled
+  by the client command `terminal.panel.toggle` and the header button, as
+  T3's right-panel surface. Terminals of a hidden drawer stay mounted
+  (`display: none`), as T3's `PersistentThreadTerminals` keeps them, so
+  showing the drawer again shows the screen as it was, without a replay;
+  they unmount when the thread is left.
+
+The proof of D460–D469, D471: `plugins/terminal/test/followups.test.ts`
+(a fake PTY the test drives: `TERMINAL_NOT_RUNNING` for a dead PTY's write
+and resize, one close for three at once, one `terminals` list for five
+resizes and at once for another change, the scrollback cut at a line and at
+a code point, the environment's filters, AppImage scrub and Windows case,
+an `env` per terminal and `TERMINAL_ENV_MISMATCH` without its values,
+history written on stop and shown after the node started over, empty after
+a restart in the same run and for a terminal opened again while its close
+deletes it, a long history file read by its tail and capped, exited
+sessions evicted past the limit, `ps`'s buffer growing to 16 MiB,
+PowerShell's process table), `plugins/terminal/test/terminal.test.ts` (an
+archived thread's terminals closed, the scrollback holding exactly its line
+limit), `apps/web/test/terminal-attach.test.ts` (a re-attach against a
+1.0 node opening a new shell, `restartIfNotRunning`) and the NixOS check
+of D471.
+
 ## Deferred
 
 - Terminals of threads on mesh members (D47): calls could be relayed with
@@ -255,42 +427,12 @@ installed package).
   others the toggle says so.
 - Permissions on subscriptions to the event log. Done in `security.md`
   (D415).
-- From the second automated review of the PR, left for a follow-up:
-  `terminals.write` and `terminals.resize` on a PTY that died before
-  node-pty reported its exit throw node-pty's own error (EBADF, "ioctl
-  failed") instead of `TERMINAL_NOT_RUNNING`; two closes of one session at
-  once (`terminals.close`, a deleted thread, deactivation) append
-  `terminal.closed` twice and stop its process twice; the scrollback drops
-  whole output events, so with a chunk larger than the limit fewer lines
-  than `jhin.terminal.scrollback` are kept (the setting is approximate until
-  an event is split at a line).
-- The shell gets the node's whole environment but T3's three ports (D140,
-  as T3 does), so a secret in the node's environment (provider API keys,
-  tokens) is readable from every terminal. `terminals.write` is in effect
-  shell access as the node's user, whoever holds it (an MCP client
-  included); grant it only where that is meant. A list of variables to
-  strip (or keep) in `jhin.terminal` would narrow it.
-- `ps` output is still read into at most 512 KiB: on a host with many
-  thousands of processes the read fails every time and the poll backs off to
-  a minute (now with a warning, D144); a larger limit, or a process table
-  read another way, would keep labels and indicators going there.
-- Coalescing the `terminals` stream on resize: every resize sends the whole
-  list again, so dragging the drawer's edge sends one list per size it
-  passes through.
-- A test of a re-attach against a 1.0 node (no `instance` in its
-  summaries or its `TERMINAL_NOT_FOUND`): `attach.ts` treats a missing
-  session there as a node that started over and opens a shell, but no test
-  drives that path.
-- Flow control: T3 acknowledges output windows so a slow client does not
-  queue unbounded output; Jhin sends every event as it comes.
-- Terminal history across node restarts (T3 writes it to files), a limit on
-  idle sessions (T3 keeps at most 128), and closing a thread's terminals
-  when it is archived.
-- An environment per terminal (T3's `env` and provider environments) and
-  T3's restart of an exited terminal on attach as an option.
-- Links in terminal output, "Add to chat" for a selection, the selection
-  menu, the terminal's font settings, T3's right-panel terminal, and keeping
-  hidden terminals mounted.
-- Finding the program a terminal runs on Windows (T3 uses PowerShell's
-  process table there).
-- Checking node-pty on NixOS itself (D145).
+- Provider environments for a terminal (T3's `providerInstanceId`, D462):
+  Jhin has no provider instances with an environment of their own yet.
+- `terminals.write` is in effect shell access as the node's user, whoever
+  holds it (an MCP client included); grant it only where that is meant.
+  D461 narrows what a shell inherits, not what it can read on the machine.
+- Flow control (D470): lands in the next PR of this workstream.
+- Links, the selection menu and "Add to chat", fonts, the right-panel
+  terminal and hidden terminals kept mounted (D472–D474): land in the
+  following PR of this workstream.
