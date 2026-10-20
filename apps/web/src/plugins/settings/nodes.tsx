@@ -1,7 +1,13 @@
 // Rows follow T3 Code's connections settings (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/settings/EnvironmentRow.tsx and ConnectionsSettings.tsx.
-import type { AgentInfo, NodeActionProps, NodeConnection, NodeTarget } from "@jhin/client-api";
-import { Badge, Button, Menu, MenuPopup, MenuTrigger, Slot, Spinner, cn } from "@jhin/ui";
+import type {
+  AgentInfo,
+  NodeActionProps,
+  NodeConnection,
+  NodeMemberActionProps,
+  NodeTarget,
+} from "@jhin/client-api";
+import { Badge, Button, Menu, MenuPopup, MenuTrigger, Slot, Spinner, cn, useSlot } from "@jhin/ui";
 import { BotIcon, EllipsisIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -95,6 +101,8 @@ function Agents({ target }: { target: NodeTarget }) {
 
 function MeshMembers({ connection }: { connection: NodeConnection }) {
   const { mesh } = useSettingsServices();
+  // No menu without items: the machines plugin, which gives the Icon submenu, is optional.
+  const hasActions = useSlot("node.member.actions").length > 0;
   const members = useMeshMembers(mesh, connection.id) ?? [];
   const others = members.filter((member) => !member.self);
   if (others.length === 0) return null;
@@ -111,6 +119,29 @@ function MeshMembers({ connection }: { connection: NodeConnection }) {
           <span className={member.reachable ? "text-success-foreground" : "text-muted-foreground"}>
             {member.reachable ? "reachable" : "unreachable"}
           </span>
+          {/* T3 gives every saved environment its menu; a member's is the `node.member.actions` slot. */}
+          {hasActions ? (
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    aria-label={`More actions for ${member.name}`}
+                    className="ms-auto"
+                    size="icon-xs"
+                    variant="ghost-muted"
+                  />
+                }
+              >
+                <EllipsisIcon className="size-3.5" />
+              </MenuTrigger>
+              <MenuPopup align="end">
+                <Slot
+                  name="node.member.actions"
+                  props={{ connection, member } satisfies NodeMemberActionProps}
+                />
+              </MenuPopup>
+            </Menu>
+          ) : null}
         </div>
       ))}
     </div>

@@ -324,3 +324,70 @@ test("untilReachable fails at once on a node without mesh.nodes", async () => {
     /ghost never became reachable \(mesh\.nodes failed: .+\); last mesh\.nodes: no answer yet/,
   );
 });
+
+test("D442: a mesh member's menu in settings changes its icon on the member", async ({
+  page,
+}, info) => {
+  // Each owner's choice is in the node's own file, which the icon menu writes too.
+  const machine = (kind: string) => (home: string) =>
+    Fs.writeFileSync(
+      Path.join(home, "config.jsonc"),
+      JSON.stringify({ "jhin.host": { machine: kind } }),
+    );
+  const a = await start({
+    mode: "ui",
+    config: { "jhin.mesh": { name: "a" } },
+    setup: machine("desktop"),
+  });
+  const b = await start({
+    mode: "serve",
+    config: { "jhin.mesh": { name: "b" } },
+    setup: machine("cloud"),
+  });
+  const invite = await b.client().call<{ url: string; code: string }>("mesh.invite");
+  await a.client().call("mesh.join", { url: invite.url, code: invite.code });
+  await untilReachable(a, "b");
+
+  await page.goto(`${a.ui}#token=${a.token}`);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Nodes", exact: true })
+    .click();
+  const nodes = page.getByRole("region", { name: "Nodes" });
+  await expect(nodes.locator('svg[data-machine="cloud"]')).toHaveCount(1);
+  await nodes.getByRole("button", { name: "More actions for b" }).click();
+  // Opened with the keyboard, as the connection's Icon menu is (machines.spec.ts says why).
+  await page.getByRole("menuitem", { name: "Icon" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("menuitemradio", { name: "Cloud VM" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  const menu = info.outputPath("member-icon-menu.png");
+  await page.screenshot({ path: menu });
+  await info.attach("member-icon-menu", { path: menu, contentType: "image/png" });
+  await page.getByRole("menuitemradio", { name: "Laptop" }).click();
+  await expect(nodes.locator('svg[data-machine="laptop"]')).toHaveCount(1);
+  // Kept on b, the member itself, as T3 keeps an environment's icon on its server.
+  expect(await b.client().call("host.identity", {})).toMatchObject({ machine: "laptop" });
+  expect(JSON.parse(Fs.readFileSync(Path.join(b.home, "config.jsonc"), "utf8"))).toMatchObject({
+    "jhin.host": { machine: "laptop" },
+  });
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  // Out of reach, its menu says so and changes nothing.
+  await b.stop();
+  await expect(nodes.getByText("unreachable", { exact: true })).toBeVisible();
+  await nodes.getByRole("button", { name: "More actions for b" }).click();
+  await page.getByRole("menuitem", { name: "Icon" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByText("Connect to this node to change its icon.")).toBeVisible();
+  for (const kind of ["Server", "Laptop", "Cloud VM"]) {
+    await expect(page.getByRole("menuitemradio", { name: kind })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  }
+});

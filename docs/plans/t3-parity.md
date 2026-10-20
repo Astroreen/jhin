@@ -741,6 +741,28 @@ without a valid shortcut) and `e2e/tests/config.spec.ts` ("D441": giving
 "Toggle sidebar" the palette's Ctrl+K warns on both rows, with the tooltip,
 and resetting it clears them), with a screenshot.
 
+- **D442. A mesh member has a menu too, with T3's Icon submenu.** T3 gives
+  every saved environment its "More actions" menu with "Icon" first. In
+  settings → Nodes each member of a connection's mesh gets a "More actions
+  for <name>" menu, which renders the new slot `node.member.actions`
+  (`NodeMemberActionProps`: the connection and the member, additive). It is
+  a slot of its own, not `node.actions`: the connection's items (rename on
+  this device, copy address, disconnect) and any plugin's would act on the
+  connection. `jhin.node-machines` contributes the same Icon submenu there
+  (`jhin.node-machines.member-icon`). It runs `node.set-machine` with
+  `remote`, which writes the member's own node file through the mesh, so the
+  member shows the kind to every client, as T3 keeps the icon on the
+  environment's server. An unreachable member's menu says "Connect to this
+  node to change its icon." and its kinds are disabled. Without a
+  contribution to the slot (hidden ones do not count) the member has no
+  menu button; a contribution that renders nothing still counts.
+
+The proof of D442: `apps/web/test/machines.browser.test.tsx` (the submenu in
+both slots; a member's submenu setting the kind on the member, and doing
+nothing while the member is out of reach) and `e2e/tests/mesh.spec.ts` ("D442": a and b in one mesh, b's
+menu in a's settings changes b's icon, kept in b's node file; once b is
+stopped its menu says so and its kinds are disabled), with a screenshot.
+
 ### Server-side queue and steering (W1, `t3-roadmap.md`)
 
 - **D200. The reference is T3 Code's server queue** (D53's tag,
@@ -923,12 +945,6 @@ and resetting it clears them), with a screenshot.
   card. The card's branch, diff and pull request are `source-control.md`'s
   D117 and its terminal indicator `terminal.md`'s D148, all in the
   `sidebar.thread.indicators` slot.
-- The Icon submenu for mesh members: settings → Nodes lists the members of a
-  connection's mesh with their icons, but only a connection has a menu
-  (`node.actions` gets `NodeActionProps`, a connection). `node.set-machine`
-  takes `remote` already, so a member's kind can be set by command, or in
-  the member's node config form; the menu waits for a member menu in
-  settings.
 - Pushing a node's config changes to its clients: a change of
   `jhin.host.machine` made by hand in the file, from another client, or with
   the mesh scope picker from another node's page reaches a client when its

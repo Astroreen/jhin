@@ -263,6 +263,16 @@ export interface NodeActionProps {
 }
 
 /**
+ * What the `node.member.actions` slot gives each item of the menu of a member
+ * of a connection's mesh (settings → Nodes): the member, reached through
+ * `connection` (its target is `{ node: connection.id, remote: member.nodeId }`).
+ */
+export interface NodeMemberActionProps {
+  readonly connection: NodeConnection;
+  readonly member: MeshMember;
+}
+
+/**
  * What the `chat.header.actions` slot gives each contribution: the open
  * thread (none while drafting) and where it lives.
  */
