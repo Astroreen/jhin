@@ -88,6 +88,8 @@ export interface LiveSessions {
      * already has them. Whether there are any must show in `options` (the launch key).
      */
     readonly attach?: (threadId: string) => Attachment;
+    /** The node's variables Claude Code gets (D346); every one when unset. */
+    readonly inherit?: readonly string[];
   }): Promise<Lease>;
   /**
    * Ends a thread's live session when no turn holds it, or with `force` also one a turn
@@ -102,6 +104,11 @@ export interface LiveSessions {
    */
   rearmIdle(): void;
   list(): LiveSessionInfo[];
+  /**
+   * Settles once the thread's last Claude Code has exited (its output ended): it writes
+   * its session file until then, also after it was asked to close.
+   */
+  ended(threadId: string): Promise<void>;
   /** Ends every live session. */
   dispose(): void;
 }
@@ -193,13 +200,33 @@ function launchKey(options: Options): string {
 }
 
 /**
- * The environment Claude Code launches with: the node's, the caller's `env` (the config's,
- * which alone is in the launch key) and running and idle reports. Idle is Claude Code's own
- * word that it took every message, the way out for a turn whose frames it does not mark
- * (D104). The node's own environment is passed through, not keyed on.
+ * The node's variables Claude Code gets (D346): those `inherit` names, exactly or by a
+ * prefix ending in `*`; `["*"]` is every one.
  */
-function launchEnvironment(env: Options["env"]): Record<string, string | undefined> {
-  return { ...process.env, ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" };
+export function inheritedEnvironment(
+  inherit: readonly string[] = ["*"],
+): Record<string, string | undefined> {
+  const exact = new Set(inherit.filter((name) => !name.endsWith("*")));
+  const prefixes = inherit.filter((name) => name.endsWith("*")).map((name) => name.slice(0, -1));
+  return Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([name]) => exact.has(name) || prefixes.some((prefix) => name.startsWith(prefix)),
+    ),
+  );
+}
+
+/**
+ * The environment Claude Code launches with: the node's variables the allow-list lets
+ * through, the caller's `env` (the config's, which with the list is in the launch key) and
+ * running and idle reports. Idle is Claude Code's own word that it took every message, the
+ * way out for a turn whose frames it does not mark (D104). The node's own values are passed
+ * through, not keyed on.
+ */
+function launchEnvironment(
+  env: Options["env"],
+  inherit: readonly string[] | undefined,
+): Record<string, string | undefined> {
+  return { ...inheritedEnvironment(inherit), ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" };
 }
 
 /** How long Claude Code may take to answer the MCP server registration (T3's limit). */
@@ -222,6 +249,13 @@ function stateOf(message: SDKMessage): "idle" | "running" | "requires_action" | 
   return message.type === "system" && message.subtype === "session_state_changed"
     ? message.state
     : undefined;
+}
+
+/** Claude Code did not take the switch to full access it was started for (D343). */
+class BypassRefused extends Error {
+  constructor(cause: unknown) {
+    super("Claude Code did not switch to bypassPermissions", { cause });
+  }
 }
 
 /** Ends a turn whose message Claude Code took without answering it (nothing marked as its). */
@@ -254,6 +288,8 @@ export function createLiveSessions(options: {
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
 }): LiveSessions {
   const sessions = new Map<string, Live>();
+  /** The exit of each thread's last Claude Code, until it came. */
+  const exits = new Map<string, Promise<void>>();
 
   const close = (live: Live, reason?: Error) => {
     if (live.closed) return;
@@ -338,17 +374,23 @@ export function createLiveSessions(options: {
     key: string,
     launch: Options,
     attach: ((threadId: string) => Attachment) | undefined,
+    bypassAtLaunch = false,
+    inherit?: readonly string[],
   ): Live => {
     // At most one Claude Code per thread, so none is ever out of reach.
     const existing = sessions.get(threadId);
     if (existing !== undefined) close(existing, new SessionTakenOver());
     const input = queue<SDKUserMessage>();
     let live!: Live;
+    // The SDK warns on every query that starts in bypassPermissions with canUseTool, which
+    // AskUserQuestion needs: start in default and switch before the first message (D343).
+    const switchToBypass = launch.permissionMode === "bypassPermissions" && !bypassAtLaunch;
+    const started: Options = switchToBypass ? { ...launch, permissionMode: "default" } : launch;
     const query = options.query({
       prompt: input.read(),
       options: {
-        ...launch,
-        env: launchEnvironment(launch.env),
+        ...started,
+        env: launchEnvironment(launch.env, inherit),
         // Set once per process: Claude Code asks whichever turn holds the session.
         canUseTool: (toolName, toolInput, permission) =>
           live.holder?.canUseTool?.(toolName, toolInput, permission) ??
@@ -361,7 +403,7 @@ export function createLiveSessions(options: {
       query,
       input,
       model: launch.model,
-      permissionMode: launch.permissionMode,
+      permissionMode: started.permissionMode,
       busy: true,
       leasedBy: undefined,
       stamps: false,
@@ -375,19 +417,32 @@ export function createLiveSessions(options: {
       closed: false,
     };
     sessions.set(threadId, live);
+    if (switchToBypass) {
+      live.ready = (async () => {
+        try {
+          if (query.setPermissionMode === undefined) throw new Error("no setPermissionMode");
+          await query.setPermissionMode("bypassPermissions");
+          live.permissionMode = "bypassPermissions";
+        } catch (error) {
+          throw new BypassRefused(error);
+        }
+      })();
+    }
     if (attach !== undefined) {
+      const switched = live.ready;
       try {
         const attachment = attach(threadId);
         live.detach = () => attachment.dispose();
-        live.ready = register(live, attachment);
+        live.ready = switched.then(() => register(live, attachment));
       } catch (error) {
         // The lease closes the session on a failed `ready`: no Claude Code is left behind.
+        switched.catch(() => undefined);
         live.ready = Promise.reject(error);
       }
     }
     // One reader per process, for its whole life: what Claude Code sends between turns is
     // dropped, and an exit while idle closes the session, so the next turn resumes.
-    void (async () => {
+    const exited = (async () => {
       try {
         for await (const message of query) {
           if (
@@ -416,6 +471,10 @@ export function createLiveSessions(options: {
         close(live);
       }
     })();
+    exits.set(threadId, exited);
+    void exited.finally(() => {
+      if (exits.get(threadId) === exited) exits.delete(threadId);
+    });
     return live;
   };
 
@@ -445,9 +504,12 @@ export function createLiveSessions(options: {
   };
 
   return {
-    async lease({ threadId, options: launch, message, attach }) {
-      // With or without the node's MCP server is a launch of its own (D340).
-      const key = `${launchKey(launch)}${attach === undefined ? "" : "+mcp"}`;
+    async lease({ threadId, options: launch, message, attach, inherit }) {
+      // With or without the node's MCP server is a launch of its own (D340), and so is
+      // another allow-list of the node's variables (D346).
+      const key = `${launchKey(launch)}${attach === undefined ? "" : "+mcp"}${
+        inherit === undefined ? "" : `+env:${JSON.stringify(inherit)}`
+      }`;
       const self = {};
       let live = sessions.get(threadId);
       if (live !== undefined) live.leasedBy = self;
@@ -476,13 +538,25 @@ export function createLiveSessions(options: {
         }
       }
       const reused = live !== undefined;
-      const session = live ?? open(threadId, key, launch, attach);
+      let session = live ?? open(threadId, key, launch, attach, false, inherit);
       session.leasedBy = self;
       try {
         await session.ready;
       } catch (error) {
         close(session);
-        throw error;
+        if (!(error instanceof BypassRefused) || session.leasedBy !== self) throw error;
+        options.log?.("claude code did not switch to full access, starting it in it", {
+          threadId,
+          error: String(error.cause),
+        });
+        session = open(threadId, key, launch, attach, true, inherit);
+        session.leasedBy = self;
+        try {
+          await session.ready;
+        } catch (failed) {
+          close(session);
+          throw failed;
+        }
       }
       // A later turn of the thread came while its servers were registered: it wins.
       if (session.leasedBy !== self) throw new SessionTakenOver();
@@ -598,6 +672,7 @@ export function createLiveSessions(options: {
       }
       return closed;
     },
+    ended: (threadId) => exits.get(threadId) ?? Promise.resolve(),
     list: () =>
       [...sessions.values()].map((live) => ({
         threadId: live.threadId,

@@ -3,7 +3,7 @@ import * as Os from "node:os";
 import * as Path from "node:path";
 
 import threads from "@jhin/plugin-threads";
-import type { StoredEvent } from "@jhin/storage-api";
+import { createMemoryStorage, type StoredEvent } from "@jhin/storage-api";
 import {
   connectInMemory,
   createTestKernel,
@@ -17,6 +17,8 @@ import {
   claudePlugin,
   createClaudeRuntime,
   Config,
+  probeRecords,
+  type ProbeStore,
   type QueryFunction,
 } from "../src/index.ts";
 import {
@@ -41,6 +43,8 @@ afterEach(async () => {
 
 async function node(...scripts: Script[]) {
   const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-claude-"));
+  // Claude Code's config directory of this node: its session files, as D345 deletes them.
+  const claudeDir = Path.join(data, "claude");
   const storage = memoryStoragePlugin();
   const { query, calls } = scriptedQuery(...scripts);
   const kernel = await createTestKernel({
@@ -56,13 +60,14 @@ async function node(...scripts: Script[]) {
       { manifest: manifest("threads"), definition: threads },
       { manifest: manifest("agent-claude"), definition: claudePlugin(query) },
     ],
+    config: { node: { "jhin.agent-claude": { env: { CLAUDE_CONFIG_DIR: claudeDir } } } },
   });
   const { client } = connectInMemory(kernel, { log: storage.storage.log });
   stops.push(async () => {
     client.close();
     await kernel.stop();
   });
-  return { client, calls, storage, kernel };
+  return { client, calls, storage, kernel, claudeDir };
 }
 
 /** Resolves with the thread's events (all of them, from its start) once `count` of type `type` are recorded. */
@@ -174,7 +179,7 @@ describe("jhin.agent-claude: the plugin", () => {
   });
 
   it("ends a deleted thread's Claude Code and forgets its session", async () => {
-    const { client, calls, storage } = await node(async function* (player) {
+    const { client, calls, storage, kernel, claudeDir } = await node(async function* (player) {
       yield init();
       yield result();
       await player.nextPrompt();
@@ -187,8 +192,21 @@ describe("jhin.agent-claude: the plugin", () => {
     await completed;
     expect(await storage.storage.kv.get("jhin.agent-claude", `session/${thread.id}`)).toBeDefined();
 
+    // Claude Code's files of the session, and another session's beside them.
+    const project = Path.join(claudeDir, "projects", "-work");
+    Fs.mkdirSync(Path.join(project, thread.id, "subagents"), { recursive: true });
+    Fs.writeFileSync(Path.join(project, `${thread.id}.jsonl`), "{}\n");
+    Fs.writeFileSync(Path.join(project, thread.id, "subagents", "agent-1.jsonl"), "{}\n");
+    const other = "0b6c5e5e-0000-4000-8000-0000000000ff";
+    Fs.writeFileSync(Path.join(project, `${other}.jsonl`), "{}\n");
+    const deleted = new Promise((resolve) =>
+      kernel.events.on("claude.session.files.deleted", resolve),
+    );
+
     await client.call("threads.delete", { threadId: thread.id });
     await calls[0]!.whenClosed;
+    expect(await deleted).toEqual({ threadId: thread.id, removed: 2 });
+    expect(Fs.readdirSync(project)).toEqual([`${other}.jsonl`]);
     expect(await client.call("claude.sessions.list", {})).toEqual([]);
     expect(
       await storage.storage.kv.get("jhin.agent-claude", `session/${thread.id}`),
@@ -427,6 +445,68 @@ describe("jhin.agent-claude: status", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("answers a restarted node's first look from the kept probe (D344)", async () => {
+    const kv = createMemoryStorage().kv;
+    const kept = probeRecords(kv);
+    let saved!: () => void;
+    const savedOnce = new Promise<void>((resolve) => (saved = resolve));
+    const store: ProbeStore = {
+      load: () => kept.load(),
+      save: async (probe) => {
+        await kept.save(probe);
+        saved();
+      },
+    };
+    const signedIn = initializing({ email: "ada@example.com" }, [
+      { value: "claude-opus-5-5", displayName: "Opus 5.5" },
+    ]);
+    const before = createClaudeRuntime({
+      query: signedIn.query,
+      sessions: memorySessions(),
+      config: () => Config.parse({}),
+      probes: store,
+    });
+    await before.status!();
+    await savedOnce;
+
+    // After the restart Claude Code never starts: the kept answer comes at once.
+    let probes = 0;
+    const hanging = ((params: Parameters<QueryFunction>[0]) => {
+      probes++;
+      return {
+        ...initializing({}).query(params),
+        initializationResult: () => new Promise(() => undefined),
+      };
+    }) as unknown as QueryFunction;
+    const after = createClaudeRuntime({
+      query: hanging,
+      sessions: memorySessions(),
+      config: () => Config.parse({}),
+      probes: store,
+    });
+    expect(await after.status!()).toEqual({
+      available: true,
+      message: "Signed in as ada@example.com",
+    });
+    expect(after.models).toEqual([{ id: "claude-opus-5-5", name: "Opus 5.5" }]);
+    // Fresh enough: nothing probes yet.
+    expect(probes).toBe(0);
+
+    // Another binary is another configuration: it is not answered from the kept probe.
+    const other = createClaudeRuntime({
+      query: signedIn.query,
+      sessions: memorySessions(),
+      config: () => Config.parse({ binaryPath: "/opt/claude" }),
+      probes: store,
+    });
+    await other.status!();
+    expect(signedIn.closed()).toBe(2);
+
+    // Anything else under the key is not taken for a probe.
+    await kv.set("jhin.agent-claude", "probe", { at: "yesterday" });
+    expect(await kept.load()).toBeUndefined();
   });
 
   it("probes again when the binary or the environment changes", async () => {

@@ -95,7 +95,7 @@ specific to Claude: the runtime is a plugin on the public API.
   `effort` (`low` … `max`), `env` (extra environment, e.g.
   `CLAUDE_CONFIG_DIR`; secrets such as `ANTHROPIC_API_KEY` belong in the
   node's own environment, see Deferred), `appendSystemPrompt`, `session` and
-  `sessionIdleMinutes` (D98). Claude Code loads its usual settings,
+  `sessionIdleMinutes` (D98), `mcp` (D340) and `inheritEnv` (D346). Claude Code loads its usual settings,
   `CLAUDE.md` files and MCP servers, and runs with the node's environment
   (D103).
 - **D98. Live sessions, kept by default.** `session: "keep-alive"` (the
@@ -169,8 +169,8 @@ specific to Claude: the runtime is a plugin on the public API.
 - **D103. Claude Code runs with the node's environment.** It gets the node
   process's whole environment plus the config's `env`, as `claude` started
   in the node's shell would: its sign-in (`ANTHROPIC_API_KEY`,
-  `CLAUDE_CONFIG_DIR`), proxies and `PATH` for the tools it runs. An
-  allow-list is deferred.
+  `CLAUDE_CONFIG_DIR`), proxies and `PATH` for the tools it runs, unless the
+  allow-list of D346 narrows it.
 - **D104. A turn takes only its own frames.** Every message a turn sends has a
   fresh `uuid`, and Claude Code marks the frames answering it with that uuid
   (`user_message_uuids` on `system/init` and the result, `user_message_uuid`
@@ -244,6 +244,45 @@ specific to Claude: the runtime is a plugin on the public API.
   user's token on disk anyway); `Invocation.threadId` says who acted, it does
   not fence it in. A workstream that adds commands meant for
   agents (W10's delegated tasks) adds their permissions to this list.
+- **D342. Identical blocks stay apart.** A message or reasoning item
+  completes once per block, not once per text: what a block's
+  `content_block_stop` completed waits, by its text, for that block's
+  snapshot, and a snapshot that finds no such block completes the block it
+  belongs to or an item of its own. Two blocks of one API message with the
+  same text are two items (D94's dedup was by text).
+- **D343. No SDK warning on full access.** The SDK warns
+  (`CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`) when a query starts in
+  `bypassPermissions` with `canUseTool`, which Jhin keeps for
+  `AskUserQuestion`. A Claude Code for full access starts in `default` (with
+  `allowDangerouslySkipPermissions`) and is put in `bypassPermissions` with
+  `setPermissionMode` before its first message goes in; one that refuses the
+  switch is ended and started in `bypassPermissions` directly, warning and
+  all.
+- **D344. The first look at the agents is answered from the last probe.**
+  Every probe is kept in `storage.kv` (`probe`, with the binary and
+  environment it ran with), so a node that restarts answers its first
+  `status()` with the stored one, stale, while a new probe runs (T3 keeps a
+  provider status cache on disk the same way). Only a node that never probed
+  with that configuration waits for Claude Code to start.
+- **D345. A deleted thread's Claude Code session files go too.** Once no
+  turn of the thread is left (D101) and its Claude Code has exited (it
+  writes its last lines, title and cost, while it shuts down), the plugin
+  removes `<threadId>.jsonl` and the `<threadId>/` folder of subagent
+  transcripts from every project folder under Claude Code's `projects`
+  directory, in its config directory: the config's `env.CLAUDE_CONFIG_DIR`,
+  else the node's, else `~/.claude`. The SDK's `deleteSession` is not used:
+  it reads only the node's own `CLAUDE_CONFIG_DIR`. Only a thread id that is
+  a UUID (as a session id is) is looked for, so no id leaves that directory.
+  An archived thread keeps its files: it can be unarchived. The plugin then
+  emits `claude.session.files.deleted` (`threadId`, `removed`).
+- **D346. The node's environment through an allow-list.** The config's
+  `inheritEnv` lists the node's variables Claude Code gets: names, or prefixes
+  ending in `*`. The default `["*"]` passes all of them, as D103 did, because
+  Claude Code's commands need what the node's shell has (`PATH`, proxies,
+  sign-ins of their own); a narrower list keeps variables meant for the node
+  away from it. The config's `env` and `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS`
+  always go in. The list is part of the launch key (D99), the node's variables
+  are still not.
 
 ## Not ported
 
@@ -273,8 +312,6 @@ specific to Claude: the runtime is a plugin on the public API.
   turn early there (D104). On one that marks them, a continuation that goes
   idle just as the next message goes in (before Claude Code read it) is
   taken for that turn's unmarked answer.
-- An allow-list for the environment Claude Code gets (D103): the node's whole
-  environment passes through, including variables meant for the node only.
 - Per-turn model options in the composer (effort, fast mode): only the
   config's `effort` applies.
 - A proposed-plan card with "implement this plan" (shown as a message today;
@@ -285,20 +322,16 @@ specific to Claude: the runtime is a plugin on the public API.
   composer.
 - Subagent transcripts inside their tool call; today only the result shows.
 - Codex and OpenCode runtimes.
-- Deleting a deleted thread's Claude Code session file: its record is
-  forgotten (D101), the file under Claude Code's config directory stays.
-- The node's first look at the agents waits for Claude Code to start (up to
-  25 s when it hangs); later looks are answered from the last probe.
-- Two identical text or reasoning blocks in one API message show as one item
-  (blocks complete once per text of a message, D94).
+- A snapshot frame Claude Code would send twice for one unstreamed block
+  (not seen so far) shows twice: since D342 identical texts are not merged.
+- A node's very first look at the agents (no probe kept yet for its
+  configuration, D344) still waits for Claude Code to start, up to 25 s when
+  it hangs.
 - Secrets in `env`: config is readable by anyone holding the node's token
   (config commands, RPC, MCP), so the field's description says to keep
   `ANTHROPIC_API_KEY` and the like in the node's own environment. The field
   is marked `writeOnly` (`docs/plans/config-ui.md`, D83): the settings page
   hides its values; redacting them in `host.config.get` is still to do.
-- The SDK prints a Node warning on every full-access query
-  (`CLAUDE_SDK_CAN_USE_TOOL_SHADOWED`): `canUseTool` stays installed because
-  `AskUserQuestion` still goes through it in that mode.
 
 ## Landing
 
