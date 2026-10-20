@@ -183,3 +183,53 @@ describe("live streams", () => {
     expect(() => live.serve("t/", b)).toThrow("already served");
   });
 });
+
+describe("guarded streams of the event log (security.md D415)", () => {
+  /** Subscribes once through the protocol itself: resolves with the head, or rejects. */
+  const subscribe = (client: ReturnType<typeof harness>["client"], stream: string) =>
+    client.call("rpc.subscribe", { subscription: `s-${stream}`, stream });
+
+  it("needs what a guard names, or events.read for a stream nobody guards", async () => {
+    const live = createLiveStreams();
+    live.guard("thread/", ["threads.read"]);
+    live.guard("threads", ["threads.read"]);
+
+    const reader = harness(live, ["threads.read"]);
+    await reader.storage.log.append("thread/1", [{ type: "app.a", payload: 1 }]);
+    await expect(subscribe(reader.client, "thread/1")).resolves.toMatchObject({ head: 1 });
+    await expect(subscribe(reader.client, "other")).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+      details: { stream: "other", missing: ["events.read"] },
+    });
+
+    const stranger = harness(live, ["git.*"]);
+    await expect(subscribe(stranger.client, "threads")).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+      details: { missing: ["threads.read"] },
+    });
+
+    // A pattern grant holds what a guard names.
+    const patterned = harness(live, ["threads.*", "events.read"]);
+    await expect(subscribe(patterned.client, "threads")).resolves.toMatchObject({ head: 0 });
+    await expect(subscribe(patterned.client, "other")).resolves.toMatchObject({ head: 0 });
+    for (const { client } of [reader, stranger, patterned]) client.close();
+  });
+
+  it("asks a guard given as a function per stream", () => {
+    const live = createLiveStreams();
+    live.guard("mirror/", (stream) =>
+      stream.endsWith("/mesh") ? ["mesh.read"] : ["threads.read"],
+    );
+    expect(live.guardOf("mirror/n1/mesh")).toEqual(["mesh.read"]);
+    expect(live.guardOf("mirror/n1/thread/7")).toEqual(["threads.read"]);
+  });
+
+  it("refuses a name guarded twice and frees it on dispose", () => {
+    const live = createLiveStreams();
+    const first = live.guard("a/", ["x"]);
+    expect(() => live.guard("a/", ["y"])).toThrow(/already guarded/);
+    expect(live.guardOf("a/b/c")).toEqual(["x"]);
+    first.dispose();
+    expect(live.guardOf("a/b")).toBeUndefined();
+  });
+});

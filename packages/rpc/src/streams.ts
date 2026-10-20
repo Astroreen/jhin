@@ -4,6 +4,9 @@ import type { Json, StoredEvent } from "@jhin/storage-api";
 /** `rpc.streams@1`: streams served from memory instead of the event log. */
 export const LIVE_STREAMS_CAPABILITY = "rpc.streams";
 
+/** What a subscription to a stream of the event log nobody guards needs (security.md D415). */
+export const UNGUARDED_STREAM_PERMISSION = "events.read";
+
 /** What a subscription reads a stream from: the event log, or a plugin's live streams. */
 export interface StreamSource {
   /** Sequence of the last event, 0 for a stream without events. */
@@ -39,10 +42,37 @@ export interface LiveStreams {
   ): Disposable;
   /** What serves `stream`, or `undefined` when the event log does. */
   sourceOf(stream: string): ServedStream | undefined;
+  /**
+   * Since 1.1: a subscriber to the event log's stream `name`, or to every
+   * stream starting with `name` when it ends in `/`, needs `permissions`.
+   * A stream no guard names needs `events.read`. A name guarded twice is
+   * refused. `permissions` may be a function of the stream, for a prefix
+   * whose streams need different permissions.
+   */
+  guard(
+    name: string,
+    permissions: readonly string[] | ((stream: string) => readonly string[]),
+  ): Disposable;
+  /** Since 1.1: what a subscriber to the event log's `stream` needs, when a guard says. */
+  guardOf(stream: string): readonly string[] | undefined;
+}
+
+/** The entry for `stream`: its own name, else the longest prefix ending in `/`. */
+function lookup<T>(entries: ReadonlyMap<string, T>, stream: string): T | undefined {
+  const exact = entries.get(stream);
+  if (exact !== undefined) return exact;
+  // The longest prefix wins, so `terminal/` and `terminal/x/` can be served apart.
+  let found: { name: string; value: T } | undefined;
+  for (const [name, value] of entries) {
+    if (!name.endsWith("/") || !stream.startsWith(name)) continue;
+    if (found === undefined || name.length > found.name.length) found = { name, value };
+  }
+  return found?.value;
 }
 
 export function createLiveStreams(): LiveStreams {
   const sources = new Map<string, ServedStream>();
+  const guards = new Map<string, (stream: string) => readonly string[]>();
   return {
     serve(name, source, options = {}) {
       if (name.length === 0) throw new Error("A live stream needs a name");
@@ -53,17 +83,19 @@ export function createLiveStreams(): LiveStreams {
         if (sources.get(name) === served) sources.delete(name);
       });
     },
-    sourceOf(stream) {
-      const exact = sources.get(stream);
-      if (exact !== undefined) return exact;
-      // The longest prefix wins, so `terminal/` and `terminal/x/` can be served apart.
-      let found: { name: string; served: ServedStream } | undefined;
-      for (const [name, served] of sources) {
-        if (!name.endsWith("/") || !stream.startsWith(name)) continue;
-        if (found === undefined || name.length > found.name.length) found = { name, served };
-      }
-      return found?.served;
+    sourceOf: (stream) => lookup(sources, stream),
+    guard(name, permissions) {
+      if (name.length === 0) throw new Error("A guarded stream needs a name");
+      if (guards.has(name)) throw new Error(`The stream ${name} is already guarded`);
+      const fixed = typeof permissions === "function" ? undefined : [...permissions];
+      const entry =
+        typeof permissions === "function" ? permissions : () => fixed as readonly string[];
+      guards.set(name, entry);
+      return toDisposable(() => {
+        if (guards.get(name) === entry) guards.delete(name);
+      });
     },
+    guardOf: (stream) => lookup(guards, stream)?.(stream),
   };
 }
 

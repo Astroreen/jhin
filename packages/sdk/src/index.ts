@@ -10,6 +10,12 @@ export {
   PluginSide,
 } from "./manifest.ts";
 export {
+  holdsPermission,
+  intersectPermissions,
+  isGrant,
+  missingPermissions,
+} from "./permissions.ts";
+export {
   definePlugin,
   type AfterHook,
   type AroundHook,

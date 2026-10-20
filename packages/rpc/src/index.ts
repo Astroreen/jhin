@@ -23,6 +23,7 @@ export {
 export { serveRpc, type RpcServerOptions } from "./server.ts";
 export {
   LIVE_STREAMS_CAPABILITY,
+  UNGUARDED_STREAM_PERMISSION,
   createLiveStreams,
   createMemoryStreams,
   type LiveStreams,

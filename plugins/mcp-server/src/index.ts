@@ -9,7 +9,7 @@ import { HOST_TRACE_CAPABILITY, type HostTrace } from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import { MCP_SERVER_CAPABILITY, type McpServer } from "@jhin/mcp-api";
 import { createMcpServer } from "@jhin/mcp-bridge";
-import { definePlugin } from "@jhin/sdk";
+import { definePlugin, missingPermissions } from "@jhin/sdk";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 
@@ -65,8 +65,7 @@ export function localEndpoint(url: string): string {
 
 /** Whether a caller may run a command; the kernel checks the same on every call. */
 const allowed = (caller: Principal, permissions: readonly string[]) =>
-  caller.permissions.includes("*") ||
-  permissions.every((permission) => caller.permissions.includes(permission));
+  missingPermissions(caller.permissions, permissions).length === 0;
 
 function bearer(request: IncomingMessage): string | undefined {
   const header = request.headers.authorization;

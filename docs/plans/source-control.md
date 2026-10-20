@@ -240,6 +240,6 @@ with screenshots).
   branch-mismatch warning (T3's tooltip "You're currently checked out on
   another branch.") and the terminal indicator (the terminal plugin
   contributes it to `sidebar.thread.indicators`).
-- Scoped permissions: `git.read` lists every project's repository root and
-  remote, and `git.write` checks branches out; every token holds `*` today
-  (as for `projects.browse`, `t3-parity.md` Deferred).
+- Scoped permissions. Done in `security.md` (D410–D416): a device token
+  holds `git.read` or `git.write` only when granted (`git.*` for both), and
+  the `source-control` stream needs `git.read` (D415).

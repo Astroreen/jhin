@@ -75,6 +75,12 @@ export interface MeshOptions {
   /** Mirrors to resume from an earlier run, and where to remember the current ones. */
   readonly mirrors?: readonly { readonly owner: string; readonly stream: string }[];
   persistMirrors?(mirrors: readonly { owner: string; stream: string }[]): void;
+  /**
+   * What a call from another member may do here (security.md D416): it runs
+   * with the intersection of these grants and the scope its caller sent.
+   * Defaults to `*` (one owner's trust domain, D22).
+   */
+  memberPermissions?(): readonly string[];
 }
 
 export interface MemberView {

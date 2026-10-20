@@ -271,9 +271,8 @@ and engineering practices.
 - Signed mesh records: today any member can overwrite another member's
   record (key, URLs, neighbors) or claim a far-future version; acceptable in
   one owner's trust domain (D22), not beyond it.
-- Scoped permissions for mesh links: a member's calls run with every
-  permission (`node:<id>`, `*`) on every other member — including
-  `host.config.write`, so any member can change any node's config.
+- Scoped permissions for mesh links. Done in `security.md` (D416): a call
+  runs with its caller's scope, capped by `jhin.mesh.memberPermissions`.
 - Trimming the `mesh/outbox` history: outcomes of delivered changes stay in
   the stream forever (`storage.eventlog@1` has no truncation); nothing reads
   it on a mesh change any more, so it only costs disk.

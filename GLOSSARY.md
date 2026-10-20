@@ -43,6 +43,14 @@ Words about Jhin:
 - **Command** — an operation declared once (name, Zod input/output,
   permissions, handler) and exposed as an RPC method, a CLI subcommand and an
   MCP tool.
+- **Permission** — what a command or a stream needs (`threads.read`), as
+  declared by its plugin. A **grant** is what a caller holds: a permission,
+  a namespace pattern (`git.*`) or `*` (everything). T3 Code calls them
+  scopes.
+- **Device token** — a node's token for one client (`jhd1.…`), carrying the
+  grants it was given; issued by pairing or by `auth.tokens.issue`, listed
+  as an **authorized client** and revocable. The **owner token** is the
+  node's own, holding `*`.
 - **Disposable** — the handle every registration returns; disposing a plugin
   disposes everything it registered.
 - **Config layer** — one level of JSONC config: distribution → node →

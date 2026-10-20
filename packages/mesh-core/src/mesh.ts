@@ -6,7 +6,7 @@ import {
   type RpcClient,
   type RpcServerOptions,
 } from "@jhin/rpc";
-import { toDisposable, type Disposable, type Invocation } from "@jhin/sdk";
+import { intersectPermissions, toDisposable, type Disposable, type Invocation } from "@jhin/sdk";
 import type { EventLog, StoredEvent } from "@jhin/storage-api";
 
 import { shortestPath } from "./routing.ts";
@@ -89,8 +89,17 @@ export interface Mesh extends Disposable {
   verifyToken(token: string): string | undefined;
   /** Serves an inbound link from `nodeId` (its token already verified). */
   accept(peer: Peer, nodeId: string): void;
-  /** Runs `method` on `target`, directly or through relays. */
-  call(target: string, method: string, params: unknown, trace?: string): Promise<unknown>;
+  /**
+   * Runs `method` on `target`, directly or through relays, with no more than
+   * `scope` (the caller's grants; omitted, the target's member grants alone).
+   */
+  call(
+    target: string,
+    method: string,
+    params: unknown,
+    trace?: string,
+    scope?: readonly string[],
+  ): Promise<unknown>;
   resolve(address: string): Resolution;
   /**
    * Keeps a copy of `owner`'s `stream` in this node's log (D26) and returns
@@ -315,12 +324,26 @@ export function createMesh(options: MeshOptions): Mesh {
     readonly method: string;
     readonly params: unknown;
     readonly hops: number;
+    /** The grants of whoever made the call (security.md D416); absent from older nodes. */
+    readonly scope?: readonly string[];
   }
 
   async function forward(request: Forward, trace?: string): Promise<unknown> {
     if (request.target === selfId) {
+      const members = options.memberPermissions?.() ?? ["*"];
+      // Absent: a node older than D416, capped by the member grants alone. Anything
+      // else that is not a list of grants holds nothing.
+      const scope =
+        request.scope === undefined
+          ? undefined
+          : Array.isArray(request.scope)
+            ? request.scope.filter((grant): grant is string => typeof grant === "string")
+            : [];
       const invocation: Invocation = {
-        caller: { id: `node:${request.origin}`, permissions: ["*"] },
+        caller: {
+          id: `node:${request.origin}`,
+          permissions: scope === undefined ? [...members] : intersectPermissions(scope, members),
+        },
         ...(trace === undefined ? {} : { traceId: trace }),
       };
       return options.execute(request.method, request.params, invocation);
@@ -595,8 +618,18 @@ export function createMesh(options: MeshOptions): Mesh {
         server.dispose();
       });
     },
-    call(target, method, params, trace) {
-      return forward({ origin: selfId, target, method, params, hops: 0 }, trace);
+    call(target, method, params, trace, scope) {
+      return forward(
+        {
+          origin: selfId,
+          target,
+          method,
+          params,
+          hops: 0,
+          ...(scope === undefined ? {} : { scope: [...scope] }),
+        },
+        trace,
+      );
     },
     mirror,
     unmirror,

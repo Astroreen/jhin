@@ -34,6 +34,7 @@
   "dependencies": {
     "@jhin/auth-api": "workspace:*",
     "@jhin/host-api": "workspace:*",
+    "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*"
   },
   "devDependencies": {
@@ -47,7 +48,7 @@
     "description": "One owner token, generated on first start; every client presents it",
     "side": "server",
     "provides": {
-      "auth.verifier": "1.0.0"
+      "auth.verifier": "1.1.0"
     },
     "requires": {
       "host.paths": "^1"

@@ -554,6 +554,9 @@ importers:
       '@jhin/host-api':
         specifier: workspace:*
         version: link:../../packages/host-api
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -660,6 +663,9 @@ importers:
       '@jhin/agent-api':
         specifier: workspace:*
         version: link:../../packages/agent-api
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -676,9 +682,6 @@ importers:
       '@jhin/plugin-threads':
         specifier: workspace:*
         version: link:../threads
-      '@jhin/rpc':
-        specifier: workspace:*
-        version: link:../../packages/rpc
       '@jhin/testing':
         specifier: workspace:*
         version: link:../../packages/testing
@@ -741,6 +744,9 @@ importers:
       '@jhin/host-api':
         specifier: workspace:*
         version: link:../../packages/host-api
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -748,9 +754,6 @@ importers:
         specifier: workspace:*
         version: link:../../packages/storage-api
     devDependencies:
-      '@jhin/rpc':
-        specifier: workspace:*
-        version: link:../../packages/rpc
       '@jhin/testing':
         specifier: workspace:*
         version: link:../../packages/testing

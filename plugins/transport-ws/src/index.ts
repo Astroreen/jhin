@@ -1,6 +1,11 @@
 import * as Crypto from "node:crypto";
 
-import { AUTH_VERIFIER_CAPABILITY, type AuthVerifier } from "@jhin/auth-api";
+import {
+  AUTH_VERIFIER_CAPABILITY,
+  AuthEvents,
+  OWNER_PRINCIPAL_ID,
+  type AuthVerifier,
+} from "@jhin/auth-api";
 import { HOST_TRACE_CAPABILITY, type HostTrace } from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import {
@@ -13,9 +18,11 @@ import {
   webSocketPeer,
   type WebSocketLike,
 } from "@jhin/rpc";
-import { definePlugin } from "@jhin/sdk";
+import { definePlugin, type Disposable } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
 import { WebSocketServer, type WebSocket } from "ws";
+
+import { onExpiry } from "./expiry.ts";
 
 /** Path of the WebSocket endpoint on the node's HTTP server. */
 export const RPC_PATH = "/rpc";
@@ -38,7 +45,21 @@ export default definePlugin({
     const verifier = context.services.get<AuthVerifier>(AUTH_VERIFIER_CAPABILITY);
     const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
     const trace = context.services.tryGet<HostTrace>(HOST_TRACE_CAPABILITY);
-    const sockets = new Set<WebSocket>();
+    /** Open connections and whom each acts as (undefined until its token is checked). */
+    const sockets = new Map<WebSocket, string | undefined>();
+    /**
+     * Principals revoked while some token was still being checked: a socket
+     * whose check ends after the revoke is closed then (security.md D414).
+     */
+    let checking = 0;
+    let revocations = 0;
+    const revokedWhileChecking: { readonly seq: number; readonly principal: string }[] = [];
+    const closeAll = (principal: string, reason: string) => {
+      if (checking > 0) revokedWhileChecking.push({ seq: ++revocations, principal });
+      for (const [socket, owner] of sockets) {
+        if (owner === principal) socket.close(CLOSE_UNAUTHENTICATED, reason);
+      }
+    };
     // Streams other plugins keep in memory (terminal output), next to the event log's.
     const streams = createLiveStreams();
     context.services.provide(LIVE_STREAMS_CAPABILITY, streams);
@@ -50,13 +71,38 @@ export default definePlugin({
     });
 
     async function accept(socket: WebSocket, token: string | undefined): Promise<void> {
-      sockets.add(socket);
-      socket.on("close", () => sockets.delete(socket));
-      const caller = await verifier.verify(token === undefined ? {} : { token });
-      if (caller === undefined) {
+      sockets.set(socket, undefined);
+      let expiry: Disposable | undefined;
+      socket.on("close", () => {
+        sockets.delete(socket);
+        expiry?.dispose();
+      });
+      checking++;
+      const since = revocations;
+      let caller: Awaited<ReturnType<AuthVerifier["verify"]>>;
+      let revoked = false;
+      try {
+        caller = await verifier.verify(token === undefined ? {} : { token });
+      } finally {
+        checking--;
+      }
+      if (caller !== undefined) {
+        const id = caller.id;
+        revoked = revokedWhileChecking.some((entry) => entry.seq > since && entry.principal === id);
+      }
+      if (checking === 0) revokedWhileChecking.length = 0;
+      if (caller === undefined || revoked) {
         context.log.warn("connection refused: bad or missing token");
         socket.close(CLOSE_UNAUTHENTICATED, "unauthenticated");
         return;
+      }
+      if (!sockets.has(socket)) return;
+      sockets.set(socket, caller.id);
+      // A token that expires drops its connection then, as a revoked one does (security.md D414).
+      if (caller.expiresAt !== undefined) {
+        expiry = onExpiry(caller.expiresAt, () =>
+          socket.close(CLOSE_UNAUTHENTICATED, "token expired"),
+        );
       }
       context.log.info("client connected", { caller: caller.id, clients: sockets.size });
       serveRpc(webSocketPeer(socket as unknown as WebSocketLike), {
@@ -82,12 +128,17 @@ export default definePlugin({
         });
       }),
     );
-    context.events.on("auth.token.rotated", () => {
-      for (const socket of sockets) socket.close(CLOSE_UNAUTHENTICATED, "token rotated");
+    // A rotated owner token drops the owner's connections; a revoked device token, its own.
+    context.events.on(AuthEvents.tokenRotated, () => closeAll(OWNER_PRINCIPAL_ID, "token rotated"));
+    context.events.on(AuthEvents.clientRevoked, (payload) => {
+      const principal = (payload as { principal?: unknown } | undefined)?.principal;
+      if (typeof principal === "string") closeAll(principal, "token revoked");
     });
     context.subscriptions.add({
       dispose() {
-        for (const socket of sockets) socket.close(CLOSE_SERVICE_RESTART, "transport restarting");
+        for (const socket of sockets.keys()) {
+          socket.close(CLOSE_SERVICE_RESTART, "transport restarting");
+        }
         server.close();
       },
     });

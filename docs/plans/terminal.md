@@ -253,11 +253,8 @@ installed package).
   `mesh.call`, but live streams are not mirrored between nodes, so the
   drawer and the indicator only work for threads on a connected node; for
   others the toggle says so.
-- Permissions on subscriptions to the event log. Terminal output is not
-  part of this: its live streams need `terminals.read`, checked on subscribe
-  (D141). What is left is the event log: `rpc.subscribe` still lets any
-  caller read any of its streams (threads included). Today every token is
-  the owner's (`*`); scoped tokens need it.
+- Permissions on subscriptions to the event log. Done in `security.md`
+  (D415).
 - From the second automated review of the PR, left for a follow-up:
   `terminals.write` and `terminals.resize` on a PTY that died before
   node-pty reported its exit throw node-pty's own error (EBADF, "ioctl

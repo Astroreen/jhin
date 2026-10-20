@@ -1,6 +1,7 @@
 import * as Path from "node:path";
 
 import { THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
+import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, z, type PluginContext } from "@jhin/sdk";
 import {
   Branch,
@@ -156,6 +157,11 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
   context.subscriptions.add(context.config.define(CONFIG_SECTION, Config));
   const config = () => context.config.get<Config>(CONFIG_SECTION);
+  // Its events name repositories and branches: reading them takes git.read (security.md D415).
+  const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
+  if (live?.guard !== undefined) {
+    context.subscriptions.add(live.guard(SOURCE_CONTROL_STREAM, ["git.read"]));
+  }
 
   const repos = new Map<string, Repo>();
   const threads = new Map<string, ThreadBranch>();

@@ -59,6 +59,9 @@
       "storage.kv": "^1",
       "storage.eventlog": "^1"
     },
+    "optional": {
+      "rpc.streams": "^1.1"
+    },
     "entry": "src/index.ts"
   }
 }

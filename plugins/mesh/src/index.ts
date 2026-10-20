@@ -19,13 +19,15 @@ import {
 } from "@jhin/mesh-core";
 import {
   CLOSE_UNAUTHENTICATED,
+  LIVE_STREAMS_CAPABILITY,
   TOKEN_PROTOCOL_PREFIX,
   PROTOCOL,
   connectWebSocket,
   webSocketPeer,
+  type LiveStreams,
   type WebSocketLike,
 } from "@jhin/rpc";
-import { definePlugin, z } from "@jhin/sdk";
+import { definePlugin, isGrant, z } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
   KV_CAPABILITY,
@@ -35,7 +37,7 @@ import {
 } from "@jhin/storage-api";
 import { WebSocketServer, type WebSocket } from "ws";
 
-import { createOutbox, type Delivery, type Patch } from "./outbox.ts";
+import { OUTBOX_STREAM, createOutbox, type Delivery, type Patch } from "./outbox.ts";
 
 const MESH_PATH = "/mesh";
 /** Every change of the mesh as seen from this node; clients wait on it. */
@@ -60,6 +62,16 @@ const Config = z
         description:
           "Mesh URLs other nodes dial (ws://host:port/mesh). Defaults to this node's HTTP address; none for a node nobody can reach directly: it dials out and is reached through those links.",
         examples: ["ws://example.com:7777/mesh"],
+        advanced: true,
+      }),
+    /** security.md D416. */
+    memberPermissions: z
+      .array(z.string().refine(isGrant, "must be a permission, a pattern such as git.* or *"))
+      .default(["*"])
+      .meta({
+        title: "Permissions of other nodes",
+        description:
+          "What a call from another node of the mesh may do here; a call also never gets more than its caller holds on the node it came from. Everything by default: the mesh is one owner's.",
         advanced: true,
       }),
     /** D26. */
@@ -155,6 +167,24 @@ export default definePlugin({
     const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
     const keys = loadKeys(paths.dataDir(context.plugin.id));
+    // Who may follow the mesh's streams over a client connection (security.md D415).
+    const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
+    if (live?.guard !== undefined) {
+      context.subscriptions.add(live.guard(MESH_STREAM, ["mesh.read"]));
+      context.subscriptions.add(live.guard(OUTBOX_STREAM, ["mesh.admin"]));
+      // Copies of members' streams (D26) need what the stream itself needs.
+      context.subscriptions.add(
+        live.guard("mirror/", (stream) => {
+          // `mirror/<owner>/<stream>`, where a relay's copy may itself be a mirror.
+          let copied = stream;
+          while (copied.startsWith("mirror/")) copied = copied.split("/").slice(2).join("/");
+          if (copied === MESH_STREAM) return ["mesh.read"];
+          return copied === "threads" || copied.startsWith("thread/")
+            ? ["threads.read"]
+            : ["mesh.admin"];
+        }),
+      );
+    }
 
     const transport: MeshTransport = {
       dial: (url, token) => connectWebSocket(url, token),
@@ -195,6 +225,8 @@ export default definePlugin({
       },
       transport,
       execute: (method, params, invocation) => context.commands.execute(method, params, invocation),
+      memberPermissions: () =>
+        context.config.get<z.output<typeof Config>>("jhin.mesh").memberPermissions,
       ...(remembered === undefined ? {} : { members: remembered }),
       // Writes are chained so an older snapshot never lands after a newer one.
       log,
@@ -535,8 +567,9 @@ export default definePlugin({
       }),
       output: z.unknown(),
       permissions: ["mesh.call"],
+      // The target runs it with no more than this caller holds here (security.md D416).
       handler: ({ node, method, params }, invocation) =>
-        mesh.call(node, method, params ?? {}, invocation.traceId),
+        mesh.call(node, method, params ?? {}, invocation.traceId, invocation.caller?.permissions),
     });
     context.commands.register({
       name: "mesh.resolve",

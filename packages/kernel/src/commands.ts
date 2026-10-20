@@ -1,5 +1,6 @@
 import {
   DOTTED_ID,
+  missingPermissions,
   toDisposable,
   z,
   type CommandDefinition,
@@ -75,10 +76,9 @@ export class CommandRegistry {
     }
     const { definition } = entry;
     const caller = invocation.caller;
-    if (caller !== undefined && !caller.permissions.includes("*")) {
-      const missing = (definition.permissions ?? []).filter(
-        (permission) => !caller.permissions.includes(permission),
-      );
+    if (caller !== undefined) {
+      // A grant may be a pattern (`git.*`) or `*` (security.md D410).
+      const missing = missingPermissions(caller.permissions, definition.permissions ?? []);
       if (missing.length > 0) {
         throw new KernelError(
           "PERMISSION_DENIED",
