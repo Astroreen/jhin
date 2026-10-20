@@ -30,6 +30,11 @@ export interface Invocation {
     readonly id: string;
     readonly permissions: readonly string[];
   };
+  /**
+   * The thread whose agent makes this call: bound to an agent's MCP credential, or named
+   * by the `x-jhin-thread` header of an MCP request made with the node's own token.
+   */
+  readonly threadId?: string;
 }
 
 export interface CommandDefinition<I extends z.ZodType, O extends z.ZodType> {

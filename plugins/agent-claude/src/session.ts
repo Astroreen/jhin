@@ -5,10 +5,13 @@
 // the model and permission mode applied to it live (setModel, setPermissionMode, including
 // the mode Claude switched to by itself), replaced otherwise; messages bound to the turn
 // whose prompt they answer by its uuid (T3's prompt uuids and echo tracking); and
-// ProviderSessionManager's release of an idle session. T3's continuation turns, wake
-// buffers and background-work guards are not ported.
+// ProviderSessionManager's release of an idle session; the node's MCP server registered
+// over the control channel (ClaudeAgentSdkQueryRunner.open's setMcpServers). T3's
+// continuation turns, wake buffers and background-work guards are not ported.
 import type {
   CanUseTool,
+  McpServerConfig,
+  McpSetServersResult,
   Options,
   PermissionMode,
   PermissionResult,
@@ -23,6 +26,14 @@ interface ClaudeQuery extends AsyncIterable<SDKMessage> {
   /** Only with streaming input; a session that lacks them is replaced instead. */
   setModel?(model?: string): Promise<void>;
   setPermissionMode?(mode: PermissionMode): Promise<void>;
+  setMcpServers?(servers: Record<string, McpServerConfig>): Promise<McpSetServersResult>;
+}
+
+/** MCP servers a Claude Code gets once started, and how to revoke their credentials. */
+export interface Attachment {
+  readonly servers: Record<string, McpServerConfig>;
+  /** Called once that Claude Code ended. */
+  dispose(): void;
 }
 
 /** The SDK's `query`, injected so tests can script Claude Code. */
@@ -72,6 +83,11 @@ export interface LiveSessions {
     readonly threadId: string;
     readonly options: Options;
     readonly message: SDKUserMessage;
+    /**
+     * The MCP servers a Claude Code started for this lease gets (D340); a running one
+     * already has them. Whether there are any must show in `options` (the launch key).
+     */
+    readonly attach?: (threadId: string) => Attachment;
   }): Promise<Lease>;
   /**
    * Ends a thread's live session when no turn holds it, or with `force` also one a turn
@@ -149,6 +165,10 @@ interface Live {
   /** Whether the last state it reported is idle: it has taken every message sent so far. */
   settled: boolean;
   holder: Holder | undefined;
+  /** Settles once its MCP servers are registered (D340); rejects when Claude Code never answers. */
+  ready: Promise<void>;
+  /** Revokes what `ready` registered; called when it ends. */
+  detach: (() => void) | undefined;
   idleSince: Date | undefined;
   timer: ReturnType<typeof setTimeout> | undefined;
   closed: boolean;
@@ -181,6 +201,9 @@ function launchKey(options: Options): string {
 function launchEnvironment(env: Options["env"]): Record<string, string | undefined> {
   return { ...process.env, ...env, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" };
 }
+
+/** How long Claude Code may take to answer the MCP server registration (T3's limit). */
+const MCP_REGISTRATION_TIMEOUT_MS = 90_000;
 
 /** The longest delay setTimeout takes (2^31 - 1 ms, about 24.8 days). */
 const MAX_TIMER = 2 ** 31 - 1;
@@ -238,6 +261,8 @@ export function createLiveSessions(options: {
     clearTimeout(live.timer);
     if (sessions.get(live.threadId) === live) sessions.delete(live.threadId);
     live.input.end();
+    live.detach?.();
+    live.detach = undefined;
     live.holder?.end(reason === undefined ? undefined : { error: reason });
     try {
       live.query.close();
@@ -268,7 +293,52 @@ export function createLiveSessions(options: {
     wait();
   };
 
-  const open = (threadId: string, key: string, launch: Options): Live => {
+  /**
+   * Registers the servers over the control channel, never on the command line: the
+   * credentials stay out of Claude Code's argv and its commands' environment (T3's reason).
+   * A server it cannot connect is left out with a warning; no answer at all fails the turn.
+   */
+  const register = async (live: Live, attachment: Attachment) => {
+    if (live.query.setMcpServers === undefined) {
+      options.log?.("claude code takes no mcp servers, running without them", {
+        threadId: live.threadId,
+      });
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Error texts can echo the headers: only server names are logged.
+    const names = Object.keys(attachment.servers);
+    const registered = live.query.setMcpServers(attachment.servers).then(
+      (result) => Object.keys(result.errors ?? {}),
+      () => names,
+    );
+    try {
+      const failed = await Promise.race([
+        registered,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error("Claude Code did not answer the MCP server registration.")),
+            MCP_REGISTRATION_TIMEOUT_MS,
+          );
+        }),
+      ]);
+      if (failed.length > 0 && !live.closed) {
+        options.log?.("claude code could not connect mcp servers", {
+          threadId: live.threadId,
+          servers: failed,
+        });
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const open = (
+    threadId: string,
+    key: string,
+    launch: Options,
+    attach: ((threadId: string) => Attachment) | undefined,
+  ): Live => {
     // At most one Claude Code per thread, so none is ever out of reach.
     const existing = sessions.get(threadId);
     if (existing !== undefined) close(existing, new SessionTakenOver());
@@ -298,11 +368,18 @@ export function createLiveSessions(options: {
       reportsState: false,
       settled: false,
       holder: undefined,
+      ready: Promise.resolve(),
+      detach: undefined,
       idleSince: undefined,
       timer: undefined,
       closed: false,
     };
     sessions.set(threadId, live);
+    if (attach !== undefined) {
+      const attachment = attach(threadId);
+      live.detach = () => attachment.dispose();
+      live.ready = register(live, attachment);
+    }
     // One reader per process, for its whole life: what Claude Code sends between turns is
     // dropped, and an exit while idle closes the session, so the next turn resumes.
     void (async () => {
@@ -363,7 +440,7 @@ export function createLiveSessions(options: {
   };
 
   return {
-    async lease({ threadId, options: launch, message }) {
+    async lease({ threadId, options: launch, message, attach }) {
       const key = launchKey(launch);
       const self = {};
       let live = sessions.get(threadId);
@@ -393,7 +470,16 @@ export function createLiveSessions(options: {
         }
       }
       const reused = live !== undefined;
-      const session = live ?? open(threadId, key, launch);
+      const session = live ?? open(threadId, key, launch, attach);
+      session.leasedBy = self;
+      try {
+        await session.ready;
+      } catch (error) {
+        close(session);
+        throw error;
+      }
+      // A later turn of the thread came while its servers were registered: it wins.
+      if (session.leasedBy !== self) throw new SessionTakenOver();
 
       const received = queue<SDKMessage>();
       let failure: { error: unknown } | undefined;

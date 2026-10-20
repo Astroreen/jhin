@@ -10,6 +10,7 @@ import {
   type AgentRuntimeStatus,
   type AgentTurn,
 } from "@jhin/agent-api";
+import { MCP_SERVER_CAPABILITY, type McpServer } from "@jhin/mcp-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
@@ -20,11 +21,24 @@ import {
 import { query as sdkQuery, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { BUNDLED_DEFAULT_MODEL, BUNDLED_MODELS, manifestContextWindow } from "./models.ts";
-import { createLiveSessions, type LiveSessions, type QueryFunction } from "./session.ts";
-import { CLAUDE_AGENT_ID, claudeEnvironment, claudeTurn, type SessionStore } from "./turn.ts";
+import {
+  createLiveSessions,
+  type Attachment,
+  type LiveSessions,
+  type QueryFunction,
+} from "./session.ts";
+import {
+  CLAUDE_AGENT_ID,
+  MCP_SERVER_NAME,
+  claudeEnvironment,
+  claudeTurn,
+  type SessionStore,
+} from "./turn.ts";
 
 export {
   CLAUDE_AGENT_ID,
+  JHIN_MCP_INSTRUCTIONS,
+  MCP_SERVER_NAME,
   claudeTurn,
   permissionMode,
   transcript,
@@ -33,6 +47,7 @@ export {
 export {
   SessionTakenOver,
   createLiveSessions,
+  type Attachment,
   type LiveSessionInfo,
   type LiveSessions,
 } from "./session.ts";
@@ -47,6 +62,44 @@ const STATUS_TTL_MS = 5 * 60_000;
 const UNAVAILABLE_TTL_MS = 10_000;
 /** A probe that takes longer reports Claude Code as unavailable. */
 const PROBE_TIMEOUT_MS = 25_000;
+
+/** What a thread's Claude Code may do through the node's MCP server (D341). */
+export const AGENT_PERMISSIONS: readonly string[] = [
+  "threads.read",
+  "threads.write",
+  "projects.read",
+  "projects.write",
+  "projects.browse",
+  "git.read",
+  "git.write",
+  "mesh.read",
+];
+
+/**
+ * Claude Code aborts an HTTP MCP call after 60 s unless the server sets a timeout; a tool
+ * that waits (a thread's turn, W10's tasks) may take up to an hour, so T3's budget.
+ */
+const MCP_TOOL_TIMEOUT_MS = 65 * 60_000;
+
+/** The node's MCP server for one Claude Code: a credential of its own, revoked when it ends. */
+export function mcpAttachment(server: McpServer, threadId: string): Attachment {
+  const credential = server.issue({
+    id: `${CLAUDE_AGENT_ID}:${threadId}`,
+    permissions: AGENT_PERMISSIONS,
+    threadId,
+  });
+  return {
+    servers: {
+      [MCP_SERVER_NAME]: {
+        type: "http",
+        url: credential.url,
+        headers: { ...credential.headers },
+        timeout: MCP_TOOL_TIMEOUT_MS,
+      },
+    },
+    dispose: () => credential.dispose(),
+  };
+}
 
 // Titles and descriptions are what the settings page shows (docs/plans/config-ui.md).
 export const Config = z
@@ -88,6 +141,11 @@ export const Config = z
         description:
           "Keep running: a thread's Claude Code stays up between turns, so the next answer starts sooner, at the cost of a process (and its memory) per thread with a recent turn. Start for every turn: each turn starts Claude Code and resumes the thread's session",
       }),
+    mcp: z.boolean().default(true).meta({
+      title: "Jhin tools",
+      description:
+        "Give Claude Code this node's MCP server, so it can work with Jhin's threads and projects when asked",
+    }),
     sessionIdleMinutes: z.number().int().nonnegative().default(10).meta({
       title: "Idle minutes",
       description:
@@ -200,6 +258,8 @@ export function createClaudeRuntime(options: {
   readonly query: QueryFunction;
   readonly sessions: SessionStore;
   readonly config: () => Config;
+  /** The node's MCP server, when it runs one (D340). */
+  readonly mcp?: McpServer;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
 }): AgentRuntime & {
   readonly live: LiveSessions;
@@ -276,6 +336,7 @@ export function createClaudeRuntime(options: {
     startTurn(request) {
       const config = options.config();
       const model = request.model ?? defaultModel();
+      const server = config.mcp ? options.mcp : undefined;
       const turn = claudeTurn(request, {
         query: options.query,
         live,
@@ -283,6 +344,7 @@ export function createClaudeRuntime(options: {
         settings: config,
         defaultModel: model,
         contextWindow: (name) => windows.get(name) ?? manifestContextWindow(name),
+        ...(server === undefined ? {} : { mcp: (threadId) => mcpAttachment(server, threadId) }),
         ...(options.log === undefined ? {} : { log: options.log }),
       });
       turns.set(turn, { threadId: request.threadId, done: turn.done });
@@ -378,10 +440,12 @@ export function claudePlugin(query: QueryFunction) {
       const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
       const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
       const registry = context.services.get<AgentRegistry>(AGENT_REGISTRY_CAPABILITY);
+      const mcp = context.services.tryGet<McpServer>(MCP_SERVER_CAPABILITY);
       const sessions = sessionRecords(kv);
       const runtime = createClaudeRuntime({
         query,
         sessions,
+        ...(mcp === undefined ? {} : { mcp }),
         config: () => context.config.get<Config>(CONFIG_SECTION),
         log: (message, data) => context.log.warn(message, data),
       });

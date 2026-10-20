@@ -35,6 +35,7 @@
     "@jhin/auth-api": "workspace:*",
     "@jhin/host-api": "workspace:*",
     "@jhin/http-api": "workspace:*",
+    "@jhin/mcp-api": "workspace:*",
     "@jhin/mcp-bridge": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@modelcontextprotocol/sdk": "catalog:"
@@ -52,6 +53,9 @@
     "name": "MCP server",
     "description": "Agents inside and outside Jhin use this node's commands as MCP tools at /mcp",
     "side": "server",
+    "provides": {
+      "mcp.server": "1.0.0"
+    },
     "requires": {
       "http.server": "^1",
       "auth.verifier": "^1"

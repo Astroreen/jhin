@@ -34,6 +34,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "catalog:",
     "@jhin/agent-api": "workspace:*",
+    "@jhin/mcp-api": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/storage-api": "workspace:*"
   },
@@ -53,6 +54,9 @@
       "agent.registry": "^1",
       "storage.eventlog": "^1",
       "storage.kv": "^1"
+    },
+    "optional": {
+      "mcp.server": "^1"
     },
     "entry": "src/index.ts"
   }
