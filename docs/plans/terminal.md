@@ -110,10 +110,19 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
   connection comes back, a session that is gone ends the tab with "Terminal
   closed" when the node reports the run the tab saw it in (closed elsewhere
   meanwhile); only when the run is another one (the node started over) does
-  the tab open a new shell. What xterm.js answers to queries in replayed output (cursor
-  position, colours) is dropped instead of being typed into the shell, and
-  what is typed before the terminal is open (its shell starting, the
-  connection coming back) waits and goes once it is.
+  the tab open a new shell. What xterm.js would answer to queries in
+  replayed output (cursor position, status, device attributes, mode reports,
+  settings, version, colours) is not sent: while a replay is parsed,
+  handlers on xterm's parser take the sequences that are only queries, and
+  for colour sequences (`OSC 4`, `10`–`12`), which may set and query in one,
+  xterm applies them in place and only the reply it emits in that same task
+  is dropped. Window operations (`CSI … t`) are left alone: the same byte
+  also resizes and keeps the title stack, and this xterm does not answer
+  their reports. Typing is
+  never dropped: keys pressed while the kept output is replayed go to the
+  shell (a new split's prompt is often replayed while the user already
+  types), and what is typed before the terminal is open (its shell
+  starting, the connection coming back) waits and goes once it is.
 
 - **D143. Sessions end with the plugin.** When `jhin.terminal` deactivates
   (stop, reload, a reload of what it depends on) every process gets SIGHUP,

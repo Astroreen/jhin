@@ -9,6 +9,7 @@ import { Terminal } from "@xterm/xterm";
 import { useEffect, useEffectEvent, useRef } from "react";
 
 import { attachTerminal } from "./attach.ts";
+import { muteRepliesWhileReplaying } from "./replay.ts";
 import { terminalThemeFromApp } from "./theme.ts";
 
 function fitSafely(fit: FitAddon): boolean {
@@ -72,8 +73,10 @@ export function TerminalViewport(props: {
     fitRef.current = fit;
 
     // What xterm answers to queries in replayed output (cursor position, colours)
-    // was meant for a program long gone: it must not reach the shell as input.
+    // was meant for a program long gone: those answers are muted while a replay
+    // is parsed. Typing is not: keys pressed meanwhile go to the shell.
     let replaying = 0;
+    const muted = muteRepliesWhileReplaying(terminal, () => replaying > 0);
     const attachment = attachTerminal({
       client,
       threadId,
@@ -105,7 +108,7 @@ export function TerminalViewport(props: {
     });
 
     const input = terminal.onData((data) => {
-      if (replaying === 0) attachment.write(data);
+      if (!muted.isReply()) attachment.write(data);
     });
 
     const themeObserver = new MutationObserver(() => {
@@ -131,6 +134,7 @@ export function TerminalViewport(props: {
       themeObserver.disconnect();
       attachment.dispose();
       input.dispose();
+      muted.dispose();
       terminalRef.current = null;
       fitRef.current = null;
       terminal.dispose();

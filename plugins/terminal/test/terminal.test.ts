@@ -655,8 +655,11 @@ describe("terminal sessions", () => {
     const stream = terminalStream("t", "term-1");
     let printed = "";
     const waiting: { text: string; resolve: () => void }[] = [];
+    /** Every output event as it came, to tell what trimming should keep. */
+    const outputs: { sequence: number; data: string }[] = [];
     streams.subscribe(stream, (event) => {
       if (event.type !== TerminalEvents.output) return;
+      outputs.push({ sequence: event.sequence, data: (event.payload as { data: string }).data });
       printed += (event.payload as { data: string }).data;
       for (const waiter of waiting.filter((item) => printed.includes(item.text))) {
         waiting.splice(waiting.indexOf(waiter), 1);
@@ -686,12 +689,37 @@ describe("terminal sessions", () => {
       sessions.write({ ...input, data: `seq ${from} ${to}\r` });
       await shows(`\n${to}`);
     }
+    // Short output, then a run just under the limit: trimming must forget only
+    // the oldest of the short ones, not everything but the newest event.
+    for (const n of [1, 2, 3]) {
+      sessions.write({ ...input, data: `echo tail-$((${n}+10))\r` });
+      await shows(`tail-${n + 10}`);
+    }
+    sessions.write({ ...input, data: "seq 1001 1095\r" });
+    await shows("\n1095");
 
-    const kept = streams.events(stream).map((event) => event.type);
-    expect(kept[0]).toBe(TerminalEvents.started);
-    expect(kept).toContain("terminal.title");
+    const kept = streams.events(stream);
+    expect(kept[0]?.type).toBe(TerminalEvents.started);
+    expect(kept.map((event) => event.type)).toContain("terminal.title");
     // Output after the other event was trimmed too: the middle run is gone.
     expect(sessions.get("t", "term-1")?.history).not.toMatch(/\n450\r\n/);
+    // And exactly what fits stays: the newest output events whose lines add up
+    // to the limit (100), never fewer; the newest alone when it is longer.
+    const lineCount = (data: string) => data.split("\n").length - 1;
+    const keptOutput = kept.filter((event) => event.type === TerminalEvents.output);
+    const fitting = [outputs.at(-1)!];
+    let total = lineCount(outputs.at(-1)!.data);
+    for (const output of outputs.slice(0, -1).toReversed()) {
+      if (total + lineCount(output.data) > 100) break;
+      total += lineCount(output.data);
+      fitting.unshift(output);
+    }
+    expect(keptOutput.map((event) => event.sequence)).toEqual(
+      fitting.map((output) => output.sequence),
+    );
+    expect(fitting.length).toBeGreaterThan(1);
+    expect(sessions.get("t", "term-1")?.history).toContain("tail-13");
+    expect(sessions.get("t", "term-1")?.history).toContain("\n1095");
     await sessions.dispose();
     Fs.rmSync(cwd, { recursive: true, force: true });
   });
