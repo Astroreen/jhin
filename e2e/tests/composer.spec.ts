@@ -127,4 +127,11 @@ test("chooses the model's options for a turn: effort, fast mode and Ultrathink",
   await page.getByRole("menuitemradio", { name: "Ultrathink" }).click();
   await expect(message).toHaveValue("Ultrathink:\n");
   await expect(page.getByRole("button", { name: "Ultrathink Fast", exact: true })).toBeVisible();
+  // As in T3, the prompt carries Ultrathink and the chosen options go with it.
+  await message.press("End");
+  await message.pressSequentially("/options");
+  await message.press("Enter");
+  await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText(
+    "Options: effort=high fastMode=true prompt=Ultrathink",
+  );
 });

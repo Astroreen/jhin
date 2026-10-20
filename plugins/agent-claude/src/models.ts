@@ -169,7 +169,7 @@ export function compileClaudeSelection(
 export function applyUltrathinkPrefix(text: string): string {
   const trimmed = text.trim();
   if (!trimmed || /^\/[^\s/]+(?:\s|$)/u.test(trimmed) || trimmed.startsWith("Ultrathink:")) {
-    return text;
+    return trimmed;
   }
   return `Ultrathink:\n${trimmed}`;
 }

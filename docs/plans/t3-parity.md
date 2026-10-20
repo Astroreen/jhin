@@ -521,10 +521,14 @@ It lands as a stack of PRs, each named below with the decisions it carries.
   model has it, Ultrathink) and Fast Mode on Opus 5.5; the context window
   options of T3's older 4.6 profiles (200k, 1M) for models Claude Code
   reports with those ids. They apply as T3 applies them: the effort through
-  the effort map (Ultracode runs `xhigh` with `ultracode` set, Ultrathink adds
-  "Ultrathink:" before the message instead of an effort), Fast Mode as Claude
-  Code's `fastMode` setting, a context window as the model id's suffix
-  (`[1m]`). The node config's `effort` stays the default when a turn chooses
+  the effort map (Ultracode runs `xhigh` with `ultracode` set), Fast Mode as
+  Claude Code's `fastMode` setting (`false` when not chosen, as T3 sends it),
+  a context window as the model id's suffix (`[1m]`). Ultrathink is
+  `promptInjectedValues`: as in T3, picking it writes "Ultrathink:" before the
+  prompt and the effort chosen before stays; a runtime that gets
+  `effort: ultrathink` (another client) writes the prefix itself and sends no
+  effort. An effort the model does not offer, the config's included, is not
+  sent. The node config's `effort` stays the default when a turn chooses
   none. A live session (`providers.md` D98) whose options change is started
   again; applying them live is W9's (`applyFlagSettings`).
 - **D299. T3's traits menu.** One button after the model picker, labelled
@@ -532,7 +536,10 @@ It lands as a stack of PRs, each named below with the decisions it carries.
   select option (radio items, "Default" on the model's default) and On/Off
   for each boolean. A prompt that contains "ultrathink" locks the effort with
   T3's note. The choice is kept per thread like the model, and remembered per
-  model on the device for new threads, as T3's sticky options.
+  model on the device: a new thread's composer starts a model without chosen
+  options with them, as T3's sticky options. `threads.update` keeps only the
+  options its model declares, as `threads.send` does; naming the model a
+  thread already runs (its agent's default) keeps them.
 
 #### Commands, skills and mentions
 

@@ -837,6 +837,11 @@ export interface ComposerProps {
   onRespond(requestId: string, response: AgentResponse): Promise<boolean>;
   readonly handleRef?: Ref<ComposerHandleApi>;
   /**
+   * A new thread's composer: a model without chosen options starts with the
+   * ones last chosen for it on this device (D299, T3's sticky options).
+   */
+  readonly seedModelOptions?: boolean;
+  /**
    * A proposed plan the user can act on (D306): an empty prompt implements it,
    * typed text refines it. False when it was not sent.
    */
@@ -879,6 +884,14 @@ export function Composer(props: ComposerProps) {
   const runtimeModes = agent?.runtimeModes ?? [];
   const modelId = props.selection.model ?? agent?.defaultModel ?? agent?.models[0]?.id;
   const modelOptions = agent?.models.find((model) => model.id === modelId)?.options ?? [];
+  const agentId = agent?.agentId;
+  useEffect(() => {
+    if (props.seedModelOptions !== true || props.selection.modelOptions !== undefined) return;
+    if (agentId === undefined || modelId === undefined) return;
+    const remembered = chat.modelOptions.get(agentId, modelId);
+    if (remembered !== undefined)
+      props.onSelectionChange({ ...props.selection, modelOptions: remembered });
+  }, [agentId, modelId, props.seedModelOptions]);
   const runtimeMode = props.selection.runtimeMode ?? "full-access";
   const planSupported = agent?.interactionModes.includes("plan") === true;
   const planMode = props.selection.interactionMode === "plan";

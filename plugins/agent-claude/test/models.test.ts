@@ -54,6 +54,8 @@ describe("jhin.agent-claude: model options (D298, T3's manifest)", () => {
   });
 
   it("falls back to the config's effort, and to Claude Code's own default without one", () => {
+    // An effort the model does not offer is not sent (T3 resolves it against the descriptor).
+    expect(compileClaudeSelection("claude-sonnet-4-6", [], "xhigh").effort).toBeUndefined();
     expect(compileClaudeSelection("claude-opus-5-5", [], "low").effort).toBe("low");
     expect(
       compileClaudeSelection("claude-opus-5-5", [{ id: "effort", value: "max" }], "low").effort,
@@ -104,6 +106,7 @@ describe("jhin.agent-claude: model options (D298, T3's manifest)", () => {
     expect(applyUltrathinkPrefix("fix it")).toBe("Ultrathink:\nfix it");
     expect(applyUltrathinkPrefix("Ultrathink:\nfix it")).toBe("Ultrathink:\nfix it");
     expect(applyUltrathinkPrefix("/review now")).toBe("/review now");
+    expect(applyUltrathinkPrefix("  ")).toBe("");
     expect(applyUltrathinkPrefix("/home/ada/app.ts is broken")).toBe(
       "Ultrathink:\n/home/ada/app.ts is broken",
     );

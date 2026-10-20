@@ -157,8 +157,10 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
       yield* say("Plan done");
       return;
     }
-    if (text.startsWith("/options")) {
+    if (text.replace(/^Ultrathink:\s*/, "").startsWith("/options")) {
       const chosen = (request.modelOptions ?? []).map(({ id, value }) => `${id}=${String(value)}`);
+      // T3 writes Ultrathink into the prompt; the agent sees it there.
+      if (text.startsWith("Ultrathink:")) chosen.push("prompt=Ultrathink");
       yield* say(`Options: ${chosen.length === 0 ? "none" : chosen.join(" ")}`);
       return;
     }

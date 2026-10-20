@@ -1487,12 +1487,13 @@ export default definePlugin({
       }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: ({ threadId, title, ...settings }) => {
+      handler: async ({ threadId, title, ...settings }) => {
         if (settings.agentId !== undefined && registry.get(settings.agentId) === undefined) {
           throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${settings.agentId} on this node`, {
             agentId: settings.agentId,
           });
         }
+        const fallback = await defaultRuntime();
         return updateThread(threadId, (thread) => {
           const next: Thread = {
             ...thread,
@@ -1505,15 +1506,28 @@ export default definePlugin({
           if (agentChanged && settings.model === undefined) {
             delete (next as { model?: string }).model;
           }
-          // Nor do options chosen for another model.
+          // The model each record runs: naming the default model changes nothing.
+          const runtimeOf = (agentId: string | undefined) =>
+            (agentId === undefined ? undefined : registry.get(agentId)) ?? fallback;
+          const runtime = runtimeOf(next.agentId);
+          const modelOf = (candidate: AgentRuntime | undefined, model: string | undefined) =>
+            model ?? candidate?.defaultModel ?? candidate?.models?.[0]?.id;
+          const effectiveModel = modelOf(runtime, next.model);
+          // Options chosen for another model do not carry over either.
           if (
             settings.modelOptions === undefined &&
-            (agentChanged || (settings.model !== undefined && settings.model !== thread.model))
+            (agentChanged || effectiveModel !== modelOf(runtimeOf(thread.agentId), thread.model))
           ) {
             delete (next as { modelOptions?: unknown }).modelOptions;
           }
-          if (settings.modelOptions?.length === 0) {
-            delete (next as { modelOptions?: unknown }).modelOptions;
+          // Only what the model declares is kept (D297), as threads.send keeps it.
+          if (settings.modelOptions !== undefined) {
+            const kept = applicableModelOptions(
+              runtime?.models?.find((model) => model.id === effectiveModel)?.options,
+              settings.modelOptions,
+            );
+            if (kept.length === 0) delete (next as { modelOptions?: unknown }).modelOptions;
+            else next.modelOptions = kept;
           }
           const changed = (Object.keys({ ...thread, ...next }) as (keyof Thread)[]).some(
             (key) => !sameValue(next[key], thread[key]),

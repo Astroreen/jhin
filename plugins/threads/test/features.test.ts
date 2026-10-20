@@ -436,6 +436,31 @@ describe("jhin.threads: agents", () => {
       model: "sonnet",
     });
     expect(switched.modelOptions).toBeUndefined();
+
+    // Undeclared ids and values are dropped on update too; naming the model the
+    // thread already runs (its default) keeps the options.
+    const filtered = await client.call<Thread & { modelOptions?: unknown }>("threads.update", {
+      threadId: thread.id,
+      model: "opus",
+      modelOptions: [
+        { id: "effort", value: "max" },
+        { id: "fastMode", value: true },
+        { id: "contextWindow", value: "1m" },
+      ],
+    });
+    expect(filtered.modelOptions).toEqual([{ id: "fastMode", value: true }]);
+    const fresh = await client.call<Thread & { modelOptions?: unknown }>("threads.create", {
+      agentId: "acme.claude",
+    });
+    await client.call("threads.update", {
+      threadId: fresh.id,
+      modelOptions: [{ id: "effort", value: "low" }],
+    });
+    const named = await client.call<Thread & { modelOptions?: unknown }>("threads.update", {
+      threadId: fresh.id,
+      model: "opus",
+    });
+    expect(named.modelOptions).toEqual([{ id: "effort", value: "low" }]);
   });
 
   it("does not carry a model over to another agent chosen with a message", async () => {

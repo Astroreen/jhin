@@ -558,6 +558,7 @@ export function DraftView(props: {
                 history={[]}
                 onDequeue={() => undefined}
                 onRespond={async () => false}
+                seedModelOptions
                 onSelectionChange={(next) => {
                   setSelection(next);
                   chat.lastSelection.set(target, next);
