@@ -1,4 +1,4 @@
-import { z } from "@jhin/sdk";
+import { z, type Disposable } from "@jhin/sdk";
 
 /** `source-control.git@1`: git repositories of a node's projects (docs/plans/source-control.md). */
 export const SOURCE_CONTROL_CAPABILITY = "source-control.git";
@@ -608,4 +608,75 @@ export function pullRequestChains(links: readonly ThreadPullRequest[]): PullRequ
   return chains
     .toSorted((a, b) => (a.latest < b.latest ? 1 : a.latest > b.latest ? -1 : 0))
     .map(({ keys }) => ({ keys }));
+}
+
+/**
+ * `source-control.diff-scopes@1`, provided by the web client's source control
+ * plugin: the scopes its diff panel offers (D283). The builtin provider offers
+ * "Changes" and "Uncommitted"; another plugin adds its own (a turn's diff) with
+ * `register`, and its options join the panel's scope menu.
+ */
+export const DIFF_SCOPES_CAPABILITY = "source-control.diff-scopes";
+
+/** What a diff scope is asked about: the thread on screen, or the project of a draft. */
+export interface DiffScopeContext {
+  /** The node's connection, and the mesh member reached through it if any. */
+  readonly target: { readonly node: string; readonly remote?: string };
+  readonly projectId: string;
+  readonly threadId?: string;
+}
+
+/** One entry of the scope menu. */
+export interface DiffScopeOption {
+  /** Unique among every provider's options, e.g. `branch` or `turn:<id>`. */
+  readonly value: string;
+  readonly label: string;
+  /** A submenu holding the option (T3's "Turn"); none lists it in the menu itself. */
+  readonly group?: string;
+  /** Shown at the option's right end, e.g. a time. */
+  readonly detail?: string;
+  /** The base ref picker applies: `load` receives the chosen `base`. */
+  readonly baseRefs?: boolean;
+}
+
+export interface DiffScopeLoadInput {
+  readonly ignoreWhitespace: boolean;
+  /** For an option with `baseRefs`: the ref chosen to compare with (the default otherwise). */
+  readonly base?: string;
+}
+
+/** A scope's diff: a unified patch with its totals. */
+export interface DiffScopeResult {
+  readonly patch: string;
+  /** The patch was cut at the size limit; the totals stay complete. */
+  readonly truncated: boolean;
+  readonly insertions: number;
+  readonly deletions: number;
+  /** For a comparison: the ref compared against and the one compared. */
+  readonly baseRef: string | null;
+  readonly headRef: string | null;
+}
+
+export interface DiffScopeProvider {
+  /** A stable id, e.g. `jhin.source-control.git`. */
+  readonly id: string;
+  /** Lower first; the builtin provider is 0. */
+  readonly order?: number;
+  /** The options for a context, newest first; the same array until they change. */
+  options(context: DiffScopeContext): readonly DiffScopeOption[];
+  /** `listener` fires when the options or their diffs change. */
+  subscribe?(context: DiffScopeContext, listener: () => void): Disposable;
+  load(
+    context: DiffScopeContext,
+    value: string,
+    input: DiffScopeLoadInput,
+  ): Promise<DiffScopeResult>;
+}
+
+/** The service of `source-control.diff-scopes@1`. */
+export interface DiffScopes {
+  register(provider: DiffScopeProvider): Disposable;
+  /** Every provider, in order; the same array until one comes or goes. */
+  providers(): readonly DiffScopeProvider[];
+  subscribe(listener: () => void): Disposable;
 }

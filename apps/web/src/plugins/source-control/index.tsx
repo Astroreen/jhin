@@ -6,11 +6,13 @@ import {
   KEYBINDINGS_CAPABILITY,
   NAVIGATION_CAPABILITY,
   THREAD_DETAILS_SLOT,
+  SETTINGS_CAPABILITY,
   THREADS_CAPABILITY,
   type ChatComposerContextProps,
   type ChatHeaderActionProps,
   type ChatTurnFooterProps,
   type Connections,
+  type DeviceSettings,
   type Keybindings,
   type Navigation,
   type ThreadActionProps,
@@ -18,6 +20,7 @@ import {
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import { definePlugin, z } from "@jhin/sdk";
+import { DIFF_SCOPES_CAPABILITY } from "@jhin/source-control-api";
 import {
   Toggle,
   Tooltip,
@@ -36,9 +39,11 @@ import { builtin } from "../../lib/builtin.ts";
 import { CHAT_SECTION, ChatSettings, readSection } from "../../lib/settings.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { DIFF_SECTION, DiffSettings } from "../../lib/settings.ts";
 import { createBranchToolbar } from "./branch-toolbar.tsx";
 import { createRunningActions } from "./running.ts";
-import { createChangedFilesFooter, createDiffSelections } from "./checkpoints.tsx";
+import { createChangedFilesFooter } from "./checkpoints.tsx";
+import { createDiffScopes, createDiffSelections, gitScopeProvider } from "./diff/scopes.ts";
 import { createCardIndicators } from "./indicators.tsx";
 import { createLinkActions } from "./links.tsx";
 import { DIFF_PANEL, useSourceControl, type SourceControlServices } from "./services.ts";
@@ -49,11 +54,12 @@ import { createSourceControlStore } from "./store.ts";
  * cards' branch, pull request and diff (`sidebar.thread.indicators`), the
  * branch toolbar under the composer (`chat.composer.context`), the git
  * actions in the chat header, and the diff panel (`app.panel`) with its
- * toggle in the chat header.
+ * toggle in the chat header and its scopes (`source-control.diff-scopes@1`).
  */
 export const sourceControlPlugin = builtin(
   "jhin.source-control",
   {
+    provides: { [DIFF_SCOPES_CAPABILITY]: "1.0.0" },
     requires: {
       [UI_SLOTS_CAPABILITY]: "^1",
       [CONNECTIONS_CAPABILITY]: "^1",
@@ -64,6 +70,7 @@ export const sourceControlPlugin = builtin(
       [KEYBINDINGS_CAPABILITY]: "^1",
       [UI_TOASTS_CAPABILITY]: "^1",
       [UI_DIALOGS_CAPABILITY]: "^1",
+      [SETTINGS_CAPABILITY]: "^1",
     },
   },
   definePlugin({
@@ -75,6 +82,11 @@ export const sourceControlPlugin = builtin(
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const dialogs = context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY);
+      const settings = context.services.tryGet<DeviceSettings>(SETTINGS_CAPABILITY);
+      context.config.define(DIFF_SECTION, DiffSettings);
+      const scopes = createDiffScopes();
+      context.services.provide(DIFF_SCOPES_CAPABILITY, scopes);
+      context.subscriptions.add(scopes.register(gitScopeProvider(threads)));
       const store = context.subscriptions.add(
         createSourceControlStore(connections, threads, context.log),
       );
@@ -86,7 +98,9 @@ export const sourceControlPlugin = builtin(
         navigation,
         running: createRunningActions(),
         toasts,
+        scopes,
         selections: createDiffSelections(),
+        settings,
         timestampFormat: () => readSection(context, CHAT_SECTION, ChatSettings).timestampFormat,
         shortcut: () => keybindings?.labelFor("diff.toggle"),
       };

@@ -181,9 +181,118 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   empty states ("No net changes in this selection.", "Turn diffs are
   unavailable because this project is not a git repository."). Files render
   as a stacked unified diff parsed on the client (`lib/diff.ts`), each
-  foldable; it is read again whenever the project's status changes. T3 renders
-  with `@pierre/diffs` (syntax highlighting, split view, file tree,
-  comments); that is Deferred.
+  foldable; it is read again whenever the project's status changes. W5
+  (D280–D289) replaces the rendering with T3's `@pierre/diffs`.
+
+### Diff panel (W5 of `t3-roadmap.md`)
+
+- **D280. The diff panel renders with `@pierre/diffs`, as T3 does**
+  (`@pierre/diffs` 1.5.2 and `@pierre/trees` 1.0.0-beta.6, the versions T3
+  pins at D53; both Apache-2.0). Ported from T3: `DiffPanel.tsx` (the header
+  and the body), `diffs/StyledDiffCodeView.tsx` (Pierre's virtualized
+  `CodeView` with T3's stylesheet and item metrics),
+  `DiffWorkerPoolProvider.tsx` (highlighting in a shared pool of Web Workers
+  with the Oniguruma engine, ended 30 s after the last panel closes),
+  `lib/diffRendering.ts` (parsing the patch, file identities and versions,
+  the surface's colours from the app's `--code-background` and
+  `--diff-addition`/`--diff-deletion`) and `DiffFilePathCopyButton.tsx`. Files
+  are syntax highlighted in Pierre's light or dark theme, following the app's
+  `dark` class; each has T3's header (the change icon, the name, "Copy path",
+  the counts) and folds from its chevron or by clicking the header. A patch
+  Pierre cannot parse shows raw, as T3 does ("Unsupported diff format.
+  Showing raw patch."). `lib/diff.ts` stays for nothing else and goes.
+- **D281. Split view, line wrapping, whitespace and folding follow T3's
+  settings**: the header's segmented "Stacked diff view" / "Split diff view"
+  toggle, "Enable line wrapping" and "Hide whitespace changes". Their defaults
+  are the client config section `jhin.diff` (kept on the device), shown in
+  the settings page's Behavior section as T3's rows ("Word wrap", "Hide
+  whitespace changes", "Default diff file state", "Diff layout"): `layout`
+  (`stacked`; the toolbar toggle writes it, as T3's does), `wordWrap` (true),
+  `ignoreWhitespace` (true) and `filesCollapsed` (true: files start folded);
+  wrapping and whitespace toggled in the panel last while it is open, as in
+  T3.
+- **D282. The file tree is T3's `DiffFileTree`** on `@pierre/trees`: "Show
+  file tree" / "Hide file tree" in the header (kept on the device under
+  `jhin.diffFileTreeOpen`, off by default), a "Files" column with the count,
+  "Collapse all folders" / "Expand all folders", git status colours per file,
+  empty folders flattened, files in the diff's order. Choosing a file unfolds
+  it and scrolls the diff to it.
+- **D283. Diff scopes are contributions**, so W3's "Latest turn" and "Turn N"
+  plug into the same menu. The client plugin provides `source-control.diff-scopes@1`
+  (`DiffScopes` in `@jhin/source-control-api`): `register(provider)` returns
+  a disposable; a provider has a stable `id`, an `order`, the `options` it
+  offers for a thread or draft (`value`, `label`, an optional `group` that
+  becomes a submenu as T3's "Turn" is, an optional `detail` such as a time,
+  and `baseRefs` when the base ref picker applies), `subscribe` to say they
+  changed, and `load` returning the patch with its totals and refs. The
+  panel's menu lists every provider's options in order. The builtin provider
+  `jhin.source-control.git` offers "Changes" and "Uncommitted" through
+  `git.diff`. The selection is kept per thread (or draft) on the device
+  (`jhin.diff-panel.v1`), defaulting to "Changes" as T3 does; a value no
+  provider offers any more falls back to the first option. Every scope is
+  read again when its project's status changes, when its provider says so,
+  on "Refresh diff", and when the window regains focus (T3 refreshes on
+  focus).
+- **D284. The base ref picker of "Changes" is T3's combobox** next to
+  "head → base": "Change comparison target. Currently …", "Search refs...",
+  "Automatic" (the default branch), a Branch/Remote column per ref with "Use
+  remote version of …" when both exist and "Remote only" when only the
+  remote one does, "No matching refs.". Refs come from `git.branches` (local
+  and remote, the current branch left out), read when the picker opens. The
+  chosen base is kept with the thread's selection and passed to `git.diff`
+  as `base`; switching to "Uncommitted" and back keeps it.
+- **D285. Comments on lines go to the chat, as T3's review comments do.**
+  Pierre's gutter "+" (or a line range dragged in the gutter) opens T3's
+  `DiffCommentAnnotation` under the range: "Add a comment…", "⌘/Ctrl Enter to
+  send", "Cancel", "Comment"; Escape cancels. A comment becomes a context of
+  the thread's composer (or the draft's) through the new client capability
+  `chat.composer@1` (provided by the chat plugin): `contexts`, `add`,
+  `remove` and `subscribe` per composer (`{ target, threadId }` or
+  `{ target, projectId }` for a draft). The composer shows each context as a
+  chip above the prompt (T3's label: the file's name and the range,
+  `diff-panel.tsx +12 to +14`) that can be removed; the diff shows the
+  comments of the selected scope inline, each with "Delete comment". On send,
+  contexts are appended to the message as T3 serializes review comments for
+  a provider without inline context (`<review_comment sectionId=… filePath=…
+  rangeLabel=…>` with the comment and the lines as a fenced `diff`), and the
+  timeline renders such a block in a user message as T3's review comment
+  card. Contexts live with the composer's draft, so they survive a reload,
+  and go once sent.
+- **D286. Opening a file in an editor**: the server plugin `jhin.editors`
+  (`plugins/editors`) provides `host.editors@1` with the commands
+  `editors.list` (the editors found on the node: T3's list — Cursor, VS Code,
+  VS Code Insiders, VSCodium, Zed, the JetBrains IDEs, … — looked up on `PATH`
+  and in the usual install folders, plus the file manager) and `editors.open`
+  (`projectId`, a project-relative `path`, optional `line` and `column`, an
+  `editor`; paths outside the project are refused with `PATH_OUTSIDE_PROJECT`,
+  an editor not found with `EDITOR_NOT_FOUND`). Each editor is launched with
+  T3's argument style (`--goto file:line:col`, `file:line:col`, or
+  `--line N file`), detached. Reads need `editor.list`, opening `editor.open`.
+  In the diff panel, clicking a file's name opens it in the preferred editor
+  (the last one chosen on this device, else the first found, as T3's
+  `usePreferredEditor`); its context menu offers "Open" (the file manager)
+  and "Open with" with every editor found. A failure is a toast: "Could not
+  open in VS Code" with the path.
+- **D287. Paths of a diff are the repository's**: `git.diff` names files
+  from the repository root, which may sit above the project's folder. The
+  status's `root` and the project's path resolve them as T3's
+  `resolveDiffPathForWorkspace` does; a file outside the project's folder
+  cannot be opened from the panel (nothing happens, as in T3).
+- **D288. The panel's empty states and messages are T3's**: "Select a thread
+  to inspect turn diffs.", "Turn diffs are unavailable because this project
+  is not a git repository.", "No net changes in this selection.", "No patch
+  available for this selection.", the loading skeletons ("Loading
+  changes...", "Loading uncommitted changes..."), "Loading code..." while the
+  highlighter starts, and the size-limit notice of a truncated patch.
+- **D289. The proof** for W5: browser tests of the panel (Pierre's view
+  rendering files, the layout toggle, folding, the file tree revealing a
+  file, the scope menu with a contributed scope, the base ref picker passing
+  `base`, a comment reaching the composer's contexts), unit tests of the
+  ported logic (tree entries and updates, base ref choices, review comment
+  building and serialization, editor launch arguments, path resolution), the
+  `jhin.editors` plugin's tests with a fake editor on `PATH`, and Playwright
+  `e2e/tests/source-control.spec.ts` extended with split view, the file tree,
+  the base ref picker and a comment sent with a message, with screenshots.
 
 The proof: `plugins/source-control/test/status.test.ts` (temporary
 repositories: a clean status, changes with untracked and binary files, a
@@ -741,9 +850,14 @@ with the node's token, and without one).
 - Cancelling a running git action: writes to a project queue behind it (its
   writer is bounded by `writerTimeoutSeconds`, a commit's hooks by ten
   minutes), with no way to stop it from the client.
-- The diff panel's syntax highlighting, split view, file tree, comments and
-  opening a file in an editor (T3 renders with `@pierre/diffs`); the base ref
-  picker of the "Changes" scope.
+- What W5 leaves of T3's diff panel: its in-app file preview (at D53 a click
+  on a file's name opens T3's file panel; Jhin has none, so it opens the
+  editor, D286), loading the patches of a truncated diff file by file
+  (`useReviewFilePatches`), expanding the unchanged lines between hunks
+  (Pierre's `loadDiffFiles` with the file's contents), find in the diff,
+  T3's own file icons in the tree, "Reveal in file manager", opening a
+  remote node's file in a local editor (T3's remote editor URLs), and the
+  pop-out (non-inline) panel mode.
 - Live source control of mesh members: their `source-control` stream is not
   mirrored (D26); clients re-read it when the member's thread catalog
   changes. Mirroring it needs the mesh to share a stream it does not know.

@@ -32,7 +32,19 @@ export default defineConfig({
         // Anything that needs a real browser is named *.browser.test.{ts,tsx} and
         // runs in headless Chromium.
         extends: true,
-        optimizeDeps: { include: ["vite-plus/test/browser"] },
+        optimizeDeps: {
+          // Pre-bundled up front: a dependency found while a test runs reloads the page,
+          // and the diff panel's highlighting worker fails to load when that happens.
+          include: [
+            "vite-plus/test/browser",
+            "@pierre/diffs",
+            "@pierre/diffs/react",
+            "@pierre/diffs/worker",
+            "@pierre/diffs/worker/worker.js",
+            "@pierre/trees",
+            "@pierre/trees/react",
+          ],
+        },
         test: {
           name: "browser",
           include: [

@@ -8,6 +8,8 @@ import {
   APPEARANCE_SECTION,
   CHAT_SECTION,
   ChatSettings,
+  DIFF_SECTION,
+  DiffSettings,
   useSection,
   type Appearance,
 } from "../../lib/settings.ts";
@@ -104,6 +106,7 @@ export function GeneralSection() {
           resetAction={reset("followUpBehavior", "follow-up behavior")}
           title="Follow-up behavior"
         />
+        <DiffRows />
       </SettingsSection>
       <SettingsSection title="Confirmations">
         <SettingsRow
@@ -140,6 +143,81 @@ export function GeneralSection() {
           title="Unpin"
         />
       </SettingsSection>
+    </>
+  );
+}
+
+/** T3's diff rows: word wrap, whitespace, the default file state and the layout. */
+function DiffRows() {
+  const { context, settings } = useSettingsServices();
+  const diff = useSection(context, DIFF_SECTION, DiffSettings);
+  const defaults = DiffSettings.parse({});
+  const set = (values: Partial<DiffSettings>) => settings.patch(DIFF_SECTION, values);
+  const reset = <K extends keyof DiffSettings>(key: K, label: string) =>
+    diff[key] === defaults[key] ? null : (
+      <SettingResetButton
+        label={label}
+        onClick={() => settings.patch(DIFF_SECTION, { [key]: undefined })}
+      />
+    );
+  return (
+    <>
+      <SettingsRow
+        control={
+          <Switch
+            aria-label="Wrap diffs by default"
+            checked={diff.wordWrap}
+            onCheckedChange={(wordWrap) => set({ wordWrap })}
+          />
+        }
+        description="Wrap long lines in diffs by default."
+        resetAction={reset("wordWrap", "word wrap")}
+        title="Word wrap"
+      />
+      <SettingsRow
+        control={
+          <Switch
+            aria-label="Hide whitespace changes by default"
+            checked={diff.ignoreWhitespace}
+            onCheckedChange={(ignoreWhitespace) => set({ ignoreWhitespace })}
+          />
+        }
+        description="Set whether the diff panel ignores whitespace-only edits by default."
+        resetAction={reset("ignoreWhitespace", "diff whitespace changes")}
+        title="Hide whitespace changes"
+      />
+      <SettingsRow
+        control={
+          <Choice
+            label="Default diff file state"
+            onChange={(state) => set({ filesCollapsed: state === "collapsed" })}
+            options={[
+              { value: "expanded", label: "Expanded" },
+              { value: "collapsed", label: "Collapsed" },
+            ]}
+            value={diff.filesCollapsed ? "collapsed" : "expanded"}
+          />
+        }
+        description="Start with files expanded or collapsed when opening diffs."
+        resetAction={reset("filesCollapsed", "default diff file state")}
+        title="Default diff file state"
+      />
+      <SettingsRow
+        control={
+          <Choice
+            label="Diff layout"
+            onChange={(layout) => set({ layout })}
+            options={[
+              { value: "stacked", label: "Stacked" },
+              { value: "split", label: "Split" },
+            ]}
+            value={diff.layout}
+          />
+        }
+        description="Show diffs stacked or side by side. The toggle in the diff toolbar changes this too."
+        resetAction={reset("layout", "diff layout")}
+        title="Diff layout"
+      />
     </>
   );
 }

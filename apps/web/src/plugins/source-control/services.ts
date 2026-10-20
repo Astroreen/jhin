@@ -1,18 +1,19 @@
 import {
   targetKey,
   type Connections,
+  type DeviceSettings,
   type Navigation,
   type NodeTarget,
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import type { PluginContext } from "@jhin/sdk";
-import type { ProjectStatus } from "@jhin/source-control-api";
+import type { DiffScopes, ProjectStatus } from "@jhin/source-control-api";
 import type { Toasts } from "@jhin/ui";
 import { useSyncExternalStore } from "react";
 
 import type { RunningActions } from "./running.ts";
 import type { TimestampFormat } from "../../lib/format.ts";
-import type { DiffSelections } from "./checkpoints.tsx";
+import type { DiffSelections } from "./diff/scopes.ts";
 import type { SourceControlStore, SourceControlView } from "./store.ts";
 
 /** What the source control components use, handed over by the plugin. */
@@ -28,10 +29,12 @@ export interface SourceControlServices {
   /** The git actions running from this client. */
   readonly running: RunningActions;
   readonly toasts: Toasts | undefined;
-  /** What the diff panel shows, per thread (or draft). */
+import type { TimestampFormat } from "../../lib/format.ts";
+  /** The diff panel's scopes (D283) and what each thread has selected. */
+  readonly scopes: DiffScopes;
   readonly selections: DiffSelections;
-  /** How the chat shows times (its `timestampFormat` setting). */
-  timestampFormat(): TimestampFormat;
+  /** This device's settings, where the panel's layout toggle writes. */
+  readonly settings: DeviceSettings | undefined;
   /** The label of the diff panel's shortcut, e.g. "⌘D". */
   shortcut(): string | undefined;
 }
