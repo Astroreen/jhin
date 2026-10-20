@@ -182,7 +182,7 @@ function stateOf(message: SDKMessage): "idle" | "running" | "requires_action" | 
 }
 
 /** Ends a turn whose message Claude Code took without answering it (nothing marked as its). */
-export class NoAnswer extends Error {
+class NoAnswer extends Error {
   constructor() {
     super("Claude Code finished without answering the turn's message.");
   }

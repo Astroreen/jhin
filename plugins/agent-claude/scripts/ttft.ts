@@ -3,27 +3,15 @@
 // plugin's runtime with the SDK's own `query`, so it needs a signed-in Claude Code and spends
 // a few cents: two short turns per thread on the given model.
 //
-//   node scripts/claude-ttft.ts [threads per mode = 10] [model = claude-haiku-5-5]
+//   node plugins/agent-claude/scripts/ttft.ts [threads per mode = 10] [model = claude-haiku-5-5]
 import { randomUUID } from "node:crypto";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 
-import {
-  Config,
-  createClaudeRuntime,
-  type QueryFunction,
-} from "../plugins/agent-claude/src/index.ts";
+import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
+
+import { Config, createClaudeRuntime, type QueryFunction } from "../src/index.ts";
 
 const runs = Number(process.argv[2] ?? 10);
 const model = process.argv[3] ?? "claude-haiku-5-5";
-
-// The SDK is the plugin's dependency, not the repository's: resolved from the plugin.
-const require = createRequire(new URL("../plugins/agent-claude/package.json", import.meta.url));
-const sdk = (await import(
-  pathToFileURL(require.resolve("@anthropic-ai/claude-agent-sdk")).href
-)) as {
-  query: QueryFunction;
-};
 
 /** When the current turn's `system/init` and first `message_start` came, from its start. */
 let turnStart = 0;
@@ -31,7 +19,7 @@ const marks: { init?: number; messageStart?: number } = {};
 let opened = 0;
 const query: QueryFunction = (params) => {
   opened++;
-  const running = sdk.query(params);
+  const running = (sdkQuery as unknown as QueryFunction)(params);
   const iterate = running[Symbol.asyncIterator].bind(running);
   return Object.assign(running, {
     [Symbol.asyncIterator]: () => {

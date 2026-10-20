@@ -103,11 +103,12 @@ specific to Claude: the runtime is a plugin on the public API.
   pushes its message into the same prompt stream (the SDK's streaming input)
   and reads until its own `result` (D104), as T3 Code's live query does. It
   skips starting Claude Code and resuming the session — measured on Claude
-  Haiku 5.5 with `scripts/claude-ttft.ts`, a second turn's `system/init` comes
-  after about 30–100 ms instead of 1.3–1.7 s (several seconds on a loaded
-  machine) — at the cost of a process (and its memory) per thread with a
-  recent turn. `session: "per-turn"` starts Claude Code for every turn and
-  ends it with the turn (D91). A kept Claude Code that waits
+  Haiku 5.5 with `plugins/agent-claude/scripts/ttft.ts`, a second turn's
+  `system/init` comes after a median 43 ms (36–123) instead of 1741 ms
+  (1463–2251), its first token after 1317 ms instead of 3188 ms (ten threads
+  each, 2026-10-20) — at the cost of a process (and its memory) per thread
+  with a recent turn. `session: "per-turn"` starts Claude Code for every turn
+  and ends it with the turn (D91). A kept Claude Code that waits
   `sessionIdleMinutes` (default 10; 0: no limit) for its thread's next turn
   exits; the next turn resumes. Messages Claude Code sends between turns are
   dropped. A thread never has two Claude Codes, and the newest turn wins: the
