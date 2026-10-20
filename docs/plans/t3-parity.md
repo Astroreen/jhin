@@ -831,7 +831,9 @@ and resetting it clears them), with a screenshot.
   at once. An id of another project's thread or of a deleted
   thread is refused (`THREAD_EXISTS`). A creation that stopped after the
   thread's first event is finished by the next call with that id, with the
-  thread that event recorded. The web client chooses the id of every thread
+  thread that event recorded, and a deletion that stopped after the stream
+  said deleted is finished when the node starts (its record removed and
+  announced). The web client chooses the id of every thread
   it starts and asks again with it when the connection dropped the answer;
   after any other failure the draft takes a new id, since a thread deleted
   after its refused first message keeps its id taken.
