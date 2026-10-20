@@ -5,6 +5,7 @@ import {
   targetKey,
   visitKey,
   type ChatDrawerProps,
+  type ChatTurnFooterProps,
   type NodeTarget,
   type ProjectRecord,
   type ThreadRecord,
@@ -292,6 +293,24 @@ export function ThreadView(props: {
                 </div>
               ) : (
                 <TimelineView
+                  footer={
+                    thread === undefined
+                      ? undefined
+                      : (turn, latest) => (
+                          <Slot
+                            name="chat.turn.footer"
+                            props={
+                              {
+                                target,
+                                thread,
+                                turnId: turn.turnId,
+                                state: turn.state,
+                                latest,
+                              } satisfies ChatTurnFooterProps
+                            }
+                          />
+                        )
+                  }
                   format={settings.timestampFormat}
                   onRetry={(text, attachments) => send(text, attachments)}
                   timeline={timeline}

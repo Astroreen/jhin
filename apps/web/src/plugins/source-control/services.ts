@@ -4,6 +4,8 @@ import type { ProjectStatus } from "@jhin/source-control-api";
 import type { Toasts } from "@jhin/ui";
 import { useSyncExternalStore } from "react";
 
+import type { TimestampFormat } from "../../lib/format.ts";
+import type { DiffSelections } from "./checkpoints.tsx";
 import type { SourceControlStore, SourceControlView } from "./store.ts";
 
 /** What the source control components use, handed over by the plugin. */
@@ -13,6 +15,10 @@ export interface SourceControlServices {
   readonly threads: ThreadsCatalog;
   readonly navigation: Navigation;
   readonly toasts: Toasts | undefined;
+  /** What the diff panel shows, per thread (or draft). */
+  readonly selections: DiffSelections;
+  /** How the chat shows times (its `timestampFormat` setting). */
+  timestampFormat(): TimestampFormat;
   /** The label of the diff panel's shortcut, e.g. "⌘D". */
   shortcut(): string | undefined;
 }

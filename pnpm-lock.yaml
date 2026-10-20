@@ -545,6 +545,10 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
 
   plugins/auth-token:
     dependencies:

@@ -301,6 +301,20 @@ export interface ThreadIndicatorProps {
 }
 
 /**
+ * What the `chat.turn.footer` slot gives each contribution: one turn of the
+ * open thread, rendered after the turn's answer (T3 Code puts its changed
+ * files card there).
+ */
+export interface ChatTurnFooterProps {
+  readonly target: NodeTarget;
+  readonly thread: ThreadRecord;
+  readonly turnId: string;
+  readonly state: "running" | "completed" | "interrupted" | "failed";
+  /** The thread's latest turn. */
+  readonly latest: boolean;
+}
+
+/**
  * What the `chat.composer.context` slot gives each contribution: the strip
  * under the composer (T3 Code's branch toolbar) for the open thread, or the
  * project of a thread being drafted.

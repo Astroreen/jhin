@@ -8,6 +8,7 @@ import {
   THREADS_CAPABILITY,
   type ChatComposerContextProps,
   type ChatHeaderActionProps,
+  type ChatTurnFooterProps,
   type Connections,
   type Keybindings,
   type Navigation,
@@ -28,8 +29,10 @@ import {
 import { FileDiffIcon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
+import { CHAT_SECTION, ChatSettings, readSection } from "../../lib/settings.ts";
 import { useExternal } from "../../lib/hooks.ts";
 import { createBranchToolbar } from "./branch-toolbar.tsx";
+import { createChangedFilesFooter, createDiffSelections } from "./checkpoints.tsx";
 import { createDiffPanel, DIFF_PANEL } from "./diff-panel.tsx";
 import { createCardIndicators } from "./indicators.tsx";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
@@ -69,6 +72,8 @@ export const sourceControlPlugin = builtin(
         threads,
         navigation,
         toasts,
+        selections: createDiffSelections(),
+        timestampFormat: () => readSection(context, CHAT_SECTION, ChatSettings).timestampFormat,
         shortcut: () => keybindings?.labelFor("diff.toggle"),
       };
 
@@ -164,6 +169,28 @@ export const sourceControlPlugin = builtin(
         slots.contribute<ChatHeaderActionProps>("chat.header.actions", {
           id: "jhin.source-control.diff-toggle",
           component: DiffToggle,
+        }),
+      );
+      context.subscriptions.add(
+        slots.contribute<ChatTurnFooterProps>("chat.turn.footer", {
+          id: "jhin.source-control.changed-files",
+          component: createChangedFilesFooter(services, services.selections, (target, threadId) => {
+            const route = navigation.current();
+            if (
+              route.node === target.node &&
+              route.remote === target.remote &&
+              route.thread === threadId &&
+              route.panel === DIFF_PANEL
+            ) {
+              return;
+            }
+            navigation.navigate({
+              node: target.node,
+              ...(target.remote === undefined ? {} : { remote: target.remote }),
+              thread: threadId,
+              panel: DIFF_PANEL,
+            });
+          }),
         }),
       );
       context.subscriptions.add(

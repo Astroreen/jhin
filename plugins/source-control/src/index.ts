@@ -14,6 +14,7 @@ import {
   SourceControlEvents,
   StatusSnapshot,
   ThreadBranch,
+  TurnCheckpoint,
   type PullRequestProvider,
   type SourceControl,
 } from "@jhin/source-control-api";
@@ -42,6 +43,7 @@ import {
   type Repository,
 } from "./git.ts";
 import { GitHubUnavailable, pullRequestFor, remoteHost } from "./github.ts";
+import { followTurns } from "./turns.ts";
 import { watchTree, type TreeWatcher } from "./watch.ts";
 
 export { parseNumstat, parseStatus } from "./git.ts";
@@ -202,11 +204,22 @@ export function activateSourceControl(context: PluginContext): SourceControl {
 
   const removeThread = async (threadId: string) => {
     await loadThreads();
+    await turns.remove(threadId);
     if (!threads.delete(threadId)) return;
     lastTurns.delete(threadId);
     await kv.delete(NAMESPACE, `thread/${threadId}`);
     await append(SourceControlEvents.threadRemoved, { threadId });
   };
+
+  // --- Checkpoints (D243–D246) ------------------------------------------------------
+
+  const turns = followTurns(context, {
+    kv,
+    gitPath: () => config().gitPath,
+    append,
+    isScratch: async (projectId) =>
+      (await repoOf(projectId).catch(() => undefined))?.project.scratch === true,
+  });
 
   // --- Projects ------------------------------------------------------------------
 
@@ -731,6 +744,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       await loadThreads();
       return threads.get(threadId);
     },
+    turnDiff: (threadId, turn, options = {}) => turns.diff(threadId, turn, options),
+    checkpoints: (threadId) => turns.list(threadId),
   };
 
   // --- Commands ---------------------------------------------------------------------------
@@ -766,11 +781,16 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       await Promise.all([loadProjects(), loadThreads()]);
       const chosen = projectId === undefined ? [...repos.values()] : [await repoOf(projectId)];
       const projects = await Promise.all(chosen.map((repo) => listedStatus(repo, reread === true)));
+      const listed = [...threads.values()].filter(
+        (thread) => projectId === undefined || thread.projectId === projectId,
+      );
+      const ids = new Set(listed.map((thread) => thread.threadId));
       return {
         head,
         projects,
-        threads: [...threads.values()].filter(
-          (thread) => projectId === undefined || thread.projectId === projectId,
+        threads: listed,
+        checkpoints: (await turns.latest()).filter(
+          (checkpoint) => projectId === undefined || ids.has(checkpoint.threadId),
         ),
       };
     },
@@ -805,7 +825,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   context.commands.register({
     name: "git.diff",
     description:
-      "The diff of a project (or a thread's project): uncommitted changes against HEAD, or the branch's changes against its base; untracked files count as added",
+      "The diff of a project (or a thread's project): uncommitted changes against HEAD, the branch's changes against its base (untracked files count as added), or what a thread's turn changed (`turn` scope: between its checkpoints)",
     input: z
       .object({
         projectId: z.string().min(1).optional(),
@@ -816,20 +836,50 @@ export function activateSourceControl(context: PluginContext): SourceControl {
             "For the branch scope: the branch to compare with (the default branch otherwise)",
         }),
         ignoreWhitespace: z.boolean().optional(),
+        turn: z.number().int().positive().optional().meta({
+          description:
+            "For the turn scope: the thread's turn count after the turn (1 is its first)",
+        }),
+        fromTurn: z.number().int().nonnegative().optional().meta({
+          description:
+            "For the turn scope: the turn count to compare from (the turn before by default; 0 is before the first turn)",
+        }),
       })
       .refine((input) => (input.projectId === undefined) !== (input.threadId === undefined), {
         message: "Name a projectId or a threadId",
-      }),
+      })
+      .refine(
+        (input) =>
+          input.scope !== "turn" || (input.threadId !== undefined && input.turn !== undefined),
+        { message: "The turn scope takes a threadId and a turn" },
+      ),
     output: Diff,
     permissions: ["git.read"],
     handler: async (input) =>
-      service.diff(await projectOf(input), {
-        ...(input.scope === undefined ? {} : { scope: input.scope }),
-        ...(input.base === undefined ? {} : { base: input.base }),
-        ...(input.ignoreWhitespace === undefined
-          ? {}
-          : { ignoreWhitespace: input.ignoreWhitespace }),
-      }),
+      input.scope === "turn"
+        ? service.turnDiff(input.threadId!, input.turn!, {
+            ...(input.fromTurn === undefined ? {} : { fromTurn: input.fromTurn }),
+            ...(input.ignoreWhitespace === undefined
+              ? {}
+              : { ignoreWhitespace: input.ignoreWhitespace }),
+          })
+        : service.diff(await projectOf(input), {
+            ...(input.scope === undefined ? {} : { scope: input.scope }),
+            ...(input.base === undefined ? {} : { base: input.base }),
+            ...(input.ignoreWhitespace === undefined
+              ? {}
+              : { ignoreWhitespace: input.ignoreWhitespace }),
+          }),
+  });
+
+  context.commands.register({
+    name: "git.checkpoints",
+    description:
+      "A thread's checkpoints, oldest first: for each turn that completed or was stopped, its turn count, status and the files it changed",
+    input: z.object({ threadId: z.string().min(1) }),
+    output: z.object({ checkpoints: z.array(TurnCheckpoint) }),
+    permissions: ["git.read"],
+    handler: async ({ threadId }) => ({ checkpoints: await service.checkpoints(threadId) }),
   });
 
   context.commands.register({

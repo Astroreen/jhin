@@ -26,7 +26,7 @@ function parseTimestampDate(isoDate: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function formatShortTimestamp(isoDate: string, format: TimestampFormat): string {
+export function formatShortTimestamp(isoDate: string, format: TimestampFormat): string {
   const date = parseTimestampDate(isoDate);
   return date === null ? "" : timeFormatter(format, false).format(date);
 }

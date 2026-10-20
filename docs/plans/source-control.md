@@ -3,7 +3,8 @@
 Status: **implemented** (status, diffs, branches, pull requests, the card's
 indicators, the branch toolbar and the diff panel); W3 (checkpoints,
 reverting, worktrees, D240–D259) **in progress**: the turn hooks and a
-thread's own working directory (D241, D242) are done. This file records how
+thread's own working directory (D241, D242), checkpoints, turn diffs, the
+changed files card and the card's latest turn (D243–D249) are done. This file records how
 Jhin reads the git repositories of a node's projects, how the web client
 shows them as T3 Code does, what was left out and what is deferred.
 
@@ -276,9 +277,10 @@ with screenshots).
   turn's end wrote it; the first turn writes `0`). At its end, a turn that
   completed or was interrupted writes `N`; a failed one writes nothing, and the
   next turn writes its own start. `N` counts the thread's turns as the plugin saw
-  them start. A project that is no repository (or the scratch project) records
-  the turn as `missing`; a write that fails records `error` and is logged; neither
-  ever fails the turn. Checkpoints are taken in the turn's `cwd`, so a worktree
+  them start. A directory that is no repository (or the scratch project) records
+  nothing (T3 records `missing`, which nothing here would read: the panel says the
+  project is no repository); a write that fails records `error` and is logged;
+  neither ever fails the turn. Checkpoints are taken in the turn's `cwd`, so a worktree
   thread's checkpoints live in its worktree's repository.
 - **D245. A turn's checkpoint record** (`TurnCheckpoint` in
   `@jhin/source-control-api`): thread, turn id, turn count, ref, status
@@ -400,11 +402,11 @@ with screenshots).
 
 ## Deferred
 
-- **Checkpoints and per-turn diffs** (T3's "Latest turn" and "Turn N"
-  scopes, the card's latest-run diff): a snapshot of the working tree when a
-  turn starts and ends (a commit of a temporary index under
-  `refs/jhin/checkpoints/<thread>/<turn>`, as T3's CheckpointStore keeps
-  them), taken through the turn hooks of D241 (W3, D243–D249).
+- Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
+  the scratch one, sparse checkouts, nested checkpoint scopes (a subagent's
+  own checkpoints), retries on `index.lock` contention and T3's per-path
+  batching of a long turn diff; the changed files card's per-file context
+  menu and file-type icons (T3's `PierreEntryIcon`).
 - **Reverting to a turn**: restoring a checkpoint into the working tree and
   truncating the thread after it; needs checkpoints first, and a thread
   operation to drop later turns (threads are append-only today).

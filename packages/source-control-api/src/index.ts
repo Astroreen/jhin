@@ -19,6 +19,8 @@ export const SourceControlEvents = {
   threadChanged: "source-control.thread.changed",
   /** `{ threadId }`: the thread went away. */
   threadRemoved: "source-control.thread.removed",
+  /** A thread's `TurnCheckpoint` after a change (D245). */
+  checkpointChanged: "source-control.checkpoint.changed",
 } as const;
 
 export const FileChangeStatus = z.enum([
@@ -142,19 +144,47 @@ export const ThreadBranch = z.object({
 });
 export type ThreadBranch = z.output<typeof ThreadBranch>;
 
+export const CheckpointStatus = z.enum(["ready", "missing", "error", "stale"]);
+export type CheckpointStatus = z.output<typeof CheckpointStatus>;
+
+/**
+ * The checkpoint a turn ended with (D243–D245): a commit of the thread's
+ * working tree under `ref`, and the files the turn changed since the one
+ * before it. `missing`: the directory is no repository; `error`: it could not
+ * be written; `stale`: the thread was reverted to an earlier turn.
+ */
+export const TurnCheckpoint = z.object({
+  threadId: z.string(),
+  turnId: z.string(),
+  /** The thread's turn count after this turn: 1 for its first turn. */
+  turn: z.number().int().positive(),
+  ref: z.string(),
+  status: CheckpointStatus,
+  /** At most `MAX_STATUS_FILES`, sorted by path; the totals count every file. */
+  files: z.array(ChangedFile),
+  fileCount: z.number().int().nonnegative(),
+  insertions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  capturedAt: z.string(),
+});
+export type TurnCheckpoint = z.output<typeof TurnCheckpoint>;
+
 /** What `git.status` returns: everything to show, and the stream head it reflects. */
 export const StatusSnapshot = z.object({
   head: z.number().int().nonnegative(),
   projects: z.array(ProjectStatus),
   threads: z.array(ThreadBranch),
+  /** Each thread's latest checkpoint (1.1). */
+  checkpoints: z.array(TurnCheckpoint).optional(),
 });
 export type StatusSnapshot = z.output<typeof StatusSnapshot>;
 
 /**
  * Which changes a diff shows, as T3 Code's diff panel offers them:
- * `uncommitted` against `HEAD`, `branch` against where the branch left its base.
+ * `uncommitted` against `HEAD`, `branch` against where the branch left its base,
+ * `turn` what a thread's turn changed, between its checkpoints (1.1).
  */
-export const DiffScope = z.enum(["uncommitted", "branch"]);
+export const DiffScope = z.enum(["uncommitted", "branch", "turn"]);
 export type DiffScope = z.output<typeof DiffScope>;
 
 /** A patch is cut after this many bytes (`truncated`); the file totals stay complete. */
@@ -166,6 +196,9 @@ export const Diff = z.object({
   /** For `branch`: the base compared against, and the branch compared. */
   baseRef: z.string().nullable(),
   headRef: z.string().nullable(),
+  /** For `turn`: the turn counts compared, `fromTurn → turn`. */
+  fromTurn: z.number().int().nonnegative().optional(),
+  turn: z.number().int().positive().optional(),
   /** A unified diff (`git diff` output), untracked files as additions. */
   patch: z.string(),
   truncated: z.boolean(),
@@ -194,6 +227,8 @@ export type SourceControlErrorCode =
   | "NOT_A_REPOSITORY"
   | "BRANCH_NOT_FOUND"
   | "BRANCH_INVALID"
+  /** A turn diff names a turn without a ready checkpoint. */
+  | "CHECKPOINT_UNAVAILABLE"
   | "GIT_FAILED";
 
 /** The service of `source-control.git@1`, for other server plugins. */
@@ -204,6 +239,14 @@ export interface SourceControl {
     projectId: string,
     options?: { scope?: DiffScope; base?: string; ignoreWhitespace?: boolean },
   ): Promise<Diff>;
+  /** What a thread's turns changed, `fromTurn` (the turn before by default) to `turn` (1.1). */
+  turnDiff(
+    threadId: string,
+    turn: number,
+    options?: { fromTurn?: number; ignoreWhitespace?: boolean },
+  ): Promise<Diff>;
+  /** A thread's checkpoints, oldest first (1.1). */
+  checkpoints(threadId: string): Promise<TurnCheckpoint[]>;
   branches(projectId: string): Promise<Branch[]>;
   /** Checks a branch out (`create`: a new one from `HEAD`); `threadId` moves that thread to it. */
   checkout(

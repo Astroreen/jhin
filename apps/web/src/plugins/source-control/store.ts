@@ -12,6 +12,7 @@ import {
   type ProjectStatus,
   type StatusSnapshot,
   type ThreadBranch,
+  type TurnCheckpoint,
 } from "@jhin/source-control-api";
 
 /** What a client knows of one node's repositories and threads' branches. */
@@ -24,9 +25,16 @@ export interface SourceControlView {
   readonly error?: string;
   readonly projects: ReadonlyMap<string, ProjectStatus>;
   readonly threads: ReadonlyMap<string, ThreadBranch>;
+  /** Each thread's latest checkpoint (D245); none from a node before 1.1. */
+  readonly checkpoints: ReadonlyMap<string, TurnCheckpoint>;
 }
 
-const LOADING: SourceControlView = { status: "loading", projects: new Map(), threads: new Map() };
+const LOADING: SourceControlView = {
+  status: "loading",
+  projects: new Map(),
+  threads: new Map(),
+  checkpoints: new Map(),
+};
 
 /** Applies one event of a node's `source-control` stream to a view. */
 export function applySourceControlEvent(
@@ -52,8 +60,21 @@ export function applySourceControlEvent(
     }
     case SourceControlEvents.threadRemoved: {
       const threads = new Map(view.threads);
+      const checkpoints = new Map(view.checkpoints);
       threads.delete(String(payload?.["threadId"]));
-      return { ...view, threads };
+      checkpoints.delete(String(payload?.["threadId"]));
+      return { ...view, threads, checkpoints };
+    }
+    case SourceControlEvents.checkpointChanged: {
+      const checkpoint = payload as unknown as TurnCheckpoint;
+      if (typeof checkpoint?.threadId !== "string") return view;
+      // The latest one stays: a change to an earlier turn (one reverted past) is not it.
+      const known = view.checkpoints.get(checkpoint.threadId);
+      if (known !== undefined && known.turn > checkpoint.turn) return view;
+      return {
+        ...view,
+        checkpoints: new Map(view.checkpoints).set(checkpoint.threadId, checkpoint),
+      };
     }
     default:
       return view;
@@ -65,6 +86,9 @@ function viewOf(snapshot: StatusSnapshot): SourceControlView {
     status: "ready",
     projects: new Map(snapshot.projects.map((project) => [project.projectId, project])),
     threads: new Map(snapshot.threads.map((thread) => [thread.threadId, thread])),
+    checkpoints: new Map(
+      (snapshot.checkpoints ?? []).map((checkpoint) => [checkpoint.threadId, checkpoint]),
+    ),
   };
 }
 

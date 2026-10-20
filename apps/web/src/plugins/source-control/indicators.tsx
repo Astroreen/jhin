@@ -91,7 +91,7 @@ export function PullRequestBadge({
   );
 }
 
-/** The card's indicators: the thread's branch, its pull request and the uncommitted diff. */
+/** The card's indicators: the thread's branch, its pull request and its latest turn's diff. */
 export function createCardIndicators(services: SourceControlServices) {
   const { store } = services;
 
@@ -120,18 +120,25 @@ export function createCardIndicators(services: SourceControlServices) {
   }
 
   /**
-   * T3's diff count (`+12 −3`): here the uncommitted changes of the thread's
-   * project while the thread's branch is the one checked out (per-turn diffs
-   * need checkpoints, docs/plans/source-control.md).
+   * T3's diff count (`+12 −3`): the thread's latest checkpointed turn (T3's
+   * `latestRunDiff`, D249); for a thread without checkpoints, the uncommitted
+   * changes of its project while its branch is the one checked out (D117).
    */
   function DiffCount({ target, thread }: ThreadIndicatorProps) {
     const view = useSourceControl(store, target);
-    const status = view.projects.get(thread.projectId);
-    const branch = view.threads.get(thread.id)?.branch;
-    if (status === undefined || !status.isRepo || branch == null || branch !== status.branch) {
-      return null;
+    const latest = view.checkpoints.get(thread.id);
+    let counts: { insertions: number; deletions: number } | undefined;
+    if (latest !== undefined) {
+      counts = latest.status === "ready" ? latest : undefined;
+    } else {
+      const status = view.projects.get(thread.projectId);
+      const branch = view.threads.get(thread.id)?.branch;
+      if (status !== undefined && status.isRepo && branch != null && branch === status.branch) {
+        counts = status.workingTree;
+      }
     }
-    const { insertions, deletions } = status.workingTree;
+    if (counts === undefined) return null;
+    const { insertions, deletions } = counts;
     if (insertions === 0 && deletions === 0) return null;
     return (
       <span

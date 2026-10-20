@@ -12,6 +12,7 @@ import {
   SourceControlEvents,
   type ProjectStatus,
   type StatusSnapshot,
+  type TurnCheckpoint,
 } from "@jhin/source-control-api";
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
@@ -56,6 +57,7 @@ describe("applySourceControlEvent", () => {
     status: "ready",
     projects: new Map([["app", status()]]),
     threads: new Map(),
+    checkpoints: new Map(),
   };
 
   it("applies statuses and thread branches, and their removal", () => {
@@ -81,6 +83,57 @@ describe("applySourceControlEvent", () => {
     expect(
       applySourceControlEvent(view, { type: SourceControlEvents.statusChanged, payload: null }),
     ).toBe(view);
+  });
+});
+
+describe("checkpoints in the view", () => {
+  const view: SourceControlView = {
+    status: "ready",
+    projects: new Map(),
+    threads: new Map(),
+    checkpoints: new Map(),
+  };
+  const checkpoint = (turn: number, fields: Partial<TurnCheckpoint> = {}): TurnCheckpoint => ({
+    threadId: "t1",
+    turnId: `turn-${turn}`,
+    turn,
+    ref: `refs/jhin/checkpoints/t1/${turn}`,
+    status: "ready",
+    files: [],
+    fileCount: 0,
+    insertions: 0,
+    deletions: 0,
+    capturedAt: "2026-10-20T10:00:00.000Z",
+    ...fields,
+  });
+
+  it("keeps each thread's latest checkpoint, and drops it with the thread", () => {
+    const second = applySourceControlEvent(
+      applySourceControlEvent(view, {
+        type: SourceControlEvents.checkpointChanged,
+        payload: checkpoint(1),
+      }),
+      { type: SourceControlEvents.checkpointChanged, payload: checkpoint(2, { insertions: 3 }) },
+    );
+    expect(second.checkpoints.get("t1")).toMatchObject({ turn: 2, insertions: 3 });
+    // A change to an earlier turn is not the latest one.
+    const stale = applySourceControlEvent(second, {
+      type: SourceControlEvents.checkpointChanged,
+      payload: checkpoint(1, { status: "stale" }),
+    });
+    expect(stale).toBe(second);
+    // The latest turn's own change (reverted past) is.
+    expect(
+      applySourceControlEvent(second, {
+        type: SourceControlEvents.checkpointChanged,
+        payload: checkpoint(2, { status: "stale" }),
+      }).checkpoints.get("t1")?.status,
+    ).toBe("stale");
+    const removed = applySourceControlEvent(second, {
+      type: SourceControlEvents.threadRemoved,
+      payload: { threadId: "t1" },
+    });
+    expect(removed.checkpoints.size).toBe(0);
   });
 });
 

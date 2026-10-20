@@ -497,6 +497,7 @@ function TurnView(props: {
   latest: boolean;
   format: TimestampFormat;
   onRetry?(): Promise<unknown>;
+  footer?: ReactNode;
 }) {
   const { turn, format } = props;
   const now = useContext(NowContext);
@@ -579,6 +580,7 @@ function TurnView(props: {
           );
         })}
       </div>
+      {props.footer}
       {turn.state === "failed" ? (
         <div className="pb-4">
           <WorkLine
@@ -625,6 +627,8 @@ export function TimelineView(props: {
   format: TimestampFormat;
   /** Sends a failed turn's message again, with its images. */
   onRetry?(text: string, attachments: readonly TurnAttachment[]): Promise<unknown>;
+  /** What goes under a turn's answer (the `chat.turn.footer` slot). */
+  footer?: ((turn: TimelineTurn, latest: boolean) => ReactNode) | undefined;
 }) {
   const { turns } = props.timeline;
   const now = useNow();
@@ -645,6 +649,7 @@ export function TimelineView(props: {
           key={turn.turnId}
           latest={index === turns.length - 1}
           turn={turn}
+          footer={props.footer?.(turn, index === turns.length - 1)}
           {...(props.onRetry === undefined
             ? {}
             : { onRetry: () => props.onRetry!(turn.text, turn.attachments) })}
