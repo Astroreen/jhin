@@ -807,6 +807,19 @@ export default definePlugin({
         try {
           // Before the agent touches anything (a checkpoint of the working tree, D240).
           await context.hooks.run(ThreadHooks.turnStart, hookInput, () => undefined);
+          // A worktree removed under the thread, and not brought back by a hook (D242).
+          if (
+            !(await Fs.promises.stat(hookInput.cwd).then(
+              (stat) => stat.isDirectory(),
+              () => false,
+            ))
+          ) {
+            throw new ThreadsError(
+              "WORKTREE_NOT_FOUND",
+              `The thread's worktree ${hookInput.cwd} no longer exists`,
+              { threadId: thread.id, path: hookInput.cwd },
+            );
+          }
           turn = runtime.startTurn({
             threadId: thread.id,
             turnId,
@@ -1397,17 +1410,8 @@ export default definePlugin({
           worktreePath === undefined || worktreePath === null
             ? worktreePath
             : worktreeDirectory(worktreePath);
+        // A running turn keeps the directory it started in; the next one runs in this one.
         return updateThread(threadId, (thread) => {
-          if (directory !== undefined && directory !== (thread.worktreePath ?? null)) {
-            // A running turn keeps the directory it started in; the next one moves.
-            if (active.has(threadId)) {
-              throw new ThreadsError(
-                "TURN_IN_PROGRESS",
-                "The thread is running a turn: its working directory changes once it ends",
-                { threadId },
-              );
-            }
-          }
           const next: Thread = {
             ...thread,
             ...(title === undefined ? {} : { title }),
@@ -1739,20 +1743,6 @@ export default definePlugin({
         // Early answers for the common cases; the reservation below decides.
         const read = await getThread(threadId);
         if (read.archivedAt !== undefined) throw archivedError(threadId);
-        // A worktree removed under the thread: its agent would have nowhere to run.
-        if (
-          read.worktreePath !== undefined &&
-          !(await Fs.promises.stat(read.worktreePath).then(
-            (stat) => stat.isDirectory(),
-            () => false,
-          ))
-        ) {
-          throw new ThreadsError(
-            "WORKTREE_NOT_FOUND",
-            `The thread's worktree ${read.worktreePath} no longer exists`,
-            { threadId, path: read.worktreePath },
-          );
-        }
         const running = active.get(threadId);
         if (running !== undefined) {
           throw new ThreadsError("TURN_IN_PROGRESS", "The thread is already running a turn", {

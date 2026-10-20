@@ -208,7 +208,7 @@ describe("jhin.threads: a thread's own working directory", () => {
     expect(seen.map((request) => request.cwd)).toEqual([worktree, project]);
   });
 
-  it("refuses a directory that does not exist, a move while a turn runs, and a worktree gone since", async () => {
+  it("refuses a directory that does not exist, and fails a turn whose worktree is gone", async () => {
     const { client } = await node();
     const worktree = directory();
     await expect(
@@ -218,20 +218,39 @@ describe("jhin.threads: a thread's own working directory", () => {
       client.call("threads.create", { worktreePath: "relative/path" }),
     ).rejects.toMatchObject({ code: "WORKTREE_PATH_INVALID" });
 
-    const thread = await client.call<Thread>("threads.create", {});
+    const thread = await client.call<Thread>("threads.create", { worktreePath: worktree });
     const { until } = watch(client, thread.id);
-    await client.call("threads.send", { threadId: thread.id, text: "/hold on" });
-    await until("agent.item.delta");
-    await expect(
-      client.call("threads.update", { threadId: thread.id, worktreePath: worktree }),
-    ).rejects.toMatchObject({ code: "TURN_IN_PROGRESS" });
-    await client.call("threads.interrupt", { threadId: thread.id });
-    await until("agent.turn.interrupted");
-
-    await client.call("threads.update", { threadId: thread.id, worktreePath: worktree });
     Fs.rmSync(worktree, { recursive: true });
     await expect(
       client.call("threads.send", { threadId: thread.id, text: "hi" }),
     ).rejects.toMatchObject({ code: "WORKTREE_NOT_FOUND" });
+    expect((await until("agent.turn.failed")).payload).toMatchObject({
+      error: expect.stringContaining("no longer exists"),
+    });
+  });
+
+  it("moves a running thread's next turn, not the one running", async () => {
+    const seen: string[] = [];
+    const agent: AgentRuntime = {
+      agentId: "acme.agent",
+      startTurn(request) {
+        seen.push(request.cwd);
+        return fakeTurn(request);
+      },
+    };
+    const { client } = await node({ agent: false, plugins: [plugin("acme.p", () => {}, agent)] });
+    const worktree = directory();
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    await client.call("threads.send", { threadId: thread.id, text: "/hold on" });
+    await until("agent.item.delta");
+    await client.call("threads.update", { threadId: thread.id, worktreePath: worktree });
+    await client.call("threads.interrupt", { threadId: thread.id });
+    await until("agent.turn.interrupted");
+    await client.call("threads.send", { threadId: thread.id, text: "next" });
+    await until("agent.turn.completed");
+
+    expect(seen[1]).toBe(worktree);
+    expect(seen[0]).not.toBe(worktree);
   });
 });
