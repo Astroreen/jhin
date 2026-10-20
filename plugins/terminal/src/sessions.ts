@@ -55,7 +55,7 @@ export interface SessionOptions {
   readonly streams: MemoryStreams;
   /** Resolves with node-pty, or rejects with why it cannot load. */
   readonly pty: () => Promise<PtySpawner>;
-  /** The process table, to tell when a program runs in a terminal; none on Windows. */
+  /** The process table, to tell when a program runs in a terminal (`ps`, or PowerShell on Windows). */
   readonly processTable?: () => Promise<ProcessTable>;
   readonly config: () => {
     shell?: string | undefined;
@@ -209,7 +209,10 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
   /** Writes the kept output to the session's history file soon (D464). */
   const persist = (session: Session) => {
     if (session.closed) return;
-    options.history?.write(session.threadId, session.terminalId, () => historyOf(session));
+    // Read when the write runs; a session closed by then leaves its file to the close.
+    options.history?.write(session.threadId, session.terminalId, () =>
+      session.closed ? undefined : historyOf(session),
+    );
   };
 
   /**
@@ -401,7 +404,8 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       // under these ids meanwhile starts its stream afresh and keeps it.
       flushOutput(session);
       // What the next run shows: taken now, the stream is about to go.
-      if (keepHistory && options.history !== undefined) {
+      // A session still starting has not shown its history yet: its file stays as it is.
+      if (keepHistory && options.history !== undefined && session.starting === undefined) {
         const kept = historyOf(session);
         options.history.write(session.threadId, session.terminalId, () => kept);
       }

@@ -300,7 +300,12 @@ the same T3 Code nightly `eb7b35ac` unless a decision names another source.
 
 - **D464. History across node restarts** (T3's history files). With
   `host.paths@1` the plugin writes each session's kept output to
-  `<data>/jhin.terminal/history/<threadId>/<terminalId>.log`, coalesced:
+  `<data>/jhin.terminal/history/<thread>/<terminal>.log`, each id in a
+  name of its own (lowercase letters, digits and `-` kept, any other
+  character as `_` and its hex code, so `a:b`, `a_b`, `A` and `a` never
+  share a file; a name past 200 characters is its SHA-256). Output may hold
+  secrets: the folders are the owner's only (0700), the files too (0600);
+  they are not encrypted. Writes are coalesced:
   one write per session at most every 250 ms (T3's debounce), the newest
   content at the time of the write. When `terminals.open` starts a session
   the node does not have (after a restart, or for the first time), it reads
@@ -312,7 +317,7 @@ the same T3 Code nightly `eb7b35ac` unless a decision names another source.
   history, as in T3. `terminals.close` (the drawer's "clears its history"),
   a deleted or archived thread and an evicted session delete the file;
   stopping the plugin (a node restart) keeps it, after waiting for the
-  pending writes. Without `host.paths@1` nothing is written.
+  pending writes (a session still starting then leaves its file as it was). Without `host.paths@1` nothing is written.
 
 - **D465. At most 128 exited sessions** (T3's
   `maxRetainedInactiveSessions`): when a session's process exits and more
@@ -409,7 +414,9 @@ and resize, one close for three at once, one `terminals` list for five
 resizes and at once for another change, the scrollback cut at a line and at
 a code point, the environment's filters, AppImage scrub and Windows case,
 an `env` per terminal and `TERMINAL_ENV_MISMATCH` without its values,
-history written on stop and shown after the node started over, empty after
+history written on stop and shown after the node started over, one
+file per id and owner-only modes, a file left alone when the plugin stops
+while its session starts, empty after
 a restart in the same run and for a terminal opened again while its close
 deletes it, a long history file read by its tail and capped, exited
 sessions evicted past the limit, `ps`'s buffer growing to 16 MiB,
@@ -429,6 +436,9 @@ of D471.
   (D415).
 - Provider environments for a terminal (T3's `providerInstanceId`, D462):
   Jhin has no provider instances with an environment of their own yet.
+- Windows itself (D468): the PowerShell process table is tested with a
+  fake runner only; no Windows machine ran it. PowerShell's cold start may
+  pass T3's 1.5 s timeout, which the poll's back-off (D144) then absorbs.
 - `terminals.write` is in effect shell access as the node's user, whoever
   holds it (an MCP client included); grant it only where that is meant.
   D461 narrows what a shell inherits, not what it can read on the machine.

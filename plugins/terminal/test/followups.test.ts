@@ -13,7 +13,7 @@ import {
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { envKey, shellEnv } from "../src/env.ts";
-import { createHistoryFiles } from "../src/history.ts";
+import { createHistoryFiles, historyName } from "../src/history.ts";
 import {
   createProcessTableReader,
   parseWindowsProcessTable,
@@ -388,6 +388,67 @@ describe("history across node restarts (D464)", () => {
     const tail = await history.read("t", "term-1", { lines: 1000, bytes: 13 });
     expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(13);
     expect(tail.endsWith("line 300\r\n")).toBe(true);
+  });
+});
+
+describe("history files (D464)", () => {
+  it("gives every id its own file name, also where Windows folds case and drops dots", () => {
+    const names = ["a:b", "a_b", "A", "a", "a.", "term-1", "x".repeat(128) + "Y"];
+    const files = names.map(historyName);
+    expect(new Set(files).size).toBe(names.length);
+    expect(historyName("term-1")).toBe("term-1");
+    for (const file of files) {
+      expect(file).toMatch(/^[a-z0-9_-]+$/);
+      expect(file.length).toBeLessThanOrEqual(200);
+    }
+  });
+
+  it("keeps two sessions whose ids differ only by : and _ apart, readable by the owner only", async () => {
+    const dir = tempDir();
+    const history = createHistoryFiles(dir, quiet);
+    history.write("a:b", "term-1", () => "first");
+    history.write("a_b", "term-1", () => "second");
+    await history.flush();
+    const limits = { lines: 100, bytes: 1000 };
+    expect(await history.read("a:b", "term-1", limits)).toBe("first");
+    expect(await history.read("a_b", "term-1", limits)).toBe("second");
+    await history.delete("a:b", "term-1");
+    expect(await history.read("a_b", "term-1", limits)).toBe("second");
+    if (process.platform !== "win32") {
+      const folder = Path.join(dir, historyName("a_b"));
+      expect(Fs.statSync(folder).mode & 0o777).toBe(0o700);
+      expect(Fs.statSync(Path.join(folder, "term-1.log")).mode & 0o777).toBe(0o600);
+    }
+  });
+
+  it("leaves a session's history alone when the plugin stops while the session starts", async () => {
+    const dir = tempDir();
+    const cwd = tempDir();
+    const file = Path.join(dir, "t", "term-1.log");
+    Fs.mkdirSync(Path.dirname(file), { recursive: true });
+    Fs.writeFileSync(file, "from the last run\r\n");
+    let loaded!: (pty: PtySpawner) => void;
+    const loading = new Promise<PtySpawner>((resolve) => (loaded = resolve));
+    let asked!: () => void;
+    const loadAsked = new Promise<void>((resolve) => (asked = resolve));
+    const sessions = createSessions({
+      streams: createMemoryStreams(),
+      pty: () => {
+        asked();
+        return loading;
+      },
+      config: () => ({ shell: "/bin/sh", scrollback: 5000 }),
+      log: quiet,
+      env: {},
+      history: createHistoryFiles(dir, quiet),
+    });
+    const opening = sessions.open({ threadId: "t", terminalId: "term-1", cwd });
+    await loadAsked;
+    const stopping = sessions.dispose();
+    loaded(fakePty().pty);
+    await expect(opening).rejects.toMatchObject({ code: "TERMINAL_UNAVAILABLE" });
+    await stopping;
+    expect(Fs.readFileSync(file, "utf8")).toBe("from the last run\r\n");
   });
 });
 

@@ -1,6 +1,7 @@
 // Terminal history files follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/server/src/terminal/Manager.ts (historyPath, readHistoryTail, readHistory,
 // the coalesced persist worker and deleteHistory).
+import * as Crypto from "node:crypto";
 import * as Fs from "node:fs";
 import * as Path from "node:path";
 
@@ -17,9 +18,10 @@ export interface HistoryStore {
   read(threadId: string, terminalId: string, limits: HistoryLimits): Promise<string>;
   /**
    * Writes the session's output soon: one write per session per 250 ms at
-   * most, of what `content` returns when it runs.
+   * most, of what `content` returns when it runs; nothing when it returns
+   * `undefined`.
    */
-  write(threadId: string, terminalId: string, content: () => string): void;
+  write(threadId: string, terminalId: string, content: () => string | undefined): void;
   /** Deletes the session's file, after any write still pending for it. */
   delete(threadId: string, terminalId: string): Promise<void>;
   /** Runs every pending write now; resolves when they are done. */
@@ -28,18 +30,32 @@ export interface HistoryStore {
 
 interface Pending {
   timer: ReturnType<typeof setTimeout> | undefined;
-  content: () => string;
+  content: () => string | undefined;
   /** The write running now, if any. */
   running: Promise<void> | undefined;
 }
 
-/** History files under `dir`: `<dir>/<threadId>/<terminalId>.log`. */
+/**
+ * A file name for an id, one per id: lowercase letters, digits and `-` stay,
+ * anything else (`_`, `:`, `.`, capitals, which Windows folds or drops) is
+ * `_` and its hex code. A name too long for a file system is a hash.
+ */
+export function historyName(id: string): string {
+  const name = id.replace(
+    /[^a-z0-9-]/g,
+    (char) => `_${char.charCodeAt(0).toString(16).padStart(2, "0")}`,
+  );
+  return name.length <= 200 ? name : Crypto.createHash("sha256").update(id).digest("hex");
+}
+
+/**
+ * History files under `dir`: `<dir>/<thread>/<terminal>.log`, by `historyName`.
+ * Terminal output may hold secrets: the folders are the owner's only (0700),
+ * the files too (0600). They are not encrypted.
+ */
 export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
-  // Ids are stream parts (letters, digits, `. _ : -`, never `/`): safe as names,
-  // but `:` is not allowed in Windows file names.
-  const safe = (id: string) => id.replaceAll(":", "_");
   const fileOf = (threadId: string, terminalId: string) =>
-    Path.join(dir, safe(threadId), `${safe(terminalId)}.log`);
+    Path.join(dir, historyName(threadId), `${historyName(terminalId)}.log`);
   const pending = new Map<string, Pending>();
   /** Deletes still running: a read of the same session waits for them. */
   const deleting = new Map<string, Promise<void>>();
@@ -50,9 +66,10 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
     const content = entry.content();
     const write = (async () => {
       await entry.running;
+      if (content === undefined) return;
       try {
-        await Fs.promises.mkdir(Path.dirname(file), { recursive: true });
-        await Fs.promises.writeFile(file, content);
+        await Fs.promises.mkdir(Path.dirname(file), { recursive: true, mode: 0o700 });
+        await Fs.promises.writeFile(file, content, { mode: 0o600 });
       } catch (error) {
         log.warn("terminal history not written", { file, error: String(error) });
       }
@@ -108,7 +125,7 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
       const history = boundHistory(raw, limits);
       if (cut || history !== raw) {
         await Fs.promises
-          .writeFile(file, history)
+          .writeFile(file, history, { mode: 0o600 })
           .catch((error: unknown) =>
             log.warn("terminal history not capped", { file, error: String(error) }),
           );
