@@ -338,12 +338,15 @@ test("D78: dragging reorders the pinned and active threads and settles onto the 
   await page.goto(`${x.ui}#token=${x.token}`);
   await expect(cardTitles(page)).toHaveText(["pin a", "pin b", "three", "two", "one"]);
 
-  // Within the pinned threads.
+  // Within the pinned threads. Rows hold still while a drop is written (T3 disables them too),
+  // so each drag waits for the dropped row to stop being busy: the nodes have it.
   await drag(page, threadRow(page, "pin b"), threadRow(page, "pin a"), -20);
   await expect(cardTitles(page)).toHaveText(["pin b", "pin a", "three", "two", "one"]);
+  await expect(threadRow(page, "pin b")).not.toHaveAttribute("aria-busy", "true");
   // Within the active ones: the order is kept on the node.
   await drag(page, threadRow(page, "one"), threadRow(page, "three"), -20);
   await expect(cardTitles(page)).toHaveText(["pin b", "pin a", "one", "three", "two"]);
+  await expect(threadRow(page, "one")).not.toHaveAttribute("aria-busy", "true");
   // Onto the Settled shelf.
   await drag(page, threadRow(page, "two"), page.getByRole("button", { name: "Settled (0)" }));
   await expect(page.getByRole("button", { name: "Settled (1)" })).toBeVisible();
