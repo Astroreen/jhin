@@ -529,8 +529,10 @@ It lands as a stack of PRs, each named below with the decisions it carries.
   `effort: ultrathink` (another client) writes the prefix itself and sends no
   effort. An effort the model does not offer, the config's included, is not
   sent. The node config's `effort` stays the default when a turn chooses
-  none. A live session (`providers.md` D98) whose options change is started
-  again; applying them live is W9's (`applyFlagSettings`).
+  none. On a live session (`providers.md` D98) a new effort is applied live
+  (`applyFlagSettings`, `providers.md` D349) and the model through `setModel`;
+  other settings (Fast Mode, Ultracode, thinking) start it again (Deferred:
+  applying Fast Mode and Ultracode live, as T3 does).
 - **D299. T3's traits menu.** One button after the model picker, labelled
   with the chosen values ("High · Fast"), opens a menu with a section per
   select option (radio items, "Default" on the model's default) and On/Off
