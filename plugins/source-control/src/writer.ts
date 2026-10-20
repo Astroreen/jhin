@@ -2,6 +2,9 @@
 // packages/provider-core/src/server/textGenerationPrompts.ts (buildCommitMessagePrompt,
 // buildPrContentPrompt).
 import { randomUUID } from "node:crypto";
+import * as Fs from "node:fs/promises";
+import * as Os from "node:os";
+import * as Path from "node:path";
 
 import type { AgentRuntime } from "@jhin/agent-api";
 
@@ -212,7 +215,6 @@ async function ask(
  */
 export function agentWriter(options: {
   runtime: () => Promise<AgentRuntime | undefined>;
-  cwd: string;
   /** Starts the time a turn may take; a turn past it falls back to `plainWriter`. */
   deadline?: () => Deadline;
   warn: (message: string, fields: Record<string, unknown>) => void;
@@ -221,7 +223,16 @@ export function agentWriter(options: {
     const runtime = await options.runtime();
     if (runtime === undefined) return undefined;
     try {
-      const parsed = parseJsonObject(await ask(runtime, options.cwd, prompt, options.deadline?.()));
+      // The prompt carries the repository's own text (its diff, its template): the turn runs
+      // in an empty folder of its own, so nothing it is talked into can reach the repository.
+      const cwd = await Fs.mkdtemp(Path.join(Os.tmpdir(), "jhin-writer-"));
+      let answered: string;
+      try {
+        answered = await ask(runtime, cwd, prompt, options.deadline?.());
+      } finally {
+        await Fs.rm(cwd, { recursive: true, force: true });
+      }
+      const parsed = parseJsonObject(answered);
       if (parsed === undefined) {
         options.warn("the writer answered no JSON", { agentId: runtime.agentId });
       }

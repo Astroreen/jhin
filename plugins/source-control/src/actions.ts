@@ -278,7 +278,11 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
     action === "push" ||
     action === "commit_push" ||
     action === "commit_push_pr" ||
-    (action === "create_pr" && (upstream === null || counts.ahead > 0));
+    // A branch that follows another (`origin/main`) is not published under its own name yet.
+    (action === "create_pr" &&
+      (upstream === null ||
+        counts.ahead > 0 ||
+        splitUpstream(upstream, await remotes(git))?.branch !== branch));
   const wantsPr = action === "create_pr" || action === "commit_push_pr";
   if (run.featureBranch === true && !wantsCommit) {
     fail("Feature-branch checkout is only supported for commit actions.");
@@ -308,6 +312,12 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
     if (run.featureBranch !== true && branch === null) {
       if (wantsPush) fail("Cannot push from detached HEAD.");
       if (wantsPr) fail(`Cannot create a ${terms.singular} from detached HEAD.`);
+    }
+    // Refused before anything is committed or pushed: the default branch has no base to target.
+    if (wantsPr && run.featureBranch !== true && branch !== null && branch === run.defaultBranch) {
+      fail(
+        `Cannot create a ${terms.singular} from the default branch ${branch}: check out a feature branch first.`,
+      );
     }
     let suggestion: { subject: string; body: string } | undefined =
       run.commitMessage === undefined ? undefined : parseCommitMessage(run.commitMessage);
@@ -467,10 +477,11 @@ async function push(git: Git, branch: string): Promise<GitActionResult["push"]> 
   const upstream = await upstreamOf(git);
   if (upstream !== null) {
     const counts = await aheadBehind(git, upstream);
-    if (counts.ahead === 0 && counts.behind === 0) {
+    const parts = splitUpstream(upstream, names);
+    // Up to date only with an upstream of its own name; one that follows another is published.
+    if (counts.ahead === 0 && counts.behind === 0 && parts?.branch === branch) {
       return { status: "skipped_up_to_date", branch, upstream };
     }
-    const parts = splitUpstream(upstream, names);
     if (parts !== undefined && parts.branch === branch) {
       await git(["push", "--", parts.remote, `HEAD:refs/heads/${branch}`], {
         timeoutMs: PUSH_TIMEOUT_MS,

@@ -872,7 +872,6 @@ export function activateSourceControl(context: PluginContext): SourceControl {
               forge: forgeOf(repo, root),
               writer: agentWriter({
                 runtime: () => writerRuntime(input.threadId),
-                cwd: root,
                 deadline: () => {
                   let timer: ReturnType<typeof setTimeout> | undefined;
                   const reached = new Promise<void>((resolve) => {

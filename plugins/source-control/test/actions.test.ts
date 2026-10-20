@@ -340,6 +340,45 @@ describe("jhin.source-control: git actions", () => {
     expect(gh.calls()).toContainEqual(expect.stringContaining("pr create --base dev --head topic"));
   });
 
+  it("refuses a pull request from the default branch before committing anything", async () => {
+    fakeGh();
+    const { dir } = withRemote("https://github.com/acme/demo.git");
+    git(dir, "remote", "set-head", "origin", "main");
+    write(dir, "a.txt", "a\n");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    await expect(
+      sc.client.call("git.action.run", { projectId, action: "commit_push_pr", commitMessage: "A" }),
+    ).rejects.toMatchObject({
+      code: "ACTION_UNAVAILABLE",
+      message:
+        "Cannot create a pull request from the default branch main: check out a feature branch first.",
+    });
+    expect(git(dir, "status", "--porcelain").trim()).toBe("?? a.txt");
+  });
+
+  it("publishes a branch that follows another before opening its pull request", async () => {
+    const gh = fakeGh();
+    const { dir, remote } = withRemote("https://github.com/acme/demo.git");
+    git(dir, "switch", "--quiet", "--create", "topic", "--track", "origin/main");
+    write(dir, "a.txt", "a\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "--quiet", "-m", "Add a");
+    git(dir, "push", "--quiet", remote, "HEAD:main");
+    git(dir, "fetch", "--quiet", remote, "+refs/heads/*:refs/remotes/origin/*");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const result = await sc.client.call<GitActionResult>("git.action.run", {
+      projectId,
+      action: "create_pr",
+    });
+    expect(result.push).toMatchObject({ status: "pushed", upstream: "origin/topic" });
+    expect(git(remote, "rev-parse", "topic").trim()).toBe(git(dir, "rev-parse", "HEAD").trim());
+    expect(gh.calls()).toContainEqual(
+      expect.stringContaining("pr create --base main --head topic"),
+    );
+  });
+
   it("reports GitHub's refusal to create a pull request", async () => {
     const gh = fakeGh();
     gh.failCreate(1, "pull request create failed: GraphQL: No commits between main and feature\n");
@@ -482,7 +521,6 @@ describe("the agent writer", () => {
     const warnings: string[] = [];
     const writer = agentWriter({
       runtime: async () => runtime,
-      cwd: "/",
       deadline: () => {
         let reach!: () => void;
         const reached = new Promise<void>((resolve) => (reach = resolve));

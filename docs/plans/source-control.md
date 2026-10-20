@@ -416,8 +416,9 @@ with screenshots).
   `commit`, `push`, `create_pr`, `commit_push`, `commit_push_pr`, in a project
   or a thread's project: a feature branch (`featureBranch`, commit actions
   only), the commit, the push and the pull request, each only when the action
-  includes it (`create_pr` pushes first when the branch has no upstream or is
-  ahead), stopping at the first failure. As in T3: the commit takes every
+  includes it (`create_pr` pushes first when the branch has no upstream of its own
+  name or is ahead; a pull request from the default branch is refused before
+  anything is committed), stopping at the first failure. As in T3: the commit takes every
   change (`git add -A`) or only `filePaths` (staged, then committed with
   `--only`, so whatever else the user staged stays staged);
   what it would hold is read through a temporary index, so the user's own
@@ -443,7 +444,8 @@ with screenshots).
   Git"). `source-control.git` becomes 1.1 (`runAction`, `pull`).
 - **D262. Commit messages and pull requests are written by an agent of the
   node**, as T3 writes them with its text generation: T3's prompts, in a turn
-  of its own (no thread history, every tool call declined) of the
+  of its own (no thread history, every tool call declined, in an empty folder of its own, since the
+  prompt carries the repository's diff and template) of the
   `writerAgent` (config), else the thread's agent, else the first available
   runtime of `agent.registry@1`; the answer's JSON (`subject`, `body`,
   `branch`; `title`, `body`) is sanitized as T3 does (one line, no trailing
