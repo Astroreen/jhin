@@ -9,20 +9,10 @@ export const AGENT_RUNTIME_CAPABILITY = "agent.runtime";
  */
 export const AGENT_REGISTRY_CAPABILITY = "agent.registry";
 
-/**
- * How much an agent may do without asking, as in T3 Code:
- * - `approval-required` ("Supervised"): ask before commands and file changes;
- * - `auto-accept-edits`: approve file edits, ask before other actions;
- * - `full-access`: commands and edits run without prompts.
- */
-export const RUNTIME_MODES = ["approval-required", "auto-accept-edits", "full-access"] as const;
-export type RuntimeMode = (typeof RUNTIME_MODES)[number];
-/** The default when nobody chose one (T3 Code's default too). */
-export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
+export * from "./modes.ts";
+export * from "./agents.ts";
 
-/** `plan` asks the agent to propose a plan instead of changing anything. */
-export const INTERACTION_MODES = ["default", "plan"] as const;
-export type InteractionMode = (typeof INTERACTION_MODES)[number];
+import type { InteractionMode, RuntimeMode } from "./modes.ts";
 
 /** A file sent with a message. Only images today, inlined as data URLs. */
 export interface TurnAttachment {
@@ -56,6 +46,12 @@ export interface TurnRequest {
   readonly runtimeMode?: RuntimeMode;
   /** `default` when absent. */
   readonly interactionMode?: InteractionMode;
+  /**
+   * Since 1.3: what the agent is told besides the conversation: a defined agent's
+   * role, instructions and where its inherited knowledge is (D605). Runtimes
+   * add it to their system prompt; one that cannot still runs the turn.
+   */
+  readonly instructions?: string;
 }
 
 /** What kind of work a tool call does; clients pick icons and wording from it. */
@@ -193,11 +189,19 @@ export interface AgentRuntimeStatus {
 /**
  * `agent.runtime@1` (D33): anything that executes turns, an own agent loop or a
  * wrapper over an existing agent (Claude Code, Codex, OpenCode). Every field
- * but `agentId` and `startTurn` is optional (added in 1.1 and 1.2).
+ * but `agentId` and `startTurn` is optional (added in 1.1, 1.2 and 1.3).
  */
 export interface AgentRuntime {
   /** Recorded on every turn it runs (D52). */
   readonly agentId: string;
+  /**
+   * Since 1.3: the runtime that executes this agent's turns, when it is not a
+   * runtime itself: a defined agent (D601, D603). Recorded on its turns next
+   * to `agentId`; absent means `agentId`.
+   */
+  readonly runtimeId?: string;
+  /** Since 1.3: what a defined agent does, a short job description (D603). */
+  readonly role?: string;
   /** Shown in model pickers; `agentId` when absent. */
   readonly name?: string;
   readonly models?: readonly AgentModel[];
@@ -235,7 +239,10 @@ export const ThreadEvents = {
   projectUpdated: "threads.project.updated",
   /** `threads` index: `{ id }`. */
   projectDeleted: "threads.project.deleted",
-  /** `{ turnId, agentId, input, model?, runtimeMode?, interactionMode?, messageId? }` */
+  /**
+   * `{ turnId, agentId, runtimeId?, input, model?, runtimeMode?, interactionMode?, messageId? }`;
+   * `runtimeId` only when the agent is not a runtime itself (D601).
+   */
   turnStarted: "agent.turn.started",
   /** `{ turnId, messageId, input }`: a message the running turn took (a steer, D205). */
   turnSteered: "agent.turn.steered",

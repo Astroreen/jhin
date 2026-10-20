@@ -141,7 +141,105 @@ config, and its state is storage:
   and a status (idle, working, waiting for the owner), and an agent's page
   with its generations, readable but without a composer, and stop and resume.
 
-Decisions are recorded here as they are taken.
+Decisions are recorded here as they are taken. The contract (types, event
+types and the schemas of the `agents.*` commands) is
+`packages/agent-api/src/agents.ts`.
+
+- **D602. Defined agents are the plugin `jhin.agents`, registered as
+  runtimes.** It requires `agent.registry@^1` and `host.identity@^1`, keeps
+  generations in `storage.kv` and appends to the `agents` stream. Each
+  defined agent is registered in `agent.registry@1` as a runtime of its own id
+  that hands its turns to its runtime, with its model, modes and instructions
+  filled in. So `agents.list`, `threads.send`, turns and the event log need no
+  second path for agents (D601), and threads and runtimes stay unaware of
+  definitions. The plugin reaches threads and projects through their
+  commands (`threads.create`, `threads.get`, `projects.list`).
+- **D603. Id, address and the runtime fields.** An agent id is lowercase
+  letters, digits and `-`, starting with a letter (`AgentId`), unique on the
+  node among defined agents and runtimes: an id a runtime has is refused
+  (`AGENT_ID_TAKEN`), since that runtime is already the implicit agent of
+  the id. The address is `jhin://<nodeId>/agents/<id>`; `mesh.resolve`
+  already resolves it to its node, and every `agents.*` command that takes an
+  `agentId` also takes this node's address of it (another node's address is
+  `AGENT_ELSEWHERE` with its `nodeId`, for `mesh.call`). `AgentRuntime` gets
+  two optional fields: `runtimeId` (the runtime a defined agent's turns run
+  on, absent for a runtime) and `role`.
+- **D604. The definition is the config section `jhin.agents`:**
+  `{ agents: { <id>: { title?, role, runtime, model?, runtimeMode?,
+  interactionMode?, instructions?, skills?, project? } } }` on the node or
+  project layer, so the settings page edits it as a key/value list of groups.
+  `project` is a project's id or its path, the scratch project when unset.
+  `agents.define`, `agents.update` and `agents.remove` write the layer through
+  `host.config.patch` (the node layer unless `define` names `project`),
+  touching only the agent's own key; a file edited by hand counts the same.
+  The plugin compares each change of the section with what it last recorded
+  and appends the events, so the `agents` stream follows the files.
+- **D605. What a generation is told.** `TurnRequest` gets an optional
+  `instructions`: who the agent is (title, address, generation), its role, its
+  instructions, its skills, and where its inherited knowledge is and that it
+  keeps it current. Claude Code appends it to its system prompt, so it is part
+  of the live session's launch key (D99): a changed definition starts Claude
+  Code again with `resume`. A runtime that cannot use instructions still runs
+  the turn.
+- **D606. Generations are threads marked with their agent.** A generation is
+  a thread in the agent's home project, created by `agents.rotate` (also the
+  first one: an agent has no generation until it is rotated or work arrives,
+  A2) and titled `<title> #<n>`. Its thread record carries
+  **`generationOf: <agentId>`** (`GenerationOf`), set once by `threads.create`
+  (an optional input) and never changed. This is the D741 mark, agreed with
+  A8: A8's PR adds the field and the input to the threads plugin, and the
+  filter (`threads.list` and `threads.catalog` leave such threads out unless
+  `includeGenerations: true`; Threads mode's store drops them from the
+  index). The generation's number is not on the thread: the list of
+  generations (number, thread, start, reason) is kept in `storage.kv`
+  (`jhin.agents`, `agent/<id>`), one source for it. `agents.generations`
+  reads the threads with `threads.get`, which is unfiltered. Rotating leaves
+  the previous generation as it is, readable, not archived and not stopped;
+  only new work goes to the current one.
+- **D607. Inherited knowledge** is the folder `.jhin/agents/<id>/` in the
+  home project, created when a generation starts. The `*.md` files directly in
+  it, by name, go in front of the first message of every generation (as D102
+  hands over a transcript), up to 64 000 characters; files past that are
+  named, not inlined. The transcript of earlier generations is not. The agent
+  writes the files with its own tools, as the instructions ask.
+- **D608. Status** is `working` or `waiting` while the current generation's
+  latest turn runs or asks the owner, `stopped` (D612), `unavailable` when its
+  runtime or home project is not on the node, else `idle`. `agents.get` and
+  `agents.generations` compute it; clients take it from the generation's
+  thread, which they follow anyway (`agentStatusOf`). The `agents` stream
+  carries definitions and generations, never status, so no second copy of a
+  thread's state goes stale.
+- **D609. Commands and events.** `agents.get`, `agents.define`,
+  `agents.update` (with `unset`), `agents.remove`, `agents.rotate`,
+  `agents.generations`, `agents.stop`, `agents.resume`, and
+  `agents.catalog` (the defined agents and the head of the `agents` stream,
+  as `threads.catalog` does for threads). Events of the `agents` stream:
+  `agents.agent.defined` and `agents.agent.updated` (the record),
+  `agents.agent.removed`, `agents.generation.started`,
+  `agents.agent.stopped`, `agents.agent.resumed`. Reading needs
+  `agents.read`, changing `agents.write`.
+- **D610. `agents.list` stays and grows.** It lists runtimes and defined
+  agents, with the additive fields `kind` (`runtime` or `defined`),
+  `runtimeId` and `role`. A node's default agent is never a defined agent,
+  unless `jhin.threads.defaultAgent` names one. `agent.turn.started` and the
+  thread's `lastTurn` record `runtimeId` for a defined agent's turn. A runtime
+  that tells turns apart by agent (Claude's D102) compares
+  `runtimeId ?? agentId`, so a generation's own earlier turns are never
+  handed to it as another agent's.
+- **D611. Removing an agent removes its definition only.** Its generations,
+  their threads and its knowledge stay; defining the id again continues with
+  the next generation, since inheritance belongs to the address.
+- **D612. Stop and resume.** `agents.stop` interrupts the current
+  generation's running turn and marks the agent stopped (`stoppedAt`):
+  `agents.rotate` and A2's messages are refused with `AGENT_STOPPED` until
+  `agents.resume`. A whole team stops through its agents (A5).
+- **D613. Skills are names in A1.** The definition lists them and the
+  instructions name them; installing or limiting a runtime's skills per agent
+  is deferred.
+- **D614. The client shows agents in Civilization mode only (D741):** a
+  roster of agents per project (title, role, status) and an agent page with
+  its generations, read-only (no composer), and stop and resume. Nothing of it
+  goes into the Threads sidebar or header. It contributes to A8's shell.
 
 ### A2. Messaging between agents, and the owner (D621–D640)
 
@@ -271,6 +369,11 @@ What `docs/README.md` does by hand, as a plugin for any project:
 - Chat integrations (Slack, Telegram) for reaching the owner. Notifications
   come first.
 - Agents of runtimes without MCP.
+- Skills per agent: installing or limiting a runtime's skills for one agent
+  (D613).
+- An `agent.directory@1` service for plugins that read agents in process;
+  the `agents.*` commands serve them for now.
+- Archiving or settling earlier generations automatically on rotate (D606).
 
 ## Landing
 
