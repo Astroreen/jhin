@@ -34,11 +34,11 @@
   "dependencies": {
     "@jhin/agent-api": "workspace:*",
     "@jhin/host-api": "workspace:*",
+    "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/storage-api": "workspace:*"
   },
   "devDependencies": {
-    "@jhin/rpc": "workspace:*",
     "@jhin/testing": "workspace:*",
     "@types/node": "catalog:"
   },
@@ -58,7 +58,8 @@
       "host.paths": "^1"
     },
     "optional": {
-      "agent.runtime": "^1"
+      "agent.runtime": "^1",
+      "rpc.streams": "^1.1"
     },
     "entry": "src/index.ts"
   }

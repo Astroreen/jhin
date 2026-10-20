@@ -26,7 +26,7 @@ export function connectInMemory(
   options: {
     log?: EventLog;
     /** Streams served from memory, as `rpc.streams@1` gives them to the transport. */
-    streams?: Pick<LiveStreams, "sourceOf">;
+    streams?: Pick<LiveStreams, "sourceOf"> & Partial<Pick<LiveStreams, "guardOf">>;
     caller?: NonNullable<Invocation["caller"]>;
   } = {},
 ): InMemoryConnection {

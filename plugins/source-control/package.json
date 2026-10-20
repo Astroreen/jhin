@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@jhin/agent-api": "workspace:*",
+    "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
     "@jhin/source-control-api": "workspace:*",
     "@jhin/storage-api": "workspace:*"
@@ -40,7 +41,6 @@
   "devDependencies": {
     "@jhin/plugin-agent-fake": "workspace:*",
     "@jhin/plugin-threads": "workspace:*",
-    "@jhin/rpc": "workspace:*",
     "@jhin/testing": "workspace:*",
     "@types/node": "catalog:"
   },
@@ -57,6 +57,9 @@
     "requires": {
       "storage.kv": "^1",
       "storage.eventlog": "^1"
+    },
+    "optional": {
+      "rpc.streams": "^1.1"
     },
     "entry": "src/index.ts"
   }

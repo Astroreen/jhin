@@ -29,6 +29,7 @@ import {
   type TurnAttachment,
 } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
+import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, toDisposable, z } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
@@ -340,6 +341,12 @@ export default definePlugin({
     const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
     const paths = context.services.get<HostPaths>(HOST_PATHS_CAPABILITY);
+    // Reading threads takes what threads.get takes (security.md D415).
+    const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
+    if (live?.guard !== undefined) {
+      context.subscriptions.add(live.guard(THREADS_STREAM, ["threads.read"]));
+      context.subscriptions.add(live.guard("thread/", ["threads.read"]));
+    }
     const active = new Map<string, Running>();
     /**
      * Threads being deleted, and those whose deletion failed after it was

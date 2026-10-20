@@ -1,8 +1,14 @@
-import { DisposableStore, type Disposable, type Invocation, type Logger } from "@jhin/sdk";
+import {
+  DisposableStore,
+  missingPermissions,
+  type Disposable,
+  type Invocation,
+  type Logger,
+} from "@jhin/sdk";
 import type { EventLog, StoredEvent } from "@jhin/storage-api";
 
 import type { Peer } from "./peer.ts";
-import type { LiveStreams, StreamSource } from "./streams.ts";
+import { UNGUARDED_STREAM_PERMISSION, type LiveStreams, type StreamSource } from "./streams.ts";
 import {
   ErrorCodes,
   RPC_EVENT,
@@ -28,7 +34,7 @@ export interface RpcServerOptions {
   /** Streams clients may subscribe to; subscriptions fail without it. */
   readonly log?: EventLog;
   /** Streams served from memory (`rpc.streams@1`); a stream they serve is not read from `log`. */
-  readonly streams?: Pick<LiveStreams, "sourceOf">;
+  readonly streams?: Pick<LiveStreams, "sourceOf"> & Partial<Pick<LiveStreams, "guardOf">>;
   /** Payload of `rpc.hello`. */
   hello(): unknown;
   newTraceId(): string;
@@ -62,16 +68,15 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       });
     }
     const served = options.streams?.sourceOf(stream);
-    if (served !== undefined && !options.caller.permissions.includes("*")) {
-      const missing = served.permissions.filter(
-        (permission) => !options.caller.permissions.includes(permission),
-      );
-      if (missing.length > 0) {
-        throw Object.assign(new Error(`Reading ${stream} needs ${missing.join(", ")}`), {
-          code: "PERMISSION_DENIED",
-          details: { stream, missing },
-        });
-      }
+    // A stream of the event log needs what its guard says, or `events.read` (security.md D415).
+    const needed = served?.permissions ??
+      options.streams?.guardOf?.(stream) ?? [UNGUARDED_STREAM_PERMISSION];
+    const missing = missingPermissions(options.caller.permissions, needed);
+    if (missing.length > 0) {
+      throw Object.assign(new Error(`Reading ${stream} needs ${missing.join(", ")}`), {
+        code: "PERMISSION_DENIED",
+        details: { stream, missing },
+      });
     }
     const log: StreamSource | undefined = served?.source ?? options.log;
     if (log === undefined) {

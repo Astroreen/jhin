@@ -1,6 +1,11 @@
 import * as Crypto from "node:crypto";
 
-import { AUTH_VERIFIER_CAPABILITY, type AuthVerifier } from "@jhin/auth-api";
+import {
+  AUTH_VERIFIER_CAPABILITY,
+  AuthEvents,
+  OWNER_PRINCIPAL_ID,
+  type AuthVerifier,
+} from "@jhin/auth-api";
 import { HOST_TRACE_CAPABILITY, type HostTrace } from "@jhin/host-api";
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import {
@@ -23,6 +28,9 @@ export const RPC_PATH = "/rpc";
 /** Tells clients to come back: used when this plugin stops or reloads. */
 const CLOSE_SERVICE_RESTART = 1012;
 
+/** The longest delay `setTimeout` keeps; a later expiry is checked again then. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
 function tokenFrom(header: string | string[] | undefined): string | undefined {
   const protocols = (Array.isArray(header) ? header.join(",") : (header ?? "")).split(",");
   for (const protocol of protocols) {
@@ -38,7 +46,13 @@ export default definePlugin({
     const verifier = context.services.get<AuthVerifier>(AUTH_VERIFIER_CAPABILITY);
     const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
     const trace = context.services.tryGet<HostTrace>(HOST_TRACE_CAPABILITY);
-    const sockets = new Set<WebSocket>();
+    /** Open connections and whom each acts as (undefined until its token is checked). */
+    const sockets = new Map<WebSocket, string | undefined>();
+    const closeAll = (principal: string, reason: string) => {
+      for (const [socket, owner] of sockets) {
+        if (owner === principal) socket.close(CLOSE_UNAUTHENTICATED, reason);
+      }
+    };
     // Streams other plugins keep in memory (terminal output), next to the event log's.
     const streams = createLiveStreams();
     context.services.provide(LIVE_STREAMS_CAPABILITY, streams);
@@ -50,13 +64,33 @@ export default definePlugin({
     });
 
     async function accept(socket: WebSocket, token: string | undefined): Promise<void> {
-      sockets.add(socket);
-      socket.on("close", () => sockets.delete(socket));
+      sockets.set(socket, undefined);
+      let expiry: ReturnType<typeof setTimeout> | undefined;
+      socket.on("close", () => {
+        sockets.delete(socket);
+        clearTimeout(expiry);
+      });
       const caller = await verifier.verify(token === undefined ? {} : { token });
       if (caller === undefined) {
         context.log.warn("connection refused: bad or missing token");
         socket.close(CLOSE_UNAUTHENTICATED, "unauthenticated");
         return;
+      }
+      if (!sockets.has(socket)) return;
+      sockets.set(socket, caller.id);
+      // A token that expires drops its connection then, as a revoked one does (security.md D414).
+      const expiresAt = caller.expiresAt;
+      if (expiresAt !== undefined) {
+        const arm = () => {
+          const left = expiresAt - Date.now();
+          if (left <= 0) {
+            socket.close(CLOSE_UNAUTHENTICATED, "token expired");
+            return;
+          }
+          expiry = setTimeout(arm, Math.min(left, MAX_TIMER_MS));
+          expiry.unref?.();
+        };
+        arm();
       }
       context.log.info("client connected", { caller: caller.id, clients: sockets.size });
       serveRpc(webSocketPeer(socket as unknown as WebSocketLike), {
@@ -82,12 +116,17 @@ export default definePlugin({
         });
       }),
     );
-    context.events.on("auth.token.rotated", () => {
-      for (const socket of sockets) socket.close(CLOSE_UNAUTHENTICATED, "token rotated");
+    // A rotated owner token drops the owner's connections; a revoked device token, its own.
+    context.events.on(AuthEvents.tokenRotated, () => closeAll(OWNER_PRINCIPAL_ID, "token rotated"));
+    context.events.on(AuthEvents.clientRevoked, (payload) => {
+      const principal = (payload as { principal?: unknown } | undefined)?.principal;
+      if (typeof principal === "string") closeAll(principal, "token revoked");
     });
     context.subscriptions.add({
       dispose() {
-        for (const socket of sockets) socket.close(CLOSE_SERVICE_RESTART, "transport restarting");
+        for (const socket of sockets.keys()) {
+          socket.close(CLOSE_SERVICE_RESTART, "transport restarting");
+        }
         server.close();
       },
     });

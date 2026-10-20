@@ -35,6 +35,7 @@ function startNode(
     now?: () => number;
     callDeadlineMs?: number;
     execute?: (method: string) => Promise<unknown>;
+    memberPermissions?: readonly string[];
   } = {},
 ): TestNode {
   const keys = Crypto.generateKeyPairSync("ed25519");
@@ -56,10 +57,19 @@ function startNode(
     execute: async (method, params, invocation) =>
       options.execute !== undefined
         ? options.execute(method)
-        : { node: id, method, params, caller: invocation.caller?.id },
+        : {
+            node: id,
+            method,
+            params,
+            caller: invocation.caller?.id,
+            ...(method === "app.scope" ? { permissions: invocation.caller?.permissions } : {}),
+          },
     logger: noopLogger,
     retryDelay: () => 1,
     ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.memberPermissions === undefined
+      ? {}
+      : { memberPermissions: () => options.memberPermissions! }),
     ...(options.callDeadlineMs === undefined ? {} : { callDeadlineMs: options.callDeadlineMs }),
     ...(options.mirrors === undefined ? {} : { mirrors: options.mirrors }),
     ...(options.persistMirrors === undefined ? {} : { persistMirrors: options.persistMirrors }),
@@ -507,3 +517,31 @@ function headReaches(log: EventLog, stream: string, count: number): Promise<void
     check();
   });
 }
+
+describe("scoped mesh calls (security.md D416)", () => {
+  it("runs a relayed call with no more than its caller's scope and the target's member grants", async () => {
+    const network = createMemoryNetwork();
+    network.block("mem://a", "mem://c");
+    const a = startNode(network, "a");
+    const b = startNode(network, "b");
+    const c = startNode(network, "c", { memberPermissions: ["threads.*", "git.read"] });
+    await b.mesh.join(a.address, a.mesh.invite().code);
+    await c.mesh.join(b.address, b.mesh.invite().code);
+    const all = [a, b, c];
+    await until(all, () => all.every((x) => all.every((y) => view(x, y)?.reachable === true)));
+
+    // A caller holding threads.read and terminals.* gets only threads.read on c.
+    expect(
+      await a.mesh.call("c", "app.scope", {}, undefined, ["threads.read", "terminals.*"]),
+    ).toMatchObject({ caller: "node:a", permissions: ["threads.read"] });
+    // Without a scope (in-process code, or a node older than this) c's member grants apply.
+    expect(await a.mesh.call("c", "app.scope", {})).toMatchObject({
+      permissions: ["threads.*", "git.read"],
+    });
+    // A node granting members everything gives a call exactly its caller's scope.
+    expect(await c.mesh.call("a", "app.scope", {}, undefined, ["git.*"])).toMatchObject({
+      caller: "node:c",
+      permissions: ["git.*"],
+    });
+  });
+});

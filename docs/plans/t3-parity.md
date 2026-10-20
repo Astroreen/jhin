@@ -614,14 +614,10 @@ and resetting it clears them), with a screenshot.
 - Attachments as blobs: images travel as data URLs inside the turn's first
   event, hence the 20 MB per message (D54).
 - Code splitting of the web client: the main chunk is over 500 kB minified.
-- Scoped tokens: `projects.browse` has a permission of its own, but every
-  token today holds every permission (`*`), so whoever holds a node's token
-  can list the names of folders the node process can read. Mesh members call
-  each other with every permission too. Grant it on purpose once tokens carry
-  scopes, and give mesh calls a scope of their own. The same goes for
-  `host.config.read` (D66): `host.config.get` returns the node's and project's
-  config files as written, so it reads any secret a section keeps there.
-  And for `host.identity` (D130), which tells the node's host name.
+- Scoped tokens. Done in `security.md` (D410–D416): device tokens carry
+  their grants, so `projects.browse`, `host.config.read` and
+  `host.identity` are given on purpose, and mesh calls carry their caller's
+  scope. `host.config.get` still returns secrets as written (next item).
 - Secret config values: no first-party section holds one today. A section
   that does needs a way to mark those values, so that `host.config.get`
   redacts them and the editor keeps them when it saves, before
