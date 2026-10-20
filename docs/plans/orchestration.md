@@ -58,10 +58,10 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   `THREAD_NOT_FOUND`) with T3's messages, tool names replaced by Jhin's.
 
 - **D362. The calling thread.** Commands that act as a thread take it from
-  the invocation: `Invocation.threadId` (new, optional, in `@jhin/sdk`) is
-  the thread whose agent makes the call, and `jhin.mcp-server` reads it from
-  the `x-jhin-thread` header. W9 attaches the node's MCP server to a thread's
-  Claude Code with that header. A caller outside a thread (CLI, RPC, an
+  the invocation: `Invocation.threadId` (in `@jhin/sdk`, added with W9's
+  D341) is the thread whose agent makes the call. For a thread's Claude Code
+  it comes from its per-thread MCP credential; a request with the node's own
+  token names it in the `x-jhin-thread` header. A caller outside a thread (CLI, RPC, an
   external MCP client) names it instead: `parentThreadId` on
   `tasks.delegate`/`workflows.run`, `threadId` on
   `orchestration.capabilities`, `callerThreadId` on `orchestration.launch`.
@@ -257,8 +257,7 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
 One PR. Public API it adds: the plugin `jhin.orchestration` with its
 commands (D361), its config section, the storage namespace and stream
 `orchestration`, the events `orchestration.task.updated` and
-`orchestration.workflow.updated`, `Invocation.threadId` in `@jhin/sdk`, the
-`x-jhin-thread` header of `jhin.mcp-server`, and the thread fields
+`orchestration.workflow.updated`, and the thread fields
 `parentThreadId` and `relationshipToParent`.
 
 **Done when:** with the fake agent, through RPC and MCP: a delegated task
