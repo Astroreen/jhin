@@ -592,6 +592,7 @@ export default definePlugin({
         if (event.type === ThreadEvents.threadDeleted) {
           const id = (event.payload as { id?: unknown } | null)?.id;
           if (typeof id === "string") {
+            seenThreads.delete(id);
             void onThreadGone(id).catch((error: unknown) =>
               context.log.error("could not follow a deleted thread", { error: String(error) }),
             );
@@ -1341,8 +1342,36 @@ export default definePlugin({
         const agentId = input.agentId ?? caller?.agentId;
         const sameAgent = input.agentId === undefined || input.agentId === caller?.agentId;
         const model = input.model ?? (sameAgent ? caller?.model : undefined);
-        const runtimeMode = input.runtimeMode ?? caller?.runtimeMode;
-        const interactionMode = input.interactionMode ?? caller?.interactionMode;
+        let runtimeMode = input.runtimeMode ?? caller?.runtimeMode;
+        let interactionMode = input.interactionMode ?? caller?.interactionMode;
+        // Another agent: inherited modes step down to what it offers (D364).
+        if (!sameAgent && agentId !== undefined) {
+          const agent = (await agentsList(invocation)).find((item) => item.agentId === agentId);
+          if (agent !== undefined) {
+            if (input.runtimeMode === undefined && runtimeMode !== undefined) {
+              runtimeMode = resolveMode<RuntimeMode>({
+                kind: "runtime",
+                requested: undefined,
+                parent: runtimeMode,
+                offered: agent.runtimeModes,
+                rank: RUNTIME_RANK,
+                agentName: agent.agentId,
+                fallback: "approval-required",
+              });
+            }
+            if (input.interactionMode === undefined && interactionMode !== undefined) {
+              interactionMode = resolveMode<InteractionMode>({
+                kind: "interaction",
+                requested: undefined,
+                parent: interactionMode,
+                offered: agent.interactionModes,
+                rank: INTERACTION_RANK,
+                agentName: agent.agentId,
+                fallback: "default",
+              });
+            }
+          }
+        }
         if (caller !== undefined) {
           const ceiling = caller.runtimeMode ?? DEFAULT_RUNTIME_MODE;
           if (runtimeMode !== undefined && RUNTIME_RANK[runtimeMode] > RUNTIME_RANK[ceiling]) {
@@ -1438,9 +1467,13 @@ export default definePlugin({
         const status =
           seen.get(turnId) ??
           (await new Promise<string>((resolve) => {
-            const onAbort = () => resolve("interrupted");
-            if (signal.aborted) {
+            // Stopped: the retry's turn stops with the workflow.
+            const onAbort = () => {
+              void run("threads.interrupt", { threadId }).catch(() => undefined);
               resolve("interrupted");
+            };
+            if (signal.aborted) {
+              onAbort();
               return;
             }
             signal.addEventListener("abort", onAbort, { once: true });

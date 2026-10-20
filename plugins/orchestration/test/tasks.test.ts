@@ -482,7 +482,10 @@ describe("capabilities and launches", () => {
   });
 
   it("launches a top-level thread, with or without a first message", async () => {
-    const { client } = await node();
+    const { client } = await node({
+      config: FAKE,
+      plugins: [scriptedRuntime("narrow", () => "narrow", { runtimeModes: ["approval-required"] })],
+    });
     const caller = await parentThread(client, { runtimeMode: "auto-accept-edits" });
     const launched = await client.call<{
       threadId: string;
@@ -499,6 +502,20 @@ describe("capabilities and launches", () => {
     });
     expect(thread.thread).toMatchObject({ title: "Side quest", runtimeMode: "auto-accept-edits" });
     expect(thread.thread.parentThreadId).toBeUndefined();
+
+    // Another agent: the caller's mode steps down to what it offers.
+    const narrow = await client.call<{ threadId: string }>("orchestration.launch", {
+      title: "Narrow",
+      agentId: "narrow",
+      callerThreadId: caller.id,
+    });
+    expect(
+      (
+        await client.call<{ thread: { runtimeMode?: string } }>("threads.get", {
+          threadId: narrow.threadId,
+        })
+      ).thread.runtimeMode,
+    ).toBe("approval-required");
 
     const idle = await client.call<{
       turnId: string | null;
