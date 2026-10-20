@@ -89,3 +89,10 @@ export const isMachineKind = (value: unknown): value is MachineKind =>
 
 /** The config section where a node's owner names its machine kind (`jhin.host.machine`). */
 export const HOST_CONFIG_SECTION = "jhin.host";
+
+/**
+ * What `host.config.get` returns in place of a secret (a value under a
+ * `writeOnly` schema); sent back in a change, it keeps the stored value
+ * (security.md D417). T3 Code's `SECRET_REDACTED`.
+ */
+export const SECRET_REDACTED = "••••••";

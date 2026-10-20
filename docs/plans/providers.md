@@ -372,7 +372,8 @@ Done since: steering a running turn (`t3-parity.md` D204–D206).
   (config commands, RPC, MCP), so the field's description says to keep
   `ANTHROPIC_API_KEY` and the like in the node's own environment. The field
   is marked `writeOnly` (`docs/plans/config-ui.md`, D83): the settings page
-  hides its values; redacting them in `host.config.get` is still to do.
+  hides its values, and `host.config.get` redacts them (`security.md`
+  D417). They are still in the node's config file in clear.
 
 ## Landing
 

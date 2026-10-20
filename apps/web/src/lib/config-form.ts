@@ -3,6 +3,8 @@
 // forms (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/settings/ProviderSettingsForm.tsx.
 
+import { SECRET_REDACTED } from "@jhin/client-api";
+
 /** A JSON Schema as `host.config.schema` serves it (Zod's `z.toJSONSchema`). */
 export type JsonSchema = Readonly<Record<string, unknown>>;
 
@@ -432,6 +434,8 @@ function check(
     out.push({ path: join(path), message: "Enter the secret: there is no stored one here" });
     return;
   }
+  // A secret the node keeps (security.md D417): saved back as it came, it stays.
+  if (value === SECRET_REDACTED && raw !== false && isSecret(resolve(raw, root), root)) return;
   if (raw === false) {
     out.push({ path: join(path), message: "Not allowed here" });
     return;

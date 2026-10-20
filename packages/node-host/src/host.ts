@@ -50,6 +50,7 @@ import { readNodeId, resolveHome, type JhinHome } from "./home.ts";
 import { createFileModuleLoader } from "./loader.ts";
 import { createNodeLogger, type NodeLogger } from "./logger.ts";
 import { detectMachineKind, systemProbe } from "./machine.ts";
+import { redactSecrets, restoreSecrets } from "./secrets.ts";
 import { buildOutputFilter, watch, type WatchTarget } from "./watcher.ts";
 
 export interface NodeHostOptions {
@@ -309,9 +310,13 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         }),
         permissions: ["host.config.read"],
         handler: ({ section }) => {
+          // Secrets never leave the node (security.md D417).
+          const schema = (kernel.config.jsonSchema() as { properties: Record<string, unknown> })
+            .properties[section];
+          const hide = (value: unknown) => redactSecrets(schema, value);
           const files = {
-            node: readLayer(home.config, log)?.[section],
-            project: readLayer(projectConfig, log)?.[section],
+            node: hide(readLayer(home.config, log)?.[section]),
+            project: hide(readLayer(projectConfig, log)?.[section]),
           };
           const comments: ConfigComment[] = [];
           const seen = new Set<string>();
@@ -324,7 +329,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
             }
           }
           try {
-            return { value: kernel.config.get(section), layers: files, comments };
+            return { value: hide(kernel.config.get(section)), layers: files, comments };
           } catch (error) {
             const issues =
               error instanceof KernelError && Array.isArray(error.details["issues"])
@@ -491,8 +496,23 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     if (localAt !== undefined && at < localAt) return { applied: false, at, conflict: { localAt } };
 
     const file = layer === "node" ? home.config : projectConfig;
+    // A redacted secret sent back keeps what the file holds (security.md D417).
+    const stored = readLayer(file, log)?.[section];
+    const restored = Object.entries(values).map(
+      ([key, value]) =>
+        [
+          key,
+          restoreSecrets(
+            value,
+            typeof stored === "object" && stored !== null
+              ? (stored as Record<string, unknown>)[key]
+              : undefined,
+            [section, key],
+          ),
+        ] as const,
+    );
     let text = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n";
-    for (const [key, value] of Object.entries(values)) {
+    for (const [key, value] of restored) {
       text = applyEdits(
         text,
         modify(text, [section, key], value, {

@@ -507,6 +507,64 @@ export default definePlugin({
     expect((await host.execute("example.greet", { name: "A" })).value.message).toBe("Hey, A!");
   });
 
+  it("never returns secrets from host.config.get, and keeps them when the marker comes back (security.md D417)", async () => {
+    const home = tempDir("home");
+    writePlugin(
+      Path.join(home, "plugins", "vault"),
+      { id: "acme.vault" },
+      {
+        "index.ts": `
+import { definePlugin, z } from "@jhin/sdk";
+export default definePlugin({
+  activate(context) {
+    context.config.define(
+      "acme.vault",
+      z.object({
+        user: z.string().optional(),
+        key: z.string().optional().meta({ writeOnly: true }),
+        pin: z.number().meta({ writeOnly: true }).nullable().optional(),
+        env: z.record(z.string(), z.string().meta({ writeOnly: true })).optional(),
+      }),
+    );
+  },
+});
+`,
+      },
+    );
+    Fs.writeFileSync(
+      Path.join(home, "config.jsonc"),
+      '{ "acme.vault": { "user": "me", "key": "s3cret", "pin": 1234, "env": { "A": "a-value" } } }\n',
+    );
+    host = new HostProcess({ home, cwd: tempDir("cwd") });
+    await host.ready();
+
+    const hidden = { user: "me", key: "••••••", pin: "••••••", env: { A: "••••••" } };
+    const read = await host.execute("host.config.get", { section: "acme.vault" });
+    expect(read.value).toMatchObject({ value: hidden, layers: { node: hidden } });
+    expect(JSON.stringify(read.value)).not.toMatch(/s3cret|1234|a-value/);
+
+    // The form sends a whole top-level key back: the markers keep what is stored.
+    const saved = await host.execute("host.config.patch", {
+      layer: "node",
+      section: "acme.vault",
+      values: { key: "••••••", env: { A: "••••••", B: "b-value" } },
+    });
+    expect(saved.value).toMatchObject({ applied: true });
+    const file = Fs.readFileSync(Path.join(home, "config.jsonc"), "utf8");
+    expect(file).toContain('"s3cret"');
+    expect(file).toContain('"a-value"');
+    expect(file).toContain('"b-value"');
+    expect(file).not.toContain("••••••");
+
+    // A marker where nothing is stored is refused.
+    const missing = await host.execute("host.config.patch", {
+      layer: "node",
+      section: "acme.vault",
+      values: { env: { C: "••••••" } },
+    });
+    expect(missing.error).toMatchObject({ code: "CONFIG_SECRET_MISSING" });
+  });
+
   it("gives plugins data directories only under <home>/data, by plugin id", async () => {
     const home = tempDir("home");
     writePlugin(

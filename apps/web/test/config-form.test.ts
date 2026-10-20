@@ -1,3 +1,4 @@
+import { SECRET_REDACTED } from "@jhin/client-api";
 import { z } from "@jhin/sdk";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -287,6 +288,24 @@ describe("secrets (D83)", () => {
     expect(fields.get("keys")?.control).toMatchObject({ kind: "list", item: { secret: true } });
     expect(fields.get("vault")?.control).toMatchObject({ kind: "map", value: { secret: true } });
     expect(fields.get("name")?.secret).toBe(false);
+  });
+
+  it("accepts the node's marker for a stored secret, of any type, and only there (security.md D417)", () => {
+    const typed = served(
+      z.object({
+        count: z.number().meta({ writeOnly: true }).optional(),
+        keys: z.array(z.string()).optional().meta({ writeOnly: true }),
+        name: z.string().optional(),
+        size: z.number().optional(),
+      }),
+    );
+    expect(validate(typed, { count: SECRET_REDACTED, keys: SECRET_REDACTED })).toEqual([]);
+    expect(validate(typed, { size: SECRET_REDACTED })).not.toEqual([]);
+    // Shown in JSON as the placeholder, and sent back as the marker the node gave.
+    expect(redact(typed, { count: SECRET_REDACTED }, typed)).toEqual({ count: HIDDEN });
+    expect(restore({ count: HIDDEN }, { count: SECRET_REDACTED })).toEqual({
+      count: SECRET_REDACTED,
+    });
   });
 
   it("hides secrets in JSON and puts them back where the placeholder is left", () => {

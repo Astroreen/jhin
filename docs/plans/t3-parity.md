@@ -957,13 +957,9 @@ stopped its menu says so and its kinds are disabled), with a screenshot.
 - Scoped tokens. Done in `security.md` (D410–D416): device tokens carry
   their grants, so `projects.browse`, `host.config.read` and
   `host.identity` are given on purpose, and mesh calls carry their caller's
-  scope. `host.config.get` still returns secrets as written (next item).
-- Secret config values: no first-party section holds one today. A section
-  that does needs a way to mark those values, so that `host.config.get`
-  redacts them and the editor keeps them when it saves, before
-  `host.config.read` can go to a caller that may not see them. The marker
-  exists now (`writeOnly`, `config-ui.md` D83) and the form masks such
-  values; the redaction is still to do.
+  scope; `host.config.get` redacts secrets (D417).
+- Secret config values. Done in `security.md` (D417): `host.config.get`
+  redacts `writeOnly` values and a save keeps them.
 
 - Steering (W1): moving Claude's foreground subagents to the background
   before a steer (T3 does, so a steer does not cancel them; here the steer's

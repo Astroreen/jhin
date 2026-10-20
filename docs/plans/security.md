@@ -251,6 +251,13 @@ and QR code.
 
 ## Deferred
 
+- Secrets stay in the config files in clear (D417): T3 keeps them in a
+  secret store apart from its settings. A key store (the OS keychain, an
+  encrypted file) would let a config file be shared without them.
+- A fan-out (`mesh.config.patch`) that carries a marker resolves it on each
+  target against that node's own stored value; a target with none refuses
+  the change (`CONFIG_SECRET_MISSING`), recorded as `mesh.config.failed`.
+
 - T3 Connect: pairing and remote access through a T3 account, the hosted
   relay and the hosted-app pairing link (out of scope, `t3-roadmap.md`).
 - Tailscale Serve (`--tailscale-serve`, `t3 pair --tailscale`): publishing

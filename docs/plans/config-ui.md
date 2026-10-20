@@ -76,9 +76,8 @@ as JSON.
   and by position in a list); a placeholder where nothing is stored is
   refused. An override from the project file reads "it". A switch or a
   select cannot be hidden: a secret is text or a number. This is about the
-  page only: `host.config.get` still returns the files as written, so the
-  values reach the browser and any holder of `host.config.read`; redacting
-  them there stays deferred, as the Deferred list of `t3-parity.md` says. No
+  page only; `host.config.get` redacts them since `security.md` D417, and
+  the page then holds the marker `••••••`, which it saves back unchanged. No
   first-party section has a secret.
 
 - **D84. Saving sends the change, and checks it first.** Save writes only the
@@ -153,9 +152,9 @@ context.config.define("acme.http", Config);
   `.meta({ examples: ["…"] })` gives an empty field a placeholder;
   `.meta({ deprecated: true })` marks one on its way out.
 - Mark a secret with `.meta({ writeOnly: true })`: it shows as a password
-  field. `host.config.get` still returns it to anyone holding
-  `host.config.read`, so keep real secrets out of config until redaction
-  lands (Deferred).
+  field, and `host.config.get` returns `••••••` in its place; saving the
+  marker back keeps the stored value (`security.md` D417). The value is
+  still in the config file in clear.
 - Refinements (`.refine`) are checked by the node only: their message shows
   next to the field after a save.
 
