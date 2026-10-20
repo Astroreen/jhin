@@ -430,7 +430,9 @@ with screenshots).
 - Settling a thread on a merged pull request (T3's sidebar) and the
   terminal indicator (the terminal plugin contributes it to
   `sidebar.thread.indicators`). The branch-mismatch warning is done
-  (`t3-parity.md` D443).
+  (`t3-parity.md` D443): source control contributes the hover card's
+  branch line and the warning to `sidebar.thread.details`, the hover card's
+  twin of `sidebar.thread.indicators`.
 - Scoped permissions. Done in `security.md` (D410–D416): a device token
   holds `git.read` or `git.write` only when granted (`git.*` for both), and
   the `source-control` stream needs `git.read` (D415).

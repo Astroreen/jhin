@@ -162,7 +162,11 @@ test("D113–D120: a card shows its thread's branch, pull request and diff; the 
   await expect(lines).toHaveText(/acme\s*main\s*You're currently checked out on another branch\.$/);
   await shot(page, info, "source-control-branch-mismatch");
   git(dir, "switch", "--quiet", "main");
+  // The warning goes with the next status, while the card still shows (a live update)...
+  await expect(warning).toBeHidden();
   await page.mouse.move(600, 400);
+  await expect(lines).toBeHidden();
+  // ...and a fresh hover shows the branch line alone.
   await card.hover();
   await expect(page.locator("[data-thread-branch-detail]")).toHaveText("main");
   await expect(warning).toBeHidden();
