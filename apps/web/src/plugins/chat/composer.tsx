@@ -342,6 +342,22 @@ function PlanFollowUpBanner({ planTitle }: { planTitle: string | null }) {
 
 const QUEUED_MESSAGE_DRAG_TYPE = "application/x-jhin-queued-message";
 
+/**
+ * Where a queued message dropped at `insertIndex` (the gap before that row,
+ * the end at `ids.length`) goes: the message it goes before, `null` for the
+ * end, or `undefined` when it stays where it is (T3's completeDrag).
+ */
+export function dropTarget(
+  ids: readonly string[],
+  messageId: string,
+  insertIndex: number | null,
+): string | null | undefined {
+  const from = ids.indexOf(messageId);
+  if (insertIndex === null || from === -1) return undefined;
+  if (insertIndex === from || insertIndex === from + 1) return undefined;
+  return ids[insertIndex] ?? null;
+}
+
 /** Why a held queue waits, in T3's words. */
 function heldText(held: NonNullable<ThreadQueue["held"]>): string {
   if (held.reason === "refused") return `Not sent: ${held.error ?? "the node refused it"}`;
@@ -382,10 +398,13 @@ function QueueBanner(props: {
   const drop = (messageId: string, insertIndex: number | null) => {
     setDrag(undefined);
     armed.current = undefined;
-    const from = messages.findIndex((message) => message.id === messageId);
-    if (insertIndex === null || from === -1 || busyId !== undefined) return;
-    if (insertIndex === from || insertIndex === from + 1) return;
-    move(messageId, messages[insertIndex]?.id ?? null);
+    if (busyId !== undefined) return;
+    const target = dropTarget(
+      messages.map((message) => message.id),
+      messageId,
+      insertIndex,
+    );
+    if (target !== undefined) move(messageId, target);
   };
   const count = messages.length;
   return (
@@ -931,14 +950,25 @@ export function Composer(props: ComposerProps) {
     if (editedGone) setEditing(undefined);
   }, [editedGone]);
 
+  // The draft as typed now, for an edit that starts after a network call: what
+  // is typed while the queued message loads is what comes back after the edit.
+  const current = useRef({ prompt, attachments });
+  current.current = { prompt, attachments };
+  /** An edit or a steer from a shortcut is on its way: one at a time. */
+  const queueBusy = useRef(false);
   const startEdit = async (messageId: string) => {
-    if (props.queueActions === undefined || editing !== undefined) return;
-    const message = await props.queueActions.load(messageId);
-    if (message === undefined) return;
-    setEditing({ id: messageId, draft: { prompt, attachments } });
-    setPrompt(message.text);
-    setAttachments(message.attachments);
-    textarea.current?.focus();
+    if (props.queueActions === undefined || editing !== undefined || queueBusy.current) return;
+    queueBusy.current = true;
+    try {
+      const message = await props.queueActions.load(messageId);
+      if (message === undefined) return;
+      setEditing({ id: messageId, draft: current.current });
+      setPrompt(message.text);
+      setAttachments(message.attachments);
+      textarea.current?.focus();
+    } finally {
+      queueBusy.current = false;
+    }
   };
   const cancelEdit = () => {
     if (editing === undefined) return;
@@ -997,10 +1027,22 @@ export function Composer(props: ComposerProps) {
     sendAlternate: () => void send(true),
     steerNext() {
       const next = queued[0];
-      if (next === undefined || props.canSteer !== true || props.queueActions === undefined) {
+      const actions = props.queueActions;
+      if (
+        next === undefined ||
+        !props.running ||
+        props.canSteer !== true ||
+        actions === undefined
+      ) {
         return false;
       }
-      void props.queueActions.steer(next.id);
+      // One at a time, as the banner's buttons are; a failure shows as a toast.
+      if (!queueBusy.current) {
+        queueBusy.current = true;
+        void actions.steer(next.id).finally(() => {
+          queueBusy.current = false;
+        });
+      }
       return true;
     },
     // Declines while a queued message is edited, or with text before the caret,

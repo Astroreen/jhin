@@ -73,11 +73,17 @@ export async function sendMessage(
   try {
     if (mode === "steer") {
       try {
-        const sent = await threads.call<{ outcome: string }>(target, "threads.steer", input);
-        return {
-          kind:
-            sent.outcome === "queued" ? "queued" : sent.outcome === "steered" ? "steered" : "sent",
+        const sent = await threads.call<{ outcome?: unknown }>(target, "threads.steer", input);
+        // The node queues a steer whose turn ended first (D205): nothing is lost.
+        const outcomes: Record<string, SendOutcome> = {
+          steered: { kind: "steered" },
+          queued: { kind: "queued" },
+          started: { kind: "sent" },
         };
+        const outcome = outcomes[String(sent?.outcome)];
+        return (
+          outcome ?? failure(new Error(`The node answered a steer with ${String(sent?.outcome)}`))
+        );
       } catch (error) {
         if ((error as { code?: unknown }).code !== "STEER_UNSUPPORTED") throw error;
       }

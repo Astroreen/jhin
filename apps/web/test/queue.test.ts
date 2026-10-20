@@ -3,6 +3,7 @@ import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createTimeline, turnBlocks } from "../src/lib/timeline.ts";
+import { dropTarget } from "../src/plugins/chat/composer.tsx";
 import { dispatchMode, sendMessage } from "../src/plugins/chat/send.ts";
 
 function stream(...entries: [type: string, payload: unknown][]): StoredEvent[] {
@@ -107,5 +108,34 @@ describe("sending while a turn runs (D209)", () => {
     expect(await sendMessage(refusing, target, "t", message, "steer")).toEqual({
       kind: "queued",
     });
+  });
+});
+
+describe("dropping a queued message (D210)", () => {
+  const ids = ["a", "b", "c"];
+  it("goes before the row it is dropped above, or to the end", () => {
+    expect(dropTarget(ids, "c", 0)).toBe("a");
+    expect(dropTarget(ids, "a", 2)).toBe("c");
+    expect(dropTarget(ids, "a", 3)).toBeNull();
+  });
+  it("stays where it is when dropped next to itself, or with nowhere to go", () => {
+    expect(dropTarget(ids, "b", 1)).toBeUndefined();
+    expect(dropTarget(ids, "b", 2)).toBeUndefined();
+    expect(dropTarget(ids, "b", null)).toBeUndefined();
+    expect(dropTarget(ids, "gone", 0)).toBeUndefined();
+  });
+});
+
+describe("an answer to a steer the client does not know", () => {
+  it("is a failure, so the draft stays", async () => {
+    const node = { call: async <T>(): Promise<T> => ({ outcome: "teleported" }) as T };
+    const outcome = await sendMessage(
+      node,
+      { node: "ws://a/rpc" },
+      "t",
+      { text: "hi", attachments: [], settings: {} },
+      "steer",
+    );
+    expect(outcome).toMatchObject({ kind: "failed" });
   });
 });

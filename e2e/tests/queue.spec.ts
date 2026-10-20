@@ -99,4 +99,21 @@ test("holds the queue after a stop until it is resumed, and steers with the othe
   await message.press("ControlOrMeta+Enter");
   await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText("Echo: steered in");
   await expect(queued(page)).toHaveCount(0);
+
+  // The queue's shortcuts are commands (D210): Alt+↑ edits the last queued
+  // message, ⌘/Ctrl+Shift+Enter steers the first one into the running turn.
+  await message.fill("/hold once more");
+  await message.press("Enter");
+  await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText("Holding");
+  await message.fill("shortcut follow-up");
+  await message.press("Enter");
+  await expect(rows(page)).toHaveText([/shortcut follow-up/]);
+  await message.press("Alt+ArrowUp");
+  await expect(message).toHaveValue("shortcut follow-up");
+  await rows(page).getByRole("button", { name: "Cancel editing queued message" }).click();
+  await message.press("ControlOrMeta+Shift+Enter");
+  await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText(
+    "Echo: shortcut follow-up",
+  );
+  await expect(queued(page)).toHaveCount(0);
 });
