@@ -9,6 +9,7 @@ import {
   type AgentRuntime,
 } from "@jhin/agent-api";
 import { LIVE_STREAMS_CAPABILITY, createMemoryStreams, type LiveStreams } from "@jhin/rpc";
+import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
 import { definePlugin, z, type PluginContext } from "@jhin/sdk";
 import {
   Branch,
@@ -257,6 +258,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
   const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
   context.subscriptions.add(context.config.define(CONFIG_SECTION, Config));
+  // D501: members relay the stream to their clients (D503).
+  const mesh = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
+  if (mesh !== undefined) context.subscriptions.add(mesh.share(SOURCE_CONTROL_STREAM));
   const config = () => context.config.get<Config>(CONFIG_SECTION);
   // Its events name repositories and branches: reading them takes git.read (security.md D415).
   const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);

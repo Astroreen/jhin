@@ -1,7 +1,7 @@
 import { toDisposable, type Disposable, type Logger } from "@jhin/sdk";
 import type { Json, StoredEvent } from "@jhin/storage-api";
 
-/** `rpc.streams@1`: streams served from memory instead of the event log. */
+/** `rpc.streams@1`: streams served from memory (or followed elsewhere, 1.1) instead of the event log. */
 export const LIVE_STREAMS_CAPABILITY = "rpc.streams";
 
 /** What a subscription to a stream of the event log nobody guards needs (security.md D415). */
@@ -15,6 +15,19 @@ export interface StreamSource {
   read(stream: string, options?: { after?: number; limit?: number }): Promise<StoredEvent[]>;
   /** Every event appended after this call, in sequence order. */
   subscribe(stream: string, listener: (event: StoredEvent) => void): Disposable;
+  /**
+   * `rpc.streams@1.1` (D500): a source that reads elsewhere, like a relay of
+   * another node's stream, opens a subscription from `after` instead of
+   * being read. `rpc.subscribe` then uses this, not `subscribe`, `head` and
+   * `read`, and answers once it is attached.
+   */
+  follow?(stream: string, after: number, listener: (event: StoredEvent) => void): FollowedStream;
+}
+
+/** A subscription a source opened with `follow`. */
+export interface FollowedStream extends Disposable {
+  /** The head once the subscription is attached; rejects when it is refused. */
+  readonly ready: Promise<number>;
 }
 
 /** A source and who may read it. */

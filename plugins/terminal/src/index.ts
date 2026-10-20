@@ -2,6 +2,7 @@ import * as Path from "node:path";
 
 import { THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
+import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
 import { LIVE_STREAMS_CAPABILITY, createMemoryStreams, type LiveStreams } from "@jhin/rpc";
 import { definePlugin, z } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
@@ -115,6 +116,13 @@ export default definePlugin({
       const read = { permissions: ["terminals.read"] };
       context.subscriptions.add(live.serve(TERMINALS_STREAM, streams, read));
       context.subscriptions.add(live.serve(TERMINAL_STREAM_PREFIX, streams, read));
+      // D501: members relay them to their clients, so a thread on this node has its
+      // terminals wherever it is opened (a member's call holds every permission).
+      const mesh = context.services.tryGet<MeshStreams>(MESH_STREAMS_CAPABILITY);
+      if (mesh !== undefined) {
+        context.subscriptions.add(mesh.share(TERMINALS_STREAM));
+        context.subscriptions.add(mesh.share(TERMINAL_STREAM_PREFIX));
+      }
     }
 
     // A deleted or archived thread takes its terminals with it (D143, D466).

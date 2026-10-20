@@ -1,10 +1,15 @@
+import { parseRelayStream, relayStream, RELAY_PREFIX } from "@jhin/mesh-api";
 import {
   createCaller,
   createRpcClient,
   serveRpc,
+  type FollowedStream,
   type Peer,
   type RpcClient,
+  type RpcError,
   type RpcServerOptions,
+  type ServedStream,
+  type StreamSource,
 } from "@jhin/rpc";
 import { intersectPermissions, toDisposable, type Disposable, type Invocation } from "@jhin/sdk";
 import type { EventLog, StoredEvent } from "@jhin/storage-api";
@@ -29,6 +34,8 @@ const INVITE_TTL_MS = 15 * 60 * 1000;
 const MAX_VERSION_SKEW_MS = 60 * 60 * 1000;
 /** Copies a node keeps at most (its own opens and neighbors' requests together). */
 const MAX_MIRRORS = 10_000;
+/** Streams a node relays at once at most, for its own clients and its neighbors together (D502). */
+const MAX_RELAYS = 10_000;
 const ADDRESS = /^jhin:\/\/([^/]+)\/?(.*)$/;
 /**
  * Streams neighbors may read and copy (D26): thread histories, the thread
@@ -48,9 +55,20 @@ export class MeshError extends Error {
   }
 }
 
+/** What becomes of a subscription over a link: accepted with the head then, or refused. */
+interface LinkOutcome {
+  onReady?(head: number): void;
+  onError?(error: RpcError): void;
+}
+
 interface Link {
   call(method: string, params: unknown, trace?: string): Promise<unknown>;
-  subscribe(stream: string, after: number, onEvent: (event: StoredEvent) => void): Disposable;
+  subscribe(
+    stream: string,
+    after: number,
+    onEvent: (event: StoredEvent) => void,
+    outcome?: LinkOutcome,
+  ): Disposable;
   /** Drops the link (inbound links only: a newer connection from the same node supersedes it). */
   close?(): void;
 }
@@ -110,13 +128,23 @@ export interface Mesh extends Disposable {
   mirror(owner: string, stream: string): string;
   /** Stops copying; what was copied stays. */
   unmirror(owner: string, stream: string): void;
+  /**
+   * The stream to subscribe to for `owner`'s `stream` as it happens (D499):
+   * `relay/<owner>/<stream>`, served by `relays`; the stream itself for this node.
+   */
+  relay(owner: string, stream: string): string;
+  /** Serves `relay/…`: each subscription follows the owner's stream through the mesh. */
+  readonly relays: StreamSource;
+  /** Lets members read and relay `name`, a stream or a prefix ending in `/` (D501). */
+  share(name: string): Disposable;
   onChange(listener: () => void): Disposable;
 }
 
-/** The event log as neighbors see it: only mirrorable streams. */
-function readableLog(log: EventLog): EventLog {
+/** The event log as neighbors see it: only mirrorable and shared streams. */
+function readableLog(log: EventLog, shared: (stream: string) => boolean): EventLog {
+  const readable = (stream: string) => MIRRORABLE.test(stream) || shared(stream);
   const check = (stream: string) => {
-    if (!MIRRORABLE.test(stream)) {
+    if (!readable(stream)) {
       throw new MeshError("STREAM_NOT_SHARED", `Stream ${stream} is not shared with other nodes`, {
         stream,
       });
@@ -128,7 +156,7 @@ function readableLog(log: EventLog): EventLog {
     read: (stream, options) => (check(stream), log.read(stream, options)),
     head: (stream) => (check(stream), log.head(stream)),
     streams: async (options) =>
-      (await log.streams(options)).filter((entry) => MIRRORABLE.test(entry.stream)),
+      (await log.streams(options)).filter((entry) => readable(entry.stream)),
     subscribe: (stream, listener) => (check(stream), log.subscribe(stream, listener)),
   };
 }
@@ -254,11 +282,28 @@ export function createMesh(options: MeshOptions): Mesh {
     return `${selfId}.${target}.${expiresAt}.${options.sign(data)}`;
   };
 
+  // --- Shared streams (D501) ------------------------------------------------
+  const shares = new Map<string, number>();
+  const isShared = (stream: string) => {
+    if (shares.has(stream)) return true;
+    for (const name of shares.keys())
+      if (name.endsWith("/") && stream.startsWith(name)) return true;
+    return false;
+  };
+  /** Live streams members subscribe to over a link: relays, and shared streams served from memory. */
+  const linkStreams = {
+    sourceOf(stream: string): ServedStream | undefined {
+      if (stream.startsWith(RELAY_PREFIX)) return { source: relays, permissions: [] };
+      return isShared(stream) ? options.streams?.sourceOf(stream) : undefined;
+    },
+  };
+
   /** Requests arriving over a link: mesh internals, or commands of this node. */
   const serveLink = (nodeId: string): RpcServerOptions => ({
     caller: { id: `node:${nodeId}`, permissions: ["*"] },
     logger: log,
-    ...(options.log === undefined ? {} : { log: readableLog(options.log) }),
+    ...(options.log === undefined ? {} : { log: readableLog(options.log, isShared) }),
+    streams: linkStreams,
     hello: () => ({ nodeId: selfId }),
     newTraceId: randomId,
     async execute(method, params, invocation) {
@@ -306,7 +351,16 @@ export function createMesh(options: MeshOptions): Mesh {
           {
             call: (method, params, trace) =>
               client.call(method, params, trace === undefined ? {} : { trace }),
-            subscribe: (stream, after, onEvent) => client.subscribe(stream, { after }, onEvent),
+            subscribe: (stream, after, onEvent, outcome = {}) =>
+              client.subscribe(
+                stream,
+                {
+                  after,
+                  ...(outcome.onReady === undefined ? {} : { onReady: outcome.onReady }),
+                  ...(outcome.onError === undefined ? {} : { onError: outcome.onError }),
+                },
+                onEvent,
+              ),
           },
           "outbound",
         );
@@ -444,12 +498,131 @@ export function createMesh(options: MeshOptions): Mesh {
     persistMirrors();
   }
 
-  /** Re-attaches mirrors whose link closed or whose route now goes elsewhere. */
+  /** Re-attaches mirrors and relays whose link closed or whose route now goes elsewhere. */
   function checkMirrors(): void {
     for (const [local, state] of mirrors) {
       if (currentLink(state.owner) !== state.link) void connectMirror(local);
     }
+    for (const state of relaying) {
+      if (currentLink(state.owner) !== state.link) attachRelay(state);
+    }
   }
+
+  // --- Relays (D499) ----------------------------------------------------------
+  interface Relay {
+    readonly owner: string;
+    readonly stream: string;
+    readonly listener: (event: StoredEvent) => void;
+    /** The last sequence passed on: a new attach resumes after it. */
+    last: number;
+    link: Link | undefined;
+    subscription: Disposable | undefined;
+    /** Bumped on every attach, so events of an older subscription are dropped. */
+    attempt: number;
+    /** Settles `ready` once: the first attach's outcome. */
+    settle: ((outcome: { head: number } | { error: unknown }) => void) | undefined;
+  }
+  const relaying = new Set<Relay>();
+
+  function attachRelay(state: Relay): void {
+    state.subscription?.dispose();
+    state.subscription = undefined;
+    const via = shortestPath(records, selfId, linkedIds(), state.owner)?.[1];
+    const link = currentLink(state.owner);
+    state.link = link;
+    const attempt = ++state.attempt;
+    if (via === undefined || link === undefined) {
+      // No route now: a relay that was attached waits for one; a new one fails.
+      state.settle?.({
+        error: new MeshError(
+          "NODE_UNREACHABLE",
+          `Node ${state.owner} cannot be reached from ${selfId}`,
+          {
+            target: state.owner,
+          },
+        ),
+      });
+      return;
+    }
+    // Next to the owner: its stream itself. Further away: the next hop's relay of it.
+    const source = via === state.owner ? state.stream : relayStream(state.owner, state.stream);
+    state.subscription = link.subscribe(
+      source,
+      state.last,
+      (event) => {
+        if (attempt !== state.attempt || !relaying.has(state) || event.sequence <= state.last)
+          return;
+        state.last = event.sequence;
+        state.listener(event);
+      },
+      {
+        onReady: (head) => state.settle?.({ head }),
+        onError: (error) => {
+          if (attempt !== state.attempt) return;
+          if (state.settle !== undefined) state.settle({ error });
+          else log.warn("relay refused on reattach", { stream: source, error: String(error) });
+        },
+      },
+    );
+  }
+
+  const relays: StreamSource = {
+    // A relay holds nothing itself; it is only followed.
+    head: async () => 0,
+    read: async () => [],
+    subscribe: () => toDisposable(() => undefined),
+    follow(name, after, listener): FollowedStream {
+      const parsed = parseRelayStream(name);
+      const refuse = (error: MeshError): FollowedStream => ({
+        ready: Promise.reject(error),
+        dispose: () => undefined,
+      });
+      if (parsed === undefined || parsed.owner === selfId) {
+        return refuse(
+          new MeshError("RELAY_INVALID", `${name} is not a relay of a member's stream`),
+        );
+      }
+      if (relaying.size >= MAX_RELAYS) {
+        return refuse(
+          new MeshError("RELAY_LIMIT", `This node relays at most ${MAX_RELAYS} streams`),
+        );
+      }
+      let resolve!: (head: number) => void;
+      let reject!: (error: unknown) => void;
+      const ready = new Promise<number>((ok, fail) => {
+        resolve = ok;
+        reject = fail;
+      });
+      const state: Relay = {
+        owner: parsed.owner,
+        stream: parsed.stream,
+        listener,
+        last: after,
+        link: undefined,
+        subscription: undefined,
+        attempt: 0,
+        settle: undefined,
+      };
+      const stop = () => {
+        relaying.delete(state);
+        state.attempt += 1;
+        state.subscription?.dispose();
+        state.subscription = undefined;
+      };
+      state.settle = (outcome) => {
+        state.settle = undefined;
+        if ("head" in outcome) resolve(outcome.head);
+        else {
+          stop();
+          reject(outcome.error);
+        }
+      };
+      relaying.add(state);
+      if (closed) state.settle({ error: new MeshError("NODE_UNREACHABLE", "The mesh is closed") });
+      else attachRelay(state);
+      return { ready, dispose: stop };
+    },
+  };
 
   function currentLink(owner: string): Link | undefined {
     const via = shortestPath(records, selfId, linkedIds(), owner)?.[1];
@@ -607,7 +780,8 @@ export function createMesh(options: MeshOptions): Mesh {
         {
           call: (method, params, trace) =>
             caller.call(method, params, trace === undefined ? {} : { trace }),
-          subscribe: (stream, after, onEvent) => caller.subscribe(stream, after, onEvent),
+          subscribe: (stream, after, onEvent, outcome) =>
+            caller.subscribe(stream, after, onEvent, outcome),
           close: () => peer.close(1000, "superseded"),
         },
         "inbound",
@@ -633,6 +807,17 @@ export function createMesh(options: MeshOptions): Mesh {
     },
     mirror,
     unmirror,
+    relay: (owner, stream) => (owner === selfId ? stream : relayStream(owner, stream)),
+    relays,
+    share(name) {
+      if (name.length === 0) throw new MeshError("SHARE_INVALID", "A shared stream needs a name");
+      shares.set(name, (shares.get(name) ?? 0) + 1);
+      return toDisposable(() => {
+        const count = (shares.get(name) ?? 1) - 1;
+        if (count > 0) shares.set(name, count);
+        else shares.delete(name);
+      });
+    },
     resolve(address) {
       const match = ADDRESS.exec(address);
       if (match === null)
@@ -652,6 +837,11 @@ export function createMesh(options: MeshOptions): Mesh {
     dispose() {
       closed = true;
       for (const state of mirrors.values()) state.subscription?.dispose();
+      for (const state of relaying) {
+        state.subscription?.dispose();
+        state.settle?.({ error: new MeshError("NODE_UNREACHABLE", "The mesh is closed") });
+      }
+      relaying.clear();
       for (const client of clients.values()) client.close();
       clients.clear();
     },

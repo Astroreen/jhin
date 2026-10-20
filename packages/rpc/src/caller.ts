@@ -16,8 +16,15 @@ export interface Caller extends Disposable {
   /**
    * Subscribes to a stream of the other side, delivering events after `after`
    * in order and once. Ends when the channel closes (no reconnect here).
+   * `onReady` gets the head once the other side accepted it; `onError` why it
+   * refused (or that the channel closed first).
    */
-  subscribe(stream: string, after: number, onEvent: (event: StoredEvent) => void): Disposable;
+  subscribe(
+    stream: string,
+    after: number,
+    onEvent: (event: StoredEvent) => void,
+    outcome?: { onReady?(head: number): void; onError?(error: RpcError): void },
+  ): Disposable;
 }
 
 /**
@@ -95,11 +102,18 @@ export function createCaller(peer: Peer): Caller {
 
   return {
     call,
-    subscribe(stream, after, onEvent) {
+    subscribe(stream, after, onEvent, outcome = {}) {
       const id = `s${nextSubscription++}`;
       subscriptions.set(id, { last: after, onEvent });
-      void call(RPC_SUBSCRIBE, { subscription: id, stream, after }).catch(() =>
-        subscriptions.delete(id),
+      void call<{ head?: unknown }>(RPC_SUBSCRIBE, { subscription: id, stream, after }).then(
+        (result) => {
+          if (!subscriptions.has(id)) return;
+          outcome.onReady?.(typeof result?.head === "number" ? result.head : 0);
+        },
+        (error: RpcError) => {
+          if (!subscriptions.delete(id)) return;
+          outcome.onError?.(error);
+        },
       );
       return toDisposable(() => {
         if (!subscriptions.delete(id) || closed) return;

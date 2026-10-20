@@ -34,6 +34,7 @@
   "dependencies": {
     "@jhin/host-api": "workspace:*",
     "@jhin/http-api": "workspace:*",
+    "@jhin/mesh-api": "workspace:*",
     "@jhin/mesh-core": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
@@ -52,6 +53,9 @@
     "name": "Mesh",
     "description": "Nodes of one owner see each other and route calls through each other",
     "side": "server",
+    "provides": {
+      "mesh.streams": "1.0.0"
+    },
     "requires": {
       "http.server": "^1.1",
       "host.paths": "^1",

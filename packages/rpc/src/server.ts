@@ -174,6 +174,20 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       bufferedSize += JSON.stringify(event).length;
       if (bufferedSize > MAX_WAITING_CHARACTERS) overflowed = true;
     };
+    if (log.follow !== undefined) {
+      // A source that reads elsewhere (D500): it replays and follows on its own.
+      const followed = log.follow(stream, after, (event) => {
+        if (subscriptions.get(id) === followed) deliver(event);
+      });
+      subscriptions.set(id, followed);
+      try {
+        return { subscription: id, head: await followed.ready };
+      } catch (error) {
+        followed.dispose();
+        if (subscriptions.get(id) === followed) subscriptions.delete(id);
+        throw error;
+      }
+    }
     // Subscribe first, then read the backlog: an event appended in between is
     // in the buffer, in the backlog, or both; `lastSent` drops duplicates.
     const live$ = log.subscribe(stream, (event) => (live ? deliver(event) : keep(event)));

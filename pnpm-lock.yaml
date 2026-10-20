@@ -436,8 +436,17 @@ importers:
         specifier: 'catalog:'
         version: 24.19.2
 
+  packages/mesh-api:
+    dependencies:
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+
   packages/mesh-core:
     dependencies:
+      '@jhin/mesh-api':
+        specifier: workspace:*
+        version: link:../mesh-api
       '@jhin/rpc':
         specifier: workspace:*
         version: link:../rpc
@@ -534,6 +543,9 @@ importers:
       '@jhin/kernel':
         specifier: workspace:*
         version: link:../kernel
+      '@jhin/mesh-api':
+        specifier: workspace:*
+        version: link:../mesh-api
       '@jhin/mesh-core':
         specifier: workspace:*
         version: link:../mesh-core
@@ -768,6 +780,9 @@ importers:
       '@jhin/http-api':
         specifier: workspace:*
         version: link:../../packages/http-api
+      '@jhin/mesh-api':
+        specifier: workspace:*
+        version: link:../../packages/mesh-api
       '@jhin/mesh-core':
         specifier: workspace:*
         version: link:../../packages/mesh-core
@@ -892,6 +907,9 @@ importers:
       '@jhin/agent-api':
         specifier: workspace:*
         version: link:../../packages/agent-api
+      '@jhin/mesh-api':
+        specifier: workspace:*
+        version: link:../../packages/mesh-api
       '@jhin/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc
@@ -945,6 +963,9 @@ importers:
       '@jhin/host-api':
         specifier: workspace:*
         version: link:../../packages/host-api
+      '@jhin/mesh-api':
+        specifier: workspace:*
+        version: link:../../packages/mesh-api
       '@jhin/rpc':
         specifier: workspace:*
         version: link:../../packages/rpc

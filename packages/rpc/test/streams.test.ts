@@ -231,5 +231,95 @@ describe("guarded streams of the event log (security.md D415)", () => {
     expect(live.guardOf("a/b/c")).toEqual(["x"]);
     first.dispose();
     expect(live.guardOf("a/b")).toBeUndefined();
+describe("followed sources (rpc.streams@1.1, D500)", () => {
+  /** A source that reads elsewhere: the test feeds it, and settles when it is attached. */
+  function elsewhere() {
+    const opened: {
+      stream: string;
+      after: number;
+      listener: (event: StoredEvent) => void;
+      attach(head: number): void;
+      refuse(error: Error): void;
+      disposed: boolean;
+    }[] = [];
+    let opening!: () => void;
+    /** Resolves once the server followed the source. */
+    const firstOpen = new Promise<void>((resolve) => (opening = resolve));
+    const source = {
+      head: async () => 0,
+      read: async () => [],
+      subscribe: () => ({ dispose: () => undefined }),
+      follow(stream: string, after: number, listener: (event: StoredEvent) => void) {
+        let attach!: (head: number) => void;
+        let refuse!: (error: Error) => void;
+        const ready = new Promise<number>((ok, fail) => {
+          attach = ok;
+          refuse = fail;
+        });
+        const entry = { stream, after, listener, attach, refuse, disposed: false };
+        opened.push(entry);
+        opening();
+        return { ready, dispose: () => void (entry.disposed = true) };
+      },
+    };
+    const event = (sequence: number): StoredEvent => ({
+      stream: "relay/x/s",
+      sequence,
+      type: "app.a",
+      payload: sequence,
+      at: "",
+    });
+    return { source, opened, event, firstOpen };
+  }
+
+  it("answers with the head once the source attached, and passes its events on once each", async () => {
+    const live = createLiveStreams();
+    const { source, opened, event, firstOpen } = elsewhere();
+    live.serve("relay/", source);
+    const { client } = harness(live);
+    const heads: number[] = [];
+    const events: number[] = [];
+    let delivered!: () => void;
+    const two = new Promise<void>((resolve) => (delivered = resolve));
+    const ready = new Promise<void>((resolve) =>
+      client.subscribe(
+        "relay/x/s",
+        {
+          after: 4,
+          onReady: (head) => {
+            heads.push(head);
+            resolve();
+          },
+        },
+        (item) => {
+          events.push(item.sequence);
+          if (events.length === 2) delivered();
+        },
+      ),
+    );
+    await firstOpen;
+    expect(opened[0]).toMatchObject({ stream: "relay/x/s", after: 4 });
+    opened[0]!.listener(event(5));
+    opened[0]!.attach(7);
+    await ready;
+    opened[0]!.listener(event(5));
+    opened[0]!.listener(event(6));
+    await two;
+    expect(heads).toEqual([7]);
+    expect(events).toEqual([5, 6]);
+  });
+
+  it("fails the subscription with the source's error, leaving nothing behind", async () => {
+    const live = createLiveStreams();
+    const { source, opened, firstOpen } = elsewhere();
+    live.serve("relay/", source);
+    const { client } = harness(live);
+    const failed = new Promise<{ code: string }>((resolve) =>
+      client.subscribe("relay/x/s", { onError: (error) => resolve(error) }, () => undefined),
+    );
+    await firstOpen;
+    opened[0]!.refuse(Object.assign(new Error("not shared"), { code: "STREAM_NOT_SHARED" }));
+    expect(await failed).toMatchObject({ code: "STREAM_NOT_SHARED" });
+    expect(opened[0]!.disposed).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { z, type Invocation, type Logger } from "@jhin/sdk";
-import type { Peer } from "@jhin/rpc";
+import type { LiveStreams, Peer } from "@jhin/rpc";
 import type { EventLog } from "@jhin/storage-api";
 
 /** Every record from another node is parsed with this before it is used or stored. */
@@ -81,6 +81,11 @@ export interface MeshOptions {
    * Defaults to `*` (one owner's trust domain, D22).
    */
   memberPermissions?(): readonly string[];
+  /**
+   * This node's live streams (`rpc.streams@1`): the ones shared with the mesh
+   * (D501) are read from here by members, not from the event log.
+   */
+  readonly streams?: Pick<LiveStreams, "sourceOf">;
 }
 
 export interface MemberView {
