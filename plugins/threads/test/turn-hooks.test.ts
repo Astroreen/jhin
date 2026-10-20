@@ -15,7 +15,7 @@ import { testManifest } from "@jhin/testing";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { fakeTurn } from "../../agent-fake/src/index.ts";
-import { STOP_TIMEOUT_MS, TURN_HOOK_TIMEOUT_MS } from "../src/index.ts";
+import { STOP_TIMEOUT_MS } from "../src/index.ts";
 import { node, watch } from "./support.ts";
 
 interface Thread {
@@ -173,81 +173,95 @@ describe("jhin.threads: turn hooks that never answer", () => {
     vi.useRealTimers();
   });
 
-  /** A promise with its resolver. */
-  const latch = () => {
-    let resolve!: () => void;
-    const promise = new Promise<void>((done) => (resolve = done));
-    return { promise, resolve };
+  /** A plugin whose `hook` turn hook is called, then never answers. */
+  const stuck = (id: string, hook: string) => {
+    let called!: () => void;
+    const promise = new Promise<void>((resolve) => (called = resolve));
+    return {
+      called: promise,
+      plugin: plugin(id, (context) => {
+        context.hooks.around(hook, () => {
+          called();
+          return new Promise(() => undefined);
+        });
+      }),
+    };
   };
+  /** A deadline that has passed as soon as it is set: no time needs to go by. */
+  const expired = { "jhin.threads": { turnHookTimeoutSeconds: 0 } };
 
   it("fails the turn once a start hook has not answered in time", async () => {
-    const called = latch();
-    const hooks = plugin("acme.stuck-start", (context) => {
-      context.hooks.around(ThreadHooks.turnStart, () => {
-        called.resolve();
-        return new Promise(() => undefined);
-      });
-    });
-    const { client } = await node({ plugins: [hooks] });
+    const hooks = stuck("acme.stuck-start", ThreadHooks.turnStart);
+    const { client } = await node({ plugins: [hooks.plugin], config: expired });
     const thread = await client.call<Thread>("threads.create", {});
     const { until } = watch(client, thread.id);
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const sent = client.call("threads.send", { threadId: thread.id, text: "hi" });
-    await called.promise;
-    vi.advanceTimersByTime(TURN_HOOK_TIMEOUT_MS);
-    await expect(sent).rejects.toMatchObject({ code: "TURN_HOOK_TIMEOUT" });
+    await expect(
+      client.call("threads.send", { threadId: thread.id, text: "hi" }),
+    ).rejects.toMatchObject({ code: "TURN_HOOK_TIMEOUT" });
     await until("agent.turn.failed");
   });
 
   it("ends the turn once an end hook has not answered in time", async () => {
-    const called = latch();
-    const hooks = plugin("acme.stuck-end", (context) => {
-      context.hooks.around(ThreadHooks.turnEnd, () => {
-        called.resolve();
-        return new Promise(() => undefined);
-      });
-    });
-    const { client } = await node({ plugins: [hooks] });
+    const hooks = stuck("acme.stuck-end", ThreadHooks.turnEnd);
+    const { client } = await node({ plugins: [hooks.plugin], config: expired });
     const thread = await client.call<Thread>("threads.create", {});
     const { until } = watch(client, thread.id);
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     await client.call("threads.send", { threadId: thread.id, text: "hi" });
-    await called.promise;
-    vi.advanceTimersByTime(TURN_HOOK_TIMEOUT_MS);
     await until("agent.turn.completed");
   });
-});
 
-describe("jhin.threads: an end hook slower than a stop", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
+  // A stop gives up on an agent after STOP_TIMEOUT_MS; those tests fake that timer,
+  // as the stop tests in races.test.ts do.
   it("records the turn's end once when a stop gives up while an end hook still runs", async () => {
-    let called!: () => void;
-    const calledOnce = new Promise<void>((resolve) => (called = resolve));
-    const hooks = plugin("acme.slow-end", (context) => {
-      context.hooks.around(ThreadHooks.turnEnd, () => {
-        called();
-        return new Promise(() => undefined);
-      });
-    });
-    const { kernel, client } = await node({ plugins: [hooks] });
+    const hooks = stuck("acme.slow-end", ThreadHooks.turnEnd);
+    const { kernel, client } = await node({ plugins: [hooks.plugin] });
     const thread = await client.call<Thread>("threads.create", {});
     const { events, until } = watch(client, thread.id);
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     await client.call("threads.send", { threadId: thread.id, text: "hi" });
-    await calledOnce;
+    await hooks.called;
     // The archive's stop gives up on the turn while its end hook still runs.
     const archiving = kernel.commands.execute("threads.archive", { threadId: thread.id });
     await vi.advanceTimersByTimeAsync(STOP_TIMEOUT_MS);
-    await vi.advanceTimersByTimeAsync(TURN_HOOK_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(60_000);
     await archiving;
     await until("agent.turn.completed");
     const ends = events.filter((event) =>
       ["agent.turn.completed", "agent.turn.interrupted", "agent.turn.failed"].includes(event.type),
     );
     expect(ends.map((event) => event.type)).toEqual(["agent.turn.completed"]);
+  });
+
+  it("waits for a stuck start hook's deadline when stopped, and never starts the agent", async () => {
+    let started = false;
+    const agent: AgentRuntime = {
+      agentId: "acme.agent",
+      startTurn(request) {
+        started = true;
+        return fakeTurn(request);
+      },
+    };
+    const hooks = stuck("acme.stuck-start-stop", ThreadHooks.turnStart);
+    const { kernel, client } = await node({
+      agent: false,
+      plugins: [hooks.plugin, plugin("acme.p", () => {}, agent)],
+    });
+    const thread = await client.call<Thread>("threads.create", {});
+    const { until } = watch(client, thread.id);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // Its refusal is kept for later: it comes while the timers are advanced.
+    const sent = client.call("threads.send", { threadId: thread.id, text: "hi" }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await hooks.called;
+    const archiving = kernel.commands.execute("threads.archive", { threadId: thread.id });
+    await vi.advanceTimersByTimeAsync(STOP_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await archiving;
+    expect(await sent).toMatchObject({ code: "TURN_HOOK_TIMEOUT" });
+    await until("agent.turn.failed");
+    expect(started).toBe(false);
   });
 });
 

@@ -234,10 +234,14 @@ with screenshots).
   (`completed`, `interrupted`, `failed`); a hook that throws is logged and the
   turn still ends. A client that sees a turn end therefore sees what the end
   hooks did (a checkpoint). The hooks hold the thread like the rest of the turn
-  (a stop waits for them), but at most `TURN_HOOK_TIMEOUT_MS` (60 s): a start
-  hook that has not answered by then fails the turn like one that throws (the
-  agent never works without what the hooks do first), an end hook is logged
-  and the turn ends; a stop that gives up meanwhile records no second end.
+  (a stop waits for them, so archiving or deleting a thread may wait for a
+  stuck hook's deadline), but at most `turnHookTimeoutSeconds` (a `jhin.threads`
+  setting, 60 s by default): a start hook that has not answered by then fails
+  the turn like one that throws (the agent never works without what the hooks
+  do first), an end hook is logged and the turn ends; a stop that gives up
+  meanwhile records no second end. A hook given up on is not cancelled (hooks
+  get no abort signal, so their input stays serialisable): one whose work may
+  overlap the thread's next turn keeps it apart itself.
 - **D242. A thread may have a working directory of its own** (`worktreePath`, T3's
   field): an existing absolute directory, usually a git worktree of its project,
   set with `threads.create` or `threads.update` (`null` clears it; a running turn
@@ -397,11 +401,10 @@ with screenshots).
 ## Deferred
 
 - **Checkpoints and per-turn diffs** (T3's "Latest turn" and "Turn N"
-  scopes, the card's latest-run diff): needs a snapshot of the working tree
-  when a turn starts and ends (a commit of a temporary index under
+  scopes, the card's latest-run diff): a snapshot of the working tree when a
+  turn starts and ends (a commit of a temporary index under
   `refs/jhin/checkpoints/<thread>/<turn>`, as T3's CheckpointStore keeps
-  them), taken before the agent starts. That needs a hook in `jhin.threads`
-  around a turn's start (none is public today) and its events per turn.
+  them), taken through the turn hooks of D241 (W3, D243–D249).
 - **Reverting to a turn**: restoring a checkpoint into the working tree and
   truncating the thread after it; needs checkpoints first, and a thread
   operation to drop later turns (threads are append-only today).

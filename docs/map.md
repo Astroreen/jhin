@@ -31,25 +31,25 @@ the same PR.
 
 ## Packages (`packages/`)
 
-| Package                    | What it is                                                                                                       |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `@jhin/kernel`             | the isomorphic kernel                                                                                            |
-| `@jhin/sdk`                | the public API plugins import (`definePlugin`, types, permission matching); the host provides it to user plugins |
-| `@jhin/node-host`          | runs a node: loads plugins, hot reload, config files, logs, inspector, `host.*` commands                         |
-| `@jhin/testing`            | test kernel, capability mocks, fake transport, in-memory mesh of N nodes                                         |
-| `@jhin/rpc`                | JSON-RPC 2.0 over any channel: server sessions, reconnecting client, peers                                       |
-| `@jhin/mesh-core`          | the mesh without transport: membership, gossip, routing with relay, `jhin://` addresses                          |
-| `@jhin/mcp-bridge`         | turns a command registry into MCP tools                                                                          |
-| `@jhin/ui`                 | UI kit for client plugins: T3 Code-derived primitives, theme, slots                                              |
-| `@jhin/host-api`           | contracts of what a host gives plugins (`host.paths@1`, `host.identity@1`, `host.plugins@1`)                     |
-| `@jhin/http-api`           | contract of `http.server@1`                                                                                      |
-| `@jhin/auth-api`           | contract of `auth.verifier@1` (1.1: a principal's `expiresAt`), principal ids and auth events                    |
-| `@jhin/mcp-api`            | contract of `mcp.server@1`: the MCP endpoint and agent credentials                                               |
-| `@jhin/storage-api`        | contracts of `storage.kv@1`, `storage.eventlog@1`, an in-memory version, the contract tests                      |
-| `@jhin/agent-api`          | contracts of `agent.runtime@1`, `agent.registry@1` and the thread event types                                    |
-| `@jhin/source-control-api` | contract of `source-control.git@1` and its events                                                                |
-| `@jhin/terminal-api`       | contract of `terminal.sessions@1`, its commands and stream events                                                |
-| `@jhin/client-api`         | contracts of client capabilities: connections, navigation, mesh, machines                                        |
+| Package                    | What it is                                                                                                           |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `@jhin/kernel`             | the isomorphic kernel                                                                                                |
+| `@jhin/sdk`                | the public API plugins import (`definePlugin`, types, permission matching); the host provides it to user plugins     |
+| `@jhin/node-host`          | runs a node: loads plugins, hot reload, config files, logs, inspector, `host.*` commands                             |
+| `@jhin/testing`            | test kernel, capability mocks, fake transport, in-memory mesh of N nodes                                             |
+| `@jhin/rpc`                | JSON-RPC 2.0 over any channel: server sessions, reconnecting client, peers                                           |
+| `@jhin/mesh-core`          | the mesh without transport: membership, gossip, routing with relay, `jhin://` addresses                              |
+| `@jhin/mcp-bridge`         | turns a command registry into MCP tools                                                                              |
+| `@jhin/ui`                 | UI kit for client plugins: T3 Code-derived primitives, theme, slots                                                  |
+| `@jhin/host-api`           | contracts of what a host gives plugins (`host.paths@1`, `host.identity@1`, `host.plugins@1`)                         |
+| `@jhin/http-api`           | contract of `http.server@1`                                                                                          |
+| `@jhin/auth-api`           | contract of `auth.verifier@1` (1.1: a principal's `expiresAt`), principal ids and auth events                        |
+| `@jhin/mcp-api`            | contract of `mcp.server@1`: the MCP endpoint and agent credentials                                                   |
+| `@jhin/storage-api`        | contracts of `storage.kv@1`, `storage.eventlog@1`, an in-memory version, the contract tests                          |
+| `@jhin/agent-api`          | contracts of `agent.runtime@1`, `agent.registry@1`, the thread event types and `ThreadHooks` (title, turn start/end) |
+| `@jhin/source-control-api` | contract of `source-control.git@1` and its events                                                                    |
+| `@jhin/terminal-api`       | contract of `terminal.sessions@1`, its commands and stream events                                                    |
+| `@jhin/client-api`         | contracts of client capabilities: connections, navigation, mesh, machines                                            |
 
 ## Server plugins (`plugins/`)
 
@@ -61,7 +61,7 @@ the same PR.
 | `jhin.storage-sqlite` | `storage.kv@1`, `storage.eventlog@1`                                                                          | —                                                                                                                                                              | `foundation.md`                 |
 | `jhin.mcp-server`     | `mcp.server@1`; every command as an MCP tool                                                                  | —                                                                                                                                                              | `foundation.md#D39`             |
 | `jhin.mesh`           | nodes of one owner, relay, addresses                                                                          | `mesh.invite`, `mesh.join`, `mesh.nodes`, `mesh.call`, `mesh.resolve`, `mesh.open`, `mesh.close`, `mesh.config.*`                                              | `foundation.md`                 |
-| `jhin.threads`        | `agent.registry@1`; projects, threads, turns as events                                                        | `projects.*`, `threads.*`, `agents.list`                                                                                                                       | `foundation.md`, `t3-parity.md` |
+| `jhin.threads`        | `agent.registry@1`; projects, threads (with an own `worktreePath`), turns as events; turn hooks               | `projects.*`, `threads.*`, `agents.list`                                                                                                                       | `foundation.md`, `t3-parity.md` |
 | `jhin.agent-claude`   | Claude Code as an agent runtime                                                                               | `claude.sessions.list`, `claude.sessions.close`; event `claude.session.files.deleted`                                                                          | `providers.md`                  |
 | `jhin.agent-fake`     | `agent.runtime@1`, deterministic                                                                              | —                                                                                                                                                              | `foundation.md`                 |
 | `jhin.source-control` | `source-control.git@1`                                                                                        | `git.status`, `git.diff`, `git.branches`, `git.checkout`, `git.thread.status`                                                                                  | `source-control.md`             |

@@ -50,10 +50,11 @@ const DRAIN_TIMEOUT_MS = 5000;
 /** How long archiving or deleting a thread waits for its turn to end after the interrupt. */
 export const STOP_TIMEOUT_MS = 5000;
 /**
- * How long a turn hook may take: one that has not answered by then is given up
- * on (logged), so a hook that hangs never holds its thread (D241).
+ * How long a turn hook may take by default (the `turnHookTimeoutSeconds`
+ * setting): one that has not answered by then is given up on, so a hook that
+ * hangs never holds its thread (D241).
  */
-export const TURN_HOOK_TIMEOUT_MS = 60_000;
+const TURN_HOOK_TIMEOUT_SECONDS = 60;
 /** How long an agent runtime's `status()` answer is reused. */
 const STATUS_TTL_MS = 30_000;
 /** The title a thread gets until its first message names it. */
@@ -81,6 +82,12 @@ const Config = z
           "The agent runtime of new threads, by id (see agents.list); the first available one when unset.",
         examples: ["fake"],
       }),
+    turnHookTimeoutSeconds: z.number().min(0).max(3600).default(TURN_HOOK_TIMEOUT_SECONDS).meta({
+      title: "Turn hook timeout (seconds)",
+      description:
+        "How long a plugin's hook around a turn (a checkpoint) may take: a start hook that takes longer fails the turn, an end hook is given up on.",
+      advanced: true,
+    }),
   })
   .meta({
     title: "Threads",
@@ -438,6 +445,8 @@ export default definePlugin({
       clearTimeout(timer);
     });
     const now = () => new Date().toISOString();
+    const hookTimeoutMs = () =>
+      context.config.get<Config>(CONFIG_SECTION).turnHookTimeoutSeconds * 1000;
 
     // --- Agent runtimes -------------------------------------------------------
     // Runtimes registered through agent.registry@1, then the node's single
@@ -833,13 +842,13 @@ export default definePlugin({
           let late = false;
           await withDeadline(
             context.hooks.run(ThreadHooks.turnStart, hookInput, () => undefined),
-            TURN_HOOK_TIMEOUT_MS,
+            hookTimeoutMs(),
             () => (late = true),
           );
           if (late) {
             throw new ThreadsError(
               "TURN_HOOK_TIMEOUT",
-              `A turn start hook did not answer within ${TURN_HOOK_TIMEOUT_MS / 1000} s`,
+              `A turn start hook did not answer within ${hookTimeoutMs() / 1000} s`,
               { threadId: thread.id, turnId },
             );
           }
@@ -934,7 +943,7 @@ export default definePlugin({
                   error: String(error),
                 }),
               ),
-            TURN_HOOK_TIMEOUT_MS,
+            hookTimeoutMs(),
             () =>
               context.log.error("a turn end hook did not answer; the turn ends", {
                 threadId: thread.id,

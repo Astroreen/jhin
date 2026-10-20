@@ -249,8 +249,10 @@ export const ThreadHooks = {
   /**
    * `TurnHookInput`, run after `agent.turn.started` is recorded and before the
    * agent starts: whatever it does happens before the agent touches anything.
-   * A hook that throws, or does not answer within the threads plugin's
-   * `TURN_HOOK_TIMEOUT_MS`, fails the turn; the agent never starts.
+   * A hook that throws, or does not answer within `jhin.threads`'
+   * `turnHookTimeoutSeconds`, fails the turn; the agent never starts. A hook
+   * given up on is not cancelled: one that may still run when the thread's
+   * next turn starts keeps its work apart (the checkpoints lock per directory).
    */
   turnStart: "threads.turn.start",
   /**
