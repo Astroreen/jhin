@@ -154,12 +154,20 @@ test("D131, D132: the owner changes a node's icon, from its menu or its node con
   await expect(nodes.locator('svg[data-machine="laptop"]')).toHaveCount(1);
   await expect(nodes.locator('svg[data-machine="cloud"]')).toHaveCount(1);
   await page.getByRole("button", { name: `More actions for ${yHost}` }).click();
-  await page.getByRole("menuitem", { name: "Icon" }).click();
-  await expect(page.getByRole("menuitemradio", { name: "Cloud VM" })).toHaveAttribute(
+  // The submenu opens with the keyboard. Base UI opens a submenu trigger on hover only (it
+  // ignores mouse presses), and a hover-opened submenu closes when the trigger moves out
+  // from under a resting pointer: here when x's agent list arrives above y's row and
+  // pushes y's menu down, at whatever moment agents.list answers.
+  await page.getByRole("menuitem", { name: "Icon" }).focus();
+  await page.keyboard.press("ArrowRight");
+  const icons = page.getByRole("menu").filter({
+    has: page.getByRole("menuitemradio", { name: "Cloud VM" }),
+  });
+  await expect(icons.getByRole("menuitemradio", { name: "Cloud VM" })).toHaveAttribute(
     "aria-checked",
     "true",
   );
-  await shoot(page, info, "node-icon-menu");
+  await shoot(icons, info, "node-icon-menu");
   await page.getByRole("menuitemradio", { name: "Desktop" }).click();
   await expect(nodes.locator('svg[data-machine="desktop"]')).toHaveCount(1);
   await expect(nodes.locator('svg[data-machine="cloud"]')).toHaveCount(0);
