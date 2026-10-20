@@ -2130,7 +2130,7 @@ export default definePlugin({
     // A thread's queue lives in the node's storage, so it outlives the page that
     // sent its messages; each change is announced on the thread's stream.
     const queueKey = (threadId: string) => `queue/${threadId}`;
-    /** Queued messages being promoted to a steer: they do not start a turn of their own. */
+    /** Queued messages being promoted to a steer, as `thread:message`: they start no turn of their own. */
     const steering = new Set<string>();
     const readQueue = async (threadId: string): Promise<Queue> => {
       const value = await kv.get(NAMESPACE, queueKey(threadId));
@@ -2190,7 +2190,7 @@ export default definePlugin({
           return;
         }
         // Promoted to a steer at this moment: it goes into the turn, not after it.
-        if (steering.has(head.id)) return;
+        if (steering.has(`${threadId}:${head.id}`)) return;
         const { id, createdAt: _createdAt, updatedAt: _updatedAt, ...message } = head;
         const progress = { recorded: false };
         // It leaves the queue in the write that records its turn's start, so a
@@ -2333,7 +2333,15 @@ export default definePlugin({
             ],
             alongside === undefined ? undefined : { records: [alongside.record] },
           )
-          .catch(failed("could not record a steer", threadId));
+          .catch(async (error: unknown) => {
+            failed("could not record a steer", threadId)(error);
+            // The agent has the message: it must not run again from the queue.
+            if (alongside !== undefined) {
+              await log
+                .append(threadStream(threadId), [alongside.event], { records: [alongside.record] })
+                .catch(failed("could not take a steered message out of its queue", threadId));
+            }
+          });
         current.steering.add(recording);
         await recording;
         current.steering.delete(recording);
@@ -2535,7 +2543,7 @@ export default definePlugin({
           throw notQueued(threadId, messageId);
         }
         // Not delivered as a turn of its own while the agent takes it.
-        steering.add(messageId);
+        steering.add(`${threadId}:${messageId}`);
         try {
           const turnId = active.get(threadId)?.turnId;
           if (turnId === undefined || !(await steerInto(threadId, messageId, "queued"))) {
@@ -2549,7 +2557,7 @@ export default definePlugin({
           }
           return { messageId, turnId };
         } finally {
-          steering.delete(messageId);
+          steering.delete(`${threadId}:${messageId}`);
           // A turn that ended meanwhile left the queue to go on.
           if (!active.has(threadId)) void deliver(threadId);
         }

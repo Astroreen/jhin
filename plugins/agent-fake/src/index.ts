@@ -83,8 +83,8 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
     if (text.startsWith("/fail")) throw new Error("fake agent: asked to fail");
     if (text.startsWith("/hold")) {
       yield { kind: "message.delta", itemId: nextId(), text: "Holding" };
-      // Until it is interrupted or steered.
-      await Promise.race([interruption.wait(), steered.wait()]);
+      // Until it is interrupted or steered (a steer that came first counts).
+      if (steers.length === 0) await Promise.race([interruption.wait(), steered.wait()]);
       return;
     }
     if (text.startsWith("/think")) {

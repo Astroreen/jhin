@@ -956,7 +956,9 @@ and resetting it clears them), with a screenshot.
   once it goes on).
 - Steering a Claude Code that does not mark its frames (an older CLI): its
   first result after a steer ends the turn, so a steer it took only after
-  answering loses its answer.
+  answering loses its answer. And one that sends no idle reports: a result
+  passed over for a steer that it never answers leaves the turn waiting until
+  Claude Code exits, and the turn then fails ("ended without a result").
 - A slow `threads.title` hook holds the queue: `threads.queue.add` on a
   free thread with nothing queued starts its turn under the queue's lock,
   and a thread's first message runs the hook. Edits of that thread's queue

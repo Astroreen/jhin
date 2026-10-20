@@ -403,6 +403,42 @@ describe("jhin.threads: writes that go together (D202, D205)", () => {
     });
   });
 
+  it("takes a promoted message out of its queue even when the steer's record fails", async () => {
+    const { client, thread, storage, events, watched } = await holding();
+    await client.call("threads.queue.add", { threadId: thread.id, text: "a", messageId: "a" });
+    const log = storage.storage.log;
+    const append = log.append.bind(log);
+    log.append = async (stream, batch, options) => {
+      if (batch.some((event) => event.type === ThreadEvents.turnSteered)) {
+        log.append = append;
+        throw new Error("disk full");
+      }
+      return append(stream, batch, options);
+    };
+    await client.call("threads.queue.steer", { threadId: thread.id, messageId: "a" });
+    await untilCount(watched, ThreadEvents.turnCompleted, 1);
+
+    // The agent had it: it never runs again as a turn of its own.
+    expect(lastQueue(events)).toEqual({ messages: [] });
+    expect(started(events)).toEqual(["/hold on"]);
+  });
+
+  it("lets the fake agent take a steer that came before its turn waits", async () => {
+    const turn = fakeTurn({
+      threadId: "t",
+      turnId: "u",
+      input: { text: "/hold" },
+      history: [],
+      cwd: "/",
+    });
+    turn.steer!({ text: "early" });
+    const texts: string[] = [];
+    for await (const item of turn.items) {
+      if (item.kind === "message.completed") texts.push(item.text);
+    }
+    expect(texts).toEqual(["Echo: early"]);
+  });
+
   it("does not hold again on restart a queue the user resumed", async () => {
     const first = await holding();
     await first.client.call("threads.queue.add", { threadId: first.thread.id, text: "after" });
