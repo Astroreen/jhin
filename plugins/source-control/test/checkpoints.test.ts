@@ -178,6 +178,49 @@ describe("jhin.source-control: checkpoints", () => {
     });
   });
 
+  it("snapshots a project folder inside a larger repository, and records a turn without its start as an error", async () => {
+    const dir = repository();
+    const project = Path.join(dir, "app");
+    Fs.mkdirSync(project);
+    const sc = await node({ watch: false });
+    const projectId = await sc.project(project);
+    const { id: threadId } = await sc.client.call<{ id: string }>("threads.create", { projectId });
+    const held = (type: string) =>
+      new Promise<void>((resolve) => {
+        const subscription = sc.client.subscribe(`thread/${threadId}`, {}, (event) => {
+          if (event.type === type) {
+            subscription.dispose();
+            resolve();
+          }
+        });
+      });
+
+    // A file written outside the project's folder during the turn is not the project's.
+    const holding = held("agent.item.delta");
+    const interrupted = held("agent.turn.interrupted");
+    await sc.client.call("threads.send", { threadId, text: "/hold on" });
+    await holding;
+    write(dir, "outside.txt", "elsewhere\n");
+    write(project, "inside.txt", "here\n");
+    await sc.client.call("threads.interrupt", { threadId });
+    await interrupted;
+    const first = (await sc.until(checkpointEvent(threadId, 1))).payload as TurnCheckpoint;
+    expect(first.files.map((file) => file.path)).toEqual(["app/inside.txt"]);
+
+    // Its start went missing: what the turn changed is unknown, not nothing.
+    const again = held("agent.item.delta");
+    const stopped = held("agent.turn.interrupted");
+    await sc.client.call("threads.send", { threadId, text: "/hold on" });
+    await again;
+    git(dir, "update-ref", "-d", `refs/jhin/checkpoints/${threadId}/1`);
+    await sc.client.call("threads.interrupt", { threadId });
+    await stopped;
+    expect((await sc.until(checkpointEvent(threadId, 2))).payload).toMatchObject({
+      status: "error",
+      fileCount: 0,
+    });
+  });
+
   it("takes no checkpoints outside a repository or in the scratch project", async () => {
     const plain = temp("jhin-sc-plain-");
     const sc = await node({ watch: false });

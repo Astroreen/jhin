@@ -260,7 +260,9 @@ with screenshots).
 #### Checkpoints
 
 - **D243. A checkpoint is a commit of the whole working tree under
-  `refs/jhin/checkpoints/<threadId>/<n>`**, `n` the thread's turn count: `0` before
+  `refs/jhin/checkpoints/<threadId>/<n>`**, of the turn's directory (a project
+  folder inside a larger repository is snapshotted alone; the rest stays as
+  `HEAD` has it, as in T3), `n` the thread's turn count: `0` before
   its first turn, `N` after turn `N` (T3's ordinals). It is written as T3 writes
   it, never touching the user's index, `HEAD` or branch: a scratch index
   `<git-common-dir>/jhin-checkpoint-index-<uuid>` (`GIT_INDEX_FILE`), `read-tree
@@ -280,7 +282,9 @@ with screenshots).
   them start. A directory that is no repository (or the scratch project) records
   nothing (T3 records `missing`, which nothing here would read: the panel says the
   project is no repository); a write that fails records `error` and is logged;
-  neither ever fails the turn. Checkpoints are taken in the turn's `cwd`, so a worktree
+  neither ever fails the turn. A turn whose start checkpoint is missing (its write
+  failed, or the directory became a repository meanwhile) records `error`: what
+  it changed is unknown, not nothing. Checkpoints are taken in the turn's `cwd`, so a worktree
   thread's checkpoints live in its worktree's repository.
 - **D245. A turn's checkpoint record** (`TurnCheckpoint` in
   `@jhin/source-control-api`): thread, turn id, turn count, ref, status

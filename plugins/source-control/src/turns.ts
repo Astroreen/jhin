@@ -75,7 +75,10 @@ export function followTurns(
   },
 ): TurnCheckpoints {
   const { kv } = deps;
-  /** Checkpoint operations run one at a time per working directory (T3's KeyedLock). */
+  /**
+   * Checkpoint operations run one at a time per working directory (T3's
+   * KeyedLock), and a thread's end and removal one at a time per `thread:<id>`.
+   */
   const locks = new Map<string, Promise<unknown>>();
   const locked = <T>(cwd: string, task: () => Promise<T>): Promise<T> => {
     const result = (locks.get(cwd) ?? Promise.resolve()).then(task, task);
@@ -151,7 +154,8 @@ export function followTurns(
   context.subscriptions.add(
     context.hooks.before<TurnEndHookInput>(ThreadHooks.turnEnd, async (input) => {
       try {
-        await endTurn(input);
+        // One thread's end and its removal never interleave: no record outlives its thread.
+        await locked(`thread:${input.threadId}`, () => endTurn(input));
       } catch (error) {
         context.log.warn("a turn's checkpoint could not be recorded", {
           threadId: input.threadId,
@@ -188,9 +192,12 @@ export function followTurns(
         const { git, commonDir } = repository;
         await captureCheckpoint(git, commonDir, ref);
         const previous = checkpointRef(input.threadId, turn - 1);
-        return (await hasCheckpoint(git, previous))
-          ? checkpointFiles(git, previous, ref, { ignoreWhitespace: false })
-          : [];
+        // Without the start (its write failed, or the directory became a repository
+        // during the turn) what the turn changed is unknown: not "nothing".
+        if (!(await hasCheckpoint(git, previous))) {
+          throw new Error(`the checkpoint ${previous} the turn started from is missing`);
+        }
+        return checkpointFiles(git, previous, ref, { ignoreWhitespace: false });
       });
       const totals = summarize(files);
       checkpoint = {
@@ -273,26 +280,28 @@ export function followTurns(
         deletions: totals.deletions,
       };
     },
-    remove: async (threadId) => {
-      const stored = await listStored(threadId);
-      const cwd = (await readTurns(threadId))?.cwd ?? stored.at(-1)?.cwd;
-      if (cwd !== undefined) {
-        try {
-          const git = createGit(deps.gitPath(), cwd);
-          await locked(cwd, async () =>
-            deleteCheckpoints(git, await listCheckpoints(git, checkpointPrefix(threadId))),
-          );
-        } catch (error) {
-          context.log.warn("deleting a thread's checkpoints failed", {
-            threadId,
-            error: String(error),
-          });
-        }
-      }
-      for (const checkpoint of stored) {
-        await kv.delete(NAMESPACE, checkpointKey(threadId, checkpoint.turn));
-      }
-      await kv.delete(NAMESPACE, turnsKey(threadId));
-    },
+    remove: (threadId) => locked(`thread:${threadId}`, () => removeThread(threadId)),
   };
+
+  async function removeThread(threadId: string) {
+    const stored = await listStored(threadId);
+    const cwd = (await readTurns(threadId))?.cwd ?? stored.at(-1)?.cwd;
+    if (cwd !== undefined) {
+      try {
+        const git = createGit(deps.gitPath(), cwd);
+        await locked(cwd, async () =>
+          deleteCheckpoints(git, await listCheckpoints(git, checkpointPrefix(threadId))),
+        );
+      } catch (error) {
+        context.log.warn("deleting a thread's checkpoints failed", {
+          threadId,
+          error: String(error),
+        });
+      }
+    }
+    for (const checkpoint of stored) {
+      await kv.delete(NAMESPACE, checkpointKey(threadId, checkpoint.turn));
+    }
+    await kv.delete(NAMESPACE, turnsKey(threadId));
+  }
 }
