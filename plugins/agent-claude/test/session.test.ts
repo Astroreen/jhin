@@ -937,37 +937,44 @@ describe("jhin.agent-claude: W9 live sessions", () => {
   it("does not interrupt again once the stopped turn let go (D350)", async () => {
     let giveReceipt!: (receipt: unknown) => void;
     const late = new Promise((resolve) => (giveReceipt = resolve));
-    const { claude, calls, state } = node([
-      async function* (player) {
-        const uuid = player.call.prompt[0]!.uuid;
-        yield answeringUuid(uuid, init());
-        yield* streamedBlock("m1", 0, "text", ["half"]);
-        await player.interrupted;
-        yield answeringUuid(
-          uuid,
-          result({
-            subtype: "error_during_execution",
-            errors: [],
-            terminal_reason: "aborted_streaming",
-          }),
-        );
-        await player.nextPrompt();
-      },
-    ]);
-    state.receipt = () => late;
-    const turn = claude.startTurn({
-      threadId: THREAD,
-      turnId: "t1",
-      input: { text: "count" },
-      history: [],
-      cwd: "/work",
-      model: "claude-haiku-5-5",
+    const scripted = scriptedQuery(async function* (player) {
+      const uuid = player.call.prompt[0]!.uuid;
+      yield answeringUuid(uuid, init());
+      await player.interrupted;
+      yield answeringUuid(
+        uuid,
+        result({
+          subtype: "error_during_execution",
+          errors: [],
+          terminal_reason: "aborted_streaming",
+        }),
+      );
+      await player.nextPrompt();
     });
-    for await (const item of turn.items) if (item.kind === "message.completed") turn.interrupt();
-    // The receipt comes after the turn ended: the session may run another turn by now.
-    giveReceipt({ still_queued: [calls[0]!.prompt[0]!.uuid] });
-    await new Promise((resolve) => setImmediate(resolve));
-    expect(calls[0]!.interrupts).toBe(1);
+    scripted.state.receipt = () => late;
+    const live = createLiveSessions({
+      query: scripted.query,
+      keepAlive: () => ({ keepAlive: true, idleMs: 0 }),
+    });
+    const held = await live.lease({
+      threadId: THREAD,
+      options: { cwd: "/work" },
+      message: {
+        type: "user",
+        uuid: "0b6c5e5e-0000-4000-8000-0000000000aa",
+        message: { role: "user", content: "count" },
+        parent_tool_use_id: null,
+      },
+    });
+    let stopped: Promise<unknown> | undefined;
+    for await (const message of held.messages) {
+      if (message.type === "system") stopped = held.interrupt();
+    }
+    held.release(true);
+    // The receipt comes after the turn let go: the session may run another turn by now.
+    giveReceipt({ still_queued: ["0b6c5e5e-0000-4000-8000-0000000000aa"] });
+    await stopped;
+    expect(scripted.calls[0]!.interrupts).toBe(1);
   });
 
   it("changes the effort of the running Claude Code live (D349)", async () => {

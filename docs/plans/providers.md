@@ -363,6 +363,10 @@ specific to Claude: the runtime is a plugin on the public API.
 - The kept probe (D344) is keyed on the configuration, not on the values of
   the node's variables: a changed `ANTHROPIC_API_KEY` in the node's
   environment shows the old status until the probe's time runs out.
+- A bound on background work (D348): a task Claude Code never reports done
+  keeps its session out of the idle timer, the cap and a plain
+  `claude.sessions.close` until the thread is archived or deleted, `force`
+  ends it, or the node stops.
 - A node's very first look at the agents (no probe kept yet for its
   configuration, D344) still waits for Claude Code to start, up to 25 s when
   it hangs.
