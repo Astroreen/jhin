@@ -43,6 +43,7 @@ import { DIFF_SECTION, DiffSettings } from "../../lib/settings.ts";
 import { createBranchToolbar } from "./branch-toolbar.tsx";
 import { createRunningActions } from "./running.ts";
 import { createChangedFilesFooter } from "./checkpoints.tsx";
+import { createEditors } from "./diff/editors.tsx";
 import { createDiffScopes, createDiffSelections, gitScopeProvider } from "./diff/scopes.ts";
 import { turnScopeProvider } from "./diff/turns.ts";
 import { createCardIndicators } from "./indicators.tsx";
@@ -101,6 +102,7 @@ export const sourceControlPlugin = builtin(
         toasts,
         scopes,
         selections: createDiffSelections(),
+        editors: createEditors(threads, toasts),
         settings,
         timestampFormat: () => readSection(context, CHAT_SECTION, ChatSettings).timestampFormat,
         shortcut: () => keybindings?.labelFor("diff.toggle"),

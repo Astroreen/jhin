@@ -44,6 +44,10 @@ import {
   resolveFileDiffPath,
 } from "../src/plugins/source-control/diff/rendering.ts";
 import {
+  preferredEditor,
+  resolveDiffPathForWorkspace,
+} from "../src/plugins/source-control/diff/editors.tsx";
+import {
   createDiffScopes,
   createDiffSelections,
   gitScopeProvider,
@@ -507,6 +511,33 @@ describe("the base ref picker's choices", () => {
     expect(filterBaseRefChoices(choices, "fork").map((choice) => choice.label)).toEqual([
       "fork/main",
     ]);
+  });
+});
+
+describe("opening a diff's file", () => {
+  it("resolves repository paths inside the project's folder, as T3 does", () => {
+    const resolve = (filePath: string, workspaceRoot?: string) =>
+      resolveDiffPathForWorkspace({ filePath, workspaceRoot, repositoryRoot: "/repo" });
+    expect(resolve("src/a.ts", "/repo")).toBe("src/a.ts");
+    expect(resolve("web/src/a.ts", "/repo/web/")).toBe("src/a.ts");
+    expect(resolve("api/a.ts", "/repo/web")).toBeNull();
+    expect(resolve("../a.ts", "/repo")).toBeNull();
+    expect(resolve("/etc/passwd", "/repo")).toBeNull();
+    expect(resolve("a.ts", "/elsewhere")).toBeNull();
+    expect(resolve("a.ts")).toBe("a.ts");
+  });
+
+  it("prefers the editor chosen last, else the first one found that is no file manager", () => {
+    const editors = [
+      { id: "file-manager", label: "File Manager" },
+      { id: "cursor", label: "Cursor" },
+      { id: "zed", label: "Zed" },
+    ];
+    const stored = (value: string | null) => ({ getItem: () => value });
+    expect(preferredEditor(editors, stored(null))?.id).toBe("cursor");
+    expect(preferredEditor(editors, stored("zed"))?.id).toBe("zed");
+    expect(preferredEditor(editors, stored("vscode"))?.id).toBe("cursor");
+    expect(preferredEditor([editors[0]!], stored(null))).toBeUndefined();
   });
 });
 

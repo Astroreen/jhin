@@ -179,6 +179,9 @@ importers:
       '@jhin/plugin-auth-token':
         specifier: workspace:*
         version: link:../../plugins/auth-token
+      '@jhin/plugin-editors':
+        specifier: workspace:*
+        version: link:../../plugins/editors
       '@jhin/plugin-example':
         specifier: workspace:*
         version: link:../../plugins/example
@@ -669,6 +672,22 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+
+  plugins/editors:
+    dependencies:
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../../packages/host-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+    devDependencies:
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2

@@ -262,13 +262,16 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   card. Contexts live with the composer's draft, so they survive a reload,
   and go once sent.
 - **D286. Opening a file in an editor**: the server plugin `jhin.editors`
-  (`plugins/editors`) provides `host.editors@1` with the commands
+  (`plugins/editors`, in the distribution) provides `host.editors@1`, whose
+  contract (T3's `EDITORS` list, `EditorInfo`, the error codes) is in
+  `@jhin/host-api`, with the commands
   `editors.list` (the editors found on the node: T3's list — Cursor, VS Code,
   VS Code Insiders, VSCodium, Zed, the JetBrains IDEs, … — looked up on `PATH`
   and in the usual install folders, plus the file manager) and `editors.open`
   (`projectId`, a project-relative `path`, optional `line` and `column`, an
   `editor`; paths outside the project are refused with `PATH_OUTSIDE_PROJECT`,
-  an editor not found with `EDITOR_NOT_FOUND`). Each editor is launched with
+  an editor not found with `EDITOR_NOT_FOUND`, a start that fails with
+  `LAUNCH_FAILED`). Each editor is launched with
   T3's argument style (`--goto file:line:col`, `file:line:col`, or
   `--line N file`), detached. Reads need `editor.list`, opening `editor.open`.
   In the diff panel, clicking a file's name opens it in the preferred editor

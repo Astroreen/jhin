@@ -8,6 +8,8 @@ import type { CodeViewDiffItem, CodeViewScrollTarget, FileDiffMetadata } from "@
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import {
   Button,
+  ContextMenu,
+  ContextMenuTrigger,
   Menu,
   MenuGroup,
   MenuPopup,
@@ -47,6 +49,11 @@ import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { DIFF_SECTION, DiffSettings, useSection } from "../../lib/settings.ts";
 import { DiffStatLabel } from "./checkpoints.tsx";
 import { BaseRefPicker } from "./diff/base-ref-picker.tsx";
+import {
+  FileContextMenuPopup,
+  preferredEditor,
+  resolveDiffPathForWorkspace,
+} from "./diff/editors.tsx";
 import { StyledDiffCodeView } from "./diff/code-view.tsx";
 import { diffFileTreeEntries } from "./diff/file-tree-logic.ts";
 import { DiffFileTree } from "./diff/file-tree.tsx";
@@ -346,9 +353,27 @@ export function createDiffPanel(services: SourceControlServices) {
     target: NodeTarget;
     projectId: string;
     threadId: string | undefined;
+    /** The project's folder on its node. */
+    projectPath: string | undefined;
     status: ProjectStatus | undefined;
   }) {
     const { target, projectId, threadId, status } = props;
+    const editors = services.editors.useEditors(target);
+    const [menuPath, setMenuPath] = useState<string | null>(null);
+    /** A diff's path within the project's folder; none outside it (D287). */
+    const workspacePath = (filePath: string) =>
+      resolveDiffPathForWorkspace({
+        filePath,
+        workspaceRoot: props.projectPath,
+        repositoryRoot: status?.root,
+      });
+    /** T3's primary action on a file's name: the preferred editor opens it. */
+    const openDiffFile = (filePath: string) => {
+      const path = workspacePath(filePath);
+      const editor = preferredEditor(editors);
+      if (path === null || editor === undefined) return;
+      void services.editors.open(target, projectId, path, editor);
+    };
     const resolvedTheme = useResolvedTheme();
     const settings = useSection(services.context, DIFF_SECTION, DiffSettings);
     const [wordWrap, setWordWrap] = useState(settings.wordWrap);
@@ -754,6 +779,15 @@ export function createDiffPanel(services: SourceControlServices) {
                     return;
                   }
                 }
+                const title = composedPath.find(
+                  (node): node is HTMLElement =>
+                    node instanceof HTMLElement && node.hasAttribute("data-title"),
+                );
+                const filePath = title?.textContent;
+                if (filePath) {
+                  openDiffFile(filePath);
+                  return;
+                }
                 const fileHeader = composedPath.find(
                   (node): node is HTMLElement =>
                     node instanceof HTMLElement && node.hasAttribute("data-diffs-header"),
@@ -765,43 +799,72 @@ export function createDiffPanel(services: SourceControlServices) {
                 );
                 if (file) toggleFile(file.fileKey);
               }}
+              onContextMenuCapture={(event) => {
+                const title = (event.nativeEvent.composedPath?.() ?? []).find(
+                  (node): node is HTMLElement =>
+                    node instanceof HTMLElement && node.hasAttribute("data-title"),
+                );
+                const filePath = title?.textContent?.trim();
+                const path = filePath ? workspacePath(filePath) : null;
+                // Only a file's name has a menu, and only when there is something to open it with.
+                if (path === null || editors.length === 0) {
+                  event.stopPropagation();
+                  return;
+                }
+                setMenuPath(path);
+              }}
             >
-              <StyledDiffCodeView<undefined>
-                className="h-full min-h-0 overflow-auto"
-                items={items}
-                key={codeViewMountKey}
-                options={{
-                  diffStyle: settings.layout === "split" ? "split" : "unified",
-                  lineDiffType: "none",
-                  overflow: wordWrap ? "wrap" : "scroll",
-                  theme: resolveDiffThemeName(resolvedTheme),
-                  preferredHighlighter: PREFERRED_HIGHLIGHTER,
-                  themeType: resolvedTheme,
-                  stickyHeaders: true,
-                }}
-                renderHeaderFilenameSuffix={(item) =>
-                  item.type === "diff" ? (
-                    <DiffFilePathCopyButton
-                      filePath={resolveFileDiffPath(item.fileDiff)}
-                      onFailed={() =>
-                        services.toasts?.show({ type: "error", title: "Could not copy the path" })
-                      }
-                    />
-                  ) : null
-                }
-                renderHeaderPrefix={(item) =>
-                  item.type === "diff" ? (
-                    <DiffFileCollapseToggle
-                      collapsed={item.collapsed === true}
-                      fileKey={item.id}
-                      filePath={resolveFileDiffPath(item.fileDiff)}
-                      iconClassName={getDiffCollapseIconClassName(item.fileDiff)}
-                      onToggle={toggleFile}
-                    />
-                  ) : null
-                }
-                viewerRef={setCodeView}
-              />
+              <ContextMenu>
+                <ContextMenuTrigger className="h-full min-h-0" render={<div />}>
+                  <StyledDiffCodeView<undefined>
+                    className="h-full min-h-0 overflow-auto"
+                    items={items}
+                    key={codeViewMountKey}
+                    options={{
+                      diffStyle: settings.layout === "split" ? "split" : "unified",
+                      lineDiffType: "none",
+                      overflow: wordWrap ? "wrap" : "scroll",
+                      theme: resolveDiffThemeName(resolvedTheme),
+                      preferredHighlighter: PREFERRED_HIGHLIGHTER,
+                      themeType: resolvedTheme,
+                      stickyHeaders: true,
+                    }}
+                    renderHeaderFilenameSuffix={(item) =>
+                      item.type === "diff" ? (
+                        <DiffFilePathCopyButton
+                          filePath={resolveFileDiffPath(item.fileDiff)}
+                          onFailed={() =>
+                            services.toasts?.show({
+                              type: "error",
+                              title: "Could not copy the path",
+                            })
+                          }
+                        />
+                      ) : null
+                    }
+                    renderHeaderPrefix={(item) =>
+                      item.type === "diff" ? (
+                        <DiffFileCollapseToggle
+                          collapsed={item.collapsed === true}
+                          fileKey={item.id}
+                          filePath={resolveFileDiffPath(item.fileDiff)}
+                          iconClassName={getDiffCollapseIconClassName(item.fileDiff)}
+                          onToggle={toggleFile}
+                        />
+                      ) : null
+                    }
+                    viewerRef={setCodeView}
+                  />
+                </ContextMenuTrigger>
+                <FileContextMenuPopup
+                  editors={editors}
+                  onOpen={(editor) => {
+                    if (menuPath !== null) {
+                      void services.editors.open(target, projectId, menuPath, editor);
+                    }
+                  }}
+                />
+              </ContextMenu>
             </div>
             {fileTreeOpen ? (
               <aside className="flex w-[min(16rem,40%)] min-w-40 shrink-0 border-l border-border/60">
@@ -853,6 +916,7 @@ export function createDiffPanel(services: SourceControlServices) {
       <Panel
         key={`${JSON.stringify(props.target)}|${projectId}|${props.thread ?? ""}`}
         projectId={projectId}
+        projectPath={catalog?.projects.find((project) => project.id === projectId)?.path}
         status={view.projects.get(projectId)}
         target={props.target}
         threadId={props.project === undefined ? props.thread : undefined}
