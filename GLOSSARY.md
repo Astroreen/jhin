@@ -81,6 +81,13 @@ Words about Jhin:
   event log owned by one node.
 - **Turn** — one exchange in a thread: a user message and the agent's response.
   Every turn carries an `agentId`.
+- **Delegated task** — child work a thread hands to an agent of any runtime
+  and model (`tasks.delegate`, T3 Code's `delegate_task`): a **child thread**
+  (`relationshipToParent: "subagent"`) runs the task prompt, and the parent
+  follows it by its task id and is woken when it ends.
+- **Workflow** — a script that runs several agents (`agent`, `parallel`,
+  `pipeline`, `phase`), each one a delegated task of the thread that started
+  it (`workflows.run`).
 - **Item** — one unit inside a turn: a message, a tool call, a streamed delta.
 - **Agent** — the actor executing turns. Reserved as a separate entity with
   the address `jhin://<nodeId>/agents/<id>`.

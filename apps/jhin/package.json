@@ -30,6 +30,7 @@
     "@jhin/plugin-http": "workspace:*",
     "@jhin/plugin-mcp-server": "workspace:*",
     "@jhin/plugin-mesh": "workspace:*",
+    "@jhin/plugin-orchestration": "workspace:*",
     "@jhin/plugin-source-control": "workspace:*",
     "@jhin/plugin-storage-sqlite": "workspace:*",
     "@jhin/plugin-terminal": "workspace:*",
@@ -59,6 +60,7 @@
     "@jhin/plugin-terminal",
     "@jhin/plugin-agent-claude",
     "@jhin/plugin-agent-fake",
+    "@jhin/plugin-orchestration",
     "@jhin/plugin-mcp-server",
     "@jhin/plugin-mesh"
   ],
