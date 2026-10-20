@@ -568,9 +568,10 @@ describe("terminal sessions", () => {
   it("warns once when the process table cannot be read, then waits quietly", async () => {
     const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-terminal-"));
     const warnings: string[] = [];
+    const debugs: string[] = [];
     let reads = 0;
-    let thirdRead!: () => void;
-    const threeReads = new Promise<void>((resolve) => (thirdRead = resolve));
+    let fourthRead!: () => void;
+    const fourReads = new Promise<void>((resolve) => (fourthRead = resolve));
     // A shell that never prints and exits only when killed: the process table is under test.
     const pty: PtySpawner = {
       spawn: () => {
@@ -595,18 +596,24 @@ describe("terminal sessions", () => {
       pty: async () => pty,
       processTable: async () => {
         reads += 1;
-        if (reads === 3) thirdRead();
+        if (reads === 4) fourthRead();
         throw new Error("stdout maxBuffer length exceeded");
       },
       pollIntervalMs: 1,
       config: () => ({ shell: "/bin/sh", scrollback: 5000 }),
-      log: { ...quiet, warn: (message) => warnings.push(message) },
+      log: {
+        ...quiet,
+        warn: (message) => warnings.push(message),
+        debug: (message) => debugs.push(message),
+      },
     });
     await sessions.open({ threadId: "t", terminalId: "term-1", cwd });
-    await threeReads;
+    // Reads are one after the other: by the fourth, the second and third failed and were logged.
+    await fourReads;
     expect(warnings).toEqual([
       "process table not read; terminal labels and indicators wait for it",
     ]);
+    expect(debugs).toEqual(["process table not read", "process table not read"]);
     await sessions.dispose();
     Fs.rmSync(cwd, { recursive: true, force: true });
   });

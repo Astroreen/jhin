@@ -78,10 +78,14 @@ export function createLiveStreams(): LiveStreams {
  */
 export interface MemoryStreams extends StreamSource {
   append(stream: string, type: string, payload: Json): StoredEvent;
-  /** The events still kept, oldest first. */
+  /**
+   * The events still kept, oldest first: the stream's own array, not a copy,
+   * so it follows `append`, `drop` and `remove` (until `clear` or `delete`
+   * forgets it). Copy it to keep a snapshot.
+   */
   events(stream: string): readonly StoredEvent[];
-  /** Forgets `count` events of `stream`, the oldest first, from the `offset`-th kept one (default 0). */
-  drop(stream: string, count: number, offset?: number): void;
+  /** Forgets the oldest `count` events of `stream`. */
+  drop(stream: string, count: number): void;
   /** Forgets events of `stream` by sequence: one, or a set of them in one pass. */
   remove(stream: string, sequence: number | ReadonlySet<number>): void;
   /** Forgets every event of `stream`; its sequences keep counting. */
@@ -135,21 +139,24 @@ export function createMemoryStreams(
       return event;
     },
     events: (stream) => kept.get(stream) ?? [],
-    drop(stream, count, offset = 0) {
+    drop(stream, count) {
       const list = kept.get(stream);
-      // Only kept events: a negative offset would count from the newest end.
-      if (list === undefined || count <= 0 || offset < 0 || offset >= list.length) return;
-      list.splice(offset, count);
+      if (list === undefined || count <= 0) return;
+      list.splice(0, count);
       if (list.length === 0) kept.delete(stream);
     },
     remove(stream, sequence) {
       const list = kept.get(stream);
       if (list === undefined) return;
       const gone = typeof sequence === "number" ? new Set([sequence]) : sequence;
-      // One pass, however many go.
-      const left = list.filter((event) => !gone.has(event.sequence));
-      if (left.length === 0) kept.delete(stream);
-      else kept.set(stream, left);
+      // One pass, however many go, in place: the array `events` returned is
+      // the one that changes, as with `drop` and `append`.
+      let next = 0;
+      for (const event of list) {
+        if (!gone.has(event.sequence)) list[next++] = event;
+      }
+      list.length = next;
+      if (list.length === 0) kept.delete(stream);
     },
     clear(stream) {
       kept.delete(stream);

@@ -45,8 +45,13 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
   the running shell and ignored the other `cwd`, so a caller whose folder is
   spelled differently than `realpath` makes it (a case change on a
   case-insensitive filesystem) now gets the error instead of the session,
-  for an `open` that waited for the session to start as well. Nor is `cwd` checked against the
-  thread's project: `threadId` is a label that groups terminals, and the
+  for an `open` that waited for the session to start as well. Turning a
+  silently ignored argument into an error is accepted within 1.x, with no
+  opt-in, because nothing relied on the ignored value: the drawer always
+  passes the folder the session started in, and a caller that passed
+  another one got a shell somewhere it did not ask for. Nor is `cwd` checked
+  against the thread's project: `threadId` is a label that groups terminals,
+  and the
   `terminals.write` permission is the only gate, as for every command that
   runs a process. As in T3: the shell is `$SHELL` (`COMSPEC` or PowerShell on
   Windows) unless `jhin.terminal.shell` names one, it starts at 120 × 30, gets
@@ -91,7 +96,9 @@ origin and are covered by `THIRD_PARTY_NOTICES.md`.
 - **D142. Scrollback for late joiners.** A session's stream keeps the output
   of its current process up to `jhin.terminal.scrollback` lines (5000, T3's
   default) and 8 MiB of UTF-8 (T3's byte limit), dropping whole output events
-  from the oldest, in one pass per flush and past events of any other kind;
+  from the oldest, in one pass per flush: it walks the kept events (all but
+  the newest), passes over any that is not output, and forgets the picked
+  ones with one `remove` of their sequences, in place;
   the newest event and the `terminal.started` that opens the stream always
   stay. A client attaches as T3's does, with a
   snapshot and the stream: `terminals.open`, then `terminals.get` (the kept
@@ -261,6 +268,13 @@ installed package).
   thousands of processes the read fails every time and the poll backs off to
   a minute (now with a warning, D144); a larger limit, or a process table
   read another way, would keep labels and indicators going there.
+- Coalescing the `terminals` stream on resize: every resize sends the whole
+  list again, so dragging the drawer's edge sends one list per size it
+  passes through.
+- A test of a re-attach against a 1.0 node (no `instance` in its
+  summaries or its `TERMINAL_NOT_FOUND`): `attach.ts` treats a missing
+  session there as a node that started over and opens a shell, but no test
+  drives that path.
 - Flow control: T3 acknowledges output windows so a slow client does not
   queue unbounded output; Jhin sends every event as it comes.
 - Terminal history across node restarts (T3 writes it to files), a limit on
