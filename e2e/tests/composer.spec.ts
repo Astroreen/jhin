@@ -125,7 +125,7 @@ test("chooses the model's options for a turn: effort, fast mode and Ultrathink",
   // The thread keeps them for its next turn; Ultrathink goes into the prompt.
   await page.getByRole("button", { name: "High Fast", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "Ultrathink" }).click();
-  await expect(message).toHaveValue("Ultrathink:\n");
+  await expect(message).toHaveText("Ultrathink:");
   await expect(page.getByRole("button", { name: "Ultrathink Fast", exact: true })).toBeVisible();
   // As in T3, the prompt carries Ultrathink and the chosen options go with it.
   await message.press("End");
@@ -195,7 +195,7 @@ test("attaches a large paste as pasted-text.txt", async ({ page }) => {
     );
   }, large);
   await expect(page.getByText("Large paste attached as pasted-text.txt")).toBeVisible();
-  await expect(message).toHaveValue("");
+  await expect(message).toHaveText("");
   await expect(
     page.getByRole("form", { name: "Composer" }).getByText("pasted-text.txt"),
   ).toBeVisible();
@@ -204,4 +204,84 @@ test("attaches a large paste as pasted-text.txt", async ({ page }) => {
   await expect(page.getByRole("article", { name: "Agent" })).toContainText(
     "pasted-text.txt (40960 bytes: xxxx",
   );
+});
+
+test("offers commands, skills and files from / $ and @, and inserts what is picked", async ({
+  page,
+}, info) => {
+  // The scratch project's folder: what "@" searches.
+  const scratch = Path.join(node.home, "data", "jhin.threads", "scratch");
+  Fs.mkdirSync(Path.join(scratch, "src"), { recursive: true });
+  Fs.writeFileSync(Path.join(scratch, "src", "app.ts"), "export {};\n");
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.click();
+
+  await message.pressSequentially("/");
+  const commands = page.getByRole("listbox", { name: "Commands" });
+  await expect(commands.getByRole("option")).toHaveText([
+    /\/model/,
+    /\/plan/,
+    /\/default/,
+    /\/review/,
+    /\/skill:Deploy/,
+  ]);
+  const shot = info.outputPath("slash-menu.png");
+  await page.screenshot({ path: shot });
+  await info.attach("slash menu", { path: shot, contentType: "image/png" });
+  await message.pressSequentially("rev");
+  await expect(commands.getByRole("option")).toHaveText([/\/review/]);
+  await message.press("Enter");
+  await expect(commands).toBeHidden();
+  await expect(message).toHaveText("/review");
+
+  // $ offers skills; the pick is a chip that sends as $deploy.
+  await message.press("End");
+  await message.pressSequentially(" then $dep");
+  const skills = page.getByRole("listbox", { name: "Skills" });
+  await expect(skills.getByRole("option")).toHaveText([/Deploy/]);
+  await message.press("Enter");
+  await expect(message.locator("[data-skill='deploy']")).toBeVisible();
+
+  // @ searches the project's files.
+  await message.pressSequentially("@app");
+  const files = page.getByRole("listbox", { name: "Files and folders" });
+  await expect(files.getByRole("option").first()).toContainText("app.ts");
+  await message.press("ArrowDown");
+  await message.press("ArrowUp");
+  await message.press("Tab");
+  await expect(message.locator("[data-mention='src/app.ts']")).toHaveText("app.ts");
+  await message.press("Escape");
+
+  await message.press("Enter");
+  // The agent got the markdown: the file link renders as a link in its echo.
+  const answer = page
+    .getByRole("log", { name: "Messages" })
+    .getByRole("article", { name: "Agent" });
+  await expect(answer).toContainText("Echo: /review");
+  await expect(answer).toContainText("$deploy");
+  await expect(answer.getByRole("link", { name: "app.ts" })).toHaveAttribute("href", "src/app.ts");
+});
+
+test("switches to plan mode with /plan sent alone, and dismisses a menu with Escape", async ({
+  page,
+}) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  // The agent's modes are known once its toggle shows.
+  await expect(page.getByRole("button", { name: "Build mode" })).toBeVisible();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.click();
+  await message.pressSequentially("/pl");
+  await expect(page.getByRole("listbox", { name: "Commands" })).toBeVisible();
+  await message.press("Escape");
+  await expect(page.getByRole("listbox", { name: "Commands" })).toBeHidden();
+  await message.pressSequentially("an");
+  await message.press("Enter");
+  await expect(page.getByRole("button", { name: "Plan mode" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(message).toHaveText("");
 });

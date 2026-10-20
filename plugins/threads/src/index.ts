@@ -25,6 +25,8 @@ import {
   type AgentResponse,
   type AgentRuntime,
   type AgentRuntimeStatus,
+  type AgentSkill,
+  type AgentSlashCommand,
   type AgentTurn,
   type InteractionMode,
   type ModelOptionSelection,
@@ -53,6 +55,7 @@ import {
 
 import { matchTexts, mergeBackMessage, searchTexts, type SearchText } from "./history.ts";
 import { AttachmentRef, MAX_ATTACHMENTS, createAttachments } from "./attachments.ts";
+import { createProjectEntries } from "./project-entries.ts";
 
 export { THREADS_STREAM };
 
@@ -1803,6 +1806,73 @@ export default definePlugin({
             };
           }),
         );
+      },
+    });
+
+    context.commands.register({
+      name: "agents.commands",
+      description:
+        "The slash commands and skills an agent offers in a project's folder, from the agent's own initialization",
+      input: z.object({ projectId: z.string(), agentId: z.string().optional() }),
+      output: z.object({
+        commands: z.array(
+          z.object({
+            name: z.string(),
+            description: z.string().optional(),
+            input: z.object({ hint: z.string() }).optional(),
+          }),
+        ),
+        skills: z.array(
+          z.object({
+            name: z.string(),
+            description: z.string().optional(),
+            path: z.string(),
+            scope: z.string().optional(),
+            displayName: z.string().optional(),
+          }),
+        ),
+      }),
+      permissions: ["threads.read"],
+      handler: async ({ projectId, agentId }) => {
+        const project = await getProject(projectId);
+        const runtime = agentId === undefined ? await defaultRuntime() : registry.get(agentId);
+        if (runtime === undefined) {
+          throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${agentId ?? ""} on this node`, {
+            agentId,
+          });
+        }
+        if (runtime.commands === undefined) return { commands: [], skills: [] };
+        const found = await runtime.commands({ cwd: project.path });
+        return structuredClone({ commands: [...found.commands], skills: [...found.skills] }) as {
+          commands: AgentSlashCommand[];
+          skills: AgentSkill[];
+        };
+      },
+    });
+
+    // --- Project files ---------------------------------------------------------
+    const projectEntries = createProjectEntries();
+    context.commands.register({
+      name: "projects.search-entries",
+      description:
+        "Files and folders of a project matching a query, best first, for @ mentions (git's files, else a walk of the folder)",
+      input: z.object({
+        projectId: z.string(),
+        query: z.string().trim().max(256),
+        limit: z.number().int().min(1).max(200).default(80),
+        kind: z.enum(["file", "directory"]).optional(),
+      }),
+      output: z.object({
+        entries: z.array(z.object({ path: z.string(), kind: z.enum(["file", "directory"]) })),
+        truncated: z.boolean(),
+      }),
+      permissions: ["projects.read"],
+      handler: async ({ projectId, query, limit, kind }) => {
+        const project = await getProject(projectId);
+        return projectEntries.search(project.path, query, {
+          limit,
+          ...(kind === undefined ? {} : { kind }),
+        });
       },
     });
 

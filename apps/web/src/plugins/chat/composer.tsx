@@ -2,7 +2,7 @@
 // apps/web/src/components/chat/ChatComposer.tsx, ComposerPrimaryActions.tsx,
 // ComposerPendingApprovalPanel.tsx, ComposerPendingApprovalActions.tsx,
 // ComposerPendingUserInputPanel.tsx, QueuedRunsControl.tsx, ProviderModelPicker.tsx,
-// ContextWindowMeter.tsx and runtimeModeConfig.ts. A plain textarea replaces the rich editor.
+// ContextWindowMeter.tsx and runtimeModeConfig.ts. The prompt is T3's tiptap editor (prompt-editor.tsx).
 import { applicableModelOptions } from "@jhin/agent-api";
 import type {
   AgentResponse,
@@ -63,9 +63,7 @@ import {
   useImperativeHandle,
   useRef,
   useState,
-  type ClipboardEvent,
   type DragEvent,
-  type KeyboardEvent,
   type Ref,
 } from "react";
 
@@ -83,6 +81,11 @@ import {
   pastedTextFile,
   shouldHandleAttachmentPaste,
 } from "../../lib/attachment-files.ts";
+import { menuInsertion, type ComposerMenuItem } from "../../lib/composer-menu.ts";
+import {
+  parseStandaloneComposerSlashCommand,
+  serializeComposerFileLink,
+} from "../../lib/composer-trigger.ts";
 import { formatTokens } from "../../lib/format.ts";
 import {
   currentOptionValue,
@@ -95,6 +98,9 @@ import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { isMacPlatform, currentPlatform } from "../../lib/keybindings.ts";
 import type { RequestItem, ThreadQueue } from "../../lib/timeline.ts";
 import { ComposerBanner } from "./banner.tsx";
+import { ComposerCommandMenu } from "./command-menu.tsx";
+import { PromptEditor, type PromptEditorHandle } from "./prompt-editor.tsx";
+import { useComposerMenu } from "./use-composer-menu.ts";
 import {
   ComposerAttachments,
   attachmentItems,
@@ -1108,6 +1114,8 @@ export function Composer(props: ComposerProps) {
   const settings = useSection(chat.context, CHAT_SECTION, ChatSettings);
   const initial = drafts.get(props.draftKey);
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
+  /** Where the caret is in the prompt (a markdown string): the menus read the trigger there. */
+  const [cursor, setCursor] = useState(prompt.length);
   const uploads = useComposerAttachments({
     call: (method, params) => chat.threads.call(props.target, method, params),
     toasts,
@@ -1123,7 +1131,7 @@ export function Composer(props: ComposerProps) {
   const [questionIndex, setQuestionIndex] = useState(0);
   /** The question an option was just picked on: the next one shows shortly after. */
   const [picked, setPicked] = useState<number | undefined>();
-  const textarea = useRef<HTMLTextAreaElement>(null);
+  const editor = useRef<PromptEditorHandle>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const historyPosition = useRef<PromptHistoryPosition | null>(null);
 
@@ -1184,7 +1192,7 @@ export function Composer(props: ComposerProps) {
       setEditing({ id: messageId, draft: typedNow.current });
       setPrompt(message.text);
       uploads.replace(attachmentItems(message.attachments));
-      textarea.current?.focus();
+      editor.current?.focus();
     } finally {
       queueBusy.current = false;
     }
@@ -1239,7 +1247,7 @@ export function Composer(props: ComposerProps) {
     return () => clearTimeout(timer);
   }, [picked]);
 
-  const focus = () => textarea.current?.focus();
+  const focus = () => editor.current?.focus();
   const cycleRuntimeMode = () => {
     if (runtimeModes.length < 2) return;
     const next = runtimeModes[(runtimeModes.indexOf(runtimeMode) + 1) % runtimeModes.length]!;
@@ -1254,20 +1262,35 @@ export function Composer(props: ComposerProps) {
     if (!planSupported) return;
     props.onSelectionChange({ ...props.selection, interactionMode: planMode ? "default" : "plan" });
   };
+  /** Puts text into the prompt (Add to chat): at the caret while the editor has focus, else at the end. */
   const insert = (text: string) => {
-    const field = textarea.current;
-    // Read once, before the update: at the cursor when the box has focus, else at the end.
-    const focused = field !== null && document.activeElement === field;
-    const start = focused ? field.selectionStart : prompt.length;
-    const end = focused ? field.selectionEnd : prompt.length;
-    const before = prompt.slice(0, start);
+    const at = focused ? Math.min(cursor, prompt.length) : prompt.length;
+    const before = prompt.slice(0, at);
     const gap = before.length > 0 && !/\s$/.test(before) ? "\n\n" : "";
-    const caret = before.length + gap.length + text.length;
-    setPrompt(`${before}${gap}${text}${prompt.slice(end)}`);
-    requestAnimationFrame(() => {
-      field?.focus();
-      field?.setSelectionRange(caret, caret);
-    });
+    editor.current?.replaceRange(at, at, `${gap}${text}`);
+    editor.current?.focus();
+  };
+  const menuListId = useId();
+  const menu = useComposerMenu({
+    call: (method, params) => chat.threads.call(props.target, method, params),
+    projectId: props.context?.project?.id,
+    agentId: agent?.agentId,
+    prompt,
+    cursor,
+    planMode: planSupported,
+    enabled: approval === undefined && question === undefined,
+  });
+  /** T3's onSelectComposerItem: inserts the command, skill or file, or runs a built-in. */
+  const pickMenuItem = (item: ComposerMenuItem) => {
+    const trigger = menu.trigger;
+    if (trigger === null) return;
+    const insertion = menuInsertion(item, serializeComposerFileLink);
+    editor.current?.replaceRange(trigger.rangeStart, trigger.rangeEnd, insertion ?? "");
+    if (item.type !== "slash-command") return;
+    if (item.command === "model") setPickerOpen(true);
+    else if (planSupported) {
+      props.onSelectionChange({ ...props.selection, interactionMode: item.command });
+    }
   };
   useImperativeHandle(props.handleRef, () => ({
     restore(draft) {
@@ -1310,7 +1333,7 @@ export function Composer(props: ComposerProps) {
     // nothing edited (`queuedMessages`).
     editLatest() {
       const latest = queued.at(-1);
-      const caret = textarea.current?.selectionStart ?? 0;
+      const caret = editor.current?.cursor() ?? 0;
       if (latest === undefined || editing !== undefined || caret !== 0) return false;
       void startEdit(latest.id);
       return true;
@@ -1398,6 +1421,15 @@ export function Composer(props: ComposerProps) {
       return;
     }
     if (!hasContent) return;
+    // `/plan` or `/default` sent alone switch the mode instead (T3).
+    const standalone =
+      attachments.length === 0 ? parseStandaloneComposerSlashCommand(prompt) : null;
+    if (standalone !== null && planSupported) {
+      props.onSelectionChange({ ...props.selection, interactionMode: standalone });
+      setPrompt("");
+      setCursor(0);
+      return;
+    }
     const ready = uploads.forMessage();
     if (!ready.ok) {
       toasts?.show({ type: "error", title: ready.message });
@@ -1421,6 +1453,7 @@ export function Composer(props: ComposerProps) {
     }
     // Cleared first, restored if sending fails (as T3 Code does).
     setPrompt("");
+    setCursor(0);
     const taken = uploads.take();
     historyPosition.current = null;
     setBusy(true);
@@ -1508,17 +1541,22 @@ export function Composer(props: ComposerProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+  /** Keys the composer takes before the editor: menus, history, plan mode. True when taken. */
+  const onKeyDown = (event: globalThis.KeyboardEvent): boolean => {
+    if (event.isComposing || event.keyCode === 229) return false;
+    if (menu.onKeyDown(event, pickMenuItem)) {
+      event.preventDefault();
+      return true;
+    }
     // T3's ⌘/Ctrl+Shift+V: the paste it starts stays inline, however large.
     if (isPasteAsTextShortcut(event, isMacPlatform(currentPlatform()))) {
       pasteAsText.current = true;
-      return;
+      return false;
     }
     if (event.key === "Tab" && event.shiftKey && planSupported) {
       event.preventDefault();
       togglePlanMode();
-      return;
+      return true;
     }
     if (
       (event.key === "ArrowUp" || event.key === "ArrowDown") &&
@@ -1529,11 +1567,8 @@ export function Composer(props: ComposerProps) {
       attachments.length === 0 &&
       props.requests.length === 0
     ) {
-      const element = event.currentTarget;
-      const atStart =
-        element.selectionStart === 0 ||
-        !element.value.slice(0, element.selectionStart).includes("\n");
-      const atEnd = !element.value.slice(element.selectionEnd).includes("\n");
+      const atStart = editor.current?.caretOnFirstLine() ?? true;
+      const atEnd = editor.current?.caretOnLastLine() ?? true;
       if ((event.key === "ArrowUp" && atStart) || (event.key === "ArrowDown" && atEnd)) {
         const step = stepPromptHistory({
           direction: event.key === "ArrowUp" ? "backward" : "forward",
@@ -1544,45 +1579,41 @@ export function Composer(props: ComposerProps) {
         if (step !== null) {
           event.preventDefault();
           historyPosition.current = step.position;
+          // The editor takes a prompt set from outside with the caret at its end.
           setPrompt(step.prompt);
-          requestAnimationFrame(() => {
-            const length = textarea.current?.value.length ?? 0;
-            textarea.current?.setSelectionRange(length, length);
-          });
+          setCursor(step.prompt.length);
         }
-        return;
+        return true;
       }
     }
     // A shortcut took the key already (the dispatcher runs first): nothing more.
-    if (event.defaultPrevented) return;
-    if (event.key !== "Enter" || event.altKey) return;
-    const withMod = event.metaKey || event.ctrlKey;
+    if (event.defaultPrevented) return true;
     // While a turn runs the send key with ⌘/Ctrl (and Shift when ⌘/Ctrl sends)
-    // does the opposite of "Follow-up behavior" (T3's composer.sendAlternate).
-    if (
-      props.running &&
-      editing === undefined &&
-      (settings.sendShortcut === "enter" ? withMod && !event.shiftKey : withMod && event.shiftKey)
-    ) {
-      event.preventDefault();
-      void send(true);
-      return;
+    // does the opposite of "Follow-up behavior" (T3's composer.sendAlternate);
+    // the editor sends on its own send key.
+    if (event.key === "Enter" && !event.altKey && props.running && editing === undefined) {
+      const withMod = event.metaKey || event.ctrlKey;
+      if (
+        settings.sendShortcut === "enter" ? withMod && !event.shiftKey : withMod && event.shiftKey
+      ) {
+        event.preventDefault();
+        void send(true);
+        return true;
+      }
     }
-    if (event.shiftKey) return;
-    if (settings.sendShortcut === "mod-enter" && !withMod) return;
-    event.preventDefault();
-    void send();
+    return false;
   };
 
-  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = Array.from(event.clipboardData.files);
-    const plainText = event.clipboardData.getData("text/plain");
+  /** Files and large pastes become attachments; true when the paste was taken. */
+  const onPaste = (event: globalThis.ClipboardEvent): boolean => {
+    const files = Array.from(event.clipboardData?.files ?? []);
+    const plainText = event.clipboardData?.getData("text/plain") ?? "";
     const bypass = pasteAsText.current;
     pasteAsText.current = false;
     if (files.length > 0 && shouldHandleAttachmentPaste({ files, plainText })) {
       event.preventDefault();
       void addFiles(files);
-      return;
+      return true;
     }
     // A large paste becomes a file, as T3 attaches it (D295).
     if (
@@ -1602,7 +1633,9 @@ export function Composer(props: ComposerProps) {
           isMacPlatform(currentPlatform()) ? "⌘⇧V" : "Ctrl+Shift+V"
         } to keep a large paste inline.`,
       });
+      return true;
     }
+    return false;
   };
   const onDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
@@ -1617,14 +1650,26 @@ export function Composer(props: ComposerProps) {
         ? "Type your own answer, or leave this blank to use the selected option"
         : props.unavailable !== undefined
           ? props.unavailable
-          : "Ask anything, or attach files";
+          : "Ask anything, @tag files/folders, $use skills, or / for commands";
   const disabled = approval !== undefined;
   const mode = RUNTIME_MODES[runtimeMode] ?? RUNTIME_MODES["full-access"]!;
 
   return (
     <div className="relative z-10">
       <ComposerSurface.Shell>
-        {approval !== undefined ? (
+        {menu.trigger !== null && approval === undefined && question === undefined ? (
+          <ComposerBanner.Attachment>
+            <ComposerCommandMenu
+              activeItemId={menu.activeId}
+              isLoading={menu.isLoading}
+              items={menu.items}
+              listId={menuListId}
+              onHighlight={menu.setActiveId}
+              onSelect={pickMenuItem}
+              trigger={menu.trigger.kind}
+            />
+          </ComposerBanner.Attachment>
+        ) : approval !== undefined ? (
           <ApprovalBanner
             busy={busy}
             count={props.requests.filter((request) => request.request.kind === "approval").length}
@@ -1696,28 +1741,26 @@ export function Composer(props: ComposerProps) {
                       onRetry={uploads.retry}
                     />
                     <div className="relative flow-root text-sm max-sm:pointer-coarse:text-[16px]">
-                      <textarea
-                        aria-label="Message"
+                      <PromptEditor
                         className={cn(
-                          "-m-1 block max-h-52 min-h-19.5 w-[calc(100%+0.5rem)] resize-none overflow-y-auto bg-transparent p-1 leading-relaxed whitespace-pre-wrap wrap-break-word text-foreground outline-none placeholder:text-placeholder/75 [field-sizing:content]",
+                          "-m-1 block max-h-52 min-h-19.5 w-[calc(100%+0.5rem)] overflow-y-auto bg-transparent p-1 leading-relaxed wrap-break-word text-foreground outline-none",
                           approval !== undefined && "min-h-10",
                         )}
                         disabled={disabled}
+                        handleRef={editor}
                         onBlur={() => setFocused(false)}
-                        readOnly={busy && question === undefined}
-                        onChange={(event) => {
-                          setPrompt(event.target.value);
+                        onChange={(value, caret) => {
+                          if (value !== prompt) setPrompt(value);
+                          setCursor(caret);
+                          setCaretAtStart(caret === 0);
                         }}
                         onFocus={() => setFocused(true)}
                         onKeyDown={onKeyDown}
-                        onSelect={(event) => {
-                          const field = event.currentTarget;
-                          setCaretAtStart(field.selectionStart === 0 && field.selectionEnd === 0);
-                        }}
                         onPaste={onPaste}
+                        onSubmit={() => void send()}
                         placeholder={placeholder}
-                        ref={textarea}
-                        rows={3}
+                        readOnly={busy && question === undefined}
+                        sendShortcut={settings.sendShortcut === "mod-enter" ? "mod-enter" : "enter"}
                         value={approval !== undefined ? "" : prompt}
                       />
                     </div>

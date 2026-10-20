@@ -238,6 +238,25 @@ describe("jhin.agent-claude: a turn", () => {
     expect(calls[0]!.options.additionalDirectories).toEqual(["/data/blobs/thread/t1"]);
   });
 
+  it("sends a $skill as /skill at the start of the message's last block", async () => {
+    const { query, calls } = scriptedQuery(async function* () {
+      yield init();
+      yield result();
+    });
+    const turn = claudeTurn(request({ input: { text: "ship it with $deploy now" } }), {
+      query,
+      sessions: memorySessions(),
+      settings: {},
+      defaultModel: "claude-fable-5-1",
+      skills: async () => new Set(["deploy"]),
+    });
+    await drain(turn);
+    expect(calls[0]!.prompt[0]!.message.content).toEqual([
+      { type: "text", text: "ship it with" },
+      { type: "text", text: "/deploy now" },
+    ]);
+  });
+
   it("resumes the thread's session on a later turn", async () => {
     const { turn, calls } = start(
       [

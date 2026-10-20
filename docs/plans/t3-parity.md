@@ -577,9 +577,12 @@ It lands as a stack of PRs, each named below with the decisions it carries.
   `{ entries: { path, kind }[], truncated }`) searches an index of the
   project kept by the threads plugin: the files `git ls-files` lists (tracked
   and untracked, not ignored), else a walk of the folder, and the folders
-  they are in, at most 25 000 entries, dropped after 15 minutes unused. T3
-  ranks with a native index (`@ff-labs/fff-node`); here T3's own fuzzy scorer
-  (`scoreQueryMatch`) ranks the entries. The menu ("Files and folders",
+  they are in, at most 25 000 entries, built again when older than 10
+  seconds (T3's native index watches the folder instead) and dropped after 15
+  minutes unused. T3 ranks with a native index (`@ff-labs/fff-node`); here
+  T3's own scorer (`scoreQueryMatch`) ranks them: the name (exact, prefix,
+  word boundary, anywhere, fuzzy), then the whole path. An empty `@` asks for
+  the first entries, where T3 shows other threads. The menu ("Files and folders",
   "Searching workspace files...", "No matching files or folders.") waits
   120 ms after typing, and a pick inserts T3's markdown link
   (`[name](path)`), which the agent reads as text.
@@ -593,7 +596,12 @@ It lands as a stack of PRs, each named below with the decisions it carries.
   markdown string, so drafts, history, the queue and `threads.send` are
   unchanged. Enter sends, Shift+Enter breaks a line, IME composition never
   sends; arrow keys move through prompt history on the first and last line
-  only. The menus of D301 and D302 open from the editor's caret.
+  only. The menus of D301 and D302 open from the editor's caret, as a
+  listbox above the composer ("Commands", "Skills", "Files and folders"):
+  arrow keys move and wrap, Enter or Tab picks, Escape dismisses until the
+  next trigger. The editor is `plugins/chat/prompt-editor.tsx` (tiptap 3.32,
+  the version whose React package has its peers; T3 pins 3.31), its pure
+  parts `lib/composer-trigger.ts`.
 
 #### Proposed plans
 
@@ -670,6 +678,21 @@ HEIC detection and dimensions, the byte budgets; what fits in a message);
 Playwright `e2e/tests/composer.spec.ts` (a text file and an image uploaded,
 sent by id, read by the agent, shown and downloaded from the message; a large
 paste attached as `pasted-text.txt`), with screenshots.
+
+The proof of D300–D303: `plugins/threads/test/project-entries.test.ts`
+(T3's ranking of names and paths, folders as entries, the entry limit, git's
+files without the ignored ones, a walk without git, `projects.search-entries`
+and `agents.commands` through the plugin); `plugins/agent-claude/test/commands.test.ts`
+(the initialization's commands, SKILL.md frontmatter, skills by folder with
+the user's first, T3's skill dispatch) and `turn.test.ts` (a `$skill` sent as
+the last block's `/skill`); `apps/web/test/composer-menu.test.ts` (the `/` menu's
+order and filters, skill search, what a pick inserts);
+`apps/web/test/composer-trigger.test.ts` and `prompt-editor.browser.test.tsx`
+(triggers, file links, chips that serialize back, Enter and Shift+Enter,
+replacing a range, keys the composer takes); Playwright
+`e2e/tests/composer.spec.ts` (the `/`, `$` and `@` menus picking a command, a
+skill chip and a file chip that reach the agent as their text, `/plan` sent
+alone, Escape), with screenshots.
 
 ### Node machine icons
 
@@ -1418,8 +1441,16 @@ and as events arrive).
   panel; checkpoints and reverting to a turn, worktrees, git actions
   (commit, push, create a pull request) and linking pull requests to threads
   are deferred there.
-- Composer: `@` file mentions, slash commands and rich text (tiptap) (W6,
-  D300–D303, in progress).
+- Applying Fast Mode and Ultracode to a live Claude Code session through
+  `applyFlagSettings` (T3 does): a change of them starts it again (D298).
+- The editor's parts T3 has and this port left out (D303): Shiki highlighting
+  and the language picker in code blocks, Tab indents in them, headings,
+  horizontal rules and task lists (kept as text), visible marks at the caret,
+  citation and context-reference chips, chip popovers (file icons, a skill's
+  description and "View instructions"), `#` pull-request mentions and other
+  threads in the `@` menu, wrapping a selection in brackets or quotes, the
+  plain-text and literal modes, `aria-activedescendant` from the editor to the
+  menu, and T3's setting to hide skills from the `/` menu.
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,
   not for millions); T3's preview of a file in the composer and in the

@@ -292,6 +292,25 @@ export function applicableModelOptions(
   return result;
 }
 
+/** A command the agent runs itself, typed as `/name` (since 1.2, T3's slash commands). */
+export interface AgentSlashCommand {
+  readonly name: string;
+  readonly description?: string;
+  /** What to type after it, e.g. `<file>`. */
+  readonly input?: { readonly hint: string };
+}
+
+/** A skill the user can invoke by name (`$name`, since 1.2). */
+export interface AgentSkill {
+  readonly name: string;
+  readonly description?: string;
+  /** Where its instructions are, e.g. a SKILL.md file. */
+  readonly path: string;
+  /** Where it comes from, e.g. `user` or `project`. */
+  readonly scope?: string;
+  readonly displayName?: string;
+}
+
 export interface AgentRuntimeStatus {
   /** False when the runtime cannot run turns here now (not installed, signed out). */
   readonly available: boolean;
@@ -326,6 +345,14 @@ export interface AgentRuntime {
   readonly interactionModes?: readonly InteractionMode[];
   /** Since 1.2: its turns take messages while they run (`AgentTurn.steer`). */
   readonly steering?: boolean;
+  /**
+   * Since 1.2: the commands and skills a user can invoke in a folder, from the
+   * agent's own initialization (D300). None when absent.
+   */
+  commands?(request: { readonly cwd: string }): Promise<{
+    readonly commands: readonly AgentSlashCommand[];
+    readonly skills: readonly AgentSkill[];
+  }>;
   /** Whether it can run turns now; assumed available when absent. */
   status?(): Promise<AgentRuntimeStatus>;
   startTurn(request: TurnRequest): AgentTurn;

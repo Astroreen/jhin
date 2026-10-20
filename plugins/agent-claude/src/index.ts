@@ -9,6 +9,7 @@ import {
   type AgentRegistry,
   type AgentRuntime,
   type AgentRuntimeStatus,
+  type AgentSlashCommand,
   type AgentTurn,
 } from "@jhin/agent-api";
 import { MCP_SERVER_CAPABILITY, type McpServer } from "@jhin/mcp-api";
@@ -22,6 +23,7 @@ import {
 } from "@jhin/storage-api";
 import { query as sdkQuery, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
+import { COMPACT_SLASH_COMMAND, discoverSkills, parseInitializationCommands } from "./commands.ts";
 import { claudeConfigDir, deleteSessionFiles } from "./files.ts";
 import {
   BUNDLED_DEFAULT_MODEL,
@@ -184,7 +186,12 @@ export type Config = z.output<typeof Config>;
 interface Probe {
   readonly status: AgentRuntimeStatus;
   readonly models?: readonly AgentModel[];
+  /** The slash commands of the folder it ran in (D300). */
+  readonly commands?: readonly AgentSlashCommand[];
 }
+
+/** Commands are asked of Claude Code again after this (T3's PROVIDER_WORKSPACE_SNAPSHOT_TTL_MS). */
+const COMMANDS_TTL_MS = 5 * 60 * 1000;
 
 /** A probe as kept, with when it ran and the configuration (`key`) it ran with. */
 export interface StoredProbe {
@@ -203,7 +210,7 @@ export interface ProbeStore {
  * Starts Claude Code without a prompt and reads its initialization (account and models),
  * as T3 Code's ClaudeProvider capability probe does; nothing reaches the API.
  */
-async function probe(query: QueryFunction, config: Config): Promise<Probe> {
+async function probe(query: QueryFunction, config: Config, cwd = Os.tmpdir()): Promise<Probe> {
   let release!: () => void;
   const finished = new Promise<void>((resolve) => (release = resolve));
   // Sends nothing: the probe only needs Claude Code's initialization (T3 does the same).
@@ -221,6 +228,7 @@ async function probe(query: QueryFunction, config: Config): Promise<Probe> {
         subscriptionType?: string;
       };
       models?: { value: string; displayName: string; description?: string }[];
+      commands?: unknown[];
     }>;
   };
   let running: Initializing | undefined;
@@ -229,7 +237,7 @@ async function probe(query: QueryFunction, config: Config): Promise<Probe> {
     running = query({
       prompt: prompt(),
       options: {
-        cwd: Os.tmpdir(),
+        cwd,
         ...(config.binaryPath === undefined
           ? {}
           : { pathToClaudeCodeExecutable: config.binaryPath }),
@@ -278,6 +286,7 @@ async function probe(query: QueryFunction, config: Config): Promise<Probe> {
             message: "Claude Code is not signed in. Run `claude auth login` and try again.",
           },
       ...(models.length === 0 ? {} : { models }),
+      commands: parseInitializationCommands(init.commands),
     };
   } catch (error) {
     return {
@@ -339,6 +348,11 @@ export function createClaudeRuntime(options: {
   };
   /** The probe running now, by the config it runs with: a probe is joined only for its config. */
   const probing = new Map<string, Promise<Probe>>();
+  /** Commands of each folder Claude Code was asked in, by config and folder. */
+  const commandProbes = new Map<
+    string,
+    { at: number; commands: Promise<readonly AgentSlashCommand[]> }
+  >();
   const models = () => probed?.probe.models ?? BUNDLED_MODELS;
   const defaultModel = () => {
     const configured = options.config().defaultModel;
@@ -396,6 +410,42 @@ export function createClaudeRuntime(options: {
       if (Date.now() - probed.at >= ttl) void refresh().catch(() => undefined);
       return probed.probe.status;
     },
+    async commands({ cwd }) {
+      const config = options.config();
+      const key = `${probeKey()}|${cwd}`;
+      let entry = commandProbes.get(key);
+      if (entry === undefined || Date.now() - entry.at > COMMANDS_TTL_MS) {
+        entry = {
+          at: Date.now(),
+          commands: probe(options.query, config, cwd).then((found) => found.commands ?? []),
+        };
+        commandProbes.set(key, entry);
+        // A probe that failed is not kept.
+        void entry.commands.then(
+          (found) => {
+            if (found.length === 0) commandProbes.delete(key);
+          },
+          () => commandProbes.delete(key),
+        );
+      }
+      const [commands, skills] = await Promise.all([
+        entry.commands.catch(() => [] as AgentSlashCommand[]),
+        discoverSkills(claudeConfigDir(config.env, config.inheritEnv), cwd),
+      ]);
+      const skillNames = new Set(skills.map((skill) => skill.name.toLowerCase()));
+      return {
+        // T3 lists /compact first, and a skill once (as a skill).
+        commands: [
+          COMPACT_SLASH_COMMAND,
+          ...commands.filter(
+            (command) =>
+              command.name.toLowerCase() !== COMPACT_SLASH_COMMAND.name &&
+              !skillNames.has(command.name.toLowerCase()),
+          ),
+        ],
+        skills,
+      };
+    },
     startTurn(request) {
       const config = options.config();
       const model = request.model ?? defaultModel();
@@ -407,6 +457,12 @@ export function createClaudeRuntime(options: {
         settings: config,
         defaultModel: model,
         contextWindow: (name) => windows.get(name) ?? manifestContextWindow(name),
+        skills: async () =>
+          new Set(
+            (await discoverSkills(claudeConfigDir(config.env, config.inheritEnv), request.cwd)).map(
+              (skill) => skill.name,
+            ),
+          ),
         ...(server === undefined
           ? {}
           : {

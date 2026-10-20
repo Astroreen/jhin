@@ -18,7 +18,8 @@ its file tree, base ref picker and turn scopes, a turn's changed files card, the
 workspace selector, the worktree icon and clean-up, the terminal drawer, its
 links, selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine
 icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.ts`,
-`plugins/chat/proposed-plan-card.tsx` and `plan-follow-up.ts`, editing from a
+`plugins/chat/proposed-plan-card.tsx` and `plan-follow-up.ts`, its tiptap
+prompt editor, menus, attachments and model options, editing from a
 message, forks and merging them back, searching thread contents, the
 scheduled tasks settings page), the
 threads plugin's merge-back handoff and search snippets
