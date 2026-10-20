@@ -828,15 +828,21 @@ export default definePlugin({
         }
         try {
           // Before the agent touches anything (a checkpoint of the working tree, D240).
+          // A start hook that does not answer fails the turn as one that throws does: the
+          // agent never works without what the hooks do first (a checkpoint).
+          let late = false;
           await withDeadline(
             context.hooks.run(ThreadHooks.turnStart, hookInput, () => undefined),
             TURN_HOOK_TIMEOUT_MS,
-            () =>
-              context.log.error("a turn start hook did not answer; the agent starts", {
-                threadId: thread.id,
-                turnId,
-              }),
+            () => (late = true),
           );
+          if (late) {
+            throw new ThreadsError(
+              "TURN_HOOK_TIMEOUT",
+              `A turn start hook did not answer within ${TURN_HOOK_TIMEOUT_MS / 1000} s`,
+              { threadId: thread.id, turnId },
+            );
+          }
           // A worktree removed under the thread, and not brought back by a hook (D242).
           if (
             thread.worktreePath !== undefined &&

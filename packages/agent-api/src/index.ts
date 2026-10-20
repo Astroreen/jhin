@@ -249,13 +249,15 @@ export const ThreadHooks = {
   /**
    * `TurnHookInput`, run after `agent.turn.started` is recorded and before the
    * agent starts: whatever it does happens before the agent touches anything.
-   * A hook that throws fails the turn with its error; the agent never starts.
+   * A hook that throws, or does not answer within the threads plugin's
+   * `TURN_HOOK_TIMEOUT_MS`, fails the turn; the agent never starts.
    */
   turnStart: "threads.turn.start",
   /**
    * `TurnEndHookInput`, run once the agent is done (or given up on) and before
    * the turn's last event is recorded: clients that see the turn end see what
-   * the hook did. A hook that throws is logged; the turn still ends.
+   * the hook did. A hook that throws, or does not answer in time, is logged;
+   * the turn still ends.
    */
   turnEnd: "threads.turn.end",
 } as const;

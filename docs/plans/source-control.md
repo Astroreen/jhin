@@ -234,13 +234,17 @@ with screenshots).
   (`completed`, `interrupted`, `failed`); a hook that throws is logged and the
   turn still ends. A client that sees a turn end therefore sees what the end
   hooks did (a checkpoint). The hooks hold the thread like the rest of the turn
-  (a stop waits for them), but at most `TURN_HOOK_TIMEOUT_MS` (60 s): a hook that
-  has not answered by then is logged and given up on, the agent then starts or
-  the turn ends.
+  (a stop waits for them), but at most `TURN_HOOK_TIMEOUT_MS` (60 s): a start
+  hook that has not answered by then fails the turn like one that throws (the
+  agent never works without what the hooks do first), an end hook is logged
+  and the turn ends; a stop that gives up meanwhile records no second end.
 - **D242. A thread may have a working directory of its own** (`worktreePath`, T3's
   field): an existing absolute directory, usually a git worktree of its project,
   set with `threads.create` or `threads.update` (`null` clears it; a running turn
-  keeps the directory it started in). Its turns run there:
+  keeps the directory it started in). It is stored by its real path and, like
+  `projects.create`'s path, may be any directory the node can read: whoever holds
+  `threads.write` may point a thread's agent anywhere, as they may make any
+  folder a project (scoped permissions are W13's). Its turns run there:
   `TurnRequest.cwd` is `worktreePath ?? project.path`, so every runtime of
   `agent.runtime@1` runs in it without a change (Claude Code's live session
   restarts when its directory changes, and a session it cannot resume there
