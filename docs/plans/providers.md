@@ -110,23 +110,24 @@ specific to Claude: the runtime is a plugin on the public API.
   with a recent turn. `session: "per-turn"` starts Claude Code for every turn
   and ends it with the turn (D91). A kept Claude Code that waits
   `sessionIdleMinutes` (default 10; 0: no limit) for its thread's next turn
-  exits; the next turn resumes. Messages Claude Code sends between turns are
-  dropped. A thread never has two Claude Codes, and the newest turn wins: the
-  threads plugin runs one turn of a thread at a time and frees the thread only
-  when a turn ended or a stop gave up on a turn that ignored its interrupt, so
-  a session still held when the next turn comes belongs to a turn given up on.
-  The next turn takes it over (ends it and starts Claude Code again with
-  `resume`), and the turn that held it ends with "A later turn of this thread
-  took its Claude Code over." A turn still waiting for `setModel` or
-  `setPermissionMode` when a later one comes gives up with the same error
-  instead of starting a Claude Code of its own. The live sessions of a node
-  are listed by `claude.sessions.list` and ended by `claude.sessions.close`
-  (one thread or all): only those no turn runs on, unless `force: true`, which
-  ends busy ones too and fails their turn. Turning `session` to `per-turn`
-  ends every kept session no turn holds at once; a held one ends with its
-  turn. A new `sessionIdleMinutes` re-arms the sessions already idle, counted
-  from their last turn. The section's defaults live in its schema only; the
-  runtime reads the parsed section.
+  exits; the next turn resumes. An idle time longer than one timer can wait
+  (2^31 − 1 ms, about 24.8 days) is waited out in steps up to its deadline.
+  Messages Claude Code sends between turns are dropped. A thread never has two
+  Claude Codes, and the newest turn wins: the threads plugin runs one turn of
+  a thread at a time and frees the thread only when a turn ended or a stop
+  gave up on a turn that ignored its interrupt, so a session still held when
+  the next turn comes belongs to a turn given up on. The next turn takes it
+  over (ends it and starts Claude Code again with `resume`), and the turn that
+  held it ends with "A later turn of this thread took its Claude Code over." A
+  turn still waiting for `setModel` or `setPermissionMode` when a later one
+  comes gives up with the same error instead of starting a Claude Code of its
+  own. The live sessions of a node are listed by `claude.sessions.list` and
+  ended by `claude.sessions.close` (one thread or all): only those no turn
+  runs on, unless `force: true`, which ends busy ones too and fails their
+  turn. Turning `session` to `per-turn` ends every kept session no turn holds
+  at once; a held one ends with its turn. A new `sessionIdleMinutes` re-arms
+  the sessions already idle, counted from their last turn. The section's
+  defaults live in its schema only; the runtime reads the parsed section.
 - **D99. A live session takes a turn's settings when it can.** Everything a
   running Claude Code cannot change — the working directory, effort, binary,
   the config's `env`, system prompt and `allowDangerouslySkipPermissions` —
