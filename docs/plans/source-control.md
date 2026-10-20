@@ -528,6 +528,9 @@ pull request that then shows on the card, with screenshots).
   id, so a runtime that keeps live sessions (Claude Code) keeps one for it
   until its idle time ends; a one-shot text generation operation of the
   runtime would avoid it (W9).
+- Cancelling a running git action: writes to a project queue behind it (its
+  writer is bounded by `writerTimeoutSeconds`, a commit's hooks by ten
+  minutes), with no way to stop it from the client.
 - Other forges (GitLab, Bitbucket, Azure DevOps, Forgejo), GitHub
   Enterprise hosts beyond `githubHosts`, and forks: `gh pr list --head`
   matches the branch name only, so a same-named branch of a fork can match.
