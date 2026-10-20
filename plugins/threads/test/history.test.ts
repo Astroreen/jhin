@@ -241,11 +241,11 @@ describe("jhin.threads: rolling back turns (D220, D221)", () => {
     };
     const rolling = client.call("threads.rollback", { threadId: thread.id });
     await recording.promise;
-    const queued = await client.call<{ messageId: string; turnId?: string }>("threads.queue.add", {
+    const waiting = await client.call<{ messageId: string; turnId?: string }>("threads.queue.add", {
       threadId: thread.id,
       text: "after the rollback",
     });
-    expect(queued.turnId).toBeUndefined();
+    expect(waiting.turnId).toBeUndefined();
     const { untilMatch } = watch(client, thread.id);
     recorded.resolve();
     await rolling;
