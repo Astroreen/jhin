@@ -117,6 +117,7 @@ export type ThreadArrangement =
   | { readonly method: "settle" | "unsettle" | "unpin" | "unsnooze" }
   | { readonly method: "pin"; readonly orderKey?: string }
   | { readonly method: "snooze"; readonly until: string }
+  | { readonly method: "set-auto-settle"; readonly enabled: boolean }
   | { readonly method: "reorder"; readonly list: "pinned" | "active"; readonly orderKey: string };
 
 /** What can be done to a thread from its row, its header or the command palette. */

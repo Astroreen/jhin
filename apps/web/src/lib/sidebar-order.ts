@@ -14,13 +14,9 @@ import {
 
 import { sortActive, sortPinned } from "./thread-order.ts";
 
-/** T3's default for settling a thread by itself: this many days without activity. */
-const AUTO_SETTLE_AFTER_DAYS = 3;
 /** Settled threads shown at first, and how many more each "Show more" adds. */
 export const SETTLED_TAIL_INITIAL_COUNT = 10;
 export const SETTLED_TAIL_PAGE_COUNT = 25;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** When a thread last moved: its latest turn, else its record. */
 export const threadActivityAt = (thread: ThreadRecord): string =>
@@ -133,39 +129,14 @@ export function wokeAt(thread: ThreadRecord, nowMs: number): string | undefined 
 }
 
 /**
- * When the thread settled, if it has. By hand (D75): when it was settled. Else
- * by itself, as T3 settles one (its default of 3 days): no activity for
- * `AUTO_SETTLE_AFTER_DAYS`, nothing running or waiting, and not pinned, snoozed
- * or kept active by hand; it settles as of its last activity, where a snooze
- * that ended counts as activity. Whether its last turn was seen does not
- * matter: a "Done" thread settles too, as in T3, whose rule runs on the server
- * and knows no visits (here they are per device, and devices must agree).
+ * When the thread settled, if it has: as its node recorded it, by hand (D75)
+ * or by the node's own rule (D446, its sweep after the configured days
+ * without activity, or a merged pull request, D447). As in T3, the client
+ * settles nothing by itself: only the node knows its rule.
  */
-export function settledAt(thread: ThreadRecord, nowMs: number): string | undefined {
-  if (thread.archivedAt !== undefined) return undefined;
-  if (thread.settledOverride === "settled") {
-    return Number.isNaN(parse(thread.settledAt)) ? threadActivityAt(thread) : thread.settledAt;
-  }
-  if (thread.settledOverride === "active" || thread.pinnedAt !== undefined) return undefined;
-  if (isSnoozed(thread, nowMs)) return undefined;
-  const turn = thread.lastTurn;
-  if (turn?.status === "running" || turn?.status === "waiting") return undefined;
-  // The activity the card's time shows, so a thread never settles while it reads "5m".
-  let at = threadActivityAt(thread);
-  let atMs = parse(at);
-  const until = parse(thread.snoozedUntil);
-  const wakes: [string | undefined, number][] = [
-    [thread.lastSnoozeWakeAt, parse(thread.lastSnoozeWakeAt)],
-    [thread.snoozedUntil, until <= nowMs ? until : Number.NaN],
-  ];
-  for (const [candidate, ms] of wakes) {
-    if (candidate !== undefined && !Number.isNaN(ms) && !(ms <= atMs)) {
-      at = candidate;
-      atMs = ms;
-    }
-  }
-  // A time that does not parse is no activity to settle on: the thread stays.
-  return Number.isNaN(atMs) || atMs >= nowMs - AUTO_SETTLE_AFTER_DAYS * DAY_MS ? undefined : at;
+export function settledAt(thread: ThreadRecord, _nowMs?: number): string | undefined {
+  if (thread.archivedAt !== undefined || thread.settledOverride !== "settled") return undefined;
+  return Number.isNaN(parse(thread.settledAt)) ? threadActivityAt(thread) : thread.settledAt;
 }
 
 /** Where the sidebar lists a thread now (T3's resolveSidebarThreadSection). */

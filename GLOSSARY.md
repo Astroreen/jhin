@@ -156,9 +156,10 @@ Words about Jhin:
   threads (⌘/Ctrl+K).
 - **Visit** — when a thread was last seen on this device, in its node's own
   time; a turn that ended after it shows the thread as unread.
-- **Settled** — a thread that needs nothing more, settled by hand or by
-  itself after three days without activity and with no turn running or
-  waiting for the user. The sidebar lists it on its Settled shelf instead of
+- **Settled** — a thread that needs nothing more, settled by hand or by its
+  node: after the days without activity the node is configured with (three
+  by default) and with no turn running or waiting for the user, or when its
+  pull request merged or closed. The sidebar lists it on its Settled shelf instead of
   among the active threads until it is un-settled or runs again (T3 Code's
   term).
 - **Pinned** — a thread kept on top of the sidebar's list, in an order the

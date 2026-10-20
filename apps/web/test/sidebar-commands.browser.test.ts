@@ -86,6 +86,8 @@ function world() {
           thread("t-new", "scratch", ago(1)),
           thread("t-settled", "web", ago(100), {
             lastTurn: { turnId: "u", status: "completed", at: ago(90), agentId: "x" },
+            settledOverride: "settled",
+            settledAt: ago(90),
           }),
         ],
       },

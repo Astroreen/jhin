@@ -205,7 +205,8 @@ left of T3 Code is split into workstreams in `t3-roadmap.md`.
   open thread. A thread settles as T3 settles one by itself (its default of
   3 days): no activity for three days and no turn running or waiting; it
   settles as of its last activity, the same time its card shows (the latest
-  turn, else the record's last change). The shelf and the filter are kept per
+  turn, else the record's last change); since D446 its node settles it, after
+  the days it is configured with. The shelf and the filter are kept per
   device; a stored value that does not parse or has the wrong type falls
   back to the default. The header holds the search (results
   replace the list, arrow keys and Enter pick one), T3's project filter
@@ -273,7 +274,7 @@ left of T3 Code is split into workstreams in `t3-roadmap.md`.
   waiting for an answer is refused (`TURN_IN_PROGRESS`, T3's "Stop it before
   settling" and "Answer it before settling"), and so is an archived one
   (`THREAD_ARCHIVED`). D70's automatic rule stays as the fallback, computed
-  by the client: it never settles a thread pinned, snoozed or kept active by
+  by the client (by the node since D446): it never settles a thread pinned, snoozed or kept active by
   hand, and it counts a snooze that ended as activity. A new turn clears the
   choice made by hand (T3's turn start), so the rule applies again; a thread
   that was settled, by hand or by the rule (the node runs the same rule, as
@@ -816,6 +817,64 @@ a branch, a repository or a checked-out branch) and
 under the thread, the hover card warns after the project and branch lines,
 and stops once switched back), with a screenshot.
 
+- **D444. The settle rule is the node's config**, as T3's "Organization"
+  settings are its server's: three keys of `jhin.threads`, with T3's titles
+  and descriptions, so the node config form renders them (D80):
+  `autoSettleOnMerge` ("Auto-settle merged threads", on),
+  `autoSettleInactive` ("Auto-settle inactive threads", on) and
+  `autoSettleAfterDays` ("Days of inactivity before auto-settle", 1–90,
+  3). T3 keeps the days as one nullable number behind a switch; here the
+  switch is a key of its own, so each is a plain form field.
+
+- **D445. Auto-settle per thread.** T3's "Auto-settle behavior" submenu
+  ("Enabled", "Disabled", as radio items, timer icon) in `thread.actions`
+  (`jhin.thread-actions.auto-settle`, before the copy items, as T3 places it
+  before "Copy") runs `thread.set-auto-settle`, which runs
+  `threads.set-auto-settle { threadId, enabled }`. The record keeps
+  `autoSettleDisabledAt` while it is off (T3's field); the node then never
+  settles the thread by itself, by inactivity or by a pull request, while
+  settling by hand still works. Like the rest of the arrangement it leaves
+  `updatedAt` alone. A failure toasts "Failed to update auto-settle".
+
+- **D446. The node sweeps; the client settles nothing by itself.** As T3's
+  ThreadSettlementService does, the threads plugin settles every thread its
+  rule settles: every minute, when the rule's config changes, at start and
+  on `threads.sweep`. A thread settles when it may (not settled or kept
+  active by hand, archived, pinned, with auto-settle off, running, waiting
+  or snoozed) and saw no activity for the configured days; it is written
+  with `settledOverride: "settled"` and `settledAt` its last activity (T3
+  records the activity time too), the same event a settle by hand writes.
+  The client lists only what the node wrote, as T3's client reads
+  `settledOverride`: D70's client rule, fixed at three days, goes, since
+  only the node knows its days. The rule the node already applied at a
+  turn's start and on its own commands (D75) now reads the same config.
+
+- **D447. A merged or closed pull request settles its thread.**
+  `jhin.source-control` asks `gh` for the pull request of each thread's
+  branch (D116); when one is newly seen merged or closed it runs
+  `threads.auto-settle { threadId, reason, closedAt }` for every thread on
+  that branch. The threads plugin decides, as T3's pullRequestSettles does:
+  a merged one only while `autoSettleOnMerge` is on, a closed one always,
+  never a thread the rule may not settle (D446), and only when it closed at
+  or after the user's last message to the thread (`lastMessageAt`, new on
+  the record, T3's latestUserMessageAt) and its creation. `PullRequest`
+  gains `closedAt` (`gh`'s field, additive). Nothing un-settles a thread
+  whose pull request reopens, as in T3.
+
+The proof of D444–D447: `plugins/threads/test/auto-settle.test.ts` (the
+sweep after the configured days as of the last activity, never a pinned
+thread or one with auto-settle off; no sweep while the rule is off and one
+once it is switched on; turning auto-settle off and on without activity; a
+merged pull request after the last message settling, one from before not; a
+merged one left alone while `autoSettleOnMerge` is off and a closed one
+settling; none for a pinned thread, one with auto-settle off or one kept
+active by hand); `plugins/source-control/test/github.test.ts` (a thread
+settling when its branch's pull request merges); `apps/web/test/sidebar-order.test.ts`
+(the client settling nothing by itself); `e2e/tests/sidebar.spec.ts` ("D70,
+D446": threads the node settles going onto the shelf live; "D445": the
+submenu turning auto-settle off on the node, after which a closed pull
+request settles nothing), with screenshots.
+
 ### Server-side queue and steering (W1, `t3-roadmap.md`)
 
 - **D200. The reference is T3 Code's server queue** (D53's tag,
@@ -1172,6 +1231,15 @@ and as events arrive).
   (here always 3), the automatic rule applied by the node (T3 sweeps every
   minute; here the client applies it, and the node only at a turn's start),
   one write per drop (a drop is a command per thread it orders, so two
+
+- Editing a sent message, regenerating, forking a thread.
+- Searching thread contents (the palette and the sidebar search titles).
+- Sidebar (T3's layout, D70, D75–D79): T3's "Keep threads with a PR"
+  (`sidebarAutoSettleKeepPullRequests`) and its rule that an open pull
+  request linked to a thread keeps it from settling by inactivity: the
+  threads plugin does not know a thread's pull request (linking them is
+  W4's); per-project overrides of the settle settings (T3 resolves them per
+  project; a Jhin node has one project config layer, D19); one write per drop (a drop is a command per thread it orders, so two
   devices dragging at once, or a failure partway, leave the steps done
   before it; D78), the Working shelf, multi-select and sweeping actions over
   several rows, undo of a pin, T3's own collision detection around the

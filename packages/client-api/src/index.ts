@@ -203,6 +203,10 @@ export interface ThreadRecord {
     readonly turnId: string;
     readonly at: string;
   };
+  /** Set while the thread never settles by itself (T3's per-thread "Auto-settle behavior"). */
+  readonly autoSettleDisabledAt?: string;
+  /** When the user last sent it a message. */
+  readonly lastMessageAt?: string;
 }
 
 /** Where the sidebar lists a thread (D75–D77). */

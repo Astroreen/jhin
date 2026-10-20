@@ -23,6 +23,8 @@ import {
   MenuItem,
   MenuSeparator,
   MenuShortcut,
+  MenuRadioGroup,
+  MenuRadioItem,
   MenuSub,
   MenuSubPopup,
   MenuSubTrigger,
@@ -45,6 +47,7 @@ import {
   PinIcon,
   PinOffIcon,
   SquarePenIcon,
+  TimerIcon,
   Trash2Icon,
   type LucideIcon,
 } from "lucide-react";
@@ -262,6 +265,18 @@ export const threadActionsPlugin = builtin(
           ),
       );
       register(
+        "thread.set-auto-settle",
+        "Set auto-settle behavior",
+        "Lets a thread settle by itself (its node's rule: no activity for the configured days, or its pull request merged or closed), or never",
+        ThreadRef.extend({ enabled: z.boolean() }),
+        (input) =>
+          arrangeThread(
+            input,
+            { method: "set-auto-settle", enabled: input.enabled },
+            "Failed to update auto-settle",
+          ),
+      );
+      register(
         "thread.unsettle",
         "Un-settle thread",
         "Brings a thread back from the Settled shelf to the top of the active threads",
@@ -403,6 +418,34 @@ export const threadActionsPlugin = builtin(
           </MenuSub>
         );
       }
+      /** T3's "Auto-settle behavior" submenu: whether the node may settle the thread by itself. */
+      function AutoSettleItem({ target, thread }: ThreadActionProps) {
+        const enabled = thread.autoSettleDisabledAt === undefined;
+        return (
+          <MenuSub>
+            <MenuSubTrigger>
+              <TimerIcon />
+              Auto-settle behavior
+            </MenuSubTrigger>
+            <MenuSubPopup>
+              <MenuRadioGroup
+                onValueChange={(next: unknown) => {
+                  if (next !== "enabled" && next !== "disabled") return;
+                  if ((next === "enabled") === enabled) return;
+                  run("thread.set-auto-settle", {
+                    ...threadRef(target, thread.id),
+                    enabled: next === "enabled",
+                  });
+                }}
+                value={enabled ? "enabled" : "disabled"}
+              >
+                <MenuRadioItem value="enabled">Enabled</MenuRadioItem>
+                <MenuRadioItem value="disabled">Disabled</MenuRadioItem>
+              </MenuRadioGroup>
+            </MenuSubPopup>
+          </MenuSub>
+        );
+      }
       const projectRef = (target: NodeTarget, projectId: string) => ({ ...target, projectId });
 
       const threadItems: [string, number, ComponentType<ThreadActionProps>][] = [
@@ -475,6 +518,8 @@ export const threadActionsPlugin = builtin(
             />
           ),
         ],
+        // T3 puts it before the copy items.
+        ["auto-settle", 25, AutoSettleItem],
         [
           "copy-id",
           30,

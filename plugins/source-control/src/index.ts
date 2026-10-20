@@ -607,6 +607,31 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     return next;
   };
 
+  /**
+   * T3 settles a thread whose pull request merged or closed (D447): the node's
+   * threads decide whether it may (`threads.auto-settle`), source control says
+   * which threads work on the branch. Told once per pull request and state.
+   */
+  const settleOnPullRequest = (repo: Repo, branch: string, pr: PullRequest) => {
+    const closedAt = pr.closedAt ?? pr.updatedAt ?? new Date().toISOString();
+    for (const thread of threads.values()) {
+      if (thread.projectId !== repo.project.id || thread.branch !== branch) continue;
+      context.commands
+        .execute("threads.auto-settle", {
+          threadId: thread.threadId,
+          reason: pr.state === "merged" ? "pull-request-merged" : "pull-request-closed",
+          closedAt,
+        })
+        .catch((error: unknown) =>
+          context.log.warn("settling a thread on its pull request failed", {
+            threadId: thread.threadId,
+            pullRequest: pr.number,
+            error: String(error),
+          }),
+        );
+    }
+  };
+
   /** Looks up the pull requests of the branches of interest whose answer is missing or stale. */
   const lookUpPullRequests = (repo: Repo, options: { force: boolean }): Promise<void> => {
     const next = repo.prChain.then(async () => {
@@ -630,7 +655,14 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         if (!stale) continue;
         try {
           const pr = await pullRequestFor(ghPath, location.root, branch);
+          const before = repo.pullRequests.get(branch)?.pr;
           repo.pullRequests.set(branch, { pr, at: Date.now() });
+          if (
+            pr !== null &&
+            pr.state !== "open" &&
+            (before?.state !== pr.state || before.number !== pr.number)
+          )
+            settleOnPullRequest(repo, branch, pr);
         } catch (error) {
           if (!(error instanceof GitHubUnavailable)) throw error;
           provider = { kind: "github", available: false, reason: error.message };

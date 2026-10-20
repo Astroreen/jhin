@@ -97,6 +97,20 @@ const Config = z
         "How long a plugin's hook around a turn (a checkpoint) may take: a start hook that takes longer fails the turn, an end hook is given up on. 0 gives hooks no time: one that does not answer at once is given up on.",
       advanced: true,
     }),
+    // T3 Code's "Organization" settings (D444): how threads settle by themselves.
+    autoSettleOnMerge: z.boolean().default(true).meta({
+      title: "Auto-settle merged threads",
+      description:
+        "Settle a thread when its pull request merges. Closed pull requests still settle automatically.",
+    }),
+    autoSettleInactive: z.boolean().default(true).meta({
+      title: "Auto-settle inactive threads",
+      description: "Sidebar threads with no activity for this long settle automatically.",
+    }),
+    autoSettleAfterDays: z.number().int().min(1).max(90).default(3).meta({
+      title: "Days of inactivity before auto-settle",
+      description: "Any new activity un-settles a thread automatically.",
+    }),
   })
   .meta({
     title: "Threads",
@@ -175,11 +189,19 @@ const Thread = z.object({
   pendingMergeBack: z
     .object({ id: z.string(), threadId: z.string(), turnId: z.string(), at: z.string() })
     .optional(),
+  /** When the user last sent it a message (T3's latestUserMessageAt). */
+  lastMessageAt: z.string().optional(),
+  /** Set while the thread never settles by itself (T3's per-thread "Auto-settle behavior"). */
+  autoSettleDisabledAt: z.string().optional(),
 });
 type Thread = z.infer<typeof Thread>;
 
-/** T3 Code's default for settling a thread by itself; the web client's rule (D70) twins this one. */
-const AUTO_SETTLE_AFTER_MS = 3 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+/**
+ * How long a thread goes without activity before it settles by itself, per
+ * the node's config (T3's default: 3 days); `undefined` while the rule is off.
+ */
+type SettleRule = { readonly afterMs: number } | undefined;
 /** A fractional order key: lowercase letters, compared as strings (T3 Code's pin order keys). */
 const OrderKey = z
   .string()
@@ -213,29 +235,46 @@ function isSnoozed(thread: Thread, nowMs: number): boolean {
  * hand, or by T3 Code's automatic rule (no activity for three days, nothing
  * running or waiting, not pinned, not snoozed, not kept active by hand).
  */
-function isSettled(thread: Thread, nowMs: number): boolean {
+function isSettled(thread: Thread, nowMs: number, rule: SettleRule): boolean {
   if (thread.settledOverride !== undefined) return thread.settledOverride === "settled";
-  return autoSettledAt(thread, nowMs) !== undefined;
+  return autoSettledAt(thread, nowMs, rule) !== undefined;
 }
 
 /**
  * When the automatic rule settled the thread, if it did: as of its last
  * activity, a snooze that ended counting as activity (the web client's twin).
  */
-function autoSettledAt(thread: Thread, nowMs: number): string | undefined {
-  if (thread.pinnedAt !== undefined || isSnoozed(thread, nowMs)) return undefined;
+function autoSettledAt(thread: Thread, nowMs: number, rule: SettleRule): string | undefined {
+  if (rule === undefined || !mayAutoSettle(thread, nowMs)) return undefined;
+  const activity = lastActivity(thread, nowMs);
+  return Number.isFinite(activity) && activity < nowMs - rule.afterMs
+    ? new Date(activity).toISOString()
+    : undefined;
+}
+
+/**
+ * Whether anything keeps the thread from settling by itself (T3's
+ * isAutoSettlementCandidate): settled or kept active by hand, archived,
+ * pinned, auto-settle turned off for it, a turn running or waiting for the
+ * user, or snoozed.
+ */
+function mayAutoSettle(thread: Thread, nowMs: number): boolean {
+  if (thread.settledOverride !== undefined || thread.archivedAt !== undefined) return false;
+  if (thread.pinnedAt !== undefined || thread.autoSettleDisabledAt !== undefined) return false;
   const status = thread.lastTurn?.status;
-  if (status === "running" || status === "waiting") return undefined;
+  if (status === "running" || status === "waiting") return false;
+  return !isSnoozed(thread, nowMs);
+}
+
+/** The thread's last activity: its latest turn, else its last change; a snooze that ended counts. */
+function lastActivity(thread: Thread, nowMs: number): number {
   const until = millis(thread.snoozedUntil);
-  const activity = Math.max(
+  return Math.max(
     ...[thread.lastTurn?.at ?? thread.updatedAt ?? thread.createdAt, thread.lastSnoozeWakeAt]
       .map(millis)
       .filter((value) => !Number.isNaN(value)),
     until <= nowMs ? until : Number.NEGATIVE_INFINITY,
   );
-  return Number.isFinite(activity) && activity < nowMs - AUTO_SETTLE_AFTER_MS
-    ? new Date(activity).toISOString()
-    : undefined;
 }
 
 /**
@@ -243,9 +282,9 @@ function autoSettledAt(thread: Thread, nowMs: number): string | undefined {
  * does: a settled thread comes back to the top of the active ones, a snoozed
  * one wakes, and a choice made by hand gives way to the automatic rule again.
  */
-function revived(thread: Thread, at: string): Thread {
+function revived(thread: Thread, at: string, rule: SettleRule): Thread {
   const nowMs = Date.parse(at);
-  const settled = isSettled(thread, nowMs);
+  const settled = isSettled(thread, nowMs, rule);
   if (!settled && thread.settledOverride === undefined && thread.snoozedUntil === undefined) {
     return thread;
   }
@@ -494,6 +533,13 @@ function withDeadline(task: Promise<unknown>, ms: number, expired: () => void): 
 export default definePlugin({
   async activate(context) {
     context.config.define(CONFIG_SECTION, Config);
+    /** The node's rule for settling by inactivity, as configured now (D444). */
+    const settleRule = (): SettleRule => {
+      const config = context.config.get<Config>(CONFIG_SECTION);
+      return config.autoSettleInactive
+        ? { afterMs: config.autoSettleAfterDays * DAY_MS }
+        : undefined;
+    };
     const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
     const paths = context.services.get<HostPaths>(HOST_PATHS_CAPABILITY);
@@ -1986,7 +2032,7 @@ export default definePlugin({
           const since =
             thread.settledOverride === "settled"
               ? thread.settledAt
-              : autoSettledAt(thread, Date.parse(at));
+              : autoSettledAt(thread, Date.parse(at), settleRule());
           return {
             ...rest,
             settledOverride: "settled",
@@ -2010,7 +2056,7 @@ export default definePlugin({
           // Only a thread on the shelf comes back: T3's command would also move an
           // active one to the top and switch the automatic rule off for it. A
           // snooze stays; it still hides the thread until it wakes.
-          if (!isSettled(thread, Date.parse(at))) return thread;
+          if (!isSettled(thread, Date.parse(at), settleRule())) return thread;
           const { settledAt: _settledAt, ...rest } = thread;
           return { ...rest, settledOverride: "active", unsettledAt: at };
         }),
@@ -2025,7 +2071,7 @@ export default definePlugin({
       permissions: ["threads.write"],
       handler: ({ threadId, orderKey }) =>
         arrange(threadId, (thread, at) => {
-          const settled = isSettled(thread, Date.parse(at));
+          const settled = isSettled(thread, Date.parse(at), settleRule());
           if (thread.pinnedAt !== undefined && !settled && thread.snoozedUntil === undefined) {
             return thread;
           }
@@ -2079,7 +2125,9 @@ export default definePlugin({
           const nowMs = Date.parse(at);
           if (
             list === "active" &&
-            (thread.pinnedAt !== undefined || isSettled(thread, nowMs) || isSnoozed(thread, nowMs))
+            (thread.pinnedAt !== undefined ||
+              isSettled(thread, nowMs, settleRule()) ||
+              isSnoozed(thread, nowMs))
           ) {
             throw new ThreadsError(
               "THREAD_NOT_ACTIVE",
@@ -2133,6 +2181,119 @@ export default definePlugin({
           const { snoozedUntil: _until, snoozedAt: _snoozedAt, ...rest } = thread;
           return { ...rest, lastSnoozeWakeAt: at };
         }),
+    });
+
+    // --- Settling by itself (D444–D447) ------------------------------------------
+    // T3's ThreadSettlementService: the node settles a thread with no activity
+    // for the configured days, and one whose pull request merged or closed.
+    /** Settles a thread by the automatic rule, as of its last activity; false if it may not. */
+    const autoSettle = (threadId: string, may: (thread: Thread, nowMs: number) => boolean) =>
+      updateThread(threadId, (thread) => {
+        const nowMs = Date.now();
+        if (!mayAutoSettle(thread, nowMs) || !may(thread, nowMs)) return thread;
+        const { unsettledAt: _back, activeOrderKey: _key, ...rest } = thread;
+        const activity = lastActivity(thread, nowMs);
+        return {
+          ...rest,
+          settledOverride: "settled",
+          settledAt: new Date(Number.isFinite(activity) ? activity : nowMs).toISOString(),
+        };
+      });
+
+    context.commands.register({
+      name: "threads.set-auto-settle",
+      description:
+        'Turns settling by itself on or off for one thread (T3\'s "Auto-settle behavior"): off, it settles only by hand',
+      input: ThreadId.extend({ enabled: z.boolean() }),
+      output: Thread,
+      permissions: ["threads.write"],
+      handler: ({ threadId, enabled }) =>
+        arrange(threadId, (thread, at) => {
+          if (enabled) {
+            const { autoSettleDisabledAt: _off, ...rest } = thread;
+            return rest;
+          }
+          return thread.autoSettleDisabledAt === undefined
+            ? { ...thread, autoSettleDisabledAt: at }
+            : thread;
+        }),
+    });
+
+    context.commands.register({
+      name: "threads.auto-settle",
+      description:
+        "Settles a thread whose pull request merged or closed at `closedAt`, as the node's rule says: not one settled, pinned, snoozed, running, waiting or with auto-settle off, nor one the user wrote to since; merged ones only while jhin.threads.autoSettleOnMerge is on",
+      input: ThreadId.extend({
+        reason: z.enum(["pull-request-merged", "pull-request-closed"]),
+        closedAt: z.iso.datetime({ offset: true }),
+      }),
+      output: z.object({ settled: z.boolean() }),
+      permissions: ["threads.write"],
+      handler: async ({ threadId, reason, closedAt }) => {
+        const config = context.config.get<Config>(CONFIG_SECTION);
+        if (reason === "pull-request-merged" && !config.autoSettleOnMerge)
+          return { settled: false };
+        const closedMs = Date.parse(closedAt);
+        const thread = await autoSettle(
+          threadId,
+          // A pull request that closed before the user's latest message is history.
+          (current) =>
+            closedMs >=
+            Math.max(
+              ...[current.createdAt, current.lastMessageAt ?? ""]
+                .map(millis)
+                .filter((value) => !Number.isNaN(value)),
+            ),
+        );
+        return { settled: thread.settledOverride === "settled" };
+      },
+    });
+
+    /** T3's sweep: every thread the inactivity rule settles now, written as settled. */
+    const sweep = async () => {
+      const rule = settleRule();
+      if (rule === undefined) return;
+      const nowMs = Date.now();
+      for (const thread of await listThreads()) {
+        if (autoSettledAt(thread, nowMs, rule) === undefined) continue;
+        await autoSettle(
+          thread.id,
+          (latest, latestMs) => autoSettledAt(latest, latestMs, settleRule()) !== undefined,
+        ).catch((error: unknown) =>
+          context.log.warn("settling a thread failed", {
+            threadId: thread.id,
+            error: String(error),
+          }),
+        );
+      }
+    };
+    let sweeping: Promise<void> = Promise.resolve();
+    const sweepNow = () => {
+      sweeping = sweeping
+        .then(sweep)
+        .catch((error: unknown) =>
+          context.log.warn("the settle sweep failed", { error: String(error) }),
+        );
+      return sweeping;
+    };
+    // Every minute, as T3 sweeps, and when the rule changes.
+    const sweepTimer = setInterval(() => void sweepNow(), 60_000);
+    sweepTimer.unref?.();
+    context.subscriptions.add({ dispose: () => clearInterval(sweepTimer) });
+    context.subscriptions.add(context.config.onDidChange(CONFIG_SECTION, () => void sweepNow()));
+    void sweepNow();
+
+    context.commands.register({
+      name: "threads.sweep",
+      description:
+        "Settles now every thread the node's inactivity rule settles (the node also does this every minute)",
+      input: z.object({}),
+      output: z.object({}),
+      permissions: ["threads.write"],
+      handler: async () => {
+        await sweepNow();
+        return {};
+      },
     });
 
     context.commands.register({
@@ -2265,7 +2426,7 @@ export default definePlugin({
         // A new turn also brings a settled thread back and wakes a snoozed one.
         const at = now();
         await updateThread(threadId, (latest) => {
-          const back = revived(latest, at);
+          const back = revived(latest, at, settleRule());
           const { model: _model, ...rest } = back;
           // The merge it delivers is done; one recorded since waits for the next message.
           const { pendingMergeBack: _merge, ...dropped } = dropModel ? rest : back;
@@ -2276,6 +2437,7 @@ export default definePlugin({
                 ? rest
                 : back),
             ...chosen,
+            lastMessageAt: at,
             // Only the first message names the thread, and only while it has the
             // default title: a rename that landed since it was read stays.
             title:

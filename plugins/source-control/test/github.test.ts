@@ -111,6 +111,35 @@ describe("jhin.source-control: pull requests through the GitHub CLI", () => {
     });
   });
 
+  it("settles a thread when its branch's pull request merges (D447)", async () => {
+    const gh = fakeGh();
+    gh.pullRequest("feature", [ghPullRequest()]);
+    const dir = githubRepository();
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const thread = await sc.client.call<{ id: string }>("threads.create", { projectId });
+    await sc.until(threadEvent(thread.id, (record) => record.branch === "feature"));
+    await sc.client.call("git.status", { refresh: true });
+    const get = async () =>
+      (
+        await sc.client.call<{ thread: { settledOverride?: string } }>("threads.get", {
+          threadId: thread.id,
+        })
+      ).thread;
+    // Open: nothing to settle on.
+    expect((await get()).settledOverride).toBeUndefined();
+
+    const closedAt = new Date(Date.now() + 60_000).toISOString();
+    gh.pullRequest("feature", [ghPullRequest({ state: "MERGED", closedAt })]);
+    const settled = sc.next("threads", (event) => {
+      const record = event.payload as { id?: string; settledOverride?: string };
+      return record.id === thread.id && record.settledOverride === "settled";
+    });
+    await sc.client.call("git.status", { refresh: true });
+    await settled;
+    expect((await get()).settledOverride).toBe("settled");
+  });
+
   it("degrades without gh: pull requests stay unknown and the reason is given", async () => {
     const sc = await node({ ghPath: "jhin-no-such-gh" });
     const projectId = await sc.project(githubRepository());

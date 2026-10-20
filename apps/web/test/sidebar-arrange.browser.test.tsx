@@ -264,7 +264,7 @@ describe("moving a thread, as dropping it does (D78)", () => {
     const { run, calls } = await start([
       thread("a1", 1),
       thread("a2", 2),
-      thread("s", 200, { lastTurn: done(150) }),
+      thread("s", 200, { lastTurn: done(150), settledOverride: "settled", settledAt: ago(150) }),
     ]);
     await run("sidebar.thread.move", { node: A, threadId: "s", section: "active", index: 1 });
     expect(calls.map((call) => [call.method, call.params.threadId])).toEqual([

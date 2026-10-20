@@ -161,6 +161,8 @@ export interface Node {
   readonly events: StoredEvent[];
   /** Resolves with the first event (from now on, or already seen) that `match` accepts. */
   until(match: (event: StoredEvent) => boolean): Promise<StoredEvent>;
+  /** Resolves with the first event of `stream` from now on that `match` accepts. */
+  next(stream: string, match: (event: StoredEvent) => boolean): Promise<StoredEvent>;
   status(projectId?: string, refresh?: boolean): Promise<StatusSnapshot>;
   project(path: string): Promise<string>;
   /** Sets the node's `jhin.source-control` config while it runs. */
@@ -233,6 +235,15 @@ export async function node(
   return {
     client,
     events,
+    /** Resolves with the first event of `stream` from now on that `match` accepts. */
+    next: (stream, match) =>
+      new Promise((resolve) => {
+        const subscription = storage.storage.log.subscribe(stream, (event) => {
+          if (!match(event)) return;
+          subscription.dispose();
+          resolve(event);
+        });
+      }),
     configure: (values) =>
       kernel.config.setLayer("node", { "jhin.source-control": { ...config, ...values } }),
     logged: (message) =>
