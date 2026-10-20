@@ -439,7 +439,10 @@ with screenshots).
   `PULL_REQUEST_FAILED` (the forge's). Actions, pulls and checkouts of one
   project run one at a time, so none moves `HEAD` under another; a failure
   before the first step still ends the action's progress with `action_failed`. A thread named with `threadId` is moved to a branch the action
-  created. `git.pull` pulls fast-forward only ("Pulled", "Already up to
+  created; a feature branch whose commit fails is undone (back on the branch
+  it came from, the changes kept). A pull request whose base would be its own
+  branch (no default branch known) is refused. A commit hook's output is
+  published whole line by line, at most 200 lines per action. `git.pull` pulls fast-forward only ("Pulled", "Already up to
   date"); `git.init` makes a project's folder a repository (T3's "Initialize
   Git"). `source-control.git` becomes 1.1 (`runAction`, `pull`).
 - **D262. Commit messages and pull requests are written by an agent of the
@@ -455,7 +458,10 @@ with screenshots).
   ("Update greet.ts", "Update 3 files") and lists the commits under T3's
   "## Summary" and "## Testing" headings. A repository's pull request
   template (`.github/pull_request_template.md` and GitHub's other places, read
-  at the base) is handed to the writer.
+  at the base) is handed to the writer. What would be committed goes to that agent as
+  T3 sends it: every change git does not ignore, untracked files included,
+  so a secret file that is neither ignored nor excluded from the commit
+  reaches the agent too.
 - **D263. Progress is a live stream**, `source-control/actions`
   (`rpc.streams@1`, `git.read`): T3's `GitActionProgressEvent` as
   `source-control.action.progress` events (`action_started` with its phases,

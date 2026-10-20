@@ -219,6 +219,46 @@ describe("jhin.source-control: git actions", () => {
     expect(status.thread.branch).toBe("feature/add-the-a-file");
   });
 
+  it("undoes a feature branch whose commit a hook refuses", async () => {
+    const { dir } = withRemote();
+    write(
+      dir,
+      ".git/hooks/pre-commit",
+      "#!/bin/sh\nprintf 'half a li'; printf 'ne\\n' >&2; exit 1\n",
+    );
+    Fs.chmodSync(`${dir}/.git/hooks/pre-commit`, 0o755);
+    write(dir, "a.txt", "a\n");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const progress: GitActionProgress[] = [];
+    let failed!: () => void;
+    const done = new Promise<void>((resolve) => (failed = resolve));
+    sc.client.subscribe("source-control/actions", {}, (event: StoredEvent) => {
+      const payload = event.payload as GitActionProgress;
+      if (payload.actionId !== "act-f") return;
+      progress.push(payload);
+      if (payload.kind === "action_failed") failed();
+    });
+    await expect(
+      sc.client.call("git.action.run", {
+        projectId,
+        action: "commit",
+        actionId: "act-f",
+        commitMessage: "Add a",
+        featureBranch: true,
+      }),
+    ).rejects.toMatchObject({ code: "GIT_FAILED" });
+    await done;
+    expect(git(dir, "branch", "--show-current").trim()).toBe("main");
+    expect(git(dir, "branch", "--list", "feature/*").trim()).toBe("");
+    // The change is kept, staged as the commit left it.
+    expect(git(dir, "status", "--porcelain").trim()).toBe("A  a.txt");
+    // Chunks of a line come out as one line.
+    expect(progress.filter((event) => event.kind === "hook_output")).toEqual([
+      expect.objectContaining({ text: "half a line" }),
+    ]);
+  });
+
   it("refuses what cannot run: a feature branch without changes, a push from a detached HEAD", async () => {
     const { dir } = withRemote();
     const sc = await node();

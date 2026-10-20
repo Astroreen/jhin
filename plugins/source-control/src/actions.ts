@@ -29,6 +29,8 @@ const PUSH_TIMEOUT_MS = 5 * 60_000;
 const PULL_TIMEOUT_MS = 30_000;
 /** A line of a hook's output is cut here. */
 const MAX_PROGRESS_TEXT = 500;
+/** Lines of a commit's hooks published per action; the rest only end up in git's error. */
+const MAX_HOOK_LINES = 200;
 const MAX_SUMMARY = 8_000;
 const MAX_PATCH = 50_000;
 /** git's empty tree: what an unborn `HEAD` is compared against. */
@@ -303,6 +305,20 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
     pr: { status: "skipped_not_requested" },
   };
   let phase: GitActionPhase | null = null;
+  /** The branch a feature branch was created from, to go back to when its commit fails. */
+  let createdFrom: string | null | undefined;
+  let partial = "";
+  let hookLines = 0;
+  const hookLine = (line: string) => {
+    const trimmed = line.trim();
+    if (trimmed === "" || hookLines >= MAX_HOOK_LINES) return;
+    hookLines += 1;
+    run.progress({
+      kind: "hook_output",
+      stream: "stderr",
+      text: trimmed.slice(0, MAX_PROGRESS_TEXT),
+    });
+  };
   const enter = (next: GitActionPhase, label: string) => {
     phase = next;
     run.progress({ kind: "phase_started", phase: next, label });
@@ -346,6 +362,7 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
         .filter((line) => line !== "");
       const name = resolveAutoFeatureBranchName(locals, preferred);
       await git(["switch", "--create", name]);
+      createdFrom = branch;
       branch = name;
       upstream = null;
       result.branch = { status: "created", name };
@@ -388,16 +405,14 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
           // Hooks print to stderr (git hands their stdout there too); stdout is the commit's summary.
           onOutput: (stream, text) => {
             if (stream !== "stderr") return;
-            for (const line of text.split(/\r?\n/)) {
-              const trimmed = line.trim();
-              if (trimmed === "") continue;
-              run.progress({
-                kind: "hook_output",
-                stream,
-                text: trimmed.slice(0, MAX_PROGRESS_TEXT),
-              });
-            }
+            // Output arrives in chunks: a line is published once it is whole.
+            const lines = (partial + text).split(/\r?\n/);
+            partial = lines.pop() ?? "";
+            for (const line of lines) hookLine(line);
           },
+        }).finally(() => {
+          hookLine(partial);
+          partial = "";
         });
         const sha = (await git(["rev-parse", "HEAD"])).stdout.trim();
         result.commit = { status: "created", sha, subject: suggestion.subject };
@@ -425,6 +440,12 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
         result.pr = { status: "opened_existing", pullRequest: existing };
       } else {
         const base = await baseBranchOf(git, branch, upstream!, run.defaultBranch);
+        // Without a known default branch the base may fall back to the branch itself.
+        if (base === branch) {
+          fail(
+            `Cannot create a ${terms.singular} into ${branch} from itself: set the repository's default branch (origin/HEAD) or the branch's base.`,
+          );
+        }
         enter("pr", `Generating ${terms.shortLabel} content...`);
         const content = await pullRequestContent(git, run, base, branch);
         const bodyFile = Path.join(Os.tmpdir(), `jhin-pr-body-${process.pid}-${randomUUID()}.md`);
@@ -444,6 +465,14 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
       }
     }
   } catch (error) {
+    // A feature branch whose commit failed is undone: back on the branch it came from, the
+    // changes still in the working tree.
+    if (createdFrom !== undefined && result.commit.status !== "created" && branch !== null) {
+      const created = branch;
+      await git(createdFrom === null ? ["switch", "--detach", "HEAD@{1}"] : ["switch", createdFrom])
+        .then(() => git(["branch", "-D", "--", created]))
+        .catch(() => undefined);
+    }
     run.progress({ kind: "action_failed", phase, message: (error as Error).message });
     throw error;
   }

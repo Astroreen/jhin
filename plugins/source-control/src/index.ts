@@ -1122,11 +1122,13 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           { projectId },
         );
       }
-      const status = await statusOf(repo);
-      if (!status.isRepo) {
-        await createGit(config().gitPath, repo.project.path)(["init", "--quiet"]);
-      }
-      return refresh(repo);
+      return exclusive(projectId, async () => {
+        const status = await statusOf(repo);
+        if (!status.isRepo) {
+          await createGit(config().gitPath, repo.project.path)(["init", "--quiet"]);
+        }
+        return refresh(repo);
+      });
     },
   });
 
