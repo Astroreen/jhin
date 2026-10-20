@@ -212,11 +212,14 @@ specific to Claude: the runtime is a plugin on the public API.
   by Claude Code's 60 s default). The server goes in through the control
   channel (`setMcpServers`) and not the command line, so the token is in
   neither Claude Code's argv nor the environment of the commands it runs
-  (T3's reason). Its tools are approved without asking, as T3 pre-approves
-  its server's; in plan mode only those whose command needs nothing but read
-  permissions (`*.read`, `projects.browse`), as T3's read-only sessions
-  pre-approve only its read-only tools, and the others ask like any tool.
-  The approval is the permission callback's, not `allowedTools`, whose bare
+  (T3's reason). Its tools whose command needs nothing but read
+  permissions (`*.read`, `projects.browse`) are approved without asking, as
+  T3's read-only sessions pre-approve only its read-only tools; the others
+  follow the thread's runtime mode like any tool (they ask unless it has full
+  access). T3 pre-approves all of its own outside read-only sessions; Jhin's
+  writing tools include `threads_respond`, with which an agent could answer
+  its own approval request, and deleting threads and projects. The approval
+  is the permission callback's, not `allowedTools`, whose bare
   entries make the SDK warn on every query. The appended system prompt
   (part of the launch key, D99) says what they are for. An MCP request names
   the thread whose agent calls in `x-jhin-thread`; the credential carries the

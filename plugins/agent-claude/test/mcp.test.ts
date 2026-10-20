@@ -153,7 +153,7 @@ describe("jhin.agent-claude: the node's MCP server (D340)", () => {
     expect(decisions[1]).toMatchObject({ behavior: "deny" });
   });
 
-  it("in plan mode approves only the node's tools that read", async () => {
+  it("approves only the node's tools that read; the others ask in every mode but full access", async () => {
     const decisions: unknown[] = [];
     const { claude, request } = node([
       async function* (player) {
@@ -164,7 +164,7 @@ describe("jhin.agent-claude: the node's MCP server (D340)", () => {
         await player.nextPrompt();
       },
     ]);
-    const turn = claude.startTurn(request({ interactionMode: "plan", runtimeMode: "full-access" }));
+    const turn = claude.startTurn(request());
     const asked: string[] = [];
     for await (const item of turn.items) {
       if (item.kind === "request.opened") {
@@ -175,6 +175,21 @@ describe("jhin.agent-claude: the node's MCP server (D340)", () => {
     expect(asked).toEqual(["tool-2:approval"]);
     expect(decisions[0]).toMatchObject({ behavior: "allow" });
     expect(decisions[1]).toMatchObject({ behavior: "deny" });
+  });
+
+  it("lets a writing tool of the node run without asking only with full access", async () => {
+    const decisions: unknown[] = [];
+    const { claude, request } = node([
+      async function* (player) {
+        yield init();
+        decisions.push(await player.canUseTool("mcp__jhin__threads_send", {}, "tool-1"));
+        yield result();
+        await player.nextPrompt();
+      },
+    ]);
+    const items = await drain(claude.startTurn(request({ runtimeMode: "full-access" })));
+    expect(items.some((item) => item.kind === "request.opened")).toBe(false);
+    expect(decisions).toEqual([{ behavior: "allow", updatedInput: {}, toolUseID: "tool-1" }]);
   });
 
   it("leaves no Claude Code behind when the credential cannot be issued", async () => {

@@ -506,13 +506,14 @@ export function claudeTurn(
         toolUseID,
       };
     }
-    // The node's own tools, as T3 pre-approves its server's; in plan mode only those that
-    // read, as T3's read-only sessions (D340). Not through `allowedTools`: the SDK warns on
-    // every query whose bare allowedTools entry shadows canUseTool.
+    // The node's own tools that only read, as T3 pre-approves its server's read-only tools;
+    // one that writes (threads_respond could answer this very request) asks like any tool
+    // (D340). Not through `allowedTools`: the SDK warns on every query whose bare
+    // allowedTools entry shadows canUseTool.
     const nodeTool =
       deps.mcp !== undefined &&
       toolName.startsWith(MCP_TOOL_PREFIX) &&
-      (interactionMode !== "plan" || deps.mcp.readOnly(toolName.slice(MCP_TOOL_PREFIX.length)));
+      deps.mcp.readOnly(toolName.slice(MCP_TOOL_PREFIX.length));
     if (!asksForApproval(runtimeMode, interactionMode) || nodeTool) {
       return { behavior: "allow", updatedInput: toolInput, toolUseID };
     }

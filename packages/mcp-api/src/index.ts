@@ -6,7 +6,7 @@ export interface McpGrant {
   readonly id: string;
   /** The permissions its calls have; never `*`. */
   readonly permissions: readonly string[];
-  /** The thread whose agent holds it; commands see it as `caller.threadId`. */
+  /** The thread whose agent holds it; commands see it as `Invocation.threadId`. */
   readonly threadId?: string;
 }
 
