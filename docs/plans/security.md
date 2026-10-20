@@ -55,7 +55,10 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   its secret and marks the caller's own (`current`); `auth.clients.revoke
   {id}` revokes one, never the caller's own
   (`CURRENT_CLIENT_REVOKE_NOT_ALLOWED`, T3's `current_session_revoke_not_allowed`);
-  `auth.clients.revoke-others` revokes all but the caller's. Reading needs
+  `auth.clients.revoke-others` revokes all but the caller's. A caller
+  revokes only tokens whose grants it holds (D413), so a narrow token cannot
+  revoke the owner's devices. A token lives at most 3650 days, or forever
+  when issued with `ttlDays: null`. Reading needs
   `auth.read`, changing `auth.write` (T3's `access:read` / `access:write`);
   `auth.token.show` and `auth.token.rotate` keep `auth.admin`. A rotated
   owner token drops only the owner's connections, no longer every device's.
@@ -263,7 +266,8 @@ and QR code.
   `rpc.streams`, as above).
 - An unreadable `clients.json` is moved aside to `clients.json.corrupt` and
   no device token works until new ones are issued; nothing repairs it.
-- `lastSeenAt` is written to `clients.json` on every connect; a node with
-  many devices reconnecting often would batch it.
+- `lastSeenAt` is kept in memory and written with the next change of
+  `clients.json`, so a restart may lose the latest ones. Expired tokens are
+  dropped from the file with the next write.
 - Titles for permissions in the UI (T3's "View terminals", "Use
   terminals", …): the permission list shows ids grouped by namespace.

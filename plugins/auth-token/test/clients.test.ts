@@ -38,6 +38,7 @@ describe("device token store (security.md D411)", () => {
       expiresAt: 5000,
     });
     expect(store.verify(token, 4999)?.lastSeenAt).toBe(4999);
+    expect(store.get(record.id)?.lastSeenAt).toBe(4999);
     expect(store.verify(token, 5000)).toBeUndefined();
     expect(store.verify(`${token}x`, 2000)).toBeUndefined();
     expect(store.verify(token.replace(record.id, "nobody"), 2000)).toBeUndefined();
@@ -72,5 +73,24 @@ describe("device token store (security.md D411)", () => {
       store.issue({ label: "x", permissions: ["*"], method: "issued", now: 1 });
       expect(Fs.readFileSync(`${file}.corrupt`, "utf8")).toBe(content);
     }
+  });
+
+  it("drops expired tokens with the next write", () => {
+    const file = tempFile();
+    const store = createClientStore(file);
+    const old = store.issue({
+      label: "old",
+      permissions: ["*"],
+      method: "issued",
+      now: 1,
+      expiresAt: 10,
+    });
+    store.issue({ label: "new", permissions: ["*"], method: "issued", now: 20 });
+    expect(store.get(old.record.id)).toBeUndefined();
+    expect(
+      createClientStore(file)
+        .list()
+        .map((record) => record.label),
+    ).toEqual(["new"]);
   });
 });

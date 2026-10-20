@@ -99,7 +99,11 @@ export function createClientStore(
         ...(expiresAt === undefined ? {} : { expiresAt }),
         secretHash: hash(secret),
       };
-      records = [...records, record];
+      // Expired tokens go with the next write; nothing can use them any more.
+      records = [
+        ...records.filter((entry) => entry.expiresAt === undefined || entry.expiresAt > now),
+        record,
+      ];
       save();
       return { record, token: `${DEVICE_TOKEN_PREFIX}${id}.${secret}` };
     },
@@ -113,9 +117,10 @@ export function createClientStore(
         return undefined;
       }
       if (record.expiresAt !== undefined && record.expiresAt <= now) return undefined;
+      // Kept in memory and written with the next change: a login never waits
+      // for, or fails on, the disk.
       const seen: ClientRecord = { ...record, lastSeenAt: now };
       records = records.map((entry) => (entry === record ? seen : entry));
-      save();
       return seen;
     },
     remove(ids) {

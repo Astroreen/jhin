@@ -24,46 +24,50 @@ the same PR.
 - Every operation is a **command**, reachable as an RPC method, a CLI
   subcommand (`jhin <command>`) and an MCP tool. → `AGENTS.md` rule 6
 - UI is **slots** and **contributions** with stable ids. → `plans/t3-parity.md#ui`
+- A command or stream names **permissions**; a caller holds **grants**
+  (`git.read`, `git.*`, `*`) checked by `holdsPermission` in `@jhin/sdk`.
+  Remote callers hold the grants of their token; mesh calls carry their
+  caller's. → `plans/security.md#permissions-and-scoped-tokens`
 
 ## Packages (`packages/`)
 
-| Package                    | What it is                                                                                   |
-| -------------------------- | -------------------------------------------------------------------------------------------- |
-| `@jhin/kernel`             | the isomorphic kernel                                                                        |
-| `@jhin/sdk`                | the public API plugins import (`definePlugin`, types); the host provides it to user plugins  |
-| `@jhin/node-host`          | runs a node: loads plugins, hot reload, config files, logs, inspector, `host.*` commands     |
-| `@jhin/testing`            | test kernel, capability mocks, fake transport, in-memory mesh of N nodes                     |
-| `@jhin/rpc`                | JSON-RPC 2.0 over any channel: server sessions, reconnecting client, peers                   |
-| `@jhin/mesh-core`          | the mesh without transport: membership, gossip, routing with relay, `jhin://` addresses      |
-| `@jhin/mcp-bridge`         | turns a command registry into MCP tools                                                      |
-| `@jhin/ui`                 | UI kit for client plugins: T3 Code-derived primitives, theme, slots                          |
-| `@jhin/host-api`           | contracts of what a host gives plugins (`host.paths@1`, `host.identity@1`, `host.plugins@1`) |
-| `@jhin/http-api`           | contract of `http.server@1`                                                                  |
-| `@jhin/auth-api`           | contract of `auth.verifier@1`                                                                |
-| `@jhin/mcp-api`            | contract of `mcp.server@1`: the MCP endpoint and agent credentials                           |
-| `@jhin/storage-api`        | contracts of `storage.kv@1`, `storage.eventlog@1`, an in-memory version, the contract tests  |
-| `@jhin/agent-api`          | contracts of `agent.runtime@1`, `agent.registry@1` and the thread event types                |
-| `@jhin/source-control-api` | contract of `source-control.git@1` and its events                                            |
-| `@jhin/terminal-api`       | contract of `terminal.sessions@1`, its commands and stream events                            |
-| `@jhin/client-api`         | contracts of client capabilities: connections, navigation, mesh, machines                    |
+| Package                    | What it is                                                                                                       |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `@jhin/kernel`             | the isomorphic kernel                                                                                            |
+| `@jhin/sdk`                | the public API plugins import (`definePlugin`, types, permission matching); the host provides it to user plugins |
+| `@jhin/node-host`          | runs a node: loads plugins, hot reload, config files, logs, inspector, `host.*` commands                         |
+| `@jhin/testing`            | test kernel, capability mocks, fake transport, in-memory mesh of N nodes                                         |
+| `@jhin/rpc`                | JSON-RPC 2.0 over any channel: server sessions, reconnecting client, peers                                       |
+| `@jhin/mesh-core`          | the mesh without transport: membership, gossip, routing with relay, `jhin://` addresses                          |
+| `@jhin/mcp-bridge`         | turns a command registry into MCP tools                                                                          |
+| `@jhin/ui`                 | UI kit for client plugins: T3 Code-derived primitives, theme, slots                                              |
+| `@jhin/host-api`           | contracts of what a host gives plugins (`host.paths@1`, `host.identity@1`, `host.plugins@1`)                     |
+| `@jhin/http-api`           | contract of `http.server@1`                                                                                      |
+| `@jhin/auth-api`           | contract of `auth.verifier@1` (1.1: a principal's `expiresAt`), principal ids and auth events                    |
+| `@jhin/mcp-api`            | contract of `mcp.server@1`: the MCP endpoint and agent credentials                                               |
+| `@jhin/storage-api`        | contracts of `storage.kv@1`, `storage.eventlog@1`, an in-memory version, the contract tests                      |
+| `@jhin/agent-api`          | contracts of `agent.runtime@1`, `agent.registry@1` and the thread event types                                    |
+| `@jhin/source-control-api` | contract of `source-control.git@1` and its events                                                                |
+| `@jhin/terminal-api`       | contract of `terminal.sessions@1`, its commands and stream events                                                |
+| `@jhin/client-api`         | contracts of client capabilities: connections, navigation, mesh, machines                                        |
 
 ## Server plugins (`plugins/`)
 
-| Plugin                | Provides                                               | Commands                                                                                                          | Plan                            |
-| --------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| `jhin.http`           | `http.server@1`                                        | `http.info`                                                                                                       | `foundation.md`                 |
-| `jhin.auth-token`     | `auth.verifier@1` (static bearer token)                | `auth.token.show`, `auth.token.rotate`                                                                            | `foundation.md`                 |
-| `jhin.transport-ws`   | `rpc.streams@1`; every command over WS                 | —                                                                                                                 | `foundation.md`                 |
-| `jhin.storage-sqlite` | `storage.kv@1`, `storage.eventlog@1`                   | —                                                                                                                 | `foundation.md`                 |
-| `jhin.mcp-server`     | `mcp.server@1`; every command as an MCP tool           | —                                                                                                                 | `foundation.md#D39`             |
-| `jhin.mesh`           | nodes of one owner, relay, addresses                   | `mesh.invite`, `mesh.join`, `mesh.nodes`, `mesh.call`, `mesh.resolve`, `mesh.open`, `mesh.close`, `mesh.config.*` | `foundation.md`                 |
-| `jhin.threads`        | `agent.registry@1`; projects, threads, turns as events | `projects.*`, `threads.*`, `agents.list`                                                                          | `foundation.md`, `t3-parity.md` |
-| `jhin.agent-claude`   | Claude Code as an agent runtime                        | `claude.sessions.list`, `claude.sessions.close`; event `claude.session.files.deleted`                             | `providers.md`                  |
-| `jhin.agent-fake`     | `agent.runtime@1`, deterministic                       | —                                                                                                                 | `foundation.md`                 |
-| `jhin.source-control` | `source-control.git@1`                                 | `git.status`, `git.diff`, `git.branches`, `git.checkout`, `git.thread.status`                                     | `source-control.md`             |
-| `jhin.terminal`       | `terminal.sessions@1` (PTY)                            | `terminals.open`, `.write`, `.resize`, `.list`, `.get`, `.close`                                                  | `terminal.md`                   |
-| `jhin.web-ui`         | serves the web client                                  | `web-ui.info`                                                                                                     | `foundation.md`                 |
-| `jhin.example`        | the template for new plugins                           | `example.greet`                                                                                                   | `plugins/example/README.md`     |
+| Plugin                | Provides                                                                                                      | Commands                                                                                                                                                       | Plan                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `jhin.http`           | `http.server@1`                                                                                               | `http.info`                                                                                                                                                    | `foundation.md`                 |
+| `jhin.auth-token`     | `auth.verifier@1`: the owner token and scoped device tokens                                                   | `auth.token.show`, `auth.token.rotate`, `auth.tokens.issue`, `auth.clients.list`, `auth.clients.revoke`, `auth.clients.revoke-others`, `auth.permissions.list` | `foundation.md`, `security.md`  |
+| `jhin.transport-ws`   | `rpc.streams@1` (1.1: `guard` for event log streams); every command over WS; drops revoked and expired tokens | —                                                                                                                                                              | `foundation.md`, `security.md`  |
+| `jhin.storage-sqlite` | `storage.kv@1`, `storage.eventlog@1`                                                                          | —                                                                                                                                                              | `foundation.md`                 |
+| `jhin.mcp-server`     | `mcp.server@1`; every command as an MCP tool                                                                  | —                                                                                                                                                              | `foundation.md#D39`             |
+| `jhin.mesh`           | nodes of one owner, relay, addresses                                                                          | `mesh.invite`, `mesh.join`, `mesh.nodes`, `mesh.call`, `mesh.resolve`, `mesh.open`, `mesh.close`, `mesh.config.*`                                              | `foundation.md`                 |
+| `jhin.threads`        | `agent.registry@1`; projects, threads, turns as events                                                        | `projects.*`, `threads.*`, `agents.list`                                                                                                                       | `foundation.md`, `t3-parity.md` |
+| `jhin.agent-claude`   | Claude Code as an agent runtime                                                                               | `claude.sessions.list`, `claude.sessions.close`; event `claude.session.files.deleted`                                                                          | `providers.md`                  |
+| `jhin.agent-fake`     | `agent.runtime@1`, deterministic                                                                              | —                                                                                                                                                              | `foundation.md`                 |
+| `jhin.source-control` | `source-control.git@1`                                                                                        | `git.status`, `git.diff`, `git.branches`, `git.checkout`, `git.thread.status`                                                                                  | `source-control.md`             |
+| `jhin.terminal`       | `terminal.sessions@1` (PTY)                                                                                   | `terminals.open`, `.write`, `.resize`, `.list`, `.get`, `.close`                                                                                               | `terminal.md`                   |
+| `jhin.web-ui`         | serves the web client                                                                                         | `web-ui.info`                                                                                                                                                  | `foundation.md`                 |
+| `jhin.example`        | the template for new plugins                                                                                  | `example.greet`                                                                                                                                                | `plugins/example/README.md`     |
 
 The host itself adds `host.inspect`, `host.identity`, `host.commands.list`,
 `host.config.get`, `host.config.patch`, `host.config.schema`,

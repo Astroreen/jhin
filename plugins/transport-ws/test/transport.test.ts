@@ -237,9 +237,30 @@ describe("device tokens (security.md D411–D414)", () => {
     });
   });
 
+  it("revokes only tokens the caller could have issued, and bounds how long one lives", async () => {
+    const node = await startNode();
+    const owner = await issue(node, ["*"]);
+    const narrow = await issue(node, ["app.read"]);
+    const admin = connect(node.url, (await issue(node, ["auth.*", "app.read"])).token);
+
+    await expect(admin.call("auth.clients.revoke", { id: owner.id })).rejects.toMatchObject({
+      code: "PERMISSION_NOT_HELD",
+      details: { missing: ["*"] },
+    });
+    expect(await admin.call("auth.clients.revoke-others")).toEqual({ revoked: [narrow.id] });
+
+    await expect(
+      node.kernel.commands.execute("auth.tokens.issue", {
+        label: "forever-ish",
+        permissions: ["app.read"],
+        ttlDays: 1e300,
+      }),
+    ).rejects.toMatchObject({ code: "COMMAND_INPUT_INVALID" });
+  });
+
   it("lists clients without secrets, marks the caller's own and keeps it from revoking itself", async () => {
     const node = await startNode();
-    const admin = await issue(node, ["auth.*"]);
+    const admin = await issue(node, ["auth.*", "app.read"]);
     const other = await issue(node, ["app.read"]);
     const device = connect(node.url, admin.token);
 

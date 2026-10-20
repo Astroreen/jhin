@@ -22,6 +22,8 @@ const OWNER: Principal = { id: OWNER_PRINCIPAL_ID, permissions: ["*"] };
 /** T3's sessions last 30 days (security.md D411). */
 const DEFAULT_TTL_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** The longest a token may be issued for; `null` asks for one that never expires. */
+const MAX_TTL_DAYS = 3650;
 
 const Grants = z
   .array(z.string().refine(isGrant, "must be a permission, a pattern such as git.* or *"))
@@ -150,7 +152,7 @@ export default definePlugin({
         label: z.string().trim().min(1),
         permissions: Grants,
         /** Days until it stops working; `null` never. Defaults to 30. */
-        ttlDays: z.number().positive().nullable().optional(),
+        ttlDays: z.number().positive().max(MAX_TTL_DAYS).nullable().optional(),
       }),
       output: z.object({ id: z.string(), token: z.string(), expiresAt: z.number().optional() }),
       permissions: ["auth.write"],
@@ -170,7 +172,7 @@ export default definePlugin({
           permissions,
           method: "issued",
           now,
-          ...(days === null ? {} : { expiresAt: now + days * DAY_MS }),
+          ...(days === null ? {} : { expiresAt: Math.ceil(now + days * DAY_MS) }),
         });
         context.log.warn("device token issued", { client: record.id, label, permissions });
         return {
@@ -204,15 +206,25 @@ export default definePlugin({
             "A client cannot revoke the token it is connected with",
           );
         }
-        if (clients.get(id) === undefined) {
+        const record = clients.get(id);
+        if (record === undefined) {
           throw failure("CLIENT_NOT_FOUND", `No device token ${id}`, { id });
+        }
+        const missing = notHeld(invocation, record.permissions);
+        if (missing.length > 0) {
+          throw failure(
+            "PERMISSION_NOT_HELD",
+            `Revoking ${id} needs ${missing.join(", ")}: a caller only revokes tokens it could have issued`,
+            { id, missing },
+          );
         }
         return { revoked: revoke([id]) };
       },
     });
     context.commands.register({
       name: "auth.clients.revoke-others",
-      description: "Revokes every device token except the one the caller is connected with",
+      description:
+        "Revokes every device token except the one the caller is connected with, and those holding grants the caller does not",
       input: z.object({}),
       output: z.object({ revoked: z.array(z.string()) }),
       permissions: ["auth.write"],
@@ -221,6 +233,8 @@ export default definePlugin({
           clients
             .list()
             .filter((record) => invocation.caller?.id !== clientPrincipalId(record.id))
+            // A caller only revokes what it could have issued (security.md D413).
+            .filter((record) => notHeld(invocation, record.permissions).length === 0)
             .map((record) => record.id),
         ),
       }),

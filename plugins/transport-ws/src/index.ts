@@ -18,18 +18,17 @@ import {
   webSocketPeer,
   type WebSocketLike,
 } from "@jhin/rpc";
-import { definePlugin } from "@jhin/sdk";
+import { definePlugin, type Disposable } from "@jhin/sdk";
 import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
 import { WebSocketServer, type WebSocket } from "ws";
+
+import { onExpiry } from "./expiry.ts";
 
 /** Path of the WebSocket endpoint on the node's HTTP server. */
 export const RPC_PATH = "/rpc";
 
 /** Tells clients to come back: used when this plugin stops or reloads. */
 const CLOSE_SERVICE_RESTART = 1012;
-
-/** The longest delay `setTimeout` keeps; a later expiry is checked again then. */
-const MAX_TIMER_MS = 2 ** 31 - 1;
 
 function tokenFrom(header: string | string[] | undefined): string | undefined {
   const protocols = (Array.isArray(header) ? header.join(",") : (header ?? "")).split(",");
@@ -65,10 +64,10 @@ export default definePlugin({
 
     async function accept(socket: WebSocket, token: string | undefined): Promise<void> {
       sockets.set(socket, undefined);
-      let expiry: ReturnType<typeof setTimeout> | undefined;
+      let expiry: Disposable | undefined;
       socket.on("close", () => {
         sockets.delete(socket);
-        clearTimeout(expiry);
+        expiry?.dispose();
       });
       const caller = await verifier.verify(token === undefined ? {} : { token });
       if (caller === undefined) {
@@ -79,18 +78,10 @@ export default definePlugin({
       if (!sockets.has(socket)) return;
       sockets.set(socket, caller.id);
       // A token that expires drops its connection then, as a revoked one does (security.md D414).
-      const expiresAt = caller.expiresAt;
-      if (expiresAt !== undefined) {
-        const arm = () => {
-          const left = expiresAt - Date.now();
-          if (left <= 0) {
-            socket.close(CLOSE_UNAUTHENTICATED, "token expired");
-            return;
-          }
-          expiry = setTimeout(arm, Math.min(left, MAX_TIMER_MS));
-          expiry.unref?.();
-        };
-        arm();
+      if (caller.expiresAt !== undefined) {
+        expiry = onExpiry(caller.expiresAt, () =>
+          socket.close(CLOSE_UNAUTHENTICATED, "token expired"),
+        );
       }
       context.log.info("client connected", { caller: caller.id, clients: sockets.size });
       serveRpc(webSocketPeer(socket as unknown as WebSocketLike), {
