@@ -169,4 +169,30 @@ describe("thread and project records (D207, D208)", () => {
       code: expect.stringMatching(/COMMAND_NOT_FOUND|UNKNOWN_COMMAND|METHOD_NOT_FOUND/),
     });
   });
+
+  it("finishes on restart a deletion that stopped before its record went", async () => {
+    const first = await node();
+    const thread = await first.client.call<ThreadRecord>("threads.create", { threadId: "gone" });
+    failNextAppend(first.storage.storage.log, THREADS_STREAM);
+    await expect(first.client.call("threads.delete", { threadId: "gone" })).rejects.toThrow();
+    await first.stop();
+
+    const again = await node({ storage: first.storage, data: first.data });
+    expect(await again.client.call<ThreadRecord[]>("threads.list", {})).toEqual([]);
+    await expect(
+      again.client.call("threads.create", { threadId: thread.id }),
+    ).rejects.toMatchObject({ code: "THREAD_EXISTS" });
+    const index = await again.storage.storage.log.read(THREADS_STREAM);
+    expect(index.filter((event) => event.type === ThreadEvents.threadDeleted)).toHaveLength(1);
+  });
+
+  it("refuses the id of a thread whose deletion is not announced yet", async () => {
+    const { client, storage } = await node();
+    await client.call("threads.create", { threadId: "half-gone" });
+    failNextAppend(storage.storage.log, THREADS_STREAM);
+    await expect(client.call("threads.delete", { threadId: "half-gone" })).rejects.toThrow();
+    await expect(client.call("threads.create", { threadId: "half-gone" })).rejects.toMatchObject({
+      code: "THREAD_EXISTS",
+    });
+  });
 });

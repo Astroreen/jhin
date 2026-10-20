@@ -455,6 +455,9 @@ export default definePlugin({
     };
 
     // --- Records ---------------------------------------------------------------
+    /** The last event of a stream, if it has any. */
+    const lastEvent = async (stream: string) =>
+      (await log.read(stream, { after: Math.max(0, (await log.head(stream)) - 1) }))[0];
     const codeOf = (error: unknown) => (error as { code?: unknown } | null)?.code;
     const getProject = async (id: string): Promise<Project> => {
       const value = await kv.get(NAMESPACE, `project/${id}`);
@@ -558,15 +561,18 @@ export default definePlugin({
     // plugin reads: both capabilities from one provider. Checked once, with an
     // append of no events, so a node that mixes providers fails to start
     // instead of losing records quietly.
-    // One key, written fresh every start: a node that stops in between leaves
-    // at most this one behind, which the next start overwrites.
-    const probe = "probe";
-    const mark = Crypto.randomUUID();
-    await log.append(THREADS_STREAM, [], {
-      records: [{ namespace: NAMESPACE, key: probe, value: mark }],
-    });
-    const seen = (await kv.get(NAMESPACE, probe)) === mark;
-    await kv.delete(NAMESPACE, probe);
+    // A key of its own, so nodes starting on shared storage at once do not
+    // read each other's; removed whatever happens.
+    const probe = `probe/${Crypto.randomUUID()}`;
+    let seen = false;
+    try {
+      await log.append(THREADS_STREAM, [], {
+        records: [{ namespace: NAMESPACE, key: probe, value: true }],
+      });
+      seen = (await kv.get(NAMESPACE, probe)) === true;
+    } finally {
+      await kv.delete(NAMESPACE, probe);
+    }
     if (!seen) {
       throw new ThreadsError(
         "STORAGE_MISMATCH",
@@ -604,6 +610,15 @@ export default definePlugin({
     // A turn still running or waiting when the node stopped without draining
     // (a crash) never got its last event: it is closed as interrupted now,
     // together with the requests it left open, as a live turn's end does (D56).
+    // A deletion the node stopped in the middle of (its stream says deleted,
+    // its record is still there, D208) is finished now: the thread is gone.
+    for (const thread of await listThreads()) {
+      if ((await lastEvent(threadStream(thread.id)))?.type !== ThreadEvents.threadDeleted) continue;
+      await writeIndexed(`thread/${thread.id}`, undefined, ThreadEvents.threadDeleted, {
+        id: thread.id,
+      });
+    }
+
     for (const thread of await listThreads()) {
       const last = thread.lastTurn;
       if (last === undefined || (last.status !== "running" && last.status !== "waiting")) continue;
@@ -1336,7 +1351,14 @@ export default definePlugin({
       const existing = await kv.get(NAMESPACE, `thread/${id}`);
       if (existing !== undefined) {
         const thread = Thread.parse(existing);
-        if (thread.projectId !== projectId || deleted.has(id)) throw taken();
+        // A record kept until its deletion is announced is no thread to return.
+        if (
+          thread.projectId !== projectId ||
+          deleted.has(id) ||
+          (await lastEvent(stream))?.type === ThreadEvents.threadDeleted
+        ) {
+          throw taken();
+        }
         return thread;
       }
       // A stream without a record: a deleted thread, whose id is not taken
@@ -1346,7 +1368,7 @@ export default definePlugin({
       let thread: Thread;
       if (first !== undefined) {
         const started = Thread.safeParse(first.payload);
-        const last = (await log.read(stream, { after: (await log.head(stream)) - 1 }))[0];
+        const last = await lastEvent(stream);
         if (
           first.type !== ThreadEvents.threadCreated ||
           !started.success ||

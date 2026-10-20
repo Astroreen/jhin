@@ -424,14 +424,18 @@ export function DraftView(props: {
     };
   }, [chat, project.id]);
 
+  // The new thread's id, kept until the thread is made: sending again after a
+  // failure asks for the same thread, so it makes no second one (D207).
+  const nextThreadId = useRef<string>(crypto.randomUUID());
   const send = async (text: string, attachments: readonly TurnAttachment[]): Promise<boolean> => {
     try {
-      const { threadId, uncertain } = await startThread(chat.threads, target, {
-        projectId: project.id,
-        text,
-        attachments,
-        selection,
-      });
+      const { threadId, uncertain } = await startThread(
+        chat.threads,
+        target,
+        { projectId: project.id, text, attachments, selection },
+        nextThreadId.current,
+      );
+      nextThreadId.current = crypto.randomUUID();
       if (uncertain !== undefined) {
         // The node may have taken it: the thread stays, and offers to send it
         // again until it shows the message.
