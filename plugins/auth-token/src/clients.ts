@@ -5,7 +5,7 @@ import * as Path from "node:path";
 import { z } from "@jhin/sdk";
 
 /** Device tokens are `jhd1.<id>.<secret>` (security.md D411). */
-export const DEVICE_TOKEN_PREFIX = "jhd1.";
+const DEVICE_TOKEN_PREFIX = "jhd1.";
 
 export const ClientRecord = z.object({
   id: z.string(),
