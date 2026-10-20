@@ -121,7 +121,8 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
 - **D366. `mode: "async"` (default) or `"wait"`.** `wait` returns once the
   task is terminal, asks a question, or `timeoutMs` (default 10 minutes, at
   most 60, at least 1 ms) passes; then `waitTimedOut` is true and the child
-  goes on. `clientRequestId` (at most 256 characters) makes a delegation
+  goes on; a waited task whose node stopped mid-wait wakes the parent like
+  an async one. `clientRequestId` (at most 256 characters) makes a delegation
   idempotent per parent: a retry with the same id returns the same task
   instead of starting another. A task whose turn could not start fails with the
   error the caller got, wakes nobody, and is no answer to a retry.
@@ -223,7 +224,8 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   in `full-access` mode (`RUNTIME_MODE_ESCALATION_DENIED` otherwise). The
   owner's token holds it; a thread's agent does not (W9's
   `AGENT_PERMISSIONS`), so an agent acting on injected content cannot run
-  one. Granting it to agents waits for scoped permissions (W13). A mesh
+  one. A scoped device token (W13, `auth.tokens.issue`) may be granted it;
+  a thread's agent gets it once `AGENT_PERMISSIONS` lists it. A mesh
   member (`node:<id>` caller, which holds every permission today) cannot
   start one either.
 - **D376. Following and stopping a workflow.** A run's record

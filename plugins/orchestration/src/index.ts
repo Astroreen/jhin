@@ -882,7 +882,15 @@ export default definePlugin({
       return startTask(request, invocation);
     }
 
+    /** The next child number of each parent, taken before any await so parallel delegations differ. */
+    const ordinals = new Map<string, number>();
+
     async function startTask(request: DelegateRequest, invocation?: Invocation): Promise<Task> {
+      const ordinal =
+        (ordinals.get(request.parentThreadId) ??
+          [...tasks.values()].filter((task) => task.parentThreadId === request.parentThreadId)
+            .length) + 1;
+      ordinals.set(request.parentThreadId, ordinal);
       const { thread: parent } = await getThread(request.parentThreadId, invocation);
       const agents = await agentsList(invocation);
       const fallback = agents.find((agent) => agent.default) ?? agents[0];
@@ -944,8 +952,6 @@ export default definePlugin({
         request.isolation === "worktree"
           ? workspaceInput({ type: "worktree", baseRef: "HEAD", startFromOrigin: false })
           : {};
-      const ordinal =
-        [...tasks.values()].filter((task) => task.parentThreadId === parent.id).length + 1;
       const title = childTitle(request.title, request.task, parent.title, ordinal);
       const prompt =
         request.role === undefined || request.role === "general"
@@ -1517,6 +1523,7 @@ export default definePlugin({
       prompt: string,
       options: AgentOptions & { index: number },
       signal: AbortSignal,
+      traceId: string | undefined,
     ): Promise<unknown> {
       if (options.agentType !== undefined) {
         throw new WorkflowError("WORKFLOW_SCRIPT", "agent() agentType is not available on Jhin");
@@ -1541,22 +1548,25 @@ export default definePlugin({
         }));
       let task: Task;
       try {
-        task = await delegate({
-          parentThreadId: workflow.parentThreadId,
-          task: options.schema === undefined ? prompt : schemaPrompt(prompt, options.schema),
-          ...(options.label === undefined ? {} : { title: options.label }),
-          ...(options.agentId === undefined && options.model === undefined
-            ? {}
-            : {
-                target: {
-                  ...(options.agentId === undefined ? {} : { agentId: options.agentId }),
-                  ...(options.model === undefined ? {} : { model: options.model }),
-                },
-              }),
-          ...(options.isolation === undefined ? {} : { isolation: options.isolation }),
-          wake: "none",
-          workflowId: workflow.workflowId,
-        });
+        task = await delegate(
+          {
+            parentThreadId: workflow.parentThreadId,
+            task: options.schema === undefined ? prompt : schemaPrompt(prompt, options.schema),
+            ...(options.label === undefined ? {} : { title: options.label }),
+            ...(options.agentId === undefined && options.model === undefined
+              ? {}
+              : {
+                  target: {
+                    ...(options.agentId === undefined ? {} : { agentId: options.agentId }),
+                    ...(options.model === undefined ? {} : { model: options.model }),
+                  },
+                }),
+            ...(options.isolation === undefined ? {} : { isolation: options.isolation }),
+            wake: "none",
+            workflowId: workflow.workflowId,
+          },
+          traceId === undefined ? undefined : { traceId },
+        );
       } catch (error) {
         await setAgent({ status: "failed" });
         // A call the script got wrong (an unknown agent or model, a mode) is the script's error.
@@ -1614,7 +1624,12 @@ export default definePlugin({
       }
     }
 
-    async function startWorkflow(workflow: Workflow, body: string, args: unknown) {
+    async function startWorkflow(
+      workflow: Workflow,
+      body: string,
+      args: unknown,
+      traceId: string | undefined,
+    ) {
       const controller = new AbortController();
       running.set(workflow.workflowId, controller);
       let ending: Partial<Workflow>;
@@ -1623,7 +1638,8 @@ export default definePlugin({
           body,
           args,
           {
-            agent: (prompt, options) => workflowAgent(workflow, prompt, options, controller.signal),
+            agent: (prompt, options) =>
+              workflowAgent(workflow, prompt, options, controller.signal, traceId),
             log: (message) =>
               void updateWorkflow(workflow.workflowId, (current) => ({
                 ...current,
@@ -1772,11 +1788,12 @@ export default definePlugin({
           createdAt,
           updatedAt: createdAt,
         });
-        void startWorkflow(workflow, parsed.body, args).catch((error: unknown) =>
-          context.log.error("a workflow could not be recorded", {
-            workflowId: workflow.workflowId,
-            error: String(error),
-          }),
+        void startWorkflow(workflow, parsed.body, args, invocation.traceId).catch(
+          (error: unknown) =>
+            context.log.error("a workflow could not be recorded", {
+              workflowId: workflow.workflowId,
+              error: String(error),
+            }),
         );
         return { workflowId: workflow.workflowId, name: workflow.name, status: workflow.status };
       },
@@ -1845,7 +1862,13 @@ export default definePlugin({
     for (const entry of await kv.list(NAMESPACE, { prefix: "task/" })) {
       const parsed = Task.safeParse(entry.value);
       if (!parsed.success) continue;
-      tasks.set(parsed.data.taskId, parsed.data);
+      // A waited task still running when the node stopped lost its waiter: its end wakes the parent.
+      const waiterGone =
+        parsed.data.endedAt === undefined &&
+        parsed.data.wake === "none" &&
+        parsed.data.workflowId === undefined &&
+        parsed.data.delivery === "none";
+      tasks.set(parsed.data.taskId, waiterGone ? { ...parsed.data, wake: "always" } : parsed.data);
       // A task that never started is no answer to a retry of its request.
       const started = parsed.data.childTurnId !== undefined;
       if (parsed.data.clientRequestId !== undefined && started) {
