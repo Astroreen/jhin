@@ -106,3 +106,8 @@ The W1–W18 workstreams in [`plans/t3-roadmap.md`](plans/t3-roadmap.md)
 (queue, history, checkpoints and worktrees, git actions, Codex, OpenCode,
 delegated tasks, scheduled tasks, preview, pairing, desktop, …). Before you
 start anything that sounds like one of them, check its row there.
+
+The agent workstreams A1–A7 in [`plans/agents.md`](plans/agents.md):
+persistent agents with addresses, messaging between agents and the owner,
+missions and slices, the context library and lore, teams, refocus and
+health.
