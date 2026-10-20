@@ -78,7 +78,7 @@ export async function node(
       }),
       {
         manifest: testManifest("mock.storage", {
-          provides: { [KV_CAPABILITY]: "1.0.0", [EVENTLOG_CAPABILITY]: "1.0.0" },
+          provides: { [KV_CAPABILITY]: "1.0.0", [EVENTLOG_CAPABILITY]: "1.1.0" },
         }),
         definition: definePlugin({
           activate(context) {
