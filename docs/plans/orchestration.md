@@ -17,6 +17,8 @@ subcommands and MCP tools.
 
 ## W10. Delegated tasks and workflows
 
+Status: **implemented** (`plugins/orchestration`); the UI is deferred.
+
 ### Decisions
 
 #### Reference and shape
