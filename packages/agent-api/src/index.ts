@@ -146,6 +146,11 @@ export type AgentItem =
   /** The turn waits until `AgentTurn.respond` answers it (or the turn is interrupted). */
   | { readonly kind: "request.opened"; readonly requestId: string; readonly request: AgentRequest }
   | { readonly kind: "plan.updated"; readonly steps: readonly PlanStep[] }
+  /**
+   * Since 1.2: a plan the agent proposes for the user to accept (plan mode),
+   * as markdown. The latest one of a thread's latest turn can be implemented.
+   */
+  | { readonly kind: "plan.proposed"; readonly itemId: string; readonly markdown: string }
   | { readonly kind: "usage"; readonly usage: TokenUsage };
 
 export interface AgentTurn {
@@ -231,6 +236,8 @@ export const ThreadEvents = {
   requestResolved: "agent.request.resolved",
   /** `{ turnId, steps }` */
   planUpdated: "agent.plan.updated",
+  /** `{ turnId, itemId, markdown }`: a plan proposed for the user to accept (since 1.2). */
+  planProposed: "agent.plan.proposed",
   /** `{ turnId, usage }` */
   usageUpdated: "agent.usage.updated",
   turnCompleted: "agent.turn.completed",

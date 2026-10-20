@@ -17,7 +17,8 @@ import { buildPromptHistory } from "../../lib/composer.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread } from "../../lib/thread-actions.ts";
-import { openRequests } from "../../lib/timeline.ts";
+import { proposedPlanTitle } from "../../lib/proposed-plan.ts";
+import { actionablePlan, openRequests } from "../../lib/timeline.ts";
 import { Composer, type ComposerHandleApi, type Selection } from "./composer.tsx";
 import { sendMessage, useFollowUps } from "./follow-ups.ts";
 import { ChatHeader } from "./header.tsx";
@@ -204,6 +205,45 @@ export function ThreadView(props: {
     }
   };
 
+  // A plan-mode turn proposed a plan: the composer offers to implement it (D306).
+  const plan = useMemo(() => actionablePlan(timeline), [timeline]);
+  const planFollowUp =
+    plan !== undefined && selection.interactionMode === "plan" && !running
+      ? {
+          title: proposedPlanTitle(plan.markdown),
+          onImplement: async (newThread: boolean) => {
+            setError(undefined);
+            try {
+              await chat.context.commands.execute(
+                newThread ? "chat.plan.implement-new-thread" : "chat.plan.implement",
+                { ...target, threadId },
+              );
+              if (!newThread)
+                setSelection((current) => ({ ...current, interactionMode: "default" }));
+              return true;
+            } catch (failure) {
+              chat.toasts?.show({
+                type: "error",
+                title: newThread
+                  ? "Could not start implementation thread"
+                  : "Failed to send plan follow-up.",
+                description: (failure as Error).message,
+              });
+              return false;
+            }
+          },
+        }
+      : undefined;
+  const savePlan =
+    props.project === undefined
+      ? undefined
+      : (path: string, contents: string) =>
+          chat.threads.call<{ relativePath: string }>(target, "projects.write-file", {
+            projectId: props.project!.id,
+            path,
+            contents,
+          });
+
   const shownError = openError ?? error;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
@@ -295,6 +335,9 @@ export function ThreadView(props: {
                   format={settings.timestampFormat}
                   onRetry={(text, attachments) => send(text, attachments)}
                   timeline={timeline}
+                  {...(savePlan === undefined || props.project === undefined
+                    ? {}
+                    : { onSavePlan: savePlan, projectPath: props.project.path })}
                 />
               )}
             </div>
@@ -348,6 +391,7 @@ export function ThreadView(props: {
                     onRespond={respond}
                     onSelectionChange={changeSelection}
                     onSend={send}
+                    {...(planFollowUp === undefined ? {} : { planFollowUp })}
                     onStop={() =>
                       void chat.threads
                         .call(target, "threads.interrupt", { threadId })

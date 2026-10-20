@@ -87,7 +87,7 @@ The host itself adds `host.inspect`, `host.identity`, `host.commands.list`,
 | `visits`          | when a thread was last seen on this device (`client.visits@1`)     | `t3-parity.md`                    |
 | `sidebar`         | nodes, projects, thread cards, pinned, Snoozed and Settled shelves | `t3-parity.md#sidebar-follow-up`  |
 | `thread-actions`  | the actions menu of a thread                                       | `t3-parity.md`                    |
-| `chat`            | the thread view, composer, work log, requests                      | `t3-parity.md`                    |
+| `chat`            | the thread view, composer, work log, requests, proposed plans      | `t3-parity.md#composer-w6`        |
 | `command-palette` | ⌘/Ctrl+K                                                           | `t3-parity.md`                    |
 | `keybindings`     | shortcuts for client commands, overridable per command             | `t3-parity.md`                    |
 | `notifications`   | system notifications, sounds and toasts when a thread needs you    | `t3-parity.md`                    |

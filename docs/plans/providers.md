@@ -342,8 +342,6 @@ specific to Claude: the runtime is a plugin on the public API.
   race apart needs a frame Claude Code does not send.
 - Per-turn model options in the composer (effort, fast mode): only the
   config's `effort` applies.
-- A proposed-plan card with "implement this plan" (shown as a message today;
-  also in `t3-parity.md`).
 - Choosing a thread agent's permissions per thread or in config: D341 is one
   list for every Claude Code.
 - Slash commands and skills from Claude Code's initialization in the

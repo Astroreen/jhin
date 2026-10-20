@@ -54,6 +54,8 @@ const MAX_TITLE_LENGTH = 60;
 /** Per image, as a data URL (base64 adds a third). */
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
+/** What `projects.write-file` writes at most: a plan, a note, never a dump. */
+const MAX_WRITTEN_FILE_CHARS = 1_000_000;
 /** All images of one message together, as data URLs: they are stored in the turn's first event. */
 const MAX_ATTACHMENTS_TOTAL = 20 * 1024 * 1024;
 const MAX_BROWSE_ENTRIES = 500;
@@ -275,6 +277,12 @@ const AgentInfo = z.object({
   /** The agent a thread without a chosen agent runs. */
   default: z.boolean(),
 });
+
+const pathExists = (target: string) =>
+  Fs.promises.access(target).then(
+    () => true,
+    () => false,
+  );
 
 class ThreadsError extends Error {
   readonly code: string;
@@ -732,6 +740,11 @@ export default definePlugin({
             type: ThreadEvents.planUpdated,
             payload: { turnId, steps: item.steps as unknown as Json },
           };
+        case "plan.proposed":
+          return {
+            type: ThreadEvents.planProposed,
+            payload: { turnId, itemId: item.itemId, markdown: item.markdown },
+          };
         case "usage":
           return {
             type: ThreadEvents.usageUpdated,
@@ -1116,6 +1129,46 @@ export default definePlugin({
         throw error;
       }
     }
+
+    context.commands.register({
+      name: "projects.write-file",
+      description:
+        "Writes a text file inside a project's directory (a path relative to it), creating its folders; T3 Code's 'Save to workspace'",
+      input: z.object({
+        projectId: z.string(),
+        path: z.string().trim().min(1).max(1024),
+        contents: z.string().max(MAX_WRITTEN_FILE_CHARS),
+      }),
+      output: z.object({ path: z.string(), relativePath: z.string() }),
+      permissions: ["projects.write"],
+      handler: async ({ projectId, path, contents }) => {
+        const project = await getProject(projectId);
+        const root = Path.resolve(project.path);
+        const target = Path.resolve(root, path);
+        const relativePath = Path.relative(root, target);
+        if (relativePath === "" || relativePath.startsWith("..") || Path.isAbsolute(relativePath)) {
+          throw new ThreadsError("PATH_OUTSIDE_PROJECT", "The path must be inside the project", {
+            projectId,
+            path,
+          });
+        }
+        // A link inside the project must not lead the write out of it.
+        const realRoot = await Fs.promises.realpath(root);
+        let parent = Path.dirname(target);
+        while (!(await pathExists(parent))) parent = Path.dirname(parent);
+        const realParent = await Fs.promises.realpath(parent);
+        const fromRoot = Path.relative(realRoot, realParent);
+        if (fromRoot.startsWith("..") || Path.isAbsolute(fromRoot)) {
+          throw new ThreadsError("PATH_OUTSIDE_PROJECT", "The path must be inside the project", {
+            projectId,
+            path,
+          });
+        }
+        await Fs.promises.mkdir(Path.dirname(target), { recursive: true });
+        await Fs.promises.writeFile(target, contents, "utf8");
+        return { path: target, relativePath: relativePath.split(Path.sep).join("/") };
+      },
+    });
 
     context.commands.register({
       name: "projects.browse",

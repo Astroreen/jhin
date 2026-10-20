@@ -437,9 +437,9 @@ describe("jhin.agent-claude: a turn", () => {
     const items = await drain(turn);
     expect(calls[0]!.options.permissionMode).toBe("plan");
     expect(items).toContainEqual({
-      kind: "message.completed",
+      kind: "plan.proposed",
       itemId: "p-1:plan",
-      text: "1. Read\n2. Change",
+      markdown: "1. Read\n2. Change",
     });
     expect(decision).toMatchObject({ behavior: "deny" });
   });
