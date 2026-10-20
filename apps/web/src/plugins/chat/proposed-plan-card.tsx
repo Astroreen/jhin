@@ -15,7 +15,6 @@ import {
   MenuItem,
   MenuPopup,
   MenuTrigger,
-  copyText,
   cn,
 } from "@jhin/ui";
 import { EllipsisIcon } from "lucide-react";
@@ -30,6 +29,7 @@ import {
   proposedPlanTitle,
   stripDisplayedPlanMarkdown,
 } from "../../lib/proposed-plan.ts";
+import { useCopy } from "../../lib/hooks.ts";
 import { ChatMarkdown } from "./markdown.tsx";
 import { ChatContext } from "./services.ts";
 
@@ -52,7 +52,13 @@ export function ProposedPlanCard({
 }) {
   const toasts = useContext(ChatContext)?.toasts;
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopy((error) =>
+    toasts?.show({
+      type: "error",
+      title: "Could not copy plan",
+      description: errorText(error) ?? "An error occurred while copying.",
+    }),
+  );
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   // The path last submitted, so reopening the dialog offers it again.
   const [lastSavePath, setLastSavePath] = useState("");
@@ -65,20 +71,7 @@ export function ProposedPlanCard({
   const saveContents = normalizePlanMarkdownForExport(planMarkdown);
   const canSave = onSave !== undefined && workspaceRoot !== undefined;
 
-  const handleCopyPlan = () => {
-    copyText(saveContents).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
-      },
-      (error: unknown) =>
-        toasts?.show({
-          type: "error",
-          title: "Could not copy plan",
-          description: errorText(error) ?? "An error occurred while copying.",
-        }),
-    );
-  };
+  const handleCopyPlan = () => copy(saveContents);
 
   const openSaveDialog = () => {
     if (!canSave) {

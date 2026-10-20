@@ -59,6 +59,9 @@ test("shows a proposed plan as T3's card and saves it into the project", async (
 
 test("implements the plan in build mode, or refines it with what was typed", async ({ page }) => {
   await proposePlan(page, "Add a cache");
+  // The thread records plan mode: a reload (or another client) still offers the plan.
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Plan ready" })).toContainText("Add a cache");
   const message = page.getByRole("textbox", { name: "Message" });
   await message.fill("also tests");
   await expect(page.getByRole("button", { name: "Refine" })).toBeVisible();

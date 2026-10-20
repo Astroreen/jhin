@@ -178,13 +178,33 @@ describe("jhin.threads: thread management", () => {
     });
     expect(Fs.readFileSync(Path.join(dir, "docs", "plans", "cache.md"), "utf8")).toBe("# Cache\n");
 
-    for (const path of ["../escape.md", Path.join(data, "abs.md"), "out/through-link.md", "."]) {
+    // A link as the file itself, to a file outside and leading nowhere.
+    Fs.writeFileSync(Path.join(data, "secret.txt"), "keep");
+    Fs.symlinkSync(Path.join(data, "secret.txt"), Path.join(dir, "linked.md"));
+    Fs.symlinkSync(Path.join(data, "nowhere.md"), Path.join(dir, "dangling.md"));
+    for (const path of [
+      "../escape.md",
+      Path.join(data, "abs.md"),
+      "out/through-link.md",
+      ".",
+      "linked.md",
+      "dangling.md",
+    ]) {
       await expect(
         client.call("projects.write-file", { projectId: project.id, path, contents: "x" }),
       ).rejects.toMatchObject({ code: "PATH_OUTSIDE_PROJECT" });
     }
     expect(Fs.existsSync(Path.join(data, "escape.md"))).toBe(false);
     expect(Fs.existsSync(Path.join(data, "through-link.md"))).toBe(false);
+    expect(Fs.readFileSync(Path.join(data, "secret.txt"), "utf8")).toBe("keep");
+    expect(Fs.existsSync(Path.join(data, "nowhere.md"))).toBe(false);
+    // A name that only starts with two dots is inside.
+    await client.call("projects.write-file", {
+      projectId: project.id,
+      path: "..notes.md",
+      contents: "n",
+    });
+    expect(Fs.readFileSync(Path.join(dir, "..notes.md"), "utf8")).toBe("n");
   });
 
   it("browses folders for a project picker", async () => {
