@@ -18,6 +18,7 @@ import {
 } from "../src/index.ts";
 import {
   drain,
+  earlierTurns,
   init,
   memorySessions,
   result,
@@ -27,6 +28,8 @@ import {
 } from "./support.ts";
 
 const THREAD = "0b6c5e5e-0000-4000-8000-000000000003";
+
+const earlier = (count: number) => earlierTurns(THREAD, count);
 
 /** Claude Code answering one turn after another on one process, then waiting until closed. */
 const answering = (...answers: string[]): Script =>
@@ -56,7 +59,7 @@ function node(scripts: Script[], config: z.input<typeof Config> = {}) {
         threadId: THREAD,
         turnId: `t${++turns}`,
         input: { text: `turn ${turns}` },
-        history: [],
+        history: earlier(turns - 1),
         cwd: "/work",
         model: "claude-haiku-5-5",
         runtimeMode: "approval-required",
@@ -238,7 +241,9 @@ describe("jhin.agent-claude: live sessions", () => {
   });
 
   it("ends an idle Claude Code after the configured minutes", async () => {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // The idle deadline is reckoned with Date.now(): faked too, so real milliseconds that
+    // pass while the turn settles never bring it forward.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     const { claude, turn, calls } = node([answering("one"), answering("two")], {
       sessionIdleMinutes: 5,
     });
@@ -347,7 +352,9 @@ describe("jhin.agent-claude: live sessions", () => {
     expect(answers(items)).toEqual(["1\n"]);
     expect(calls[0]!.interrupts).toBe(1);
 
-    expect(answers(await drain(claude.startTurn({ ...request, turnId: "t2" })))).toEqual(["after"]);
+    expect(
+      answers(await drain(claude.startTurn({ ...request, turnId: "t2", history: earlier(1) }))),
+    ).toEqual(["after"]);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.closed).toBe(false);
   });
@@ -460,7 +467,7 @@ describe("jhin.agent-claude: live sessions", () => {
     };
     const stuck = drain(claude.startTurn({ ...request, turnId: "t1" }));
     await held;
-    const next = drain(claude.startTurn({ ...request, turnId: "t2" }));
+    const next = drain(claude.startTurn({ ...request, turnId: "t2", history: earlier(1) }));
     await expect(stuck).rejects.toThrow("A later turn of this thread took its Claude Code over.");
     expect(answers(await next)).toEqual(["two"]);
     expect(calls[0]!.closed).toBe(true);
@@ -585,7 +592,7 @@ describe("jhin.agent-claude: frames of other turns", () => {
     ]);
     const request = { threadId: THREAD, input: { text: "hi" }, history: [], cwd: "/work" };
     await drain(claude.startTurn({ ...request, turnId: "t1" }));
-    const stopped = claude.startTurn({ ...request, turnId: "t2" });
+    const stopped = claude.startTurn({ ...request, turnId: "t2", history: earlier(1) });
     const items: AgentItem[] = [];
     const reading = (async () => {
       for await (const item of stopped.items) items.push(item);
@@ -632,7 +639,9 @@ describe("jhin.agent-claude: frames of other turns", () => {
     };
     const first = claude.startTurn({ ...request, turnId: "t1" });
     for await (const item of first.items) if (item.kind === "message.completed") first.interrupt();
-    expect(answers(await drain(claude.startTurn({ ...request, turnId: "t2" })))).toEqual(["two"]);
+    expect(
+      answers(await drain(claude.startTurn({ ...request, turnId: "t2", history: earlier(1) }))),
+    ).toEqual(["two"]);
     expect(calls).toHaveLength(1);
   });
 
@@ -696,19 +705,19 @@ describe("jhin.agent-claude: session records", () => {
     const records = sessionRecords(createMemoryStorage().kv);
     let settle!: () => void;
     const settled = new Promise<void>((resolve) => (settle = resolve));
-    await records.set(THREAD);
+    await records.set(THREAD, { sessionId: THREAD });
     // A turn still letting go of its session writes after the thread was deleted.
     await records.forget(THREAD, settled);
-    await records.set(THREAD);
-    expect(await records.has(THREAD)).toBe(false);
-    await records.set("another");
-    expect(await records.has("another")).toBe(true);
+    await records.set(THREAD, { sessionId: THREAD });
+    expect(await records.get(THREAD)).toBeUndefined();
+    await records.set("another", { sessionId: "another" });
+    expect(await records.get("another")).toBeDefined();
     // Its turns are done: the guard is dropped, nothing is left to write.
     settle();
     await settled;
     await records.forget("another");
-    await records.set(THREAD);
-    expect(await records.has(THREAD)).toBe(true);
+    await records.set(THREAD, { sessionId: THREAD });
+    expect(await records.get(THREAD)).toBeDefined();
   });
 
   it("deletes after a write already on its way", async () => {
@@ -730,14 +739,106 @@ describe("jhin.agent-claude: session records", () => {
       },
     };
     const records = sessionRecords(kv);
-    const inFlight = records.set(THREAD);
+    const inFlight = records.set(THREAD, { sessionId: THREAD });
     await started;
     const forgotten = records.forget(THREAD, new Promise(() => undefined));
     // One turn of the event loop: a delete that does not wait for the write has run by now.
     await new Promise((resolve) => setImmediate(resolve));
     release();
     await Promise.all([inFlight, forgotten]);
-    expect(await records.has(THREAD)).toBe(false);
+    expect(await records.get(THREAD)).toBeUndefined();
+  });
+});
+
+describe("jhin.agent-claude: sessions after a rollback (D222)", () => {
+  /** A turn of the history: its start and its answer. */
+  const turnOf = (turnId: string, agentId: string, text: string, answer: string): StoredEvent[] => [
+    {
+      stream: `thread/${THREAD}`,
+      sequence: 0,
+      type: "agent.turn.started",
+      payload: { turnId, agentId, input: { text } },
+      at: "2026-01-01T00:00:00.000Z",
+    },
+    {
+      stream: `thread/${THREAD}`,
+      sequence: 0,
+      type: "agent.item.completed",
+      payload: { turnId, itemId: `${turnId}:1`, kind: "message", text: answer },
+      at: "2026-01-01T00:00:00.000Z",
+    },
+  ];
+
+  it("starts a new session with the transcript when the session's turn was dropped", async () => {
+    const { turn, calls, sessions } = node([answering("one", "two"), answering("again", "on")]);
+    expect(answers(await turn({ turnId: "t1", input: { text: "first" } }))).toEqual(["one"]);
+    await turn({
+      turnId: "t2",
+      input: { text: "second" },
+      history: turnOf("t1", "jhin.agent-claude", "first", "one"),
+    });
+    expect(sessions.records.get(THREAD)).toEqual({ sessionId: THREAD, turnId: "t2" });
+
+    // Rolled back to t1: the session holds t2, which the thread no longer shows.
+    expect(
+      answers(
+        await turn({
+          turnId: "t3",
+          input: { text: "instead" },
+          history: turnOf("t1", "jhin.agent-claude", "first", "one"),
+        }),
+      ),
+    ).toEqual(["again"]);
+    // The live process of the old session ended; a new session got the whole thread.
+    expect(calls[0]!.closed).toBe(true);
+    const fresh = calls[1]!.options.sessionId;
+    expect(fresh).toEqual(expect.any(String));
+    expect(fresh).not.toBe(THREAD);
+    expect(calls[1]!.options.resume).toBeUndefined();
+    expect(prompts(calls[1]!)[0]).toContain("User: first\nAssistant: one");
+    expect(prompts(calls[1]!)[0]).toContain("instead");
+    expect(sessions.records.get(THREAD)).toEqual({ sessionId: fresh, turnId: "t3" });
+
+    // The next turn stays on the new session.
+    expect(
+      answers(
+        await turn({
+          turnId: "t4",
+          input: { text: "go on" },
+          history: [
+            ...turnOf("t1", "jhin.agent-claude", "first", "one"),
+            ...turnOf("t3", "jhin.agent-claude", "instead", "again"),
+          ],
+        }),
+      ),
+    ).toEqual(["on"]);
+    expect(calls).toHaveLength(2);
+    expect(prompts(calls[1]!)[1]).toBe("go on");
+  });
+
+  it("keeps the live process when a turn holding a dropped session is stopped before it starts", async () => {
+    const { claude, turn, calls, sessions } = node([answering("one", "two")]);
+    await turn({ turnId: "t1", input: { text: "first" } });
+    const stopped = claude.startTurn({
+      threadId: THREAD,
+      turnId: "t2",
+      input: { text: "never" },
+      history: [],
+      cwd: "/work",
+      model: "claude-haiku-5-5",
+      runtimeMode: "approval-required",
+    });
+    stopped.interrupt();
+    expect(await drain(stopped)).toEqual([]);
+    expect(calls[0]!.closed).toBe(false);
+    expect(sessions.records.get(THREAD)).toEqual({ sessionId: THREAD, turnId: "t1" });
+  });
+
+  it("resumes a session recorded before rollbacks, named after the thread", async () => {
+    const { turn, calls, sessions } = node([answering("back")]);
+    sessions.ids.add(THREAD);
+    await turn({ history: turnOf("t0", "jhin.agent-claude", "old", "reply") });
+    expect(calls[0]!.options).toMatchObject({ resume: THREAD });
   });
 });
 

@@ -466,11 +466,22 @@ export function sessionRecords(kv: KeyValueStore): SessionStore & {
   };
   const key = (threadId: string) => `session/${threadId}`;
   return {
-    has: async (threadId) => (await kv.get(NAMESPACE, key(threadId))) !== undefined,
-    set: (threadId) =>
+    get: async (threadId) => {
+      const value = (await kv.get(NAMESPACE, key(threadId))) as {
+        sessionId?: unknown;
+        turnId?: unknown;
+      } | null;
+      if (value === undefined) return undefined;
+      // Records older than rollbacks hold only a time: the session is named after the thread.
+      return {
+        sessionId: typeof value?.sessionId === "string" ? value.sessionId : threadId,
+        ...(typeof value?.turnId === "string" ? { turnId: value.turnId } : {}),
+      };
+    },
+    set: (threadId, record) =>
       write(threadId, async () => {
         if (forgotten.has(threadId)) return;
-        await kv.set(NAMESPACE, key(threadId), { at: new Date().toISOString() });
+        await kv.set(NAMESPACE, key(threadId), { at: new Date().toISOString(), ...record });
       }),
     delete: (threadId) => write(threadId, () => kv.delete(NAMESPACE, key(threadId))),
     forget: (threadId, settled = Promise.resolve()) => {

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { AGENT_PERMISSIONS, Config, createClaudeRuntime } from "../src/index.ts";
 import {
   drain,
+  earlierTurns,
   init,
   memorySessions,
   result,
@@ -71,7 +72,8 @@ function node(scripts: Script[], config: z.input<typeof Config> = {}) {
     threadId: THREAD,
     turnId: `t${++turns}`,
     input: { text: `turn ${turns}` },
-    history: [],
+    // Claude's earlier turns of the thread: its session holds nothing dropped (D222).
+    history: earlierTurns(THREAD, turns - 1),
     cwd: "/work",
     model: "claude-haiku-5-5",
     runtimeMode: "approval-required",

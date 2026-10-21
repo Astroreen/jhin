@@ -327,3 +327,44 @@ describe("folding as events arrive", () => {
     expect(fold.current()).toEqual(reduceTimeline(events));
   });
 });
+
+describe("rolled back turns (D221)", () => {
+  const events = stream(
+    started("u1", "first"),
+    [ThreadEvents.turnCompleted, { turnId: "u1" }],
+    started("u2", "second"),
+    [ThreadEvents.turnCompleted, { turnId: "u2" }],
+    started("u3", "third"),
+    [ThreadEvents.turnFailed, { turnId: "u3", error: "boom" }],
+    [ThreadEvents.threadRolledBack, { turnIds: ["u2", "u3"], toTurnId: "u1" }],
+    started("u4", "again"),
+    [ThreadEvents.itemCompleted, { turnId: "u4", itemId: "m", kind: "message", text: "ok" }],
+  );
+
+  it("leaves the dropped turns out, and later turns follow the kept ones", () => {
+    expect(reduceTimeline(events).turns.map((turn) => [turn.turnId, turn.text])).toEqual([
+      ["u1", "first"],
+      ["u4", "again"],
+    ]);
+  });
+
+  it("gives the same timeline back for a rollback that drops no turn it shows", () => {
+    const fold = createTimeline();
+    const before = fold.apply(events.slice(0, 2));
+    const nothing = stream([ThreadEvents.threadRolledBack, { turnIds: ["unknown"] }]).map(
+      (event) => ({ ...event, sequence: 3 }),
+    );
+    expect(fold.apply(nothing)).toBe(before);
+  });
+
+  it("drops turns already folded, keeping the turns it did not touch", () => {
+    const fold = createTimeline();
+    const before = fold.apply(events.slice(0, 6));
+    const after = fold.apply(events.slice(6, 7));
+    expect(after).not.toBe(before);
+    expect(after.turns).toEqual([before.turns[0]]);
+    expect(after.turns[0]).toBe(before.turns[0]);
+    fold.apply(events.slice(7));
+    expect(fold.current()).toEqual(reduceTimeline(events));
+  });
+});

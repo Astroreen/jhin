@@ -1,7 +1,8 @@
 import type { AgentItem, AgentTurn } from "@jhin/agent-api";
+import type { StoredEvent } from "@jhin/storage-api";
 import type { Options, SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
-import type { QueryFunction, SessionStore } from "../src/turn.ts";
+import type { QueryFunction, SessionRecord, SessionStore } from "../src/turn.ts";
 
 /** One query a turn started: its options, the prompts it sent and what was done to it. */
 interface Call {
@@ -143,13 +144,24 @@ export function scriptedQuery(...scripts: Script[]) {
   return { query, calls, state };
 }
 
-export function memorySessions(initial: string[] = []): SessionStore & { ids: Set<string> } {
+export function memorySessions(
+  initial: string[] = [],
+): SessionStore & { ids: Set<string>; records: Map<string, SessionRecord> } {
   const ids = new Set(initial);
+  const records = new Map<string, SessionRecord>();
   return {
     ids,
-    has: async (threadId) => ids.has(threadId),
-    set: async (threadId) => void ids.add(threadId),
-    delete: async (threadId) => void ids.delete(threadId),
+    records,
+    get: async (threadId) =>
+      ids.has(threadId) ? (records.get(threadId) ?? { sessionId: threadId }) : undefined,
+    set: async (threadId, record) => {
+      ids.add(threadId);
+      records.set(threadId, record);
+    },
+    delete: async (threadId) => {
+      ids.delete(threadId);
+      records.delete(threadId);
+    },
   };
 }
 
@@ -281,3 +293,13 @@ export const result = (overrides: Record<string, unknown> = {}) =>
     modelUsage: { "claude-fable-5-1": { contextWindow: 1_000_000 } },
     ...overrides,
   });
+
+/** A thread's earlier turns `t1`…, as the threads plugin passes them: Claude's own. */
+export const earlierTurns = (threadId: string, count: number): StoredEvent[] =>
+  Array.from({ length: count }, (_, index) => ({
+    stream: `thread/${threadId}`,
+    sequence: index + 1,
+    type: "agent.turn.started",
+    payload: { turnId: `t${index + 1}`, agentId: "jhin.agent-claude", input: { text: "" } },
+    at: "2026-01-01T00:00:00.000Z",
+  }));

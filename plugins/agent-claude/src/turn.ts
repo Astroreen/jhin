@@ -61,10 +61,18 @@ export type { QueryFunction } from "./session.ts";
 /** The runtime's agent id, recorded on Claude's turns (D90). */
 export const CLAUDE_AGENT_ID = "jhin.agent-claude";
 
-/** Which threads already have a Claude session (named after the thread). */
+/** A thread's Claude session: its id, and the turn that last ran on it (D222). */
+export interface SessionRecord {
+  /** The thread's id, unless a rollback started the thread a new session. */
+  readonly sessionId: string;
+  /** Absent in records older than rollbacks. */
+  readonly turnId?: string;
+}
+
+/** Which threads already have a Claude session. */
 export interface SessionStore {
-  has(threadId: string): Promise<boolean>;
-  set(threadId: string): Promise<void>;
+  get(threadId: string): Promise<SessionRecord | undefined>;
+  set(threadId: string, record: SessionRecord): Promise<void>;
   delete(threadId: string): Promise<void>;
 }
 
@@ -574,10 +582,12 @@ export function claudeTurn(
 
   // --- The query ----------------------------------------------------------------
   const mode = permissionMode(runtimeMode, interactionMode);
+  /** The session this turn runs on: the thread's id, or the one a rollback started (D222). */
+  let sessionId = request.threadId;
   const options = (resume: boolean): Options => ({
     cwd: request.cwd,
     model,
-    ...(resume ? { resume: request.threadId } : { sessionId: request.threadId }),
+    ...(resume ? { resume: sessionId } : { sessionId }),
     permissionMode: mode,
     ...(mode === "bypassPermissions" ? { allowDangerouslySkipPermissions: true } : {}),
     canUseTool,
@@ -628,12 +638,14 @@ export function claudeTurn(
           started = true;
           // A record that could not be written costs one retry on the next turn (D91),
           // never this turn.
-          await deps.sessions.set(request.threadId).catch((error: unknown) =>
-            deps.log?.("could not record the claude session", {
-              threadId: request.threadId,
-              error: String(error),
-            }),
-          );
+          await deps.sessions
+            .set(request.threadId, { sessionId, turnId: request.turnId })
+            .catch((error: unknown) =>
+              deps.log?.("could not record the claude session", {
+                threadId: request.threadId,
+                error: String(error),
+              }),
+            );
           continue;
         }
         if (message.type === "result") {
@@ -673,9 +685,29 @@ export function claudeTurn(
   };
 
   const run = async () => {
-    const hasSession = await deps.sessions.has(request.threadId);
-    // Stopped before Claude Code started: it never starts.
+    const record = await deps.sessions.get(request.threadId);
+    // The session holds a turn the thread no longer shows (a rollback dropped it): it
+    // cannot forget it, so the thread starts a new one with its transcript (D222).
+    const stale =
+      record?.turnId !== undefined &&
+      !request.history.some(
+        (event) =>
+          event.type === ThreadEvents.turnStarted &&
+          (event.payload as { turnId?: unknown } | null)?.turnId === record.turnId,
+      );
+    const hasSession = record !== undefined && !stale;
+    // Stopped before Claude Code started: it never starts, and its process stays.
     if (interrupted) return;
+    if (stale) {
+      deps.log?.("claude session holds dropped turns, starting a new one", {
+        threadId: request.threadId,
+      });
+      // The process kept for the thread runs the old session: it ends.
+      deps.live?.close(request.threadId);
+      sessionId = randomUUID();
+    } else if (record !== undefined) {
+      sessionId = record.sessionId;
+    }
     // A thread Claude has a session of may have gone on with another agent since.
     const preface = transcript(request.history, hasSession ? CLAUDE_AGENT_ID : undefined);
     const text = preface === undefined ? request.input.text : `${preface}${request.input.text}`;

@@ -961,6 +961,149 @@ and stops once switched back), with a screenshot.
   message's turn. `threads.send` keeps refusing a busy thread
   (`TURN_IN_PROGRESS`).
 
+### Thread history (W2)
+
+T3 Code (D53, and nightly `v0.1.1-nightly.20261020.3411`, which adds
+nothing here) has no in-place edit and no regenerate button: a sent message
+is edited by rewinding the chat to before it ("Edit from here"), a stopped
+or failed turn is resumed, a thread forks from an answer and a fork merges
+back into its parent, and a server-side search reads the messages of every
+thread. Those are ported; regenerating is the one addition the roadmap asks
+for, built from the same rewind.
+
+- **D220. A thread drops its later turns with `threads.rollback`**
+  (`{ threadId, turnId? }`): the turns after `turnId` go, every turn without
+  it (T3's `checkpoint.rollback` to a turn count, without the files, which
+  W3 adds). The log stays append-only: the thread's stream gets
+  `threads.thread.rolled-back` (`{ turnIds, toTurnId? }`, the turns dropped,
+  oldest first), and nothing is rewritten, so catching up by sequence (D29)
+  and mirrored history (D26) keep working. The record's `lastTurn` becomes
+  the kept turn's (its ending and time) or goes, and `updatedAt` moves; the
+  index event follows. Refused while a turn runs or starts
+  (`TURN_IN_PROGRESS`: a rollback and a send take the thread the same way, so
+  neither starts in the other's middle), on an archived thread
+  (`THREAD_ARCHIVED`) and for a turn the thread does not show
+  (`TURN_NOT_FOUND`, a dropped one included); nothing after `turnId` drops
+  nothing and appends nothing. The event and the record are two writes: a
+  record left naming a dropped turn (its write failed after the event) is
+  mended by the next rollback, which then finds nothing to drop. A deletion
+  or an archive waits for a rollback under way however long its hook runs
+  (a stop gives up on an agent after `STOP_TIMEOUT_MS`, but still waits for
+  its hold to end). A message sent while a rollback holds the thread waits
+  in the thread's queue and starts once the rollback is done (D202). It runs through the hook `threads.rollback`
+  (`{ thread, toTurnId?, turnIds }`, around the recording), so W3's
+  checkpoints restore the files of the same rollback; a hook may delay or
+  refuse it, not change which turns it drops.
+- **D221. A dropped turn is gone for every reader.** `@jhin/agent-api`
+  exports `visibleThreadEvents(events)`: the events without those of dropped
+  turns and without the rollback events. A turn request's `history` is that
+  (the threads plugin provides `agent.registry@1.1`: "every earlier event the thread still shows"), and so
+  is what forks copy and search reads; the client's timeline removes the
+  dropped turns as their event arrives. Turn ids are UUIDs, so a dropped id
+  never comes back.
+- **D222. Claude Code forgets what was dropped.** Claude keeps its own
+  session (D91), which still holds the dropped turns. The session record
+  keeps the session id and the turn that last used it; a turn whose history
+  no longer shows that turn starts a new session (a new id, its live process
+  closed) with the thread's whole transcript as context, T3's
+  `portable_context`. Old records (no id) mean the thread's id, as before.
+  The record is written once Claude Code starts the turn, and a write that
+  fails is only logged (D91): a dropped turn whose record was never written
+  leaves the record naming an older turn, and the next turn resumes the
+  session with the dropped turn in it. That gap is accepted until the native
+  rewind below, which needs no record. So is a record written before this
+  change (no turn in it) when the thread is rolled back before its next
+  Claude turn: that turn resumes the old session once, and records its turn
+  from then on.
+  T3's native path (`resumeSessionAt` the kept answer's message) is
+  deferred: it needs the SDK's message ids on every turn.
+- **D223. "Edit from here"** (T3's `RevertUserMessageButton`): the hover row
+  of a sent message gets `Undo2Icon` "Edit from here" while no turn runs.
+  It asks "Edit from here?" / "Rewind chat to before this message. Your
+  prompt and attachments return to the composer." with "Cancel" and "Revert
+  and keep changes" (W3 adds "Revert files too"), rolls back to the turn
+  before, and puts the text after the composer's draft (a blank line
+  between) and the images back into the composer; nothing is sent. The
+  client command is `thread.edit-from-here` (`{ node, remote?, threadId,
+  turnId }`); the hover rows are the slot `chat.message.actions` (props
+  `ChatMessageActionProps`), so the copy button, this one and D224's are
+  contributions.
+- **D224. Regenerating = dropping a turn and sending its message again.**
+  `threads.regenerate` (`{ threadId, turnId? }`, the latest turn by
+  default) rolls back to before the turn and starts a turn with its text,
+  images, agent, model and modes, as one command: nothing can start in
+  between. The timeline's "Retry" of a failed or stopped latest turn runs it
+  (it sent the message again before, leaving the failed turn above), and the
+  latest final answer gets "Regenerate response" (`RefreshCwIcon`) in its
+  hover row; client command `thread.regenerate`.
+- **D225. Forking at a turn.** `threads.fork` (`{ threadId, turnId?, title?
+  }`, the latest ended turn by default) creates a thread in the same project
+  with the parent's agent, model and modes, titled "<title> fork" (T3's),
+  whose record says `forkedFrom: { threadId, turnId }` (T3's lineage). Its
+  stream copies the visible events of the turns up to `turnId`, each payload
+  with `inheritedAt` (the original time, so durations and timestamps stay),
+  then `threads.thread.forked` (`{ threadId, turnId }`), where the timeline
+  draws T3's divider "Forked from conversation" with a link to the parent.
+  Copying, not referencing the parent as T3's projection does, keeps a fork
+  readable when its parent is deleted or lives on a node that is away. A
+  running or waiting turn cannot be forked (`TURN_IN_PROGRESS`, T3's "in-progress
+  runs cannot be forked"). The agent's own session is not copied: Claude
+  starts the fork's session with the transcript (D222); T3's native session
+  fork is deferred. The latest-turn final answer and every ended turn's
+  final answer get "Fork from this response" (`GitForkIcon`); client
+  command `thread.fork` opens the fork.
+- **D226. Merging a fork back.** `threads.merge-back` (`{ threadId, turnId?
+  }`: the fork, and its latest ended turn by default) records on the parent
+  `pendingMergeBack: { threadId, turnId, at }`, replacing an older one (T3's
+  superseded transfer); no turn starts. The parent's next turn gives the
+  agent T3's handoff before the user's text: "Context handoff (merge_back /
+  fork_delta_summary):", "Merge-back context from forked conversation.", the
+  source and target threads, then every user message and answer of the fork
+  after the fork point up to that turn ("- User: …", "- Assistant: …", each
+  compacted and cut at 240 characters), then "User message:" and the text.
+  The turn's event keeps the user's text as typed and the handoff apart
+  (`handoff: { kind: "merge-back", threadId, turnId }`), where the timeline
+  says "Merged back from <fork>"; the pending mark goes. Refused for a
+  thread that is not a fork (`THREAD_NOT_FORK`), a parent that is gone
+  (`THREAD_NOT_FOUND`) or a fork with no ended turn of its own
+  (`TURN_NOT_FOUND`). The fork's header gets T3's `GitMergeIcon` button
+  "Merge back to <parent>" ("Merge this conversation back into <parent>";
+  disabled: "Complete a run in this fork before merging it back") in
+  `chat.header.actions`, which opens the parent; client command
+  `thread.merge-back`.
+- **D227. Searching thread contents on the node.** `threads.search`
+  (`{ query, limit?, projectId? }`: 2–200 characters, at most 50 results)
+  matches the visible user messages and final answers of every thread that
+  is not archived, case- and accent-insensitive, one match per thread (a
+  user message first, else the newest), user matches first, then by the
+  thread's `updatedAt`; a match is `{ threadId, projectId, source: "user" |
+  "assistant", snippet, at }` with T3's snippet (240 characters, a window
+  from 72 before the match, "…" at cut ends). The node keeps each thread's
+  texts in memory by stream head and reads only what came since.
+- **D228. The palette and the sidebar search contents too.** While a query
+  has two characters or more, the sidebar's search asks every shown node
+  (and mesh member) after a pause of 200 ms; title matches come first, then
+  threads matched by content, each with its snippet ("You:" or "Agent:",
+  the query marked), "Searching thread messages…" while asking and "No
+  threads found" when nothing matches (T3's SidebarThreadHeader). The
+  palette adds each match's snippet to its thread's search terms, so a
+  thread found by content ranks after title matches, and says "Searching
+  thread messages…" while asking (T3's buildThreadActionItems).
+
+W2 lands as a stack of pull requests: the rollback first (D220–D222, which
+W3 builds on), then editing and regenerating (D223, D224), forks and merging
+back (D225, D226), and search (D227, D228).
+
+The proof of D220–D222: `plugins/threads/test/history.test.ts` (dropping the
+turns after a turn or every turn, the log kept and the agents' history
+without them, the record's last turn, nothing to drop, the refusals, the
+thread held while it rolls back, the hook wrapping and refusing it);
+`plugins/agent-claude/test/session.test.ts` (a session holding a dropped turn
+replaced by a new one with the transcript, its process ended, the next turn
+staying on it, records older than rollbacks resumed by the thread's id);
+`apps/web/test/timeline.test.ts` (dropped turns leave the timeline, at once
+and as events arrive).
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -982,8 +1125,16 @@ and stops once switched back), with a screenshot.
 - Composer: `@` file mentions, slash commands, rich text (tiptap), pasted
   files other than images, image compression and HEIC conversion (W6, D290–D303,
   in progress).
-- Editing a sent message, regenerating, forking a thread.
-- Searching thread contents (the palette and the sidebar search titles).
+- Thread history (W2, D220–D228): reverting files with a rollback (W3's
+  checkpoints), Claude Code's native rewind and fork (`resumeSessionAt` and
+  `forkSession` instead of a new session with the transcript, D222, D225;
+  until then a Claude session record that could not be written, or one
+  from before D222, lets the next turn resume a session that still holds
+  the dropped turns, D222; and the Claude Code session a new one replaces is
+  left on disk),
+  T3's in-thread find (`mod+f`), a search index on disk (the node reads
+  each thread's texts once per run, D227) and T3's Lineage panel listing a
+  thread's forks.
 - Sidebar (T3's layout, D70, D75–D79): settling on a merged pull request,
   T3's per-thread "Auto-settle behavior" and its configurable number of days
   (here always 3), the automatic rule applied by the node (T3 sweeps every

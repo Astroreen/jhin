@@ -81,6 +81,11 @@ Words about Jhin:
   event log owned by one node.
 - **Turn** — one exchange in a thread: a user message and the agent's response.
   Every turn carries an `agentId`.
+- **Rollback** — dropping a thread's turns after a turn (`threads.rollback`):
+  the log keeps their events and records a `threads.thread.rolled-back`
+  event; what shows a thread (agents' history, the timeline, forks, search)
+  leaves the **dropped turns** out, while `threads.events` returns the log as
+  written for clients to fold. T3 Code reverts to a checkpoint the same way.
 - **Delegated task** — child work a thread hands to an agent of any runtime
   and model (`tasks.delegate`, T3 Code's `delegate_task`): a **child thread**
   (`relationshipToParent: "subagent"`) runs the task prompt, and the parent

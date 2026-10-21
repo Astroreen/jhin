@@ -156,6 +156,8 @@ interface Payload {
   readonly messageId?: string;
   readonly messages?: readonly QueuedMessage[];
   readonly held?: ThreadQueue["held"];
+  /** The turns a rollback dropped. */
+  readonly turnIds?: readonly string[];
 }
 
 /**
@@ -214,6 +216,7 @@ export function createTimeline() {
     changed.clear();
     const wasDeleted = deleted;
     const queued = queue;
+    let dropped = false;
     for (const event of events) {
       if (event.sequence <= sequence) continue;
       sequence = event.sequence;
@@ -227,6 +230,21 @@ export function createTimeline() {
           messages: payload.messages ?? [],
           ...(payload.held === undefined ? {} : { held: payload.held }),
         };
+        continue;
+      }
+      if (event.type === ThreadEvents.threadRolledBack) {
+        // The turns a rollback dropped leave the timeline (D221).
+        const ids = new Set(payload.turnIds ?? []);
+        for (let index = turns.length - 1; index >= 0; index--) {
+          const turn = turns[index]!;
+          if (!ids.has(turn.turnId)) continue;
+          turns.splice(index, 1);
+          byId.delete(turn.turnId);
+          positions.delete(turn);
+          snapshots.delete(turn);
+          changed.delete(turn);
+          dropped = true;
+        }
         continue;
       }
       if (event.type === ThreadEvents.turnStarted) {
@@ -411,7 +429,9 @@ export function createTimeline() {
       }
     }
     // Nothing this batch held changed anything: the same timeline.
-    if (changed.size === 0 && deleted === wasDeleted && queue === queued) return timeline;
+    if (changed.size === 0 && deleted === wasDeleted && queue === queued && !dropped) {
+      return timeline;
+    }
     for (const turn of changed) {
       // A turn that ended with a request still open never got it answered.
       const items =
