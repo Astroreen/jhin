@@ -180,9 +180,18 @@ import {
 } from "../lib/sidebar-order.ts";
 import { snoozePresets, snoozeWakeLabel } from "../lib/snooze.ts";
 import { threadActions } from "../lib/thread-actions.ts";
+import { SearchMatchExcerpt } from "../lib/thread-search-match.tsx";
+import {
+  contentQuery,
+  createContentSearch,
+  emptySearchLabel,
+  type ContentMatch,
+} from "../lib/thread-search.ts";
 import type { OrderAssignment } from "../lib/thread-order.ts";
 
 type Entry = SidebarThread<NodeWithCatalog>;
+/** A search result; `match` when its messages, not its title, matched. */
+type SearchEntry = Entry & { readonly match?: ContentMatch };
 
 const SETTLED_EXPANDED_STORAGE_KEY = "jhin.sidebar.settled-expanded";
 const SNOOZED_EXPANDED_STORAGE_KEY = "jhin.sidebar.snoozed-expanded";
@@ -458,6 +467,9 @@ export const sidebarPlugin = builtin(
       const visits = context.services.tryGet<ThreadVisits>(VISITS_CAPABILITY);
       const machines = context.services.tryGet<NodeMachines>(MACHINES_CAPABILITY);
       const search = createValue("");
+      /** The threads the nodes find by their messages while a search is typed (D228). */
+      const contentSearch = createContentSearch(threads);
+      context.subscriptions.add({ dispose: contentSearch.dispose });
       const settledExpanded = createValue(false, {
         key: SETTLED_EXPANDED_STORAGE_KEY,
         valid: (value): value is boolean => typeof value === "boolean",
@@ -525,6 +537,7 @@ export const sidebarPlugin = builtin(
       /** The sidebar's own state, read once per render or command and passed on (D63). */
       const stateNow = () => ({
         query: search.get(),
+        content: contentSearch.get(),
         scoped: scope.get(),
         count: settledCount.get(),
         expanded: settledExpanded.get(),
@@ -561,10 +574,21 @@ export const sidebarPlugin = builtin(
           expanded: state.snoozedOpen,
           ...current,
         }).shown;
-        const results = searchSidebarThreads(
-          [...pinned, ...active, ...snoozed, ...settled],
-          state.query,
-        );
+        const all = [...pinned, ...active, ...snoozed, ...settled];
+        // Title matches first, then the threads found only by their messages (T3's order).
+        const titled: SearchEntry[] = searchSidebarThreads(all, state.query);
+        const titledKeys = new Set(titled.map((entry) => entry.key));
+        const listed = new Map(all.map((entry) => [entry.key, entry]));
+        const byContent =
+          state.content.query === contentQuery(state.query)
+            ? state.content.matches.flatMap((match): SearchEntry[] => {
+                const entry = listed.get(threadKey(match.target, match.threadId));
+                return entry === undefined || titledKeys.has(entry.key)
+                  ? []
+                  : [{ ...entry, match }];
+              })
+            : [];
+        const results = [...titled, ...byContent];
         return {
           scopes,
           scopeKey,
@@ -1443,7 +1467,8 @@ export const sidebarPlugin = builtin(
 
       /** One search result (T3's SidebarSearchResultRow). */
       function SearchResult(props: {
-        entry: Entry;
+        entry: SearchEntry;
+        query: string;
         index: number;
         highlighted: boolean;
         active: boolean;
@@ -1506,6 +1531,9 @@ export const sidebarPlugin = builtin(
                     {formatCompactRelativeTime(threadActivityAt(entry.thread), now)}
                   </span>
                 </span>
+                {entry.match === undefined ? null : (
+                  <SearchMatchExcerpt match={entry.match} query={props.query} />
+                )}
               </span>
             </button>
           </li>
@@ -1842,8 +1870,14 @@ export const sidebarPlugin = builtin(
         const now = useExternal(clock, clock.get);
         const sensors = useSensors(useSensor(PointerSensor, POINTER_SENSOR_OPTIONS));
         const current = routeThreadKey(route);
+        const content = useExternal(contentSearch, contentSearch.get);
+        // The open nodes search their threads' messages while a query is typed.
+        const searchable = nodes.filter((node) => node.state === "open").map((node) => node.target);
+        const searchableKey = searchable.map(targetKey).join(" ");
+        useEffect(() => contentSearch.request(query, searchable), [query, searchableKey]);
         const list = listOf(nodes, now, {
           query,
+          content,
           scoped,
           count,
           expanded,
@@ -1897,6 +1931,7 @@ export const sidebarPlugin = builtin(
             >
               {list.results.map((entry, index) => (
                 <SearchResult
+                  query={query}
                   active={entry.key === current}
                   entry={entry}
                   hosts={hosts}
@@ -1912,7 +1947,7 @@ export const sidebarPlugin = builtin(
               className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
               role="status"
             >
-              No threads found
+              {emptySearchLabel(content, query)}
             </p>
           );
         }

@@ -1238,14 +1238,24 @@ for, built from the same rewind.
   `chat.header.actions`, which opens the parent; client command
   `thread.merge-back`.
 - **D227. Searching thread contents on the node.** `threads.search`
-  (`{ query, limit?, projectId? }`: 2–200 characters, at most 50 results)
-  matches the visible user messages and final answers of every thread that
-  is not archived, case- and accent-insensitive, one match per thread (a
-  user message first, else the newest), user matches first, then by the
-  thread's `updatedAt`; a match is `{ threadId, projectId, source: "user" |
-  "assistant", snippet, at }` with T3's snippet (240 characters, a window
+  (`{ query, limit?, projectId? }`: 2–200 characters, at most 50 results,
+  50 by default) matches the visible user messages and completed answers of
+  every thread that is not archived, ignoring ASCII case (T3's SQLite
+  `LIKE`; this plan first said case- and accent-insensitive, T3 is not
+  accent-insensitive) and comparing whitespace collapsed, as the snippet shows it, so
+  "foo bar" finds "foo↵bar", one match per thread (its newest user message, else its newest
+  answer), user matches first, then by the thread's `updatedAt`; a match is
+  `{ threadId, projectId, source: "user" | "assistant", snippet, at,
+  updatedAt }` with
+  T3's snippet (whitespace collapsed; past 240 characters a window of 236
   from 72 before the match, "…" at cut ends). The node keeps each thread's
-  texts in memory by stream head and reads only what came since.
+  texts in memory by stream head and reads only what came since; a rollback
+  among the new events drops its turns' texts. A search reads eight threads
+  at a time, and searches at once share a thread's read. The texts held are capped at
+  32 million characters, the least recently searched threads going first
+  (the thread just read stays, even alone past the cap),
+  and a deleted or archived thread's go at once (also when it goes while
+  they are read).
 - **D228. The palette and the sidebar search contents too.** While a query
   has two characters or more, the sidebar's search asks every shown node
   (and mesh member) after a pause of 200 ms; title matches come first, then
@@ -1254,11 +1264,39 @@ for, built from the same rewind.
   threads found" when nothing matches (T3's SidebarThreadHeader). The
   palette adds each match's snippet to its thread's search terms, so a
   thread found by content ranks after title matches, and says "Searching
-  thread messages…" while asking (T3's buildThreadActionItems).
+  thread messages…" while asking (T3's buildThreadActionItems). Across
+  nodes the matches keep D227's order (user matches first, then by the
+  thread's `updatedAt`). A node that has not answered after 10 seconds counts
+  as having failed until its answer comes, so a hung relay never leaves a
+  view waiting; a node that
+  failed, unlike one older than `threads.search`, makes the empty sidebar
+  say "No threads found. Some nodes could not search their messages.", and
+  the palette ranks a thread by a snippet of the query typed now only; a view
+  says it is searching from the moment two characters are typed, before its
+  request goes out. Both searches cover every thread the sidebar lists,
+  collapsed shelves included.
 
 W2 lands as a stack of pull requests: the rollback first (D220–D222, which
 W3 builds on), then editing and regenerating (D223, D224), forks and merging
 back (D225, D226), and search (D227, D228).
+
+D227 and D228 were refined in review before they shipped: ASCII case
+folding instead of accents, `updatedAt` in a match, the 10 s deadline and
+the failure label, the cache's bound and shared reads.
+
+The proof of D223–D228: `plugins/threads/test/history.test.ts`
+(regenerating the latest or an earlier turn with its settings, refusals;
+forking with times kept and the fork's history, refusals; merging back with
+T3's handoff text delivered once, refusals; searching with T3's order and
+snippets, archived threads, projects, rollbacks and new turns);
+`apps/web/test/history.test.ts` (the message back in the composer, the
+turns a thread shows); `apps/web/test/timeline.test.ts` (inherited times,
+the fork point, handoffs); `apps/web/test/thread-search.test.ts` (the pause,
+two characters, every node, the newest query only, nodes that cannot
+search, highlighting); Playwright `e2e/tests/history.spec.ts` (Edit from
+here and cancelling it, Retry and Regenerate response, forking and merging
+back, finding threads by their messages in the sidebar and the palette),
+with screenshots.
 
 The proof of D220–D222: `plugins/threads/test/history.test.ts` (dropping the
 turns after a turn or every turn, the log kept and the agents' history
@@ -1301,9 +1339,13 @@ and as events arrive).
   a merge-back's handoff in an agent's history (it reaches the agent as the
   text of the turn that delivers it, and the stored event keeps the user's
   text, so a runtime replaying history, as Claude's transcript does for a new
-  session, sees only the user's text), T3's in-thread find (`mod+f`), T3's "Resume thread" for a stopped turn
-  ("Continue where you left off.", which belongs with the composer, W6), a search index on disk (the node reads
-  each thread's texts once per run, D227) and T3's Lineage panel listing a
+  session, sees only the user's text), T3's in-thread find (`mod+f`), T3's
+  "Resume thread" for a stopped turn ("Continue where you left off.", which
+  belongs with the composer, W6), a search index on disk (the node reads
+  each thread's texts once per run and one thread after another on the first
+  search, D227), searching again while a query stays typed (T3 asks again
+  after 30 s; here the next change of the query or of the nodes does) and
+  T3's Lineage panel listing a
   thread's forks.
 - Sidebar (T3's layout, D70, D75–D79): settling on a merged pull request,
   T3's per-thread "Auto-settle behavior" and its configurable number of days

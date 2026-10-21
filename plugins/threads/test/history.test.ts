@@ -6,6 +6,7 @@ import { testManifest } from "@jhin/testing";
 import { describe, expect, it } from "vite-plus/test";
 
 import { fakeTurn } from "../../agent-fake/src/index.ts";
+import { buildSearchSnippet } from "../src/history.ts";
 import { node, watch } from "./support.ts";
 
 function latch<T = void>() {
@@ -802,5 +803,176 @@ describe("jhin.threads: merging a fork back (D226)", () => {
     await expect(client.call("threads.merge-back", { threadId: fork.id })).rejects.toMatchObject({
       code: "THREAD_NOT_FOUND",
     });
+  });
+});
+
+interface SearchResult {
+  matches: {
+    threadId: string;
+    projectId: string;
+    source: "user" | "assistant";
+    snippet: string;
+    at: string;
+    updatedAt: string;
+  }[];
+}
+
+/** Matches of one source in D227's order: the thread changed last first, then by id. */
+const byChange = (matches: SearchResult["matches"]) =>
+  matches.every(
+    (match, index) =>
+      index === 0 ||
+      matches[index - 1]!.updatedAt > match.updatedAt ||
+      (matches[index - 1]!.updatedAt === match.updatedAt &&
+        matches[index - 1]!.threadId < match.threadId),
+  );
+
+describe("jhin.threads: searching thread contents (D227)", () => {
+  it("finds one match per thread, user matches first, then the latest changed thread", async () => {
+    const { client } = await node();
+    const older = await client.call<Fork>("threads.create", {});
+    await turn(client, older.id, "about Lisbon trams");
+    const answered = await client.call<Fork>("threads.create", {});
+    await turn(client, answered.id, "/think something");
+    const newer = await client.call<Fork>("threads.create", {});
+    await turn(client, newer.id, "LISBON again");
+    await turn(client, newer.id, "lisbon once more");
+    await client.call<Fork>("threads.create", {});
+
+    const { matches } = await client.call<SearchResult>("threads.search", { query: "lisbon" });
+    expect(matches.map((match) => [match.threadId, match.source, match.snippet])).toEqual([
+      // The newest user message of the thread changed last, then the older thread.
+      [newer.id, "user", "lisbon once more"],
+      [older.id, "user", "about Lisbon trams"],
+    ]);
+    // Answers match too, after every user match; "Echo: …" holds the user's word.
+    const echoes = await client.call<SearchResult>("threads.search", { query: "echo: about" });
+    expect(echoes.matches).toEqual([
+      expect.objectContaining({ threadId: older.id, source: "assistant" }),
+    ]);
+    await expect(client.call("threads.search", { query: " a " })).rejects.toMatchObject({
+      code: expect.any(String),
+    });
+    expect(
+      (await client.call<SearchResult>("threads.search", { query: "lisbon", limit: 1 })).matches,
+    ).toHaveLength(1);
+  });
+
+  it("leaves out archived threads, other projects and dropped turns, and sees new turns", async () => {
+    const { client, data } = await node();
+    const thread = await client.call<Fork>("threads.create", {});
+    const first = await turn(client, thread.id, "keep this one");
+    await turn(client, thread.id, "drop this one");
+    const search = async (query: string, projectId?: string) =>
+      (
+        await client.call<SearchResult>("threads.search", {
+          query,
+          ...(projectId === undefined ? {} : { projectId }),
+        })
+      ).matches.map((match) => match.snippet);
+
+    expect(await search("this one")).toEqual(["drop this one"]);
+    await client.call("threads.rollback", { threadId: thread.id, turnId: first });
+    expect(await search("this one")).toEqual(["keep this one"]);
+    await turn(client, thread.id, "a new one");
+    expect(await search("new one")).toEqual(["a new one"]);
+
+    const project = await client.call<{ id: string }>("projects.create", { path: data });
+    expect(await search("this one", project.id)).toEqual([]);
+    await client.call("threads.archive", { threadId: thread.id });
+    expect(await search("this one")).toEqual([]);
+  });
+});
+
+describe("jhin.threads: the search's cache of texts (D227)", () => {
+  const snippets = async (client: RpcClient, query: string) =>
+    (await client.call<SearchResult>("threads.search", { query })).matches.map((match) => [
+      match.threadId,
+      match.snippet,
+    ]);
+
+  it("follows a rollback and a new turn that both came between two searches", async () => {
+    const { client } = await node();
+    const thread = await client.call<Fork>("threads.create", {});
+    const first = await turn(client, thread.id, "alpha first");
+    await turn(client, thread.id, "alpha second");
+    expect(await snippets(client, "alpha")).toEqual([[thread.id, "alpha second"]]);
+
+    await client.call("threads.rollback", { threadId: thread.id, turnId: first });
+    await turn(client, thread.id, "alpha third");
+    expect(await snippets(client, "alpha")).toEqual([[thread.id, "alpha third"]]);
+    expect(await snippets(client, "second")).toEqual([]);
+  });
+
+  it("finds a fork's inherited messages at their time, and nothing of a deleted thread", async () => {
+    const { client } = await node();
+    const parent = await client.call<Fork>("threads.create", {});
+    await turn(client, parent.id, "inherited words");
+    expect(await snippets(client, "inherited")).toEqual([[parent.id, "inherited words"]]);
+    const fork = await client.call<Fork>("threads.fork", { threadId: parent.id });
+    const { matches } = await client.call<SearchResult>("threads.search", { query: "inherited" });
+    const [forkMatch, parentMatch] = [fork.id, parent.id].map((id) =>
+      matches.find((match) => match.threadId === id),
+    );
+    expect(forkMatch?.at).toBe(parentMatch?.at);
+
+    // Deleted after its texts were read: none of them comes back.
+    await client.call("threads.delete", { threadId: parent.id });
+    expect(await snippets(client, "inherited")).toEqual([[fork.id, "inherited words"]]);
+  });
+
+  it("prefers a thread's newest user message over a newer answer, and orders users by updatedAt", async () => {
+    const { client } = await node();
+    const first = await client.call<Fork>("threads.create", {});
+    await turn(client, first.id, "zebra once");
+    // A later turn whose answer holds the word: the user message still wins.
+    await turn(client, first.id, "/think zebra");
+    const second = await client.call<Fork>("threads.create", {});
+    await turn(client, second.id, "a zebra too");
+    const { matches } = await client.call<SearchResult>("threads.search", { query: "zebra" });
+    expect(matches.map((match) => match.source)).toEqual(["user", "user"]);
+    expect(byChange(matches)).toBe(true);
+    // Changed last now: the first thread is not behind the second any more.
+    await client.call("threads.update", { threadId: first.id, title: "renamed" });
+    const again = await client.call<SearchResult>("threads.search", { query: "zebra" });
+    expect(byChange(again.matches)).toBe(true);
+    const renamed = again.matches.find((match) => match.threadId === first.id)!;
+    const other = again.matches.find((match) => match.threadId === second.id)!;
+    expect(renamed.updatedAt >= other.updatedAt).toBe(true);
+  });
+
+  it("orders threads matched by answers only by their updatedAt, and returns it", async () => {
+    const { client } = await node();
+    const older = await client.call<Fork>("threads.create", {});
+    await turn(client, older.id, "/think hi");
+    const newer = await client.call<Fork>("threads.create", {});
+    await turn(client, newer.id, "/think hi");
+    const { matches } = await client.call<SearchResult>("threads.search", { query: "thought" });
+    expect(matches.map((match) => match.source)).toEqual(["assistant", "assistant"]);
+    expect(matches.map((match) => match.threadId).toSorted()).toEqual(
+      [newer.id, older.id].toSorted(),
+    );
+    expect(byChange(matches)).toBe(true);
+  });
+
+  it("matches across line breaks and runs of spaces, as the snippet shows them", async () => {
+    const { client } = await node();
+    const thread = await client.call<Fork>("threads.create", {});
+    await turn(client, thread.id, "foo\n\nbar   baz");
+    expect(await snippets(client, "foo bar  baz")).toEqual([[thread.id, "foo bar baz"]]);
+  });
+});
+
+describe("search snippets (T3's buildSearchSnippet)", () => {
+  it("collapses whitespace and keeps short texts whole", () => {
+    expect(buildSearchSnippet("  a\n\n b  ", "a")).toBe("a b");
+  });
+
+  it("cuts a long text to a window from 72 characters before the match", () => {
+    const text = `${"x".repeat(300)} needle ${"y".repeat(300)}`;
+    const snippet = buildSearchSnippet(text, "NEEDLE");
+    expect(snippet).toBe(`…${"x".repeat(71)} needle ${"y".repeat(236 - 72 - 7)}…`);
+    expect(buildSearchSnippet(`needle ${"y".repeat(300)}`, "needle")).toMatch(/^needle y+…$/);
+    expect(buildSearchSnippet(`${"x".repeat(300)} needle`, "needle")).toMatch(/^…x+ needle$/);
   });
 });

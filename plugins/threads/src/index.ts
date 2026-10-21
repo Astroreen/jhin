@@ -47,7 +47,7 @@ import {
   type StoredEvent,
 } from "@jhin/storage-api";
 
-import { mergeBackMessage } from "./history.ts";
+import { matchTexts, mergeBackMessage, searchTexts, type SearchText } from "./history.ts";
 
 export { THREADS_STREAM };
 
@@ -75,6 +75,10 @@ const MAX_WRITTEN_FILE_CHARS = 1_000_000;
 /** All images of one message together, as data URLs: they are stored in the turn's first event. */
 const MAX_ATTACHMENTS_TOTAL = 20 * 1024 * 1024;
 const MAX_BROWSE_ENTRIES = 500;
+/** The message texts a node keeps for searching, in characters, across its threads (D227). */
+const SEARCH_CACHE_CHARS = 32_000_000;
+/** How many threads one search reads at once. */
+const SEARCH_READS = 8;
 
 /** Every node has this project for chats without a project (D51). */
 export const SCRATCH_PROJECT = "scratch";
@@ -3564,6 +3568,159 @@ export default definePlugin({
             pendingMergeBack: { id: Crypto.randomUUID(), threadId, turnId: target, at: now() },
           };
         });
+      },
+    });
+
+    // --- Search (D227) -------------------------------------------------------------
+    /**
+     * Each thread's texts as of its stream head: a search reads only what came
+     * since. Least recently searched threads go first once the texts held pass
+     * SEARCH_CACHE_CHARS; a deleted or archived thread's go at once.
+     */
+    const searchCache = new Map<string, { head: number; texts: SearchText[]; size: number }>();
+    let cachedChars = 0;
+    /**
+     * Reads under way, by thread: searches at once share one read. One whose
+     * thread is deleted or archived meanwhile matches and keeps nothing. An
+     * entry goes with its read.
+     */
+    const reading = new Map<string, { dropped: boolean; promise: Promise<SearchText[]> }>();
+    const uncache = (threadId: string) => {
+      const entry = searchCache.get(threadId);
+      if (entry === undefined) return;
+      cachedChars -= entry.size;
+      searchCache.delete(threadId);
+    };
+    const forgetTexts = (threadId: string) => {
+      const read = reading.get(threadId);
+      if (read !== undefined) {
+        read.dropped = true;
+        // A search that starts after this reads afresh: the thread may be unarchived by then.
+        reading.delete(threadId);
+      }
+      uncache(threadId);
+    };
+    function textsOf(threadId: string): Promise<SearchText[]> {
+      const current = reading.get(threadId);
+      if (current !== undefined) return current.promise;
+      const read: { dropped: boolean; promise: Promise<SearchText[]> } = {
+        dropped: false,
+        promise: Promise.resolve([]),
+      };
+      read.promise = readTexts(threadId, read).finally(() => {
+        if (reading.get(threadId) === read) reading.delete(threadId);
+      });
+      reading.set(threadId, read);
+      return read.promise;
+    }
+    async function readTexts(
+      threadId: string,
+      read: { readonly dropped: boolean },
+    ): Promise<SearchText[]> {
+      const stream = threadStream(threadId);
+      const cached = searchCache.get(threadId);
+      const head = await log.head(stream);
+      const added =
+        cached !== undefined && cached.head === head
+          ? []
+          : await log.read(stream, { after: cached?.head ?? 0 });
+      const dropped = new Set(
+        added
+          .filter((event) => event.type === ThreadEvents.threadRolledBack)
+          .flatMap((event) => (event.payload as { turnIds?: string[] } | null)?.turnIds ?? []),
+      );
+      const kept = (cached?.texts ?? []).filter((text) => !dropped.has(text.turnId));
+      const texts = [...kept, ...searchTexts(visibleThreadEvents(added))];
+      // Deleted or archived while it was read: it matches nothing, and nothing is kept.
+      if (read.dropped) return [];
+      const readTo = added.at(-1)?.sequence ?? head;
+      // A read that started earlier and ends later keeps the newer entry it finds.
+      const newer = searchCache.get(threadId);
+      if (newer !== undefined && newer.head > readTo) return texts;
+      uncache(threadId);
+      // Each text is held twice: as written and folded for matching.
+      const size = texts.reduce((total, text) => total + text.text.length + text.folded.length, 0);
+      // Last searched last: Map order is the eviction order.
+      searchCache.set(threadId, { head: readTo, texts, size });
+      cachedChars += size;
+      for (const [id] of searchCache) {
+        if (cachedChars <= SEARCH_CACHE_CHARS || id === threadId) break;
+        uncache(id);
+      }
+      return texts;
+    }
+    context.subscriptions.add(
+      log.subscribe(THREADS_STREAM, (event) => {
+        const payload = event.payload as { id?: unknown; archivedAt?: unknown } | null;
+        if (typeof payload?.id !== "string") return;
+        if (
+          event.type === ThreadEvents.threadDeleted ||
+          (event.type === ThreadEvents.threadUpdated && typeof payload.archivedAt === "string")
+        ) {
+          forgetTexts(payload.id);
+        }
+      }),
+    );
+
+    const SearchMatch = z.object({
+      threadId: z.string(),
+      projectId: z.string(),
+      source: z.enum(["user", "assistant"]),
+      snippet: z.string().max(240),
+      at: z.string(),
+      /** The thread's last change, which orders the matches after their source. */
+      updatedAt: z.string(),
+    });
+
+    context.commands.register({
+      name: "threads.search",
+      description:
+        "Searches the messages of every thread that is not archived (case-insensitive): one match per thread, a user message first, user matches first, then the most recently changed threads",
+      input: z.object({
+        query: z.string().trim().min(2).max(200),
+        limit: z.number().int().min(1).max(50).default(50),
+        projectId: z.string().optional(),
+      }),
+      output: z.object({ matches: z.array(SearchMatch) }),
+      permissions: ["threads.read"],
+      handler: async ({ query, limit, projectId }) => {
+        const threads = (await listThreads()).filter(
+          (thread) =>
+            thread.archivedAt === undefined &&
+            !deleted.has(thread.id) &&
+            (projectId === undefined || thread.projectId === projectId),
+        );
+        const found: z.infer<typeof SearchMatch>[] = [];
+        // A few threads at a time: a cold cache reads each thread's whole stream.
+        const results: (ReturnType<typeof matchTexts> | undefined)[] = [];
+        let next = 0;
+        await Promise.all(
+          Array.from({ length: Math.min(SEARCH_READS, threads.length) }, async () => {
+            while (next < threads.length) {
+              const index = next++;
+              results[index] = matchTexts(await textsOf(threads[index]!.id), query);
+            }
+          }),
+        );
+        for (const [index, thread] of threads.entries()) {
+          const match = results[index];
+          if (match === undefined) continue;
+          found.push({
+            threadId: thread.id,
+            projectId: thread.projectId,
+            ...match,
+            updatedAt: thread.updatedAt ?? thread.createdAt,
+          });
+        }
+        const matches = found
+          .toSorted(
+            (a, b) =>
+              Number(a.source !== "user") - Number(b.source !== "user") ||
+              b.updatedAt.localeCompare(a.updatedAt) ||
+              a.threadId.localeCompare(b.threadId),
+          )
+          .slice(0, limit);
+        return { matches };
       },
     });
 

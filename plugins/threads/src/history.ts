@@ -66,3 +66,82 @@ export function mergeBackMessage(input: {
     input.userText,
   ].join("\n");
 }
+
+// Searching thread contents follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
+// apps/server/src/orchestration-v2/ThreadSearch.ts (the match per thread, its order and
+// buildSearchSnippet).
+
+/** A message a thread shows, as search reads it. */
+export interface SearchText {
+  readonly turnId: string;
+  readonly source: "user" | "assistant";
+  readonly text: string;
+  /** The text as matched: whitespace collapsed, ASCII case folded (computed once). */
+  readonly folded: string;
+  readonly at: string;
+}
+
+/** The user messages and completed answers of a thread's visible events, oldest first. */
+export function searchTexts(events: readonly StoredEvent[]): SearchText[] {
+  const texts: SearchText[] = [];
+  for (const event of events) {
+    const turnId = turnIdOf(event);
+    if (typeof turnId !== "string") continue;
+    const payload = event.payload as Record<string, unknown>;
+    const at = typeof payload["inheritedAt"] === "string" ? payload["inheritedAt"] : event.at;
+    if (event.type === ThreadEvents.turnStarted) {
+      const text = (payload["input"] as { text?: unknown } | undefined)?.text;
+      if (typeof text === "string" && text !== "") {
+        texts.push({ turnId, source: "user", text, folded: foldForSearch(text), at });
+      }
+    } else if (
+      event.type === ThreadEvents.itemCompleted &&
+      payload["kind"] === "message" &&
+      typeof payload["text"] === "string" &&
+      payload["text"] !== ""
+    ) {
+      const text = payload["text"];
+      texts.push({ turnId, source: "assistant", text, folded: foldForSearch(text), at });
+    }
+  }
+  return texts;
+}
+
+/** ASCII case folding, as SQLite's LIKE matches in T3. */
+const foldAsciiCase = (value: string) =>
+  value.replace(/[A-Z]/g, (character) => character.toLowerCase());
+/**
+ * What a text and a query are compared as: whitespace collapsed, as the
+ * snippet shows it, so "foo bar" finds "foo\nbar", and ASCII case folded.
+ */
+const foldForSearch = (value: string) => foldAsciiCase(value.replace(/\s+/g, " ").trim());
+
+/** T3's snippet: whitespace collapsed; past 240 characters a window from 72 before the match. */
+export function buildSearchSnippet(text: string, query: string): string {
+  const normalizedText = text.replace(/\s+/g, " ").trim();
+  if (normalizedText.length <= 240) return normalizedText;
+  const normalizedQuery = foldAsciiCase(query.replace(/\s+/g, " ").trim());
+  const matchIndex = foldAsciiCase(normalizedText).indexOf(normalizedQuery);
+  const bodyLength = 236;
+  const idealStart = Math.max(0, matchIndex - 72);
+  const start = Math.min(idealStart, normalizedText.length - bodyLength);
+  const end = Math.min(normalizedText.length, start + bodyLength);
+  return `${start > 0 ? "…" : ""}${normalizedText.slice(start, end)}${
+    end < normalizedText.length ? "…" : ""
+  }`;
+}
+
+/** A thread's one match: a user message first, else the newest answer (T3's order). */
+export function matchTexts(
+  texts: readonly SearchText[],
+  query: string,
+): { source: "user" | "assistant"; snippet: string; at: string } | undefined {
+  const needle = foldForSearch(query);
+  const matches = texts.filter((text) => text.folded.includes(needle));
+  const best =
+    matches.findLast((text) => text.source === "user") ??
+    matches.findLast((text) => text.source === "assistant");
+  return best === undefined
+    ? undefined
+    : { source: best.source, snippet: buildSearchSnippet(best.text, query), at: best.at };
+}
