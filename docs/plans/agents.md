@@ -358,6 +358,19 @@ the message, the inbox, events and the schemas of `agents.send`,
   (`agents_send`, `agents_ask`): W9's server already exposes every command
   the agent credential permits, so the tools appear once D628 grants them,
   and `jhinToolsInstructions` names them.
+- **D630. The inbox in Civilization mode** is the client plugin `jhin.inbox`.
+  It follows `agents.inbox.list` and the `agents/inbox` stream of every open
+  connection for as long as it runs, so a new item is told in any mode: a
+  toast while the page has focus (unless `jhin.notifications.inApp` is off),
+  else a system notification when `jhin.notifications.mode` allows it. Both
+  open the item. The open items of every node, oldest first, fill
+  `civilization.sidebar.inbox` (`jhin.inbox.list`). An item's page is the
+  route panel `inbox` with the message id as `section`, in
+  `civilization.views` (`jhin.inbox.item`): the sender's address, the time,
+  the trace, the text and an answer box that calls `agents.inbox.answer`.
+  `civilization.inbox.open {node, messageId}` opens it. A node whose inbox
+  this client may not read shows none. Nothing of it goes into Threads mode
+  (D741).
 
 ### A3. Missions and slices (D641–D660)
 
@@ -750,6 +763,11 @@ D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
   `forkSession`) instead of handing the fork its parent's turns as history
   (D625).
 - A2: dismissing an inbox item without answering it (D626).
+- A2: the transcript showing a message as from its sender, with a link back.
+  The turn carries `origin` (D623); until a view renders it, the header line
+  of the message names the sender and the trace.
+- A2: a count of open inbox items on the mode switcher or the page title
+  (D630 notifies once per item).
 - A3: the mission view in Civilization mode lands in its own PR once A8's
   slots are on `main` (D741).
 - A3: deleting missions and slices (D651 drops them), and what happens to
@@ -835,6 +853,10 @@ Each workstream lists its PRs here as they merge.
   messages and `agent.turn.started`, and forks of generations keep
   `generationOf` (`jhin.threads`); `agents.read` and `agents.message` for
   agents over MCP (D621–D629).
+- A2 #179: `jhin.inbox`, the owner's inbox in Civilization mode: open items
+  of every node in `civilization.sidebar.inbox`, an item's page with the
+  answer box in `civilization.views`, a toast or system notification per new
+  item, `civilization.inbox.open` (D630).
 - A3 #104: `@jhin/missions-api` (records, the `missions` stream's events and
   fold, intent chain, Markdown) and the `jhin.missions` plugin: `missions.*`
   and `slices.*` commands, the stream guarded by `missions.read`, agents

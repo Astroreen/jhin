@@ -1,0 +1,164 @@
+// The owner's inbox in Civilization mode (docs/plans/agents.md, A2: D626,
+// D630): open items in `civilization.sidebar.inbox`, an item's page in
+// `civilization.views`, and a notification when an agent asks the owner.
+import type { InboxItem } from "@jhin/agent-api";
+import {
+  CONNECTIONS_CAPABILITY,
+  NAVIGATION_CAPABILITY,
+  type Connections,
+  type Navigation,
+  type NodeConnection,
+} from "@jhin/client-api";
+import { definePlugin, z } from "@jhin/sdk";
+import {
+  UI_SLOTS_CAPABILITY,
+  UI_TOASTS_CAPABILITY,
+  type SlotRegistry,
+  type Toasts,
+} from "@jhin/ui";
+import { MessageCircleQuestionIcon } from "lucide-react";
+
+import { builtin } from "../../lib/builtin.ts";
+import { useExternal } from "../../lib/hooks.ts";
+import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { INBOX_PANEL, inboxRoute, senderLabel } from "./route.ts";
+import { createInboxStore } from "./store.ts";
+import type { InboxView } from "./views.tsx";
+
+// The views are a chunk of their own (D440), loaded once Civilization mode shows them.
+const viewsChunk = () => import("./views.tsx");
+const List = lazyChunk(() => viewsChunk().then((module) => module.InboxList), {
+  loading: () => null,
+  failed: (_props: object, retry: () => void) => (
+    <ChunkFailed retry={retry}>Couldn't load the inbox.</ChunkFailed>
+  ),
+});
+const Page = lazyChunk(() => viewsChunk().then((module) => module.InboxPage), {
+  loading: () => null,
+  failed: (_props: object, retry: () => void) => (
+    <ChunkFailed retry={retry}>Couldn't load this message.</ChunkFailed>
+  ),
+});
+
+/** What `jhin.notifications` says about telling the user things (its own section). */
+const NOTIFICATIONS_SECTION = "jhin.notifications";
+
+/**
+ * `jhin.inbox`: what agents sent and asked the owner, on every connected node
+ * (D626, D630). It shows in Civilization mode only (D741); the notification
+ * of a new item shows in any mode and opens Civilization mode's inbox.
+ */
+export const inboxPlugin = builtin(
+  "jhin.inbox",
+  {
+    requires: {
+      [UI_SLOTS_CAPABILITY]: "^1",
+      [CONNECTIONS_CAPABILITY]: "^1",
+      [NAVIGATION_CAPABILITY]: "^1",
+    },
+    optional: { [UI_TOASTS_CAPABILITY]: "^1" },
+  },
+  definePlugin({
+    activate(context) {
+      const slots = context.services.get<SlotRegistry>(UI_SLOTS_CAPABILITY);
+      const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
+      const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
+      const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
+
+      const notifications = () => {
+        try {
+          return context.config.get<{ mode?: string; inApp?: boolean }>(NOTIFICATIONS_SECTION);
+        } catch {
+          return {};
+        }
+      };
+      const open = (node: string, messageId: string) =>
+        navigation.navigate(inboxRoute(node, messageId));
+      /** A new item: a toast while the page has focus, else a system notification (D630). */
+      const arrived = (connection: NodeConnection, item: InboxItem) => {
+        const { message } = item;
+        const title =
+          message.kind === "ask"
+            ? `${senderLabel(message.from)} asks you`
+            : `${senderLabel(message.from)} wrote to you`;
+        const body = message.body.trim().split("\n")[0] ?? "";
+        const { mode, inApp } = notifications();
+        if (document.visibilityState === "visible" && document.hasFocus()) {
+          if (inApp === false) return;
+          toasts?.show({
+            type: "warning",
+            title,
+            description: body,
+            data: {
+              hideCopyButton: true,
+              leadingIcon: <MessageCircleQuestionIcon className="size-4" />,
+            },
+            action: {
+              label: "Open inbox",
+              onClick: () => open(connection.id, message.messageId),
+            },
+          });
+          return;
+        }
+        if (
+          (mode === "notifications" || mode === "notifications-and-sound") &&
+          typeof Notification !== "undefined" &&
+          Notification.permission === "granted"
+        ) {
+          const notification = new Notification(title, { body, tag: message.messageId });
+          notification.addEventListener("click", () => {
+            notification.close();
+            window.focus();
+            open(connection.id, message.messageId);
+          });
+        }
+      };
+      const store = createInboxStore(connections, context.log, arrived);
+      context.subscriptions.add(store);
+      const view: InboxView = { store, connections, navigation, toasts };
+
+      // Opening an item is a command, so the palette, CLI and MCP reach it (rule 6).
+      context.subscriptions.add(
+        context.commands.register({
+          name: "civilization.inbox.open",
+          title: "Open inbox item",
+          description: "Opens a message or ask to the owner in Civilization mode's inbox (D630)",
+          input: z.object({
+            node: z.string().min(1).meta({ description: "The connection the item is on" }),
+            messageId: z.string().min(1),
+          }),
+          output: z.object({}),
+          handler: ({ node, messageId }) => {
+            open(node, messageId);
+            return {};
+          },
+        }),
+      );
+
+      const InboxList = () => <List view={view} />;
+      const InboxItemView = () => {
+        const route = useExternal(navigation, navigation.current);
+        // Only its own panel: the other views of `civilization.views` render theirs (D750).
+        if (route.panel !== INBOX_PANEL || route.node === undefined) return null;
+        if (route.section === undefined) return null;
+        return (
+          <Page
+            key={`${route.node}|${route.section}`}
+            messageId={route.section}
+            node={route.node}
+            view={view}
+          />
+        );
+      };
+      context.subscriptions.add(
+        slots.contribute("civilization.sidebar.inbox", {
+          id: "jhin.inbox.list",
+          component: InboxList,
+        }),
+      );
+      context.subscriptions.add(
+        slots.contribute("civilization.views", { id: "jhin.inbox.item", component: InboxItemView }),
+      );
+    },
+  }),
+);
