@@ -447,7 +447,8 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
         left.terminalId.localeCompare(right.terminalId),
     );
     for (const session of exited.slice(0, exited.length - limit)) {
-      void closeSession(session).catch((error: unknown) =>
+      // Eviction bounds memory only: its history stays, as T3 keeps the file.
+      void closeSession(session, true).catch((error: unknown) =>
         log.warn("exited terminal not closed", {
           threadId: session.threadId,
           terminalId: session.terminalId,

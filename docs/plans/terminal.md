@@ -322,16 +322,17 @@ the same T3 Code nightly `eb7b35ac` unless a decision names another source.
 - **D465. At most 128 exited sessions** (T3's
   `maxRetainedInactiveSessions`): when a session's process exits and more
   than 128 sessions have no process, the ones updated longest ago are
-  closed as `terminals.close` closes them (their streams end with
-  `terminal.closed`, their history goes). A running session is never
-  evicted.
+  closed (their streams end with `terminal.closed`) but their history
+  files stay, as T3 keeps them: eviction bounds memory only. A running
+  session is never evicted.
 
 - **D466. An archived thread closes its terminals**, as a deleted one does
   (D143) and as T3's `ResourceCleanupService` does on archive: the plugin
   follows `threads.thread.updated` in the `threads` index and closes the
   terminals of a thread whose record gets `archivedAt` (on that change
   only: a later update of the archived thread leaves terminals opened since
-  alone), and deletes the thread's history files, also those of terminals
+  alone; the plugin remembers this in memory, so after a node restart the
+  first update of an archived thread closes its terminals once more), and deletes the thread's history files, also those of terminals
   not opened since the node started (so does a deleted thread). Unarchiving does not
   bring them back; the drawer opens a new shell when shown.
 
