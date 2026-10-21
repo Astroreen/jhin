@@ -403,7 +403,13 @@ export const commandPalettePlugin = builtin(
         useEffect(() => {
           contentSearch.request(
             searchQuery,
-            targets().map(({ target }) => target),
+            // Only nodes behind an open connection can answer, as the sidebar asks them.
+            targets()
+              .filter(
+                ({ target }) =>
+                  connections.list().find((node) => node.id === target.node)?.state === "open",
+              )
+              .map(({ target }) => target),
           );
         }, [searchQuery, revision]);
         useEffect(() => () => contentSearch.request("", []), []);
