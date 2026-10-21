@@ -99,10 +99,11 @@ the chat), opening a file in an editor and the base ref picker of the
 
 Done: rendering with `@pierre/diffs`, split view, the file tree, the base
 ref picker and diff scopes as contributions, with W3's turns among them
-(D280–D284, D288, #83); opening a file in an editor (D286–D287, #92).
-Comments on lines (D285) wait for a public way into the composer (W15's
-`chat.composer.insert`, #86, and W6's rich composer, #81); they and the rest
-are under `source-control.md#deferred`.
+(D280–D284, D288, #83); opening a file in an editor (D286–D287, #92);
+comments on lines sent to the chat through `chat.composer.insert` (D285).
+Done except T3's comment chips in the composer, the comments shown inline in
+the diff and the timeline's review comment card (they wait for composer
+contexts); those and the rest are under `source-control.md#deferred`.
 
 ### W6. Composer
 

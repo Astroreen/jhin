@@ -246,24 +246,36 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   and remote, the current branch left out), read when the picker opens. The
   chosen base is kept with the thread's selection and passed to `git.diff`
   as `base`; switching to "Uncommitted" and back keeps it.
-- **D285. Comments on lines go to the chat, as T3's review comments do**
-  (not built yet: Deferred).
+- **D285. Comments on lines go to the chat, as T3's review comments do.**
+  Revised when built (#111). The first wording planned a client capability
+  `chat.composer@1` (`contexts`, `add`, `remove`, `subscribe` per composer),
+  T3's context chip per comment in the composer, the comments shown inline in
+  the diff with "Delete comment", and the timeline's review comment card.
+  Building that meant a second composer API next to W15's
+  `chat.composer.insert` and W6's rich composer (#81), both landing at the
+  same time; the comment instead goes in as the text T3 itself sends a
+  provider without inline context, through the command that exists. The
+  chips, the inline comments and the card are Deferred until the composer
+  offers contexts. As built:
   Pierre's gutter "+" (or a line range dragged in the gutter) opens T3's
-  `DiffCommentAnnotation` under the range: "Add a comment…", "⌘/Ctrl Enter to
-  send", "Cancel", "Comment"; Escape cancels. A comment becomes a context of
-  the thread's composer (or the draft's) through the new client capability
-  `chat.composer@1` (provided by the chat plugin): `contexts`, `add`,
-  `remove` and `subscribe` per composer (`{ target, threadId }` or
-  `{ target, projectId }` for a draft). The composer shows each context as a
-  chip above the prompt (T3's label: the file's name and the range,
-  `diff-panel.tsx +12 to +14`) that can be removed; the diff shows the
-  comments of the selected scope inline, each with "Delete comment". On send,
-  contexts are appended to the message as T3 serializes review comments for
-  a provider without inline context (`<review_comment sectionId=… filePath=…
-  rangeLabel=…>` with the comment and the lines as a fenced `diff`), and the
-  timeline renders such a block in a user message as T3's review comment
-  card. Contexts live with the composer's draft, so they survive a reload,
-  and go once sent.
+  `DiffCommentAnnotation` under the range, one at a time: "Add a comment…",
+  "⌘/Ctrl Enter to send", "Cancel", "Comment"; Escape cancels. "Comment"
+  puts the comment into the open composer through W15's client command
+  `chat.composer.insert`, as T3 serializes a review comment for a provider
+  without inline context: `<review_comment sectionId=… sectionTitle=…
+  filePath=… rangeLabel=… startIndex=… endIndex=…>` with the comment and
+  the lines as a fenced `diff` (T3's `buildDiffReviewComment` in
+  `reviewCommentContext.ts` and `renderReviewComment` in
+  `composerContextLegacySend.ts`). Unlike T3, a `<review_comment` or
+  `</review_comment` inside the comment or its lines is neutralized (a
+  zero-width space, an escaped slash), so the text can neither end the block
+  nor fake another. The section is the scope (`Changes`,
+  `Turn 2`, …). Without that command (no chat plugin) lines offer no "+";
+  with no message box on screen the panel says "No message box to add the
+  comment to". A refresh that drops the lines closes the draft with "These
+  lines are no longer in the diff". The panel depends on the command's name,
+  since W15 offers no capability for the composer; when a `chat.composer@1`
+  capability comes, the panel moves to it.
 - **D286. Opening a file in an editor**: the server plugin `jhin.editors`
   (`plugins/editors`, in the distribution) provides `host.editors@1`, whose
   contract (T3's `EDITORS` list, `EditorInfo`, the error codes) is in
@@ -901,13 +913,11 @@ with the node's token, and without one).
 - Cancelling a running git action: writes to a project queue behind it (its
   writer is bounded by `writerTimeoutSeconds`, a commit's hooks by ten
   minutes), with no way to stop it from the client.
-- D285, comments on lines sent to the chat: needs a public way for another
-  plugin to put context into a thread's composer. W15's `chat.composer.insert`
-  (#86) inserts text at the cursor, and W6's rich composer (#81) brings T3's
-  context chips; building the comment UI (Pierre's gutter "+", T3's
-  `DiffCommentAnnotation`, the `<review_comment>` serialization and its
-  timeline card) on either before they land would fork the composer twice.
-  Build it on whichever lands, as a contribution of `jhin.source-control`.
+- What D285 leaves of T3's review comments: a comment is text in the
+  composer, not T3's context chip (W6's rich composer, #81, brings chips),
+  so the diff does not show the comments already added, with their "Delete
+  comment", and the timeline shows a sent `<review_comment>` block as text,
+  not as T3's review comment card.
 - What W5 leaves of T3's diff panel: its in-app file preview (at D53 a click
   on a file's name opens T3's file panel; Jhin has none, so it opens the
   editor, D286), loading the patches of a truncated diff file by file

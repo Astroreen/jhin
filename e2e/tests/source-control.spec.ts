@@ -175,7 +175,7 @@ test("D113–D120: a card shows its thread's branch, pull request and diff; the 
   await expect(warning).toBeHidden();
 });
 
-test("D280–D284: the diff panel renders with @pierre/diffs, splits, lists files in a tree and compares with a chosen base", async ({
+test("D280–D285: the diff panel renders with @pierre/diffs, splits, lists files in a tree, compares with a chosen base and sends a comment on a line to the composer", async ({
   page,
 }, info) => {
   await startWithRepository(page);
@@ -223,4 +223,25 @@ test("D280–D284: the diff panel renders with @pierre/diffs, splits, lists file
     .click();
   await page.getByRole("option", { name: "Automatic" }).click();
   await expect(panel.getByLabel("Comparing feature/toolbar against main")).toBeVisible();
+
+  // A comment on a line goes into the composer as T3 sends a review comment (D285).
+  await panel.getByRole("button", { name: "Stacked diff view" }).click();
+  await panel.getByRole("button", { name: "Hide file tree" }).click();
+  await panel.getByRole("button", { name: "Expand src/greet.ts" }).click();
+  // Stacked: the line shows once, so the locator is strict.
+  await panel.getByText('export const bye = () => "Bye";').hover();
+  // Pierre shows one "+" in the gutter, the hovered line's.
+  const plus = panel.locator("[data-utility-button]").filter({ visible: true });
+  await expect(plus).toHaveCount(1);
+  await plus.click();
+  const box = panel.getByRole("textbox", { name: /^Comment on lines/ });
+  await box.fill("Say goodbye politely");
+  await shot(page, info, "source-control-diff-comment");
+  await panel.getByRole("button", { name: "Comment", exact: true }).click();
+  await expect(box).toBeHidden();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await expect(message).toContainText("<review_comment");
+  await expect(message).toContainText('filePath="src/greet.ts"');
+  await expect(message).toContainText("Say goodbye politely");
+  await shot(page, info, "source-control-diff-comment-sent");
 });

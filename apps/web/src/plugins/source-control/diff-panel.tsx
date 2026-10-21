@@ -4,7 +4,14 @@
 // diffs/useCodeViewFileReveal.ts and chat/DiffStatLabel.tsx.
 import type { NodeTarget } from "@jhin/client-api";
 import type { DiffScopeContext, DiffScopeResult, ProjectStatus } from "@jhin/source-control-api";
-import type { CodeViewDiffItem, CodeViewScrollTarget, FileDiffMetadata } from "@pierre/diffs";
+import type {
+  CodeViewDiffItem,
+  CodeViewLineSelection,
+  CodeViewScrollTarget,
+  DiffLineAnnotation,
+  FileDiffMetadata,
+  SelectedLineRange,
+} from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import {
   Button,
@@ -43,12 +50,20 @@ import {
   Rows3Icon,
   TextWrapIcon,
 } from "lucide-react";
+import { z } from "@jhin/sdk";
 import { useEffect, useRef, useState } from "react";
 
-import { useCatalog, useExternal } from "../../lib/hooks.ts";
+import { useCatalog, useCommands, useExternal } from "../../lib/hooks.ts";
 import { DIFF_SECTION, DiffSettings, useSection } from "../../lib/settings.ts";
 import { DiffStatLabel } from "./checkpoints.tsx";
 import { BaseRefPicker } from "./diff/base-ref-picker.tsx";
+import { DiffCommentAnnotation } from "./diff/comment-annotation.tsx";
+import {
+  annotationAnchor,
+  buildDiffReviewComment,
+  rangeInDiff,
+  serializeReviewComment,
+} from "./diff/review-comment.ts";
 import {
   FileContextMenuPopup,
   preferredEditor,
@@ -351,6 +366,15 @@ function ScopeMenu(props: {
   );
 }
 
+/** What a comment's annotation carries: the range it is about, as T3 labels it. */
+interface CommentDraft {
+  readonly rangeLabel: string;
+}
+
+/** The chat's command putting text into the open composer (W15, D473). */
+const COMPOSER_INSERT = "chat.composer.insert";
+const InsertAnswer = z.object({ inserted: z.boolean() });
+
 export function createDiffPanel(services: SourceControlServices) {
   const { store, threads, navigation, scopes, selections } = services;
 
@@ -401,7 +425,29 @@ export function createDiffPanel(services: SourceControlServices) {
       fileKeys: ReadonlySet<string>;
     }>({ scopeKey: null, fileKeys: EMPTY_KEYS });
     const [codeViewRevision, setCodeViewRevision] = useState(0);
-    const [codeView, setCodeView] = useState<CodeViewHandle<undefined, undefined> | null>(null);
+    const [codeView, setCodeView] = useState<CodeViewHandle<CommentDraft, undefined> | null>(null);
+    // T3's comment on lines (D285): one draft at a time, sent into the composer.
+    const [draft, setDraft] = useState<{
+      /** The selection the draft was opened under; another closes it. */
+      what: string;
+      /** Tells this draft from a later one, so an answer reaches only its own. */
+      id: number;
+      sectionId: string;
+      sectionTitle: string;
+      fileKey: string;
+      filePath: string;
+      fileDiff: FileDiffMetadata;
+      range: SelectedLineRange;
+      rangeLabel: string;
+    } | null>(null);
+    const [draftText, setDraftText] = useState("");
+    /** The draft whose comment is on its way to the composer, if one is. */
+    const [sending, setSending] = useState<number | null>(null);
+    const drafts = useRef(0);
+    const [selectedLines, setSelectedLines] = useState<CodeViewLineSelection | null>(null);
+    // Without a composer to put a comment in (no chat plugin), lines take none.
+    const commandsNow = useCommands(services.context);
+    const canComment = commandsNow.some((command) => command.name === COMPOSER_INSERT);
     const [reveal, setReveal] = useState<{ path: string; id: number } | null>(null);
     const [version, setVersion] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
@@ -496,18 +542,170 @@ export function createDiffPanel(services: SourceControlServices) {
       collapsedFiles.scopeKey === collapseScopeKey ? collapsedFiles.fileKeys : defaultCollapsed;
     const allCollapsed = areAllDiffFilesCollapsed(diffFileKeys, collapsedKeys);
     const fileTreeEntries = diffFileTreeEntries(renderableFiles);
-    const items: CodeViewDiffItem<undefined>[] = renderableFileEntries.map(
+    const items: CodeViewDiffItem<CommentDraft>[] = renderableFileEntries.map(
       ({ fileDiff, fileKey, fileVersion }) => {
         const collapsed = collapsedKeys.has(fileKey);
+        const annotations: DiffLineAnnotation<CommentDraft>[] =
+          draft?.fileKey === fileKey
+            ? [
+                {
+                  // Under the selection's last line, whichever way it was dragged.
+                  ...annotationAnchor(fileDiff, draft.range),
+                  metadata: { rangeLabel: draft.rangeLabel },
+                },
+              ]
+            : [];
         return {
           id: fileKey,
           type: "diff",
           fileDiff,
           collapsed,
-          version: fnv1a32(`${fileVersion}:${collapsed ? "1" : "0"}`),
+          annotations,
+          version: fnv1a32(
+            `${fileVersion}:${collapsed ? "1" : "0"}:${
+              draft?.fileKey === fileKey ? `${draft.range.start}-${draft.range.end}` : ""
+            }`,
+          ),
         };
       },
     );
+    /** Text of a draft closed by the diff (not by the user): the next draft starts with it. */
+    const keptText = useRef("");
+    const closeDraft = () => {
+      // An answer still on its way belongs to the draft closed here, not to the next one.
+      drafts.current += 1;
+      setDraft(null);
+      setDraftText("");
+      setSelectedLines(null);
+    };
+    // A draft goes with what it was opened on: another scope, base or whitespace setting, or
+    // a refresh that drops its file, closes it (its annotation would be gone, and with it Cancel).
+    // A panel closed while a comment is on its way drops the answer.
+    useEffect(
+      () => () => {
+        drafts.current += 1;
+      },
+      [],
+    );
+    const draftStale =
+      draft !== null && (draft.what !== what || !diffFileKeys.includes(draft.fileKey));
+    // A refresh that keeps the file but drops the lines: the draft has nowhere to show.
+    const draftFile =
+      draft === null || draftStale
+        ? undefined
+        : renderableFileEntries.find((file) => file.fileKey === draft.fileKey)?.fileDiff;
+    const draftLost =
+      draft !== null && draftFile !== undefined && !rangeInDiff(draftFile, draft.range);
+    useEffect(() => {
+      if (!draftStale) return;
+      keptText.current = draftText;
+      closeDraft();
+    }, [draftStale]);
+    /** The commented lines left the diff: say so, and let a new comment start. */
+    const dropLostDraft = () => {
+      keptText.current = draftText;
+      services.toasts?.show({
+        type: "info",
+        title: "These lines are no longer in the diff",
+        description: "Comment on them again where they are now; your text is kept.",
+      });
+      closeDraft();
+    };
+    useEffect(() => {
+      if (draftLost) dropLostDraft();
+    }, [draftLost]);
+    /** Opens a comment under the lines chosen in the gutter. */
+    const beginComment = (
+      range: SelectedLineRange | null,
+      item: CodeViewDiffItem<CommentDraft>,
+    ) => {
+      if (range === null) return;
+      const filePath = resolveFileDiffPath(item.fileDiff);
+      const comment = buildDiffReviewComment({
+        sectionId: reviewSectionId,
+        sectionTitle: scopeTitle,
+        filePath,
+        fileDiff: item.fileDiff,
+        range,
+        text: "",
+      });
+      if (comment === null) return;
+      setDraftText(keptText.current);
+      keptText.current = "";
+      setDraft({
+        what,
+        id: ++drafts.current,
+        sectionId: reviewSectionId,
+        sectionTitle: scopeTitle,
+        fileKey: item.id,
+        filePath,
+        fileDiff: item.fileDiff,
+        range,
+        rangeLabel: comment.rangeLabel,
+      });
+    };
+    /** Puts the comment into the composer as T3 sends a review comment to a provider. */
+    const sendComment = (text: string) => {
+      if (draft === null) return;
+      if (draftStale) {
+        // Its scope or file went a moment ago: the draft closes rather than sending nowhere.
+        closeDraft();
+        return;
+      }
+      // The file's diff as it is now: a refresh may have changed its lines since the draft opened.
+      const fileDiff =
+        renderableFileEntries.find((file) => file.fileKey === draft.fileKey)?.fileDiff ??
+        draft.fileDiff;
+      const comment = buildDiffReviewComment({
+        sectionId: draft.sectionId,
+        sectionTitle: draft.sectionTitle,
+        filePath: draft.filePath,
+        fileDiff,
+        range: draft.range,
+        text,
+      });
+      if (comment === null) {
+        dropLostDraft();
+        return;
+      }
+      const sent = draft.id;
+      setSending(sent);
+      // The answer belongs to this draft: a draft closed meanwhile (another scope) hears nothing.
+      const current = () => drafts.current === sent;
+      void services.context.commands
+        .execute(COMPOSER_INSERT, { text: serializeReviewComment(comment) })
+        .then(
+          (answer) => {
+            if (!current()) return;
+            const parsed = InsertAnswer.safeParse(answer);
+            if (!parsed.success) {
+              services.toasts?.show({
+                type: "error",
+                title: "Could not add the comment to the chat",
+                description: "The composer gave an answer the panel does not understand.",
+              });
+              return;
+            }
+            if (parsed.data.inserted) {
+              closeDraft();
+              return;
+            }
+            services.toasts?.show({
+              type: "info",
+              title: "No message box to add the comment to",
+            });
+          },
+          (failure: unknown) => {
+            if (!current()) return;
+            services.toasts?.show({
+              type: "error",
+              title: "Could not add the comment to the chat",
+              description: failure instanceof Error ? failure.message : String(failure),
+            });
+          },
+        )
+        .finally(() => setSending((now) => (now === sent ? null : now)));
+    };
 
     const toggleFile = (fileKey: string) =>
       setCollapsedFiles((current) => {
@@ -825,10 +1023,11 @@ export function createDiffPanel(services: SourceControlServices) {
             >
               <ContextMenu>
                 <ContextMenuTrigger className="h-full min-h-0" render={<div />}>
-                  <StyledDiffCodeView<undefined>
+                  <StyledDiffCodeView<CommentDraft>
                     className="h-full min-h-0 overflow-auto"
                     items={items}
                     key={codeViewMountKey}
+                    onSelectedLinesChange={setSelectedLines}
                     options={{
                       diffStyle: settings.layout === "split" ? "split" : "unified",
                       lineDiffType: "none",
@@ -837,7 +1036,25 @@ export function createDiffPanel(services: SourceControlServices) {
                       preferredHighlighter: PREFERRED_HIGHLIGHTER,
                       themeType: resolvedTheme,
                       stickyHeaders: true,
+                      // The gutter's "+" (or a dragged range) opens a comment, one at a time.
+                      enableGutterUtility: canComment && draft === null,
+                      enableLineSelection: canComment && draft === null,
+                      onGutterUtilityClick: (range, context) =>
+                        beginComment(range, context.item as CodeViewDiffItem<CommentDraft>),
                     }}
+                    renderAnnotation={(annotation) => (
+                      <div className="py-1">
+                        <DiffCommentAnnotation
+                          onCancel={closeDraft}
+                          onComment={sendComment}
+                          onTextChange={setDraftText}
+                          pending={sending !== null && sending === draft?.id}
+                          rangeLabel={annotation.metadata.rangeLabel}
+                          text={draftText}
+                        />
+                      </div>
+                    )}
+                    selectedLines={selectedLines}
                     renderHeaderFilenameSuffix={(item) =>
                       item.type === "diff" ? (
                         <DiffFilePathCopyButton

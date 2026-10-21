@@ -82,10 +82,30 @@ const status = (fields: Partial<ProjectStatus> = {}): ProjectStatus => ({
 });
 
 /** A plugin context whose config holds the `jhin.diff` section a device sets. */
-function deviceConfig(values: Partial<DiffSettings> = {}) {
+function deviceConfig(
+  values: Partial<DiffSettings> = {},
+  /** Client commands the context runs, e.g. the chat's `chat.composer.insert`. */
+  commands: Record<string, (input: unknown) => unknown> = {},
+) {
   let current: Record<string, unknown> = { ...values };
   const listeners = new Set<() => void>();
+  const eventListeners = new Map<string, Set<() => void>>();
   const context = {
+    commands: {
+      list: () => Object.keys(commands).map((name) => ({ name })),
+      execute: async (name: string, input: unknown) => commands[name]!(input),
+    },
+    events: {
+      on: (type: string, listener: () => void): Disposable => {
+        const set = eventListeners.get(type) ?? new Set();
+        eventListeners.set(type, set);
+        set.add(listener);
+        return toDisposable(() => set.delete(listener));
+      },
+      emit: (type: string) => {
+        for (const listener of eventListeners.get(type) ?? []) listener();
+      },
+    },
     config: {
       get: (section: string) => {
         if (section !== DIFF_SECTION) throw new Error(`No section ${section}`);
@@ -191,6 +211,13 @@ function services(
   };
   scopes.register(turnScopeProvider(value));
   return { value, calls, shown, scopes, config };
+}
+
+/** The gutter's "+" buttons Pierre shows (in its shadow DOM) for the hovered line. */
+function visiblePlusButtons(): HTMLElement[] {
+  return [...document.querySelectorAll("diffs-container")]
+    .flatMap((host) => [...(host.shadowRoot?.querySelectorAll("[data-utility-button]") ?? [])])
+    .filter((button): button is HTMLElement => (button as HTMLElement).offsetParent !== null);
 }
 
 const mounts = new Set<() => void>();
@@ -713,6 +740,226 @@ describe("the diff panel", () => {
     });
     // An editor that failed to open is not remembered as the preferred one.
     expect(localStorage.getItem("jhin.lastEditor")).toBeNull();
+  });
+
+  it("sends a comment on lines into the composer, as T3 sends a review comment", async () => {
+    const inserted: string[] = [];
+    const config = deviceConfig(
+      { filesCollapsed: false },
+      {
+        "chat.composer.insert": (input) => {
+          inserted.push((input as { text: string }).text);
+          return { inserted: true };
+        },
+      },
+    );
+    const { value } = services(viewWith(status()), { "git.diff": diff }, config);
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const line = page.getByText("const two = 3;");
+    await expect.element(line).toBeVisible();
+    await userEvent.hover(line);
+    expect(visiblePlusButtons()).toHaveLength(1);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+    const box = page.getByRole("textbox", { name: "Comment on lines +2" });
+    await expect.element(box).toBeVisible();
+    await userEvent.fill(box, "Why three?");
+    await userEvent.click(page.getByRole("button", { name: "Comment", exact: true }));
+    await expect.element(box).not.toBeInTheDocument();
+    expect(inserted).toEqual([
+      [
+        '<review_comment sectionId="jhin.source-control.git:branch" sectionTitle="Changes" filePath="src/app.ts" rangeLabel="+2" startIndex="2" endIndex="2">',
+        "Why three?",
+        "",
+        "```diff",
+        "@@ -0,0 +2,1 @@",
+        "+const two = 3;",
+        "```",
+        "</review_comment>",
+      ].join("\n"),
+    ]);
+  });
+
+  it("closes a draft when the scope changes, and offers comments once a chat plugin comes", async () => {
+    const commands: Record<string, (input: unknown) => unknown> = {};
+    const config = deviceConfig({ filesCollapsed: false }, commands);
+    const { value } = services(viewWith(status()), { "git.diff": diff }, config);
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const line = page.getByText("const two = 3;");
+    await expect.element(line).toBeVisible();
+    await userEvent.hover(line);
+    expect(visiblePlusButtons()).toEqual([]);
+
+    // The chat plugin activates after the panel: its command makes lines take comments.
+    commands["chat.composer.insert"] = () => ({ inserted: true });
+    act(() => config.context.events.emit("kernel.plugin.activated"));
+    await userEvent.hover(page.getByText("const one = 1;"));
+    await userEvent.hover(line);
+    expect(visiblePlusButtons()).toHaveLength(1);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+    const box = page.getByRole("textbox", { name: "Comment on lines +2" });
+    await expect.element(box).toBeVisible();
+
+    // Another scope: the draft is gone, and so is the block on new comments.
+    const key = selectionKey({ target, projectId: "app", threadId: "t1" });
+    act(() => value.selections.update(key, { value: "uncommitted" }));
+    await expect.element(box).not.toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Diff scope: Uncommitted" }))
+      .toBeVisible();
+    await expect.element(line).toBeVisible();
+    await userEvent.hover(line);
+    expect(visiblePlusButtons()).toHaveLength(1);
+  });
+
+  it("sends with ⌘/Ctrl Enter, cancels with Escape, and says why a comment did not go", async () => {
+    const answers: (() => unknown)[] = [
+      () => ({ inserted: false }),
+      () => {
+        throw new Error("composer is busy");
+      },
+      () => "yes",
+    ];
+    const config = deviceConfig(
+      { filesCollapsed: false },
+      {
+        "chat.composer.insert": () => answers.shift()!(),
+      },
+    );
+    const { value, shown } = services(viewWith(status()), { "git.diff": diff }, config);
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const line = page.getByText("const two = 3;");
+    const open = async () => {
+      await expect.element(line).toBeVisible();
+      await userEvent.hover(line);
+      await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+      return page.getByRole("textbox", { name: "Comment on lines +2" });
+    };
+
+    // Escape cancels.
+    let box = await open();
+    await userEvent.fill(box, "never mind");
+    await userEvent.keyboard("{Escape}");
+    await expect.element(box).not.toBeInTheDocument();
+
+    // ⌘/Ctrl Enter sends; no message box on screen.
+    box = await open();
+    await userEvent.fill(box, "first");
+    await userEvent.keyboard("{Control>}{Enter}{/Control}");
+    await act(async () => undefined);
+    await act(async () => undefined);
+    expect(shown[0]).toEqual({ type: "info", title: "No message box to add the comment to" });
+
+    // The composer refuses.
+    await userEvent.click(page.getByRole("button", { name: "Comment", exact: true }));
+    await act(async () => undefined);
+    await act(async () => undefined);
+    expect(shown[1]).toEqual({
+      type: "error",
+      title: "Could not add the comment to the chat",
+      description: "composer is busy",
+    });
+
+    // An answer the panel does not understand is an error, not "no message box".
+    await userEvent.click(page.getByRole("button", { name: "Comment", exact: true }));
+    await act(async () => undefined);
+    await act(async () => undefined);
+    expect(shown[2]).toEqual({
+      type: "error",
+      title: "Could not add the comment to the chat",
+      description: "The composer gave an answer the panel does not understand.",
+    });
+  });
+
+  it("says so when the lines commented on left the diff after a refresh", async () => {
+    let answer: Diff = diff;
+    const inserted: string[] = [];
+    const config = deviceConfig(
+      { filesCollapsed: false },
+      {
+        "chat.composer.insert": (input) => {
+          inserted.push((input as { text: string }).text);
+          return { inserted: true };
+        },
+      },
+    );
+    const { value, shown } = services(viewWith(status()), { "git.diff": () => answer }, config);
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const line = page.getByText("const two = 3;");
+    await expect.element(line).toBeVisible();
+    await userEvent.hover(line);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+    const box = page.getByRole("textbox", { name: "Comment on lines +2" });
+    await userEvent.fill(box, "Why three?");
+    // The file is still changed, but only its first line now.
+    answer = {
+      ...diff,
+      patch: [
+        "diff --git a/src/app.ts b/src/app.ts",
+        "--- a/src/app.ts",
+        "+++ b/src/app.ts",
+        "@@ -1 +1 @@",
+        "-const one = 1;",
+        "+const one = 0;",
+        "",
+      ].join("\n"),
+    };
+    act(() => window.dispatchEvent(new Event("focus")));
+    await expect.element(page.getByText("const one = 0;")).toBeVisible();
+    // The draft closes and says why, rather than sending lines that are no longer there.
+    await expect.element(box).not.toBeInTheDocument();
+    expect(inserted).toEqual([]);
+    expect(shown).toEqual([
+      {
+        type: "info",
+        title: "These lines are no longer in the diff",
+        description: "Comment on them again where they are now; your text is kept.",
+      },
+    ]);
+    // And a new comment starts with the text typed.
+    await userEvent.hover(page.getByText("const one = 0;"));
+    expect(visiblePlusButtons()).toHaveLength(1);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+    await expect
+      .element(page.getByRole("textbox", { name: /^Comment on lines/ }))
+      .toHaveValue("Why three?");
+  });
+
+  it("holds a comment on its way: no Cancel, and a scope change hears nothing of it", async () => {
+    let answer!: (value: { inserted: boolean }) => void;
+    const inserted: string[] = [];
+    const config = deviceConfig(
+      { filesCollapsed: false },
+      {
+        "chat.composer.insert": (input) => {
+          inserted.push((input as { text: string }).text);
+          return new Promise((resolve) => (answer = resolve));
+        },
+      },
+    );
+    const { value, shown } = services(viewWith(status()), { "git.diff": diff }, config);
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const line = page.getByText("const two = 3;");
+    await expect.element(line).toBeVisible();
+    await userEvent.hover(line);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+    const box = page.getByRole("textbox", { name: "Comment on lines +2" });
+    await userEvent.fill(box, "Why three?");
+    await userEvent.click(page.getByRole("button", { name: "Comment", exact: true }));
+    await expect.element(page.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(box.element()).toHaveProperty("readOnly", true);
+    expect(inserted).toHaveLength(1);
+
+    // Another scope closes the draft; the late answer then changes nothing and says nothing.
+    const key = selectionKey({ target, projectId: "app", threadId: "t1" });
+    act(() => value.selections.update(key, { value: "uncommitted" }));
+    await expect.element(box).not.toBeInTheDocument();
+    await act(async () => answer({ inserted: false }));
+    expect(shown).toEqual([]);
   });
 
   it("says so when the project is no repository or has no changes", async () => {
