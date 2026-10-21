@@ -105,14 +105,14 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
   const attempts = new Map<string, number>();
 
   /** False (and answered with 429) once a client tried too often this minute. */
+  const bucket = (route: string, request: IncomingMessage) =>
+    `${route}:${http.clientAddress(request)}:${Math.floor(Date.now() / 60_000)}`;
+  /** False (and answered with 429) once a client failed too often this minute. */
   const admit = (route: string, request: IncomingMessage, response: ServerResponse): boolean => {
-    const minute = Math.floor(Date.now() / 60_000);
-    // One bucket per route: a signed-in page never spends a pairing device's attempts.
-    const key = `${route}:${http.clientAddress(request)}:${minute}`;
-    const count = (attempts.get(key) ?? 0) + 1;
-    attempts.set(key, count);
-    for (const old of attempts.keys()) if (!old.endsWith(`:${minute}`)) attempts.delete(old);
-    if (count <= ATTEMPTS_PER_MINUTE) return true;
+    const key = bucket(route, request);
+    const minute = key.slice(key.lastIndexOf(":"));
+    for (const old of attempts.keys()) if (!old.endsWith(minute)) attempts.delete(old);
+    if ((attempts.get(key) ?? 0) < ATTEMPTS_PER_MINUTE) return true;
     send(
       response,
       429,
@@ -120,6 +120,14 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       { ...CORS, "retry-after": "60" },
     );
     return false;
+  };
+  /**
+   * Only a failed attempt counts (one bucket per route and client address):
+   * pairing and signing in that work never lock anyone out.
+   */
+  const missed = (route: string, request: IncomingMessage) => {
+    const key = bucket(route, request);
+    attempts.set(key, (attempts.get(key) ?? 0) + 1);
   };
 
   const cookieHeader = (value: string, request: IncomingMessage, maxAge?: number) => {
@@ -146,11 +154,13 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       if (!admit("pair", request, response)) return;
       const body = await readJson(request).catch((error: unknown) => error);
       if (body instanceof BodyTooLarge) {
+        missed("pair", request);
         send(response, 413, { code: "TOO_LARGE", message: "The request body is too large" }, CORS);
         return;
       }
       const parsed = PairRequest.safeParse(body instanceof Error ? undefined : body);
       if (!parsed.success) {
+        missed("pair", request);
         send(response, 400, { code: "INVALID", message: "Expected { code, label? }" }, CORS);
         return;
       }
@@ -159,6 +169,7 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
         log.warn("pairing refused: wrong, used or expired code", {
           client: http.clientAddress(request),
         });
+        missed("pair", request);
         send(
           response,
           401,
@@ -188,16 +199,19 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       if (!admit("session", request, response)) return;
       const body = await readJson(request).catch((error: unknown) => error);
       if (body instanceof BodyTooLarge) {
+        missed("session", request);
         send(response, 413, { code: "TOO_LARGE", message: "The request body is too large" });
         return;
       }
       const parsed = SessionRequest.safeParse(body instanceof Error ? undefined : body);
       if (!parsed.success) {
+        missed("session", request);
         send(response, 400, { code: "INVALID", message: "Expected { credential }" });
         return;
       }
       const issued = await options.openSession(parsed.data.credential);
       if (issued === undefined) {
+        missed("session", request);
         send(response, 401, {
           code: "CREDENTIAL_INVALID",
           message: "This token or pairing code is not valid here. Request a new pairing link.",
@@ -207,7 +221,17 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       const maxAge =
         issued.expiresAt === undefined
           ? undefined
-          : Math.max(0, Math.floor((issued.expiresAt - Date.now()) / 1000));
+          : Math.floor((issued.expiresAt - Date.now()) / 1000);
+      // A cookie that would die at once is no session: say so instead of a 200.
+      if (maxAge !== undefined && maxAge <= 0) {
+        options.closeSession(issued.token);
+        missed("session", request);
+        send(response, 401, {
+          code: "CREDENTIAL_INVALID",
+          message: "This token is about to expire. Request a new pairing link.",
+        });
+        return;
+      }
       // The token goes into the cookie only: the page never sees it.
       const { token, ...visible } = issued;
       send(

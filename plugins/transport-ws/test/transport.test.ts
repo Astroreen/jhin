@@ -635,13 +635,14 @@ describe("pairing (security.md D419–D422)", () => {
       );
       expect(refused.status).toBe(403);
     }
-    // /auth/pair has its own bucket: 18 more (the 400 and the 413 counted) answer, then 429.
+    // Only failures count, per route. 41 wrong codes cross 20 a minute even when
+    // they straddle a minute boundary (as /mesh/join's test does).
     const statuses: number[] = [];
-    for (let attempt = 0; attempt < 19; attempt++) {
+    for (let attempt = 0; attempt < 41; attempt++) {
       statuses.push((await post(`${httpUrl(node)}/auth/pair`, { code: "WRONGCODE234" })).status);
     }
-    expect(statuses.slice(0, 18).every((status) => status === 401)).toBe(true);
-    expect(statuses[18]).toBe(429);
+    expect(statuses).toContain(429);
+    expect(statuses.every((status) => status === 401 || status === 429)).toBe(true);
     // The session bucket is untouched.
     expect((await post(`${httpUrl(node)}/auth/session`, { credential: "x" })).status).toBe(401);
   });
@@ -661,6 +662,32 @@ describe("pairing (security.md D419–D422)", () => {
       clients: { id: string; method: string }[];
     };
     expect(listed.clients.find((client) => client.id === opened.id)?.method).toBe("issued");
+  });
+
+  it("ends a page session with the token that opened it", async () => {
+    const node = await startNode();
+    const source = (await node.kernel.commands.execute("auth.tokens.issue", {
+      label: "source",
+      permissions: ["app.*"],
+    })) as { id: string; token: string };
+    const fromSource = (await (
+      await post(`${httpUrl(node)}/auth/session`, { credential: source.token })
+    ).json()) as { id: string };
+    const fromOwner = (await (
+      await post(`${httpUrl(node)}/auth/session`, { credential: node.token })
+    ).json()) as { id: string };
+    const ids = async () =>
+      (
+        (await node.kernel.commands.execute("auth.clients.list", {})) as {
+          clients: { id: string }[];
+        }
+      ).clients.map((client) => client.id);
+
+    await node.kernel.commands.execute("auth.clients.revoke", { id: source.id });
+    expect(await ids()).not.toContain(fromSource.id);
+    expect(await ids()).toContain(fromOwner.id);
+    await node.kernel.commands.execute("auth.token.rotate", {});
+    expect(await ids()).not.toContain(fromOwner.id);
   });
 
   it("turns the owner's token from #token= into a session too", async () => {

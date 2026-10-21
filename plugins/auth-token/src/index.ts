@@ -130,6 +130,13 @@ export default definePlugin({
         token = newToken();
         writeToken(file, token);
         context.log.warn("access token rotated", { file });
+        // Page sessions opened with the old owner token end with it.
+        revoke(
+          clients
+            .list()
+            .filter((record) => record.parent === OWNER_PRINCIPAL_ID)
+            .map((record) => record.id),
+        );
         // Transports drop connections opened with the old token.
         context.events.emit(AuthEvents.tokenRotated, {});
         return { token };
@@ -141,7 +148,20 @@ export default definePlugin({
       return { ...rest, current: invocation.caller?.id === clientPrincipalId(record.id) };
     };
     const revoke = (ids: readonly string[]) => {
-      const gone = clients.remove(ids);
+      // A page session opened with a revoked token goes with it, and so on down.
+      const doomed = new Set(ids);
+      for (let grew = true; grew;) {
+        grew = false;
+        for (const record of clients.list()) {
+          const parent = record.parent;
+          if (doomed.has(record.id) || parent === undefined) continue;
+          if ([...doomed].some((id) => clientPrincipalId(id) === parent)) {
+            doomed.add(record.id);
+            grew = true;
+          }
+        }
+      }
+      const gone = clients.remove([...doomed]);
       for (const record of gone) {
         context.log.warn("device token revoked", { client: record.id, label: record.label });
         // Transports drop its open connections at once (security.md D414).
@@ -196,7 +216,7 @@ export default definePlugin({
     const issuePaired = (
       permissions: readonly string[],
       label: string,
-      from?: { readonly expiresAt?: number },
+      from?: { readonly id: string; readonly expiresAt?: number },
     ) => {
       const now = Date.now();
       const longest = now + DEFAULT_TTL_DAYS * DAY_MS;
@@ -206,6 +226,7 @@ export default definePlugin({
         method: from === undefined ? "pairing" : "issued",
         now,
         expiresAt: from?.expiresAt === undefined ? longest : Math.min(longest, from.expiresAt),
+        ...(from === undefined ? {} : { parent: from.id }),
       });
       if (from === undefined) {
         context.log.warn("device paired", { client: record.id, label, permissions });

@@ -204,8 +204,10 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   origin even while the list is empty (D418). The endpoints need
   `http.server@^1.2`, optional for `jhin.auth-token`; without it the pairing
   commands still create codes, with no `url`. A token traded for the
-  session gives an `issued` token that never outlives it. Each endpoint has
-  its own rate-limit bucket per client address (behind a proxy, set
+  session gives an `issued` token that never outlives it and is revoked with
+  it (a rotated owner token ends the sessions it opened). Each endpoint has
+  its own rate-limit bucket per client address, counting failed attempts
+  only (behind a proxy, set
   `jhin.http.trustProxy` so clients are told apart).
 - **D422. The pairing URL is T3's: `<base>/pair#token=<CODE>`.** The code is
   in the fragment, so it never reaches a server log; the web client accepts
