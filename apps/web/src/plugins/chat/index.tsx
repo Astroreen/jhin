@@ -516,7 +516,10 @@ export const chatPlugin = builtin(
           const revert = async () => {
             const open = composer.current?.draftKey === key ? composer.current : undefined;
             const current = open === undefined ? services.drafts.get(key) : open.draft();
-            if (current !== undefined && (current.prompt !== "" || current.attachments.length > 0))
+            if (
+              current !== undefined &&
+              (current.prompt.trim() !== "" || current.attachments.length > 0)
+            )
               throw new Error("The draft has new content.");
             if (kept === undefined) return;
             // Opened meanwhile: its composer holds the text, so it takes it back itself.
