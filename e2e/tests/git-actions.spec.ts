@@ -42,8 +42,15 @@ if [ "$1" = "pr" ] && [ "$2" = "create" ]; then
     esac
   done
   printf '[{"number":42,"title":"%s","url":"https://github.com/acme/app/pull/42","state":"OPEN","isDraft":false,"headRefName":"%s","baseRefName":"%s","statusCheckRollup":[]}]' "$title" "$head" "$base" > "${dir}/pr-$(safe "$head").json"
+  printf '{"number":42,"title":"%s","url":"https://github.com/acme/app/pull/42","state":"OPEN","isDraft":false,"headRefName":"%s","baseRefName":"%s","statusCheckRollup":[]}' "$title" "$head" "$base" > "${dir}/view-42.json"
   echo "https://github.com/acme/app/pull/42"
   exit 0
+fi
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  file="${dir}/view-$(basename "$3").json"
+  if [ -f "$file" ]; then cat "$file"; exit 0; fi
+  echo "no pull requests found" >&2
+  exit 1
 fi
 if [ "$1" = "pr" ] && [ "$2" = "list" ]; then
   file="${dir}/pr-$(safe "$4").json"
@@ -53,6 +60,20 @@ fi
 exit 1
 `,
     { mode: 0o755 },
+  );
+  // A pull request stacked on the branch's own, linked by hand below.
+  Fs.writeFileSync(
+    Path.join(dir, "view-43.json"),
+    JSON.stringify({
+      number: 43,
+      title: "Greet in French",
+      url: "https://github.com/acme/app/pull/43",
+      state: "OPEN",
+      isDraft: false,
+      headRefName: "feature/french",
+      baseRefName: "feature/greeting",
+      statusCheckRollup: [],
+    }),
   );
   return path;
 }
@@ -88,7 +109,7 @@ async function shot(page: Page, info: TestInfo, name: string) {
   await info.attach(name, { path, contentType: "image/png" });
 }
 
-test("D260–D265: the chat header's git actions commit, push and open a pull request", async ({
+test("D260–D269: the chat header's git actions commit, push and open a pull request; linking another makes a stack", async ({
   page,
 }, info) => {
   const node = await startNode({
@@ -146,4 +167,16 @@ test("D260–D265: the chat header's git actions commit, push and open a pull re
   expect(git(dir, "rev-parse", "--abbrev-ref", "feature/greeting@{upstream}").trim()).toBe(
     "origin/feature/greeting",
   );
+
+  // Linking the pull request stacked on it from the thread's menu: the card shows the stack.
+  await page.getByRole("heading", { name: "New thread" }).getByRole("button").click();
+  await page.getByRole("menuitem", { name: "Link pull request…" }).click();
+  const prompt = page.getByRole("dialog", { name: "Link pull request" });
+  await prompt.getByRole("textbox", { name: "Pull request" }).fill("#43");
+  await prompt.getByRole("button", { name: "Link" }).click();
+  const stack = card.getByRole("link", { name: "Stack of 2 pull requests, open" });
+  await expect(stack).toHaveText("2");
+  await stack.hover();
+  await expect(page.getByText("stack · 2")).toBeVisible();
+  await shot(page, info, "linked-pull-requests-stack");
 });

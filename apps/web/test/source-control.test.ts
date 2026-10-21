@@ -12,11 +12,18 @@ import {
   SourceControlEvents,
   type ProjectStatus,
   type StatusSnapshot,
+  type ThreadPullRequest,
 } from "@jhin/source-control-api";
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
 import { parsePatch } from "../src/lib/diff.ts";
+import {
+  currentPullRequest,
+  threadPullRequestBadge,
+  threadPullRequestBadgePresentation,
+} from "../src/lib/pull-request.ts";
+import { readPullRequestInput } from "../src/plugins/source-control/links.tsx";
 import { splitForMiddleTruncate } from "../src/lib/middle-truncate.tsx";
 import { formatCompactDiffCount, prStatusIndicator } from "../src/lib/pull-request.ts";
 import { describeBranch } from "../src/plugins/source-control/branch-toolbar.tsx";
@@ -56,6 +63,7 @@ describe("applySourceControlEvent", () => {
     status: "ready",
     projects: new Map([["app", status()]]),
     threads: new Map(),
+    links: new Map(),
   };
 
   it("applies statuses and thread branches, and their removal", () => {
@@ -368,5 +376,107 @@ describe("presenting source control", () => {
     expect(describeBranch(status(), "feature")).toBe("feature · up to date with origin/feature");
     expect(describeBranch(status({ upstream: null }), "feature")).toBe("feature · no upstream");
     expect(describeBranch(status(), "other")).toBe("other · checked out: feature");
+  });
+});
+
+describe("linked pull requests", () => {
+  const link = (number: number, fields: Record<string, unknown> = {}) =>
+    ({
+      key: `github.com/acme/app#${number}`,
+      host: "github.com",
+      repository: "acme/app",
+      number,
+      url: `https://github.com/acme/app/pull/${number}`,
+      source: "created",
+      linkedAt: `2026-10-0${number}T00:00:00Z`,
+      snapshot: null,
+      ...fields,
+    }) as ThreadPullRequest;
+  const pr = (head: string, base: string, state = "open", isDraft = false) => ({
+    number: 0,
+    title: head,
+    url: "",
+    state,
+    isDraft,
+    headBranch: head,
+    baseBranch: base,
+    checks: { state: null, passed: 0, failed: 0, pending: 0, total: 0 },
+  });
+
+  it("follows links, their updates and unlinks, and drops them with the thread", () => {
+    const empty: SourceControlView = {
+      status: "ready",
+      projects: new Map(),
+      threads: new Map(),
+      links: new Map(),
+    };
+    let view = applySourceControlEvent(empty, {
+      type: "git.pr.linked",
+      payload: { threadId: "t1", pullRequest: link(1) },
+    });
+    view = applySourceControlEvent(view, {
+      type: "git.pr.updated",
+      payload: { threadId: "t1", pullRequest: link(1, { snapshot: pr("a", "main") }) },
+    });
+    expect(view.links.get("t1")?.[0]?.snapshot?.headBranch).toBe("a");
+    view = applySourceControlEvent(view, {
+      type: "git.pr.linked",
+      payload: { threadId: "t1", pullRequest: link(2) },
+    });
+    view = applySourceControlEvent(view, {
+      type: "git.pr.unlinked",
+      payload: { threadId: "t1", key: "github.com/acme/app#1" },
+    });
+    expect(view.links.get("t1")?.map((item) => item.number)).toEqual([2]);
+    view = applySourceControlEvent(view, {
+      type: "source-control.thread.removed",
+      payload: { threadId: "t1" },
+    });
+    expect(view.links.size).toBe(0);
+  });
+
+  it("reads the card's badge as T3 does: a stack, several, one", () => {
+    const stack = [
+      link(1, { snapshot: pr("a", "main", "merged") }),
+      link(2, { snapshot: pr("b", "a") }),
+    ];
+    const badge = threadPullRequestBadge(stack)!;
+    expect(badge).toEqual({ kind: "stack", layers: 2, state: "open" });
+    expect(currentPullRequest(stack)?.number).toBe(2);
+    expect(threadPullRequestBadgePresentation(badge, currentPullRequest(stack))).toMatchObject({
+      label: "Stack of 2 pull requests, open",
+      text: 2,
+    });
+    const apart = [
+      link(1, { snapshot: pr("a", "main", "merged") }),
+      link(2, { snapshot: pr("x", "main", "closed") }),
+    ];
+    const several = threadPullRequestBadge(apart)!;
+    expect(several).toEqual({ kind: "pull-request", others: 1, state: "closed" });
+    expect(threadPullRequestBadgePresentation(several, apart[1])).toMatchObject({
+      text: "+2",
+      label: "PR #0 - Closed: x, and 1 more linked; overall closed",
+    });
+    expect(
+      threadPullRequestBadgePresentation(threadPullRequestBadge([link(3)])!, link(3)),
+    ).toMatchObject({ label: "PR #3, status pending", text: 3 });
+    expect(
+      threadPullRequestBadge([link(1, { snapshot: pr("a", "main", "open", true) })]),
+    ).toMatchObject({ state: "draft" });
+  });
+
+  it("reads what the link dialog was given", () => {
+    const remote = "git@github.com:acme/app.git";
+    expect(readPullRequestInput("#42", remote)).toEqual({
+      repository: "acme/app",
+      number: 42,
+      host: "github.com",
+    });
+    expect(readPullRequestInput(" https://github.com/acme/app/pull/7 ", remote)).toEqual({
+      url: "https://github.com/acme/app/pull/7",
+    });
+    expect(readPullRequestInput("", remote)).toBe("Paste a pull request URL or enter 123 / #123.");
+    expect(readPullRequestInput("nope", remote)).toBe("Use a pull request URL, 123, or #123.");
+    expect(readPullRequestInput("12", null)).toBe("Use a pull request URL, 123, or #123.");
   });
 });

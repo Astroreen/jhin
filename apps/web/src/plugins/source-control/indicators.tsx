@@ -1,9 +1,14 @@
 // The indicators follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/Sidebar.tsx (the card's branch row and its diff count, and
 // SidebarThreadTooltip's branch lines) and ThreadStatusIndicators.tsx
-// (ThreadPullRequestBadgeControl, PullRequestBadge and the mini list item its tooltip shows).
+// (ThreadPullRequestBadgeControl, PullRequestBadge and the mini list item its tooltip shows),
+// with ThreadPullRequestsMiniList for several linked ones.
 import type { ThreadIndicatorProps } from "@jhin/client-api";
-import type { PullRequest } from "@jhin/source-control-api";
+import {
+  pullRequestChains,
+  type PullRequest,
+  type ThreadPullRequest,
+} from "@jhin/source-control-api";
 import { InlineButton, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
 import { CircleAlertIcon, GitBranchIcon } from "lucide-react";
 import type { MouseEvent, ReactElement } from "react";
@@ -11,9 +16,12 @@ import type { MouseEvent, ReactElement } from "react";
 import { ComposerControl } from "../../lib/composer-control.tsx";
 import { MiddleTruncate } from "../../lib/middle-truncate.tsx";
 import {
+  currentPullRequest,
   formatDiffCount,
   prStatusIndicator,
   pullRequestChecksPresentation,
+  threadPullRequestBadge,
+  threadPullRequestBadgePresentation,
 } from "../../lib/pull-request.ts";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
 
@@ -94,6 +102,80 @@ export function PullRequestBadge({
   );
 }
 
+/**
+ * The badge of a thread's linked pull requests: a stack's layer count, or the
+ * current one's number with how many more are linked; it links to the current
+ * one, and its tooltip lists them all by chain.
+ */
+function LinkedPullRequestsBadge({ links }: { links: readonly ThreadPullRequest[] }) {
+  const badge = threadPullRequestBadge(links);
+  const current = currentPullRequest(links);
+  if (badge === null || current === undefined) return null;
+  // One linked pull request reads as T3's plain badge once its state is known.
+  if (links.length === 1 && current.snapshot !== null) {
+    return <PullRequestBadge pr={current.snapshot} variant="card" />;
+  }
+  const presentation = threadPullRequestBadgePresentation(badge, current);
+  if (presentation === null) return null;
+  const byKey = new Map(links.map((link) => [link.key, link]));
+  const lines = pullRequestChains(links).flatMap((chain) =>
+    chain.keys.map((key, depth) => ({ link: byKey.get(key)!, depth, size: chain.keys.length })),
+  );
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <InlineButton
+            aria-label={presentation.label}
+            data-pull-request={badge.state}
+            onClick={openPullRequest}
+            onKeyDown={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+            render={<a href={current.url} rel="noopener noreferrer" target="_blank" />}
+          />
+        }
+      >
+        <span
+          className={cn("contents font-normal text-xs tabular-nums", presentation.toneClassName)}
+        >
+          <presentation.Icon aria-hidden className="size-3 shrink-0" />
+          <span>{presentation.text}</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipPopup
+        className="pointer-events-auto w-80 max-w-[calc(100vw-2rem)] text-left whitespace-normal"
+        side="top"
+        sideOffset={0}
+        variant="glass"
+      >
+        <div className="-mx-1 flex flex-col gap-0.5">
+          {lines.map(({ link, depth, size }) => {
+            const status = prStatusIndicator(link.snapshot);
+            return (
+              <div
+                className="flex min-w-0 items-center gap-2 rounded-sm px-1 py-0.5"
+                key={link.key}
+                style={{ paddingInlineStart: `${0.25 + Math.min(depth, 3) * 1.25}rem` }}
+              >
+                {status === null ? null : (
+                  <status.Icon aria-hidden className={cn("size-3 shrink-0", status.colorClass)} />
+                )}
+                <span className="shrink-0 font-mono tabular-nums">#{link.number}</span>
+                <span className="min-w-0 truncate text-foreground/75">
+                  {link.snapshot?.title ?? link.repository}
+                </span>
+                {depth === 0 && size > 1 ? (
+                  <span className="ml-auto shrink-0 text-muted-foreground">stack · {size}</span>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
 /** The card's indicators: the thread's branch, its pull request and the uncommitted diff. */
 export function createCardIndicators(services: SourceControlServices) {
   const { store } = services;
@@ -116,6 +198,9 @@ export function createCardIndicators(services: SourceControlServices) {
 
   function PullRequestIndicator({ target, thread }: ThreadIndicatorProps) {
     const view = useSourceControl(store, target);
+    // Linked pull requests come first; else the pull request of the thread's branch.
+    const links = view.links.get(thread.id);
+    if (links !== undefined && links.length > 0) return <LinkedPullRequestsBadge links={links} />;
     const recorded = view.threads.get(thread.id);
     if (recorded?.branch === undefined || recorded.branch === null) return null;
     const pr = view.projects.get(recorded.projectId)?.pullRequests[recorded.branch];

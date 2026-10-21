@@ -164,6 +164,9 @@ Words about Jhin:
   project, alone or stacked in that order (T3 Code's `commit_push_pr`), from
   the chat header or the `git.action.run` command. A **feature branch** is a
   new branch named after the changes, created for the commit.
+- **Linked pull request** — a pull request recorded on a thread (by hand, by
+  an agent, or created by a git action), shown on its card; linked pull
+  requests whose bases are each other's heads form a **stack**.
 - **Thread branch** — the branch a thread works on: the one checked out in
   its project when the thread was created or one of its turns started or
   ended, or the one it was switched to. The card shows it, and whether it is

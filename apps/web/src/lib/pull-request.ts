@@ -1,8 +1,15 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/pullRequest/pullRequestIcons.tsx (glyphs and state tones),
 // pullRequest/pullRequestPresentation.tsx (resolvePullRequestState, the checks states) and
-// ThreadStatusIndicators.tsx (prStatusIndicator: labels and tooltips).
-import type { PullRequest, PullRequestChecks } from "@jhin/source-control-api";
+// ThreadStatusIndicators.tsx (prStatusIndicator: labels and tooltips; the badge of several
+// linked pull requests) and packages/shared/src/threadPullRequests.ts
+// (resolveThreadPullRequestBadge, resolveThreadCurrentPullRequest).
+import {
+  pullRequestChains,
+  type PullRequest,
+  type PullRequestChecks,
+  type ThreadPullRequest,
+} from "@jhin/source-control-api";
 import {
   CircleCheckIcon,
   CircleDotIcon,
@@ -11,6 +18,7 @@ import {
   GitPullRequestArrowIcon,
   GitPullRequestClosedIcon,
   GitPullRequestDraftIcon,
+  LayersIcon,
 } from "lucide-react";
 
 interface PullRequestStatePresentation {
@@ -114,4 +122,93 @@ export function formatCompactDiffCount(value: number): string {
   if (value < 1_000_000) return compact(value / 1000, "k");
   if (value < 1_000_000_000) return compact(value / 1_000_000, "m");
   return compact(value / 1_000_000_000, "b");
+}
+
+type PullRequestBadgeState = "open" | "draft" | "closed" | "merged";
+
+/** What the card shows for a thread's linked pull requests (T3's resolveThreadPullRequestBadge). */
+export type ThreadPullRequestBadge =
+  | { readonly kind: "stack"; readonly layers: number; readonly state: PullRequestBadgeState }
+  | {
+      readonly kind: "pull-request";
+      readonly others: number;
+      readonly state: PullRequestBadgeState;
+    };
+
+export function threadPullRequestBadge(
+  links: readonly ThreadPullRequest[],
+): ThreadPullRequestBadge | null {
+  if (links.length === 0) return null;
+  const states = links.map((link) => link.snapshot?.state ?? "open");
+  const state: PullRequestBadgeState = links.every(
+    (link) => link.snapshot?.state === "open" && link.snapshot.isDraft,
+  )
+    ? "draft"
+    : states.includes("open")
+      ? "open"
+      : states.every((entry) => entry === "merged")
+        ? "merged"
+        : "closed";
+  if (links.length > 1 && pullRequestChains(links).length === 1) {
+    return { kind: "stack", layers: links.length, state };
+  }
+  return { kind: "pull-request", others: links.length - 1, state };
+}
+
+/**
+ * The pull request a thread is about now: the one open, the top open layer of
+ * the newest chain when several are, else the top of the newest chain.
+ */
+export function currentPullRequest(
+  links: readonly ThreadPullRequest[],
+): ThreadPullRequest | undefined {
+  const byKey = new Map(links.map((link) => [link.key, link]));
+  const open = links.filter((link) => (link.snapshot?.state ?? "open") === "open");
+  if (open.length === 1) return open[0];
+  const chains = pullRequestChains(links).map((chain) => chain.keys.map((key) => byKey.get(key)!));
+  for (const chain of chains) {
+    const top = chain.toReversed().find((link) => (link.snapshot?.state ?? "open") === "open");
+    if (top !== undefined) return top;
+  }
+  return chains[0]?.at(-1);
+}
+
+export interface ThreadPullRequestBadgePresentation {
+  readonly Icon: PullRequestStatePresentation["Icon"];
+  readonly toneClassName: string;
+  readonly label: string;
+  readonly text: string | number;
+}
+
+/** How the badge reads, as T3's resolveThreadPullRequestBadgePresentation words it. */
+export function threadPullRequestBadgePresentation(
+  badge: ThreadPullRequestBadge,
+  current: ThreadPullRequest | undefined,
+): ThreadPullRequestBadgePresentation | null {
+  const aggregate = PULL_REQUEST_STATE_PRESENTATION[badge.state];
+  if (badge.kind === "stack") {
+    return {
+      Icon: LayersIcon,
+      toneClassName: aggregate.toneClassName,
+      label: `Stack of ${badge.layers} pull requests, ${aggregate.label.toLowerCase()}`,
+      text: badge.layers,
+    };
+  }
+  if (current === undefined) return null;
+  const status = prStatusIndicator(current.snapshot);
+  const tooltip = status?.tooltip ?? `PR #${current.number}, status pending`;
+  if (badge.others > 0) {
+    return {
+      Icon: aggregate.Icon,
+      toneClassName: aggregate.toneClassName,
+      label: `${tooltip}, and ${badge.others} more linked; overall ${aggregate.label.toLowerCase()}`,
+      text: `+${badge.others + 1}`,
+    };
+  }
+  return {
+    Icon: status?.Icon ?? GitPullRequestArrowIcon,
+    toneClassName: status?.colorClass ?? "text-muted-foreground",
+    label: tooltip,
+    text: current.number,
+  };
 }

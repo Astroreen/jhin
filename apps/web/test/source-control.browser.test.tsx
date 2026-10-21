@@ -7,7 +7,7 @@ import type {
   ThreadsCatalog,
 } from "@jhin/client-api";
 import { toDisposable, type PluginContext } from "@jhin/sdk";
-import type { Diff, ProjectStatus, PullRequest } from "@jhin/source-control-api";
+import type { Diff, ProjectStatus, PullRequest, ThreadPullRequest } from "@jhin/source-control-api";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vite-plus/test";
@@ -130,6 +130,7 @@ const viewWith = (project: ProjectStatus, branch: string | null = "feature/toolb
   status: "ready" as const,
   projects: new Map([["app", project]]),
   threads: new Map([["t1", { threadId: "t1", projectId: "app", branch, at: "" }]]),
+  links: new Map<string, readonly ThreadPullRequest[]>(),
 });
 
 describe("a thread card's source control indicators", () => {
