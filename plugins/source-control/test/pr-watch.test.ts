@@ -136,7 +136,7 @@ describe("evaluating a watch", () => {
     // gh could not say this time: no wake, and the next good read is no news either.
     const unknown = evaluateWatch(
       passed,
-      read({ requiredKnown: false, checks: [{ ...required, required: undefined }, advisory] }),
+      read({ requiredKnown: false, checks: [{ name: "test", status: "success" }, advisory] }),
     );
     expect(unknown.changes).toEqual([]);
     expect(evaluateWatch(unknown.next, read({ checks: [required, advisory] })).changes).toEqual([]);
