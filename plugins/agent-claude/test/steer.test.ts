@@ -244,7 +244,10 @@ describe("jhin.agent-claude: steering (D206)", () => {
     it("steers as before when Claude Code refuses to move them", async () => {
       const seen: { controls?: string[] } = {};
       const { turn, state, logged } = start(subagents(seen));
-      state.background = () => Promise.reject(new Error("background tasks are disabled"));
+      // Thrown at once, as a closed query does, rather than rejected.
+      state.background = () => {
+        throw new Error("background tasks are disabled");
+      };
       let sent = false;
       const items = await drain(turn, (item) => {
         if (item.kind === "message.completed" && !sent) {

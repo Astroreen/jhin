@@ -882,18 +882,21 @@ export function createLiveSessions(options: {
           const waits = asked.map((toolUseId) => {
             let move = moves.get(toolUseId);
             if (move === undefined) {
-              move = query.backgroundTasks!(toolUseId).then(
-                (moved) => {
-                  unanswered.delete(toolUseId);
-                  if (moved) foreground.delete(toolUseId);
-                },
-                (error: unknown) =>
-                  options.log?.("claude code did not move a subagent to the background", {
-                    threadId,
-                    toolUseId,
-                    error: String(error),
-                  }),
-              );
+              // A throw as well as a rejection is a refusal: the steer goes in regardless.
+              move = Promise.resolve()
+                .then(() => query.backgroundTasks!(toolUseId))
+                .then(
+                  (moved) => {
+                    unanswered.delete(toolUseId);
+                    if (moved) foreground.delete(toolUseId);
+                  },
+                  (error: unknown) =>
+                    options.log?.("claude code did not move a subagent to the background", {
+                      threadId,
+                      toolUseId,
+                      error: String(error),
+                    }),
+                );
               move = move.finally(() => answered.add(toolUseId));
               moves.set(toolUseId, move);
             }
