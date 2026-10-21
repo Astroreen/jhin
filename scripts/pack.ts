@@ -60,7 +60,9 @@ function pack(dir: string, out: string): void {
         Path.relative(stage, Path.join(entry.parentPath, entry.name)).split(Path.sep).join("/"),
       )
       .toSorted();
-    run("tar", ["-czf", "packed.tgz", ...files], stage);
+    // A list file, not arguments: Windows limits a command line to 32 KiB.
+    Fs.writeFileSync(Path.join(stage, "files.txt"), `${files.join("\n")}\n`);
+    run("tar", ["-czf", "packed.tgz", "-T", "files.txt"], stage);
     Fs.copyFileSync(Path.join(stage, "packed.tgz"), out);
   } finally {
     Fs.rmSync(stage, { recursive: true, force: true });
