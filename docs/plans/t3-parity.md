@@ -1523,7 +1523,8 @@ Reference: T3 Code at `eb7b35ac` (D53).
   subagent keeps running and its result comes later as a background task's
   notification. Each tool call is asked once; a later steer waits on the
   same answer. Claude Code may never answer, so the steer goes in after 5 s
-  regardless (T3's timeout), and a refusal (background tasks disabled) is
+  regardless (T3's timeout), and a move left unanswered then holds no later
+  steer, and a refusal (background tasks disabled) is
   logged and the steer goes in as before. Background Bash commands are left
   alone, as in T3. A CLI without the control (`backgroundTasks` missing) gets
   the steer as before. When the subagent ends after its turn, Claude Code

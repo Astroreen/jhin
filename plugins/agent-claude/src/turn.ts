@@ -822,7 +822,11 @@ export function claudeTurn(
         if (finished) return;
         // Its foreground subagents keep running: a steer would cancel them (D805).
         await current?.backgroundSubagents();
-        if (finished) return;
+        if (finished) {
+          // The turn read its result while Claude Code moved the subagents (see Deferred).
+          deps.log?.("claude code ended the turn before it took a steer", {});
+          return;
+        }
         // Into the running query now, or after the turn's message once it has one.
         try {
           current?.steer(message);

@@ -766,6 +766,10 @@ export function createLiveSessions(options: {
       const foreground = new Set<string>();
       /** Moves to the background asked of Claude Code: once per tool call, later steers wait on it. */
       const moves = new Map<string, Promise<void>>();
+      /** The moves Claude Code answered. */
+      const answered = new Set<string>();
+      /** Moves still unanswered after a steer's wait: later steers do not wait on them again. */
+      const unanswered = new Set<string>();
       const ours = (stamp: readonly string[]) =>
         (uuid !== undefined && stamp.includes(uuid)) ||
         steers.some((steer) => stamp.includes(steer));
@@ -866,11 +870,14 @@ export function createLiveSessions(options: {
         backgroundSubagents: async () => {
           const query = session.query;
           if (query.backgroundTasks === undefined || ended || foreground.size === 0) return;
-          const waits = [...foreground].map((toolUseId) => {
+          // A move Claude Code left unanswered past the wait holds no later steer.
+          const asked = [...foreground].filter((toolUseId) => !unanswered.has(toolUseId));
+          const waits = asked.map((toolUseId) => {
             let move = moves.get(toolUseId);
             if (move === undefined) {
               move = query.backgroundTasks!(toolUseId).then(
                 (moved) => {
+                  unanswered.delete(toolUseId);
                   if (moved) foreground.delete(toolUseId);
                 },
                 (error: unknown) =>
@@ -880,6 +887,7 @@ export function createLiveSessions(options: {
                     error: String(error),
                   }),
               );
+              move = move.finally(() => answered.add(toolUseId));
               moves.set(toolUseId, move);
             }
             return move;
@@ -893,6 +901,7 @@ export function createLiveSessions(options: {
             }),
           ]);
           clearTimeout(timer);
+          for (const toolUseId of asked) if (!answered.has(toolUseId)) unanswered.add(toolUseId);
         },
         interrupt: async () => {
           stopping = true;

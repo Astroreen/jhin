@@ -31,12 +31,22 @@ const aborted = () =>
 function start(...scripts: Script[]) {
   const scripted = scriptedQuery(...scripts);
   const logged: string[] = [];
+  /** Waiters for a message to be logged. */
+  const waiting: { message: string; resolve: () => void }[] = [];
   const claude = createClaudeRuntime({
     query: scripted.query,
     sessions: memorySessions(),
     config: () => Config.parse({}),
-    log: (message) => logged.push(message),
+    log: (message) => {
+      logged.push(message);
+      for (const waiter of waiting) if (waiter.message === message) waiter.resolve();
+    },
   });
+  /** Resolves once `message` is logged. */
+  const whenLogged = (message: string) =>
+    logged.includes(message)
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => waiting.push({ message, resolve }));
   const turn = claude.startTurn({
     threadId: THREAD,
     turnId: "t1",
@@ -46,7 +56,7 @@ function start(...scripts: Script[]) {
     model: "claude-haiku-5-5",
     runtimeMode: "full-access",
   });
-  return { claude, turn, logged, ...scripted };
+  return { claude, turn, logged, whenLogged, ...scripted };
 }
 
 /** Every item of a turn; `onItem` runs as each one comes. */
@@ -260,6 +270,30 @@ describe("jhin.agent-claude: steering (D206)", () => {
       });
       expect(seen.controls).toEqual([]);
       expect(answers(items)).toEqual(["working", "steered"]);
+    });
+
+    it("logs a steer whose turn ended while Claude Code moved the subagents", async () => {
+      let answer!: (moved: boolean) => void;
+      const { turn, state, whenLogged } = start(async function* (player) {
+        const first = player.call.prompt[0]!.uuid;
+        yield marked([first], init());
+        yield marked([first], toolUse("a1", "toolu_fg", "Agent", { prompt: "look around" }));
+        yield* streamedBlock("m1", 0, "text", ["working"]);
+        // The turn ends before Claude Code answers the move.
+        yield marked([first], result());
+        await player.nextPrompt();
+      });
+      state.background = () => new Promise<boolean>((resolve) => (answer = resolve));
+      let sent = false;
+      const items = await drain(turn, (item) => {
+        if (item.kind === "message.completed" && !sent) {
+          sent = true;
+          turn.steer!({ text: "too late" });
+        }
+      });
+      expect(answers(items)).toEqual(["working"]);
+      answer(true);
+      await whenLogged("claude code ended the turn before it took a steer");
     });
 
     it("asks once per tool call: a second steer waits on the same answer", async () => {
