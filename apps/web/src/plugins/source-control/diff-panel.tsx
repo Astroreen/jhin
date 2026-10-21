@@ -569,6 +569,8 @@ export function createDiffPanel(services: SourceControlServices) {
         };
       },
     );
+    /** Text of a draft closed by the diff (not by the user): the next draft starts with it. */
+    const keptText = useRef("");
     const closeDraft = () => {
       // An answer still on its way belongs to the draft closed here, not to the next one.
       drafts.current += 1;
@@ -595,14 +597,17 @@ export function createDiffPanel(services: SourceControlServices) {
     const draftLost =
       draft !== null && draftFile !== undefined && !rangeInDiff(draftFile, draft.range);
     useEffect(() => {
-      if (draftStale) closeDraft();
+      if (!draftStale) return;
+      keptText.current = draftText;
+      closeDraft();
     }, [draftStale]);
     /** The commented lines left the diff: say so, and let a new comment start. */
     const dropLostDraft = () => {
+      keptText.current = draftText;
       services.toasts?.show({
         type: "info",
         title: "These lines are no longer in the diff",
-        description: "Comment on them again where they are now.",
+        description: "Comment on them again where they are now; your text is kept.",
       });
       closeDraft();
     };
@@ -625,7 +630,8 @@ export function createDiffPanel(services: SourceControlServices) {
         text: "",
       });
       if (comment === null) return;
-      setDraftText("");
+      setDraftText(keptText.current);
+      keptText.current = "";
       setDraft({
         what,
         id: ++drafts.current,

@@ -68,6 +68,8 @@ export function DiffCommentAnnotation(props: {
           }
         }}
         placeholder="Add a comment…"
+        // What is sent is fixed once Comment is pressed: nothing typed meanwhile could go.
+        readOnly={pending}
         ref={textareaRef}
         size="sm"
         value={text}

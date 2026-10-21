@@ -916,12 +916,16 @@ describe("the diff panel", () => {
       {
         type: "info",
         title: "These lines are no longer in the diff",
-        description: "Comment on them again where they are now.",
+        description: "Comment on them again where they are now; your text is kept.",
       },
     ]);
-    // And a new comment can start.
+    // And a new comment starts with the text typed.
     await userEvent.hover(page.getByText("const one = 0;"));
     expect(visiblePlusButtons()).toHaveLength(1);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+    await expect
+      .element(page.getByRole("textbox", { name: /^Comment on lines/ }))
+      .toHaveValue("Why three?");
   });
 
   it("holds a comment on its way: no Cancel, and a scope change hears nothing of it", async () => {
@@ -947,6 +951,7 @@ describe("the diff panel", () => {
     await userEvent.fill(box, "Why three?");
     await userEvent.click(page.getByRole("button", { name: "Comment", exact: true }));
     await expect.element(page.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(box.element()).toHaveProperty("readOnly", true);
     expect(inserted).toHaveLength(1);
 
     // Another scope closes the draft; the late answer then changes nothing and says nothing.
