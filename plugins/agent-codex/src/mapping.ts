@@ -5,10 +5,14 @@
 // apps/server/src/provider/CodexProvider.ts (codexPlanLabel, the account labels,
 // mapCodexModelCapabilities), apps/server/src/codexModelOptions.ts and
 // packages/shared/src/model.ts (formatCodexModelName), packages/contracts/src/model.ts
-// (PREFERRED_DEFAULT_CODEX_MODELS).
+// (PREFERRED_DEFAULT_CODEX_MODELS), packages/provider-core/src/server/snapshotProbe.ts
+// (COMPACT_SLASH_COMMAND).
 import {
   applicableModelOptions,
+  skillMentionPattern,
   type AgentModel,
+  type AgentSkill,
+  type AgentSlashCommand,
   type ApprovalDecision,
   type InteractionMode,
   type ModelOptionChoice,
@@ -18,6 +22,7 @@ import {
   type RuntimeMode,
   type TokenUsage,
   type ToolCall,
+  type TurnRequest,
   type UserQuestion,
 } from "@jhin/agent-api";
 
@@ -299,6 +304,61 @@ export type TurnInput =
   /** An image the node keeps as a file (an upload, t3-parity.md D294). */
   | { readonly type: "localImage"; readonly path: string };
 
+/**
+ * A skill typed with any currency sigil (`€review`) as Codex parses it, `$review`
+ * (T3's codexSkillMentionText, D885).
+ */
+export const codexSkillMentionText = (text: string) =>
+  text.replace(skillMentionPattern(), "$1$$$2");
+
+/** The skills of `skills/list` for `cwd` (T3's parseCodexSkillsListResponse), enabled ones. */
+export function listedSkills(response: unknown, cwd: string): AgentSkill[] {
+  const data = isRecord(response) && Array.isArray(response["data"]) ? response["data"] : [];
+  const entries = data.filter(isRecord);
+  const matching = entries.find((entry) => entry["cwd"] === cwd);
+  const skills = (matching === undefined ? entries : [matching]).flatMap((entry) =>
+    Array.isArray(entry["skills"]) ? entry["skills"].filter(isRecord) : [],
+  );
+  return skills.flatMap((skill) => {
+    const name = str(skill["name"]);
+    const path = str(skill["path"]);
+    if (name === undefined || path === undefined || skill["enabled"] === false) return [];
+    const face = isRecord(skill["interface"]) ? skill["interface"] : {};
+    const description =
+      str(skill["description"]) ?? str(skill["shortDescription"]) ?? str(face["shortDescription"]);
+    const scope = str(skill["scope"]);
+    const displayName = str(face["displayName"]);
+    return [
+      {
+        name,
+        path,
+        ...(description === undefined ? {} : { description }),
+        ...(scope === undefined ? {} : { scope }),
+        ...(displayName === undefined ? {} : { displayName }),
+      },
+    ];
+  });
+}
+
+/** `2/5` of a retried error's message (T3's parseCodexRetryProgress), if it names one. */
+export function retryProgress(message: string): string | undefined {
+  const match = /\b(\d+)\s*\/\s*(\d+)\b/u.exec(message);
+  if (match === null) return undefined;
+  const attempt = Number.parseInt(match[1]!, 10);
+  const maxAttempts = Number.parseInt(match[2]!, 10);
+  return attempt < 1 || maxAttempts < 1 ? undefined : `${attempt}/${maxAttempts}`;
+}
+
+/** T3's COMPACT_SLASH_COMMAND, which Codex runs as `thread/compact/start` (D884). */
+export const COMPACT_COMMAND: AgentSlashCommand = {
+  name: "compact",
+  description: "Summarize the conversation and reduce context usage",
+};
+
+/** Whether a turn's input is `/compact` alone: no text after it, no attachments. */
+export const isCompact = (input: TurnRequest["input"]) =>
+  input.text.trim() === "/compact" && (input.attachments ?? []).length === 0;
+
 /** The `turn/start` params of a turn (T3's buildCodexTurnStartParams, without its MCP context). */
 export function turnStartParams(input: {
   readonly threadId: string;
@@ -441,6 +501,8 @@ export function toolCall(item: CodexItem): ToolCall | undefined {
         ...(args === undefined ? {} : { input: args }),
       };
     }
+    case "contextCompaction":
+      return { name: "compaction", kind: "other", title: "Compacting context" };
     case "webSearch": {
       const patterns = webSearchPatterns(item);
       return {

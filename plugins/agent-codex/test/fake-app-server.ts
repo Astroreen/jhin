@@ -30,6 +30,8 @@ export type Step =
 export interface Scenario {
   /** `account/read`'s answer; a ChatGPT account when absent. */
   readonly account?: unknown;
+  /** `skills/list`'s entries, one per folder. */
+  readonly skills?: readonly unknown[];
   /** Pages of `model/list`. */
   readonly models?: readonly unknown[][];
   /** Errors for the nth call of a method (null: answered normally). */
@@ -193,6 +195,9 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
         },
       });
       return;
+    case "skills/list":
+      send({ id, result: { data: scenario.skills ?? [] } });
+      return;
     case "model/list": {
       const pages = scenario.models ?? [[]];
       const index = typeof params["cursor"] === "string" ? Number(params["cursor"]) : 0;
@@ -222,8 +227,19 @@ Readline.createInterface({ input: process.stdin }).on("line", (line) => {
       send({ id, result: {} });
       interrupted?.();
       return;
+    case "thread/compact/start": {
+      // A compaction is a turn of Codex's own: its steps come from `turns` too, and name it
+      // in a `turn/started` the scenario sends.
+      const index = calls("turn/start") + calls("thread/compact/start") - 1;
+      const ids = { thread: String(params["threadId"]), turn: `turn-${index + 1}` };
+      interruptCame = false;
+      interrupted = undefined;
+      const steps = scenario.turns?.[index] ?? [{ complete: "completed" }];
+      void play(steps, ids, () => send({ id, result: {} }));
+      return;
+    }
     case "turn/start": {
-      const index = calls("turn/start") - 1;
+      const index = calls("turn/start") + calls("thread/compact/start") - 1;
       const ids = { thread: String(params["threadId"]), turn: `turn-${index + 1}` };
       interruptCame = false;
       interrupted = undefined;

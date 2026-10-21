@@ -5,7 +5,7 @@
 import * as Fs from "node:fs";
 import * as Path from "node:path";
 
-import type { AgentSkill, AgentSlashCommand } from "@jhin/agent-api";
+import { skillMentionPattern, type AgentSkill, type AgentSlashCommand } from "@jhin/agent-api";
 
 /** T3's COMPACT_SLASH_COMMAND: Claude Code compacts, but its initialization does not list it. */
 export const COMPACT_SLASH_COMMAND: AgentSlashCommand = {
@@ -114,13 +114,6 @@ export async function discoverSkills(configDir: string, cwd: string): Promise<Ag
 }
 
 /**
- * Same token shape the composer's chips recognise, so a chip and a dispatched skill are
- * always the same set (T3's SKILL_MENTION_PATTERN: any currency symbol, not an amount).
- */
-const SKILL_MENTION_PATTERN =
-  /(^|\s)\p{Sc}(?![0-9][0-9_]*(?:[kKmMbBtT]|[eE][0-9]+)?(?:\s|$))(?=[a-zA-Z0-9:_-]*[a-zA-Z])([a-zA-Z0-9][a-zA-Z0-9:_-]*)(?=\s|$)/gu;
-
-/**
  * Claude Code expands `/name args` only when it starts a text block, and only one skill
  * per message: the last `$skill` becomes the last block's `/name` with the text after it
  * as its arguments, and earlier ones become inline `/x` (T3's planClaudeSkillDispatch).
@@ -130,7 +123,7 @@ export function planSkillDispatch(
   prompt: string,
   skillNames: ReadonlySet<string>,
 ): { leadingText?: string; commandText: string; skillName: string } | undefined {
-  const mentions = [...prompt.matchAll(SKILL_MENTION_PATTERN)].flatMap((match) => {
+  const mentions = [...prompt.matchAll(skillMentionPattern())].flatMap((match) => {
     const name = match[2] ?? "";
     if (!skillNames.has(name)) return [];
     const start = (match.index ?? 0) + (match[1]?.length ?? 0);

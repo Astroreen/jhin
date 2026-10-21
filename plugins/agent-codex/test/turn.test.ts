@@ -153,6 +153,126 @@ describe("jhin.agent-codex: a turn", () => {
     });
   });
 
+  it("compacts the Codex thread on /compact, as a turn Codex names itself", async () => {
+    const fake = fakeCodex({
+      turns: [
+        [message("m1", "Hi."), { complete: "completed" }],
+        [
+          { notify: "turn/started", params: { threadId: "$thread", turn: { id: "$turn" } } },
+          item("item/started", { type: "contextCompaction", id: "k1" }),
+          item("item/completed", { type: "contextCompaction", id: "k1" }),
+          { complete: "completed" },
+        ],
+      ],
+    });
+    const { client } = await node(fake);
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    let completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await completed;
+    completed = until(client, thread.id, "agent.turn.completed", 2);
+    await client.call("threads.send", { threadId: thread.id, text: " /compact " });
+    const events = await completed;
+
+    expect(fake.received("turn/start")).toHaveLength(1);
+    expect(fake.received("thread/compact/start").map((call) => call.params)).toEqual([
+      { threadId: "codex-thread-1" },
+    ]);
+    expect(payloads(events, "agent.item.started").at(-1)).toMatchObject({
+      itemId: "k1",
+      tool: { name: "compaction", kind: "other", title: "Compacting context" },
+    });
+    expect(payloads(events, "agent.item.completed").at(-1)).toMatchObject({
+      itemId: "k1",
+      kind: "tool",
+      status: "completed",
+    });
+  });
+
+  it("shows the errors Codex retries until the model answers again", async () => {
+    const fake = fakeCodex({
+      turns: [
+        [
+          {
+            notify: "error",
+            params: {
+              threadId: "$thread",
+              turnId: "$turn",
+              willRetry: true,
+              error: { message: "Reconnecting... 1/5", additionalDetails: "stream closed" },
+            },
+          },
+          {
+            notify: "error",
+            params: {
+              threadId: "$thread",
+              turnId: "$turn",
+              willRetry: true,
+              error: { message: "Reconnecting... 2/5", additionalDetails: "stream closed" },
+            },
+          },
+          {
+            notify: "item/agentMessage/delta",
+            params: { threadId: "$thread", turnId: "$turn", itemId: "m1", delta: "Back." },
+          },
+          message("m1", "Back."),
+          {
+            notify: "error",
+            params: {
+              threadId: "$thread",
+              turnId: "$turn",
+              willRetry: true,
+              error: { message: "Reconnecting... 1/5" },
+            },
+          },
+          {
+            notify: "item/agentMessage/delta",
+            params: { threadId: "$thread", turnId: "$turn", itemId: "m2", delta: "Again." },
+          },
+          message("m2", "Again."),
+          { complete: "completed" },
+        ],
+      ],
+    });
+    const { client } = await node(fake);
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    const completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    const events = await completed;
+    expect(payloads(events, "agent.item.completed")).toEqual([
+      expect.objectContaining({
+        itemId: "turn-1:retry:1",
+        kind: "tool",
+        status: "completed",
+        output:
+          "Attempt 1/5: Reconnecting... 1/5 stream closed\n" +
+          "Attempt 2/5: Reconnecting... 2/5 stream closed\n",
+      }),
+      expect.objectContaining({ itemId: "m1", kind: "message", text: "Back." }),
+      // A later retry in the same turn is an item of its own.
+      expect.objectContaining({
+        itemId: "turn-1:retry:2",
+        status: "completed",
+        output: "Attempt 1/5: Reconnecting... 1/5\n",
+      }),
+      expect.objectContaining({ itemId: "m2", kind: "message", text: "Again." }),
+    ]);
+  });
+
+  it("fails a /compact Codex refuses", async () => {
+    const fake = fakeCodex({
+      errors: { "thread/compact/start": [{ message: "nothing to compact" }] },
+    });
+    const { client } = await node(fake);
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    const failed = until(client, thread.id, "agent.turn.failed");
+    await client.call("threads.send", { threadId: thread.id, text: "/compact" });
+    expect(payloads(await failed, "agent.turn.failed")[0]).toMatchObject({
+      error: expect.stringContaining("nothing to compact"),
+    });
+    expect(fake.received("turn/start")).toHaveLength(0);
+  });
+
   it("fails the turn with Codex's error", async () => {
     const fake = fakeCodex({
       turns: [
@@ -186,6 +306,17 @@ describe("jhin.agent-codex: a turn", () => {
     const events = await failed;
     expect(payloads(events, "agent.turn.failed")[0]).toMatchObject({
       error: expect.stringContaining("The model is overloaded."),
+    });
+    // The retry Codex gave up on shows as a failed "Provider retry".
+    expect(payloads(events, "agent.item.started")[0]).toMatchObject({
+      itemId: "turn-1:retry:1",
+      tool: { name: "retry", title: "Provider retry", detail: "Reconnecting... 1/5" },
+    });
+    expect(payloads(events, "agent.item.completed")[0]).toMatchObject({
+      itemId: "turn-1:retry:1",
+      status: "failed",
+      output: "Attempt 1/5: Reconnecting... 1/5\n",
+      error: "The model is overloaded.",
     });
     // Codex ended the turn itself: its app-server stays for the next one.
     expect(await client.call("codex.sessions.list", {})).toEqual([
