@@ -59,8 +59,9 @@ const Config = z
 /**
  * Whether a browser page may open a connection (security.md D418). A request
  * without `Origin` is not a browser's (the CLI, another node). The node's own
- * pages are always allowed; others only while no origin is listed, or when
- * listed.
+ * pages are always allowed, recognised by host and port alone (T3's rule): behind
+ * a TLS proxy the page is `https` while the node speaks `http`. Other pages only
+ * while no origin is listed, or when listed, compared by scheme, host and port.
  */
 export function originAllowed(
   origin: string | undefined,

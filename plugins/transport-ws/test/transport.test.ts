@@ -421,12 +421,14 @@ describe("Origin allowlist (security.md D418)", () => {
     expect(await openFrom(node, undefined)).toBe("open");
   });
 
-  it("compares origins by scheme, host and port", () => {
+  it("compares listed origins by scheme, host and port, and the node's own by host and port", () => {
     const listed = ["https://client.example"];
     expect(originAllowed("https://client.example", "node:7777", listed)).toBe(true);
     expect(originAllowed("http://client.example", "node:7777", listed)).toBe(false);
     expect(originAllowed("https://client.example:8443", "node:7777", listed)).toBe(false);
     expect(originAllowed("http://node:7777", "node:7777", listed)).toBe(true);
+    // The node's own page behind a TLS proxy: https, though the node speaks http.
+    expect(originAllowed("https://node:7777", "node:7777", listed)).toBe(true);
     expect(originAllowed("not an origin", "node:7777", [])).toBe(false);
   });
 });
