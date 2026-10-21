@@ -10,6 +10,7 @@ import {
   currentSession,
   looksLikePairingCode,
   openSession,
+  pageBase,
   pairWithCode,
 } from "../lib/session.ts";
 
@@ -42,7 +43,8 @@ function parseSaved(raw: unknown): Saved[] {
 
 /** The node that served this page, when it did: `ws(s)://<host>/rpc`. */
 function sameOriginUrl(): string {
-  return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/rpc`;
+  // Under the page's base path, as a node behind a proxy path serves both.
+  return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${pageBase()}rpc`;
 }
 
 /**
@@ -92,7 +94,10 @@ export const connectionsPlugin = builtin(
       // One save after another, each with the list as it is then: two quick
       // changes never land in the wrong order.
       let saving: Promise<void> = Promise.resolve();
+      /** Grows with every local change, so a read that raced one is not applied. */
+      let changes = 0;
       const persist = () => {
+        changes++;
         saving = saving
           .then(() => store.save([...nodes.values()].map((node) => node.saved)))
           .catch((error: unknown) =>
@@ -215,9 +220,13 @@ export const connectionsPlugin = builtin(
       const stopFollowing = store.onChange(() => {
         // Our own pending save goes first, so a node just added here is not
         // dropped by reading the list before it landed.
+        const before = changes;
         void saving
           .then(() => store.load())
           .then((raw) => {
+            // A change made here meanwhile is newer than what was read; its own
+            // save writes it, so this read is dropped rather than undoing it.
+            if (changes !== before) return;
             const stored = new Map(parseSaved(raw).map((saved) => [saved.url, saved]));
             for (const [url, node] of nodes) {
               const saved = stored.get(url);

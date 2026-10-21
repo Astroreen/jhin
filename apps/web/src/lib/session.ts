@@ -2,6 +2,17 @@
 // web client does it (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/auth/PairingRouteSurface.tsx and packages/shared/src/remote.ts.
 
+/**
+ * The path this page's node serves the client under: `/`, or `/jhin/` behind a
+ * proxy path. A pairing link's own `/pair` is not part of it.
+ */
+export function pageBase(pathname: string = globalThis.location?.pathname ?? "/"): string {
+  return pathname.replace(/\/pair\/?$/, "/").replace(/[^/]*$/, "");
+}
+
+/** This page's own node's session endpoint, under the page's base path. */
+const sessionEndpoint = () => `${pageBase()}auth/session`;
+
 /** `ws(s)://host/rpc` → `http(s)://host`, where a node answers HTTP. */
 export function httpBase(webSocketUrl: string): string {
   const url = new URL(webSocketUrl);
@@ -72,7 +83,7 @@ export async function pairWithCode(
  * in the page because of a network error.
  */
 export async function currentSession(): Promise<boolean | undefined> {
-  const response = await fetch("/auth/session", { credentials: "same-origin" });
+  const response = await fetch(sessionEndpoint(), { credentials: "same-origin" });
   const json = (response.headers.get("content-type") ?? "").includes("application/json");
   if (json) return response.ok;
   // No node here: nothing at the path, or a `jhin client` page answering with its own HTML.
@@ -83,7 +94,7 @@ export async function currentSession(): Promise<boolean | undefined> {
 
 /** Turns a pairing code or token into this page's session cookie (D421). */
 export async function openSession(credential: string): Promise<void> {
-  const response = await fetch("/auth/session", {
+  const response = await fetch(sessionEndpoint(), {
     method: "POST",
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
@@ -94,6 +105,6 @@ export async function openSession(credential: string): Promise<void> {
 
 /** Signs this page out of its node: the token behind the cookie is revoked. */
 export async function closeSession(): Promise<void> {
-  const response = await fetch("/auth/session", { method: "DELETE", credentials: "same-origin" });
+  const response = await fetch(sessionEndpoint(), { method: "DELETE", credentials: "same-origin" });
   if (!response.ok) throw await failure(response);
 }

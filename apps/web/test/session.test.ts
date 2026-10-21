@@ -4,6 +4,7 @@ import {
   currentSession,
   httpBase,
   looksLikePairingCode,
+  pageBase,
   parsePairingUrl,
   rpcUrl,
 } from "../src/lib/session.ts";
@@ -68,5 +69,15 @@ describe("the page's own node (security.md D422)", () => {
     } finally {
       globalThis.fetch = real;
     }
+  });
+});
+
+describe("the page's base path behind a proxy (security.md D422)", () => {
+  it("is the page's folder, without a pairing link's /pair", () => {
+    expect(pageBase("/")).toBe("/");
+    expect(pageBase("/pair")).toBe("/");
+    expect(pageBase("/jhin/")).toBe("/jhin/");
+    expect(pageBase("/jhin/pair")).toBe("/jhin/");
+    expect(pageBase("/jhin/index.html")).toBe("/jhin/");
   });
 });

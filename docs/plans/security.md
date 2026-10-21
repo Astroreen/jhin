@@ -212,7 +212,13 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
 - **D422. The pairing URL is T3's: `<base>/pair#token=<CODE>`.** The code is
   in the fragment, so it never reaches a server log; the web client accepts
   `#token=` on any path, and also an owner or device token there (as
-  before). Opening it on the node's own page exchanges the code for the
+  before). A page that already holds a session keeps it when opened with a
+  token again (no second device token per reload); to act as another token,
+  forget the node first, which signs the page out. A pairing code always
+  pairs. The page's node is found under the page's base path (`/jhin/`
+  behind a proxy path), for `/rpc` and `/auth/session` alike. The saved
+  nodes are one list in IndexedDB: two tabs saving at the same instant keep
+  the later list. Opening it on the node's own page exchanges the code for the
   session cookie (D421); in a `jhin client` page it pairs and saves the node
   (D423).
 

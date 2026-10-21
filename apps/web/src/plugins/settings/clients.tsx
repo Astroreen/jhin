@@ -69,6 +69,8 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
   const [base, setBase] = useState(httpBase(props.node.url));
   const [error, setError] = useState<string | undefined>();
   const [created, setCreated] = useState<CreatedLink | undefined>();
+  // One link per submit: a double click must not leave a second, unseen code open.
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     // An answer after the dialog closed (or switched node) changes nothing.
@@ -105,6 +107,8 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
                 setError("Select at least one permission.");
                 return;
               }
+              if (submitting) return;
+              setSubmitting(true);
               props.node.client
                 .call<CreatedLink>("auth.pairing.create", {
                   ...(label.trim() === "" ? {} : { label: label.trim() }),
@@ -118,7 +122,8 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
                     props.onCreated();
                   },
                   (failure: unknown) => setError((failure as Error).message),
-                );
+                )
+                .finally(() => setSubmitting(false));
             }}
           >
             <DialogHeader>
@@ -192,7 +197,7 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
               <Button onClick={props.onClose} type="button" variant="outline">
                 Cancel
               </Button>
-              <Button disabled={permissions === undefined} type="submit">
+              <Button disabled={permissions === undefined || submitting} type="submit">
                 Create link
               </Button>
             </DialogFooter>
