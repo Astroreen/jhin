@@ -759,11 +759,8 @@ describe("the diff panel", () => {
     const line = page.getByText("const two = 3;");
     await expect.element(line).toBeVisible();
     await userEvent.hover(line);
-    const plus = [...document.querySelectorAll("diffs-container")]
-      .flatMap((host) => [...(host.shadowRoot?.querySelectorAll("[data-utility-button]") ?? [])])
-      .find((button) => (button as HTMLElement).offsetParent !== null) as HTMLElement | undefined;
-    expect(plus).toBeTruthy();
-    await userEvent.click(page.elementLocator(plus!));
+    expect(visiblePlusButtons()).toHaveLength(1);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
     const box = page.getByRole("textbox", { name: "Comment on lines +2" });
     await expect.element(box).toBeVisible();
     await userEvent.fill(box, "Why three?");
@@ -816,21 +813,37 @@ describe("the diff panel", () => {
     expect(visiblePlusButtons()).toHaveLength(1);
   });
 
-  it("offers no comments without a composer to put them in", async () => {
-    const { value } = services(
-      viewWith(status()),
-      { "git.diff": diff },
-      deviceConfig({ filesCollapsed: false }),
+  it("holds a comment on its way: no Cancel, and a scope change hears nothing of it", async () => {
+    let answer!: (value: { inserted: boolean }) => void;
+    const inserted: string[] = [];
+    const config = deviceConfig(
+      { filesCollapsed: false },
+      {
+        "chat.composer.insert": (input) => {
+          inserted.push((input as { text: string }).text);
+          return new Promise((resolve) => (answer = resolve));
+        },
+      },
     );
+    const { value, shown } = services(viewWith(status()), { "git.diff": diff }, config);
     const Panel = createDiffPanel(value);
     mount(<Panel />);
     const line = page.getByText("const two = 3;");
     await expect.element(line).toBeVisible();
     await userEvent.hover(line);
-    const visible = [...document.querySelectorAll("diffs-container")]
-      .flatMap((host) => [...(host.shadowRoot?.querySelectorAll("[data-utility-button]") ?? [])])
-      .filter((button) => (button as HTMLElement).offsetParent !== null);
-    expect(visible).toEqual([]);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+    const box = page.getByRole("textbox", { name: "Comment on lines +2" });
+    await userEvent.fill(box, "Why three?");
+    await userEvent.click(page.getByRole("button", { name: "Comment", exact: true }));
+    await expect.element(page.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(inserted).toHaveLength(1);
+
+    // Another scope closes the draft; the late answer then changes nothing and says nothing.
+    const key = selectionKey({ target, projectId: "app", threadId: "t1" });
+    act(() => value.selections.update(key, { value: "uncommitted" }));
+    await expect.element(box).not.toBeInTheDocument();
+    await act(async () => answer({ inserted: false }));
+    expect(shown).toEqual([]);
   });
 
   it("says so when the project is no repository or has no changes", async () => {

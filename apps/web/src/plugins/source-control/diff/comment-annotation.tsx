@@ -57,7 +57,8 @@ export function DiffCommentAnnotation(props: {
           event.currentTarget.setSelectionRange(end, end);
         }}
         onKeyDown={(event) => {
-          if (event.key === "Escape") {
+          // While the comment is on its way, it can no longer be called back.
+          if (event.key === "Escape" && !pending) {
             event.preventDefault();
             props.onCancel();
           }
@@ -73,7 +74,7 @@ export function DiffCommentAnnotation(props: {
       />
       <div className="mt-1.5 flex items-center gap-1">
         <span className="mr-auto text-3xs text-muted-foreground/70">⌘/Ctrl Enter to send</span>
-        <Button onClick={props.onCancel} size="xs" variant="ghost-muted">
+        <Button disabled={pending} onClick={props.onCancel} size="xs" variant="ghost-muted">
           Cancel
         </Button>
         <Button

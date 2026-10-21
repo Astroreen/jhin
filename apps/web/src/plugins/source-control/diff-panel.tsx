@@ -5,7 +5,6 @@
 import type { NodeTarget } from "@jhin/client-api";
 import type { DiffScopeContext, DiffScopeResult, ProjectStatus } from "@jhin/source-control-api";
 import type {
-  AnnotationSide,
   CodeViewDiffItem,
   CodeViewLineSelection,
   CodeViewScrollTarget,
@@ -59,7 +58,11 @@ import { DIFF_SECTION, DiffSettings, useSection } from "../../lib/settings.ts";
 import { DiffStatLabel } from "./checkpoints.tsx";
 import { BaseRefPicker } from "./diff/base-ref-picker.tsx";
 import { DiffCommentAnnotation } from "./diff/comment-annotation.tsx";
-import { buildDiffReviewComment, serializeReviewComment } from "./diff/review-comment.ts";
+import {
+  annotationAnchor,
+  buildDiffReviewComment,
+  serializeReviewComment,
+} from "./diff/review-comment.ts";
 import {
   FileContextMenuPopup,
   preferredEditor,
@@ -367,10 +370,6 @@ interface CommentDraft {
   readonly rangeLabel: string;
 }
 
-function annotationSide(range: SelectedLineRange): AnnotationSide {
-  return (range.endSide ?? range.side) === "deletions" ? "deletions" : "additions";
-}
-
 /** The chat's command putting text into the open composer (W15, D473). */
 const COMPOSER_INSERT = "chat.composer.insert";
 const InsertAnswer = z.object({ inserted: z.boolean() });
@@ -445,6 +444,8 @@ export function createDiffPanel(services: SourceControlServices) {
     const [draft, setDraft] = useState<{
       /** The selection the draft was opened under; another closes it. */
       what: string;
+      /** Tells this draft from a later one, so an answer reaches only its own. */
+      id: number;
       sectionId: string;
       sectionTitle: string;
       fileKey: string;
@@ -454,7 +455,9 @@ export function createDiffPanel(services: SourceControlServices) {
       rangeLabel: string;
     } | null>(null);
     const [draftText, setDraftText] = useState("");
-    const [sending, setSending] = useState(false);
+    /** The draft whose comment is on its way to the composer, if one is. */
+    const [sending, setSending] = useState<number | null>(null);
+    const drafts = useRef(0);
     const [selectedLines, setSelectedLines] = useState<CodeViewLineSelection | null>(null);
     // Without a composer to put a comment in (no chat plugin), lines take none.
     const canComment = useCommandAvailable(COMPOSER_INSERT);
@@ -559,8 +562,8 @@ export function createDiffPanel(services: SourceControlServices) {
           draft?.fileKey === fileKey
             ? [
                 {
-                  side: annotationSide(draft.range),
-                  lineNumber: draft.range.end,
+                  // Under the selection's last line, whichever way it was dragged.
+                  ...annotationAnchor(draft.range),
                   metadata: { rangeLabel: draft.rangeLabel },
                 },
               ]
@@ -580,6 +583,8 @@ export function createDiffPanel(services: SourceControlServices) {
       },
     );
     const closeDraft = () => {
+      // An answer still on its way belongs to the draft closed here, not to the next one.
+      drafts.current += 1;
       setDraft(null);
       setDraftText("");
       setSelectedLines(null);
@@ -610,6 +615,7 @@ export function createDiffPanel(services: SourceControlServices) {
       setDraftText("");
       setDraft({
         what,
+        id: ++drafts.current,
         sectionId: reviewSectionId,
         sectionTitle: scopeTitle,
         fileKey: item.id,
@@ -631,11 +637,15 @@ export function createDiffPanel(services: SourceControlServices) {
         text,
       });
       if (comment === null) return;
-      setSending(true);
+      const sent = draft.id;
+      setSending(sent);
+      // The answer belongs to this draft: a draft closed meanwhile (another scope) hears nothing.
+      const current = () => drafts.current === sent;
       void services.context.commands
         .execute(COMPOSER_INSERT, { text: serializeReviewComment(comment) })
         .then(
           (answer) => {
+            if (!current()) return;
             if (InsertAnswer.safeParse(answer).data?.inserted === true) {
               closeDraft();
               return;
@@ -645,14 +655,16 @@ export function createDiffPanel(services: SourceControlServices) {
               title: "No message box to add the comment to",
             });
           },
-          (failure: unknown) =>
+          (failure: unknown) => {
+            if (!current()) return;
             services.toasts?.show({
               type: "error",
               title: "Could not add the comment to the chat",
               description: failure instanceof Error ? failure.message : String(failure),
-            }),
+            });
+          },
         )
-        .finally(() => setSending(false));
+        .finally(() => setSending((now) => (now === sent ? null : now)));
     };
 
     const toggleFile = (fileKey: string) =>
@@ -996,7 +1008,7 @@ export function createDiffPanel(services: SourceControlServices) {
                           onCancel={closeDraft}
                           onComment={sendComment}
                           onTextChange={setDraftText}
-                          pending={sending}
+                          pending={sending !== null && sending === draft?.id}
                           rangeLabel={annotation.metadata.rangeLabel}
                           text={draftText}
                         />

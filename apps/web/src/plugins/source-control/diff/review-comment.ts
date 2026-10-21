@@ -1,7 +1,12 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/reviewCommentContext.ts
 // (a comment on lines of a diff: its rows, range label and patch) and
 // packages/shared/src/composerContextLegacySend.ts (renderReviewComment: the `<review_comment>` block).
-import type { FileDiffMetadata, SelectedLineRange, SelectionSide } from "@pierre/diffs";
+import type {
+  AnnotationSide,
+  FileDiffMetadata,
+  SelectedLineRange,
+  SelectionSide,
+} from "@pierre/diffs";
 
 /** A comment on lines of a diff, as T3's ReviewCommentContext keeps it. */
 export interface ReviewComment {
@@ -329,4 +334,17 @@ export function serializeReviewComment(comment: ReviewComment): string {
     ? `${comment.text}\n\n${fence}diff\n${comment.diff}\n${fence}`
     : comment.text;
   return `<review_comment ${attributes}>\n${body}\n</review_comment>`;
+}
+
+/** Where a draft opens: under the selection's last line, also for a range dragged upwards. */
+export function annotationAnchor(range: SelectedLineRange): {
+  side: AnnotationSide;
+  lineNumber: number;
+} {
+  const backwards = range.start > range.end;
+  const side = backwards ? range.side : (range.endSide ?? range.side);
+  return {
+    side: side === "deletions" ? "deletions" : "additions",
+    lineNumber: backwards ? range.start : range.end,
+  };
 }

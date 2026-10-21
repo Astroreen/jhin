@@ -51,6 +51,7 @@ import {
   resolveDiffPathForWorkspace,
 } from "../src/plugins/source-control/diff/editors.tsx";
 import {
+  annotationAnchor,
   buildDiffReviewComment,
   serializeReviewComment,
 } from "../src/plugins/source-control/diff/review-comment.ts";
@@ -726,6 +727,19 @@ describe("a comment on lines, as T3 sends it", () => {
     ).toMatchObject({ startIndex: 2, endIndex: 5 });
     // Line 5 lies between the hunks: a partial patch has no row for it.
     expect(commentOn(fileDiff, { start: 5, side: "additions", end: 5 })).toBeNull();
+  });
+
+  it("opens a draft under the selection's last line, however it was dragged", () => {
+    expect(annotationAnchor({ start: 2, side: "additions", end: 5, endSide: "deletions" })).toEqual(
+      { side: "deletions", lineNumber: 5 },
+    );
+    expect(annotationAnchor({ start: 5, side: "additions", end: 2, endSide: "deletions" })).toEqual(
+      { side: "additions", lineNumber: 5 },
+    );
+    expect(annotationAnchor({ start: 3, side: "deletions", end: 3 })).toEqual({
+      side: "deletions",
+      lineNumber: 3,
+    });
   });
 
   it("counts the unchanged lines of a whole file", () => {
