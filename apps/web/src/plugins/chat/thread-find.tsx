@@ -85,32 +85,32 @@ export function findOccurrences(text: string, query: string): number[] {
   return offsets;
 }
 
-/** The matches of `query` in the text shown inside `container`, in document order. */
+/**
+ * The matches of `query` in the text shown inside `container`, in document order.
+ * Outside `<pre>` a run of white space counts as one space, as the browser shows it.
+ */
 export function findRanges(container: HTMLElement, query: string): Range[] {
   if (query.length === 0) return [];
   const ranges: Range[] = [];
   let text = "";
-  let nodes: { node: Node; start: number; end: number }[] = [];
+  /** Where each character of `text` is: its text node and its offset there. */
+  let positions: { node: Node; offset: number }[] = [];
   const flush = () => {
-    let first = 0;
-    let last = 0;
     for (const offset of findOccurrences(text, query)) {
-      while (first < nodes.length && nodes[first]!.end <= offset) first++;
-      if (last < first) last = first;
-      while (last < nodes.length && nodes[last]!.end < offset + query.length) last++;
-      const start = nodes[first];
-      const end = nodes[last];
+      const start = positions[offset];
+      const end = positions[offset + query.length - 1];
       if (start === undefined || end === undefined) continue;
       const range = container.ownerDocument.createRange();
-      range.setStart(start.node, offset - start.start);
-      range.setEnd(end.node, offset + query.length - end.start);
+      range.setStart(start.node, start.offset);
+      range.setEnd(end.node, end.offset + 1);
       ranges.push(range);
     }
     text = "";
-    nodes = [];
+    positions = [];
   };
   const visit = (node: Node, inPre: boolean) => {
     const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : null;
+    // Skipped, and a break: the text on either side never joins into one match.
     if (element?.matches(IGNORE) === true) {
       flush();
       return;
@@ -120,9 +120,15 @@ export function findRanges(container: HTMLElement, query: string): Range[] {
     if (block) flush();
     if (node.nodeType === Node.TEXT_NODE) {
       const value = node.nodeValue ?? "";
-      const start = text.length;
-      text += inPre ? value : value.replace(/\r?\n/g, " ");
-      nodes.push({ node, start, end: text.length });
+      for (let offset = 0; offset < value.length; offset++) {
+        let character = value[offset]!;
+        if (!inPre && /\s/.test(character)) {
+          if (text === "" || text.endsWith(" ")) continue;
+          character = " ";
+        }
+        text += character;
+        positions.push({ node, offset });
+      }
     }
     for (const child of node.childNodes) visit(child, inPre || tag === "pre");
     if (block) flush();
@@ -267,7 +273,15 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
   const hasQuery = props.query.trim().length > 0;
   const noResults = hasQuery && props.total === 0;
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.nativeEvent.isComposing || event.key !== "Enter") return;
+    if (event.nativeEvent.isComposing) return;
+    // Closes the bar rather than only clearing the field, as a search field would.
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      props.onClose();
+      return;
+    }
+    if (event.key !== "Enter") return;
     event.preventDefault();
     event.stopPropagation();
     if (event.shiftKey) props.onPrevious();

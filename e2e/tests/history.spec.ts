@@ -227,4 +227,11 @@ test("finds text in the thread with mod+f and steps through the matches (D801)",
 
   await page.getByRole("button", { name: "Close find" }).click();
   await expect(find).toHaveCount(0);
+  // Closing hands focus back to the composer; Escape closes the bar too.
+  await expect(message).toBeFocused();
+  await message.press("ControlOrMeta+f");
+  await expect(find).toBeFocused();
+  await find.press("Escape");
+  await expect(find).toHaveCount(0);
+  await expect(message).toBeFocused();
 });

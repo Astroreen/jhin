@@ -1496,10 +1496,13 @@ Reference: T3 Code at `eb7b35ac` (D53).
   browser's own find stays. The bar is T3's: a "Find in thread" search
   field, the count ("2/5", "0/0" in red when nothing matches), "Previous
   match", "Next match" and "Close find"; Enter goes to the next match,
-  Shift+Enter to the previous, and each `mod+f` focuses the field and
-  selects its text again. Matching folds case as T3 does, never spans two
+  Shift+Enter to the previous, Escape closes the bar (closing hands focus
+  back to the composer), and each `mod+f` focuses the field and selects its
+  text again. Matching folds case as T3 does, counts a run of white space as
+  one space outside `<pre>` (as the browser shows it), never spans two
   blocks and passes over buttons, icons and what is hidden from assistive
-  technology. Matches are painted with the CSS Custom Highlight API in T3's
+  technology, which also break a run of text. The highlights and
+  `chat.find` belong to the one thread view on screen. Matches are painted with the CSS Custom Highlight API in T3's
   colours (the current one darker) and found again as the thread's text
   changes; the current match scrolls into view. T3 searches on its server,
   because its timeline is virtualized and pages its history; Jhin's

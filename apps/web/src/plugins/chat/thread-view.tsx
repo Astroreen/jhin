@@ -384,7 +384,14 @@ export function ThreadView(props: {
       />
       <div className="relative flex min-h-0 min-w-0 flex-1">
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <ThreadFindBar {...find.bar} />
+          <ThreadFindBar
+            {...find.bar}
+            // Focus goes back to the composer, so its shortcuts work again.
+            onClose={() => {
+              find.bar.onClose();
+              handle.current?.focus();
+            }}
+          />
           {(unconfirmed.message === undefined || count === 0) && shownError === undefined ? null : (
             <div className="pointer-events-none absolute top-0 inset-x-0 z-20 flex flex-col gap-2 pt-3">
               {/* Shown once the thread's stream has answered: until then nothing is known. */}
