@@ -2929,6 +2929,22 @@ export default definePlugin({
         rollback(threadId, beforeTurnId === undefined ? { turnId } : { beforeTurnId }),
     });
 
+    /** What a turn started with, as its first event says. */
+    function startedWith(events: readonly StoredEvent[], turnId: string) {
+      const started = events.find(
+        (event) => event.type === ThreadEvents.turnStarted && turnIdOf(event) === turnId,
+      );
+      return (started?.payload ?? {}) as {
+        agentId?: string;
+        input?: { text?: string; attachments?: TurnAttachment[] };
+        model?: string;
+        runtimeMode?: RuntimeMode;
+        interactionMode?: InteractionMode;
+        /** A fork merged into the turn (D226). */
+        handoff?: { kind?: string; threadId?: string; turnId?: string };
+      };
+    }
+
     context.commands.register({
       name: "threads.turn",
       description:
@@ -2948,16 +2964,7 @@ export default definePlugin({
         const { events, turns } = await visibleTurns(threadId);
         const index = turns.indexOf(turnId);
         if (index === -1) throw turnNotFound(threadId, turnId);
-        const started = events.find(
-          (event) => event.type === ThreadEvents.turnStarted && turnIdOf(event) === turnId,
-        );
-        const payload = (started?.payload ?? {}) as {
-          agentId?: string;
-          input?: { text?: string; attachments?: TurnAttachment[] };
-          model?: string;
-          runtimeMode?: RuntimeMode;
-          interactionMode?: InteractionMode;
-        };
+        const payload = startedWith(events, turnId);
         const previous = turns[index - 1];
         return {
           turnId,
@@ -2986,6 +2993,8 @@ export default definePlugin({
       output: z.object({ turnId: z.string(), turnIds: z.array(z.string()) }),
       permissions: ["threads.write"],
       handler: async ({ threadId, turnId }) => {
+        // An unknown thread is THREAD_NOT_FOUND, not a thread without turns.
+        await getThread(threadId);
         const { events, turns } = await visibleTurns(threadId);
         const target = turnId ?? turns.at(-1);
         if (target === undefined) {
@@ -2994,16 +3003,7 @@ export default definePlugin({
           });
         }
         if (!turns.includes(target)) throw turnNotFound(threadId, target);
-        const started = events.find(
-          (event) => event.type === ThreadEvents.turnStarted && turnIdOf(event) === target,
-        );
-        const payload = (started?.payload ?? {}) as {
-          input?: { text?: string; attachments?: TurnAttachment[] };
-          agentId?: string;
-          model?: string;
-          runtimeMode?: RuntimeMode;
-          interactionMode?: InteractionMode;
-        };
+        const payload = startedWith(events, target);
         // A turn whose message cannot be sent again is refused before anything is dropped.
         assertMessage(payload.input?.text ?? "", payload.input?.attachments);
         let dropped: string[] = [];

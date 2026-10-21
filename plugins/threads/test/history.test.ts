@@ -459,6 +459,9 @@ describe("jhin.threads: regenerating a turn (D224)", () => {
     await expect(client.call("threads.regenerate", { threadId: thread.id })).rejects.toMatchObject({
       code: "TURN_NOT_FOUND",
     });
+    await expect(client.call("threads.regenerate", { threadId: "nope" })).rejects.toMatchObject({
+      code: "THREAD_NOT_FOUND",
+    });
 
     const { until, events } = watch(client, thread.id);
     await client.call("threads.send", { threadId: thread.id, text: "/hold on" });
