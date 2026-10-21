@@ -3415,21 +3415,17 @@ export default definePlugin({
       own: readonly string[],
     ): Promise<number> {
       const { events } = await visibleTurns(parentId);
-      return Math.max(
-        -1,
-        ...events
-          .filter(
-            (event) =>
-              event.type === ThreadEvents.turnStarted &&
-              (event.payload as { inheritedAt?: unknown }).inheritedAt === undefined,
-          )
-          .map(
-            (event) =>
-              (event.payload as { handoff?: { threadId?: unknown; turnId?: unknown } }).handoff,
-          )
-          .filter((handoff) => handoff?.threadId === forkId)
-          .map((handoff) => own.indexOf(String(handoff?.turnId))),
-      );
+      let latest = -1;
+      for (const event of events) {
+        if (event.type !== ThreadEvents.turnStarted) continue;
+        const payload = event.payload as {
+          inheritedAt?: unknown;
+          handoff?: { threadId?: unknown; turnId?: unknown };
+        };
+        if (payload.inheritedAt !== undefined || payload.handoff?.threadId !== forkId) continue;
+        latest = Math.max(latest, own.indexOf(String(payload.handoff.turnId)));
+      }
+      return latest;
     }
 
     /** A fork's turns of its own after its fork point, oldest first, and its visible events. */
