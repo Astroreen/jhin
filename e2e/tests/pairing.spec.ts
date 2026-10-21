@@ -92,6 +92,29 @@ test("pairs a second browser by its pairing link, keeps tokens away from scripts
   await second.close();
 });
 
+test("keeps the page's session when it is opened again with the same token", async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const sessions = async () =>
+    (
+      await node
+        .client()
+        .call<{ clients: { method: string; label: string }[] }>("auth.clients.list")
+    ).clients.filter((client) => client.method === "issued" && client.label === "Browser").length;
+  const before = await sessions();
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
+  expect(await sessions()).toBe(before + 1);
+
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "New thread", exact: true })).toBeEnabled();
+  expect(await sessions()).toBe(before + 1);
+  await context.close();
+});
+
 test("pairs from the connect form with a pairing code", async ({ browser }) => {
   const { code } = await node
     .client()

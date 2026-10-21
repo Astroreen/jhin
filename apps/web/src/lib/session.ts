@@ -64,13 +64,13 @@ export async function pairWithCode(
 
 /**
  * Whether this page's own node holds a session for it: `undefined` when the
- * page is not served by a node (a `jhin client` page).
+ * page is not served by a node (a `jhin client` page). A failed request
+ * throws: an unreachable node is not "no node", so a token never gets saved
+ * in the page because of a network error.
  */
 export async function currentSession(): Promise<boolean | undefined> {
-  const response = await fetch("/auth/session", { credentials: "same-origin" }).catch(
-    () => undefined,
-  );
-  if (response === undefined || response.status === 404) return undefined;
+  const response = await fetch("/auth/session", { credentials: "same-origin" });
+  if (response.status === 404) return undefined;
   if (!(response.headers.get("content-type") ?? "").includes("application/json")) return undefined;
   return response.ok;
 }

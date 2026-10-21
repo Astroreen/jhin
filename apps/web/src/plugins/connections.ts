@@ -155,8 +155,6 @@ export const connectionsPlugin = builtin(
       } catch (error) {
         context.log.error("saved nodes unreadable", { error: String(error) });
       }
-      // The page's own node: a credential in the fragment opens its session;
-      // without one, a session it opened before still counts.
       // The page's own node: met in the background, so a slow node never holds
       // up the client (security.md D421). A credential in the fragment opens its
       // session; without one, a session it opened before still counts.
@@ -182,7 +180,12 @@ export const connectionsPlugin = builtin(
             if (session !== true || looksLikePairingCode(credential)) await openSession(credential);
             if (!disposed) keep({ url: own, session: true, label: location.host });
           }
-        } else if (!nodes.has(own) && (await currentSession()) === true && !disposed) {
+        } else if (
+          !nodes.has(own) &&
+          // Unasked for, a node that cannot be reached is just not added.
+          (await currentSession().catch(() => undefined)) === true &&
+          !disposed
+        ) {
           keep({ url: own, session: true, label: location.host });
         }
       };
