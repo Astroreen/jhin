@@ -56,9 +56,18 @@ export async function editFromHere(
   const { threads, drafts, composer, dialogs, toasts } = services;
   const target = targetOf(input);
   const key = threadDraftKey(target, input.threadId);
-  const turn = await threads.call<{
-    input: { text: string; attachments?: TurnAttachment[] };
-  }>(target, "threads.turn", { threadId: input.threadId, turnId: input.turnId });
+  const turn = await threads
+    .call<{
+      input: { text: string; attachments?: TurnAttachment[] };
+    }>(target, "threads.turn", { threadId: input.threadId, turnId: input.turnId })
+    .catch((failure: unknown) => {
+      toasts?.show({
+        type: "error",
+        title: "Failed to revert thread state.",
+        description: String((failure as Error).message ?? failure),
+      });
+      throw failure;
+    });
   const message = { prompt: turn.input.text, attachments: turn.input.attachments ?? [] };
   /** What the thread's composer holds now: the one on screen, else the stored draft. */
   const draftNow = () =>

@@ -41,7 +41,12 @@ describe("Edit from here: the message back in the composer (D223)", () => {
 });
 
 /** The command's services, with a node that records the calls it gets. */
-function setup(options: { draft?: ComposerDraft; open?: string; confirm?: boolean | "none" }) {
+function setup(options: {
+  draft?: ComposerDraft;
+  open?: string;
+  confirm?: boolean | "none";
+  gone?: boolean;
+}) {
   const calls: { method: string; params: unknown }[] = [];
   const stored = new Map<string, ComposerDraft>();
   const restored: ComposerDraft[] = [];
@@ -67,6 +72,9 @@ function setup(options: { draft?: ComposerDraft; open?: string; confirm?: boolea
     threads: {
       call: async <T>(_target: NodeTarget, method: string, params?: unknown) => {
         calls.push({ method, params });
+        if (method === "threads.turn" && options.gone === true) {
+          throw Object.assign(new Error("The thread shows no turn u2"), { code: "TURN_NOT_FOUND" });
+        }
         if (method === "threads.turn") {
           return { input: { text: "sent", attachments: [image("p")] } } as T;
         }
@@ -131,6 +139,13 @@ describe("the thread.edit-from-here command (D223)", () => {
       "Make room for this message's attachments in the composer before rewinding.",
     ]);
     expect(stored.get(key)?.attachments).toHaveLength(10);
+  });
+
+  it("says so when the turn is gone, and rewinds nothing", async () => {
+    const { run, calls, toasts } = setup({ gone: true });
+    await expect(run()).rejects.toMatchObject({ code: "TURN_NOT_FOUND" });
+    expect(calls.map((call) => call.method)).toEqual(["threads.turn"]);
+    expect(toasts).toEqual(["Failed to revert thread state."]);
   });
 
   it("rewinds nothing when cancelled, or when nobody can be asked unless already confirmed", async () => {

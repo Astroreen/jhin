@@ -3004,6 +3004,8 @@ export default definePlugin({
           runtimeMode?: RuntimeMode;
           interactionMode?: InteractionMode;
         };
+        // A turn whose message cannot be sent again is refused before anything is dropped.
+        assertMessage(payload.input?.text ?? "", payload.input?.attachments);
         let dropped: string[] = [];
         // Its agent, unless that is gone from the node: then the thread's, as a send.
         const own = payload.agentId !== undefined && registry.get(payload.agentId) !== undefined;
