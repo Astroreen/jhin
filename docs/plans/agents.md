@@ -899,6 +899,9 @@ Each workstream lists its PRs here as they merge.
   and `slices.*` commands, the stream guarded by `missions.read`, agents
   reaching it (D641–D652). The mission view in Civilization mode waits for
   A8's slots (#105).
+- A3 #174: the mission view in Civilization mode, `jhin.missions-view`: the
+  Missions section and mission → slice → thread, read only, on the
+  `missions` stream (D653–D656); with A1's `thread.transcript` seam (D614).
 - A4 #91: `jhin.context` (D661–D670), and the lore brief on a generation's
   start in `jhin.agents` (D671).
 - A8 #105: `client.modes@1` and the `jhin.modes`, `jhin.mode-switcher` and
