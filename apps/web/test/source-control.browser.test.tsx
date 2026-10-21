@@ -1097,7 +1097,7 @@ describe("the git actions in the chat header", () => {
     );
 
   it("shows the repository's forge mark on its pull request action (D904)", () => {
-    const quickIcon = (provider: ProjectStatus["provider"]) => {
+    const quickMark = (provider: ProjectStatus["provider"]) => {
       const { value } = services(
         viewWith(
           status({
@@ -1111,17 +1111,22 @@ describe("the git actions in the chat header", () => {
       const Control = createGitActionsControl(value);
       const view = mount(<Control project={project} target={target} thread={thread} />);
       const svg = view.container.querySelector('[role="group"] button svg')!;
-      const mark =
-        svg.getAttribute("viewBox") === "0 0 24 24"
-          ? svg.getAttribute("class")
-          : svg.getAttribute("viewBox");
+      const seen = {
+        forge: svg.getAttribute("data-forge"),
+        hidden: svg.getAttribute("aria-hidden"),
+        drawn: svg.childElementCount > 0,
+      };
       view.unmount();
-      return mark;
+      return seen;
     };
-    // T3's GitHub and GitLab marks, and lucide's pull request without a forge.
-    expect(quickIcon({ kind: "github", available: true })).toBe("0 0 1024 1024");
-    expect(quickIcon({ kind: "gitlab", available: true })).toBe("0 0 32 32");
-    expect(quickIcon(null)).toContain("lucide-git-pull-request");
+    for (const kind of ["github", "gitlab", "azure-devops", "bitbucket", "forgejo"] as const) {
+      expect(quickMark({ kind, available: true })).toEqual({
+        forge: kind,
+        hidden: "true",
+        drawn: true,
+      });
+    }
+    expect(quickMark(null)).toEqual({ forge: "none", hidden: "true", drawn: true });
   });
 
   it("commits, pushes and opens a pull request from a feature branch, then shows the result", async () => {

@@ -1,7 +1,7 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/Icons.tsx
 // (GitHubIcon, GitLabIcon, AzureDevOpsIcon, BitbucketIcon, ForgejoIcon) and
-// apps/web/src/sourceControlPresentation.ts with the forges' client definitions (their
-// labels), so a repository's forge shows with its own mark (D904). The Azure DevOps mark is
+// apps/web/src/sourceControlPresentation.ts (sourceControlIcon), so a repository's forge
+// shows with its own mark (D904). The Azure DevOps mark is
 // selfhst/icons' (CC BY 4.0), named in THIRD_PARTY_NOTICES.md.
 import type { PullRequestProvider } from "@jhin/source-control-api";
 import { GitPullRequestIcon } from "lucide-react";
@@ -256,17 +256,29 @@ const ForgejoIcon: Icon = (props) => (
 
 type ForgeKind = PullRequestProvider["kind"];
 
-const FORGES: Record<ForgeKind, ElementType<{ className?: string }>> = {
-  github: GitHubIcon,
-  gitlab: GitLabIcon,
-  "azure-devops": AzureDevOpsIcon,
-  bitbucket: BitbucketIcon,
-  forgejo: ForgejoIcon,
+type MarkComponent = ElementType<{ className?: string }>;
+
+/** A forge's mark: decorative beside its text, and named by its forge for tests and styles. */
+const mark = (kind: ForgeKind, Mark: Icon): MarkComponent =>
+  function ForgeMark({ className }: { className?: string }) {
+    return <Mark aria-hidden className={className} data-forge={kind} />;
+  };
+
+const FORGES: Record<ForgeKind, MarkComponent> = {
+  github: mark("github", GitHubIcon),
+  gitlab: mark("gitlab", GitLabIcon),
+  "azure-devops": mark("azure-devops", AzureDevOpsIcon),
+  bitbucket: mark("bitbucket", BitbucketIcon),
+  forgejo: mark("forgejo", ForgejoIcon),
 };
+
+function GenericMark({ className }: { className?: string }) {
+  return <GitPullRequestIcon aria-hidden className={className} data-forge="none" />;
+}
 
 /** T3's `sourceControlIcon`: the forge's mark, a generic pull request mark without a forge. */
 export function forgeIcon(
   provider: Pick<PullRequestProvider, "kind"> | null | undefined,
-): ElementType<{ className?: string }> {
-  return (provider ? FORGES[provider.kind] : undefined) ?? GitPullRequestIcon;
+): MarkComponent {
+  return (provider ? FORGES[provider.kind] : undefined) ?? GenericMark;
 }
