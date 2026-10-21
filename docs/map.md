@@ -155,6 +155,9 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 - `apps/web/src/lib/pierre-icons.ts` and `pierre-entry-icon.tsx` — T3's file
   icons: `T3_PIERRE_ICONS` for a `@pierre/trees` tree and `PierreEntryIcon`
   for one file (`source-control.md#D923`); use them wherever a file is shown.
+- `patches/` — pnpm patches of dependencies (`patchedDependencies` in
+  `pnpm-workspace.yaml`): T3's `@pierre/diffs` patch, find in the diff
+  (`source-control.md#D924`).
 - `e2e/` — Playwright end-to-end tests.
 - `scripts/verify.ts` (`pnpm verify`), `scripts/pack.ts`,
   `scripts/pack-smoke.ts` (`pnpm pack:smoke`), `scripts/t3/` (run from a
