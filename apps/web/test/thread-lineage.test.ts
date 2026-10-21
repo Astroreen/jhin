@@ -2,7 +2,7 @@
 import type { ThreadRecord } from "@jhin/client-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { lineageRows, lineageStatusLabel } from "../src/plugins/chat/thread-details.tsx";
+import { lineageRows, lineageStatusLabel } from "../src/plugins/chat/lineage.tsx";
 
 const thread = (id: string, createdAt: string, more: Partial<ThreadRecord> = {}) =>
   ({ id, title: id, createdAt, updatedAt: createdAt, ...more }) as ThreadRecord;
