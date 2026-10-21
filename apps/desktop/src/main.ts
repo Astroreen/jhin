@@ -49,7 +49,7 @@ app.setName(APP_NAME);
 /** The CLI and the client plugin the app's node runs with (D512, D514). */
 const cliManifest = require.resolve("jhin-ai/package.json");
 const nodePaths = {
-  // The manifest's `jhin` bin: `bin/jhin.js` in the workspace, `dist/main.js` packed (D922).
+  // The manifest's `jhin` bin: `bin/jhin.js` in the workspace, `dist/main.js` packed (D942).
   cli: Path.join(
     Path.dirname(cliManifest),
     (require(cliManifest) as { bin: { jhin: string } }).bin.jhin,

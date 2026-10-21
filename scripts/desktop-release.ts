@@ -2,7 +2,7 @@
 // configuration of scripts/build-desktop-artifact.ts and the signing checks of
 // .github/workflows/release-desktop.yml.
 //
-// Pure helpers of scripts/package-desktop.ts (docs/plans/desktop.md, D922–D925),
+// Pure helpers of scripts/package-desktop.ts (docs/plans/desktop.md, D942–D945),
 // unit tested in scripts/desktop-release.test.ts.
 
 export type DesktopPlatform = "linux" | "mac" | "win";
@@ -41,7 +41,7 @@ export function releaseVersion(raw: string): string {
   return version;
 }
 
-/** The secrets a signed build needs on each system (T3's names, D924). */
+/** The secrets a signed build needs on each system (T3's names, D944). */
 export const SIGNING_SECRETS: Readonly<Record<DesktopPlatform, readonly string[]>> = {
   // A Developer ID Application certificate (.p12, base64) and an App Store
   // Connect API key (the .p8's text) for notarization.
@@ -88,7 +88,7 @@ export interface BuilderConfigInput {
   readonly env: Readonly<Record<string, string | undefined>>;
 }
 
-/** The electron-builder configuration of one platform's build (D922–D924). */
+/** The electron-builder configuration of one platform's build (D942–D944). */
 export function builderConfig(input: BuilderConfigInput): Record<string, unknown> {
   const channel = updateChannel(input.version);
   const config: Record<string, unknown> = {
@@ -201,7 +201,7 @@ const HOST_PLATFORMS: Readonly<Record<string, DesktopPlatform>> = {
 
 /**
  * The platform and arch to package: the host's own. The staged app installs
- * native addons for the machine it runs on and nothing is rebuilt (D922), so a
+ * native addons for the machine it runs on and nothing is rebuilt (D942), so a
  * cross build would ship the wrong addon.
  */
 export function packageOptions(

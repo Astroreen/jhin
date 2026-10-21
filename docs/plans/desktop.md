@@ -130,7 +130,7 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
 - **D519. Auto update is T3's flow on electron-updater against this
   repository's GitHub releases** (`provider: github`, owner `Astroreen`,
   repo `jhin`), which packaging writes into the app's `app-update.yml`
-  (D923); a build without that feed shows updates as disabled with T3's
+  (D943); a build without that feed shows updates as disabled with T3's
   "no update feed" reason. The state machine is T3's (`updateMachine.ts`): `disabled`,
   `idle`, `checking`, `up-to-date`, `available`, `downloading`,
   `downloaded`, `error` with the available and downloaded versions, progress,
@@ -199,19 +199,19 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
 ### Packaging and releases (W25)
 
 Workstream W25 of `t3-roadmap.md` continues this plan with the decision
-range D921–D940 (the range `t3-roadmap.md` first gave it, D720–D739, belongs
+range D941–D960 (the range `t3-roadmap.md` first gave it, D720–D739, belongs
 to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
 `scripts/build-desktop-artifact.ts`, `.github/workflows/release.yml` and
 `release-desktop.yml`.
 
-- **D921. W25's scope and order.** W25 lands as small PRs, one at a time:
+- **D941. W25's scope and order.** W25 lands as small PRs, one at a time:
   packaging, signing and the release workflow first (so D519's feed exists),
   then the app's smaller T3 pieces (release notes in the update control,
   Paste as Text, the quit-hold shortcut), then the preview's leftovers of
   `preview.md`. What a PR leaves stays in the Deferred lists below and in
   `preview.md`.
 
-- **D922. Packaging stages the app from packed tarballs.**
+- **D942. Packaging stages the app from packed tarballs.**
   `scripts/package-desktop.ts` (`pnpm package:desktop`) builds the main
   process and the preload, packs `jhin-ai` and `@jhin/plugin-desktop` with
   every workspace package they need through `scripts/pack.ts` (as
@@ -227,7 +227,7 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   icon is `apps/desktop/resources/icon.png`, rendered from `icon.svg` beside
   it (electron-builder derives the macOS and Windows formats).
 
-- **D923. The feed is this repository's releases, written only when asked.**
+- **D943. The feed is this repository's releases, written only when asked.**
   With `--repository owner/repo` the build gets T3's GitHub `publish` entry:
   stable builds read `latest*.yml` from releases, nightly builds
   (`x.y.z-nightly.YYYYMMDD.N`) read `nightly*.yml` from prereleases, so
@@ -236,7 +236,7 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   disabled, as an unpackaged build does. electron-builder itself never
   publishes (`--publish never`): the workflow does.
 
-- **D924. A build signs only when every secret of its system is set.** As
+- **D944. A build signs only when every secret of its system is set.** As
   in T3: macOS needs `CSC_LINK` (a Developer ID Application certificate,
   .p12 in base64), `CSC_KEY_PASSWORD`, and an App Store Connect API key
   (`APPLE_API_KEY`, the .p8's text, `APPLE_API_KEY_ID`,
@@ -252,9 +252,9 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   missing. A stable release requires signing on macOS and Windows (an
   unsigned macOS app cannot update itself), unless the run asks for
   `allow_unsigned`. Packaging builds for the machine it runs on only: native
-  addons are installed for it and never rebuilt (D922).
+  addons are installed for it and never rebuilt (D942).
 
-- **D925. The release workflow.** `.github/workflows/release-desktop.yml`
+- **D945. The release workflow.** `.github/workflows/release-desktop.yml`
   builds Linux x64, macOS arm64 and Windows x64 in parallel. A pushed tag
   `v1.2.3` or a manual "stable" run publishes the stable release of
   `apps/desktop/package.json`'s version (a tag that names another version
@@ -288,12 +288,12 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
 - Checking the macOS chrome (traffic lights, the controls
   inset, full screen) and the Windows overlay badge on those systems: CI
   proves Linux only.
-- Release builds beyond D925's three: macOS x64 (T3 merges the two
+- Release builds beyond D945's three: macOS x64 (T3 merges the two
   `latest-mac.yml` files), Linux and Windows arm64; T3's scheduled nightly
   that skips days without changes, its preview channel, and promoting a
   nightly's commit to stable; T3's DMG background; the AUR package.
 - Trimming the packaged app (about 400 MB unpacked: every agent SDK's
-  binaries) and an asar archive with the node's files unpacked (D922).
+  binaries) and an asar archive with the node's files unpacked (D942).
 - Attaching to a node of the same home that already runs (`jhin serve`), and
   choosing another port when 7777 is taken by something else (D513 keeps the
   origin stable, so the choice must be kept).

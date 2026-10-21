@@ -1,4 +1,4 @@
-// Packages the desktop app with electron-builder (docs/plans/desktop.md, D922–D924).
+// Packages the desktop app with electron-builder (docs/plans/desktop.md, D942–D944).
 //
 //   node scripts/package-desktop.ts [--platform linux|mac|win] [--arch x64|arm64]
 //                                   [--version 1.2.3] [--repository owner/repo] [--dir]
@@ -71,7 +71,7 @@ function run(
 const catalog = (name: string) =>
   catalogVersion(Fs.readFileSync(Path.join(ROOT, "pnpm-workspace.yaml"), "utf8"), name);
 
-/** The environment without signing secrets: installing runs third-party scripts (D924). */
+/** The environment without signing secrets: installing runs third-party scripts (D944). */
 function withoutSecrets(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const secrets = new Set([...SIGNING_SECRETS.mac, ...SIGNING_SECRETS.win]);
   return Object.fromEntries(Object.entries(env).filter(([name]) => !secrets.has(name)));
@@ -96,7 +96,7 @@ function main(): void {
   if (sign.missing.length > 0) {
     throw new Error(`${platform} signing is half configured; missing: ${sign.missing.join(", ")}`);
   }
-  // A stable release must not ship unsigned because its secrets went missing (D924).
+  // A stable release must not ship unsigned because its secrets went missing (D944).
   if (values["require-signing"] && SIGNING_SECRETS[platform].length > 0 && !sign.signed) {
     throw new Error(
       `${platform} signing is required but not configured; set ${SIGNING_SECRETS[platform].join(", ")}`,

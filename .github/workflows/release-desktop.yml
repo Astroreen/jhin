@@ -1,5 +1,5 @@
 # Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): .github/workflows/release.yml
-# and release-desktop.yml, reduced to the desktop app (docs/plans/desktop.md, D925).
+# and release-desktop.yml, reduced to the desktop app (docs/plans/desktop.md, D945).
 #
 # Builds the desktop app on Linux, macOS and Windows and publishes the
 # installers with electron-updater's feed files to this repository's releases,
