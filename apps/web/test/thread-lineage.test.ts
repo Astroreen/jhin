@@ -69,7 +69,7 @@ describe("lineageStatusLabel", () => {
 });
 
 describe("forkRan", () => {
-  it("lets a fork merge back once its latest turn ended, however it ended", () => {
+  it("lets a fork merge back unless it has no turn or its turn is running", () => {
     const at = (status?: NonNullable<ThreadRecord["lastTurn"]>["status"]) =>
       thread(
         "f",
@@ -80,7 +80,7 @@ describe("forkRan", () => {
       );
     expect(forkRan(at())).toBe(false);
     expect(forkRan(at("running"))).toBe(false);
-    expect(forkRan(at("waiting"))).toBe(false);
+    expect(forkRan(at("waiting"))).toBe(true);
     expect(forkRan(at("completed"))).toBe(true);
     expect(forkRan(at("interrupted"))).toBe(true);
     expect(forkRan(at("failed"))).toBe(true);
