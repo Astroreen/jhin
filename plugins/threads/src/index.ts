@@ -3392,6 +3392,8 @@ export default definePlugin({
       });
       // A promoted message is no longer kept from starting as a turn of its own.
       steering.delete(`${threadId}:${messageId}`);
+      // The turn ended by itself meanwhile: the thread is free, and its queue goes on.
+      if (!active.has(threadId)) void deliver(threadId);
       // Queued behind the restart's message, in the order sent.
       if (after !== undefined) return "queued";
       // A Stop came while the queue was written (`restartWith` cleared): it waits,
