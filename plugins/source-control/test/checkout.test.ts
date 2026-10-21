@@ -227,12 +227,12 @@ describe("checking a pull request out without losing work (D902)", () => {
   it("refuses a project checkout with changes, and a branch with commits of its own", async () => {
     const { dir } = withPullRequest();
     const target: CheckoutTarget = { pr: pr(), crossRepository: false };
-    write(dir, "draft.txt", "mine\n");
+    write(dir, "README.md", "mine\n");
     await expect(checkoutLocal(createGit("git", dir), target, warn)).rejects.toThrow(
       "Commit or stash the changes in the project's checkout before checking a pull request out in it.",
     );
-    expect(Fs.readFileSync(Path.join(dir, "draft.txt"), "utf8")).toBe("mine\n");
-    Fs.rmSync(Path.join(dir, "draft.txt"));
+    expect(Fs.readFileSync(Path.join(dir, "README.md"), "utf8")).toBe("mine\n");
+    git(dir, "checkout", "--quiet", "--", "README.md");
 
     git(dir, "switch", "--quiet", "--create", "feature", "main");
     commit(dir, "local.txt");
@@ -243,8 +243,9 @@ describe("checking a pull request out without losing work (D902)", () => {
     expect(git(dir, "branch", "--show-current").trim()).toBe("main");
   });
 
-  it("moves an existing branch that is behind forward", async () => {
+  it("moves an existing branch that is behind forward, an untracked file aside", async () => {
     const { dir, head } = withPullRequest();
+    write(dir, "notes.txt", "untracked\n");
     git(dir, "branch", "feature", "main");
     await checkoutLocal(createGit("git", dir), { pr: pr(), crossRepository: false }, warn);
     expect(git(dir, "rev-parse", "HEAD").trim()).toBe(head);

@@ -210,7 +210,7 @@ export async function checkoutLocal(
     target.crossRepository && target.headOwner !== undefined && pr.headBranch === pr.baseBranch
       ? `${target.headOwner}/${pr.headBranch}`
       : pr.headBranch;
-  if ((await git(["status", "--porcelain"])).stdout.trim() !== "") {
+  if ((await git(["status", "--porcelain", "--untracked-files=no"])).stdout.trim() !== "") {
     throw new SourceControlError(
       "ACTION_UNAVAILABLE",
       "Commit or stash the changes in the project's checkout before checking a pull request out in it.",

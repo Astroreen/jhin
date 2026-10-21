@@ -595,7 +595,7 @@ with screenshots).
   created or fast-forwarded to the head and tracking it; git failures answer
   T3's "The pull request could not be checked out with git." followed by
   git's own reason. Where T3
-  resets the branch hard, Jhin refuses a checkout with changes ("Commit or
+  resets the branch hard, Jhin refuses a checkout with changes to tracked files ("Commit or
   stash the changes in the project's checkout before checking a pull request
   out in it.") and a branch with commits the head does not have ("Branch
   '<branch>' has commits that pull request #<n> does not. Push or move them,
