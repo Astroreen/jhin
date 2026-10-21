@@ -5,6 +5,8 @@ import { useSyncExternalStore } from "react";
 import { LaunchedRow, SubagentRow, WorkflowBlock, type WorkflowMark } from "./rows.tsx";
 import type { DelegationStore } from "./store.ts";
 
+export { createDelegationStore } from "./store.ts";
+
 interface TaskMark {
   readonly taskId: string;
   readonly childThreadId: string;

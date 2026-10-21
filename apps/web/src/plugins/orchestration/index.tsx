@@ -6,6 +6,7 @@ import {
   type ChatTurnItemProps,
   type Connections,
   type Navigation,
+  type NodeTarget,
   type ThreadsCatalog,
 } from "@jhin/client-api";
 import { definePlugin } from "@jhin/sdk";
@@ -13,14 +14,12 @@ import { UI_SLOTS_CAPABILITY, type SlotRegistry } from "@jhin/ui";
 
 import { builtin } from "../../lib/builtin.ts";
 import { lazyChunk } from "../../lib/lazy-chunk.tsx";
-import { createDelegationStore } from "./store.ts";
-import type { DelegatedWorkServices } from "./view.tsx";
 
 /**
  * `jhin.orchestration-view`: delegated tasks, workflows and launched threads
  * in the turn that started them, live from the node's records
- * (docs/plans/orchestration.md, D864). The rows are a chunk of their own,
- * loaded with the first mark.
+ * (docs/plans/orchestration.md, D864). The rows and their store are a chunk
+ * of their own, loaded with the first mark.
  */
 export const orchestrationViewPlugin = builtin(
   "jhin.orchestration-view",
@@ -36,23 +35,26 @@ export const orchestrationViewPlugin = builtin(
     activate(context) {
       const slots = context.services.get<SlotRegistry>(UI_SLOTS_CAPABILITY);
       const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
-      const services: DelegatedWorkServices = {
-        store: context.subscriptions.add(
-          createDelegationStore(
-            context.services.get<Connections>(CONNECTIONS_CAPABILITY),
-            context.services.get<ThreadsCatalog>(THREADS_CAPABILITY),
-            context.log,
-          ),
-        ),
-        open: (target, threadId) =>
-          navigation.navigate({
-            node: target.node,
-            ...(target.remote === undefined ? {} : { remote: target.remote }),
-            thread: threadId,
+      const connections = context.services.get<Connections>(CONNECTIONS_CAPABILITY);
+      const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
+      const DelegatedWork = lazyChunk<ChatTurnItemProps>(
+        () =>
+          import("./view.tsx").then((module) => {
+            const services = {
+              store: context.subscriptions.add(
+                module.createDelegationStore(connections, threads, context.log),
+              ),
+              open: (target: NodeTarget, threadId: string) =>
+                navigation.navigate({
+                  node: target.node,
+                  ...(target.remote === undefined ? {} : { remote: target.remote }),
+                  thread: threadId,
+                }),
+            };
+            return function Loaded(props: ChatTurnItemProps) {
+              return <module.DelegatedWork {...props} services={services} />;
+            };
           }),
-      };
-      const DelegatedWork = lazyChunk(
-        () => import("./view.tsx").then((module) => module.DelegatedWork),
         { loading: () => null, failed: () => null },
       );
       // One contribution per kind of mark, so each can be hidden by its id (D12).
@@ -64,8 +66,7 @@ export const orchestrationViewPlugin = builtin(
         context.subscriptions.add(
           slots.contribute<ChatTurnItemProps>("chat.turn.item", {
             id,
-            component: (props) =>
-              props.event.type === type ? <DelegatedWork {...props} services={services} /> : null,
+            component: (props) => (props.event.type === type ? <DelegatedWork {...props} /> : null),
           }),
         );
       }
