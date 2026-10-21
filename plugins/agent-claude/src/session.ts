@@ -375,6 +375,13 @@ function backgroundOf(message: SDKMessage): number | undefined {
   return (frame.tasks ?? []).filter((task) => task.ambient !== true).length;
 }
 
+/** What `Lease.steer` throws once the turn's messages ended. */
+export class LeaseEnded extends Error {
+  constructor() {
+    super("The turn has ended: Claude Code takes no more messages for it.");
+  }
+}
+
 /** Ends a turn that still held its thread's Claude Code when a later turn took it. */
 export class SessionTakenOver extends Error {
   constructor() {
@@ -862,7 +869,7 @@ export function createLiveSessions(options: {
         })(),
         steer: (sent) => {
           if (ended || released || session.closed) {
-            throw new Error("The turn has ended: Claude Code takes no more messages for it.");
+            throw new LeaseEnded();
           }
           if (sent.uuid !== undefined) steers.push(sent.uuid);
           session.input.push({ ...sent, priority: "now" });
