@@ -244,7 +244,8 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   and remote, the current branch left out), read when the picker opens. The
   chosen base is kept with the thread's selection and passed to `git.diff`
   as `base`; switching to "Uncommitted" and back keeps it.
-- **D285. Comments on lines go to the chat, as T3's review comments do.**
+- **D285. Comments on lines go to the chat, as T3's review comments do**
+  (not built yet: Deferred).
   Pierre's gutter "+" (or a line range dragged in the gutter) opens T3's
   `DiffCommentAnnotation` under the range: "Add a comment…", "⌘/Ctrl Enter to
   send", "Cancel", "Comment"; Escape cancels. A comment becomes a context of
@@ -868,6 +869,13 @@ with the node's token, and without one).
 - Cancelling a running git action: writes to a project queue behind it (its
   writer is bounded by `writerTimeoutSeconds`, a commit's hooks by ten
   minutes), with no way to stop it from the client.
+- D285, comments on lines sent to the chat: needs a public way for another
+  plugin to put context into a thread's composer. W15's `chat.composer.insert`
+  (#86) inserts text at the cursor, and W6's rich composer (#81) brings T3's
+  context chips; building the comment UI (Pierre's gutter "+", T3's
+  `DiffCommentAnnotation`, the `<review_comment>` serialization and its
+  timeline card) on either before they land would fork the composer twice.
+  Build it on whichever lands, as a contribution of `jhin.source-control`.
 - What W5 leaves of T3's diff panel: its in-app file preview (at D53 a click
   on a file's name opens T3's file panel; Jhin has none, so it opens the
   editor, D286), loading the patches of a truncated diff file by file
