@@ -233,6 +233,10 @@ export async function probe(launch: Launcher, config: Config): Promise<Probe> {
   }
 }
 
+/** A permission that only reads: `threads.read`, `projects.browse`. */
+const readsOnly = (permission: string) =>
+  permission.endsWith(".read") || permission === "projects.browse";
+
 /**
  * Codex aborts an MCP call after its own default; a tool that waits (a thread's turn, W10's
  * tasks) may take up to an hour, so T3's budget (`CODEX_T3_MCP_TOOL_TIMEOUT_SEC`).
@@ -247,10 +251,12 @@ const MCP_TOOL_TIMEOUT_SEC = 65 * 60;
 export function mcpAttachment(
   server: McpServer,
   threadId: string,
+  writes: boolean,
 ): { readonly servers: Record<string, unknown>; dispose(): void } {
   const credential = server.issue({
     id: `${CODEX_AGENT_ID}:${threadId}`,
-    permissions: AGENT_PERMISSIONS,
+    // Codex calls MCP tools without Jhin's approval: only a thread with full access writes.
+    permissions: writes ? AGENT_PERMISSIONS : AGENT_PERMISSIONS.filter(readsOnly),
     threadId,
   });
   return {
@@ -438,7 +444,10 @@ export function createCodexRuntime(options: {
           (current() === undefined ? waitedDefault() : defaultModel()),
         modelOptions: (model) => models().find((listed) => listed.id === model)?.options,
         ...(config.mcp && options.mcp !== undefined
-          ? { mcp: (threadId: string) => mcpAttachment(options.mcp!, threadId) }
+          ? {
+              mcp: (threadId: string, writes: boolean) =>
+                mcpAttachment(options.mcp!, threadId, writes),
+            }
           : {}),
         version: VERSION,
         home: expandHome(config.homePath),

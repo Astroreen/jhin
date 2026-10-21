@@ -50,7 +50,7 @@ function setup(config: Record<string, unknown> = {}, scenario: Scenario = {}) {
     config: () => Config.parse(settings),
   });
   runtimes.push(codex);
-  const run = async (turnId: string) => {
+  const run = async (turnId: string, runtimeMode?: "approval-required" | "full-access") => {
     let failed: unknown;
     const turn = codex.startTurn({
       threadId: "thread-1",
@@ -60,6 +60,7 @@ function setup(config: Record<string, unknown> = {}, scenario: Scenario = {}) {
       cwd: process.cwd(),
       model: "gpt-6-astra",
       instructions: "Be brief.",
+      ...(runtimeMode === undefined ? {} : { runtimeMode }),
     });
     try {
       for await (const _ of turn.items) void _;
@@ -117,6 +118,22 @@ describe("jhin.agent-codex: the node's MCP server", () => {
     expect(fake.received("thread/resume")[0]?.params).toMatchObject({
       config: { mcp_servers: jhinServer("token-2") },
     });
+  });
+
+  it("lets Codex only read through it unless the thread has full access", async () => {
+    const { mcp, run } = setup();
+    await run("turn-1", "approval-required");
+    expect(mcp.issued[0]?.permissions).toEqual(
+      AGENT_PERMISSIONS.filter(
+        (permission) => permission.endsWith(".read") || permission === "projects.browse",
+      ),
+    );
+    // Full access now: a new app-server, whose credential also writes.
+    const revoked = mcp.nextRevoke();
+    await run("turn-2", "full-access");
+    await revoked;
+    expect(mcp.issued[1]?.permissions).toEqual(AGENT_PERMISSIONS);
+    expect(mcp.revoked).toEqual(["token-1"]);
   });
 
   it("revokes the credential of an app-server that exits", async () => {

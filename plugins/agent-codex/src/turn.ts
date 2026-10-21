@@ -74,7 +74,8 @@ export interface CodexTurnDependencies {
   /** The turn's model; a promise while it is still being asked for (`status()`). */
   readonly model: string | Promise<string>;
   /** Gives a new app-server the node's MCP server (D889); absent when it gets none. */
-  readonly mcp?: (threadId: string) => McpAttachment;
+  /** `writes`: the credential may run writing commands too (full access only). */
+  readonly mcp?: (threadId: string, writes: boolean) => McpAttachment;
   /** What a turn can choose for `model`, as `model/list` described it (D881). */
   readonly modelOptions?: (model: string) => readonly ModelOptionDescriptor[] | undefined;
   /** Sent in `initialize`. */
@@ -775,6 +776,7 @@ export function codexTurn(
     model = await deps.model;
     const recorded = await deps.threads.get(request.threadId);
     if (interrupted) return;
+    const mcpWrites = runtimeMode === "full-access";
     const leasing = deps.sessions.lease(request.threadId, {
       binaryPath: deps.settings.binaryPath,
       args: deps.settings.args ?? [],
@@ -790,10 +792,10 @@ export function codexTurn(
         env: deps.settings.env ?? {},
         inheritEnv: deps.settings.inheritEnv ?? ["*"],
         home: deps.home,
-        // Turning the node's MCP server on or off starts a new app-server.
-        mcp: deps.mcp !== undefined,
+        // Turning the node's MCP server on or off, or its writes, starts a new app-server.
+        mcp: deps.mcp === undefined ? false : mcpWrites ? "writes" : "reads",
       }),
-      ...(deps.mcp === undefined ? {} : { mcp: () => deps.mcp!(request.threadId) }),
+      ...(deps.mcp === undefined ? {} : { mcp: () => deps.mcp!(request.threadId, mcpWrites) }),
     });
     const current = await untilEnded(leasing).catch((error: unknown) => {
       // Given up while the app-server started: it is ended once it is there.

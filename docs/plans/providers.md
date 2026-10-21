@@ -655,9 +655,12 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   Claude Code and T3 gives Codex its own (`codexThreadRuntimeParams`):
   `jhin.agent-codex` lists `mcp.server@^1` as optional, and each app-server
   it starts for a thread gets a credential of its own (as
-  `jhin.agent-codex:<threadId>`, with D341's permissions), issued with the
+  `jhin.agent-codex:<threadId>`), issued with the
   process and revoked when it is closed or exits, so a later turn on the same
-  app-server reuses it. The server goes into `thread/start`'s and
+  app-server reuses it. Codex calls MCP tools without Jhin's approval, so
+  only a thread with full access gets D341's writing permissions; any other
+  mode gets its reading ones (`*.read`, `projects.browse`), and the mode's
+  writes are part of the launch key. The server goes into `thread/start`'s and
   `thread/resume`'s config as `mcp_servers.jhin` (`url`, `http_headers` with
   the credential, a 65-minute `tool_timeout_sec`, T3's), so the token is in
   neither Codex's argv nor its commands' environment. The developer
@@ -678,10 +681,9 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 - Subagent threads (`collabAgentToolCall`, `subAgentActivity`) and their
   transcripts; background terminals Codex keeps after a turn.
 - MCP elicitations, app access requests and MCP apps.
-- Holding Codex's calls to the node's tools (D889) to the thread's runtime
-  mode, as Claude's writing tools are (D340): Codex calls MCP tools without
-  Jhin's approval, with all of D341's permissions, as T3's Codex calls its
-  own; until then the config's `mcp: false` keeps them away from Codex.
+- Asking before Codex's writing calls to the node's tools (D889), as
+  Claude's are asked for (D340), so a supervised thread's Codex can write
+  through them too: today only full access gets the writing permissions.
 - Usage limits and rate-limit windows (`account/rateLimits/*`) and T3's
   usage-limit wording with the reset time.
 - ChatGPT sign-in from Jhin, several Codex accounts per node and shadow
