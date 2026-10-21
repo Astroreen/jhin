@@ -1,4 +1,4 @@
-import { visitKey, type ThreadRecord } from "@jhin/client-api";
+import { lastVisitOf, visitKey, type ThreadRecord } from "@jhin/client-api";
 import { describe, expect, it } from "vite-plus/test";
 
 import { isUnread } from "../src/lib/sidebar-order.ts";
@@ -62,5 +62,33 @@ describe("visits", () => {
   it("starts empty from unreadable storage", () => {
     expect(createVisits(memoryStorage({ "jhin.visits": "[1,2]" })).snapshot()).toEqual({});
     expect(createVisits(memoryStorage({ "jhin.visits": "{" })).snapshot()).toEqual({});
+  });
+});
+
+describe("visits shared through the thread's node (D485)", () => {
+  it("tells the node a visit that moves it forward, once, and a mark unread", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    let recorded: string | undefined = LATER;
+    const visits = createVisits(memoryStorage(), {
+      record: () => (recorded === undefined ? thread() : { ...thread(), lastVisitedAt: recorded }),
+      call: async (_target, method, params) => {
+        calls.push({ method, params });
+      },
+    });
+    const node = { node: "a" };
+    // Not past what the node has: nothing to tell.
+    visits.visit(node, "t1", AT);
+    expect(calls).toEqual([]);
+    recorded = undefined;
+    visits.visit(node, "t1", LATER);
+    visits.visit(node, "t1", LATER);
+    expect(calls).toEqual([{ method: "threads.visit", params: { threadId: "t1", at: LATER } }]);
+    visits.markUnread(node, "t1");
+    expect(calls.at(-1)).toEqual({ method: "threads.mark-unread", params: { threadId: "t1" } });
+  });
+
+  it("reads the node's visit over this device's own", () => {
+    expect(lastVisitOf({ ...thread(), lastVisitedAt: AT }, LATER)).toBe(AT);
+    expect(lastVisitOf(thread(), LATER)).toBe(LATER);
   });
 });

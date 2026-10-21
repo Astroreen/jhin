@@ -83,6 +83,8 @@ export interface Loaded {
   readonly original: unknown;
   /** The file's part as edited; text that is no value yet stays `Unparsed`. */
   readonly value: unknown;
+  /** The file changed on the node while it was edited; the edits sit on top (D484). */
+  readonly rebased?: boolean;
 }
 
 const loadedFrom = (section: string, layer: ConfigLayer, read: ConfigRead): Loaded => ({
@@ -98,10 +100,10 @@ const loadedFrom = (section: string, layer: ConfigLayer, read: ConfigRead): Load
  * without edits, the new file; with edits, each edited path set again on top
  * of the new file, and `rebased` says so.
  */
-export function rebase(current: Loaded, next: ConfigRead): Loaded & { readonly rebased: boolean } {
+export function rebase(current: Loaded, next: ConfigRead): Loaded {
   const original = next.layers[current.layer] ?? {};
   // The file as already known (the echo of this page's own save): nothing to say.
-  if (equal(original, current.original)) return { ...current, read: next, rebased: false };
+  if (equal(original, current.original)) return { ...current, read: next };
   const edits = configEdits(current.original, current.value);
   if (edits.length === 0)
     return { ...current, read: next, original, value: original, rebased: false };
@@ -125,8 +127,8 @@ export function readBack(
   if (current?.section !== section) return current;
   const original = next.layers[current.layer] ?? {};
   return equal(current.value, sent)
-    ? { ...current, read: next, original, value: original }
-    : { ...current, read: next, original };
+    ? { ...current, read: next, original, value: original, rebased: false }
+    : { ...current, read: next, original, rebased: false };
 }
 
 /**
@@ -291,8 +293,6 @@ function ConfigEditor({
   const loadedNow = useRef(loaded);
   loadedNow.current = loaded;
   const [outcomes, setOutcomes] = useState<readonly Outcome[]>([]);
-  /** The section changed on the node while it was being edited (D484). */
-  const [rebased, setRebased] = useState(false);
   const [pending, setPending] = useState<readonly Pending[]>([]);
   const members = useMeshMembers(mesh, connection.id) ?? [];
   const self = members.find((member) => member.self);
@@ -343,12 +343,7 @@ function ConfigEditor({
           const current = loadedNow.current;
           if (current?.section !== section || started !== reads.current) return;
           // Rebased onto whatever the editor holds by now, edits made during the read included.
-          setLoaded((latest) => {
-            if (latest?.section !== section) return latest;
-            const { rebased: _rebased, ...updated } = rebase(latest, next);
-            return updated;
-          });
-          if (rebase(current, next).rebased) setRebased(true);
+          setLoaded((latest) => (latest?.section === section ? rebase(latest, next) : latest));
         })
         // Unreadable now: the next change, a save or a reload reads it again.
         .catch(() => undefined);
@@ -390,7 +385,6 @@ function ConfigEditor({
   const choose = async (next: string) => {
     if (next === section || !(await discard())) return;
     setOutcomes([]);
-    setRebased(false);
     setAsJson(false);
     setSection(next);
   };
@@ -399,7 +393,6 @@ function ConfigEditor({
   const chooseLayer = async (next: ConfigLayer) => {
     if (next === layer || !(await discard())) return;
     setOutcomes([]);
-    setRebased(false);
     setLayer(next);
   };
   const other: ConfigLayer = layer === "node" ? "project" : "node";
@@ -425,7 +418,6 @@ function ConfigEditor({
     reads.current += 1;
     // The previous save's outcome is not this one's.
     setOutcomes([]);
-    setRebased(false);
     try {
       const onlySelf = self === undefined || (targets.length === 1 && targets[0] === self.nodeId);
       if (onlySelf) {
@@ -579,7 +571,7 @@ function ConfigEditor({
                 {form.description}
               </p>
             )}
-            {rebased && edited ? (
+            {loaded.rebased === true && edited ? (
               <p className="text-xs text-info-foreground" role="status">
                 Changed on the node while you edited; your changes are kept on top of it.
               </p>

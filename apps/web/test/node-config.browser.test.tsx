@@ -78,7 +78,9 @@ describe("a section changed on the node while it is shown (D484)", () => {
 
   it("says nothing for the echo of its own save", () => {
     const typed = { ...shown, value: { x: 2, nested: { a: 1, b: 2 } } };
-    expect(rebase(typed, shown.read)).toMatchObject({ value: typed.value, rebased: false });
+    const echoed = rebase(typed, shown.read);
+    expect(echoed.value).toEqual(typed.value);
+    expect(echoed.rebased).toBeFalsy();
   });
 
   it("keeps the edits on top of the new file", () => {
@@ -109,6 +111,7 @@ describe("reading a section back after a save", () => {
       read: saved,
       original: { x: 2 },
       value: { x: 2 },
+      rebased: false,
     });
   });
 
@@ -118,6 +121,7 @@ describe("reading a section back after a save", () => {
       ...typed,
       read: saved,
       original: { x: 2 },
+      rebased: false,
     });
   });
 

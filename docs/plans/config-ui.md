@@ -214,7 +214,8 @@ rules of the form below), the decision says so.
 - **D484. Clients follow it.** The builtin client plugin
   `jhin.node-config-feed` follows `host/config` on every connection and
   emits the client event `node.config.changed` (`{ connection, layer,
-  sections }`). `client.machines@1` asks a connection's
+  sections, all? }`, `@jhin/client-api`); a connection that opens again
+  emits it with `all: true`, since nothing is replayed while it was away. `client.machines@1` asks a connection's
   `host.identity` again when `jhin.host` changed there (D132 asked only on
   reconnect and after this page saved). The node config page reads the
   shown section again when it changed: an editor without changes shows the
@@ -419,3 +420,8 @@ A stack of PRs, each on the previous one. Public API, all additive:
    `node.config.changed`), `apps/web/test/node-config.browser.test.tsx`
    (`rebase`) and Playwright "D483, D484: a change made elsewhere reaches the
    open page".
+4. Visits shared by every device (D485): `threads.visit`,
+   `threads.mark-unread`, `ThreadRecord.lastVisitedAt` and `lastVisitOf` in
+   `@jhin/client-api`. The proof: `plugins/threads/test/arrangement.test.ts`
+   ("visits shared by every device"), `apps/web/test/thread-status.test.ts`
+   ("visits shared through the thread's node").

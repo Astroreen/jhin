@@ -1,4 +1,4 @@
-import { visitKey, type ThreadVisits } from "@jhin/client-api";
+import { visitKey, type NodeTarget, type ThreadRecord, type ThreadVisits } from "@jhin/client-api";
 import type { Disposable } from "@jhin/sdk";
 
 const STORAGE_KEY = "jhin.visits";
@@ -7,7 +7,21 @@ const STORAGE_KEY = "jhin.visits";
  * The visits of this device (`client.visits@1`), so finished turns can show as
  * unread. Kept in `storage`; a change made in another tab is taken in.
  */
-export function createVisits(storage: Storage = localStorage): ThreadVisits & Disposable {
+/** The nodes visits are shared through (D485): a thread's record, and its node's commands. */
+export interface VisitNodes {
+  record(target: NodeTarget, threadId: string): ThreadRecord | undefined;
+  call(target: NodeTarget, method: string, params: unknown): Promise<unknown>;
+}
+
+export function createVisits(
+  storage: Storage = localStorage,
+  nodes?: VisitNodes,
+): ThreadVisits & Disposable {
+  /** The latest visit sent per thread, so each moves the node forward once. */
+  const sent = new Map<string, string>();
+  // A node that cannot take it (older, unreachable) keeps this device's visit only.
+  const tell = (target: NodeTarget, method: string, params: unknown) =>
+    void nodes?.call(target, method, params).catch(() => undefined);
   const listeners = new Set<() => void>();
   let seen: Readonly<Record<string, string>> = {};
   const load = () => {
@@ -46,10 +60,19 @@ export function createVisits(storage: Storage = localStorage): ThreadVisits & Di
       if (seen[key] !== undefined && seen[key] >= at) return;
       seen = { ...seen, [key]: at };
       save();
+      // Shared through the thread's node when it moves the node's visit forward (D485).
+      const recorded = nodes?.record(target, threadId)?.lastVisitedAt;
+      const last = sent.get(key);
+      if ((recorded !== undefined && recorded >= at) || (last !== undefined && last >= at)) return;
+      sent.set(key, at);
+      tell(target, "threads.visit", { threadId, at });
     },
     markUnread(target, threadId) {
-      seen = { ...seen, [visitKey(target, threadId)]: "1970-01-01T00:00:00.000Z" };
+      const key = visitKey(target, threadId);
+      seen = { ...seen, [key]: "1970-01-01T00:00:00.000Z" };
+      sent.delete(key);
       save();
+      tell(target, "threads.mark-unread", { threadId });
     },
     subscribe(listener) {
       listeners.add(listener);

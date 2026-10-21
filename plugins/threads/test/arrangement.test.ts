@@ -17,6 +17,7 @@ interface Thread {
   snoozedUntil?: string;
   snoozedAt?: string;
   lastSnoozeWakeAt?: string;
+  lastVisitedAt?: string;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -473,5 +474,36 @@ describe("jhin.threads: a drop as one write (D449)", () => {
       await client.call("threads.arrange", { steps: [{ op: "unpin", threadId: thread.id }] }),
     ).toEqual({ threads: [] });
     expect(index.events.length).toBe(appended);
+  });
+});
+
+describe("jhin.threads: visits shared by every device (D485)", () => {
+  it("moves a thread's visit forward only, without counting it as activity", async () => {
+    const { client, thread, record } = await withThread();
+    const later = "2026-10-21T12:00:00.000Z";
+    const seen = record((item) => item.lastVisitedAt === later);
+    const visited = await client.call<Thread>("threads.visit", { threadId: thread.id, at: later });
+    expect(visited.lastVisitedAt).toBe(later);
+    expect(visited.updatedAt).toBe(thread.updatedAt);
+    // Every client following the index hears of it.
+    await seen;
+    const earlier = await client.call<Thread>("threads.visit", {
+      threadId: thread.id,
+      at: "2026-10-20T12:00:00.000Z",
+    });
+    expect(earlier.lastVisitedAt).toBe(later);
+  });
+
+  it("marks the latest completed turn unread: the visit goes to just before it ended", async () => {
+    const { client, thread, turn } = await withThread();
+    await expect(client.call("threads.mark-unread", { threadId: thread.id })).rejects.toMatchObject(
+      {
+        code: "NO_COMPLETED_TURN",
+      },
+    );
+    const done = await turn();
+    await client.call("threads.visit", { threadId: thread.id, at: done.lastTurn!.at });
+    const unread = await client.call<Thread>("threads.mark-unread", { threadId: thread.id });
+    expect(Date.parse(unread.lastVisitedAt!)).toBe(Date.parse(done.lastTurn!.at) - 1);
   });
 });
