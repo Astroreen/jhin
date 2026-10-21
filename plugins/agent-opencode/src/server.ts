@@ -374,12 +374,14 @@ export function createServerOwner(options: {
   };
 
   /** Opens the event stream when none is open: it carries every session's events. */
-  const ensureStream = (server: Running): Promise<void> => {
-    if (server.stream !== undefined) return Promise.resolve();
+  const ensureStream = async (server: Running): Promise<void> => {
+    if (server.stream !== undefined) return;
     server.opening ??= openStream(server).finally(() => {
       server.opening = undefined;
     });
-    return server.opening;
+    await server.opening;
+    // A reconnect under way when this began, which gave up: no stream to listen on.
+    if (server.stream === undefined && !server.stopped) throw new OpenCodeError(RECONNECT_FAILED);
   };
 
   /**
@@ -392,6 +394,8 @@ export function createServerOwner(options: {
       if (server.stopped || server.exited) throw new Error("The OpenCode server is gone.");
       try {
         await openStream(server);
+        // Stopped while it opened: the stream was closed at once.
+        if (server.stream === undefined) throw new Error("The OpenCode server is gone.");
       } catch (error) {
         if (left <= 1) throw error;
         await new Promise<void>((resolve) => {

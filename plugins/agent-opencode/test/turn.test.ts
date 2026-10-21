@@ -8,6 +8,7 @@ import {
   DECLINED,
   RECONNECT_FAILED,
   SESSION_GONE,
+  STREAM_LOST,
   STILL_STOPPING,
   declinedNote,
   sessionRules,
@@ -1081,6 +1082,44 @@ describe("jhin.agent-opencode: interrupts and lost streams", () => {
     fake.active.delete("ses_1");
     fake.dropStreams();
     expect((await failed).message).toBe(message);
+  });
+
+  it("fails as lost a turn whose prompt its history does not show", async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => (started = resolve));
+    const { fake, runtime } = await setup({
+      scripts: [
+        (play) => {
+          play.emit("session.execution.started", { sessionID: play.sessionId });
+          started();
+        },
+      ],
+    });
+    const failed = failure(runtime.startTurn(request()));
+    await running;
+    fake.record("ses_1", { id: "msg_i0", type: "idle", outcome: "succeeded" });
+    fake.active.delete("ses_1");
+    fake.dropStreams();
+    expect((await failed).message).toBe(STREAM_LOST);
+  });
+
+  it("fails a turn started while a lost stream does not open again", async () => {
+    const timers = manualClock();
+    const env = await connected({ scripts: [answer("First")] }, {}, timers.clock);
+    cleanups.push(env.cleanup);
+    await drain(env.runtime.startTurn(request()));
+    env.fake.refuseStreams(5);
+    const reconnecting = env.fake.next("GET", "/api/event");
+    env.fake.dropStreams();
+    // Started once the stream is being opened again: it waits for that, sending nothing.
+    await reconnecting;
+    const failed = failure(env.runtime.startTurn(request({ turnId: "turn-2" })));
+    for (let attempt = 1; attempt < 5; attempt++) {
+      await timers.armed(2_000);
+      timers.fire(2_000);
+    }
+    expect((await failed).message).toBe(RECONNECT_FAILED);
+    expect(env.fake.calls("POST", "/prompt")).toHaveLength(1);
   });
 
   it("goes on with a turn still running once its stream is open again", async () => {

@@ -902,21 +902,23 @@ OpenCode 2 behaviour.
 
 - **D887. A lost event stream is opened again and the turn read back
   (W24).** A stream that broke or went silent (D330) is opened again up to
-  five times, 2 s apart (T3's `RECONNECT_ATTEMPTS` and `RECONNECT_DELAY`);
-  a server that exited is not waited for. Once it is open, each running turn
+  five times, 2 s apart (T3's `RECONNECT_ATTEMPTS` and `RECONNECT_DELAY`); a
+  server that exited is not waited for. Once it is open, each running turn
   reads back what it missed (T3's `backfill` and `reconcile`): the session's
   messages newest first, back to the turn's own prompt, are replayed as the
   events they would have been (a text, reasoning or tool completes once,
   streamed or read back), and a session that `GET /api/session/active`,
-  asked after the history, no longer lists ended while the stream was down: completed when its last
-  `idle` message says `succeeded`, failed with "OpenCode ended the turn
-  with an error while Jhin was reconnecting." for `failed`, else as
-  stopped (a restarted server writes no `idle` for the execution it lost,
-  T3's reading). A turn still running goes on with the stream's events. A stream
-  that does not open again fails its turns with "The OpenCode event stream
-  was lost and could not reconnect." (T3's wording), the session marked
-  unsettled as before; one that cannot be read back fails as lost.
-  `Connection` gains `onReconnected`.
+  asked after the history, no longer lists ended while the stream was down:
+  completed when its last `idle` message says `succeeded`, failed with
+  "OpenCode ended the turn with an error while Jhin was reconnecting." for
+  `failed`, else as stopped (a restarted server writes no `idle` for the
+  execution it lost, T3's reading). A turn still running goes on with the
+  stream's events. A stream that does not open again fails its turns with
+  "The OpenCode event stream was lost and could not reconnect." (T3's
+  wording), the session marked unsettled as before; one that cannot be read
+  back, or whose prompt is not among the last 1000 messages while the
+  session no longer runs, fails as lost; read-backs of one turn run one
+  after another. `Connection` gains `onReconnected`.
 
 ### Not ported
 

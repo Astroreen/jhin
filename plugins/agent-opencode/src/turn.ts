@@ -76,6 +76,8 @@ const CLEAR_REJECTIONS = new Set([
 ]);
 
 const INTERRUPT_TIMEOUT_MS = 10_000;
+/** How far back a read-back looks for a turn's prompt: 50 messages a page (D887). */
+const MAX_HISTORY_PAGES = 20;
 /** How long OpenCode may take to answer a prompt (it queues it and answers at once). */
 const PROMPT_TIMEOUT_MS = 60_000;
 /** Tool output kept in the thread's log; longer output is cut. */
@@ -769,8 +771,10 @@ export function openCodeTurn(
         finish?.(interrupted ? undefined : new Error(reason));
       });
       // A stream opened again lost what OpenCode sent meanwhile: it is read back (D887).
+      /** The read-back under way: a second reconnect reads back after it. */
+      let reconciling: Promise<void> = Promise.resolve();
       const stopReconnected = connection.onReconnected(() => {
-        void reconcile().catch((error: unknown) => {
+        reconciling = reconciling.then(reconcile).catch((error: unknown) => {
           deps.log?.("could not read back the opencode turn", { error: String(error) });
           markUnsettled();
           finish?.(interrupted ? undefined : new Error(STREAM_LOST));
@@ -787,6 +791,7 @@ export function openCodeTurn(
         const read: SessionMessage[] = [];
         let cursor: string | undefined;
         let found = false;
+        let pages = 0;
         do {
           const page = await client.messages(sessionId, cursor);
           for (const message of page.data) {
@@ -797,9 +802,16 @@ export function openCodeTurn(
             read.push(message);
           }
           cursor = page.data.length === 0 ? undefined : page.cursor?.next;
-        } while (!found && cursor !== undefined);
-        // Without its prompt the history holds only earlier turns: none of it is this one's.
-        const recent = found ? read : [];
+        } while (!found && cursor !== undefined && ++pages < MAX_HISTORY_PAGES);
+        // Read after the history: a turn that ends in between is not judged on an old answer.
+        const active = await client.active();
+        if (!found) {
+          // Its prompt is not in the history read: nothing to judge the turn by. A session
+          // still running goes on; one that is not was lost with the stream.
+          if (sessionId in active) return;
+          throw new Error(STREAM_LOST);
+        }
+        const recent = read;
         for (const message of recent.toReversed()) {
           if (message.type !== "assistant") continue;
           const ordinals = { text: 0, reasoning: 0 };
@@ -838,8 +850,6 @@ export function openCodeTurn(
             }
           }
         }
-        // Read after the history: a turn that ends in between is not judged on an old answer.
-        const active = await client.active();
         if (sessionId in active) return;
         // Not running and no `idle` after the prompt: a restarted server writes none for the
         // execution it lost (T3's reading), so the turn was stopped.
