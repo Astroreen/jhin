@@ -402,8 +402,9 @@ export function followTurns(
       cwd === undefined
         ? []
         : await Promise.all(
+            // An agent's generation in the worktree shares it as well (D745).
             (
-              (await context.commands.execute("threads.list", {})) as {
+              (await context.commands.execute("threads.list", { includeGenerations: true })) as {
                 id: string;
                 worktreePath?: string;
               }[]

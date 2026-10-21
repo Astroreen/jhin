@@ -4,6 +4,7 @@ import { definePlugin, type LogFields, type Logger } from "@jhin/sdk";
 
 import { builtin, type BuiltinPlugin } from "./lib/builtin.ts";
 import { chatPlugin } from "./plugins/chat/index.tsx";
+import { civilizationPlugin } from "./plugins/civilization.tsx";
 import { commandPalettePlugin } from "./plugins/command-palette.tsx";
 import { connectionsPlugin } from "./plugins/connections.ts";
 import { deviceSyncPlugin } from "./plugins/device-sync.ts";
@@ -11,6 +12,8 @@ import { inspectorPlugin } from "./plugins/inspector.tsx";
 import { keybindingsPlugin } from "./plugins/keybindings.ts";
 import { machinesPlugin } from "./plugins/machines.tsx";
 import { meshPlugin } from "./plugins/mesh.ts";
+import { modeSwitcherPlugin } from "./plugins/mode-switcher.tsx";
+import { modesPlugin } from "./plugins/modes.ts";
 import { navigationPlugin } from "./plugins/navigation.ts";
 import { nodeConfigFeedPlugin } from "./plugins/node-config-feed.ts";
 import { notificationsPlugin } from "./plugins/notifications.tsx";
@@ -152,6 +155,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     nodeConfigFeedPlugin,
     deviceSyncPlugin,
     navigationPlugin,
+    modesPlugin,
     meshPlugin,
     threadsStorePlugin,
     machinesPlugin,
@@ -170,6 +174,8 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     schedulerPlugin,
     notificationsPlugin,
     inspectorPlugin,
+    modeSwitcherPlugin,
+    civilizationPlugin,
   ];
 }
 

@@ -475,10 +475,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         const projects = (await context.commands.execute("projects.list", {})) as ProjectRef[];
         for (const project of projects) track(project);
         // The worktrees threads already work in; later moves come through the index.
-        const listed = (await context.commands.execute("threads.list", {})) as Record<
-          string,
-          unknown
-        >[];
+        // Agents' generations work in worktrees too (D745).
+        const listed = (await context.commands.execute("threads.list", {
+          includeGenerations: true,
+        })) as Record<string, unknown>[];
         for (const thread of listed) {
           if (typeof thread["id"] === "string") await noteDir(thread["id"], thread);
         }
@@ -1334,7 +1334,10 @@ export function activateSourceControl(context: PluginContext): SourceControl {
 
   /** The threads working in each worktree, by real path, as the threads plugin has them now. */
   async function worktreeUsers(): Promise<Map<string, string[]>> {
-    const listed = (await context.commands.execute("threads.list", {}).catch(() => [])) as {
+    // A worktree an agent's generation works in is in use as well (D745).
+    const listed = (await context.commands
+      .execute("threads.list", { includeGenerations: true })
+      .catch(() => [])) as {
       id: string;
       worktreePath?: string;
     }[];
