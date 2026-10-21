@@ -1,11 +1,13 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/diffs/DiffFileTree.tsx
-// and apps/web/src/pierre-tree-theme.ts. Pierre's own file icons stand in for T3's.
+// and apps/web/src/pierre-tree-theme.ts.
 import { useStableCallback } from "@pierre/diffs/react";
 import type { GitStatusEntry } from "@pierre/trees";
 import { FileTree, useFileTree, useFileTreeSelector } from "@pierre/trees/react";
 import { Button, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
 import { ChevronsDownUpIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+
+import { T3_PIERRE_ICONS } from "../../../lib/pierre-icons.ts";
 
 import {
   areAllDirectoriesExpanded,
@@ -86,6 +88,7 @@ export function DiffFileTree({
     density: "compact",
     flattenEmptyDirectories: true,
     initialExpansion: "open",
+    icons: T3_PIERRE_ICONS,
     onSelectionChange: handleSelectionChange,
     paths: [],
     search: false,

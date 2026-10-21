@@ -482,6 +482,36 @@ describe("the diff panel", () => {
     mounted.unmount();
   });
 
+  it("draws the tree's files with T3's icons (D923)", async () => {
+    const added = (path: string) =>
+      [
+        `diff --git a/${path} b/${path}`,
+        "new file mode 100644",
+        "--- /dev/null",
+        `+++ b/${path}`,
+        "@@ -0,0 +1 @@",
+        "+x",
+      ].join("\n");
+    const { value } = services(viewWith(status()), {
+      "git.diff": { ...diff, patch: `${added("AGENTS.md")}\n${added("src/Main.kt")}\n` },
+    });
+    const Panel = createDiffPanel(value);
+    const mounted = mount(<Panel />);
+    await userEvent.click(page.getByRole("button", { name: "Show file tree" }));
+    const tree = page.getByRole("tree");
+    await expect.element(tree.getByRole("treeitem", { name: "Main.kt" })).toBeVisible();
+    const iconOf = (name: string) =>
+      [...tree.getByRole("treeitem", { name }).element().querySelectorAll("use")].map((use) =>
+        use.getAttribute("href"),
+      );
+    // Icons Pierre's own set does not have: T3's additions.
+    expect(iconOf("AGENTS.md")).toContain("#t3-file-icon-agents");
+    expect(iconOf("Main.kt")).toContain("#t3-file-icon-kotlin");
+    // The tree's state is kept on the device: leave it closed for the tests after this one.
+    await userEvent.click(page.getByRole("button", { name: "Hide file tree" }));
+    mounted.unmount();
+  });
+
   it("lists the files in a tree and reveals the one chosen", async () => {
     const { value } = services(viewWith(status()), { "git.diff": diff });
     const Panel = createDiffPanel(value);
@@ -1378,6 +1408,10 @@ describe("checkpoints in the client", () => {
     const file = [...card.querySelectorAll("button")].find((button) =>
       button.textContent?.includes("b.ts"),
     )!;
+    // T3's file icons (D923): a TypeScript file shows TypeScript's.
+    expect(file.querySelector("svg[data-pierre-icon]")?.getAttribute("data-icon-token")).toBe(
+      "typescript",
+    );
     act(() => file.click());
     expect(opened).toEqual(["t1"]);
     // The latest turn is "Latest turn", as T3 names it.

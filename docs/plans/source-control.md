@@ -404,6 +404,16 @@ with screenshots).
   T3's toast "Unable to reveal file" with the path and the node's reason. T3's
   WSL reveal through Windows File Explorer is Deferred.
 
+- **D923. T3's file icons** (`pierre-icons.ts`, `PierreEntryIcon.tsx`):
+  Pierre's complete icon set with T3's additions (AGENTS.md, pnpm, video,
+  C#, Dart, diff, Elixir, Haskell, Java, Kotlin, Lua, PHP, PowerShell, R,
+  Scala, TOML, XML), coloured per theme with T3's palette. They live in the
+  web client's `lib/` so every place that shows a file uses the same ones:
+  the diff panel's file tree takes them as its `icons`, and the changed
+  files card draws each file with `PierreEntryIcon` (Lucide's folder and
+  file icons for folders and as the fallback, as in T3). T3's icons by MIME
+  type (for previews and attachments) come with the surface that needs them.
+
 ### Checkpoints, reverting and worktrees (W3, `t3-roadmap.md`)
 
 - **D240. Reference: T3 Code `eb7b35ac` (D53)**: `apps/server/src/vcs/GitVcsDriver.ts`
@@ -1021,7 +1031,7 @@ with the node's token, and without one).
   the scratch one, sparse checkouts, nested checkpoint scopes (a subagent's
   own checkpoints), retries on `index.lock` contention and T3's per-path
   batching of a long turn diff; the changed files card's per-file context
-  menu and file-type icons (T3's `PierreEntryIcon`).
+  menu.
 - Reverting, from W3 (D257): T3's "Roll back" of a checkpoint item in the item
   inspector (Jhin has no item inspector yet; it comes with that panel), recreating a missing managed worktree before a rollback, and the
   error strings T3 shows for a disconnected environment or a provider without
@@ -1083,10 +1093,13 @@ with the node's token, and without one).
   on a file's name opens T3's file panel; Jhin has none, so it opens the
   editor, D286), loading the patches of a truncated diff file by file
   (`useReviewFilePatches`), refusing to expand a file whose working tree copy
-  no longer matches the patch shown (D921), find in the diff, T3's own file
-  icons in the tree, revealing a file of a WSL node in Windows File Explorer
+  no longer matches the patch shown (D921), find in the diff, revealing a file of a WSL node in Windows File Explorer
   (D922), opening a remote node's file in a local editor (T3's remote editor
   URLs), and the pop-out (non-inline) panel mode.
+- The diff panel test "shows the branch's changes with Pierre" counts Shiki's
+  highlighted spans as soon as the text shows; highlighting comes later from
+  a worker, so under load it can count none. It should wait for a
+  highlighted token instead (seen in W22, D923).
 - Settling a thread on a merged pull request (T3's sidebar) and the
   terminal indicator (the terminal plugin contributes it to
   `sidebar.thread.indicators`). The branch-mismatch warning is done
