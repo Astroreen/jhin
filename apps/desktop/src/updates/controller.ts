@@ -102,7 +102,8 @@ export class UpdateController {
   readonly #listeners = new Set<(state: DesktopUpdateState) => void>();
   #state: DesktopUpdateState;
   #action: UpdateAction | undefined;
-  #timers: ReturnType<typeof setTimeout>[] = [];
+  #startupCheck: ReturnType<typeof setTimeout> | undefined;
+  #pollChecks: ReturnType<typeof setInterval> | undefined;
 
   constructor(options: UpdateControllerOptions) {
     this.#options = options;
@@ -139,18 +140,20 @@ export class UpdateController {
 
   /** Starts T3's background checks: one after start, then one every few minutes. */
   start(): void {
-    if (!this.enabled || this.#timers.length > 0) return;
+    if (!this.enabled || this.#pollChecks !== undefined) return;
     const run = (reason: string) =>
       void this.check(reason).catch((error: unknown) =>
         this.#log("background update check failed", { reason, error: describe(error) }),
       );
-    this.#timers.push(setTimeout(() => run("startup"), AUTO_UPDATE_STARTUP_DELAY_MS));
-    this.#timers.push(setInterval(() => run("poll"), AUTO_UPDATE_POLL_INTERVAL_MS));
+    this.#startupCheck = setTimeout(() => run("startup"), AUTO_UPDATE_STARTUP_DELAY_MS);
+    this.#pollChecks = setInterval(() => run("poll"), AUTO_UPDATE_POLL_INTERVAL_MS);
   }
 
   stop(): void {
-    for (const timer of this.#timers) clearTimeout(timer);
-    this.#timers = [];
+    clearTimeout(this.#startupCheck);
+    clearInterval(this.#pollChecks);
+    this.#startupCheck = undefined;
+    this.#pollChecks = undefined;
   }
 
   async check(reason = "manual"): Promise<DesktopUpdateCheckResult> {

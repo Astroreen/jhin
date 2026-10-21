@@ -31,7 +31,8 @@ const OUTPUT_LIMIT = 8_000;
 
 /** The node's home, as the CLI resolves it: `$JHIN_HOME` or `~/.jhin` (D512). */
 function localNodeHome(env: NodeJS.ProcessEnv = process.env): string {
-  return env["JHIN_HOME"] ?? Path.join(Os.homedir(), ".jhin");
+  // An empty JHIN_HOME counts as unset.
+  return env["JHIN_HOME"] || Path.join(Os.homedir(), ".jhin");
 }
 
 /**
