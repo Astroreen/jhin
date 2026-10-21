@@ -17,6 +17,8 @@ import {
   isTerminalLinkActivation,
   resolveWrappedTerminalLinkRange,
   wrappedTerminalLinkRangeIntersectsBufferLine,
+  resolvePathLinkTarget,
+  type FilePathPosition,
 } from "./links.ts";
 import { muteRepliesWhileReplaying } from "./replay.ts";
 import { terminalThemeFromApp } from "./theme.ts";
@@ -87,6 +89,8 @@ export function TerminalViewport(props: {
   onSessionExited: (reason: "exited" | "closed") => void;
   /** "Add to chat" for a selection; without it the menus leave the item out. */
   onAddToChat?: ((selection: TerminalContextSelection) => void) | undefined;
+  /** Opens a path found in the output in an editor (D965); without it paths are not links. */
+  onOpenPath?: ((target: FilePathPosition) => Promise<unknown>) | undefined;
   focusRequestId: number;
   autoFocus: boolean;
   /** Shown: a hidden terminal stays mounted and fits again when it shows (D474). */
@@ -98,6 +102,9 @@ export function TerminalViewport(props: {
 }) {
   const { client, threadId, terminalId, cwd } = props;
   const containerRef = useRef<HTMLDivElement>(null);
+  // Read when a link is hovered: the terminal's effect outlives a render.
+  const openPathRef = useRef(props.onOpenPath);
+  openPathRef.current = props.onOpenPath;
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const runningRef = useRef(false);
@@ -188,9 +195,10 @@ export function TerminalViewport(props: {
           callback(undefined);
           return;
         }
+        const openPath = openPathRef.current;
         const found = extractTerminalLinks(wrapped.text)
-          // A path has nowhere to open yet: only URLs are links.
-          .filter((match) => match.kind === "url")
+          // A path is a link while something opens it (D965).
+          .filter((match) => match.kind === "url" || openPath !== undefined)
           .map((match) => ({ match, range: resolveWrappedTerminalLinkRange(wrapped, match) }))
           .filter(({ range }) =>
             wrappedTerminalLinkRangeIntersectsBufferLine(range, bufferLineNumber),
@@ -203,7 +211,16 @@ export function TerminalViewport(props: {
                 range,
                 activate(event: MouseEvent) {
                   if (!isTerminalLinkActivation(event)) return;
-                  window.open(match.text, "_blank", "noopener,noreferrer");
+                  if (match.kind === "url") {
+                    window.open(match.text, "_blank", "noopener,noreferrer");
+                    return;
+                  }
+                  // T3 writes why a path did not open into the terminal itself.
+                  openPath?.(resolvePathLinkTarget(match.text, cwd)).catch((error: unknown) =>
+                    terminal.write(
+                      `\r\n[terminal] ${(error as Error).message || "Unable to open path"}\r\n`,
+                    ),
+                  );
                 },
               })),
         );

@@ -154,8 +154,9 @@ export const terminalPlugin = builtin(
           });
       };
       /** Without the chat plugin there is no composer: the menus leave the item out. */
-      const canAddToChat = () =>
-        context.commands.list().some((command) => command.name === "chat.composer.insert");
+      const hasCommand = (name: string) =>
+        context.commands.list().some((command) => command.name === name);
+      const canAddToChat = () => hasCommand("chat.composer.insert");
       const ui = context.subscriptions.add(createTerminalUiStore());
       const terminals = context.subscriptions.add(createNodeTerminals(connections));
       /** Bumped to put the focus back in the active terminal. */
@@ -393,6 +394,17 @@ export const terminalPlugin = builtin(
               ui.update(key, (current) => setThreadActiveTerminal(current, terminalId))
             }
             onAddToChat={canAddToChat() ? addToChat : undefined}
+            onOpenPath={
+              // T3's openInPreferredEditor, kept by source control (D965).
+              hasCommand("files.open-in-editor")
+                ? (path) =>
+                    context.commands.execute("files.open-in-editor", {
+                      ...target,
+                      threadId,
+                      ...path,
+                    })
+                : undefined
+            }
             onCloseRequest={(terminalId) =>
               void confirmClose(target, threadId, terminalId, labelOf(terminalId))
             }

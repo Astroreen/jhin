@@ -217,3 +217,61 @@ export function wrappedTerminalLinkRangeIntersectsBufferLine(
 ): boolean {
   return range.start.y <= bufferLineNumber && bufferLineNumber <= range.end.y;
 }
+
+// T3's packages/shared/src/fileLinks.ts and path.ts (eb7b35ac): a path link's target (D965).
+
+/** A file and where in it, as a `path:line:column` link names it. */
+export interface FilePathPosition {
+  readonly path: string;
+  readonly line?: number;
+  readonly column?: number;
+}
+
+const POSITION_SUFFIX_CAPTURE_PATTERN = /:(\d+)(?::(\d+))?$/;
+
+function splitFilePathPosition(path: string): FilePathPosition {
+  const match = path.match(POSITION_SUFFIX_CAPTURE_PATTERN);
+  if (!match?.[1]) return { path };
+  const line = Number.parseInt(match[1], 10);
+  const column = match[2] === undefined ? undefined : Number.parseInt(match[2], 10);
+  return {
+    path: path.slice(0, -match[0].length),
+    ...(line > 0 ? { line } : {}),
+    ...(column !== undefined && column > 0 ? { column } : {}),
+  };
+}
+
+const isWindowsAbsolutePath = (value: string) =>
+  value.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(value);
+const isAbsolutePath = (value: string) => value.startsWith("/") || isWindowsAbsolutePath(value);
+const isWindowsPathStyle = (value: string) =>
+  isWindowsAbsolutePath(value) || /[A-Za-z]:\\/.test(value);
+
+function joinPath(base: string, next: string, separator: "/" | "\\"): string {
+  const cleanBase = base.replace(/[\\/]+$/, "");
+  if (separator === "\\") return `${cleanBase}\\${next.replaceAll("/", "\\")}`;
+  return `${cleanBase}/${next.replace(/^\/+/, "")}`;
+}
+
+function inferHomeFromCwd(cwd: string): string | undefined {
+  const posixUser = cwd.match(/^\/Users\/([^/]+)/);
+  if (posixUser?.[1]) return `/Users/${posixUser[1]}`;
+  const posixHome = cwd.match(/^\/home\/([^/]+)/);
+  if (posixHome?.[1]) return `/home/${posixHome[1]}`;
+  return cwd.match(/^([A-Za-z]:[\\/]Users[\\/][^\\/]+)/i)?.[1];
+}
+
+/** T3's resolvePathLinkTarget: `~/` from the home `cwd` shows, a relative path joined to `cwd`. */
+export function resolvePathLinkTarget(rawPath: string, cwd: string): FilePathPosition {
+  const position = splitFilePathPosition(rawPath);
+  const { path } = position;
+  let resolved = path;
+  if (path.startsWith("~/") || (isWindowsPathStyle(cwd) && path.startsWith("~\\"))) {
+    const home = inferHomeFromCwd(cwd);
+    if (home !== undefined)
+      resolved = joinPath(home, path.slice(2), isWindowsPathStyle(home) ? "\\" : "/");
+  } else if (!isAbsolutePath(path)) {
+    resolved = joinPath(cwd, path, isWindowsPathStyle(cwd) ? "\\" : "/");
+  }
+  return { ...position, path: resolved };
+}

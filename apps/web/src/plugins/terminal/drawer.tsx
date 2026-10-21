@@ -41,6 +41,7 @@ import {
 } from "../../lib/terminal-state.ts";
 import type { TerminalChannel } from "./channel.ts";
 import type { TerminalContextSelection } from "./context.ts";
+import type { FilePathPosition } from "./links.ts";
 
 // xterm.js is a chunk of its own, loaded when a terminal first shows (D440).
 const TerminalViewport = lazyChunk(
@@ -136,6 +137,8 @@ export interface TerminalDrawerProps {
   fontSize: number;
   /** "Add to chat" for a selection (D473). */
   onAddToChat?: ((selection: TerminalContextSelection) => void) | undefined;
+  /** Opens a path found in the output (D965). */
+  onOpenPath?: ((target: FilePathPosition) => Promise<unknown>) | undefined;
   client: TerminalChannel;
   threadId: string;
   cwd: string;
@@ -333,6 +336,7 @@ export function TerminalDrawer(props: TerminalDrawerProps) {
       fontSize={props.fontSize}
       key={terminalId}
       onAddToChat={props.onAddToChat}
+      onOpenPath={props.onOpenPath}
       onSessionExited={(reason) => props.onClosed(terminalId, reason)}
       resizeEpoch={resizeEpoch}
       terminalId={terminalId}

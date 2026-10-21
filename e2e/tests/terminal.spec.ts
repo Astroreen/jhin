@@ -152,3 +152,30 @@ test("D472–D474: the selection menu adds to the chat, and the terminals move t
   await expect(panel).toHaveCount(0);
   await expect(drawer.getByRole("group", { name: "Terminal 1" })).toBeVisible();
 });
+
+test("D965: a path in the output opens in the editor, or says why not", async ({ page }) => {
+  await startThread(page, "terminal paths");
+  await page.keyboard.press("ControlOrMeta+j");
+  const terminal = page
+    .getByRole("complementary", { name: "Terminal" })
+    .getByRole("group", { name: "Terminal 1" });
+  const rows = terminal.locator(".xterm-rows");
+  await expect(rows).toContainText("$");
+  // The arithmetic tells the output from the shell echoing what was typed.
+  await page.keyboard.type("echo /tmp/jhin-$((40+2)).txt:3");
+  await page.keyboard.press("Enter");
+  const output = rows.locator("div").filter({ hasText: /^\/tmp\/jhin-42\.txt:3\s*$/ });
+  await expect(output).toHaveCount(1);
+
+  // Ctrl-click (⌘ on macOS): outside the thread's project, the terminal says so, as T3's.
+  // The row redraws as the cursor blinks: it never counts as "stable", so the pointer goes by hand.
+  const row = await output.boundingBox();
+  if (row === null) throw new Error("The output row has no box");
+  await page.mouse.move(row.x + 20, row.y + row.height / 2);
+  await page.keyboard.down("ControlOrMeta");
+  await page.mouse.click(row.x + 20, row.y + row.height / 2);
+  await page.keyboard.up("ControlOrMeta");
+  await expect(rows).toContainText(
+    "[terminal] /tmp/jhin-42.txt is not a file of the thread's project",
+  );
+});
