@@ -128,8 +128,7 @@ function mapSecrets(
   inList = false,
 ): unknown {
   if (value === undefined || value === null) return value;
-  const known = schemas?.map((schema) => deref(schema, root));
-  if (known === undefined) {
+  if (schemas === undefined) {
     if (Array.isArray(value)) {
       return value.map((item, index) =>
         mapSecrets(undefined, item, root, [...path, String(index)], visit, true),
@@ -145,14 +144,21 @@ function mapSecrets(
     }
     return visit(value, path, inList);
   }
-  // Every schema that applies here, its branches included.
+  // Every schema that applies here, its branches included. Seen by the schema
+  // as written (and by its `$ref`), since `deref` builds a new object each time:
+  // a union that refers back to itself is read once.
   const all: Schema[] = [];
-  const add = (schema: Schema) => {
-    if (all.includes(schema)) return;
+  const seen = new Set<unknown>();
+  const add = (raw: unknown) => {
+    const ref = isObject(raw) ? raw["$ref"] : undefined;
+    if (seen.has(raw) || (typeof ref === "string" && seen.has(ref))) return;
+    seen.add(raw);
+    if (typeof ref === "string") seen.add(ref);
+    const schema = deref(raw, root);
     all.push(schema);
-    for (const branch of branchesOf(schema)) add(deref(branch, root));
+    for (const branch of branchesOf(schema)) add(branch);
   };
-  for (const schema of known) add(schema);
+  for (const schema of schemas) add(schema);
   if (all.some((schema) => isSecret(schema, root))) return visit(value, path, inList);
   // A field that takes anything (`z.unknown()`) holds data, not secrets.
   if (all.every(opaque)) return value;

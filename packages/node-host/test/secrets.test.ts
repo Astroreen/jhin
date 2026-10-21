@@ -287,4 +287,19 @@ describe("config secrets (security.md D417)", () => {
       extra: { host: "h", port: 1 },
     });
   });
+
+  it("reads a union that refers back to itself once", () => {
+    const schema = {
+      $defs: {
+        node: {
+          anyOf: [
+            { $ref: "#/$defs/node" },
+            { type: "object", properties: { key: { type: "string", writeOnly: true } } },
+          ],
+        },
+      },
+      $ref: "#/$defs/node",
+    };
+    expect(redactSecrets(schema, { key: "k" })).toEqual({ key: SECRET_REDACTED });
+  });
 });
