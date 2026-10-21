@@ -793,8 +793,17 @@ export const sidebarPlugin = builtin(
                       {preset.label} ({preset.whenLabel})
                     </MenuItem>
                   ))}
-                  <MenuSeparator />
-                  <MenuItem onClick={() => run("sidebar.selection.snooze", {})}>Custom…</MenuItem>
+                  {/* The dialog is another plugin's command: no "Custom…" without it. */}
+                  {context.commands
+                    .list()
+                    .some((command) => command.name === "thread.snooze.choose") ? (
+                    <>
+                      <MenuSeparator />
+                      <MenuItem onClick={() => run("sidebar.selection.snooze", {})}>
+                        Custom…
+                      </MenuItem>
+                    </>
+                  ) : null}
                 </MenuSubPopup>
               </MenuSub>
             ) : null,
