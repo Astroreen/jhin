@@ -62,6 +62,7 @@ import {
   type ComposerHandle,
 } from "./services.ts";
 import { DraftView, ThreadView } from "./thread-view.tsx";
+import { registerThreadDetails } from "./thread-details.tsx";
 import { registerHistory } from "./history.tsx";
 import { implementPlan } from "./plan-follow-up.ts";
 import { createUnconfirmed } from "./unconfirmed.ts";
@@ -676,6 +677,7 @@ export const chatPlugin = builtin(
         dialogs,
         toasts,
       });
+      registerThreadDetails(context, { threads, navigation, slots, keybindings });
     },
   }),
 );

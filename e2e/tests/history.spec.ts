@@ -235,3 +235,41 @@ test("finds text in the thread with mod+f and steps through the matches (D801)",
   await expect(find).toHaveCount(0);
   await expect(message).toBeFocused();
 });
+
+test("lists a thread's parent and forks in the thread details panel, and merges back from it (D802)", async ({
+  page,
+}, info) => {
+  const { message, log } = await thread(page, "plan a picnic");
+  await log.getByRole("article", { name: "Agent" }).first().hover();
+  await log.getByRole("button", { name: "Fork from this response" }).first().click();
+  const heading = page.getByRole("heading", { level: 2 });
+  await expect(heading).toHaveText("plan a picnic fork");
+
+  const toggle = page.getByRole("button", { name: "Toggle thread details panel" });
+  const panel = page.getByRole("region", { name: "Thread details" });
+  const related = panel.getByRole("list", { name: "Related threads" });
+  await toggle.click();
+  await expect(panel.getByRole("heading", { name: "Lineage" })).toBeVisible();
+  await expect(related.getByRole("listitem")).toHaveText([/plan a picnic.*Idle/]);
+  await expect(panel.getByRole("button", { name: "Merge back to plan a picnic" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+
+  await message.fill("bring lemonade");
+  await message.press("Enter");
+  await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText(
+    "Echo: bring lemonade",
+  );
+  // The shortcut opens it too (T3's threadPanel.toggle).
+  await page.keyboard.press("ControlOrMeta+Shift+B");
+  await expect(related.getByRole("listitem")).toHaveText([/plan a picnic.*Done/]);
+  await shoot(page, info, "lineage-fork");
+  await panel.getByRole("button", { name: "Merge back to plan a picnic" }).click();
+  await expect(heading).toHaveText("plan a picnic");
+
+  // The parent lists its fork, which opens from the row.
+  await toggle.click();
+  await expect(related.getByRole("listitem")).toHaveText([/plan a picnic fork.*Done/]);
+  await shoot(page, info, "lineage-parent");
+  await related.getByRole("button", { name: /plan a picnic fork/ }).click();
+  await expect(heading).toHaveText("plan a picnic fork");
+});

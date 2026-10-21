@@ -189,6 +189,7 @@ export {
   type ToastData,
   type ToastPosition,
 } from "./components/toast.tsx";
+export { ThreadDetailsSection } from "./components/thread-details-section.tsx";
 export { Toggle, toggleVariants } from "./components/toggle.tsx";
 export { ToggleGroup, Toggle as ToggleGroupItem } from "./components/toggle-group.tsx";
 export {

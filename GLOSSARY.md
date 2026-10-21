@@ -93,6 +93,10 @@ Words about Jhin:
   event; what shows a thread (agents' history, the timeline, forks, search)
   leaves the **dropped turns** out, while `threads.events` returns the log as
   written for clients to fold. T3 Code reverts to a checkpoint the same way.
+- **Thread details panel** — the panel the chat header's "Toggle thread
+  details panel" opens (T3 Code's thread details card): sections that
+  plugins contribute to the `chat.thread.details` slot, among them
+  **Lineage**, a thread's parent and forks.
 - **Delegated task** — child work a thread hands to an agent of any runtime
   and model (`tasks.delegate`, T3 Code's `delegate_task`): a **child thread**
   (`relationshipToParent: "subagent"`) runs the task prompt, and the parent

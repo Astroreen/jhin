@@ -126,7 +126,9 @@ A config field asks for a control a plugin contributes with
 | `scheduler`        | the Settings → Scheduled tasks page (`scheduled-tasks` section, `scheduler.task.actions` slot)                                                                                                                                                                                                                                                      | `orchestration.md#w11-scheduled-tasks-and-webhooks`                                       |
 
 The `chat` plugin also has T3's "Resume thread" for a stopped turn
-(`chat.thread.resume`) and its find in a thread (`chat.find`, mod+f). → `t3-parity.md#steering-and-history-leftovers-w19`
+(`chat.thread.resume`), its find in a thread (`chat.find`, mod+f) and the
+thread details panel (`chat.thread-details.toggle`, slot `chat.thread.details`)
+with its Lineage section. → `t3-parity.md#steering-and-history-leftovers-w19`
 
 The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 (built, served only by the app's node): window chrome, native menu items
@@ -146,7 +148,9 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 - `jhin serve --plugin-dir <dir>` — loads a plugin package from outside the
   plugin folders, as the dev layer (D15); the desktop app adds its plugin so.
 - `@jhin/ui` also exports the settings layout (`SettingsSection`,
-  `SettingsRow`) and `useNativeTitlebarHeight` (`desktop.md#D514`, `#D515`).
+  `SettingsRow`), `useNativeTitlebarHeight` (`desktop.md#D514`, `#D515`) and
+  `ThreadDetailsSection` for sections of the thread details panel
+  (`t3-parity.md#D802`).
 - `e2e/` — Playwright end-to-end tests.
 - `scripts/verify.ts` (`pnpm verify`), `scripts/pack.ts`,
   `scripts/pack-smoke.ts` (`pnpm pack:smoke`), `scripts/t3/` (run from a
