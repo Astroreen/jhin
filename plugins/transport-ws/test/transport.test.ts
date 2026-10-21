@@ -17,7 +17,7 @@ import { WebSocket } from "ws";
 
 import auth from "../../auth-token/src/index.ts";
 import http from "../../http/src/index.ts";
-import transport, { originAllowed } from "../src/index.ts";
+import transport, { TransportConfig, originAllowed } from "../src/index.ts";
 
 const manifest = (dir: string) =>
   JSON.parse(Fs.readFileSync(new URL(`../../${dir}/package.json`, import.meta.url), "utf8")).jhin;
@@ -447,6 +447,24 @@ describe("Origin allowlist (security.md D418)", () => {
       });
     expect(await behindProxy("https://jhin.example")).toBe("open");
     expect(await behindProxy("https://elsewhere.example")).toBe(403);
+  });
+
+  it("keeps allowed origins as canonical origins and refuses anything else", () => {
+    expect(
+      TransportConfig.parse({
+        allowedOrigins: ["https://Jhin.example.com/", "http://a.example:8080"],
+      }),
+    ).toEqual({ allowedOrigins: ["https://jhin.example.com", "http://a.example:8080"] });
+    expect(TransportConfig.parse(undefined)).toEqual({ allowedOrigins: [] });
+    for (const entry of [
+      "https://jhin.example.com/path",
+      "https://jhin.example.com/?q=1",
+      "https://jhin.example.com/#x",
+      "ftp://jhin.example.com",
+      "not a url",
+    ]) {
+      expect(TransportConfig.safeParse({ allowedOrigins: [entry] }).success).toBe(false);
+    }
   });
 
   it("compares listed origins by scheme, host and port, and the node's own by host and port", () => {

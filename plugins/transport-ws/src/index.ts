@@ -32,7 +32,8 @@ const CLOSE_SERVICE_RESTART = 1012;
 
 const CONFIG_SECTION = "jhin.transport-ws";
 
-const Config = z
+/** `jhin.transport-ws` (security.md D418). */
+export const TransportConfig = z
   .object({
     /** security.md D418. */
     allowedOrigins: z
@@ -64,13 +65,6 @@ const Config = z
   .meta({ title: "Browser access", description: "Which web pages may connect to this node." });
 
 /**
- * Whether a browser page may open a connection (security.md D418). A request
- * without `Origin` is not a browser's (the CLI, another node). The node's own
- * pages are always allowed, recognised by host and port alone (T3's rule): behind
- * a TLS proxy the page is `https` while the node speaks `http`. Other pages only
- * while no origin is listed, or when listed, compared by scheme, host and port.
- */
-/**
  * Whether `requested` (a `Host` value: `name`, `name:port`, `[::1]:port`)
  * is the origin's host. Read with the origin's scheme, so a default port
  * written out (`node:443` for https) or left off is the same host.
@@ -80,6 +74,13 @@ function sameHost(origin: URL, requested: string): boolean {
   return URL.canParse(target) && new URL(target).host === origin.host;
 }
 
+/**
+ * Whether a browser page may open a connection (security.md D418). A request
+ * without `Origin` is not a browser's (the CLI, another node). The node's own
+ * pages are always allowed, recognised by host and port alone (T3's rule): behind
+ * a TLS proxy the page is `https` while the node speaks `http`. Other pages only
+ * while no origin is listed, or when listed, compared by scheme, host and port.
+ */
 export function originAllowed(
   origin: string | undefined,
   requestedHost: string | undefined,
@@ -104,7 +105,7 @@ function tokenFrom(header: string | string[] | undefined): string | undefined {
 
 export default definePlugin({
   activate(context) {
-    context.config.define(CONFIG_SECTION, Config);
+    context.config.define(CONFIG_SECTION, TransportConfig);
     const http = context.services.get<HttpServer>(HTTP_SERVER_CAPABILITY);
     const verifier = context.services.get<AuthVerifier>(AUTH_VERIFIER_CAPABILITY);
     const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
@@ -183,7 +184,8 @@ export default definePlugin({
 
     context.subscriptions.add(
       http.upgrade(RPC_PATH, (request, socket, head) => {
-        const { allowedOrigins } = context.config.get<z.output<typeof Config>>(CONFIG_SECTION);
+        const { allowedOrigins } =
+          context.config.get<z.output<typeof TransportConfig>>(CONFIG_SECTION);
         const origin = request.headers.origin;
         if (!originAllowed(origin, http.requestedHost(request), allowedOrigins)) {
           // The header is the client's: logged short, never whole.
