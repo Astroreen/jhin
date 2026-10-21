@@ -1941,6 +1941,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       );
     }
     const resolve = forge.resolve.bind(forge);
+    // A forge was made, so the repository has one, with its remote's URL.
+    const forgeUrl = repo.forge!.url;
     const lookUp = async (reference: string) => {
       const normalized = normalizeReference(reference);
       if (normalized === "") {
@@ -1955,7 +1957,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         });
       }
       // A URL may name another repository's pull request: its refs are not this one's.
-      if (repo.forge?.url !== undefined && !isPullRequestOf(repo.forge.url, found.pr.url)) {
+      if (!isPullRequestOf(forgeUrl, found.pr.url)) {
         throw new SourceControlError(
           "PULL_REQUEST_INVALID",
           `${found.pr.url} is not a pull request of this project's repository.`,

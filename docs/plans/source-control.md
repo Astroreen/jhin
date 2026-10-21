@@ -586,7 +586,9 @@ with screenshots).
   URL is the fork's, else a new one named after its owner, `-1`… when
   taken); when that fetch fails (a head branch that is gone, for one) it
   falls back to `refs/pull/<n>/head` without an upstream, as T3 does, and
-  logs a warning. `local` checks the head branch out in the project's
+  logs a warning. A fork's remote, once added, stays in the repository's
+  config even when the checkout then fails, as T3's `ensureRemote` leaves
+  it. `local` checks the head branch out in the project's
   checkout (a fork whose head is named like its base as `<owner>/<head>`),
   created or fast-forwarded to the head and tracking it; git failures answer
   T3's "The pull request could not be checked out with git." followed by
