@@ -451,3 +451,38 @@ export function keyFromEvent(
   parts.push(token === " " ? "space" : token === "escape" ? "esc" : token);
   return parts.join("+");
 }
+
+/** The modifiers held now, as a keyboard event reports them. */
+export interface HeldModifiers {
+  readonly metaKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly shiftKey: boolean;
+  readonly altKey: boolean;
+}
+
+/**
+ * Whether the held modifiers are exactly those of a shortcut of one of
+ * `commands` (T3's shouldShowThreadJumpHintsForModifiers): holding ⌘ on a Mac
+ * shows the thread numbers ⌘1…⌘9 would open.
+ */
+export function holdsShortcutModifiers(
+  held: HeldModifiers,
+  rules: readonly KeybindingRuleInput[],
+  commands: ReadonlySet<string>,
+  platform: string = currentPlatform(),
+): boolean {
+  const mac = isMacPlatform(platform);
+  return rules.some((rule) => {
+    if (!commands.has(rule.command)) return false;
+    const shortcut = parseShortcut(rule.key);
+    if (shortcut === null) return false;
+    const meta = shortcut.metaKey || (shortcut.modKey && mac);
+    const ctrl = shortcut.ctrlKey || (shortcut.modKey && !mac);
+    return (
+      meta === held.metaKey &&
+      ctrl === held.ctrlKey &&
+      shortcut.shiftKey === held.shiftKey &&
+      shortcut.altKey === held.altKey
+    );
+  });
+}

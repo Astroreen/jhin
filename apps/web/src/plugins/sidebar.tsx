@@ -141,6 +141,7 @@ import { useExternal, useNow, useShortcutLabels } from "../lib/hooks.ts";
 import { MachineIcon } from "../lib/machine-icon.tsx";
 import { useMachineKind } from "../lib/machines.ts";
 import { createShownNodes, showsHosts, type NodeWithCatalog } from "../lib/nodes.ts";
+import { holdsShortcutModifiers } from "../lib/keybindings.ts";
 import { CHAT_SECTION, ChatSettings, readSection, useSection } from "../lib/settings.ts";
 import { ProjectIcon } from "../lib/project-icon.tsx";
 import {
@@ -197,6 +198,8 @@ type SearchEntry = Entry & { readonly match?: ContentMatch };
 const SETTLED_EXPANDED_STORAGE_KEY = "jhin.sidebar.settled-expanded";
 const SNOOZED_EXPANDED_STORAGE_KEY = "jhin.sidebar.snoozed-expanded";
 const WORKING_EXPANDED_STORAGE_KEY = "jhin.sidebar.working-expanded";
+/** How long the jump modifiers are held before the rows show their numbers (T3's). */
+const JUMP_HINT_DELAY_MS = 200;
 /** A row drags once the pointer moved this far (T3's SIDEBAR_DRAG_DISTANCE); one object, as useSensor memoizes on it. */
 const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: 6 } };
 const PROJECT_SCOPE_STORAGE_KEY = "jhin.sidebar.project-scope";
@@ -484,6 +487,45 @@ export const sidebarPlugin = builtin(
       const snoozedExpanded = createValue(false, {
         key: SNOOZED_EXPANDED_STORAGE_KEY,
         valid: (value): value is boolean => typeof value === "boolean",
+      });
+      /** Whether the rows show their jump shortcuts: the modifiers held for 200 ms (D453). */
+      const jumpHints = createValue(false);
+      let jumpHintTimer: ReturnType<typeof setTimeout> | undefined;
+      const JUMP_COMMANDS = new Set(
+        Array.from({ length: 9 }, (_, index) => `sidebar.thread.jump.${index + 1}`),
+      );
+      const hideJumpHints = () => {
+        clearTimeout(jumpHintTimer);
+        jumpHintTimer = undefined;
+        jumpHints.set(false);
+      };
+      const syncJumpHints = (event: KeyboardEvent) => {
+        // A terminal owns the keys while it has focus (T3 shows no hints then).
+        const inTerminal = document.activeElement?.closest("[data-terminal-owner]") != null;
+        if (
+          inTerminal ||
+          keybindings === undefined ||
+          !holdsShortcutModifiers(event, keybindings.list(), JUMP_COMMANDS)
+        ) {
+          hideJumpHints();
+          return;
+        }
+        if (jumpHints.get() || jumpHintTimer !== undefined) return;
+        jumpHintTimer = setTimeout(() => {
+          jumpHintTimer = undefined;
+          jumpHints.set(true);
+        }, JUMP_HINT_DELAY_MS);
+      };
+      window.addEventListener("keydown", syncJumpHints);
+      window.addEventListener("keyup", syncJumpHints);
+      window.addEventListener("blur", hideJumpHints);
+      context.subscriptions.add({
+        dispose() {
+          hideJumpHints();
+          window.removeEventListener("keydown", syncJumpHints);
+          window.removeEventListener("keyup", syncJumpHints);
+          window.removeEventListener("blur", hideJumpHints);
+        },
       });
       /** T3's Working section is collapsed until opened, kept per device (D452). */
       const workingExpanded = createValue(false, {
@@ -818,6 +860,8 @@ export const sidebarPlugin = builtin(
         verb?: DropVerb | null | undefined;
         /** Dropped here, while the nodes are told: the row is busy until they have it. */
         busy?: boolean | undefined;
+        /** The shortcut that opens this row, shown while its modifiers are held (D453). */
+        jumpLabel?: string | undefined;
       }) {
         const { entry, active, hosts, now, sortable } = props;
         const { thread, project, node, section } = entry;
@@ -1311,6 +1355,16 @@ export const sidebarPlugin = builtin(
                     />
                   }
                 >
+                  {props.jumpLabel === undefined ? null : (
+                    // T3's JumpHintBadge.
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute top-1/2 right-1.5 z-10 inline-flex h-5 -translate-y-1/2 items-center rounded-full border border-border/80 bg-background/95 px-1.5 font-mono text-3xs font-medium tracking-tight text-foreground shadow-sm"
+                      data-jump-hint
+                    >
+                      {props.jumpLabel}
+                    </span>
+                  )}
                   {body}
                 </TooltipTrigger>
                 <TooltipPopup
@@ -1350,6 +1404,7 @@ export const sidebarPlugin = builtin(
         now: number;
         disabled: boolean;
         busy: boolean;
+        jumpLabel?: string | undefined;
       }) {
         const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
           id: props.entry.key,
@@ -1364,6 +1419,7 @@ export const sidebarPlugin = builtin(
             active={props.active}
             busy={props.busy}
             entry={props.entry}
+            jumpLabel={props.jumpLabel}
             hosts={props.hosts}
             // Keyed by variant, so a card that becomes a slim row is a new row.
             key={
@@ -1891,6 +1947,7 @@ export const sidebarPlugin = builtin(
         const expanded = useExternal(settledExpanded, settledExpanded.get);
         const snoozedOpen = useExternal(snoozedExpanded, snoozedExpanded.get);
         const workingOpen = useExternal(workingExpanded, workingExpanded.get);
+        const hints = useExternal(jumpHints, jumpHints.get);
         const working = useSection(context, CHAT_SECTION, ChatSettings).workingSection;
         const count = useExternal(settledCount, settledCount.get);
         const scoped = useExternal(scope, scope.get);
@@ -2093,11 +2150,20 @@ export const sidebarPlugin = builtin(
         };
         latestDrag.current = { drag, items, changesSomething };
 
+        // The first nine rows' numbers, while the jump modifiers are held (T3's jump hints).
+        const jumps = new Map(list.rows.slice(0, 9).map((entry, index) => [entry.key, index + 1]));
+        const jumpLabelOf = (key: string) => {
+          const jump = hints ? jumps.get(key) : undefined;
+          return jump === undefined
+            ? undefined
+            : keybindings?.labelFor(`sidebar.thread.jump.${jump}`);
+        };
         const row = (entry: Entry) => (
           <SortableThreadRow
             active={entry.key === current}
             busy={drop?.key === entry.key}
             disabled={drop !== undefined}
+            jumpLabel={jumpLabelOf(entry.key)}
             entry={entry}
             hosts={hosts}
             key={entry.key}

@@ -1001,6 +1001,22 @@ and asking ones left; a returned thread on top of the inbox) and
 expanded, and the thread back on top once its turn is stopped), with a
 screenshot.
 
+- **D453. Jump-number hints.** As T3 does, holding the modifiers of the
+  `sidebar.thread.jump.1…9` shortcuts (⌘ on a Mac, Ctrl elsewhere; exactly
+  those, `holdsShortcutModifiers` in `apps/web/src/lib/keybindings.ts`) for
+  200 ms shows each of the first nine rows' shortcut in T3's round badge at
+  its right ("Ctrl+1"), the rows counted as the shortcuts count them (D79:
+  pinned, active, Working, the shown shelves). Releasing them, or the window
+  losing focus, hides them at once; a focused terminal shows none, since it
+  owns the keys. A row whose command has no shortcut gets no badge. T3 binds
+  the jumps on its desktop app only; here they are bound in the browser too
+  (D70), so the hints show there.
+
+The proof of D453: `apps/web/test/keybindings.test.ts` ("holdsShortcutModifiers":
+exactly the jump modifiers per platform, other commands not counted) and
+`e2e/tests/sidebar.spec.ts` ("D453": Ctrl held shows Ctrl+1–3 on the rows,
+Ctrl+2 opens the second, releasing hides them), with a screenshot.
+
 ### Server-side queue and steering (W1, `t3-roadmap.md`)
 
 - **D200. The reference is T3 Code's server queue** (D53's tag,
@@ -1413,8 +1429,7 @@ and as events arrive).
   threads plugin does not know a thread's pull request (linking them is
   W4's); per-project overrides of the settle settings (T3 resolves them per
   project; a Jhin node has one project config layer, D19);
-  multi-select and sweeping actions over several rows, the
-  jump-number hints; the undo of an unpin or a settle done by dragging (a
+  multi-select and sweeping actions over several rows; the undo of an unpin or a settle done by dragging (a
   drop writes through `threads.arrange`, not the commands that offer an
   undo, D450); T3's X on a thread's card that clears its unsent composer
   text (the sidebar does not know a thread's draft, which the chat plugin
