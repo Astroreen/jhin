@@ -298,7 +298,7 @@ free block of 20 after D1040 and writes it here.
   `desktop.md` and `preview.md`.
 - **W26:** `jhin pair` with a terminal QR code, pairing links for a
   `jhin client` page, device metadata and live updates in the authorized
-  clients list, an OS keychain store (done, W28), Tailscale Serve, MCP OAuth, permission
+  clients list, an OS keychain store (done, W28; Windows deferred), Tailscale Serve, MCP OAuth, permission
   titles (done, `security.md` D961); "Keep threads with a PR", per-project
   settle overrides, "Regenerate titles (N)", the "Custom…" snooze (done,
   `t3-parity.md` D962), dragging a selection into the chat, undo of a drag
