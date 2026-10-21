@@ -24,6 +24,8 @@ const runtime: AgentRuntime = {
         item: { kind: "message.completed", itemId: "s1:1", text: "found it" },
       };
       yield { kind: "subagent.ended", subagentId: "s1", status: "completed" };
+      yield { kind: "subagent.started", subagentId: "s3", title: "Break", prompt: "fail" };
+      yield { kind: "subagent.ended", subagentId: "s3", status: "failed", error: "boom" };
       yield { kind: "subagent.started", subagentId: "s2", title: "", prompt: "keep going" };
       yield { kind: "message.completed", itemId: `${request.turnId}:1`, text: "done" };
     }
@@ -45,6 +47,7 @@ describe("jhin.threads: subagents of a turn (D877)", () => {
     const marks = parentEvents.events.filter((event) => event.type === "threads.subagent.started");
     expect(marks.map((event) => event.payload)).toEqual([
       { turnId, subagentId: "s1", childThreadId: expect.any(String), title: "Explore" },
+      { turnId, subagentId: "s3", childThreadId: expect.any(String), title: "Break" },
       { turnId, subagentId: "s2", childThreadId: expect.any(String), title: "Subagent" },
     ]);
     // The turn's own items stay its own.
@@ -54,7 +57,7 @@ describe("jhin.threads: subagents of a turn (D877)", () => {
         .map((event) => event.payload),
     ).toEqual([expect.objectContaining({ text: "done" })]);
 
-    const [first, second] = marks.map(
+    const [first, broken, second] = marks.map(
       (event) => (event.payload as { childThreadId: string }).childThreadId,
     );
     const child = await client.call<{ thread: Thread; events?: unknown }>("threads.get", {
@@ -78,6 +81,14 @@ describe("jhin.threads: subagents of a turn (D877)", () => {
     expect((childEvents.events[1]!.payload as { input: { text: string } }).input.text).toBe(
       "look around",
     );
+
+    // A failed one fails its turn with the error.
+    const failed = await client.call<{ thread: Thread }>("threads.get", { threadId: broken });
+    expect(failed.thread.lastTurn).toMatchObject({ status: "failed" });
+    const failedEvents = watch(client, broken!);
+    expect((await failedEvents.until("agent.turn.failed")).payload).toMatchObject({
+      error: "boom",
+    });
 
     // One still open when the turn ends stops with it.
     const open = await client.call<{ thread: Thread }>("threads.get", { threadId: second });

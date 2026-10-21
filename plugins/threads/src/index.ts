@@ -1344,7 +1344,6 @@ export default definePlugin({
       ) => {
         const child = subagents.get(subagentId);
         if (child === undefined || !child.open) return;
-        child.open = false;
         const type =
           status === "completed"
             ? ThreadEvents.turnCompleted
@@ -1358,6 +1357,8 @@ export default definePlugin({
           },
         ]);
         await setTurnStatus(child.threadId, child.turnId, runtime.agentId, status);
+        // Closed once its end is recorded: a failed write leaves it to the turn's end to close.
+        child.open = false;
       };
       const projectSubagent = async (item: Extract<AgentItem, { kind: `subagent.${string}` }>) => {
         if (item.kind === "subagent.started") {
