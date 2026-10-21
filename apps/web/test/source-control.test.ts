@@ -415,35 +415,87 @@ describe("the source control store", () => {
     store.dispose();
   });
 
-  it.each([
-    ["the connection has no relays", "COMMAND_NOT_FOUND"],
-    ["the member shares nothing", "STREAM_NOT_SHARED"],
-  ])("reads a mesh member again on catalog changes when %s (D118)", async (_, code) => {
+  const member = { node: "ws://a/rpc", remote: "node-c" };
+  const branchAt = (head: number) => snapshot(head, [status({ branch: `b${head}` })]);
+
+  it("reads a mesh member again on catalog changes when the connection has no relays (D118)", async () => {
     let head = 0;
     const node = fakeNode(
-      async () => snapshot(++head, [status({ branch: `b${head}` })]),
-      async ({ node: member, stream }) => {
-        if (code === "COMMAND_NOT_FOUND") throw Object.assign(new Error("no relays"), { code });
-        return { stream: `relay/${member}/${stream}` };
+      async () => branchAt(++head),
+      async () => {
+        throw Object.assign(new Error("no relays"), { code: "COMMAND_NOT_FOUND" });
       },
     );
     const store = createSourceControlStore(node.connections, node.threads, quiet);
-    const target = { node: "ws://a/rpc", remote: "node-c" };
-    const feed = follow(store, target);
+    const feed = follow(store, member);
     expect((await feed.next()).projects.get("app")?.branch).toBe("b1");
-    if (code === "STREAM_NOT_SHARED") {
-      await node.subscribed();
-      const reread = feed.next();
-      node.subscriptions[0]!.onError?.(Object.assign(new Error("not shared"), { code }));
-      expect((await reread).projects.get("app")?.branch).toBe("b2");
-    }
     const next = feed.next();
     node.catalogChanged();
-    expect((await next).projects.get("app")?.branch).toBe(
-      code === "STREAM_NOT_SHARED" ? "b3" : "b2",
-    );
-    expect(node.subscriptions).toHaveLength(code === "STREAM_NOT_SHARED" ? 1 : 0);
+    expect((await next).projects.get("app")?.branch).toBe("b2");
+    expect(node.subscriptions).toHaveLength(0);
     expect(node.calls.every((call) => call.target.remote === "node-c")).toBe(true);
+    store.dispose();
+  });
+
+  it("drops the relay and reads again on catalog changes when the member shares nothing (D118)", async () => {
+    let head = 0;
+    const node = fakeNode(async () => branchAt(++head));
+    const store = createSourceControlStore(node.connections, node.threads, quiet);
+    const feed = follow(store, member);
+    expect((await feed.next()).projects.get("app")?.branch).toBe("b1");
+    await node.subscribed();
+    const reread = feed.next();
+    node.subscriptions[0]!.onError?.(
+      Object.assign(new Error("not shared"), { code: "STREAM_NOT_SHARED" }),
+    );
+    expect((await reread).projects.get("app")?.branch).toBe("b2");
+    expect(node.subscriptions.map((entry) => entry.disposed)).toEqual([true]);
+    const next = feed.next();
+    node.catalogChanged();
+    expect((await next).projects.get("app")?.branch).toBe("b3");
+    store.dispose();
+  });
+
+  it("shows another relay failure and starts over, following the relay then", async () => {
+    let relays = 0;
+    const node = fakeNode(
+      async () => snapshot(3),
+      async ({ node: owner, stream }) => {
+        if (++relays === 1) {
+          throw Object.assign(new Error("node-c cannot be reached"), {
+            code: "NODE_UNREACHABLE",
+          });
+        }
+        return { stream: `relay/${owner}/${stream}` };
+      },
+    );
+    const store = createSourceControlStore(node.connections, node.threads, quiet);
+    const feed = follow(store, member);
+    const seen: SourceControlView[] = [];
+    while (!seen.some((view) => view.status === "error")) seen.push(await feed.next());
+    expect(seen.find((view) => view.status === "error")?.error).toBe("node-c cannot be reached");
+    await node.subscribed();
+    expect(node.subscriptions.map(({ stream, after }) => [stream, after])).toEqual([
+      ["relay/node-c/source-control", 3],
+    ]);
+    store.dispose();
+  });
+
+  it("starts a member's feed over when its relayed stream skips events (D498)", async () => {
+    let head = 0;
+    const node = fakeNode(async () => snapshot((head += 4), [status({ ahead: head })]));
+    const store = createSourceControlStore(node.connections, node.threads, quiet);
+    const feed = follow(store, member);
+    await feed.next();
+    await node.subscribed();
+    const reloaded = feed.next();
+    node.append(SourceControlEvents.statusChanged, status({ ahead: 99 }), 1);
+    expect((await reloaded).projects.get("app")?.ahead).toBe(8);
+    await node.subscribed(2);
+    expect(node.subscriptions.map(({ stream, after }) => [stream, after])).toEqual([
+      ["relay/node-c/source-control", 4],
+      ["relay/node-c/source-control", 8],
+    ]);
     store.dispose();
   });
 

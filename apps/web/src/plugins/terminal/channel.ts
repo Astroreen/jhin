@@ -62,6 +62,7 @@ function memberChannel(client: RpcClient, member: string): TerminalChannel {
         },
       );
       return {
+        // Until the relay is named, nothing was delivered: `after` is still the last seen.
         get lastSequence() {
           return inner?.lastSequence ?? options.after ?? 0;
         },

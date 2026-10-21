@@ -163,7 +163,8 @@ interface Feed {
   retries: number;
   /**
    * A member whose stream cannot be relayed (the connection has no relays, or
-   * the member shares nothing): its view is read again on catalog changes (D118).
+   * the member shares nothing): its view is read again on catalog changes
+   * (D118) until the connection's client changes, when the relay is tried again.
    */
   relayless: boolean;
 }
@@ -308,6 +309,9 @@ export function createSourceControlStore(
     };
     const fallBack = () => {
       if (!current()) return;
+      // Nothing of the refused stream may land on top of the re-reads.
+      subscription?.dispose();
+      subscription = undefined;
       feed.relayless = true;
       reread();
     };
@@ -341,6 +345,8 @@ export function createSourceControlStore(
     feed.stop?.();
     feed.stop = undefined;
     feed.client = client;
+    // A new connection may have relays, and the member may share its stream by now.
+    feed.relayless = false;
     if (client !== undefined) feed.stop = start(feed, client);
   };
 

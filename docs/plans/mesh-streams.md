@@ -173,6 +173,11 @@ A stack of three PRs, each based on the one before:
 
 ## Deferred
 
+- A member's terminal list (D504) whose relay fails for another reason than
+  missing relays (`NODE_UNREACHABLE` while its route is away) stays empty,
+  so its cards show no terminal indicator until the connection's client
+  changes; an open terminal says why in its own line.
+
 - Trimming on a `storage.eventlog` provider older than 1.2: `keepNewest`
   trims nothing there, so `source-control` and `mesh/outbox` grow as before.
 - Relay loops longer than one hop back: `RELAY_LOOP` stops a relay sent
