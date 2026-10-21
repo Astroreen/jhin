@@ -18,7 +18,7 @@ its file tree, base ref picker, turn scopes and comments on lines (T3's
 `reviewCommentContext.ts`, `composerContextLegacySend.ts` and
 `DiffCommentAnnotation.tsx`), a turn's changed files card, the
 workspace selector, the worktree icon and clean-up, the "Checkout pull request"
-dialog, the terminal drawer, its
+dialog, the forges' icons, the terminal drawer, its
 links, selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine
 icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.ts`,
 `plugins/chat/proposed-plan-card.tsx` and `plan-follow-up.ts`, its tiptap
@@ -108,3 +108,14 @@ images to JPEG before they are attached (`t3-parity.md` D296), as T3 Code
 does. It is a separate chunk that the browser loads only when a HEIC image is
 attached, so it can be replaced with another build of the library. Its license
 text ships with the package (`node_modules/heic-to/LICENSE`).
+
+## selfhst/icons (Azure DevOps mark)
+
+Source: https://github.com/selfhst/icons/blob/main/svg/azure-devops.svg
+(CC BY 4.0, https://creativecommons.org/licenses/by/4.0/). The Microsoft Azure
+DevOps mark in `apps/web/src/plugins/source-control/forge-icons.tsx`
+(`AzureDevOpsIcon`) is adapted from that SVG as T3 Code ships it: turned into
+a React component with JSX attribute names, and its gradient ids made unique
+per instance (`useId`) so two marks on one page do not share them. Its shapes
+and colours are unchanged. "Azure DevOps" is a trademark of
+Microsoft, used only to name the forge a repository is on.

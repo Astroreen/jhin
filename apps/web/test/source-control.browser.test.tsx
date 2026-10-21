@@ -1096,6 +1096,39 @@ describe("the git actions in the chat header", () => {
         element.textContent?.trim() === name || element.getAttribute("aria-label") === name,
     );
 
+  it("shows the repository's forge mark on its pull request action (D904)", () => {
+    const quickMark = (provider: ProjectStatus["provider"]) => {
+      const { value } = services(
+        viewWith(
+          status({
+            workingTree: changed,
+            upstream: "origin/feature/toolbar",
+            pullRequests: {},
+            provider,
+          }),
+        ),
+      );
+      const Control = createGitActionsControl(value);
+      const view = mount(<Control project={project} target={target} thread={thread} />);
+      const svg = view.container.querySelector('[role="group"] button svg')!;
+      const seen = {
+        forge: svg.getAttribute("data-forge"),
+        hidden: svg.getAttribute("aria-hidden"),
+        drawn: svg.childElementCount > 0,
+      };
+      view.unmount();
+      return seen;
+    };
+    for (const kind of ["github", "gitlab", "azure-devops", "bitbucket", "forgejo"] as const) {
+      expect(quickMark({ kind, available: true })).toEqual({
+        forge: kind,
+        hidden: "true",
+        drawn: true,
+      });
+    }
+    expect(quickMark(null)).toEqual({ forge: "none", hidden: "true", drawn: true });
+  });
+
   it("commits, pushes and opens a pull request from a feature branch, then shows the result", async () => {
     const { value, calls, shown } = services(
       viewWith(
@@ -1530,10 +1563,19 @@ describe("worktrees in the client", () => {
     mount(<Toolbar project={project} target={target} />);
     await userEvent.click(page.getByRole("combobox", { name: /^Branch / }));
     await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "gh pr checkout #7");
-    await userEvent.click(page.getByRole("option", { name: /Checkout pull request/ }));
+    const option = page.getByRole("option", { name: /Checkout pull request/ });
+    // GitHub's mark on the item and in the dialog's title (D904).
+    expect(option.element().querySelector('svg[data-forge="github"]')).not.toBeNull();
+    await userEvent.click(option);
 
     const dialog = page.getByRole("dialog", { name: "Checkout pull request" });
     await expect.element(dialog).toBeVisible();
+    expect(
+      dialog
+        .getByRole("heading", { name: "Checkout pull request" })
+        .element()
+        .querySelector('svg[data-forge="github"]'),
+    ).not.toBeNull();
     await expect.element(dialog.getByText(`#7 · feature to main`)).toBeVisible();
     expect(calls.find((call) => call.method === "git.pr.resolve")?.params).toEqual({
       projectId: "app",

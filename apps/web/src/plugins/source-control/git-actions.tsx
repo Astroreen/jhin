@@ -44,7 +44,6 @@ import {
   CloudUploadIcon,
   GitBranchPlusIcon,
   GitCommitIcon,
-  GitPullRequestIcon,
   InfoIcon,
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -66,6 +65,7 @@ import {
   type GitActionMenuItem,
   type GitQuickAction,
 } from "./git-actions-logic.ts";
+import { forgeIcon } from "./forge-icons.tsx";
 import type { RunningAction } from "./running.ts";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
 
@@ -89,13 +89,22 @@ interface RunInput {
   readonly filePaths?: string[];
 }
 
-function GitActionItemIcon({ icon }: { icon: GitActionIconName }) {
+type ForgeIcon = ReturnType<typeof forgeIcon>;
+
+/** A pull request's action shows the forge's mark, as T3's `GitActionItemIcon` does (D904). */
+function GitActionItemIcon({ icon, Forge }: { icon: GitActionIconName; Forge: ForgeIcon }) {
   if (icon === "commit") return <GitCommitIcon />;
   if (icon === "push") return <CloudUploadIcon />;
-  return <GitPullRequestIcon />;
+  return <Forge />;
 }
 
-function GitQuickActionIcon({ quickAction }: { quickAction: GitQuickAction }) {
+function GitQuickActionIcon({
+  quickAction,
+  Forge,
+}: {
+  quickAction: GitQuickAction;
+  Forge: ForgeIcon;
+}) {
   const className = "size-3.5";
   if (quickAction.kind === "run_pull") return <CloudDownloadIcon className={className} />;
   if (quickAction.kind === "run_action") {
@@ -103,7 +112,7 @@ function GitQuickActionIcon({ quickAction }: { quickAction: GitQuickAction }) {
     if (quickAction.action === "push" || quickAction.action === "commit_push") {
       return <CloudUploadIcon className={className} />;
     }
-    return <GitPullRequestIcon className={className} />;
+    return <Forge className={className} />;
   }
   if (quickAction.label === "Commit") return <GitCommitIcon className={className} />;
   if (quickAction.label === "Push") return <CloudUploadIcon className={className} />;
@@ -194,6 +203,7 @@ export function createGitActionsControl(services: SourceControlServices) {
     if (projectId === undefined || project?.scratch === true) return null;
     const projectStatus: ProjectStatus | undefined = view.projects.get(projectId);
     if (projectStatus === undefined) return null;
+    const Forge = forgeIcon(projectStatus.provider);
 
     const isBusy = current !== undefined;
     const status = projectStatus.isRepo ? gitActionStatus(projectStatus) : null;
@@ -471,7 +481,7 @@ export function createGitActionsControl(services: SourceControlServices) {
                 openOnHover
                 render={<Button aria-disabled="true" size="xs" variant="outline" />}
               >
-                <GitQuickActionIcon quickAction={quickAction} />
+                <GitQuickActionIcon Forge={Forge} quickAction={quickAction} />
                 {quickActionLabel}
               </PopoverTrigger>
               <PopoverPopup align="start" side="bottom" tooltipStyle>
@@ -480,7 +490,7 @@ export function createGitActionsControl(services: SourceControlServices) {
             </Popover>
           ) : (
             <Button onClick={runQuickAction} size="xs" variant="outline">
-              <GitQuickActionIcon quickAction={quickAction} />
+              <GitQuickActionIcon Forge={Forge} quickAction={quickAction} />
               {quickActionLabel}
             </Button>
           )}
@@ -511,7 +521,7 @@ export function createGitActionsControl(services: SourceControlServices) {
                             render={<span className="block w-full cursor-not-allowed" />}
                           >
                             <MenuItem className="w-full" disabled>
-                              <GitActionItemIcon icon={item.icon} />
+                              <GitActionItemIcon Forge={Forge} icon={item.icon} />
                               <MenuItemLabel>{item.label}</MenuItemLabel>
                             </MenuItem>
                           </PopoverTrigger>
@@ -527,7 +537,7 @@ export function createGitActionsControl(services: SourceControlServices) {
                         key={item.id}
                         onClick={() => openMenuItem(item)}
                       >
-                        <GitActionItemIcon icon={item.icon} />
+                        <GitActionItemIcon Forge={Forge} icon={item.icon} />
                         <MenuItemLabel>{item.label}</MenuItemLabel>
                       </MenuItem>
                     );
