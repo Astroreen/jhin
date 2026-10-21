@@ -10,6 +10,7 @@ import { toDisposable } from "@jhin/sdk";
 import {
   SOURCE_CONTROL_STREAM,
   SourceControlEvents,
+  type Branch,
   type ProjectStatus,
   type StatusSnapshot,
   type ThreadPullRequest,
@@ -18,7 +19,6 @@ import {
 import type { StoredEvent } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { parsePatch } from "../src/lib/diff.ts";
 import {
   currentPullRequest,
   threadPullRequestBadge,
@@ -28,6 +28,27 @@ import { readPullRequestInput } from "../src/plugins/source-control/links.tsx";
 import { splitForMiddleTruncate } from "../src/lib/middle-truncate.tsx";
 import { formatCompactDiffCount, prStatusIndicator } from "../src/lib/pull-request.ts";
 import { describeBranch } from "../src/plugins/source-control/branch-toolbar.tsx";
+import {
+  buildBaseRefChoices,
+  filterBaseRefChoices,
+} from "../src/plugins/source-control/diff/base-refs.ts";
+import {
+  buildDiffFileTreeUpdates,
+  collectDirectoryPaths,
+  diffFileTreeEntries,
+  diffFileTreePositions,
+} from "../src/plugins/source-control/diff/file-tree-logic.ts";
+import {
+  getDiffLineStat,
+  getRenderablePatch,
+  resolveFileDiffPath,
+} from "../src/plugins/source-control/diff/rendering.ts";
+import {
+  createDiffScopes,
+  createDiffSelections,
+  gitScopeProvider,
+  selectionKey,
+} from "../src/plugins/source-control/diff/scopes.ts";
 import {
   applySourceControlEvent,
   createSourceControlStore,
@@ -375,58 +396,225 @@ describe("the source control store", () => {
   });
 });
 
-describe("reading a patch", () => {
-  it("splits files and hunks, numbering lines", () => {
-    const patch = [
-      "diff --git a/README.md b/README.md",
-      "index 4c5fd91..2a5a1f9 100644",
-      "--- a/README.md",
-      "+++ b/README.md",
-      "@@ -1,3 +1,3 @@ heading",
-      " one",
-      "-two",
-      "+TWO",
-      " three",
-      "\\ No newline at end of file",
-      "diff --git a/new.txt b/new.txt",
-      "new file mode 100644",
-      "index 0000000..ce01362",
-      "--- /dev/null",
-      "+++ b/new.txt",
-      "@@ -0,0 +1 @@",
-      "+hello",
-      "diff --git a/old.ts b/renamed.ts",
-      "similarity index 100%",
-      "rename from old.ts",
-      "rename to renamed.ts",
-      "diff --git a/gone.txt b/gone.txt",
-      "deleted file mode 100644",
-      "--- a/gone.txt",
-      "+++ /dev/null",
-      "@@ -1 +0,0 @@",
-      "-bye",
-      "diff --git a/image.png b/image.png",
-      "Binary files a/image.png and b/image.png differ",
-      "",
-    ].join("\n");
-    const files = parsePatch(patch);
-    expect(files.map((file) => [file.path, file.change, file.insertions, file.deletions])).toEqual([
-      ["README.md", "modified", 1, 1],
-      ["new.txt", "added", 1, 0],
-      ["renamed.ts", "renamed", 0, 0],
-      ["gone.txt", "deleted", 0, 1],
-      ["image.png", "modified", 0, 0],
+describe("reading a patch for the diff panel", () => {
+  const patch = [
+    "diff --git a/README.md b/README.md",
+    "index 4c5fd91..2a5a1f9 100644",
+    "--- a/README.md",
+    "+++ b/README.md",
+    "@@ -1,3 +1,3 @@ heading",
+    " one",
+    "-two",
+    "+TWO",
+    " three",
+    "diff --git a/src/new.ts b/src/new.ts",
+    "new file mode 100644",
+    "index 0000000..ce01362",
+    "--- /dev/null",
+    "+++ b/src/new.ts",
+    "@@ -0,0 +1 @@",
+    "+hello",
+    "diff --git a/src/old.ts b/src/lib/renamed.ts",
+    "similarity index 100%",
+    "rename from src/old.ts",
+    "rename to src/lib/renamed.ts",
+    "diff --git a/gone.txt b/gone.txt",
+    "deleted file mode 100644",
+    "--- a/gone.txt",
+    "+++ /dev/null",
+    "@@ -1 +0,0 @@",
+    "-bye",
+    "",
+  ].join("\n");
+
+  it("parses files with Pierre, each with its path and change", () => {
+    const parsed = getRenderablePatch(patch, "test");
+    expect(parsed?.kind).toBe("files");
+    const files = parsed?.kind === "files" ? parsed.files : [];
+    expect(files.map((file) => [resolveFileDiffPath(file), file.type])).toEqual([
+      ["README.md", "change"],
+      ["src/new.ts", "new"],
+      ["src/lib/renamed.ts", "rename-pure"],
+      ["gone.txt", "deleted"],
     ]);
-    expect(files[0]!.hunks[0]!.lines).toEqual([
-      { kind: "context", text: "one", oldLine: 1, newLine: 1 },
-      { kind: "delete", text: "two", oldLine: 2 },
-      { kind: "add", text: "TWO", newLine: 2 },
-      { kind: "context", text: "three", oldLine: 3, newLine: 3 },
-      { kind: "note", text: "No newline at end of file" },
+    expect(getDiffLineStat(files)).toEqual({ additions: 2, deletions: 2 });
+    expect(getRenderablePatch("", "test")).toBeNull();
+    expect(getRenderablePatch("not a patch", "test")).toEqual({
+      kind: "raw",
+      text: "not a patch",
+      reason: "Unsupported diff format. Showing raw patch.",
+    });
+  });
+
+  it("lists the files for T3's file tree in the diff's order, with their git status", () => {
+    const parsed = getRenderablePatch(patch, "test");
+    const entries = diffFileTreeEntries(parsed?.kind === "files" ? parsed.files : []);
+    expect(entries).toEqual([
+      { path: "README.md", status: "modified" },
+      { path: "src/new.ts", status: "added" },
+      { path: "src/lib/renamed.ts", status: "renamed" },
+      { path: "gone.txt", status: "deleted" },
     ]);
-    expect(files[2]!.previousPath).toBe("old.ts");
-    expect(files[4]!.binary).toBe(true);
-    expect(parsePatch("")).toEqual([]);
+    const paths = entries.map((entry) => entry.path);
+    expect(collectDirectoryPaths(paths)).toEqual(["src/", "src/lib/"]);
+    expect([...diffFileTreePositions(paths)]).toEqual([
+      ["README.md", 0],
+      ["src/new.ts", 1],
+      ["src/", 1],
+      ["src/lib/renamed.ts", 2],
+      ["src/lib/", 2],
+      ["gone.txt", 3],
+    ]);
+    // A refreshed diff: deepest directories go first, new ones come before their files.
+    expect(buildDiffFileTreeUpdates(paths, ["README.md", "docs/a/b.md"])).toEqual([
+      { type: "remove", path: "src/new.ts" },
+      { type: "remove", path: "src/lib/renamed.ts" },
+      { type: "remove", path: "gone.txt" },
+      { type: "remove", path: "src/lib/", recursive: true },
+      { type: "remove", path: "src/", recursive: true },
+      { type: "add", path: "docs/" },
+      { type: "add", path: "docs/a/" },
+      { type: "add", path: "docs/a/b.md" },
+    ]);
+  });
+});
+
+describe("the base ref picker's choices", () => {
+  const branch = (name: string, isRemote = false): Branch => ({
+    name,
+    current: false,
+    isDefault: false,
+    isRemote,
+    upstream: null,
+  });
+
+  it("pairs a local branch with its remote one, origin first, then lists remote-only ones", () => {
+    const choices = buildBaseRefChoices(
+      [branch("main"), branch("develop")],
+      [branch("fork/main", true), branch("origin/main", true), branch("origin/release", true)],
+    );
+    expect(
+      choices.map((choice) => [choice.id, choice.label, choice.local?.name, choice.remote?.name]),
+    ).toEqual([
+      ["local:main", "main", "main", "origin/main"],
+      ["local:develop", "develop", "develop", undefined],
+      ["remote:fork/main", "fork/main", undefined, "fork/main"],
+      ["remote:origin/release", "origin/release", undefined, "origin/release"],
+    ]);
+    expect(filterBaseRefChoices(choices, " REL ").map((choice) => choice.label)).toEqual([
+      "origin/release",
+    ]);
+    expect(filterBaseRefChoices(choices, "fork").map((choice) => choice.label)).toEqual([
+      "fork/main",
+    ]);
+  });
+});
+
+describe("the diff panel's scopes", () => {
+  it("orders providers and drops one when its registration is disposed", () => {
+    const scopes = createDiffScopes();
+    let changes = 0;
+    scopes.subscribe(() => changes++);
+    const load = async () => ({
+      patch: "",
+      truncated: false,
+      insertions: 0,
+      deletions: 0,
+      baseRef: null,
+      headRef: null,
+    });
+    const turns = scopes.register({ id: "turns", order: 10, options: () => [], load });
+    scopes.register({ id: "git", order: 0, options: () => [], load });
+    expect(scopes.providers().map((provider) => provider.id)).toEqual(["git", "turns"]);
+    expect(() => scopes.register({ id: "git", options: () => [], load })).toThrow(
+      "A diff scope provider git is already registered",
+    );
+    turns.dispose();
+    turns.dispose();
+    expect(scopes.providers().map((provider) => provider.id)).toEqual(["git"]);
+    expect(changes).toBe(3);
+  });
+
+  it("asks git for T3's Changes against the chosen base, and for Uncommitted", async () => {
+    const calls: unknown[] = [];
+    const threads = {
+      call: async (_target: unknown, method: string, params: unknown) => {
+        calls.push([method, params]);
+        return {
+          projectId: "app",
+          scope: "branch",
+          baseRef: "develop",
+          headRef: "feature",
+          patch: "p",
+          truncated: false,
+          files: [],
+          insertions: 1,
+          deletions: 2,
+        };
+      },
+    } as unknown as ThreadsCatalog;
+    const git = gitScopeProvider(threads);
+    expect(git.options({ target: { node: "a" }, projectId: "app" })).toEqual([
+      { value: "branch", label: "Changes", baseRefs: true },
+      { value: "uncommitted", label: "Uncommitted" },
+    ]);
+    const context = { target: { node: "a" }, projectId: "app", threadId: "t1" };
+    expect(await git.load(context, "branch", { ignoreWhitespace: true, base: "develop" })).toEqual({
+      patch: "p",
+      truncated: false,
+      insertions: 1,
+      deletions: 2,
+      baseRef: "develop",
+      headRef: "feature",
+    });
+    await git.load(context, "uncommitted", { ignoreWhitespace: false });
+    expect(calls).toEqual([
+      ["git.diff", { projectId: "app", scope: "branch", ignoreWhitespace: true, base: "develop" }],
+      ["git.diff", { projectId: "app", scope: "uncommitted", ignoreWhitespace: false }],
+    ]);
+  });
+
+  it("keeps each thread's selection on the device, the base across scope changes", () => {
+    const stored = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value),
+    } as unknown as Storage;
+    const selections = createDiffSelections(storage);
+    const key = selectionKey({ target: { node: "a" }, projectId: "app", threadId: "t1" });
+    expect(key).toBe("a|t1");
+    expect(selectionKey({ target: { node: "a", remote: "b" }, projectId: "app" })).toBe(
+      "a|b|draft|app",
+    );
+    selections.update(key, { base: "develop" });
+    selections.update(key, { value: "uncommitted" });
+    expect(createDiffSelections(storage).get(key)).toEqual({
+      base: "develop",
+      value: "uncommitted",
+    });
+    selections.update(key, { base: undefined });
+    expect(selections.get(key)).toEqual({ value: "uncommitted" });
+
+    // What storage holds is checked: a malformed entry is dropped, not passed to git as a base.
+    stored.set(
+      "jhin.diff-panel.v1",
+      JSON.stringify({ good: { base: "main" }, bad: { base: 5 }, odd: "x" }),
+    );
+    const read = createDiffSelections(storage);
+    expect([read.get("good"), read.get("bad"), read.get("odd")]).toEqual([
+      { base: "main" },
+      {},
+      {},
+    ]);
+    // A request to reveal a file is not kept across pages.
+    read.update("good", { filePath: "src/a.ts", reveal: 3 });
+    expect(JSON.parse(stored.get("jhin.diff-panel.v1")!).good).toEqual({ base: "main" });
+    // Only the most recent 200 are kept.
+    for (let index = 0; index < 205; index++) read.update(`t${index}`, { value: "branch" });
+    const kept = Object.keys(JSON.parse(stored.get("jhin.diff-panel.v1")!));
+    expect(kept).toHaveLength(200);
+    expect(kept.at(0)).toBe("t5");
+    expect(kept.at(-1)).toBe("t204");
   });
 });
 

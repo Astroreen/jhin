@@ -67,3 +67,17 @@ export function useSection<S extends z.ZodType>(
     return value;
   });
 }
+
+/** The diff panel's defaults on this device (T3 Code's diff settings, docs/plans/source-control.md D281). */
+export const DIFF_SECTION = "jhin.diff";
+export const DiffSettings = z.object({
+  /** Stacked or side by side; the panel's toggle writes it too. */
+  layout: z.enum(["stacked", "split"]).default("stacked"),
+  /** Long lines wrap instead of scrolling. */
+  wordWrap: z.boolean().default(true),
+  /** Whitespace-only edits are hidden. */
+  ignoreWhitespace: z.boolean().default(true),
+  /** Files start folded. */
+  filesCollapsed: z.boolean().default(true),
+});
+export type DiffSettings = z.output<typeof DiffSettings>;

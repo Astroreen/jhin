@@ -1,7 +1,6 @@
 // The changed files card follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/ChangedFilesTree.tsx (ChangedFilesCard, ChangedFilesTree)
-// and MessagesTimeline.tsx (AssistantChangedFilesSection, under a turn's answer);
-// the diff panel's selection follows apps/web/src/diffPanelStore.ts.
+// and MessagesTimeline.tsx (AssistantChangedFilesSection, under a turn's answer).
 import { targetKey, type ChatTurnFooterProps, type NodeTarget } from "@jhin/client-api";
 import type { TurnCheckpoint } from "@jhin/source-control-api";
 import { Button, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
@@ -14,7 +13,7 @@ import {
   FolderClosedIcon,
   FolderIcon,
 } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 import { MiddleTruncate } from "../../lib/middle-truncate.tsx";
 import { formatCompactDiffCount } from "../../lib/pull-request.ts";
@@ -23,57 +22,9 @@ import {
   summarizeTurnDiffStats,
   type TurnDiffTreeNode,
 } from "../../lib/turn-diff-tree.ts";
+import { selectionKey } from "./diff/scopes.ts";
+import { LATEST_TURN, turnValue } from "./diff/turns.ts";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
-
-/**
- * What the diff panel shows for a thread (or a draft's project), as T3's
- * diffPanelStore keeps it: a git scope, or a turn (the latest when `turn` is
- * absent), with the file to reveal.
- */
-export type DiffSelection =
-  | { readonly kind: "branch" | "uncommitted" }
-  | {
-      readonly kind: "turn";
-      readonly turn?: number;
-      readonly filePath?: string;
-      /** Bumped by every request to reveal `filePath` again. */
-      readonly reveal: number;
-    };
-
-const DEFAULT_SELECTION: DiffSelection = { kind: "uncommitted" };
-
-export interface DiffSelections {
-  get(key: string): DiffSelection;
-  set(key: string, selection: DiffSelection): void;
-  subscribe(listener: () => void): () => void;
-}
-
-export function createDiffSelections(): DiffSelections {
-  const selections = new Map<string, DiffSelection>();
-  const listeners = new Set<() => void>();
-  return {
-    get: (key) => selections.get(key) ?? DEFAULT_SELECTION,
-    set(key, selection) {
-      selections.set(key, selection);
-      for (const listener of Array.from(listeners)) listener();
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-  };
-}
-
-/** The key of a thread's (or a draft's project's) selection. */
-export const selectionKey = (
-  target: NodeTarget,
-  owner: { thread?: string | undefined; project?: string | undefined },
-) =>
-  `${targetKey(target)}|${owner.thread === undefined ? `project:${owner.project}` : `thread:${owner.thread}`}`;
-
-export function useDiffSelection(selections: DiffSelections, key: string): DiffSelection {
-  return useSyncExternalStore(selections.subscribe, () => selections.get(key));
-}
 
 interface CheckpointList {
   readonly version: string;
@@ -86,7 +37,7 @@ const lists = new WeakMap<SourceControlServices, Map<string, CheckpointList>>();
  * latest one changes; one read per thread and change however many views ask.
  * Undefined while loading; empty for a thread without any.
  */
-export function useThreadCheckpoints(
+function useThreadCheckpoints(
   services: SourceControlServices,
   target: NodeTarget,
   threadId: string,
@@ -329,9 +280,9 @@ function ChangedFilesCard(props: { checkpoint: TurnCheckpoint; onOpen(filePath?:
  */
 export function createChangedFilesFooter(
   services: SourceControlServices,
-  selections: DiffSelections,
   open: (target: NodeTarget, threadId: string) => void,
 ) {
+  const { selections } = services;
   return function ChangedFilesFooter({ target, thread, turnId, state }: ChatTurnFooterProps) {
     const checkpoints = useThreadCheckpoints(services, target, thread.id);
     if (state === "running") return null;
@@ -344,13 +295,19 @@ export function createChangedFilesFooter(
         <ChangedFilesCard
           checkpoint={checkpoint}
           onOpen={(filePath) => {
-            const key = selectionKey(target, { thread: thread.id });
-            const previous = selections.get(key);
-            selections.set(key, {
-              kind: "turn",
-              turn: checkpoint.turn,
-              ...(filePath === undefined ? {} : { filePath }),
-              reveal: (previous.kind === "turn" ? previous.reveal : 0) + 1,
+            const key = selectionKey({
+              target,
+              projectId: thread.projectId,
+              threadId: thread.id,
+            });
+            const latest = checkpoints
+              ?.filter((item) => item.status === "ready")
+              .reduce((top, item) => Math.max(top, item.turn), 0);
+            selections.update(key, {
+              // T3 names the latest turn "Latest turn" however it was opened.
+              value: checkpoint.turn === latest ? LATEST_TURN : turnValue(checkpoint.turn),
+              filePath,
+              reveal: (selections.get(key).reveal ?? 0) + 1,
             });
             open(target, thread.id);
           }}

@@ -32,6 +32,8 @@
     "@jhin/terminal-api": "workspace:*",
     "@jhin/testing": "workspace:*",
     "@jhin/ui": "workspace:*",
+    "@pierre/diffs": "catalog:",
+    "@pierre/trees": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",

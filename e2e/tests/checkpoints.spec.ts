@@ -71,16 +71,24 @@ test("D243–D249: a turn's checkpoint, its changed files card, the card's count
   await changed.nth(1).getByRole("button", { name: "Open diff" }).click();
   const panel = page.getByRole("complementary", { name: "Diff panel" });
   await expect(panel.getByRole("button", { name: "Diff scope: Latest turn" })).toBeVisible();
-  await expect(panel.getByRole("region", { name: "src/app/bye.ts" })).toBeVisible();
-  await expect(panel.getByRole("region", { name: "src/app/greet.ts" })).toHaveCount(0);
+  await expect(
+    panel.getByRole("button", { name: /^(Expand|Collapse) src\/app\/bye\.ts$/ }),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("button", { name: /^(Expand|Collapse) src\/app\/greet\.ts$/ }),
+  ).toHaveCount(0);
 
   // An earlier turn from the "Turn" submenu.
   await panel.getByRole("button", { name: "Diff scope: Latest turn" }).click();
   await page.getByRole("menuitem", { name: "Turn" }).click();
   await page.getByRole("menuitemradio", { name: /Turn 1/ }).click();
   await expect(panel.getByRole("button", { name: "Diff scope: Turn 1" })).toBeVisible();
-  await expect(panel.getByRole("region", { name: "src/app/greet.ts" })).toBeVisible();
-  await expect(panel.getByRole("region", { name: "src/app/bye.ts" })).toHaveCount(0);
+  await expect(
+    panel.getByRole("button", { name: /^(Expand|Collapse) src\/app\/greet\.ts$/ }),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("button", { name: /^(Expand|Collapse) src\/app\/bye\.ts$/ }),
+  ).toHaveCount(0);
   await shot(page, info, "checkpoints-turn-scope");
 
   // The user's own git is untouched: both files are untracked, nothing is staged.

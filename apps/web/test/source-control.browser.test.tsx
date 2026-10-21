@@ -6,9 +6,11 @@ import type {
   ThreadRecord,
   ThreadsCatalog,
 } from "@jhin/client-api";
-import { toDisposable, type PluginContext } from "@jhin/sdk";
+import { toDisposable, type Disposable, type PluginContext } from "@jhin/sdk";
 import type {
+  Branch,
   Diff,
+  DiffScopeProvider,
   ProjectStatus,
   PullRequest,
   ThreadPullRequest,
@@ -16,18 +18,24 @@ import type {
 } from "@jhin/source-control-api";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
+import { page, userEvent } from "vite-plus/test/browser";
 
-import {
-  createChangedFilesFooter,
-  createDiffSelections,
-  selectionKey,
-} from "../src/plugins/source-control/checkpoints.tsx";
+import { formatShortTimestamp } from "../src/lib/format.ts";
+import { createChangedFilesFooter } from "../src/plugins/source-control/checkpoints.tsx";
 import { createDiffPanel } from "../src/plugins/source-control/diff-panel.tsx";
 import { createGitActionsControl } from "../src/plugins/source-control/git-actions.tsx";
 import { createRunningActions } from "../src/plugins/source-control/running.ts";
 import { createCardIndicators } from "../src/plugins/source-control/indicators.tsx";
+import {
+  createDiffScopes,
+  createDiffSelections,
+  gitScopeProvider,
+  selectionKey,
+} from "../src/plugins/source-control/diff/scopes.ts";
+import { turnScopeProvider } from "../src/plugins/source-control/diff/turns.ts";
 import type { SourceControlServices } from "../src/plugins/source-control/services.ts";
+import { DIFF_SECTION, DiffSettings } from "../src/lib/settings.ts";
 import type { SourceControlStore, SourceControlView } from "../src/plugins/source-control/store.ts";
 
 const target = { node: "ws://a/rpc" };
@@ -64,7 +72,42 @@ const status = (fields: Partial<ProjectStatus> = {}): ProjectStatus => ({
   ...fields,
 });
 
-function services(view: SourceControlView, answers: Record<string, unknown> = {}) {
+/** A plugin context whose config holds the `jhin.diff` section a device sets. */
+function deviceConfig(values: Partial<DiffSettings> = {}) {
+  let current: Record<string, unknown> = { ...values };
+  const listeners = new Set<() => void>();
+  const context = {
+    config: {
+      get: (section: string) => {
+        if (section !== DIFF_SECTION) throw new Error(`No section ${section}`);
+        return DiffSettings.parse(current);
+      },
+      onDidChange: (_section: string, listener: () => void): Disposable => {
+        listeners.add(listener);
+        return toDisposable(() => listeners.delete(listener));
+      },
+    },
+  } as unknown as PluginContext;
+  const patches: Record<string, unknown>[] = [];
+  const settings = {
+    values: () => current,
+    patch: (_section: string, patch: Readonly<Record<string, unknown>>) => {
+      patches.push({ ...patch });
+      current = { ...current, ...patch };
+      act(() => {
+        for (const listener of listeners) listener();
+      });
+    },
+    reset: () => undefined,
+  };
+  return { context, settings, patches };
+}
+
+function services(
+  view: SourceControlView,
+  answers: Record<string, unknown> = {},
+  config = deviceConfig(),
+) {
   const calls: { method: string; params: unknown }[] = [];
   const shown: { type?: string; title: unknown; description?: unknown; action?: string }[] = [];
   const store: SourceControlStore = {
@@ -78,7 +121,8 @@ function services(view: SourceControlView, answers: Record<string, unknown> = {}
     subscribe: () => toDisposable(() => undefined),
     call: async <T,>(_target: unknown, method: string, params?: unknown) => {
       calls.push({ method, params });
-      return answers[method] as T;
+      const answer = answers[method];
+      return (typeof answer === "function" ? answer(params) : answer) as T;
     },
     open: async () => "",
   };
@@ -96,8 +140,11 @@ function services(view: SourceControlView, answers: Record<string, unknown> = {}
     list: () => [],
     subscribe: () => toDisposable(() => undefined),
   } as unknown as Connections;
+  const scopes = createDiffScopes();
+  scopes.register(gitScopeProvider(threads));
+  const storage = new Map<string, string>();
   const value: SourceControlServices = {
-    context: {} as PluginContext,
+    context: config.context,
     store,
     threads,
     connections,
@@ -116,25 +163,43 @@ function services(view: SourceControlView, answers: Record<string, unknown> = {}
       update: () => undefined,
       close: () => undefined,
     },
-    selections: createDiffSelections(),
+    scopes,
+    selections: createDiffSelections({
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, item: string) => storage.set(key, item),
+    } as unknown as Storage),
+    settings: config.settings,
     timestampFormat: () => "24-hour",
     shortcut: () => undefined,
   };
-  return { value, calls, shown };
+  scopes.register(turnScopeProvider(value));
+  return { value, calls, shown, scopes, config };
 }
+
+const mounts = new Set<() => void>();
+beforeAll(async () => {
+  // Wide enough for the panel and its file tree, as in a desktop window.
+  await page.viewport(1280, 800);
+});
+afterEach(() => {
+  for (const unmount of mounts) unmount();
+});
 
 function mount(element: React.ReactNode) {
   const container = document.createElement("div");
+  // The panel fills the height of the app's main row.
+  container.style.height = "640px";
+  container.style.display = "flex";
   document.body.append(container);
   const root = createRoot(container);
   act(() => root.render(element));
-  return {
-    container,
-    unmount: () => {
-      act(() => root.unmount());
-      container.remove();
-    },
+  const unmount = () => {
+    if (!mounts.delete(unmount)) return;
+    act(() => root.unmount());
+    container.remove();
   };
+  mounts.add(unmount);
+  return { container, unmount };
 }
 
 const viewWith = (
@@ -243,50 +308,206 @@ describe("a thread's hover card lines (D443)", () => {
 });
 
 describe("the diff panel", () => {
+  const patch = [
+    "diff --git a/src/app.ts b/src/app.ts",
+    "--- a/src/app.ts",
+    "+++ b/src/app.ts",
+    "@@ -1,2 +1,2 @@",
+    " const one = 1;",
+    "-const two = 2;",
+    "+const two = 3;",
+    "diff --git a/docs/notes.md b/docs/notes.md",
+    "new file mode 100644",
+    "--- /dev/null",
+    "+++ b/docs/notes.md",
+    "@@ -0,0 +1 @@",
+    "+# Notes",
+    "",
+  ].join("\n");
   const diff: Diff = {
     projectId: "app",
-    scope: "uncommitted",
-    baseRef: null,
-    headRef: null,
-    patch: [
-      "diff --git a/README.md b/README.md",
-      "--- a/README.md",
-      "+++ b/README.md",
-      "@@ -1,2 +1,2 @@",
-      " one",
-      "-two",
-      "+TWO",
-      "",
-    ].join("\n"),
+    scope: "branch",
+    baseRef: "main",
+    headRef: "feature/toolbar",
+    patch,
     truncated: false,
-    files: [{ path: "README.md", status: "modified", insertions: 1, deletions: 1, binary: false }],
-    insertions: 1,
+    files: [
+      { path: "docs/notes.md", status: "added", insertions: 1, deletions: 0, binary: false },
+      { path: "src/app.ts", status: "modified", insertions: 1, deletions: 1, binary: false },
+    ],
+    insertions: 2,
     deletions: 1,
   };
+  const panel = () => page.getByRole("complementary", { name: "Diff panel" });
 
-  it("shows the thread's project diff, file by file, and folds a file", async () => {
+  it("shows the branch's changes with Pierre, files folded, and highlights a file it unfolds", async () => {
     const { value, calls } = services(viewWith(status()), { "git.diff": diff });
     const Panel = createDiffPanel(value);
-    const panel = mount(<Panel />);
-    await act(async () => undefined);
+    const mounted = mount(<Panel />);
+    await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
+    // T3's default scope is "Changes", whitespace hidden.
     expect(calls).toEqual([
       {
         method: "git.diff",
-        params: { projectId: "app", scope: "uncommitted", ignoreWhitespace: false },
+        params: { projectId: "app", scope: "branch", ignoreWhitespace: true },
       },
     ]);
-    const aside = panel.container.querySelector("aside")!;
-    expect(aside.getAttribute("aria-label")).toBe("Diff panel");
-    const file = aside.querySelector('[data-diff-file="README.md"]')!;
     expect(
-      [...file.querySelectorAll("[data-line]")].map((row) => row.getAttribute("data-line")),
-    ).toEqual(["context", "delete", "add"]);
-    expect(file.textContent).toContain("TWO");
-    const toggle = file.querySelector("button")!;
-    expect(toggle.getAttribute("aria-label")).toBe("Collapse README.md");
-    act(() => toggle.click());
-    expect(file.querySelectorAll("[data-line]")).toHaveLength(0);
-    panel.unmount();
+      page.getByRole("combobox", { name: "Change comparison target. Currently main" }).element(),
+    ).toBeTruthy();
+    expect(panel().getByRole("button", { name: "Diff scope: Changes" }).element()).toBeTruthy();
+    expect(page.getByText("const two = 3;").query()).toBeNull();
+
+    await userEvent.click(page.getByRole("button", { name: "Expand src/app.ts" }));
+    await expect.element(page.getByRole("button", { name: "Collapse src/app.ts" })).toBeVisible();
+    const added = page.getByText("3", { exact: true });
+    await expect.element(added).toBeVisible();
+    // Highlighted by Shiki in a worker: tokens carry their theme colour.
+    expect(
+      (added.element() as HTMLElement).closest("[data-line-type]")?.getAttribute("data-line-type"),
+    ).toBe("change-addition");
+    expect(
+      [
+        ...((added.element() as HTMLElement)
+          .closest("[data-line]")
+          ?.querySelectorAll("span[style]") ?? []),
+      ].length,
+    ).toBeGreaterThan(1);
+    mounted.unmount();
+  });
+
+  it("switches to the split view and writes the layout on the device", async () => {
+    const config = deviceConfig({ filesCollapsed: false });
+    const { value } = services(viewWith(status()), { "git.diff": diff }, config);
+    const Panel = createDiffPanel(value);
+    const mounted = mount(<Panel />);
+    await expect.element(page.getByText("const one = 1;")).toBeVisible();
+    const pre = () =>
+      (page.getByText("const one = 1;").first().element() as HTMLElement).closest("pre");
+    expect(pre()?.getAttribute("data-diff-type")).toBe("single");
+    await userEvent.click(page.getByRole("button", { name: "Split diff view" }));
+    expect(config.patches).toEqual([{ layout: "split" }]);
+    // Both sides show the unchanged line.
+    await expect.element(page.getByText("const one = 1;").nth(1)).toBeVisible();
+    expect(pre()?.getAttribute("data-diff-type")).toBe("split");
+    mounted.unmount();
+  });
+
+  it("lists the files in a tree and reveals the one chosen", async () => {
+    const { value } = services(viewWith(status()), { "git.diff": diff });
+    const Panel = createDiffPanel(value);
+    const mounted = mount(<Panel />);
+    await userEvent.click(page.getByRole("button", { name: "Show file tree" }));
+    const tree = page.getByRole("tree");
+    await expect.element(tree.getByRole("treeitem", { name: "app.ts" })).toBeVisible();
+    expect(
+      tree
+        .getByRole("treeitem")
+        .elements()
+        .map((item) => item.getAttribute("aria-label") ?? item.textContent?.trim()),
+    ).toEqual(["src", "app.ts", "docs", "notes.md"]);
+    // Without the app's stylesheet the tree has no height to hit-test in, so click it directly.
+    act(() => (tree.getByRole("treeitem", { name: "app.ts" }).element() as HTMLElement).click());
+    await expect.element(page.getByRole("button", { name: "Collapse src/app.ts" })).toBeVisible();
+    expect(page.getByRole("button", { name: "Expand docs/notes.md" }).element()).toBeTruthy();
+    mounted.unmount();
+  });
+
+  it("compares with the base chosen in T3's picker", async () => {
+    const branches: Branch[] = [
+      { name: "feature/toolbar", current: true, isDefault: false, isRemote: false, upstream: null },
+      { name: "main", current: false, isDefault: true, isRemote: false, upstream: "origin/main" },
+      { name: "develop", current: false, isDefault: false, isRemote: false, upstream: null },
+      { name: "origin/main", current: false, isDefault: false, isRemote: true, upstream: null },
+      { name: "origin/release", current: false, isDefault: false, isRemote: true, upstream: null },
+    ];
+    const { value, calls } = services(viewWith(status()), {
+      "git.diff": (params: { base?: string }) => ({ ...diff, baseRef: params.base ?? "main" }),
+      "git.branches": { branches },
+    });
+    const Panel = createDiffPanel(value);
+    const mounted = mount(<Panel />);
+    await userEvent.click(
+      page.getByRole("combobox", { name: "Change comparison target. Currently main" }),
+    );
+    await expect.element(page.getByRole("option", { name: "develop" })).toBeVisible();
+    expect(page.getByRole("option", { name: "Automatic" }).element()).toBeTruthy();
+    expect(page.getByRole("switch", { name: "Use remote version of main" }).element()).toBeTruthy();
+    expect(page.getByRole("img", { name: "Remote only" }).element()).toBeTruthy();
+    // The checked-out branch is no base for itself.
+    expect(page.getByRole("option", { name: "feature/toolbar" }).query()).toBeNull();
+    await userEvent.click(page.getByRole("option", { name: "develop" }));
+    await expect
+      .element(page.getByRole("combobox", { name: "Change comparison target. Currently develop" }))
+      .toBeVisible();
+    expect(calls.findLast((call) => call.method === "git.diff")?.params).toEqual({
+      projectId: "app",
+      scope: "branch",
+      ignoreWhitespace: true,
+      base: "develop",
+    });
+    mounted.unmount();
+  });
+
+  it("offers a contributed scope in the menu, after the turns, in its group", async () => {
+    const { value, scopes } = services(viewWith(status()), { "git.diff": diff });
+    const loads: unknown[] = [];
+    const reviews: DiffScopeProvider = {
+      id: "test.reviews",
+      order: 20,
+      // A fresh array on every call: the panel compares what the options say.
+      options: () => [
+        { value: "review:last", label: "Last review" },
+        { value: "review:1", label: "Review 1", group: "Review", detail: "10:00" },
+      ],
+      load: async (context, option) => {
+        loads.push({ projectId: context.projectId, threadId: context.threadId, option });
+        return {
+          ...diff,
+          patch: patch.split("diff --git a/docs")[0]!,
+          baseRef: null,
+          headRef: null,
+        };
+      },
+    };
+    const registration = scopes.register(reviews);
+    const Panel = createDiffPanel(value);
+    const mounted = mount(<Panel />);
+    await userEvent.click(page.getByRole("button", { name: "Diff scope: Changes" }));
+    expect(
+      page
+        .getByRole("menuitemradio")
+        .elements()
+        .map((item) => item.textContent),
+    ).toEqual(["Changes", "Uncommitted", "Latest turn", "Last review"]);
+    await userEvent.click(page.getByRole("menuitem", { name: "Review" }));
+    await userEvent.click(page.getByRole("menuitemradio", { name: /Review 1/ }));
+    await expect.element(page.getByRole("button", { name: "Diff scope: Review 1" })).toBeVisible();
+    expect(loads).toEqual([{ projectId: "app", threadId: "t1", option: "review:1" }]);
+    await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
+    // A scope that goes away falls back to the first one.
+    act(() => registration.dispose());
+    await expect.element(page.getByRole("button", { name: "Diff scope: Changes" })).toBeVisible();
+    mounted.unmount();
+  });
+
+  it("keeps the diff it shows when a refresh fails", async () => {
+    let reads = 0;
+    const { value } = services(viewWith(status()), {
+      "git.diff": () => {
+        reads++;
+        if (reads > 1) throw new Error("git is busy");
+        return diff;
+      },
+    });
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
+    // The window regaining focus reads the diff again, as T3 does.
+    act(() => window.dispatchEvent(new Event("focus")));
+    await expect.element(page.getByText("git is busy")).toBeVisible();
+    expect(page.getByRole("button", { name: "Expand src/app.ts" }).element()).toBeTruthy();
+    expect(reads).toBe(2);
   });
 
   it("says so when the project is no repository or has no changes", async () => {
@@ -303,8 +524,7 @@ describe("the diff panel", () => {
       services(viewWith(status()), { "git.diff": { ...diff, patch: "", files: [] } }).value,
     );
     const second = mount(<Clean />);
-    await act(async () => undefined);
-    expect(second.container.textContent).toContain("No net changes in this selection.");
+    await expect.element(page.getByText("No net changes in this selection.")).toBeVisible();
     second.unmount();
   });
 });
@@ -523,39 +743,48 @@ describe("checkpoints in the client", () => {
     empty.unmount();
   });
 
-  it("shows the latest turn's diff and lists every turn in the scope menu", async () => {
+  const threadKey = selectionKey({ target, projectId: "app", threadId: "t1" });
+
+  it("shows the latest turn's diff, names an earlier one by its number, and reveals a file", async () => {
     const { value, calls } = services(withCheckpoints(second), {
       "git.checkpoints": { checkpoints: [checkpoint(1), second] },
       "git.diff": turnDiff,
     });
-    value.selections.set(selectionKey(target, { thread: "t1" }), { kind: "turn", reveal: 0 });
+    value.selections.update(threadKey, { value: "latest" });
     const Panel = createDiffPanel(value);
-    const panel = mount(<Panel />);
-    await act(async () => undefined);
-    await act(async () => undefined);
+    mount(<Panel />);
+    await expect.element(page.getByRole("button", { name: "Expand src/a.ts" })).toBeVisible();
+    expect(page.getByRole("button", { name: "Diff scope: Latest turn" }).element()).toBeTruthy();
     expect(calls).toContainEqual({
       method: "git.diff",
-      params: { threadId: "t1", scope: "turn", turn: 2, ignoreWhitespace: false },
+      params: { threadId: "t1", scope: "turn", turn: 2, ignoreWhitespace: true },
     });
-    const trigger = panel.container.querySelector('[aria-label^="Diff scope"]')!;
-    expect(trigger.getAttribute("aria-label")).toBe("Diff scope: Latest turn");
-    expect(panel.container.querySelector('[data-diff-file="src/a.ts"]')).not.toBeNull();
-
-    // An earlier turn is named by its number.
-    act(() =>
-      value.selections.set(selectionKey(target, { thread: "t1" }), {
-        kind: "turn",
-        turn: 1,
-        reveal: 0,
-      }),
+    // Each turn is in T3's "Turn" submenu, with its time.
+    await userEvent.click(page.getByRole("button", { name: "Diff scope: Latest turn" }));
+    await userEvent.click(page.getByRole("menuitem", { name: "Turn" }));
+    await expect.element(page.getByRole("menuitemradio", { name: /^Turn 2/ })).toBeVisible();
+    expect(
+      page
+        .getByRole("menuitemradio", { name: /^Turn \d/ })
+        .elements()
+        .map((item) => item.textContent),
+    ).toEqual(
+      ["Turn 2", "Turn 1"].map(
+        (label) => `${label}${formatShortTimestamp("2026-10-20T10:00:00.000Z", "24-hour")}`,
+      ),
     );
-    await act(async () => undefined);
-    expect(trigger.getAttribute("aria-label")).toBe("Diff scope: Turn 1");
+    await userEvent.click(page.getByRole("menuitemradio", { name: /^Turn 1/ }));
+    await expect.element(page.getByRole("button", { name: "Diff scope: Turn 1" })).toBeVisible();
     expect(calls).toContainEqual({
       method: "git.diff",
-      params: { threadId: "t1", scope: "turn", turn: 1, ignoreWhitespace: false },
+      params: { threadId: "t1", scope: "turn", turn: 1, ignoreWhitespace: true },
     });
-    panel.unmount();
+
+    // A file asked for from outside (the changed files card) is unfolded.
+    act(() =>
+      value.selections.update(threadKey, { value: "latest", filePath: "src/a.ts", reveal: 1 }),
+    );
+    await expect.element(page.getByRole("button", { name: "Collapse src/a.ts" })).toBeVisible();
   });
 
   it("says when a thread has no completed turns", async () => {
@@ -563,13 +792,10 @@ describe("checkpoints in the client", () => {
     const { value } = services(withCheckpoints(failed), {
       "git.checkpoints": { checkpoints: [failed] },
     });
-    value.selections.set(selectionKey(target, { thread: "t1" }), { kind: "turn", reveal: 0 });
+    value.selections.update(threadKey, { value: "latest" });
     const Panel = createDiffPanel(value);
-    const panel = mount(<Panel />);
-    await act(async () => undefined);
-    await act(async () => undefined);
-    expect(panel.container.textContent).toContain("No completed turns yet.");
-    panel.unmount();
+    mount(<Panel />);
+    await expect.element(page.getByText("No completed turns yet.")).toBeVisible();
   });
 
   it("shows a turn's changed files under it and opens the diff panel on one", async () => {
@@ -577,9 +803,7 @@ describe("checkpoints in the client", () => {
       "git.checkpoints": { checkpoints: [checkpoint(1), second] },
     });
     const opened: string[] = [];
-    const Footer = createChangedFilesFooter(value, value.selections, (_target, threadId) =>
-      opened.push(threadId),
-    );
+    const Footer = createChangedFilesFooter(value, (_target, threadId) => opened.push(threadId));
     const footer = mount(
       <Footer latest state="completed" target={target} thread={thread} turnId="turn-2" />,
     );
@@ -593,9 +817,9 @@ describe("checkpoints in the client", () => {
     )!;
     act(() => file.click());
     expect(opened).toEqual(["t1"]);
-    expect(value.selections.get(selectionKey(target, { thread: "t1" }))).toEqual({
-      kind: "turn",
-      turn: 2,
+    // The latest turn is "Latest turn", as T3 names it.
+    expect(value.selections.get(threadKey)).toEqual({
+      value: "latest",
       filePath: "src/lib/b.ts",
       reveal: 1,
     });
@@ -613,7 +837,7 @@ describe("checkpoints in the client", () => {
 
 describe("the diff panel across scopes", () => {
   it("never shows a turn's diff under a git scope while that scope loads", async () => {
-    const second: TurnCheckpoint = {
+    const only: TurnCheckpoint = {
       threadId: "t1",
       turnId: "turn-1",
       turn: 1,
@@ -629,34 +853,28 @@ describe("the diff panel across scopes", () => {
     const turnPatch =
       "diff --git a/turn.ts b/turn.ts\n--- a/turn.ts\n+++ b/turn.ts\n@@ -0,0 +1 @@\n+t\n";
     const { value } = services(
-      { ...viewWith(status()), checkpoints: new Map([["t1", second]]) },
-      { "git.checkpoints": { checkpoints: [second] } },
+      { ...viewWith(status()), checkpoints: new Map([["t1", only]]) },
+      {
+        "git.checkpoints": { checkpoints: [only] },
+        "git.diff": (params: { scope: string }) =>
+          params.scope === "turn"
+            ? { ...diffOf(turnPatch), scope: "turn" }
+            : new Promise<Diff>((resolve) => (answer = resolve)),
+      },
     );
-    const answers: Record<string, () => Promise<unknown>> = {
-      turn: async () => ({ ...diffOf(turnPatch), scope: "turn" }),
-      uncommitted: () => new Promise<Diff>((resolve) => (answer = resolve)),
-    };
-    const calls = value.threads.call;
-    value.threads.call = (async (to: unknown, method: string, params?: unknown) => {
-      if (method === "git.diff") return answers[(params as { scope: string }).scope]!();
-      return calls(to as never, method, params);
-    }) as typeof calls;
-    const key = selectionKey(target, { thread: "t1" });
-    value.selections.set(key, { kind: "turn", reveal: 0 });
+    const key = selectionKey({ target, projectId: "app", threadId: "t1" });
+    value.selections.update(key, { value: "latest" });
     const Panel = createDiffPanel(value);
-    const panel = mount(<Panel />);
-    for (let index = 0; index < 3; index++) await act(async () => undefined);
-    expect(panel.container.querySelector('[data-diff-file="turn.ts"]')).not.toBeNull();
+    mount(<Panel />);
+    await expect.element(page.getByRole("button", { name: "Expand turn.ts" })).toBeVisible();
 
-    act(() => value.selections.set(key, { kind: "uncommitted" }));
-    await act(async () => undefined);
-    expect(panel.container.querySelector('[data-diff-file="turn.ts"]')).toBeNull();
-    expect(
-      panel.container.querySelector('[aria-label="Loading uncommitted changes..."]'),
-    ).not.toBeNull();
+    act(() => value.selections.update(key, { value: "uncommitted" }));
+    await expect
+      .element(page.getByRole("status", { name: "Loading uncommitted changes..." }))
+      .toBeVisible();
+    expect(page.getByRole("button", { name: "Expand turn.ts" }).query()).toBeNull();
     await act(async () => answer(diffOf("")));
-    expect(panel.container.textContent).toContain("No net changes in this selection.");
-    panel.unmount();
+    await expect.element(page.getByText("No net changes in this selection.")).toBeVisible();
   });
 });
 
