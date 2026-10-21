@@ -1470,6 +1470,198 @@ describe("worktrees in the client", () => {
     started.unmount();
   });
 
+  it("checks a pull request out from the branch search into the draft's worktree (D903)", async () => {
+    const checkedOut: unknown[] = [];
+    const { value, calls } = services(
+      viewWith(status({ provider: { kind: "github", available: true } })),
+      {
+        "git.branches": { branches: [] },
+        "git.pr.resolve": {
+          pullRequest: { ...pr, number: 7, headBranch: "feature", baseBranch: "main" },
+        },
+        "git.pr.checkout": (params: unknown) => {
+          checkedOut.push(params);
+          return {
+            pullRequest: pr,
+            branch: "feature",
+            worktreePath: "/w/app/feature",
+            isOnPullRequestHead: true,
+          };
+        },
+      },
+    );
+    const drafts = createDraftWorkspaces();
+    const Toolbar = createBranchToolbar(value, drafts);
+    const project = { id: "app", name: "app", path: "/src/app", scratch: false, createdAt: "" };
+    mount(<Toolbar project={project} target={target} />);
+    await userEvent.click(page.getByRole("combobox", { name: /^Branch / }));
+    await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "gh pr checkout #7");
+    await userEvent.click(page.getByRole("option", { name: /Checkout pull request/ }));
+
+    const dialog = page.getByRole("dialog", { name: "Checkout pull request" });
+    await expect.element(dialog).toBeVisible();
+    await expect.element(dialog.getByText(`#7 · feature to main`)).toBeVisible();
+    expect(calls.find((call) => call.method === "git.pr.resolve")?.params).toEqual({
+      projectId: "app",
+      reference: "7",
+    });
+    // Clicked in the DOM, as the other dialogs here: without the app's styles the
+    // dialog's backdrop is not stacked under it.
+    await act(async () =>
+      (dialog.getByRole("button", { name: "Worktree" }).element() as HTMLElement).click(),
+    );
+    await expect.element(dialog).not.toBeInTheDocument();
+    expect(checkedOut).toEqual([{ projectId: "app", reference: "7", mode: "worktree" }]);
+    expect(drafts.get(draftKey(target, "app"))).toEqual({
+      mode: "previous",
+      startFromOrigin: false,
+      previous: { path: "/w/app/feature", branch: "feature" },
+    });
+  });
+
+  it("says what a pull request reference needs, and offers no checkout off GitHub", async () => {
+    const { value } = services(
+      viewWith(status({ provider: { kind: "github", available: true } })),
+      {
+        "git.branches": { branches: [] },
+      },
+    );
+    const Toolbar = createBranchToolbar(value, createDraftWorkspaces());
+    const project = { id: "app", name: "app", path: "/src/app", scratch: false, createdAt: "" };
+    const draft = mount(<Toolbar project={project} target={target} />);
+    await userEvent.click(page.getByRole("combobox", { name: /^Branch / }));
+    await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "#12");
+    await userEvent.click(page.getByRole("option", { name: /Checkout pull request/ }));
+    const dialog = page.getByRole("dialog", { name: "Checkout pull request" });
+    const input = dialog.getByRole("textbox");
+    await userEvent.fill(input, "not a pr");
+    await expect
+      .element(dialog.getByText("Use a pull request URL, checkout command, 123, or #123."))
+      .toBeVisible();
+    await userEvent.fill(input, "");
+    await expect
+      .element(dialog.getByText("Paste a pull request URL, checkout command, or enter 123 / #123."))
+      .toBeVisible();
+    await act(async () =>
+      (dialog.getByRole("button", { name: "Cancel" }).element() as HTMLElement).click(),
+    );
+    draft.unmount();
+
+    const { value: plain } = services(viewWith(status({ provider: null })), {
+      "git.branches": { branches: [] },
+    });
+    const Off = createBranchToolbar(plain, createDraftWorkspaces());
+    mount(<Off project={project} target={target} />);
+    await userEvent.click(page.getByRole("combobox", { name: /^Branch / }));
+    await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "#12");
+    await expect.element(page.getByRole("option", { name: /Create new ref/ })).toBeVisible();
+    expect(document.body.textContent).not.toContain("Checkout pull request");
+  });
+
+  it("asks again after a failed lookup once the reference is edited, and offers no checkout for a worktree's base", async () => {
+    let failures = 1;
+    const { value } = services(
+      viewWith(status({ provider: { kind: "github", available: true } })),
+      {
+        "git.branches": { branches: [] },
+        "git.pr.resolve": () => {
+          if (failures-- > 0) throw new Error("gh exited with code 1");
+          return { pullRequest: { ...pr, number: 7, headBranch: "feature", baseBranch: "main" } };
+        },
+      },
+    );
+    const drafts = createDraftWorkspaces();
+    const Toolbar = createBranchToolbar(value, drafts);
+    const project = { id: "app", name: "app", path: "/src/app", scratch: false, createdAt: "" };
+    const draft = mount(<Toolbar project={project} target={target} />);
+    await userEvent.click(page.getByRole("combobox", { name: /^Branch / }));
+    await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "#7");
+    await userEvent.click(page.getByRole("option", { name: /Checkout pull request/ }));
+    const dialog = page.getByRole("dialog", { name: "Checkout pull request" });
+    await expect.element(dialog.getByText("gh exited with code 1")).toBeVisible();
+    await userEvent.fill(dialog.getByRole("textbox"), "#7");
+    await expect.element(dialog.getByText("#7 · feature to main")).toBeVisible();
+    await act(async () =>
+      (dialog.getByRole("button", { name: "Cancel" }).element() as HTMLElement).click(),
+    );
+    draft.unmount();
+
+    act(() =>
+      drafts.set(draftKey(target, "app"), {
+        mode: "worktree",
+        baseRef: "feature/toolbar",
+        startFromOrigin: false,
+      }),
+    );
+    mount(<Toolbar project={project} target={target} />);
+    await userEvent.click(page.getByRole("combobox", { name: /^Branch From/ }));
+    await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "#7");
+    await expect.element(page.getByText("No refs found.")).toBeVisible();
+    expect(document.body.textContent).not.toContain("Checkout pull request");
+  });
+
+  it("holds the dialog while preparing, takes Enter for Worktree and leaves a local checkout's draft as it was", async () => {
+    let finish!: (prepared: unknown) => void;
+    const modes: unknown[] = [];
+    const { value } = services(
+      viewWith(status({ provider: { kind: "github", available: true } })),
+      {
+        "git.branches": { branches: [] },
+        "git.pr.resolve": {
+          pullRequest: { ...pr, number: 7, headBranch: "feature", baseBranch: "main" },
+        },
+        "git.pr.checkout": (params: { mode: string }) => {
+          modes.push(params.mode);
+          return new Promise((resolve) => (finish = resolve));
+        },
+      },
+    );
+    const drafts = createDraftWorkspaces();
+    const Toolbar = createBranchToolbar(value, drafts);
+    const project = { id: "app", name: "app", path: "/src/app", scratch: false, createdAt: "" };
+    mount(<Toolbar project={project} target={target} />);
+    const open = async () => {
+      await userEvent.click(page.getByRole("combobox", { name: /^Branch / }));
+      await userEvent.fill(page.getByRole("combobox", { name: "Search refs" }), "#7");
+      await userEvent.click(page.getByRole("option", { name: /Checkout pull request/ }));
+      const dialog = page.getByRole("dialog", { name: "Checkout pull request" });
+      await expect.element(dialog.getByText("#7 · feature to main")).toBeVisible();
+      return dialog;
+    };
+
+    // Enter is Worktree; while it runs the dialog says so and stays.
+    let dialog = await open();
+    await userEvent.type(dialog.getByRole("textbox"), "{Enter}");
+    await expect
+      .element(dialog.getByRole("button", { name: "Preparing worktree..." }))
+      .toBeVisible();
+    expect(modes).toEqual(["worktree"]);
+    await userEvent.keyboard("{Escape}");
+    await expect.element(dialog).toBeVisible();
+    await act(async () =>
+      finish({
+        pullRequest: pr,
+        branch: "feature",
+        worktreePath: "/w/app/feature",
+        isOnPullRequestHead: true,
+      }),
+    );
+    await expect.element(dialog).not.toBeInTheDocument();
+
+    // Local leaves the draft in the project's own checkout.
+    dialog = await open();
+    await act(async () =>
+      (dialog.getByRole("button", { name: "Local" }).element() as HTMLElement).click(),
+    );
+    await expect.element(dialog.getByRole("button", { name: "Preparing local..." })).toBeVisible();
+    await act(async () =>
+      finish({ pullRequest: pr, branch: "feature", worktreePath: null, isOnPullRequestHead: true }),
+    );
+    await expect.element(dialog).not.toBeInTheDocument();
+    expect(modes).toEqual(["worktree", "local"]);
+    expect(drafts.get(draftKey(target, "app"))).toEqual({ mode: "local", startFromOrigin: false });
+  });
+
   it("never offers to delete a worktree this node did not make", async () => {
     const asked: string[] = [];
     let around!: (

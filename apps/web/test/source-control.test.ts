@@ -27,6 +27,7 @@ import {
   threadPullRequestBadge,
   threadPullRequestBadgePresentation,
 } from "../src/lib/pull-request.ts";
+import { parsePullRequestReference } from "../src/plugins/source-control/pull-request-checkout.tsx";
 import { readPullRequestInput } from "../src/plugins/source-control/links.tsx";
 import { splitForMiddleTruncate } from "../src/lib/middle-truncate.tsx";
 import { formatCompactDiffCount, prStatusIndicator } from "../src/lib/pull-request.ts";
@@ -1208,5 +1209,21 @@ describe("worktrees in the client", () => {
       projectId: "app",
       workspace: { type: "existing_worktree", worktreePath: "/w/new" },
     });
+  });
+});
+
+describe("reading a pull request reference (D903)", () => {
+  it("takes T3's forms for GitHub", () => {
+    expect(parsePullRequestReference(" #42 ")).toBe("42");
+    expect(parsePullRequestReference("42")).toBe("42");
+    expect(parsePullRequestReference("gh pr checkout 42")).toBe("42");
+    expect(parsePullRequestReference("https://github.com/acme/demo/pull/42/files")).toBe(
+      "https://github.com/acme/demo/pull/42/files",
+    );
+    expect(parsePullRequestReference("gh pr checkout https://github.com/acme/demo/pull/42")).toBe(
+      "https://github.com/acme/demo/pull/42",
+    );
+    expect(parsePullRequestReference("feature/x")).toBeNull();
+    expect(parsePullRequestReference("")).toBeNull();
   });
 });
