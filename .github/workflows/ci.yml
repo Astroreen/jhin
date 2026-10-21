@@ -63,7 +63,15 @@ jobs:
       - name: Install Chromium
         working-directory: e2e
         run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm e2e
+      # The desktop app's tests (docs/plans/desktop.md, D523): Electron's binary,
+      # which a cached install may not have fetched, and its sandbox, which
+      # Ubuntu's AppArmor keeps from unprivileged user namespaces.
+      - name: Install Electron
+        run: node apps/desktop/node_modules/electron/install.js
+      - name: Allow Electron's sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # Electron needs a display on Linux.
+      - run: xvfb-run -a pnpm e2e
       # Always: the report holds the screenshots PRs cite as evidence.
       - name: Upload Playwright report
         if: always()

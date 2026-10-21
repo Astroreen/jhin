@@ -248,7 +248,7 @@ export const settingsPlugin = builtin(
         return (
           <SettingsContext.Provider value={services}>
             <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-              <header className="flex h-[var(--workspace-topbar-height)] shrink-0 items-center gap-3 pl-(--workspace-gutter-start) pr-(--workspace-gutter-end) group-data-[sidebar-state=collapsed]/sidebar-wrapper:ps-[calc(var(--workspace-titlebar-content-left))]">
+              <header className="drag-region flex h-[var(--workspace-topbar-height)] shrink-0 items-center gap-3 pl-(--workspace-gutter-start) pr-(--workspace-gutter-end) wco:pr-(--workspace-native-controls-inset) group-data-[sidebar-state=collapsed]/sidebar-wrapper:ps-[calc(var(--workspace-titlebar-content-left))]">
                 <nav
                   aria-label="Settings breadcrumb"
                   className="flex min-w-0 items-center gap-2 text-sm sm:gap-3"

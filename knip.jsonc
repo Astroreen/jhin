@@ -41,6 +41,21 @@
         "@jhin/plugin-mesh",
       ],
     },
+    "apps/desktop": {
+      // The main process and the preload are built apart (docs/plans/desktop.md, D511).
+      "entry": [
+        "src/main.ts",
+        "src/preload.ts",
+        "vite.config.ts",
+        "vite.preload.config.ts",
+        // Run as a child process by local-node.test.ts.
+        "test/fixtures/*.mjs",
+      ],
+    },
+    "plugins/desktop": {
+      // A client plugin built for the browser (D514).
+      "entry": ["src/index.tsx", "vite.config.ts"],
+    },
     "apps/web": {
       "entry": ["src/main.tsx", "vite.config.ts"],
     },
@@ -51,6 +66,8 @@
     },
     "e2e": {
       "entry": ["playwright.config.ts", "tests/**/*.spec.ts", "tests/support/*.ts"],
+      // The desktop test finds the app's node process with procps' pgrep.
+      "ignoreBinaries": ["pgrep"],
     },
   },
 }

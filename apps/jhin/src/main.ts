@@ -12,6 +12,11 @@ import type { CommandInfo } from "@jhin/sdk";
 
 const require = Module.createRequire(import.meta.url);
 
+// The desktop app runs this CLI with its own Node through ELECTRON_RUN_AS_NODE
+// (docs/plans/desktop.md, D512); what the node starts (agents, terminals,
+// tools) must not inherit it, or an Electron app it launches runs as Node.
+delete process.env["ELECTRON_RUN_AS_NODE"];
+
 /**
  * Package directories of the plugins this CLI ships with. A mode is a set of
  * plugins (D21): `serve` = `jhinDistribution`, `serve --ui` adds `jhinUi`,
@@ -44,6 +49,8 @@ const USAGE = `Usage:
 Global options:
   --home <dir>                  Jhin home (default: $JHIN_HOME or ~/.jhin)
   --cwd <dir>                   project directory (default: current directory)
+  --plugin-dir <dir>            also load the plugin package in <dir> (several joined by
+                                "${Path.delimiter}"); it wins over the other locations (D15)
   --url <url>                   run against a running node (ws://host:port/rpc or http://host:port)
                                 instead of booting the plugins in this process
   --token <token>               the node's access token (default: read from the home)`;
@@ -84,7 +91,17 @@ function parseArgv(argv: readonly string[]): Args {
   return { positionals, options };
 }
 
-const GLOBAL_OPTIONS = new Set(["home", "cwd", "input", "watch", "help", "url", "token", "ui"]);
+const GLOBAL_OPTIONS = new Set([
+  "home",
+  "cwd",
+  "input",
+  "watch",
+  "help",
+  "url",
+  "token",
+  "ui",
+  "plugin-dir",
+]);
 
 /**
  * `--name Ada --count 2 --flag` → { name: "Ada", count: 2, flag: true }. Values
@@ -121,13 +138,14 @@ interface Target {
 }
 
 async function withHost<T>(
-  options: { home?: string; cwd?: string; watch?: boolean },
+  options: { home?: string; cwd?: string; dev?: readonly string[]; watch?: boolean },
   run: (host: NodeHost) => Promise<T>,
 ): Promise<T> {
   const host = await startNodeHost({
     distribution: distribution(),
     ...(options.home === undefined ? {} : { home: options.home }),
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    ...(options.dev === undefined ? {} : { dev: options.dev }),
     ...(options.watch === undefined ? {} : { watch: options.watch }),
   });
   try {
@@ -151,7 +169,7 @@ function localToken(home: string | undefined): string | undefined {
 }
 
 async function withTarget<T>(
-  options: { home?: string; cwd?: string; url?: string; token?: string },
+  options: { home?: string; cwd?: string; dev?: readonly string[]; url?: string; token?: string },
   run: (target: Target) => Promise<T>,
 ): Promise<T> {
   if (options.url === undefined) {
@@ -211,9 +229,19 @@ async function main(argv: readonly string[]): Promise<number> {
   const cwd = parsed.options.get("cwd");
   const url = parsed.options.get("url");
   const token = parsed.options.get("token");
+  const pluginDir = parsed.options.get("plugin-dir");
   const global = {
     ...(typeof home === "string" ? { home } : {}),
     ...(typeof cwd === "string" ? { cwd } : {}),
+    // The dev layer (D15): the desktop app adds its client plugin this way (D514).
+    ...(typeof pluginDir === "string"
+      ? {
+          dev: pluginDir
+            .split(Path.delimiter)
+            .filter((dir) => dir !== "")
+            .map((dir) => Path.resolve(dir)),
+        }
+      : {}),
   };
   const remote = {
     ...global,

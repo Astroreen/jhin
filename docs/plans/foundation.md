@@ -230,7 +230,8 @@ and engineering practices.
 - Out-of-process plugins (JSON-RPC child processes, any language, WASM).
 - Real agent adapters: own LLM loop, Claude Code, Codex, OpenCode.
 - Record/replay of real provider transcripts.
-- Electron desktop app; Capacitor mobile app; PWA polish.
+- Capacitor mobile app; PWA polish. (The Electron desktop app is
+  `desktop.md`.)
 - Native capability layer (camera, QR scanner, BLE, NFC, haptics, widgets,
   Live Activities).
 - Notifications: providers as plugins (UnifiedPush/ntfy, blind relay for

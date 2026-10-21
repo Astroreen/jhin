@@ -114,11 +114,25 @@ A config field asks for a control a plugin contributes with
 | `preview`         | `jhin.preview-panel`: the right panel with the browser tabs (`app.panel` `jhin.preview.panel`; `chat.header.actions` `jhin.preview.toggle`, `jhin.preview.reveal`); commands `preview.toggle`, `preview.refresh`, `preview.focus.url`; context key `previewFocus`                                                                                   | `preview.md#d403`                                                                         |
 | `scheduler`       | the Settings → Scheduled tasks page (`scheduled-tasks` section, `scheduler.task.actions` slot)                                                                                                                                                                                                                                                      | `orchestration.md#w11-scheduled-tasks-and-webhooks`                                       |
 
+The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
+(built, served only by the app's node): window chrome, native menu items
+(`desktop.shell@1`), the badge from `client.notifications@1`, and the
+`desktop.update.*` commands. → `desktop.md`
+
 ## Apps, tests, scripts
 
 - `apps/jhin` — the CLI `jhin` (published as `jhin-ai`): `serve`, `inspect`,
   and every command as a subcommand.
 - `apps/web` — the web client.
+- `apps/desktop` — the Electron desktop app: runs `jhin serve --ui` and shows
+  the web client (`desktop.md`).
+- `packages/desktop-api` — the desktop bridge's contract (`window.jhinDesktop`,
+  update state, `desktop.shell@1`), with its channel names apart for the
+  preload (`desktop.md#D521`).
+- `jhin serve --plugin-dir <dir>` — loads a plugin package from outside the
+  plugin folders, as the dev layer (D15); the desktop app adds its plugin so.
+- `@jhin/ui` also exports the settings layout (`SettingsSection`,
+  `SettingsRow`) and `useNativeTitlebarHeight` (`desktop.md#D514`, `#D515`).
 - `e2e/` — Playwright end-to-end tests.
 - `scripts/verify.ts` (`pnpm verify`), `scripts/pack.ts`,
   `scripts/pack-smoke.ts` (`pnpm pack:smoke`), `scripts/t3/` (run from a

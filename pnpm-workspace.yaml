@@ -33,6 +33,8 @@ catalog:
   "@xterm/addon-fit": 0.11.0
   "@xterm/xterm": 6.0.0
   class-variance-authority: 0.7.1
+  electron: 44.4.5
+  electron-updater: 6.8.9
   heic-to: 1.5.2
   jsonc-parser: 3.3.1
   knip: 6.41.0
@@ -71,4 +73,6 @@ peerDependencyRules:
 # node-pty (the terminal plugin) checks for a prebuilt addon at install and
 # builds one with node-gyp only where none ships (docs/plans/terminal.md).
 allowBuilds:
+  # Electron downloads its binary at install (the desktop app, docs/plans/desktop.md).
+  electron: true
   node-pty: true

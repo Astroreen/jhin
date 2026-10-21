@@ -4,6 +4,7 @@ import {
   CONNECTIONS_CAPABILITY,
   MESH_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  NOTIFICATIONS_CAPABILITY,
   SETTINGS_CAPABILITY,
   THREADS_CAPABILITY,
   targetKey,
@@ -12,10 +13,11 @@ import {
   type MeshMembership,
   type Navigation,
   type NodeTarget,
+  type ThreadNotifications,
   type ThreadRecord,
   type ThreadsCatalog,
 } from "@jhin/client-api";
-import { definePlugin, z, type Disposable } from "@jhin/sdk";
+import { definePlugin, toDisposable, z, type Disposable } from "@jhin/sdk";
 import {
   Select,
   SelectItem,
@@ -111,6 +113,7 @@ function playSound(kind: Kind) {
 export const notificationsPlugin = builtin(
   "jhin.notifications",
   {
+    provides: { [NOTIFICATIONS_CAPABILITY]: "1.0.0" },
     requires: {
       [CONNECTIONS_CAPABILITY]: "^1",
       [MESH_CAPABILITY]: "^1",
@@ -141,9 +144,19 @@ export const notificationsPlugin = builtin(
       const focused = () => document.visibilityState === "visible" && document.hasFocus();
       const shown = new Map<string, Notification>();
       const baseTitle = document.title;
+      const countListeners = new Set<() => void>();
       const updateBadge = () => {
         document.title = shown.size === 0 ? baseTitle : `(${shown.size}) ${baseTitle}`;
+        for (const listener of Array.from(countListeners)) listener();
       };
+      const shownNotifications: ThreadNotifications = {
+        count: () => shown.size,
+        subscribe(listener) {
+          countListeners.add(listener);
+          return toDisposable(() => countListeners.delete(listener));
+        },
+      };
+      context.services.provide(NOTIFICATIONS_CAPABILITY, shownNotifications);
       const clearAll = () => {
         for (const notification of shown.values()) notification.close();
         shown.clear();

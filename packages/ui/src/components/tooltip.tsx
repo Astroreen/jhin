@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { cn } from "../cn.ts";
+import { useNativeTitlebarHeight } from "../hooks/use-native-titlebar-height.ts";
 
 // Base UI's default, restated because a padding object zeroes the sides it omits.
 const COLLISION_PADDING = 5;
@@ -100,13 +101,14 @@ function TooltipTrigger(props: TooltipPrimitive.Trigger.Props) {
   );
 }
 
-/** T3 Code also keeps tooltips clear of Electron's native titlebar; Jhin has none. */
+/** Kept clear of the desktop app's native window controls, as in T3 Code. */
 function TooltipPositioner(props: TooltipPrimitive.Positioner.Props) {
+  const titlebarHeight = useNativeTitlebarHeight();
   return (
     <TooltipPrimitive.Positioner
       className="pointer-events-none z-[140] h-(--positioner-height) w-(--positioner-width) max-w-(--available-width) transition-[top,left,right,bottom,transform] data-instant:transition-none"
       collisionPadding={{
-        top: COLLISION_PADDING,
+        top: COLLISION_PADDING + titlebarHeight,
         right: COLLISION_PADDING,
         bottom: COLLISION_PADDING,
         left: COLLISION_PADDING,

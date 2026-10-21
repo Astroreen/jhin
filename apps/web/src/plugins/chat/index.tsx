@@ -64,7 +64,7 @@ import { looksLikePairingCode, parsePairingUrl, rpcUrl } from "../../lib/session
 /** The page header of a view without a thread. */
 function PageHeader({ title }: { title: string }) {
   return (
-    <header className="flex h-[var(--workspace-topbar-height)]! shrink-0 items-center gap-3 border-b border-border pl-(--workspace-gutter-start) pr-(--workspace-gutter-end) group-data-[sidebar-state=collapsed]/sidebar-wrapper:ps-[calc(var(--workspace-titlebar-content-left))]">
+    <header className="drag-region flex h-[var(--workspace-topbar-height)]! shrink-0 items-center gap-3 border-b border-border pl-(--workspace-gutter-start) pr-(--workspace-gutter-end) wco:pr-(--workspace-native-controls-inset) group-data-[sidebar-state=collapsed]/sidebar-wrapper:ps-[calc(var(--workspace-titlebar-content-left))]">
       <span className="text-sm font-medium text-foreground md:text-muted-foreground/60">
         {title}
       </span>

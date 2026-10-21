@@ -91,7 +91,7 @@ export const inspectorPlugin = builtin(
             aria-label="Inspector"
             className="absolute inset-y-0 right-0 z-30 flex w-[32rem] max-w-full flex-col border-l border-border bg-background shadow-xl/10"
           >
-            <header className="flex h-[var(--workspace-topbar-height)] shrink-0 items-center justify-between gap-2 border-b border-border/60 px-4">
+            <header className="drag-region flex h-[var(--workspace-topbar-height)] shrink-0 items-center justify-between gap-2 border-b border-border/60 px-4 wco:pr-(--workspace-native-controls-inset)">
               <span className="truncate text-sm font-medium">
                 Inspector · {node?.label ?? "no node"}
               </span>

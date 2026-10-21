@@ -80,7 +80,7 @@ export function ChatHeader(props: {
 
   return (
     <header
-      className="relative flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center bg-background pl-(--workspace-gutter-start) pr-(--workspace-gutter-end) group-data-[sidebar-state=collapsed]/sidebar-wrapper:ps-[calc(var(--workspace-titlebar-content-left))]"
+      className="drag-region relative flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center bg-background pl-(--workspace-gutter-start) pr-(--workspace-gutter-end) wco:pr-(--workspace-native-controls-inset) group-data-[sidebar-state=collapsed]/sidebar-wrapper:ps-[calc(var(--workspace-titlebar-content-left))]"
       data-chat-header
     >
       <div className="flex min-w-0 flex-1 items-center gap-2 pr-24 sm:gap-3">
@@ -186,7 +186,7 @@ export function ChatHeader(props: {
         </nav>
       </div>
       <div
-        className="pointer-events-none absolute top-0 right-(--workspace-gutter-end) z-30 flex h-[var(--workspace-topbar-height)] items-center gap-1"
+        className="pointer-events-none absolute top-0 right-(--workspace-gutter-end) z-30 wco:right-(--workspace-native-controls-inset) flex h-[var(--workspace-topbar-height)] items-center gap-1"
         data-workspace-titlebar-controls
       >
         <div

@@ -35,6 +35,7 @@ what is deferred, and how it landed. Plans are canon once implemented.
 | [`terminal.md`](plans/terminal.md)             | PTY terminals and the terminal drawer                                                     | implemented |
 | [`config-ui.md`](plans/config-ui.md)           | settings forms generated from config schemas                                              | implemented |
 | [`orchestration.md`](plans/orchestration.md)   | delegated tasks, thread launches, workflows (W10); scheduled tasks and webhooks (W11)     | in progress |
+| [`desktop.md`](plans/desktop.md)               | the Electron desktop app: window chrome, menus, badge, auto update                        | in progress |
 | [`agents.md`](plans/agents.md)                 | Civilization mode: persistent agents, messaging, missions, teams, refocus, health (A1–A8) | in progress |
 | [`security.md`](plans/security.md)             | permissions and grants, device tokens, pairing, secrets in config, browser origins (W13)  | implemented |
 | [`mesh-streams.md`](plans/mesh-streams.md)     | relays of members' streams, trimming event log streams (W17)                              | implemented |
