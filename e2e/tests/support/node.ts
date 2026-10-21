@@ -38,6 +38,8 @@ export function writeConfig(home: string, config: Record<string, unknown>): void
         "jhin.http": { port: 0 },
         // Turns run on the fake agent, never on a real one this machine may have (Claude Code).
         "jhin.threads": { defaultAgent: "jhin.agent-fake" },
+        // The secret store keeps its key in a file, never in this machine's keychain.
+        "jhin.secrets": { keychain: "off" },
         ...config,
       },
       null,

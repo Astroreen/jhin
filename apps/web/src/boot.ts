@@ -23,6 +23,7 @@ import { settingsPlugin } from "./plugins/settings/index.tsx";
 import { sidebarPlugin } from "./plugins/sidebar.tsx";
 import { devicePanelPlugin } from "./plugins/devices/index.tsx";
 import { htmlRenderViewPlugin } from "./plugins/html-render/index.tsx";
+import { secretsViewPlugin } from "./plugins/secrets/index.tsx";
 import { orchestrationViewPlugin } from "./plugins/orchestration/index.tsx";
 import { previewPanelPlugin } from "./plugins/preview/index.tsx";
 import { sourceControlPlugin } from "./plugins/source-control/index.tsx";
@@ -168,6 +169,7 @@ function builtinPlugins(kernel: () => Kernel): readonly BuiltinPlugin[] {
     terminalPlugin,
     previewPanelPlugin,
     htmlRenderViewPlugin,
+    secretsViewPlugin,
     orchestrationViewPlugin,
     devicePanelPlugin,
     commandPalettePlugin,
