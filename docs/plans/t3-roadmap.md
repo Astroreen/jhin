@@ -282,7 +282,7 @@ block of 20 after D980 and writes it here.
   clients list, an OS keychain store, Tailscale Serve, MCP OAuth, permission
   titles (done, `security.md` D961); "Keep threads with a PR", per-project
   settle overrides, "Regenerate titles (N)", the "Custom…" snooze, dragging a
-  selection into the chat, undo of a drag unpin or settle, the X that clears a draft; provider
-  environments for a terminal, clickable paths in terminal output,
-  right-panel terminals as surfaces; T3's color and font pickers, dragging
-  list items.
+  selection into the chat, undo of a drag unpin or settle, the X that clears
+  a draft; provider environments for a terminal, clickable paths in terminal
+  output, right-panel terminals as surfaces; T3's color and font pickers,
+  dragging list items.
