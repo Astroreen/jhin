@@ -45,6 +45,7 @@ function startNode(
     execute?: (method: string) => Promise<unknown>;
     memberPermissions?: readonly string[];
     streams?: LiveStreams;
+    maxRelays?: number;
   } = {},
 ): TestNode {
   const keys = Crypto.generateKeyPairSync("ed25519");
@@ -83,6 +84,7 @@ function startNode(
     ...(options.mirrors === undefined ? {} : { mirrors: options.mirrors }),
     ...(options.persistMirrors === undefined ? {} : { persistMirrors: options.persistMirrors }),
     ...(options.streams === undefined ? {} : { streams: options.streams }),
+    ...(options.maxRelays === undefined ? {} : { maxRelays: options.maxRelays }),
   });
   meshes.push(mesh);
   network.listen(address, {
@@ -518,16 +520,25 @@ describe("mesh", () => {
 function followRelay(node: TestNode, name: string, after = 0) {
   const events: StoredEvent[] = [];
   const waiters: { count: number; resolve(): void }[] = [];
-  const followed = node.mesh.relays.follow!(name, after, (event) => {
-    events.push(event);
-    for (const waiter of waiters.filter((entry) => events.length >= entry.count)) {
-      waiters.splice(waiters.indexOf(waiter), 1);
-      waiter.resolve();
-    }
-  });
+  let ending!: (error: unknown) => void;
+  const ended = new Promise<unknown>((resolve) => (ending = resolve));
+  const followed = node.mesh.relays.follow!(
+    name,
+    after,
+    (event) => {
+      events.push(event);
+      for (const waiter of waiters.filter((entry) => events.length >= entry.count)) {
+        waiters.splice(waiters.indexOf(waiter), 1);
+        waiter.resolve();
+      }
+    },
+    (error) => ending(error),
+  );
   return {
     events,
     ready: followed.ready,
+    /** Resolves with the error an attached relay ended with. */
+    ended,
     dispose: () => followed.dispose(),
     /** Resolves once `count` events arrived. */
     reaches: (count: number) =>
@@ -576,7 +587,11 @@ describe("relays (D499)", () => {
     ]);
 
     relay.dispose();
+    // A second relay of the same stream sees "four" arrive: the first one, disposed, does not.
+    const later = followRelay(a, "relay/c/terminal/t/1", 102);
+    await later.ready;
     memory.append("terminal/t/1", ...output("four"));
+    await later.reaches(1);
     expect(relay.events).toHaveLength(2);
   });
 
@@ -616,6 +631,69 @@ describe("relays (D499)", () => {
     await until(all, () => view(a, c)?.reachable === false);
     await expect(followRelay(a, "relay/c/terminal/t/1").ready).rejects.toMatchObject({
       code: "NODE_UNREACHABLE",
+    });
+  });
+
+  it("ends an attached relay when the owner refuses it after a reconnect", async () => {
+    const { network, a, b, c, all, memory, shared } = await relayChain();
+    memory.append("terminal/t/1", ...output("before"));
+    const relay = followRelay(a, "relay/c/terminal/t/1");
+    await relay.ready;
+    await relay.reaches(1);
+    // c stops sharing while away: b's relay is refused when it attaches again, and so is a's.
+    network.down(c.address);
+    await until(all, () => view(b, c)?.reachable === false);
+    shared.dispose();
+    network.up(c.address);
+    expect(await relay.ended).toMatchObject({ code: "STREAM_NOT_SHARED" });
+  });
+
+  it("refuses a relay whose route leads back to the neighbor that asked for it", async () => {
+    const { a, b } = await relayChain();
+    // b asks a for c's stream over their link, while a's route to c goes through b.
+    const [mine, theirs] = createPeerPair();
+    a.mesh.accept(theirs, "b");
+    serveRpc(mine, {
+      caller: { id: "a", permissions: ["*"] },
+      logger: noopLogger,
+      hello: () => ({}),
+      newTraceId: () => "t",
+      execute: async () => null,
+    });
+    const link = createCaller(mine);
+    const refused = new Promise((resolve) =>
+      link.subscribe("relay/c/terminal/t/1", 0, () => undefined, { onError: resolve }),
+    );
+    expect(await refused).toMatchObject({ code: "RELAY_LOOP" });
+    void b;
+  });
+
+  it("relays at most maxRelays streams at once", async () => {
+    const network = createMemoryNetwork();
+    const a = startNode(network, "a", { maxRelays: 1 });
+    const b = startNode(network, "b");
+    await b.mesh.join(a.address, a.mesh.invite().code);
+    await until([a, b], () => view(a, b)?.reachable === true);
+    const first = followRelay(a, "relay/b/thread/1");
+    await first.ready;
+    await expect(followRelay(a, "relay/b/thread/2").ready).rejects.toMatchObject({
+      code: "RELAY_LIMIT",
+    });
+    first.dispose();
+    await followRelay(a, "relay/b/thread/2").ready;
+  });
+
+  it("shares a name until every share of it is disposed, and no empty name", async () => {
+    const { a, c } = await relayChain();
+    expect(() => c.mesh.share("")).toThrow(expect.objectContaining({ code: "SHARE_INVALID" }));
+    await c.log.append("source-control", [{ type: "source-control.status.changed", payload: 1 }]);
+    const one = c.mesh.share("source-control");
+    const two = c.mesh.share("source-control");
+    one.dispose();
+    await followRelay(a, "relay/c/source-control").reaches(1);
+    two.dispose();
+    await expect(followRelay(a, "relay/c/source-control").ready).rejects.toMatchObject({
+      code: "STREAM_NOT_SHARED",
     });
   });
 

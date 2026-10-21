@@ -290,12 +290,18 @@ export function createMesh(options: MeshOptions): Mesh {
       if (name.endsWith("/") && stream.startsWith(name)) return true;
     return false;
   };
-  /** Live streams members subscribe to over a link: relays, and shared streams served from memory. */
-  const linkStreams = {
-    sourceOf(stream: string): ServedStream | undefined {
-      if (stream.startsWith(RELAY_PREFIX)) return { source: relays, permissions: [] };
-      return isShared(stream) ? options.streams?.sourceOf(stream) : undefined;
-    },
+  /**
+   * Live streams `nodeId` subscribes to over its link: relays (which never go
+   * back through `nodeId`), and shared streams served from memory.
+   */
+  const linkStreams = (nodeId: string) => {
+    const relayed = relaysFor(nodeId);
+    return {
+      sourceOf(stream: string): ServedStream | undefined {
+        if (stream.startsWith(RELAY_PREFIX)) return { source: relayed, permissions: [] };
+        return isShared(stream) ? options.streams?.sourceOf(stream) : undefined;
+      },
+    };
   };
 
   /** Requests arriving over a link: mesh internals, or commands of this node. */
@@ -303,7 +309,7 @@ export function createMesh(options: MeshOptions): Mesh {
     caller: { id: `node:${nodeId}`, permissions: ["*"] },
     logger: log,
     ...(options.log === undefined ? {} : { log: readableLog(options.log, isShared) }),
-    streams: linkStreams,
+    streams: linkStreams(nodeId),
     hello: () => ({ nodeId: selfId }),
     newTraceId: randomId,
     async execute(method, params, invocation) {
@@ -512,7 +518,11 @@ export function createMesh(options: MeshOptions): Mesh {
   interface Relay {
     readonly owner: string;
     readonly stream: string;
+    /** The neighbor this relay serves, when one asked: the route must not lead back to it. */
+    readonly from: string | undefined;
     readonly listener: (event: StoredEvent) => void;
+    /** Ends an attached relay with an error (`rpc.ended` for its subscriber). */
+    readonly end: (error: unknown) => void;
     /** The last sequence passed on: a new attach resumes after it. */
     last: number;
     link: Link | undefined;
@@ -521,8 +531,24 @@ export function createMesh(options: MeshOptions): Mesh {
     attempt: number;
     /** Settles `ready` once: the first attach's outcome. */
     settle: ((outcome: { head: number } | { error: unknown }) => void) | undefined;
+    stop(): void;
   }
   const relaying = new Set<Relay>();
+  const maxRelays = options.maxRelays ?? MAX_RELAYS;
+
+  /** A relay that cannot go on: a new one fails its subscription, an attached one ends it. */
+  function failRelay(state: Relay, error: unknown): void {
+    if (state.settle !== undefined) {
+      state.settle({ error });
+      return;
+    }
+    log.warn("relay ended", {
+      stream: relayStream(state.owner, state.stream),
+      error: String(error),
+    });
+    state.stop();
+    state.end(error);
+  }
 
   function attachRelay(state: Relay): void {
     state.subscription?.dispose();
@@ -544,6 +570,17 @@ export function createMesh(options: MeshOptions): Mesh {
       });
       return;
     }
+    // Routes that briefly disagree could send the relay back where its request came
+    // from, and the two nodes would relay to each other until RELAY_LIMIT.
+    if (via === state.from) {
+      failRelay(
+        state,
+        new MeshError("RELAY_LOOP", `The route to ${state.owner} leads back to ${via}`, {
+          target: state.owner,
+        }),
+      );
+      return;
+    }
     // Next to the owner: its stream itself. Further away: the next hop's relay of it.
     const source = via === state.owner ? state.stream : relayStream(state.owner, state.stream);
     state.subscription = link.subscribe(
@@ -558,20 +595,19 @@ export function createMesh(options: MeshOptions): Mesh {
       {
         onReady: (head) => state.settle?.({ head }),
         onError: (error) => {
-          if (attempt !== state.attempt) return;
-          if (state.settle !== undefined) state.settle({ error });
-          else log.warn("relay refused on reattach", { stream: source, error: String(error) });
+          if (attempt === state.attempt) failRelay(state, error);
         },
       },
     );
   }
 
-  const relays: StreamSource = {
+  /** Serves `relay/…` to this node's clients, or (`from`) to a neighbor over its link. */
+  const relaysFor = (from: string | undefined): StreamSource => ({
     // A relay holds nothing itself; it is only followed.
     head: async () => 0,
     read: async () => [],
     subscribe: () => toDisposable(() => undefined),
-    follow(name, after, listener): FollowedStream {
+    follow(name, after, listener, end): FollowedStream {
       const parsed = parseRelayStream(name);
       const refuse = (error: MeshError): FollowedStream => ({
         ready: Promise.reject(error),
@@ -582,9 +618,9 @@ export function createMesh(options: MeshOptions): Mesh {
           new MeshError("RELAY_INVALID", `${name} is not a relay of a member's stream`),
         );
       }
-      if (relaying.size >= MAX_RELAYS) {
+      if (relaying.size >= maxRelays) {
         return refuse(
-          new MeshError("RELAY_LIMIT", `This node relays at most ${MAX_RELAYS} streams`),
+          new MeshError("RELAY_LIMIT", `This node relays at most ${maxRelays} streams`),
         );
       }
       let resolve!: (head: number) => void;
@@ -596,19 +632,22 @@ export function createMesh(options: MeshOptions): Mesh {
       const state: Relay = {
         owner: parsed.owner,
         stream: parsed.stream,
+        from,
         listener,
+        end,
         last: after,
         link: undefined,
         subscription: undefined,
         attempt: 0,
         settle: undefined,
+        stop: () => {
+          relaying.delete(state);
+          state.attempt += 1;
+          state.subscription?.dispose();
+          state.subscription = undefined;
+        },
       };
-      const stop = () => {
-        relaying.delete(state);
-        state.attempt += 1;
-        state.subscription?.dispose();
-        state.subscription = undefined;
-      };
+      const stop = state.stop;
       state.settle = (outcome) => {
         state.settle = undefined;
         if ("head" in outcome) resolve(outcome.head);
@@ -622,7 +661,8 @@ export function createMesh(options: MeshOptions): Mesh {
       else attachRelay(state);
       return { ready, dispose: stop };
     },
-  };
+  });
+  const relays = relaysFor(undefined);
 
   function currentLink(owner: string): Link | undefined {
     const via = shortestPath(records, selfId, linkedIds(), owner)?.[1];

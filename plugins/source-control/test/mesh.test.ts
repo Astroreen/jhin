@@ -1,6 +1,5 @@
 import * as Fs from "node:fs";
 
-import { MESH_STREAMS_CAPABILITY } from "@jhin/mesh-api";
 import {
   SOURCE_CONTROL_STREAM,
   type ProjectStatus,
@@ -9,7 +8,6 @@ import {
 import type { StoredEvent } from "@jhin/storage-api";
 import {
   createMemoryNetwork,
-  createTestKernel,
   memoryStoragePlugin,
   mockCapability,
   startMeshNode,
@@ -32,12 +30,11 @@ afterEach(async () => {
 describe("source control of a mesh member (D501, D503)", () => {
   it("follows a member's source-control stream through the connected node's relay", async () => {
     const network = createMemoryNetwork();
-    const a = startMeshNode(network, "a");
+    const a = await startMeshNode(network, "a");
     const storage = memoryStoragePlugin();
-    const c = startMeshNode(network, "c", { log: storage.storage.log });
-    stops.push(() => [a, c].forEach((node) => node.dispose()));
     const data = temp("jhin-sc-mesh-");
-    const kernel = await createTestKernel({
+    const c = await startMeshNode(network, "c", {
+      storage,
       plugins: [
         mockCapability("host.paths", {
           home: data,
@@ -46,18 +43,14 @@ describe("source control of a mesh member (D501, D503)", () => {
             return `${data}/${id}`;
           },
         }),
-        storage,
-        mockCapability(MESH_STREAMS_CAPABILITY, c.meshStreams),
         { manifest: manifest("threads"), definition: threads },
         { manifest: manifest("agent-fake"), definition: agent },
         { manifest: manifest("source-control"), definition: sourceControl },
       ],
     });
-    stops.push(() => kernel.stop());
-    c.use(kernel);
+    stops.push(() => Promise.all([a, c].map((node) => node.stop())).then(() => undefined));
     await c.join(a);
     const { client } = a.connect();
-    stops.push(() => client.close());
     const onC = <T>(method: string, params: unknown = {}) =>
       client.call<T>("mesh.call", { node: "c", method, params });
 

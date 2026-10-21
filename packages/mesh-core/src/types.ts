@@ -86,6 +86,8 @@ export interface MeshOptions {
    * (D501) are read from here by members, not from the event log.
    */
   readonly streams?: Pick<LiveStreams, "sourceOf">;
+  /** Streams relayed at once at most (D502); default 10 000. */
+  readonly maxRelays?: number;
 }
 
 export interface MemberView {

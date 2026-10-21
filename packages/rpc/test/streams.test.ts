@@ -231,13 +231,17 @@ describe("guarded streams of the event log (security.md D415)", () => {
     expect(live.guardOf("a/b/c")).toEqual(["x"]);
     first.dispose();
     expect(live.guardOf("a/b")).toBeUndefined();
-describe("followed sources (rpc.streams@1.1, D500)", () => {
+  });
+});
+
+describe("followed sources (rpc.streams@1.2, D500)", () => {
   /** A source that reads elsewhere: the test feeds it, and settles when it is attached. */
   function elsewhere() {
     const opened: {
       stream: string;
       after: number;
       listener: (event: StoredEvent) => void;
+      end: (error: unknown) => void;
       attach(head: number): void;
       refuse(error: Error): void;
       disposed: boolean;
@@ -249,14 +253,19 @@ describe("followed sources (rpc.streams@1.1, D500)", () => {
       head: async () => 0,
       read: async () => [],
       subscribe: () => ({ dispose: () => undefined }),
-      follow(stream: string, after: number, listener: (event: StoredEvent) => void) {
+      follow(
+        stream: string,
+        after: number,
+        listener: (event: StoredEvent) => void,
+        end: (error: unknown) => void,
+      ) {
         let attach!: (head: number) => void;
         let refuse!: (error: Error) => void;
         const ready = new Promise<number>((ok, fail) => {
           attach = ok;
           refuse = fail;
         });
-        const entry = { stream, after, listener, attach, refuse, disposed: false };
+        const entry = { stream, after, listener, end, attach, refuse, disposed: false };
         opened.push(entry);
         opening();
         return { ready, dispose: () => void (entry.disposed = true) };
@@ -320,6 +329,28 @@ describe("followed sources (rpc.streams@1.1, D500)", () => {
     await firstOpen;
     opened[0]!.refuse(Object.assign(new Error("not shared"), { code: "STREAM_NOT_SHARED" }));
     expect(await failed).toMatchObject({ code: "STREAM_NOT_SHARED" });
+    expect(opened[0]!.disposed).toBe(true);
+  });
+
+  it("ends an attached subscription when the source ends it, telling the client (rpc.ended)", async () => {
+    const live = createLiveStreams();
+    const { source, opened, firstOpen } = elsewhere();
+    live.serve("relay/", source);
+    const { client } = harness(live);
+    let attached!: () => void;
+    const ready = new Promise<void>((resolve) => (attached = resolve));
+    const ended = new Promise<{ code: string }>((resolve) =>
+      client.subscribe(
+        "relay/x/s",
+        { onReady: () => attached(), onError: (error) => resolve(error) },
+        () => undefined,
+      ),
+    );
+    await firstOpen;
+    opened[0]!.attach(1);
+    await ready;
+    opened[0]!.end(Object.assign(new Error("not shared"), { code: "STREAM_NOT_SHARED" }));
+    expect(await ended).toMatchObject({ code: "STREAM_NOT_SHARED" });
     expect(opened[0]!.disposed).toBe(true);
   });
 });

@@ -1,73 +1,109 @@
-import type { Kernel } from "@jhin/kernel";
 import { noopLogger } from "@jhin/kernel";
-import { RELAY_PREFIX, type MeshStreams } from "@jhin/mesh-api";
-import { createMemoryNetwork, createMesh, type Mesh } from "@jhin/mesh-core";
-import { createLiveStreams, type LiveStreams } from "@jhin/rpc";
-import type { Invocation } from "@jhin/sdk";
-import { createMemoryStorage, type EventLog } from "@jhin/storage-api";
+import { MESH_STREAMS_CAPABILITY } from "@jhin/mesh-api";
+import {
+  createMemoryNetwork,
+  createMesh,
+  meshCallCommand,
+  meshRelayCommand,
+  serveRelays,
+  type Mesh,
+} from "@jhin/mesh-core";
+import { LIVE_STREAMS_CAPABILITY, createLiveStreams, type LiveStreams } from "@jhin/rpc";
+import { definePlugin, type Invocation } from "@jhin/sdk";
+import type { EventLog } from "@jhin/storage-api";
 
+import { createTestKernel, testManifest, type TestKernel, type TestPlugin } from "./kernel.ts";
+import { memoryStoragePlugin, mockCapability } from "./mocks.ts";
 import { connectInMemory, type InMemoryConnection } from "./transport.ts";
 
 type Network = ReturnType<typeof createMemoryNetwork>;
-type Commands = Pick<Kernel, "commands">;
 
 export interface MemoryMeshNode {
   readonly id: string;
   readonly address: string;
   readonly mesh: Mesh;
+  /** The node's kernel: the mesh's commands, plus the plugins it was started with. */
+  readonly kernel: TestKernel;
   /** The node's event log: what members read and mirror. */
   readonly log: EventLog;
-  /** The node's live streams (`rpc.streams@1.1`); its relays are served here (D499). */
+  /** The node's live streams (`rpc.streams@1.2`); its relays are served here (D499). */
   readonly live: LiveStreams;
-  /** `mesh.streams@1` for the node's plugins: `mockCapability(MESH_STREAMS_CAPABILITY, node.meshStreams)`. */
-  readonly meshStreams: MeshStreams;
-  /** The kernel whose commands answer this node's calls, from members and clients. */
-  use(kernel: Commands): void;
-  /**
-   * A client of this node, as a web client connects: its commands, plus
-   * `mesh.call` and `mesh.relay`, its event log and its live streams with
-   * the relays, as `jhin.mesh` serves them.
-   */
-  connect(): InMemoryConnection;
+  /** A client of this node, as a web client connects, holding `caller`'s permissions (default `*`). */
+  connect(caller?: NonNullable<Invocation["caller"]>): InMemoryConnection;
   /** Joins `other`'s mesh and resolves once each sees the other reachable. */
   join(other: MemoryMeshNode): Promise<void>;
-  dispose(): void;
+  stop(): Promise<void>;
 }
-
-const missing = (method: string) =>
-  Object.assign(new Error(`Command ${method} is not registered`), { code: "COMMAND_NOT_FOUND" });
 
 /**
  * A mesh node on the in-memory network (D38, D505), wired as `jhin.mesh`
- * wires one: tests put a test kernel behind it (`use`) and drive real
- * plugins on members through `connect()`. Signatures are not cryptographic:
- * one owner's nodes in one process.
+ * wires one: its kernel provides `rpc.streams@1.2`, `storage.*` and
+ * `mesh.streams@1`, and registers the plugin's own `mesh.call` and
+ * `mesh.relay`; `plugins` run next to them. Signatures are not
+ * cryptographic: one owner's nodes in one process.
  */
-export function startMeshNode(
+export async function startMeshNode(
   network: Network,
   id: string,
-  options: { readonly log?: EventLog; readonly live?: LiveStreams } = {},
-): MemoryMeshNode {
+  options: {
+    readonly plugins?: readonly TestPlugin[];
+    readonly config?: Readonly<Record<string, Record<string, unknown>>>;
+    /** The storage plugin to run, to read what the node wrote; a fresh one by default. */
+    readonly storage?: ReturnType<typeof memoryStoragePlugin>;
+    /** Streams relayed at once at most (D502). */
+    readonly maxRelays?: number;
+  } = {},
+): Promise<MemoryMeshNode> {
   const address = `mem://${id}`;
-  const log = options.log ?? createMemoryStorage().log;
-  const live = options.live ?? createLiveStreams();
-  let kernel: Commands | undefined;
-  const execute = (method: string, params: unknown, invocation: Invocation) => {
-    if (kernel === undefined) return Promise.reject(missing(method));
-    return kernel.commands.execute(method, params, invocation);
-  };
+  const storage = options.storage ?? memoryStoragePlugin();
+  const log = storage.storage.log;
+  const live = createLiveStreams();
+  let kernel: TestKernel | undefined;
   const mesh = createMesh({
     identity: { nodeId: id, publicKey: id, name: id },
     sign: (data) => `${id}:${data}`,
     verify: (publicKey, data, signature) => signature === `${publicKey}:${data}`,
     transport: network.transport(address),
-    execute,
+    execute: (method, params, invocation) => {
+      if (kernel === undefined) {
+        return Promise.reject(
+          Object.assign(new Error(`${id} is still starting`), { code: "COMMAND_NOT_FOUND" }),
+        );
+      }
+      return kernel.commands.execute(method, params, invocation);
+    },
     logger: noopLogger,
     retryDelay: () => 1,
     log,
     streams: live,
+    ...(options.maxRelays === undefined ? {} : { maxRelays: options.maxRelays }),
   });
-  const relays = live.serve(RELAY_PREFIX, mesh.relays, { permissions: ["mesh.call"] });
+  const meshPlugin: TestPlugin = {
+    manifest: testManifest("test.mesh", {
+      provides: { [MESH_STREAMS_CAPABILITY]: "1.0.0" },
+      side: "server",
+    }),
+    definition: definePlugin({
+      activate(context) {
+        context.services.provide(MESH_STREAMS_CAPABILITY, {
+          share: (name: string) => mesh.share(name),
+        });
+        context.subscriptions.add(serveRelays(mesh, live));
+        context.commands.register(meshCallCommand(mesh));
+        context.commands.register(meshRelayCommand(mesh));
+      },
+    }),
+  };
+  kernel = await createTestKernel({
+    plugins: [
+      mockCapability(LIVE_STREAMS_CAPABILITY, live, "1.2.0"),
+      storage,
+      meshPlugin,
+      ...(options.plugins ?? []),
+    ],
+    ...(options.config === undefined ? {} : { config: options.config }),
+  });
+  const started = kernel;
   network.listen(address, {
     accept(peer, token) {
       const from = mesh.verifyToken(token);
@@ -81,37 +117,23 @@ export function startMeshNode(
 
   const reachable = (from: Mesh, to: string) =>
     from.members().some((member) => member.record.nodeId === to && member.reachable);
+  const clients: InMemoryConnection[] = [];
 
-  const node: MemoryMeshNode = {
+  return {
     id,
     address,
     mesh,
+    kernel: started,
     log,
     live,
-    meshStreams: { share: (name) => mesh.share(name) },
-    use(next) {
-      kernel = next;
-    },
-    connect() {
-      // Only `execute` is used by a connection.
-      const commands = {
-        execute: async (method: string, params: unknown, invocation: Invocation = {}) => {
-          const input = (params ?? {}) as Record<string, unknown>;
-          const target = String(input["node"]);
-          if (method === "mesh.call") {
-            return mesh.call(
-              target,
-              String(input["method"]),
-              input["params"] ?? {},
-              invocation.traceId,
-            );
-          }
-          if (method === "mesh.relay")
-            return { stream: mesh.relay(target, String(input["stream"])) };
-          return execute(method, params, invocation);
-        },
-      } as unknown as Commands["commands"];
-      return connectInMemory({ commands }, { log, streams: live });
+    connect(caller) {
+      const connection = connectInMemory(started, {
+        log,
+        streams: live,
+        ...(caller === undefined ? {} : { caller }),
+      });
+      clients.push(connection);
+      return connection;
     },
     async join(other) {
       await mesh.join(other.address, other.mesh.invite().code);
@@ -126,11 +148,11 @@ export function startMeshNode(
         check();
       });
     },
-    dispose() {
-      relays.dispose();
-      mesh.dispose();
+    async stop() {
+      for (const connection of clients.splice(0)) connection.client.close();
       network.unlisten(address);
+      mesh.dispose();
+      await started.stop();
     },
   };
-  return node;
 }

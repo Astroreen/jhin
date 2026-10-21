@@ -14,11 +14,14 @@ import {
 import { HTTP_SERVER_CAPABILITY, type HttpServer } from "@jhin/http-api";
 import {
   createMesh,
+  meshCallCommand,
+  meshRelayCommand,
+  serveRelays,
   type MemberRecord,
   type MemberView,
   type MeshTransport,
 } from "@jhin/mesh-core";
-import { MESH_STREAMS_CAPABILITY, RELAY_PREFIX, type MeshStreams } from "@jhin/mesh-api";
+import { MESH_STREAMS_CAPABILITY, type MeshStreams } from "@jhin/mesh-api";
 import {
   CLOSE_UNAUTHENTICATED,
   LIVE_STREAMS_CAPABILITY,
@@ -168,10 +171,9 @@ export default definePlugin({
     const { nodeId } = context.services.get<HostIdentity>(HOST_IDENTITY_CAPABILITY);
     const kv = context.services.get<KeyValueStore>(KV_CAPABILITY);
     const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
-    // Where relays are served to this node's clients (D499); without it, there are none.
-    const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
     const keys = loadKeys(paths.dataDir(context.plugin.id));
-    // Who may follow the mesh's streams over a client connection (security.md D415).
+    // Who may follow the mesh's streams over a client connection (security.md D415), and
+    // where relays are served to this node's clients (D499; without it, there are none).
     const live = context.services.tryGet<LiveStreams>(LIVE_STREAMS_CAPABILITY);
     if (live?.guard !== undefined) {
       context.subscriptions.add(live.guard(MESH_STREAM, ["mesh.read"]));
@@ -253,11 +255,9 @@ export default definePlugin({
     context.services.provide<MeshStreams>(MESH_STREAMS_CAPABILITY, {
       share: (name) => mesh.share(name),
     });
-    // D502: a relay reads what mesh.call could read with the owner's commands.
+    // D502: a relay needs mesh.call and what the relayed stream needs here.
     if (live !== undefined) {
-      context.subscriptions.add(
-        live.serve(RELAY_PREFIX, mesh.relays, { permissions: ["mesh.call"] }),
-      );
+      context.subscriptions.add(serveRelays(mesh, live));
     }
     mesh.setUrls(config.advertise ?? [`${http.url.replace(/^http/, "ws")}${MESH_PATH}`]);
 
@@ -375,22 +375,7 @@ export default definePlugin({
       permissions: ["mesh.open"],
       handler: ({ node, stream }) => ({ stream: mesh.mirror(node, stream) }),
     });
-    context.commands.register({
-      name: "mesh.relay",
-      description:
-        "Names the stream to subscribe to for another node's stream as it happens (D502): relay/<node>/<stream>, or the stream itself for this node",
-      input: z.object({ node: z.string().min(1), stream: z.string().min(1) }),
-      output: z.object({ stream: z.string() }),
-      permissions: ["mesh.call"],
-      handler: ({ node, stream }) => {
-        if (live === undefined && node !== nodeId) {
-          throw Object.assign(new Error("This node has no rpc.streams@1.1 to relay through"), {
-            code: "RELAY_UNAVAILABLE",
-          });
-        }
-        return { stream: mesh.relay(node, stream) };
-      },
-    });
+    if (live !== undefined) context.commands.register(meshRelayCommand(mesh));
     context.commands.register({
       name: "mesh.close",
       description: "Stops keeping a copy of another node's stream; what was copied stays readable",
@@ -598,20 +583,7 @@ export default definePlugin({
       permissions: ["mesh.read"],
       handler: () => mesh.members().map(describe),
     });
-    context.commands.register({
-      name: "mesh.call",
-      description: "Runs a command on another node of the mesh, through relays when needed",
-      input: z.object({
-        node: z.string().min(1),
-        method: z.string().min(1),
-        params: z.unknown().optional(),
-      }),
-      output: z.unknown(),
-      permissions: ["mesh.call"],
-      // The target runs it with no more than this caller holds here (security.md D416).
-      handler: ({ node, method, params }, invocation) =>
-        mesh.call(node, method, params ?? {}, invocation.traceId, invocation.caller?.permissions),
-    });
+    context.commands.register(meshCallCommand(mesh));
     context.commands.register({
       name: "mesh.resolve",
       description: "Resolves a jhin:// address to its node and the route to it",

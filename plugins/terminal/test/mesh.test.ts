@@ -2,8 +2,7 @@ import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { MESH_STREAMS_CAPABILITY } from "@jhin/mesh-api";
-import { LIVE_STREAMS_CAPABILITY, type RpcClient } from "@jhin/rpc";
+import type { RpcClient } from "@jhin/rpc";
 import type { StoredEvent } from "@jhin/storage-api";
 import {
   TERMINALS_STREAM,
@@ -12,13 +11,7 @@ import {
   type TerminalSnapshot,
   type TerminalSummary,
 } from "@jhin/terminal-api";
-import {
-  createMemoryNetwork,
-  createTestKernel,
-  mockCapability,
-  startMeshNode,
-  type MemoryMeshNode,
-} from "@jhin/testing";
+import { createMemoryNetwork, startMeshNode } from "@jhin/testing";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import terminal from "../src/index.ts";
@@ -26,6 +19,8 @@ import terminal from "../src/index.ts";
 const manifest = JSON.parse(
   Fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).jhin;
+const { "mesh.streams": _mesh, ...unshared } = manifest.optional as Record<string, string>;
+const withoutMesh = { ...manifest, optional: unshared };
 
 const stops: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
@@ -39,28 +34,29 @@ afterEach(async () => {
 async function trio(options: { share?: boolean } = {}) {
   const network = createMemoryNetwork();
   network.block("mem://a", "mem://c");
-  const nodes = ["a", "b", "c"].map((id) => startMeshNode(network, id));
-  const [a, b, c] = nodes as [MemoryMeshNode, MemoryMeshNode, MemoryMeshNode];
-  stops.push(() => nodes.forEach((node) => node.dispose()));
-  const kernel = await createTestKernel({
-    plugins: [
-      mockCapability(LIVE_STREAMS_CAPABILITY, c.live, "1.1.0"),
-      ...(options.share === false ? [] : [mockCapability(MESH_STREAMS_CAPABILITY, c.meshStreams)]),
-      { manifest, definition: terminal },
-    ],
-    config: { node: { "jhin.terminal": { shell: "/bin/sh" } } },
+  const config = { node: { "jhin.terminal": { shell: "/bin/sh" } } };
+  // a runs the terminal plugin as every node of the distribution does: what a relay of
+  // a terminal needs there is what the terminal needs (D502).
+  const a = await startMeshNode(network, "a", {
+    plugins: [{ manifest, definition: terminal }],
+    config,
   });
-  stops.push(() => kernel.stop());
-  c.use(kernel);
+  const b = await startMeshNode(network, "b");
+  // Without mesh.streams@1 the terminal plugin shares nothing (a node older than D501).
+  const plugin = {
+    manifest: options.share === false ? withoutMesh : manifest,
+    definition: terminal,
+  };
+  const c = await startMeshNode(network, "c", { plugins: [plugin], config });
+  stops.push(() => Promise.all([a, b, c].map((node) => node.stop())).then(() => undefined));
   await b.join(a);
   await c.join(b);
   const { client } = a.connect();
-  stops.push(() => client.close());
   const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-terminal-mesh-"));
   stops.push(() => Fs.rmSync(cwd, { recursive: true, force: true }));
   const onC = <T>(method: string, params: unknown) =>
     client.call<T>("mesh.call", { node: "c", method, params });
-  return { client, cwd, onC };
+  return { a, client, cwd, onC };
 }
 
 /** Subscribes to `stream`, resolving with the first event `match` accepts. */
@@ -132,6 +128,25 @@ describe("terminals of a thread on a mesh member (D501, D504)", () => {
     );
     await onC("terminals.close", { threadId: "t1", terminalId: "term-1" });
     await closed;
+  });
+
+  it("lets a relay be read only with mesh.call and what the stream needs (D502)", async () => {
+    const { a } = await trio();
+    const subscribe = (permissions: string[]) =>
+      a
+        .connect({ id: "device", permissions })
+        .client.call("rpc.subscribe", { subscription: "s1", stream: "relay/c/terminal/t1/term-1" });
+    await expect(subscribe(["mesh.call"])).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+      details: { missing: ["terminals.read"] },
+    });
+    await expect(subscribe(["terminals.read"])).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+      details: { missing: ["mesh.call"] },
+    });
+    await expect(subscribe(["mesh.call", "terminals.read"])).resolves.toMatchObject({
+      subscription: "s1",
+    });
   });
 
   it("refuses the relay of a node whose terminal plugin shares nothing", async () => {

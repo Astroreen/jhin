@@ -1,7 +1,7 @@
 import { toDisposable, type Disposable, type Logger } from "@jhin/sdk";
 import type { Json, StoredEvent } from "@jhin/storage-api";
 
-/** `rpc.streams@1`: streams served from memory (or followed elsewhere, 1.1) instead of the event log. */
+/** `rpc.streams@1`: streams served from memory (or followed elsewhere, 1.2) instead of the event log. */
 export const LIVE_STREAMS_CAPABILITY = "rpc.streams";
 
 /** What a subscription to a stream of the event log nobody guards needs (security.md D415). */
@@ -16,12 +16,19 @@ export interface StreamSource {
   /** Every event appended after this call, in sequence order. */
   subscribe(stream: string, listener: (event: StoredEvent) => void): Disposable;
   /**
-   * `rpc.streams@1.1` (D500): a source that reads elsewhere, like a relay of
+   * `rpc.streams@1.2` (D500): a source that reads elsewhere, like a relay of
    * another node's stream, opens a subscription from `after` instead of
    * being read. `rpc.subscribe` then uses this, not `subscribe`, `head` and
-   * `read`, and answers once it is attached.
+   * `read`, and answers once it is attached. Once attached, the source may
+   * still end the subscription with `end` (the stream was refused later);
+   * the subscriber hears of it as `rpc.subscription.ended`.
    */
-  follow?(stream: string, after: number, listener: (event: StoredEvent) => void): FollowedStream;
+  follow?(
+    stream: string,
+    after: number,
+    listener: (event: StoredEvent) => void,
+    end: (error: unknown) => void,
+  ): FollowedStream;
 }
 
 /** A subscription a source opened with `follow`. */
@@ -46,12 +53,15 @@ export interface LiveStreams {
   /**
    * Serves the stream `name`, or every stream starting with `name` when it
    * ends in `/`, from `source`; a subscriber needs `permissions`. A name
-   * served twice is refused.
+   * served twice is refused. Since 1.2, `permissions` may be a function of
+   * the stream, for a prefix whose streams need different ones (D502).
    */
   serve(
     name: string,
     source: StreamSource,
-    options?: { readonly permissions?: readonly string[] },
+    options?: {
+      readonly permissions?: readonly string[] | ((stream: string) => readonly string[]);
+    },
   ): Disposable;
   /** What serves `stream`, or `undefined` when the event log does. */
   sourceOf(stream: string): ServedStream | undefined;
@@ -84,19 +94,32 @@ function lookup<T>(entries: ReadonlyMap<string, T>, stream: string): T | undefin
 }
 
 export function createLiveStreams(): LiveStreams {
-  const sources = new Map<string, ServedStream>();
+  const sources = new Map<
+    string,
+    { source: StreamSource; permissions: (stream: string) => readonly string[] }
+  >();
   const guards = new Map<string, (stream: string) => readonly string[]>();
   return {
     serve(name, source, options = {}) {
       if (name.length === 0) throw new Error("A live stream needs a name");
       if (sources.has(name)) throw new Error(`The live stream ${name} is already served`);
-      const served: ServedStream = { source, permissions: [...(options.permissions ?? [])] };
+      const given = options.permissions ?? [];
+      const fixed = typeof given === "function" ? undefined : [...given];
+      const served = {
+        source,
+        permissions: typeof given === "function" ? given : () => fixed as readonly string[],
+      };
       sources.set(name, served);
       return toDisposable(() => {
         if (sources.get(name) === served) sources.delete(name);
       });
     },
-    sourceOf: (stream) => lookup(sources, stream),
+    sourceOf(stream): ServedStream | undefined {
+      const served = lookup(sources, stream);
+      return served === undefined
+        ? undefined
+        : { source: served.source, permissions: served.permissions(stream) };
+    },
     guard(name, permissions) {
       if (name.length === 0) throw new Error("A guarded stream needs a name");
       if (guards.has(name)) throw new Error(`The stream ${name} is already guarded`);

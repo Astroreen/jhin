@@ -11,3 +11,4 @@ export type {
   MeshTransport,
   Resolution,
 } from "./types.ts";
+export { meshCallCommand, meshRelayCommand, serveRelays } from "./commands.ts";

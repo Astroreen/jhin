@@ -176,9 +176,34 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
     };
     if (log.follow !== undefined) {
       // A source that reads elsewhere (D500): it replays and follows on its own.
-      const followed = log.follow(stream, after, (event) => {
-        if (subscriptions.get(id) === followed) deliver(event);
-      });
+      // Its events go as they come; a window is not kept here (mesh-streams.md Deferred).
+      const followed = log.follow(
+        stream,
+        after,
+        (event) => {
+          if (subscriptions.get(id) !== followed || event.sequence <= lastSent) return;
+          lastSent = event.sequence;
+          peer.send(
+            JSON.stringify({ jsonrpc: "2.0", method: RPC_EVENT, params: { subscription: id, event } }),
+          );
+        },
+        (error) => {
+          if (subscriptions.get(id) !== followed) return;
+          subscriptions.delete(id);
+          followed.dispose();
+          try {
+            peer.send(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                method: RPC_SUBSCRIPTION_ENDED,
+                params: { subscription: id, error: toErrorObject(error) },
+              }),
+            );
+          } catch {
+            // The peer is gone: nobody is left to tell.
+          }
+        },
+      );
       subscriptions.set(id, followed);
       try {
         return { subscription: id, head: await followed.ready };
