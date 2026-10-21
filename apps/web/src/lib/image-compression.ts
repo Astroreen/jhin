@@ -4,8 +4,6 @@
 
 import { isHeicImageFile } from "./attachment-files.ts";
 
-export { isHeicImageFile };
-
 /**
  * Anthropic rejects an image over 2000px on a side once a request holds more than 20 images, and
  * Claude Code forwards images sent into a running turn unchanged, so one large paste breaks

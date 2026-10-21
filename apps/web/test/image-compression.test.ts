@@ -8,11 +8,11 @@ import {
   fileNameForMimeType,
   fitImageAttachmentSize,
   IMAGE_ATTACHMENT_MAX_EDGE,
-  isHeicImageFile,
   MAX_COMPRESSIBLE_SOURCE_BYTES,
   prepareImageForAttachment,
   readImageDimensions,
 } from "../src/lib/image-compression.ts";
+import { isHeicImageFile } from "../src/lib/attachment-files.ts";
 
 const encoder = new TextEncoder();
 
