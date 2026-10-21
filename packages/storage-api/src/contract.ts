@@ -232,6 +232,45 @@ export function describeStorageContract(name: string, open: () => Promise<Storag
           { stream: "thread/b", head: 1 },
         ]);
       });
+
+      it("trims a stream, keeping its newest event, its head and its numbering (1.2)", async (context) => {
+        const { log } = await open();
+        if (log.trim === undefined) {
+          // A provider older than 1.2 has nothing to trim with.
+          context.skip();
+          return;
+        }
+        const trim = log.trim.bind(log);
+        const payloads = [1, 2, 3, 4, 5].map((payload) => ({ type: "app.a", payload }));
+        await log.append("s", payloads);
+        await log.append("other", [{ type: "app.a", payload: 1 }]);
+
+        expect(await trim("s", 2)).toBe(2);
+        expect((await log.read("s")).map((event) => event.sequence)).toEqual([3, 4, 5]);
+        // A reader that resumes before the first kept event sees the gap.
+        expect((await log.read("s", { after: 1 })).map((event) => event.sequence)).toEqual([
+          3, 4, 5,
+        ]);
+        expect(await trim("s", 2)).toBe(0);
+
+        // Past the head: everything but the newest goes, and the head stays.
+        expect(await trim("s", 99)).toBe(2);
+        expect(await log.head("s")).toBe(5);
+        expect((await log.read("s")).map((event) => event.sequence)).toEqual([5]);
+        expect(await log.streams()).toEqual([
+          { stream: "other", head: 1 },
+          { stream: "s", head: 5 },
+        ]);
+        await expect(
+          log.append("s", [{ type: "app.b", payload: 6 }], { expectedHead: 4 }),
+        ).rejects.toMatchObject({ code: "CONFLICT" });
+        const [next] = await log.append("s", [{ type: "app.b", payload: 6 }], { expectedHead: 5 });
+        expect(next?.sequence).toBe(6);
+
+        expect(await trim("missing", 3)).toBe(0);
+        expect(await log.read("other")).toHaveLength(1);
+        await expect(trim("s", -1)).rejects.toMatchObject({ code: "INVALID" });
+      });
     });
 
     describe("storage.eventlog@1.1 records", () => {

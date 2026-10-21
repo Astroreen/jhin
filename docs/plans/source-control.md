@@ -747,8 +747,6 @@ with the node's token, and without one).
 - Live source control of mesh members: their `source-control` stream is not
   mirrored (D26); clients re-read it when the member's thread catalog
   changes. Mirroring it needs the mesh to share a stream it does not know.
-- Trimming the `source-control` stream: statuses are appended only on change,
-  but `storage.eventlog@1` has no truncation, so the history only grows.
 - Settling a thread on a merged pull request (T3's sidebar) and the
   terminal indicator (the terminal plugin contributes it to
   `sidebar.thread.indicators`). The branch-mismatch warning is done

@@ -55,7 +55,11 @@ export interface AppendOptions {
   readonly records?: readonly RecordWrite[];
 }
 
-/** `storage.eventlog@1`: append-only streams with gap-free per-stream sequences. */
+/**
+ * `storage.eventlog@1`: append-only streams with per-stream sequences that
+ * only grow by one. 1.2 can `trim` a stream's oldest events (D496), so a
+ * reader resuming before the first kept one sees a gap.
+ */
 export interface EventLog {
   /**
    * Appends atomically: either every event is stored or none is. An empty
@@ -82,6 +86,14 @@ export interface EventLog {
    * not delivered; read them with `read`.
    */
   subscribe(stream: string, listener: (event: StoredEvent) => void): Disposable;
+  /**
+   * `storage.eventlog@1.2` (D496): forgets the events of `stream` with
+   * `sequence <= through`, except the newest, which always stays, and
+   * resolves how many it forgot. The head and the sequences of what is kept
+   * do not change; a `read` after an older sequence starts at the first kept
+   * event. A provider older than 1.2 has no `trim`.
+   */
+  trim?(stream: string, through: number): Promise<number>;
 }
 
 export type StorageErrorCode = "CONFLICT" | "INVALID" | "CORRUPT";
@@ -128,12 +140,48 @@ export function assertRecords(records: readonly RecordWrite[]): void {
 }
 
 export function assertCount(
-  name: "after" | "limit" | "expectedHead",
+  name: "after" | "limit" | "expectedHead" | "through",
   value: number | undefined,
 ): void {
   if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
     throw new StorageError("INVALID", `${name} must be a non-negative integer`, { [name]: value });
   }
+}
+
+/**
+ * Trims `stream` down to its newest `count` events (D497). Resolves how many
+ * were forgotten; 0 on a provider older than `storage.eventlog@1.2`, which cannot trim.
+ */
+export async function keepNewest(log: EventLog, stream: string, count: number): Promise<number> {
+  if (log.trim === undefined) return 0;
+  const head = await log.head(stream);
+  return head > count ? log.trim(stream, head - count) : 0;
+}
+
+/**
+ * Appends to a stream that keeps only its newest `keep` events (D497):
+ * whenever an append ends on a multiple of `every`, the stream is trimmed,
+ * and the append resolves after that. A failed trim is passed to `onTrimError`
+ * and fails nothing: an untrimmed history only costs disk.
+ */
+export async function appendKeepingNewest(
+  log: EventLog,
+  stream: string,
+  events: readonly NewEvent[],
+  options: { keep: number; every: number; onTrimError(error: unknown): void },
+): Promise<StoredEvent[]> {
+  const stored = await log.append(stream, events);
+  const first = stored[0]?.sequence;
+  const last = stored.at(-1)?.sequence;
+  // A batch may step over a multiple of `every` without ending on one.
+  if (
+    first !== undefined &&
+    last !== undefined &&
+    Math.floor(last / options.every) > Math.floor((first - 1) / options.every)
+  ) {
+    await keepNewest(log, stream, options.keep).catch(options.onTrimError);
+  }
+  return stored;
 }
 
 /** Code point order (= UTF-8 byte order), the one ordering every implementation uses. */

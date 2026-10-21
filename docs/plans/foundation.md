@@ -275,9 +275,8 @@ and engineering practices.
   one owner's trust domain (D22), not beyond it.
 - Scoped permissions for mesh links. Done in `security.md` (D416): a call
   runs with its caller's scope, capped by `jhin.mesh.memberPermissions`.
-- Trimming the `mesh/outbox` history: outcomes of delivered changes stay in
-  the stream forever (`storage.eventlog@1` has no truncation); nothing reads
-  it on a mesh change any more, so it only costs disk.
+- Trimming the `mesh/outbox` history. Done in `mesh-streams.md` (D496,
+  D497): it keeps its newest 1000 events.
 - Expiring queued config changes on a timer: today a change past
   `jhin.mesh.queueExpiryHours` is marked expired the next time the outbox is
   looked at (any mesh change, a fan-out, `mesh.config.pending`).

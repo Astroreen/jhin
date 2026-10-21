@@ -8,7 +8,13 @@ import {
 } from "@jhin/storage-api";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createOutbox, OUTBOX_STREAM, type Delivery, type Patch } from "../src/outbox.ts";
+import {
+  createOutbox,
+  OUTBOX_HISTORY,
+  OUTBOX_STREAM,
+  type Delivery,
+  type Patch,
+} from "../src/outbox.ts";
 
 const quiet: Logger = {
   debug: () => undefined,
@@ -247,6 +253,32 @@ describe("config outbox (D50)", () => {
     for (let change = 0; change < 10; change += 1) await outbox.flush();
     expect(reads).toEqual([]);
     expect(await storage.kv.list("jhin.mesh.outbox")).toHaveLength(1);
+  });
+
+  it("keeps the newest 1000 events of its history (D497), still delivering what is pending", async () => {
+    const { outbox, online, storage, delivered } = setup();
+    for (let index = 0; index < 550; index += 1) await outbox.enqueue("b", patch(`v${index}`));
+    online.add("b");
+    await outbox.flush();
+    // 550 queued and 550 delivered: trimmed at 1100, numbering kept.
+    expect(delivered).toHaveLength(550);
+    expect(await storage.log.head(OUTBOX_STREAM)).toBe(1100);
+    const kept = await storage.log.read(OUTBOX_STREAM);
+    expect(kept).toHaveLength(OUTBOX_HISTORY);
+    expect(kept[0]?.sequence).toBe(101);
+    expect(await outbox.pending()).toEqual([]);
+  });
+
+  it("trims an outbox written before the pending set only after reading it whole", async () => {
+    const storage = createMemoryStorage();
+    const legacy = Array.from({ length: 1200 }, (_, index) => ({
+      type: "mesh.config.queued",
+      payload: { id: `old-${index}`, node: "b", patch: patch(`${index}`) as unknown as Json },
+    }));
+    await storage.log.append(OUTBOX_STREAM, legacy);
+    const { outbox } = setup({ storage });
+    expect(await outbox.pending()).toHaveLength(1200);
+    expect(await storage.log.read(OUTBOX_STREAM)).toHaveLength(OUTBOX_HISTORY);
   });
 
   it("picks up what an outbox written before the pending set still owes, reading it once", async () => {
