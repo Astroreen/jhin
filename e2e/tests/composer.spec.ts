@@ -404,6 +404,8 @@ test("cites a selection of the agent's answer, with a comment, as T3's quote", a
   const answer = log.getByRole("article", { name: "Agent" });
   await expect(answer).toHaveText("Echo: cache the results");
   await expect(answer).toHaveAttribute("aria-busy", "false");
+  // Its markdown, not the plain text shown until the renderer loads, which it then replaces.
+  await expect(answer.locator("p")).toHaveText("Echo: cache the results");
 
   // A selection in the answer offers "Cite" (D1012).
   await answer.evaluate((article) => {
@@ -424,7 +426,7 @@ test("cites a selection of the agent's answer, with a comment, as T3's quote", a
     document.getSelection()!.addRange(range);
   });
 
-  await page.getByRole("button", { name: "Cite selection in composer" }).click();
+  await page.getByRole("button", { name: "Cite selection in composer", exact: true }).click();
   const chip = message.getByRole("button", { name: "View cited assistant text: the results" });
   await expect(chip).toBeVisible();
 
