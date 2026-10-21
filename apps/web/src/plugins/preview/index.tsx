@@ -97,9 +97,9 @@ export const previewPanelPlugin = builtin(
       [CONNECTIONS_CAPABILITY]: "^1",
       [NAVIGATION_CAPABILITY]: "^1",
       [THREADS_CAPABILITY]: "^1",
-      [SETTINGS_CAPABILITY]: "^1",
     },
     optional: {
+      [SETTINGS_CAPABILITY]: "^1",
       [KEYBINDINGS_CAPABILITY]: "^1",
       [UI_TOASTS_CAPABILITY]: "^1",
       [UI_DIALOGS_CAPABILITY]: "^1",
@@ -117,7 +117,7 @@ export const previewPanelPlugin = builtin(
       const feeds = context.subscriptions.add(createTabFeeds(connections));
       // T3's browser profiles, kept on this device (D953).
       context.config.define(PREVIEW_BROWSER_SECTION, PreviewBrowserSettings);
-      const deviceSettings = context.services.get<DeviceSettings>(SETTINGS_CAPABILITY);
+      const deviceSettings = context.services.tryGet<DeviceSettings>(SETTINGS_CAPABILITY);
       const profiles: ProfilesServices = {
         settings: deviceSettings,
         connections,
@@ -127,7 +127,7 @@ export const previewPanelPlugin = builtin(
         use: () => useSection(context, PREVIEW_BROWSER_SECTION, PreviewBrowserSettings),
       };
       const pages = context.services.tryGet<SettingsPages>(UI_SETTINGS_CAPABILITY);
-      if (pages !== undefined) {
+      if (pages !== undefined && deviceSettings !== undefined) {
         context.subscriptions.add(
           pages.addSection({
             id: "browser",

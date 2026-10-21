@@ -297,7 +297,11 @@ export function BrowserPanel(props: BrowserPanelProps) {
   const [draftProfile, setDraftProfile] = useState<string | undefined>(undefined);
   const active = drafting ? undefined : (tabs.find((tab) => tab.tabId === chosen) ?? tabs.at(-1));
   const { profiles, defaultProfileId } = services.useProfiles();
-  const openingProfile = draftProfile ?? defaultProfileId;
+  // A profile removed in the settings meanwhile is not opened: the default is.
+  const openingProfile =
+    draftProfile !== undefined && profiles.some((profile) => profile.id === draftProfile)
+      ? draftProfile
+      : defaultProfileId;
 
   const openUrl = async (raw: string) => {
     let url: string;

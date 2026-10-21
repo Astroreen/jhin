@@ -197,6 +197,15 @@ test("D953: a profile made in the settings opens a tab of its own, marked with i
   await expect(page.getByRole("menuitem", { name: "Profile: Work" })).toBeVisible();
   await shot(page, info, "profile-tab");
   await page.keyboard.press("Escape");
+
+  // Work as the default: "+" opens in it, and its tabs carry no badge any more.
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Browser" }).click();
+  await section.getByRole("button", { name: "Work options" }).click();
+  await page.getByRole("menuitem", { name: "Set as default" }).click();
+  await expect(list.getByRole("listitem").nth(1)).toContainText("Default");
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(panel.getByText("Work", { exact: true })).toHaveCount(0);
 });
 
 test("D403: the user opens a page from the address bar and sizes it like a device", async ({

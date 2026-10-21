@@ -103,7 +103,8 @@ export function freshProfileName(profiles: readonly BrowserProfile[], base: stri
 }
 
 export interface ProfilesServices {
-  readonly settings: DeviceSettings;
+  /** Absent in a client without device settings: only the built-in profiles then. */
+  readonly settings: DeviceSettings | undefined;
   readonly connections: Connections;
   readonly dialogs: Dialogs | undefined;
   readonly toasts: Toasts | undefined;
@@ -115,7 +116,14 @@ export interface ProfilesServices {
 /** Forgets a profile on every node this client is connected to (T3 clears every environment). */
 async function clearOnNodes(services: ProfilesServices, profileId: string): Promise<void> {
   const open = services.connections.list().filter((node) => node.state === "open");
-  await Promise.all(open.map((node) => node.client.call("preview.profile.clear", { profileId })));
+  const results = await Promise.allSettled(
+    open.map((node) => node.client.call("preview.profile.clear", { profileId })),
+  );
+  // Every node is tried; the error names the ones that did not clear.
+  const failed = open.filter((_node, index) => results[index]?.status === "rejected");
+  if (failed.length > 0) {
+    throw new Error(`Not cleared on ${failed.map((node) => node.label).join(", ")}.`);
+  }
 }
 
 /** T3's "Browser profiles" row of the browser settings. */
@@ -126,7 +134,7 @@ export function BrowserProfilesSection(props: { readonly services: ProfilesServi
   const listed = profiles.filter((profile) => profile.kind !== "incognito");
   const [busy, setBusy] = useState(false);
   const patch = (values: Partial<PreviewBrowserSettings>) =>
-    services.settings.patch(PREVIEW_BROWSER_SECTION, values);
+    services.settings?.patch(PREVIEW_BROWSER_SECTION, values);
   const atLimit = settings.profiles.length >= BROWSER_PROFILE_MAX_COUNT;
 
   const create = () => {
@@ -225,7 +233,12 @@ export function BrowserProfilesSection(props: { readonly services: ProfilesServi
                       disabled={busy}
                       key={profile.name}
                       maxLength={BROWSER_PROFILE_NAME_MAX_LENGTH}
-                      onBlur={(event) => rename(profile.id, event.currentTarget.value)}
+                      onBlur={(event) => {
+                        // An empty name is not taken: the field shows the name again.
+                        if (event.currentTarget.value.trim() === "") {
+                          event.currentTarget.value = profile.name;
+                        } else rename(profile.id, event.currentTarget.value);
+                      }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") event.currentTarget.blur();
                       }}
