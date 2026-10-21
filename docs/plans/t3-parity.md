@@ -1750,12 +1750,13 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   mode, as T3's `isLiteralPendingAnswer`: no chips, no styling, no menus,
   "Add to chat" leaves it alone, and the answer goes back exactly as edited,
   white space too: an answer of spaces is sent as typed, only an empty one
-  cannot be. T3 keeps the answer apart
-  from the prompt; here the composer puts its draft aside while the answer
-  shows and brings it back once the question is answered or gone, and the
-  answer is never saved as the thread's draft; a draft another device sends
-  meanwhile (D486) replaces the one put aside, not the answer. The fake agent's `/edit` asks
-  one.
+  cannot be. T3 keeps the answer apart from the prompt; here the composer
+  has one text, so its draft is put aside (`usePutAside`) when the first
+  answer to edit shows and comes back once the request's questions are
+  answered or gone; meanwhile nothing typed is saved as the thread's draft
+  (a later question's answer, prefilled or not, is an answer too), and a
+  draft another device sends (D486) replaces the one put aside, not the
+  answer. The fake agent's `/edit` asks one.
 
 ### Sidebar leftovers (W26)
 
@@ -1885,9 +1886,6 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   free thread with nothing queued starts its turn under the queue's lock,
   and a thread's first message runs the hook. Edits of that thread's queue
   wait for it.
-- A component test of the composer's draft put aside for a prefilled answer
-  (D1001): the fake agent asks `/edit` at once, so no draft can be typed
-  before it; the e2e test covers the literal answer only.
 - A browser component test of the composer's queue banner (the `mod-enter`
   send shortcut with something queued, the "Retry" label of a refused
   message): the e2e spec covers the flows with the default shortcut only.

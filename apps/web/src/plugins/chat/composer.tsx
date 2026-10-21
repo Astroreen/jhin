@@ -121,6 +121,7 @@ const PromptEditor = lazy(() =>
   import("./prompt-editor.tsx").then((module) => ({ default: module.PromptEditor })),
 );
 import { useComposerMenu } from "./use-composer-menu.ts";
+import { type PutAside, usePutAside } from "./put-aside.ts";
 import {
   useAttachmentLoader,
   useAttachmentUrl,
@@ -1228,18 +1229,8 @@ export function Composer(props: ComposerProps) {
 
   /** Whether the user is in the composer: another device's text never replaces what is typed. */
   const typingHere = useRef(false);
-  /**
-   * The draft a prefilled answer put aside (D1001): T3 keeps the two apart, so it comes back
-   * once the question goes.
-   */
-  const asideDraft = useRef<string | undefined>(undefined);
-  // It is this draft's: another draft's composer never gets it back.
-  useEffect(
-    () => () => {
-      asideDraft.current = undefined;
-    },
-    [props.draftKey],
-  );
+  /** Set once the questions are known, further down: a remote draft may come before. */
+  const putAsideNow = useRef<PutAside | undefined>(undefined);
   // Another device's text for this draft (D486): read from the node when the
   // composer opens, and taken while the composer is not in use.
   useEffect(() => {
@@ -1247,8 +1238,7 @@ export function Composer(props: ComposerProps) {
     const stop = drafts.follow(key, (draft) => {
       if (typingHere.current || editing !== undefined) return;
       // While a prefilled answer shows, the draft that arrives is the one kept aside.
-      if (asideDraft.current !== undefined) asideDraft.current = draft.prompt;
-      else setPrompt(draft.prompt);
+      if (putAsideNow.current?.takeRemote(draft.prompt) !== true) setPrompt(draft.prompt);
     });
     const node = nodeDraftKey(key);
     if (node !== undefined && readSection(chat.context, SYNC_SECTION, SyncSettings).drafts) {
@@ -1649,26 +1639,30 @@ export function Composer(props: ComposerProps) {
    */
   const literalAnswer =
     currentQuestion?.initialAnswer !== undefined && currentQuestion.allowCustomAnswer !== false;
-  useEffect(() => {
-    if (!literalAnswer || currentQuestion?.initialAnswer === undefined) return;
-    if (asideDraft.current === undefined) asideDraft.current = prompt;
-    setPrompt(currentQuestion.initialAnswer);
-    setCursor(currentQuestion.initialAnswer.length);
-    // Seeded once per question shown, never again while it is edited.
-  }, [question?.requestId, currentQuestion?.id]);
+  // The draft waits aside while an answer to edit shows (D1001).
+  const putAside = usePutAside({
+    draftKey: props.draftKey,
+    seed:
+      literalAnswer && question !== undefined && currentQuestion?.initialAnswer !== undefined
+        ? {
+            key: `${question.requestId}:${currentQuestion.id}`,
+            text: currentQuestion.initialAnswer,
+          }
+        : undefined,
+    asking: question !== undefined,
+    prompt,
+    setPrompt: (value) => {
+      setPrompt(value);
+      setCursor(value.length);
+    },
+  });
+  putAsideNow.current = putAside;
   useEffect(() => {
     // A queued message being edited is not the thread's draft, nor is a prefilled answer.
-    if (editing === undefined && asideDraft.current === undefined) {
+    if (editing === undefined && !putAside.active) {
       drafts.set(props.draftKey, { prompt, attachments: draftAttachments(attachments) });
     }
-  }, [drafts, props.draftKey, prompt, attachments, editing]);
-  useEffect(() => {
-    if (question !== undefined || asideDraft.current === undefined) return;
-    const draft = asideDraft.current;
-    asideDraft.current = undefined;
-    setPrompt(draft);
-    setCursor(draft.length);
-  }, [question]);
+  }, [drafts, props.draftKey, prompt, attachments, editing, putAside.active]);
   const custom = literalAnswer ? prompt : prompt.trim();
   /** A question's answer with the typed one: added to a multi-select's options, else instead. */
   const withCustom = (item: UserQuestion): readonly string[] => {
