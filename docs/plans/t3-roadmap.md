@@ -207,14 +207,17 @@ unless a workstream needs it.
 
 | Id  | Workstream                                              | Plans                                                        | Decisions |
 | --- | ------------------------------------------------------- | ------------------------------------------------------------ | --------- |
-| W19 | Steering and thread history leftovers                   | `t3-parity.md`                                               | D600–D619 |
-| W20 | Delegated work in the UI, subagent threads, automations | `orchestration.md`, `providers.md`                           | D620–D639 |
-| W21 | Worktree, git and pull request leftovers                | `source-control.md`                                          | D640–D659 |
-| W22 | Diff panel leftovers                                    | `source-control.md`                                          | D660–D679 |
-| W23 | Composer leftovers                                      | `t3-parity.md`, `terminal.md`                                | D680–D699 |
-| W24 | Codex and OpenCode parity                               | `providers.md`                                               | D700–D719 |
-| W25 | Preview, devices and the desktop app                    | `preview.md`, `desktop.md`                                   | D720–D739 |
-| W26 | Pairing, sidebar, terminal and config leftovers         | `security.md`, `t3-parity.md`, `terminal.md`, `config-ui.md` | D740–D759 |
+| W19 | Steering and thread history leftovers                   | `t3-parity.md`                                               | D800–D819 |
+| W20 | Delegated work in the UI, subagent threads, automations | `orchestration.md`, `providers.md`                           | D820–D839 |
+| W21 | Worktree, git and pull request leftovers                | `source-control.md`                                          | D840–D859 |
+| W22 | Diff panel leftovers                                    | `source-control.md`                                          | D860–D879 |
+| W23 | Composer leftovers                                      | `t3-parity.md`, `terminal.md`                                | D880–D899 |
+| W24 | Codex and OpenCode parity                               | `providers.md`                                               | D900–D919 |
+| W25 | Preview, devices and the desktop app                    | `preview.md`, `desktop.md`                                   | D920–D939 |
+| W26 | Pairing, sidebar, terminal and config leftovers         | `security.md`, `t3-parity.md`, `terminal.md`, `config-ui.md` | D940–D959 |
+
+The round 2 ranges start at D800: D600–D760 belong to `agents.md`, and a
+first draft of this table overlapped them.
 
 - **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
   that waits for an approval, foreground subagents moved to the background
