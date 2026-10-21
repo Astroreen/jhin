@@ -289,6 +289,150 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   id, as T3's list. A client's granted scopes stay ids: they may be patterns
   (`git.*`, `*`).
 
+### Secret store and `secretRef` (W28)
+
+The reference is T3 Code at D53 (`eb7b35ac`):
+`apps/server/src/auth/ServerSecretStore.ts`,
+`apps/server/src/secrets/SecretRequests.ts`,
+`packages/contracts/src/secretRequest.ts`, `request_secret` in
+`apps/server/src/mcp/OrchestratorMcpService.ts`,
+`packages/client-runtime/src/secretRequest.ts` and
+`apps/web/src/components/chat/SecretRequestCard.tsx`.
+
+- **D1021. What the store protects, and from whom.** A secret is a value a
+  person types once and Jhin uses many times: an API key in a config
+  section's `writeOnly` field (D417), a webhook's signing secret. What it
+  promises: a secret's value never enters a config file, a thread's events
+  (its transcript), the node's logs, kernel events, an RPC or MCP response,
+  or an agent's context; it never leaves the node that keeps it except
+  where its owner types it (from the device to that node, over the
+  device's authenticated connection, and through a mesh relay when the
+  thread lives on a member). So a config file can be shared, committed,
+  synced to other nodes (D20) or pasted into a bug report without its
+  secrets. What it does not promise: a thread's agent runs commands as the
+  node's OS user, and nothing keeps a value from code running as that user
+  (it can read the key file, or ask the keychain the way the node does). A
+  plugin of the node receives a value through the capability (D1022) and
+  must keep it the same way; a secret a plugin keeps elsewhere (the
+  scheduler's signing secrets in `storage.kv`, D386) is outside the store.
+- **D1022. `jhin.secrets` provides `secrets.store@1`.** Its contract is
+  `@jhin/secrets-api`. Other code depends on the capability, never on the
+  plugin. Every operation is a command except the two that hand out a
+  value: resolving a config secret (D1025) and consuming a `secretRef`
+  (D1031) are methods of the capability only, so a value is reachable from
+  the node's own code and from no RPC, CLI or MCP caller. That is the one
+  place rule 6 gives way: a command whose output is a secret is the leak.
+  `secrets.status` (`secrets.read`) tells where the store keeps its key, how
+  many config secrets and open `secretRef`s it holds, and whether it could
+  be read; never a value or a name.
+- **D1023. One encrypted file.** The store is `store.json` in the plugin's
+  data directory (directory 0700, file 0600, written whole and renamed into
+  place): `{ version: 1, key: "keychain" | "file", iv, tag, data }`, the
+  entries as JSON sealed with AES-256-GCM under a 32-byte random key. The
+  key sits in the OS keychain where the node finds one (D1024), else in
+  `store.key` (0600) beside the store. The file records where its key is,
+  so a store keeps its key where it was made. A store that cannot be
+  opened (its key is gone, the file is damaged) is left as it is and
+  reported (`secrets.status`: `unreadable`): nothing resolves and every
+  write fails with `SECRET_STORE_UNREADABLE`, so nothing is overwritten
+  and nothing falls back to clear text. T3 keeps one file per secret,
+  0600, unencrypted; the key file gives the same protection against a
+  local user, the keychain more, and either keeps the store opaque where it
+  is copied without its key.
+- **D1024. The keychain, where there is one.** macOS: `security`
+  (`add-generic-password -U`, `find-generic-password -w`), the key passed on
+  standard input of `security -i`, never on a command line. Linux:
+  `secret-tool` (libsecret) when it is installed and a D-Bus session bus is
+  set, the key on standard input. The item is service `Jhin`, account
+  `jhin.secrets:<nodeId>`, so the nodes of one machine keep keys apart.
+  Elsewhere, and with `jhin.secrets.keychain: "off"`, the key file.
+- **D1025. A config secret is a reference in the file.** Where a config
+  file held a secret it holds `"$secret:<32 hex>"`. The host resolves each
+  reference through `secrets.store@1` before it applies the layer
+  (`kernel.config.setLayer`), so plugins read the value as before. A
+  reference is bound to where it was made: its section and its path inside
+  the section (list positions as `*`); at another place it does not
+  resolve, so a reference moved into a field that is not secret cannot show
+  its value. A reference that does not resolve (another machine's, a
+  deleted one, a store not yet active) is left out of the layer, as if the
+  key were not there, and logged with its section and path. When the store
+  becomes active the host applies both layers again, and plugins see the
+  values through `config.onChange`. Strings only: a secret number or
+  boolean stays in clear.
+- **D1026. Saving moves secrets out of the file.** `host.config.patch` and
+  `host.config.edit` (so the settings page and `mesh.config.patch`) put
+  every string at a secret place (D417's walk) of the section they change
+  into the store and write its reference. The marker still keeps what is
+  stored (D417): the reference, not the value. A reference the change
+  removes from a file is deleted from the store unless the other layer's
+  file still names it. Without the store the change is written as before,
+  in clear. `host.config.get` redacts as before, and scrubs messages of the
+  resolved values.
+- **D1027. Existing configs keep working; moving them is one command.** A
+  secret in clear in a file is read as before. A save of its section moves
+  it (D1026); `host.config.secrets.migrate {layer?}` (`host.config.write`)
+  moves every one of the node and project files at once and returns where
+  they were (`{ layer, section, path }`), never what. The node does not
+  rewrite files on its own at start.
+- **D1028. A private prompt for a secret: `secrets.request`.** T3's
+  `request_secret`, as the tool `secrets_request`: `{ label, reason,
+  placeholder?, timeoutMs?, clientRequestId?, threadId? }` (the thread
+  defaults to the calling agent's, `Invocation.threadId`). It needs a
+  running turn in the thread (else `SECRET_REQUEST_NO_TURN`, T3's
+  `parent_not_active`), appends `secrets.request.opened {requestId,
+  turnId, label, reason, placeholder?}` to the thread and waits: for the
+  answer, for the turn to end, or `timeoutMs` (1 s to 1 h, 10 minutes by
+  default). It answers T3's union: `{ status: "saved", secretRef }` or
+  `{ status: "declined" | "cancelled" | "timed_out" }`, and appends
+  `secrets.request.closed {requestId, status}` (`saved`, `declined`,
+  `cancelled`; a timeout closes as `cancelled`, as T3's card). A
+  `clientRequestId` asked again while its request waits joins that wait,
+  and after it returns that answer again (its `secretRef` while unused).
+  Open requests are kept in `storage.kv` too, so a node that restarts closes
+  the ones it left open as `cancelled`. It needs `threads.write`, which a
+  thread's agent holds.
+- **D1029. The answer goes to the store, not the thread.**
+  `secrets.requests.answer {threadId, requestId, answer}` with `answer`
+  `{ type: "save", secret }` (trimmed, not empty) or `{ type: "decline" }`
+  stores the value under a new `secretRef` and only then closes the
+  request; it returns `{ status }`. It needs `secrets.write`, which agents
+  do not hold, so an agent cannot answer its own request. T3's failures and
+  messages: `SECRET_REQUEST_NOT_FOUND` ("This secret request no longer
+  exists."), `SECRET_REQUEST_ANSWERED` ("This secret request was already
+  answered."), `SECRET_REQUEST_AGENT_STOPPED` ("The agent that asked has
+  stopped, so this secret can't be used."). An input that fails validation
+  is reported without the value.
+- **D1030. A `secretRef` is one-use, bound and short-lived.**
+  `secret-ref:<32 hex>`, random. It holds the value with the thread's
+  project and the time it was saved; it works once, for that project, for
+  24 hours (T3's `SECRET_REF_TTL_MS`). Expired ones are removed when the
+  store opens and every hour after.
+- **D1031. Consuming a `secretRef`** is `consumeRef({ ref, projectId })` of
+  `secrets.store@1`: it removes the entry and returns the value, or fails
+  with T3's reasons: `SECRET_REF_INVALID` ("That secretRef is not
+  valid."), `SECRET_REF_UNAVAILABLE` ("That secretRef was already used or
+  does not exist. Ask the user again with secrets_request."; also for
+  another project), `SECRET_REF_EXPIRED` ("That secretRef expired. Ask the
+  user again with secrets_request."). A value that could not be removed is
+  not handed out. Consumers name the field that takes one `secretRef`, next
+  to the field that takes the value (D1034).
+- **D1032. The card, T3's `SecretRequestCard`.** The web client's builtin
+  `jhin.secrets-view` contributes `jhin.secrets.request` to
+  `chat.turn.item`: for `secrets.request.opened` a form with the label,
+  the reason, a masked text field (not a password field, so browsers do
+  not offer to save it; password managers told to ignore it), "Save
+  securely", "Decline" and T3's note "Stored securely, never shown to the
+  agent"; once closed, a work log row "<label> · Saved securely and kept
+  private" / "Declined" / "Request ended". It follows the thread's stream
+  after its event for the close, and shows a failure's message only when
+  the node gave one of D1029's codes ("Could not answer the request. Try
+  again." otherwise), so a typed value never reaches the page's errors.
+- **D1033. Proof: the value is looked for everywhere.** Tests answer a
+  request and save a config secret with a recognisable value, then search
+  the thread's events, the node's log file, every kernel event, every RPC
+  and MCP response of the exchange, `host.config.get`, and the config
+  files, and find it in none; only `store.json` holds it, sealed.
+
 ## PR plan
 
 A stack, each layer branched from the one before.
@@ -365,9 +509,6 @@ Implements D419–D425, in two layers:
 - A paired device's metadata (T3's device type, OS, browser, IP) in the
   list of authorized clients; Jhin keeps a label only.
 
-- Secrets stay in the config files in clear (D417): T3 keeps them in a
-  secret store apart from its settings. A key store (the OS keychain, an
-  encrypted file) would let a config file be shared without them.
 - A fan-out (`mesh.config.patch`) that carries a marker resolves it on each
   target against that node's own stored value; a target with none refuses
   the change (`CONFIG_SECRET_MISSING`), recorded as `mesh.config.failed`.

@@ -41,6 +41,7 @@ import {
 } from "@jhin/sdk";
 import { applyEdits, modify } from "jsonc-parser";
 import { createMemoryStreams, LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
+import { SECRETS_STORE_CAPABILITY, SecretsError, type SecretStore } from "@jhin/secrets-api";
 import type { Json } from "@jhin/storage-api";
 
 import {
@@ -53,7 +54,16 @@ import { readNodeId, resolveHome, type JhinHome } from "./home.ts";
 import { createFileModuleLoader } from "./loader.ts";
 import { createNodeLogger, type NodeLogger } from "./logger.ts";
 import { detectMachineKind, systemProbe } from "./machine.ts";
-import { redactSecrets, restoreSecrets, scrub, secretPaths, secretTexts } from "./secrets.ts";
+import {
+  redactSecrets,
+  resolveSecretReferences,
+  restoreSecrets,
+  scrub,
+  sealSecrets,
+  secretPaths,
+  secretReferences,
+  secretTexts,
+} from "./secrets.ts";
 import { buildOutputFilter, watch, type WatchTarget } from "./watcher.ts";
 
 export interface NodeHostOptions {
@@ -97,6 +107,8 @@ const MAX_CONFIG_SKEW_MS = 60 * 60 * 1000;
 const HOST_LOCATION = "host://jhin.host";
 const HOST_STREAMS_PLUGIN = "jhin.host-streams";
 const HOST_STREAMS_LOCATION = "host://jhin.host-streams";
+const HOST_SECRETS_PLUGIN = "jhin.host-secrets";
+const HOST_SECRETS_LOCATION = "host://jhin.host-secrets";
 /** Emitted when a config file is applied with sections that changed (D483). */
 const HOST_CONFIG_CHANGED = "host.config.changed";
 /** The live stream clients follow for config changes (D483). */
@@ -197,8 +209,19 @@ function canonical(value: unknown): string {
 /** Each layer's file as last applied, to tell which sections a change touched (D483). */
 const applied = new WeakMap<Kernel, Map<string, Record<string, unknown>>>();
 
+/**
+ * What turns a layer as written into the layer applied: config secret
+ * references replaced by their values (security.md D1025).
+ */
+const resolvers = new WeakMap<
+  Kernel,
+  (layer: string, values: Record<string, unknown>) => Record<string, unknown>
+>();
+
 function applyLayer(kernel: Kernel, layer: string, file: string, log: Logger): void {
-  const values = readLayer(file, log);
+  const written = readLayer(file, log);
+  const resolve = resolvers.get(kernel);
+  const values = written === undefined || resolve === undefined ? written : resolve(layer, written);
   let layers = applied.get(kernel);
   if (layers === undefined) applied.set(kernel, (layers = new Map()));
   if (values === undefined) {
@@ -429,6 +452,23 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           editConfig(layer, section, edits, values, at ?? Date.now()),
       });
       context.commands.register({
+        name: "host.config.secrets.migrate",
+        description:
+          "Moves every secret written in clear in this node's node and project config files (or one of them) into the node's secret store, leaving a reference in the file; returns where they were, never what (security.md D1027)",
+        input: z.object({ layer: z.enum(["node", "project"]).optional() }),
+        output: z.object({
+          moved: z.array(
+            z.object({
+              layer: z.enum(["node", "project"]),
+              section: z.string(),
+              path: z.array(z.union([z.string(), z.number()])),
+            }),
+          ),
+        }),
+        permissions: ["host.config.write"],
+        handler: ({ layer }) => migrateSecrets(layer === undefined ? ["node", "project"] : [layer]),
+      });
+      context.commands.register({
         name: "host.config.get",
         description:
           "A config section of this node: its effective value, what the node and project files set, and the comments above their keys",
@@ -456,8 +496,15 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
             project: readLayer(projectConfig, log)?.[section],
           };
           const files = { node: hide(raw.node), project: hide(raw.project) };
-          // A refinement's message may quote the value it refused.
-          const secrets = [...secretTexts(schema, raw.node), ...secretTexts(schema, raw.project)];
+          // A refinement's message may quote the value it refused: the files' text,
+          // and the values their secret references resolve to (D1026).
+          const resolved = applied.get(kernel);
+          const secrets = [
+            ...secretTexts(schema, raw.node),
+            ...secretTexts(schema, raw.project),
+            ...secretTexts(schema, resolved?.get("node")?.[section]),
+            ...secretTexts(schema, resolved?.get("project")?.[section]),
+          ];
           // Issue paths are dotted, as the kernel reports them.
           const secretAt = new Set(
             [...secretPaths(schema, raw.node), ...secretPaths(schema, raw.project)].map((path) =>
@@ -611,6 +658,23 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     },
   });
 
+  /** The node's secret store while one is active (security.md D1025). */
+  let secretStore: SecretStore | undefined;
+  // Activated after `secrets.store` (an optional dependency), and again with it.
+  const hostSecretsPlugin = definePlugin({
+    activate(context) {
+      const store = context.services.tryGet<SecretStore>(SECRETS_STORE_CAPABILITY);
+      if (store === undefined) return;
+      secretStore = store;
+      context.onDeactivate(() => {
+        if (secretStore === store) secretStore = undefined;
+      });
+      // The layers again, now that their references resolve.
+      applyLayer(kernel, "node", home.config, log);
+      applyLayer(kernel, "project", projectConfig, log);
+    },
+  });
+
   const fileLoader = createFileModuleLoader();
   const loader: ModuleLoader = {
     load: (source, manifest, generation) =>
@@ -618,9 +682,30 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         ? Promise.resolve({ default: hostPlugin })
         : source.location === HOST_STREAMS_LOCATION
           ? Promise.resolve({ default: hostStreamsPlugin })
-          : fileLoader.load(source, manifest, generation),
+          : source.location === HOST_SECRETS_LOCATION
+            ? Promise.resolve({ default: hostSecretsPlugin })
+            : fileLoader.load(source, manifest, generation),
   };
   kernel = createKernel({ side: "server", loader, logger: log });
+  resolvers.set(kernel, (layer, values) => {
+    const store = secretStore;
+    return resolveSecretReferences(
+      values,
+      store === undefined
+        ? undefined
+        : (reference, [section, ...path]) =>
+            store.resolveConfig(reference, { section: String(section), path }),
+      (place) => {
+        // Before the store is active every reference waits for it; that is no news.
+        if (store === undefined) return;
+        log.warn("config secret not found in the secret store; the key is left out", {
+          layer,
+          section: place[0],
+          path: place.slice(1),
+        });
+      },
+    );
+  });
   kernel.events.onAny((event) => {
     recentEvents.push(event);
     if (recentEvents.length > RECENT_EVENTS) recentEvents.shift();
@@ -657,7 +742,19 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
       entry: "host-streams",
     },
   };
-  await kernel.start([hostSource, hostStreamsSource, ...discovery.plugins]);
+  const hostSecretsSource: PluginSource = {
+    location: HOST_SECRETS_LOCATION,
+    manifest: {
+      id: HOST_SECRETS_PLUGIN,
+      version: "0.0.0",
+      apiVersion: PLUGIN_API_VERSION,
+      side: "server",
+      provides: {},
+      optional: { [SECRETS_STORE_CAPABILITY]: "^1" },
+      entry: "host-secrets",
+    },
+  };
+  await kernel.start([hostSource, hostStreamsSource, hostSecretsSource, ...discovery.plugins]);
 
   const notifyPlugin = (id: string, files: readonly string[]) => {
     for (const listener of Array.from(pluginListeners)) {
@@ -686,7 +783,12 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     const previous = discovery.plugins;
     const next = discoverPlugins(layers);
     const found = next.plugins;
-    const update = await kernel.update([hostSource, hostStreamsSource, ...found]);
+    const update = await kernel.update([
+      hostSource,
+      hostStreamsSource,
+      hostSecretsSource,
+      ...found,
+    ]);
     // Only what the kernel applied becomes the discovery the watchers follow.
     discovery = next;
     rewatch();
@@ -750,15 +852,108 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     if (localAt !== undefined && at < localAt) return { applied: false, at, conflict: { localAt } };
 
     const file = layer === "node" ? home.config : projectConfig;
-    const text = change(Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n", file);
+    const original = Fs.existsSync(file) ? Fs.readFileSync(file, "utf8") : "{}\n";
+    const text = change(original, file);
     Fs.mkdirSync(Path.dirname(file), { recursive: true });
     // Times first, then the file, each replaced atomically: a crash in between
     // can only make a later stale change lose, never win.
     writes[layer] = { ...writes[layer], [section]: at };
     writeAtomically(writesFile, `${JSON.stringify(writes, null, 2)}\n`);
     writeAtomically(file, text);
+    forgetRemovedSecrets(original, text, file);
     applyLayer(kernel, layer, file, log);
     return { applied: true, at };
+  }
+
+  /** The config secret references `text` (a config file) holds; none when it does not parse. */
+  function referencesIn(text: string, file: string): Set<string> {
+    try {
+      return new Set(secretReferences(parseConfigText(text, file)));
+    } catch {
+      return new Set();
+    }
+  }
+
+  /**
+   * Deletes from the store what a change took out of a file, unless the
+   * other layer's file still names it (security.md D1026).
+   */
+  function forgetRemovedSecrets(before: string, after: string, file: string): void {
+    const store = secretStore;
+    if (store === undefined) return;
+    const kept = referencesIn(after, file);
+    const removed = [...referencesIn(before, file)].filter((reference) => !kept.has(reference));
+    if (removed.length === 0) return;
+    const other = file === home.config ? projectConfig : home.config;
+    const elsewhere = Fs.existsSync(other)
+      ? referencesIn(Fs.readFileSync(other, "utf8"), other)
+      : new Set<string>();
+    for (const reference of removed) {
+      if (elsewhere.has(reference)) continue;
+      try {
+        store.deleteConfig(reference);
+      } catch (error) {
+        log.warn("could not delete a config secret from the secret store", {
+          error: String(error),
+        });
+      }
+    }
+  }
+
+  /**
+   * `values` (top-level keys of a section) with every secret in clear put into
+   * the secret store and replaced by its reference (security.md D1026); as
+   * they are without a store.
+   */
+  function sealed(section: string, values: Record<string, unknown>): Record<string, unknown> {
+    const store = secretStore;
+    if (store === undefined) return values;
+    return sealSecrets(sectionSchema(section), values, (text, path) =>
+      store.putConfig(text, { section, path }),
+    );
+  }
+
+  /** Moves the secrets in clear of `layers`' files into the store (security.md D1027). */
+  function migrateSecrets(targets: readonly ("node" | "project")[]) {
+    const store = secretStore;
+    if (store === undefined) throw new SecretsError("SECRET_STORE_UNAVAILABLE");
+    const moved: { layer: "node" | "project"; section: string; path: (string | number)[] }[] = [];
+    for (const layer of targets) {
+      const file = layer === "node" ? home.config : projectConfig;
+      const sections = readLayer(file, log);
+      if (sections === undefined) continue;
+      for (const [section, value] of Object.entries(sections)) {
+        if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+        const schema = sectionSchema(section);
+        const places: { path: (string | number)[]; reference: string }[] = [];
+        // Found first, stored only once the file is written: a refused write keeps nothing.
+        sealSecrets(schema, value as Record<string, unknown>, (_text, path) => {
+          places.push({ path: [...path], reference: "" });
+          return "";
+        });
+        if (places.length === 0) continue;
+        writeConfig(layer, section, Date.now(), (original, path) => {
+          let text = original;
+          const current = parseConfigText(text, path)[section];
+          for (const place of places) {
+            let leaf: unknown = current;
+            for (const key of place.path) leaf = (leaf as Record<string | number, unknown>)?.[key];
+            if (typeof leaf !== "string") continue;
+            place.reference = store.putConfig(leaf, { section, path: place.path });
+            // A leaf edit: every comment of the file stays.
+            text = applyEdits(
+              text,
+              modify(text, [section, ...place.path], place.reference, formatting),
+            );
+          }
+          return text;
+        });
+        for (const place of places) {
+          if (place.reference !== "") moved.push({ layer, section, path: place.path });
+        }
+      }
+    }
+    return { moved };
   }
 
   /**
@@ -791,7 +986,9 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
   ) {
     return writeConfig(layer, section, at, (original, file) => {
       let text = original;
-      for (const [key, value] of Object.entries(withSecrets(layer, section, values))) {
+      for (const [key, value] of Object.entries(
+        sealed(section, withSecrets(layer, section, values)),
+      )) {
         text = applyEdits(text, modify(text, [section, key], value, formatting));
       }
       // Removed only where the section is an object: `modify` would replace anything else.
@@ -837,9 +1034,20 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
     });
     return writeConfig(layer, section, at, (original, file) => {
       let text = original;
+      // Secrets in clear go to the store; the file gets their references (D1026).
+      const sealedValues =
+        restoredValues === undefined ? undefined : sealed(section, restoredValues);
+      const sealedEdits = restoredEdits.map((edit) => {
+        if (!Object.hasOwn(edit, "value")) return edit;
+        let wrapped: unknown = edit.value;
+        for (const key of edit.path.slice(1).toReversed()) wrapped = { [key]: wrapped };
+        let value: unknown = sealed(section, { [edit.path[0]!]: wrapped })[edit.path[0]!];
+        for (const key of edit.path.slice(1)) value = (value as Record<string, unknown>)[key];
+        return { path: edit.path, value };
+      });
       /** Top-level keys written whole: the edits below them are in that value already. */
       const whole = new Set<string>();
-      for (const edit of restoredEdits) {
+      for (const edit of sealedEdits) {
         const path = [section, ...edit.path];
         if (whole.has(edit.path[0]!)) continue;
         const parsed = parseConfigText(text, file);
@@ -856,9 +1064,9 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           // This file has no object where the sender's had one: the sender's whole
           // top-level key is written, so siblings the sender showed come along (D476).
           const top = edit.path[0]!;
-          if (restoredValues !== undefined && Object.hasOwn(restoredValues, top)) {
+          if (sealedValues !== undefined && Object.hasOwn(sealedValues, top)) {
             whole.add(top);
-            text = applyEdits(text, modify(text, [section, top], restoredValues[top], formatting));
+            text = applyEdits(text, modify(text, [section, top], sealedValues[top], formatting));
             continue;
           }
           if (!Object.hasOwn(edit, "value")) continue;

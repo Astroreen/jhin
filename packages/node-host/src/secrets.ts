@@ -7,6 +7,7 @@
  */
 
 import { SECRET_REDACTED, isRedactedSecret } from "@jhin/host-api";
+import { isConfigSecretReference } from "@jhin/secrets-api";
 
 type Schema = Record<string, unknown>;
 
@@ -126,8 +127,11 @@ function mapSecrets(
   path: readonly string[],
   visit: Visit,
   inList = false,
+  markedOnly = false,
 ): unknown {
   if (value === undefined || value === null) return value;
+  // Only what a schema marks: what no schema describes stays as it is.
+  if (schemas === undefined && markedOnly) return value;
   if (schemas === undefined) {
     if (Array.isArray(value)) {
       return value.map((item, index) =>
@@ -171,6 +175,7 @@ function mapSecrets(
         [...path, String(index)],
         visit,
         true,
+        markedOnly,
       ),
     );
   }
@@ -185,6 +190,7 @@ function mapSecrets(
           [...path, key],
           visit,
           inList,
+          markedOnly,
         ),
       ]),
     );
@@ -373,4 +379,117 @@ export function scrub(text: string, secrets: readonly string[]): string {
             ),
       text,
     );
+}
+
+/** A place inside a section: keys, and list positions as numbers (D1025). */
+type Place = readonly (string | number)[];
+
+/** Every string inside `value` (itself, or in its lists and objects), with its place. */
+function mapStrings(
+  value: unknown,
+  place: Place,
+  change: (text: string, place: Place) => unknown,
+): unknown {
+  if (typeof value === "string") return change(value, place);
+  if (Array.isArray(value))
+    return value.map((item, index) => mapStrings(item, [...place, index], change));
+  if (isObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, mapStrings(item, [...place, key], change)]),
+    );
+  }
+  return value;
+}
+
+/** `path` (dotted, as the walk reports it) with list positions as numbers, read off `root`. */
+function placeOf(root: unknown, path: readonly string[]): Place {
+  const place: (string | number)[] = [];
+  let current = root;
+  for (const key of path) {
+    if (Array.isArray(current) && /^\d+$/.test(key)) {
+      place.push(Number(key));
+      current = current[Number(key)];
+    } else {
+      place.push(key);
+      current = isObject(current) ? current[key] : undefined;
+    }
+  }
+  return place;
+}
+
+/**
+ * `values` (top-level keys of a section) with every string a schema marks
+ * `writeOnly` handed to `seal`, which keeps it and gives the reference the
+ * file holds instead (security.md D1026). References and markers stay as they
+ * are; what no schema describes is not touched, nor is a section no plugin
+ * defines.
+ */
+export function sealSecrets(
+  schema: unknown,
+  values: Readonly<Record<string, unknown>>,
+  seal: (text: string, place: Place) => string,
+): Record<string, unknown> {
+  if (schema === undefined) return { ...values };
+  return mapSecrets(
+    [schema],
+    values,
+    rootOf(schema),
+    [],
+    (secret, path) =>
+      mapStrings(secret, placeOf(values, path), (text, place) =>
+        text === "" || isConfigSecretReference(text) || isRedactedSecret(text)
+          ? text
+          : seal(text, place),
+      ),
+    false,
+    true,
+  ) as Record<string, unknown>;
+}
+
+/** Every config secret reference inside `value` (D1026). */
+export function secretReferences(value: unknown): string[] {
+  const found: string[] = [];
+  mapStrings(value, [], (text) => {
+    if (isConfigSecretReference(text)) found.push(text);
+    return text;
+  });
+  return found;
+}
+
+/** What `resolveSecretReferences` could not resolve: the key is left out (D1025). */
+const UNRESOLVED = Symbol("unresolved");
+
+function dropUnresolved(value: unknown): unknown {
+  if (Array.isArray(value)) return value.filter((item) => item !== UNRESOLVED).map(dropUnresolved);
+  if (isObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== UNRESOLVED)
+        .map(([key, item]) => [key, dropUnresolved(item)]),
+    );
+  }
+  return value;
+}
+
+/**
+ * A layer (sections by name) with every config secret reference replaced by
+ * its value (security.md D1025). `resolve` gets the reference and its place
+ * (`[section, ...path]`); one it cannot resolve is left out, as if the key
+ * were not there, and reported to `missing`.
+ */
+export function resolveSecretReferences(
+  layer: Readonly<Record<string, unknown>>,
+  resolve: ((reference: string, place: Place) => string | undefined) | undefined,
+  missing: (place: Place) => void,
+): Record<string, unknown> {
+  let found = false;
+  const mapped = mapStrings(layer, [], (text, place) => {
+    if (!isConfigSecretReference(text)) return text;
+    found = true;
+    const value = resolve?.(text, place);
+    if (value !== undefined) return value;
+    missing(place);
+    return UNRESOLVED;
+  });
+  return found ? (dropUnresolved(mapped) as Record<string, unknown>) : { ...layer };
 }

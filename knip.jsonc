@@ -25,6 +25,7 @@
         "@jhin/plugin-storage-sqlite",
         "@jhin/plugin-http",
         "@jhin/plugin-auth-token",
+        "@jhin/plugin-secrets",
         "@jhin/plugin-transport-ws",
         "@jhin/plugin-threads",
         "@jhin/plugin-missions",
