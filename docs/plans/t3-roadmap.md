@@ -265,6 +265,10 @@ block of 20 after D980 and writes it here.
   ChatGPT sign-in and several accounts, newer model slugs. For OpenCode: 1.x
   support, reconnecting a lost event stream, per-turn variants, steering,
   fork, rollback and subagent transcripts.
+  Landed so far: Codex per-turn effort and service tier (D881, #120),
+  `/compact`, skills and retry progress (D884–D886, #127); OpenCode
+  variants and steering (D882–D883, #128). The rest stays in the Codex and
+  OpenCode Deferred lists of `providers.md`.
 - **W25:** the browser preview and devices inside the desktop app (preview.md
   and desktop.md each defer it to the other; W25 owns it), browser profiles
   and logins, `chrome-headless-shell` on first use, discovered local servers,
