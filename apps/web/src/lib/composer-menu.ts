@@ -1,9 +1,19 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac:
 // apps/web/src/components/chat/composerSlashCommandSearch.ts, apps/web/src/providerSkillSearch.ts,
-// packages/shared/src/inlineSkills.ts (formatProviderSkillDisplayName) and the menu items of
-// apps/web/src/components/chat/ChatComposer.tsx (the built-in commands, files and folders).
+// packages/shared/src/inlineSkills.ts (formatProviderSkillDisplayName),
+// packages/shared/src/composerPullRequestMatches.ts (filterComposerPullRequestMatches),
+// apps/web/src/components/pullRequest/pullRequestList.logic.ts (scorePullRequestMatch,
+// rankPullRequestMatches), packages/client-runtime/src/composerThreadItems.ts
+// (matchComposerThreadItems) and the menu items of apps/web/src/components/chat/ChatComposer.tsx
+// (the built-in commands, files and folders, pull requests and their empty states).
 import type { AgentSkill, AgentSlashCommand } from "@jhin/agent-api";
+import type { ThreadRecord } from "@jhin/client-api";
+import type { PullRequest } from "@jhin/source-control-api";
 
+import {
+  serializeComposerPullRequestLink,
+  serializeComposerThreadLink,
+} from "./composer-trigger.ts";
 import {
   insertRankedSearchResult,
   normalizeSearchQuery,
@@ -38,6 +48,25 @@ export type ComposerMenuItem =
       readonly id: string;
       readonly path: string;
       readonly pathKind: "file" | "directory";
+      readonly label: string;
+      readonly description: string;
+    }
+  | {
+      readonly type: "pull-request";
+      readonly id: string;
+      readonly pullRequest: Pick<
+        PullRequest,
+        "number" | "title" | "url" | "headBranch" | "baseBranch" | "state" | "isDraft"
+      >;
+      readonly label: string;
+      readonly description: string;
+    }
+  | {
+      readonly type: "thread";
+      readonly id: string;
+      readonly threadId: string;
+      /** Its `jhin://<nodeId>/threads/<id>` address, which the prompt links to. */
+      readonly address: string;
       readonly label: string;
       readonly description: string;
     };
@@ -193,7 +222,7 @@ export function searchSkills(skills: readonly AgentSkill[], query: string): Agen
 }
 
 function scoreSlashItem(item: ComposerMenuItem, query: string): number | null {
-  if (item.type === "path") return null;
+  if (item.type === "path" || item.type === "pull-request" || item.type === "thread") return null;
   if (item.type === "skill") {
     if (query === "skill") return 0;
     const skillQuery = query.startsWith("skill:") ? query.slice("skill:".length) : query;
@@ -278,6 +307,150 @@ export function slashMenuItems(input: {
   return ranked.map((entry) => entry.item);
 }
 
+/** At most this many pull requests in the `#` menu (T3's COMPOSER_PULL_REQUEST_RESULT_LIMIT). */
+const PULL_REQUEST_RESULT_LIMIT = 12;
+/** At most this many threads at the top of the `@` menu (T3's COMPOSER_THREAD_RESULT_LIMIT). */
+const THREAD_RESULT_LIMIT = 5;
+
+type ListedPullRequest = Pick<
+  PullRequest,
+  "number" | "title" | "url" | "headBranch" | "baseBranch" | "state" | "isDraft" | "updatedAt"
+>;
+
+/** T3's scorePullRequestMatch, without the author and repository a listed entry lacks here. */
+function scorePullRequestMatch(entry: ListedPullRequest, query: string): number {
+  const needle = query.trim().toLowerCase();
+  if (needle.length === 0) return 0;
+  const number = needle.replace(/^#/u, "");
+  if (/^\d+$/u.test(number)) return String(entry.number) === number ? 100 : 0;
+  const title = entry.title.toLowerCase();
+  const terms = needle.split(/\s+/u).filter((term) => term.length > 0);
+  if (title === needle) return 90;
+  if (title.includes(needle)) return 80;
+  if (terms.length > 1 && terms.every((term) => title.includes(term))) return 70;
+  if (entry.headBranch.toLowerCase().includes(needle)) return 60;
+  if (terms.some((term) => title.includes(term))) return 30;
+  return 10;
+}
+
+const updatedAtOf = (entry: ListedPullRequest) => entry.updatedAt ?? "";
+
+/**
+ * The `#` menu (T3's ChatComposer): a number (or a lone `#`) lists the pull requests whose
+ * number holds it, the exact one first, then the thread's linked ones, then the most recently
+ * updated; words rank what the forge found for them. Every forge that lists pull requests here
+ * searches on its host (T3's `searchesOnHost`), so its answers are not filtered again.
+ */
+export function pullRequestMenuItems(input: {
+  /** The repository's pull requests, as `git.pr.search` lists them. */
+  readonly entries: readonly ListedPullRequest[];
+  /** The one a number names, looked up when the list lacks it. */
+  readonly exact?: ListedPullRequest | undefined;
+  /** The pull requests linked to the thread. */
+  readonly linked?: readonly ListedPullRequest[];
+  readonly query: string;
+}): ComposerMenuItem[] {
+  const { query } = input;
+  let matches: ListedPullRequest[];
+  if (/^\d*$/u.test(query)) {
+    const keyOf = (entry: ListedPullRequest) => entry.url.trim().toLowerCase();
+    const linked = (input.linked ?? []).filter((entry) => String(entry.number).includes(query));
+    const linkedKeys = new Set(linked.map(keyOf));
+    const unique = new Map<string, ListedPullRequest>();
+    const listed = [...(input.exact === undefined ? [] : [input.exact]), ...input.entries];
+    for (const candidate of [
+      ...listed.filter((entry) => String(entry.number).includes(query)),
+      ...linked,
+    ]) {
+      if (!unique.has(keyOf(candidate))) unique.set(keyOf(candidate), candidate);
+    }
+    const isExact = (entry: ListedPullRequest) => String(entry.number) === query;
+    const isLinked = (entry: ListedPullRequest) => linkedKeys.has(keyOf(entry));
+    matches = [...unique.values()]
+      .toSorted(
+        (left, right) =>
+          Number(isExact(right)) - Number(isExact(left)) ||
+          Number(isLinked(right)) - Number(isLinked(left)) ||
+          updatedAtOf(right).localeCompare(updatedAtOf(left)),
+      )
+      .slice(0, PULL_REQUEST_RESULT_LIMIT);
+  } else {
+    matches = input.entries
+      .toSorted((left, right) => {
+        const byScore = scorePullRequestMatch(right, query) - scorePullRequestMatch(left, query);
+        return byScore !== 0 ? byScore : updatedAtOf(right).localeCompare(updatedAtOf(left));
+      })
+      .slice(0, PULL_REQUEST_RESULT_LIMIT);
+  }
+  return matches.map((pullRequest) => ({
+    type: "pull-request",
+    id: `pull-request:${pullRequest.url}`,
+    pullRequest: {
+      number: pullRequest.number,
+      title: pullRequest.title,
+      url: pullRequest.url,
+      headBranch: pullRequest.headBranch,
+      baseBranch: pullRequest.baseBranch,
+      state: pullRequest.state,
+      isDraft: pullRequest.isDraft,
+    },
+    label: `#${pullRequest.number}`,
+    description: pullRequest.title,
+  }));
+}
+
+/** Why the `#` menu shows no pull requests, in T3's words. */
+export function pullRequestEmptyState(input: {
+  readonly status: "unavailable" | "error" | "ready";
+  readonly query: string;
+}): string {
+  if (input.status === "unavailable") return "Pull requests are not available for this project.";
+  if (input.status === "error") return "Pull requests could not be read for this project.";
+  return input.query
+    ? `No pull request matches ${input.query}.`
+    : "No pull requests found in this repository.";
+}
+
+/**
+ * T3's matchComposerThreadItems: the `@` menu's first rows are up to five other threads of the
+ * composer's node whose title holds the query, most recently changed first. The agent can only
+ * read threads on its own node, so no other node's are offered; archived ones are not either.
+ */
+export function threadMenuItems(input: {
+  readonly threads: readonly ThreadRecord[];
+  readonly excludeThreadId: string | undefined;
+  readonly query: string;
+  /** The thread's address, or `undefined` while the node's id is not known. */
+  addressOf(threadId: string): string | undefined;
+}): ComposerMenuItem[] {
+  const query = input.query.trim().toLowerCase();
+  if (query.length === 0) return [];
+  const items: ComposerMenuItem[] = [];
+  for (const thread of input.threads
+    .filter(
+      (candidate) =>
+        candidate.id !== input.excludeThreadId &&
+        candidate.archivedAt === undefined &&
+        candidate.title.toLowerCase().includes(query),
+    )
+    .toSorted((left, right) =>
+      (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt),
+    )) {
+    if (items.length === THREAD_RESULT_LIMIT) break;
+    const address = input.addressOf(thread.id);
+    if (address === undefined) continue;
+    items.push({
+      type: "thread",
+      id: `thread:${thread.id}`,
+      threadId: thread.id,
+      address,
+      label: thread.title,
+      description: "Thread",
+    });
+  }
+  return items;
+}
+
 /** The text a pick puts in place of the typed trigger (T3: `/name `, `$name `, a file link). */
 export function menuInsertion(
   item: ComposerMenuItem,
@@ -290,6 +463,10 @@ export function menuInsertion(
       return `$${item.skill.name} `;
     case "path":
       return `${serializeFileLink(item.path)} `;
+    case "pull-request":
+      return `${serializeComposerPullRequestLink(item.pullRequest)} `;
+    case "thread":
+      return `${serializeComposerThreadLink(item.label, item.address)} `;
     case "slash-command":
       // Built-ins act instead of inserting: the token goes.
       return undefined;

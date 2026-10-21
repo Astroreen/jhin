@@ -1,3 +1,4 @@
+import * as ChildProcess from "node:child_process";
 import * as Fs from "node:fs";
 import * as Path from "node:path";
 
@@ -372,4 +373,106 @@ test("shows a heading and a task list in the prompt, and ticks a task", async ({
   const shot = info.outputPath("blocks.png");
   await page.screenshot({ path: shot });
   await info.attach("heading and task list", { path: shot, contentType: "image/png" });
+});
+
+test("mentions a pull request after # and another thread after @, as chips the agent gets as links", async ({
+  page,
+}, info) => {
+  // A node whose GitHub CLI lists two pull requests of the project's repository.
+  const own = await startNode({
+    setup: (home) => {
+      const dir = Path.join(home, "fake-gh");
+      Fs.mkdirSync(dir, { recursive: true });
+      const pr = (number: number, title: string, state: string, updatedAt: string) => ({
+        number,
+        title,
+        url: `https://github.com/acme/app/pull/${number}`,
+        state,
+        isDraft: false,
+        headRefName: `branch-${number}`,
+        baseRefName: "main",
+        updatedAt,
+      });
+      Fs.writeFileSync(
+        Path.join(dir, "list.json"),
+        JSON.stringify([
+          pr(12, "Add a cache", "OPEN", "2026-10-20T10:00:00Z"),
+          pr(9, "Greet by name", "MERGED", "2026-10-18T10:00:00Z"),
+        ]),
+      );
+      const gh = Path.join(dir, "gh");
+      Fs.writeFileSync(
+        gh,
+        `#!/bin/sh
+if [ "$1" = "pr" ] && [ "$2" = "list" ] && [ "$3" = "--state" ]; then cat "${dir}/list.json"; exit 0; fi
+if [ "$1" = "pr" ] && [ "$2" = "list" ]; then echo '[]'; exit 0; fi
+echo "no pull requests found" >&2
+exit 1
+`,
+        { mode: 0o755 },
+      );
+      const file = Path.join(home, ".jhin", "config.jsonc");
+      const config = JSON.parse(Fs.readFileSync(file, "utf8"));
+      Fs.writeFileSync(
+        file,
+        JSON.stringify({ ...config, "jhin.source-control": { ghPath: gh } }, null, 2),
+      );
+    },
+  });
+  try {
+    const repo = Path.join(own.home, "acme");
+    Fs.mkdirSync(repo, { recursive: true });
+    const git = (...args: string[]) =>
+      ChildProcess.execFileSync("git", args, {
+        cwd: repo,
+        env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" },
+      });
+    git("init", "--quiet", "--initial-branch=main");
+    git("remote", "add", "origin", "https://github.com/acme/app.git");
+    const project = await own.client().call<{ id: string }>("projects.create", { path: repo });
+    await own.client().call("threads.create", { projectId: project.id, title: "Fix the cache" });
+    await own.client().call("threads.create", { projectId: project.id, title: "Release notes" });
+
+    await page.goto(`${own.ui}#token=${own.token}`);
+    await threadRow(page, "Release notes").click();
+    const message = page.getByRole("textbox", { name: "Message" });
+    await message.click();
+
+    // "#" lists the repository's pull requests, most recently updated first, with their state.
+    await message.pressSequentially("Compare #");
+    const pullRequests = page.getByRole("listbox", { name: "Pull requests" });
+    await expect(pullRequests.getByRole("option")).toHaveText([
+      /#12\s*Add a cache/,
+      /#9\s*Greet by name/,
+    ]);
+    await expect(pullRequests.getByRole("img", { name: "Merged" })).toBeVisible();
+    await message.pressSequentially("1");
+    await expect(pullRequests.getByRole("option")).toHaveText([/#12/]);
+    await message.press("Enter");
+    await expect(message.locator("[data-reference='pull-request']")).toHaveText("#12");
+
+    // "@" offers the node's other threads above the files; the open one is not offered.
+    await message.pressSequentially("with @e");
+    const mentions = page.getByRole("listbox", { name: "Files and folders" });
+    await expect(mentions.getByRole("option").first()).toHaveText(/Fix the cache\s*Thread/);
+    await expect(mentions.getByRole("option", { name: /Release notes/ })).toHaveCount(0);
+    const shot = info.outputPath("mentions.png");
+    await page.screenshot({ path: shot });
+    await info.attach("mentions", { path: shot, contentType: "image/png" });
+    await message.press("Enter");
+    await expect(message.locator("[data-reference='thread']")).toHaveText("Fix the cache");
+
+    // The agent got links: to the pull request, and to the thread's jhin:// address.
+    await message.press("Enter");
+    const answer = page
+      .getByRole("log", { name: "Messages" })
+      .getByRole("article", { name: "Agent" });
+    await expect(answer.getByRole("link", { name: "#12" })).toHaveAttribute(
+      "href",
+      "https://github.com/acme/app/pull/12",
+    );
+    await expect(answer).toContainText("Fix the cache");
+  } finally {
+    await own.stop();
+  }
 });

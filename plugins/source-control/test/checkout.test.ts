@@ -391,3 +391,50 @@ describe("git.pr.resolve and git.pr.checkout", () => {
     ).rejects.toThrow("This repository has no remote on a known forge.");
   });
 });
+
+describe("git.pr.search", () => {
+  it("lists a repository's pull requests through the forge, searching on it", async () => {
+    const gh = fakeGh();
+    gh.list([
+      ghPullRequest({ number: 12, title: "Add a cache", updatedAt: "2026-10-20T10:00:00Z" }),
+      ghPullRequest({ number: 9, state: "MERGED", mergedAt: "2026-10-18T10:00:00Z" }),
+      { number: "not a pull request" },
+    ]);
+    const dir = repository();
+    git(dir, "remote", "add", "origin", "https://github.com/acme/demo.git");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const { pullRequests } = await sc.client.call<{ pullRequests: PullRequest[] }>(
+      "git.pr.search",
+      { projectId, query: "cache", limit: 99 },
+    );
+    expect(pullRequests.map((found) => [found.number, found.state])).toEqual([
+      [12, "open"],
+      [9, "merged"],
+    ]);
+    expect(gh.calls()).toContain(
+      "pr list --state all --limit 99 --search cache sort:updated-desc --json number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,mergedAt,closedAt",
+    );
+    await sc.client.call("git.pr.search", { projectId });
+    expect(gh.calls().at(-1)).toMatch(
+      /^pr list --state all --limit 30 --search sort:updated-desc /,
+    );
+
+    // gh cannot answer: the forge failed, not the project.
+    gh.fail(1, "HTTP 502");
+    await expect(sc.client.call("git.pr.search", { projectId })).rejects.toMatchObject({
+      code: "PULL_REQUEST_FAILED",
+    });
+    gh.recover();
+
+    // A forge that cannot list them yet, and a repository without a forge.
+    const gitlab = repository();
+    git(gitlab, "remote", "add", "origin", "https://gitlab.com/acme/demo.git");
+    await expect(
+      sc.client.call("git.pr.search", { projectId: await sc.project(gitlab) }),
+    ).rejects.toMatchObject({ code: "ACTION_UNAVAILABLE" });
+    await expect(
+      sc.client.call("git.pr.search", { projectId: await sc.project(repository()) }),
+    ).rejects.toThrow("This repository has no remote on a known forge.");
+  });
+});

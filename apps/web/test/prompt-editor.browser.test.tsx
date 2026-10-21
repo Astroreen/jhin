@@ -186,6 +186,27 @@ describe("the prompt editor (D303)", () => {
     await editor.reported(`${prompt} ok`);
   });
 
+  it("shows a picked pull request and thread as chips by their label, written back unchanged", async () => {
+    const editor = mount("see #1");
+    const pr = "[#12](https://github.com/acme/app/pull/12) ";
+    editor.handle.replaceRange(4, 6, pr);
+    const root = editor.editable();
+    const prChip = root.querySelector("[data-reference='pull-request']")!;
+    expect(prChip.textContent).toBe("#12");
+    expect(prChip.getAttribute("title")).toBe("https://github.com/acme/app/pull/12");
+
+    const thread = "[Fix the cache](jhin://node-1/threads/t-2) ";
+    const end = editor.value().length;
+    editor.handle.replaceRange(end, end, `and @fix`);
+    editor.handle.replaceRange(end + 4, end + 8, thread);
+    expect(root.querySelector("[data-reference='thread']")?.textContent).toBe("Fix the cache");
+    expect(editor.value()).toBe(`see ${pr}and ${thread}`);
+
+    editor.handle.focus();
+    await userEvent.keyboard("ok");
+    await editor.reported(`see ${pr}and ${thread}ok`);
+  });
+
   it("keeps markdown styling and blocks round-trip", async () => {
     const prompt =
       "**bold** and *it* ~~gone~~ `code`\n- one\n- two\n> quote\n\n```ts\nconst a = 1;\n```";

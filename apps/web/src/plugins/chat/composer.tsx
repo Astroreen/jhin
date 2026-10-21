@@ -87,10 +87,13 @@ import {
 } from "../../lib/attachment-files.ts";
 import { menuInsertion, type ComposerMenuItem } from "../../lib/composer-menu.ts";
 import {
+  detectComposerTrigger,
   parseStandaloneComposerSlashCommand,
   serializeComposerFileLink,
 } from "../../lib/composer-trigger.ts";
 import { formatTokens } from "../../lib/format.ts";
+import { useCatalog } from "../../lib/hooks.ts";
+import { useMeshMembers } from "../../lib/mesh.ts";
 import {
   currentOptionValue,
   selectedTraits,
@@ -1318,6 +1321,12 @@ export function Composer(props: ComposerProps) {
     editor.current?.focus();
   };
   const menuListId = useId();
+  // `@` offers the node's other threads, linked by their address (D24): the node's own id.
+  // They are followed only while `@` is typed, as T3's useThreadShells(isPathTrigger).
+  const pathTrigger = detectComposerTrigger(prompt, cursor)?.kind === "path";
+  const catalog = useCatalog(chat.threads, pathTrigger ? props.target : undefined);
+  const members = useMeshMembers(chat.mesh, pathTrigger ? props.target.node : undefined);
+  const nodeId = props.target.remote ?? members?.find((member) => member.self)?.nodeId ?? undefined;
   const menu = useComposerMenu({
     call: (method, params) => chat.threads.call(props.target, method, params),
     projectId: props.context?.project?.id,
@@ -1327,8 +1336,15 @@ export function Composer(props: ComposerProps) {
     planMode: planSupported,
     showSkillsInSlashMenu: settings.showSkillsInSlashMenu,
     enabled: approval === undefined && question === undefined,
+    threadId: props.context?.thread?.id,
+    threads: catalog?.threads ?? [],
+    threadAddress: (threadId) =>
+      nodeId === undefined ? undefined : `jhin://${nodeId}/threads/${threadId}`,
   });
-  /** T3's onSelectComposerItem: inserts the command, skill or file, or runs a built-in. */
+  /**
+   * T3's onSelectComposerItem: inserts the command, skill, file, pull request or thread, or
+   * runs a built-in.
+   */
   const pickMenuItem = (item: ComposerMenuItem) => {
     const trigger = menu.trigger;
     if (trigger === null) return;
@@ -1748,6 +1764,7 @@ export function Composer(props: ComposerProps) {
           <ComposerBanner.Attachment>
             <ComposerCommandMenu
               activeItemId={menu.activeId}
+              emptyStateText={menu.emptyState}
               isLoading={menu.isLoading}
               items={menu.items}
               listId={menuListId}

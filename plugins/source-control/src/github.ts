@@ -1,6 +1,7 @@
 // Pull requests through the GitHub CLI, as T3 Code's source-control-github
 // reads them (MIT, see THIRD_PARTY_NOTICES.md): `gh pr list --head <branch>`
-// for a branch's pull request, and the check rollup of
+// for a branch's pull request, `gh pr list --search` for a repository's (its
+// GitHubPullRequestProvider: any state, most recently updated first), and the check rollup of
 // gitHubPullRequestJson.ts (toCheckStatus, rollupChecksState).
 import type { PullRequest, PullRequestChecks } from "@jhin/source-control-api";
 
@@ -25,6 +26,9 @@ const GH_ENV = {
 const GH_TIMEOUT_MS = 20_000;
 const FIELDS =
   "number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,mergedAt,closedAt,statusCheckRollup";
+/** A listed pull request: no checks, which would make a long list slow to read. */
+const LIST_FIELDS =
+  "number,title,url,state,isDraft,headRefName,baseRefName,updatedAt,mergedAt,closedAt";
 /** What tells a fork's pull request apart from one of this repository (D277). */
 const HEAD_FIELDS = `${FIELDS},isCrossRepository,headRepositoryOwner`;
 
@@ -264,6 +268,34 @@ async function checkoutTarget(
   };
 }
 
+/**
+ * The repository's pull requests (`gh pr list --search`), any state, most
+ * recently updated first; `query` is GitHub's search, as T3 searches on the host.
+ */
+async function listPullRequests(
+  ghPath: string,
+  cwd: string,
+  input: { readonly query?: string; readonly limit: number },
+): Promise<PullRequest[]> {
+  const query = input.query?.trim() ?? "";
+  const parsed = await ghJson(ghPath, cwd, [
+    "pr",
+    "list",
+    "--state",
+    "all",
+    "--limit",
+    String(input.limit),
+    "--search",
+    query === "" ? "sort:updated-desc" : `${query} sort:updated-desc`,
+    "--json",
+    LIST_FIELDS,
+  ]);
+  if (!Array.isArray(parsed)) throw new GitHubUnavailable("failed", "gh answered no list");
+  return (parsed as RawPullRequest[])
+    .map(toPullRequest)
+    .filter((pr): pr is PullRequest => pr !== undefined);
+}
+
 /** Where GitHub looks for a pull request template, as T3's source-control-github reads it. */
 const GITHUB_TEMPLATE_PATHS = [
   ".github/pull_request_template.md",
@@ -470,6 +502,7 @@ export function githubForge(ghPath: () => string, cwd: string, viewers: Viewers)
     find: (head) => pullRequestFor(ghPath(), cwd, head),
     at: (url) => pullRequestAt(ghPath(), cwd, url),
     resolve: (reference) => checkoutTarget(ghPath(), cwd, reference),
+    list: (input) => listPullRequests(ghPath(), cwd, input),
     create: (input) => createPullRequest(ghPath(), cwd, input),
     templatePaths: GITHUB_TEMPLATE_PATHS,
     watch: (url) => readWatch(ghPath(), cwd, url, viewers),
