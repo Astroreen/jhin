@@ -878,6 +878,13 @@ export default definePlugin({
     // Zod's record drops the key before the refinement sees it.
     expect(unsafeValues.value).toMatchObject({ applied: true });
     expect(Fs.readFileSync(config, "utf8")).not.toContain("__proto__");
+    const unsafeUnset = await host.execute("host.config.patch", {
+      layer: "node",
+      section: "jhin.example",
+      values: {},
+      unset: ["__proto__"],
+    });
+    expect(unsafeUnset.error).toBeDefined();
     // "constructor" is an ordinary key of a record (D480): kept like any other.
     const plain = await host.execute("host.config.edit", {
       layer: "node",

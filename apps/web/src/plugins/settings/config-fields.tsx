@@ -514,6 +514,8 @@ function MapEntries(props: {
 }) {
   const { field, path, context } = props;
   const [draft, setDraft] = useState("");
+  // A renamed row mounts again under its new key: it takes the focus back (D480).
+  const [renamed, setRenamed] = useState<string | undefined>();
   if (field.control.kind !== "map") return null;
   const valueField = field.control.value;
   const current = getAt(context.value, path);
@@ -542,11 +544,13 @@ function MapEntries(props: {
       {entries.map(([key]) => (
         <div className="flex min-w-0 items-start gap-1.5" key={key}>
           <KeyInput
+            focus={key === renamed}
             label={`Key ${key} of ${props.label}`}
             onRename={(next) => {
-              const renamed = renameKey(Object.fromEntries(entries), key, next);
-              if (renamed === undefined) return false;
-              context.set(path, renamed);
+              const value = renameKey(Object.fromEntries(entries), key, next);
+              if (value === undefined) return false;
+              setRenamed(next);
+              context.set(path, value);
               return true;
             }}
             taken={(next) => next !== key && taken.has(next)}
@@ -603,6 +607,8 @@ function MapEntries(props: {
 /** A record's key, renamed in place on Enter or when left; Escape gives it back (D480). */
 function KeyInput(props: {
   value: string;
+  /** Takes the focus when it mounts. */
+  focus?: boolean;
   label: string;
   taken(next: string): boolean;
   /** Whether the entry took the new key. */
@@ -630,6 +636,7 @@ function KeyInput(props: {
     <div className="w-40 shrink-0">
       <Input
         aria-label={props.label}
+        autoFocus={props.focus === true}
         className="font-mono"
         nativeInput
         onBlur={leave}
@@ -892,8 +899,11 @@ export function Fields({
   const inEffect = (key: string) => {
     const edited = getAt(context.value, [...path, key]);
     const other = inList ? undefined : getAt(context.other.value, [...path, key]);
-    const value = context.other.layer === "project" ? (other ?? edited) : (edited ?? other);
-    return value ?? fields.find((field) => field.key === key)?.default;
+    // `null` is a value of its own; only an absent key falls through.
+    const [first, second] = context.other.layer === "project" ? [other, edited] : [edited, other];
+    if (first !== undefined) return first;
+    if (second !== undefined) return second;
+    return fields.find((field) => field.key === key)?.default;
   };
   const visible = fields.filter((field) => isShown(field, inEffect) || !quiet(field));
   const advanced = visible.filter(folded);

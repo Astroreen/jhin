@@ -174,6 +174,8 @@ describe("the config form's W16 fields", () => {
     await expect.element(key).toHaveValue("A");
     await userEvent.fill(key, "C");
     await userEvent.keyboard("{Enter}");
+    // The renamed key keeps the focus.
+    await expect.element(page.getByRole("textbox", { name: "Key C of Environment" })).toHaveFocus();
     // Same value, same place.
     expect(Object.entries((view.state.value as { env: object }).env)).toEqual([
       ["C", "1"],
