@@ -131,26 +131,32 @@ test("D950: a server a terminal started shows under Local servers and opens", as
   const threadId = await startThread(page, "serve please");
   const terminal = { threadId, terminalId: "dev-server" };
   await node.client().call("terminals.open", { ...terminal, cwd: node.home });
-  // A dev server: an HTML page on a free port of this machine.
-  const script =
-    "require('http').createServer((q,s)=>{s.setHeader('content-type','text/html');" +
-    "s.end('<title>Dev server</title><h1>dev</h1>')}).listen(0,'127.0.0.1')";
-  await node.client().call("terminals.write", {
-    ...terminal,
-    data: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}\r`,
-  });
+  // The dev server goes with its terminal, also when an assertion fails.
+  try {
+    // A dev server: an HTML page on a free port of this machine.
+    const script =
+      "require('http').createServer((q,s)=>{s.setHeader('content-type','text/html');" +
+      "s.end('<title>Dev server</title><h1>dev</h1>')}).listen(0,'127.0.0.1')";
+    await node.client().call("terminals.write", {
+      ...terminal,
+      data: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}\r`,
+    });
 
-  await page.getByRole("button", { name: "Toggle right panel" }).click();
-  const panel = page.getByRole("complementary", { name: "Right panel" });
-  const servers = panel.getByRole("region", { name: "Local servers" });
-  const row = servers.getByRole("button", { name: /^node localhost:\d+$/ });
-  await expect(row).toBeVisible();
-  await expect(servers).toContainText("Select a live local server to open it in this browser tab.");
-  await shot(page, info, "local-servers");
+    await page.getByRole("button", { name: "Toggle right panel" }).click();
+    const panel = page.getByRole("complementary", { name: "Right panel" });
+    const servers = panel.getByRole("region", { name: "Local servers" });
+    const row = servers.getByRole("button", { name: /^node localhost:\d+$/ });
+    await expect(row).toBeVisible();
+    await expect(servers).toContainText(
+      "Select a live local server to open it in this browser tab.",
+    );
+    await shot(page, info, "local-servers");
 
-  await row.click();
-  await expect(panel.getByRole("tab", { name: "Dev server" })).toBeVisible();
-  await node.client().call("terminals.close", terminal);
+    await row.click();
+    await expect(panel.getByRole("tab", { name: "Dev server" })).toBeVisible();
+  } finally {
+    await node.client().call("terminals.close", terminal);
+  }
 });
 
 test("D403: the user opens a page from the address bar and sizes it like a device", async ({

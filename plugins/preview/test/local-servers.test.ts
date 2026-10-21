@@ -24,6 +24,7 @@ function fakeHost(options: {
 }) {
   const runs: string[] = [];
   const probed: string[] = [];
+  const clock = { now: 0 };
   const host: ScanHost = {
     platform: options.platform ?? "darwin",
     async run(command, args) {
@@ -53,9 +54,9 @@ function fakeHost(options: {
       probed.push(url);
       return options.probes?.[url] ?? null;
     },
-    now: () => 0,
+    now: () => clock.now,
   };
-  return { host, runs, probed };
+  return { host, runs, probed, clock };
 }
 
 const LSOF = [
@@ -181,6 +182,22 @@ describe("local server discovery (D950)", () => {
     });
     const servers = await createLocalServerScanner(host).scan(new Map([[4242, TERMINAL]]));
     expect(servers).toMatchObject([{ port: 5173, pid: 4242, processName: "node" }]);
+  });
+
+  it("keeps a probe for 15 s, for the same process only", async () => {
+    const { host, probed, clock } = fakeHost({
+      programs: { lsof: LSOF },
+      probes: { "http://localhost:5173": html },
+    });
+    const scanner = createLocalServerScanner(host);
+    const owners = new Map([[4242, TERMINAL]]);
+    await scanner.scan(owners);
+    clock.now = 14_999;
+    await scanner.scan(owners);
+    expect(probed).toHaveLength(1);
+    clock.now = 15_000;
+    await scanner.scan(owners);
+    expect(probed).toHaveLength(2);
   });
 
   it("runs nothing while no terminal runs a process", async () => {
