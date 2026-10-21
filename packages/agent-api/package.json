@@ -2,7 +2,7 @@
   "name": "@jhin/agent-api",
   "version": "0.0.0",
   "private": true,
-  "description": "Contracts of the agent.runtime@1 and agent.registry@1 capabilities and the thread event types",
+  "description": "Contracts of the agent.runtime@1 and agent.registry@1 capabilities, the thread event types and the agents.* commands",
   "files": [
     "dist"
   ],
@@ -27,6 +27,7 @@
     "prepack": "node ../../scripts/build.ts"
   },
   "dependencies": {
+    "@jhin/sdk": "workspace:*",
     "@jhin/storage-api": "workspace:*"
   }
 }

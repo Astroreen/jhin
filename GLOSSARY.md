@@ -94,8 +94,17 @@ Words about Jhin:
   `pipeline`, `phase`), each one a delegated task of the thread that started
   it (`workflows.run`).
 - **Item** — one unit inside a turn: a message, a tool call, a streamed delta.
-- **Agent** — the actor executing turns. Reserved as a separate entity with
-  the address `jhin://<nodeId>/agents/<id>`.
+- **Agent** — the persistent actor executing turns, at the address
+  `jhin://<nodeId>/agents/<id>` (OpenRig's _seat_). Every runtime is the
+  implicit agent of its own id; a **defined agent** (`builder`) names its
+  runtime, model and **role** (a short job description) in the `jhin.agents`
+  config section (`docs/plans/agents.md#D604`).
+- **Generation** — one thread of a defined agent, in its home project and
+  marked with the agent's id (`generationOf`) on the thread record. The current generation takes
+  the agent's work; `agents.rotate` starts the next one, which begins with
+  the agent's inherited knowledge, not the old transcript.
+- **Inherited knowledge** — the Markdown files in `.jhin/agents/<id>/` of an
+  agent's home project, which its generations read on start and keep current.
 - **Agent runtime** — the capability that executes turns: an own agent loop
   or a wrapper over an existing agent. The distribution ships Claude Code
   (`jhin.agent-claude`) and a fake one for tests and demos.
