@@ -222,7 +222,8 @@ export class Chromium {
     const pending = cleared.then(async () => {
       if (profileId === INCOGNITO_BROWSER_PROFILE_ID) return this.#newContext();
       const directory = this.#profileDirectory(profileId);
-      await Fs.promises.mkdir(directory, { recursive: true });
+      // Cookies and logins: for this user only.
+      await Fs.promises.mkdir(directory, { recursive: true, mode: 0o700 });
       const chromium = await this.#chromium();
       const context = await this.#start((options) =>
         chromium.launchPersistentContext(directory, {
@@ -297,5 +298,9 @@ export class Chromium {
       profiles.map((pending) => pending.then((context) => context.close()).catch(() => undefined)),
     );
     await browser?.then((running) => running.close()).catch(() => undefined);
+    // A clear in flight (which may have closed the last tab) finishes its folder first.
+    await Promise.all(
+      [...this.#clearing.values()].map((clearing) => clearing.catch(() => undefined)),
+    );
   }
 }
