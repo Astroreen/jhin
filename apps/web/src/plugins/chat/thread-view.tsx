@@ -14,6 +14,7 @@ import { ArchiveRestoreIcon, ChevronDownIcon, CircleAlertIcon, XIcon } from "luc
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { buildPromptHistory, threadDraftKey } from "../../lib/composer.ts";
+import { useCatalog } from "../../lib/hooks.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread, threadMayExist } from "../../lib/thread-actions.ts";
@@ -104,6 +105,7 @@ export function ThreadView(props: {
     count,
     error: openError,
   } = useThreadTimeline(chat.threads, chat.connections, target, threadId);
+  const catalog = useCatalog(chat.threads, target);
   const lastTurn = timeline.turns.at(-1);
   const running = lastTurn?.state === "running";
   const requests = useMemo(() => openRequests(timeline), [timeline]);
@@ -412,11 +414,13 @@ export function ThreadView(props: {
                       // The command shows its own toast.
                       .catch(() => undefined)
                   }
+                  onOpenThread={(id) => chat.navigation.navigate({ ...target, thread: id })}
                   thread={{ target, threadId }}
                   timeline={timeline}
                   {...(savePlan === undefined || props.project === undefined
                     ? {}
                     : { onSavePlan: savePlan, projectPath: props.project.path })}
+                  titleOf={(id) => catalog?.threads.find((candidate) => candidate.id === id)?.title}
                 />
               )}
             </div>

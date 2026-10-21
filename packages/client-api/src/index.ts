@@ -194,6 +194,15 @@ export interface ThreadRecord {
   readonly snoozedAt?: string;
   /** When a snooze last ended by hand. */
   readonly lastSnoozeWakeAt?: string;
+  /** The thread and turn it was forked at. */
+  readonly forkedFrom?: { readonly threadId: string; readonly turnId: string };
+  /** A fork merged back, delivered to the agent with the next message. */
+  readonly pendingMergeBack?: {
+    readonly id: string;
+    readonly threadId: string;
+    readonly turnId: string;
+    readonly at: string;
+  };
 }
 
 /** Where the sidebar lists a thread (D75–D77). */

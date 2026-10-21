@@ -1,8 +1,16 @@
-// "Edit from here" follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
-// apps/web/src/components/chat/MessagesTimeline.tsx (RevertUserMessageButton, the hover row of a
-// message), ChatOverlayHosts.tsx (the confirmation) and ChatView.tsx (rewindToMessage).
+// "Edit from here", forks and merging back follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
+// apps/web/src/components/chat/MessagesTimeline.tsx (RevertUserMessageButton, AssistantForkButton,
+// the hover row of a message), ChatOverlayHosts.tsx (the confirmation), ChatView.tsx
+// (rewindToMessage, onForkFromRun) and ThreadRelationshipsControl.tsx (merging back).
 import type { TurnAttachment } from "@jhin/agent-api";
-import type { ChatMessageActionProps, NodeTarget, ThreadsCatalog } from "@jhin/client-api";
+import type {
+  ChatHeaderActionProps,
+  ChatMessageActionProps,
+  Navigation,
+  NodeTarget,
+  ThreadRecord,
+  ThreadsCatalog,
+} from "@jhin/client-api";
 import { z, type PluginContext } from "@jhin/sdk";
 import {
   Button,
@@ -13,7 +21,7 @@ import {
   type SlotRegistry,
   type Toasts,
 } from "@jhin/ui";
-import { RefreshCwIcon, Undo2Icon, type LucideIcon } from "lucide-react";
+import { GitForkIcon, GitMergeIcon, RefreshCwIcon, Undo2Icon, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -22,6 +30,7 @@ import {
   threadDraftKey,
   type Drafts,
 } from "../../lib/composer.ts";
+import { useCatalog } from "../../lib/hooks.ts";
 import type { ComposerHandle } from "./services.ts";
 import { MessageCopyButton } from "./timeline.tsx";
 
@@ -154,6 +163,7 @@ export function registerHistory(
   context: PluginContext,
   services: {
     readonly threads: ThreadsCatalog;
+    readonly navigation: Navigation;
     readonly slots: SlotRegistry;
     readonly drafts: Drafts;
     readonly composer: ComposerHandle;
@@ -161,7 +171,7 @@ export function registerHistory(
     readonly toasts: Toasts | undefined;
   },
 ) {
-  const { threads, slots, drafts, composer, dialogs, toasts } = services;
+  const { threads, navigation, slots, drafts, composer, dialogs, toasts } = services;
   const failed = (title: string) => (failure: unknown) => {
     toasts?.show({
       type: "error",
@@ -199,6 +209,102 @@ export function registerHistory(
         })
         .catch(failed("Could not regenerate the response")),
   });
+
+  context.commands.register({
+    name: "thread.fork",
+    description:
+      "Forks a thread at a turn (its latest ended one by default) into a new thread of the same project, and opens it",
+    input: z.object({
+      ...At,
+      threadId: z.string(),
+      turnId: z.string().optional(),
+      title: z.string().optional(),
+    }),
+    output: z.object({ threadId: z.string() }),
+    handler: async (input) => {
+      const target = targetOf(input);
+      const fork = await threads
+        .call<ThreadRecord>(target, "threads.fork", {
+          threadId: input.threadId,
+          ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
+          ...(input.title === undefined ? {} : { title: input.title }),
+        })
+        .catch(failed("Failed to fork this response."));
+      navigation.navigate({ ...target, thread: fork.id });
+      return { threadId: fork.id };
+    },
+  });
+
+  context.commands.register({
+    name: "thread.merge-back",
+    description:
+      "Merges a fork back into the thread it was forked from (its next message gives the agent the fork's result), and opens that thread",
+    input: z.object({ ...At, threadId: z.string(), turnId: z.string().optional() }),
+    output: z.object({ threadId: z.string() }),
+    handler: async (input) => {
+      const target = targetOf(input);
+      const parent = await threads
+        .call<ThreadRecord>(target, "threads.merge-back", {
+          threadId: input.threadId,
+          ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
+        })
+        .catch(failed("Could not merge back"));
+      navigation.navigate({ ...target, thread: parent.id });
+      return { threadId: parent.id };
+    },
+  });
+
+  /** A fork's header button (T3's ThreadRelationshipsControl merge-back action). */
+  function MergeBack(props: ChatHeaderActionProps) {
+    const catalog = useCatalog(threads, props.target);
+    const thread = props.thread;
+    if (thread?.forkedFrom === undefined) return null;
+    const parent = catalog?.threads.find(
+      (candidate) => candidate.id === thread.forkedFrom!.threadId,
+    );
+    // The fork's own turns: its record follows them, never the copied ones.
+    const ran = thread.lastTurn !== undefined && thread.lastTurn.status !== "running";
+    const label =
+      parent === undefined ? "Merge back to source conversation" : `Merge back to ${parent.title}`;
+    const tooltip = !ran
+      ? "Complete a run in this fork before merging it back"
+      : parent === undefined
+        ? "Merge this conversation back into its source"
+        : `Merge this conversation back into ${parent.title}`;
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              aria-label={label}
+              disabled={!ran}
+              onClick={() =>
+                void context.commands
+                  .execute("thread.merge-back", {
+                    node: props.target.node,
+                    ...(props.target.remote === undefined ? {} : { remote: props.target.remote }),
+                    threadId: thread.id,
+                  })
+                  .catch(() => undefined)
+              }
+              size="icon-xs"
+              variant="ghost"
+            />
+          }
+        >
+          <GitMergeIcon />
+        </TooltipTrigger>
+        <TooltipPopup side="bottom">{tooltip}</TooltipPopup>
+      </Tooltip>
+    );
+  }
+  context.subscriptions.add(
+    slots.contribute<ChatHeaderActionProps>("chat.header.actions", {
+      id: "jhin.chat.merge-back",
+      order: -10,
+      component: MergeBack,
+    }),
+  );
 
   const run = (name: string, props: ChatMessageActionProps) =>
     context.commands
@@ -243,6 +349,20 @@ export function registerHistory(
             icon={RefreshCwIcon}
             label="Regenerate response"
             onClick={() => run("thread.regenerate", props)}
+          />
+        ),
+    }),
+  );
+  context.subscriptions.add(
+    slots.contribute<ChatMessageActionProps>("chat.message.actions", {
+      id: "jhin.chat.message.fork",
+      order: 30,
+      component: (props) =>
+        props.role !== "assistant" || (props.latest && props.running) ? null : (
+          <RowButton
+            icon={GitForkIcon}
+            label="Fork from this response"
+            onClick={() => run("thread.fork", props)}
           />
         ),
     }),

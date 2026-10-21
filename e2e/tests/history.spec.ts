@@ -121,3 +121,51 @@ test("retries a failed turn in its place, and regenerates the latest response", 
   ]);
   await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText("Echo: again");
 });
+
+test("forks a thread from a response and merges the fork back into its source", async ({
+  page,
+}, info) => {
+  const { message, log } = await thread(page, "plan the trip", "pick a city");
+  const heading = page.getByRole("heading", { level: 2 });
+  await expect(heading).toHaveText("plan the trip");
+
+  await log.getByRole("article", { name: "Agent" }).first().hover();
+  await log.getByRole("button", { name: "Fork from this response" }).first().click();
+
+  // The fork opens with the turns up to that response and a marker after them.
+  await expect(heading).toHaveText("plan the trip fork");
+  await expect(log.getByRole("article", { name: "You" })).toHaveText(["plan the trip"]);
+  await expect(
+    log.getByRole("status").filter({ hasText: "Forked from conversation" }),
+  ).toBeVisible();
+  const mergeBack = page.getByRole("button", { name: "Merge back to plan the trip" });
+  await expect(mergeBack).toBeDisabled();
+  await shoot(page, info, "fork");
+
+  await message.fill("try Lisbon");
+  await message.press("Enter");
+  await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText("Echo: try Lisbon");
+  await expect(mergeBack).toBeEnabled();
+  await mergeBack.click();
+
+  // Back in the source; its next message carries the fork's result.
+  await expect(heading).toHaveText("plan the trip");
+  await message.fill("what did the fork find?");
+  await message.press("Enter");
+  await expect(log.getByRole("status").filter({ hasText: "Merged back from fork" })).toContainText(
+    "plan the trip fork",
+  );
+  await expect(log.getByRole("article", { name: "You" }).last()).toHaveText(
+    "what did the fork find?",
+  );
+  // The fake agent echoes what it got: the handoff came first.
+  await expect(log.getByRole("article", { name: "Agent" }).last()).toContainText(
+    "Merge-back context from forked conversation.",
+  );
+  await shoot(page, info, "merged-back");
+
+  await log.getByRole("button", { name: "Open fork" }).click();
+  await expect(heading).toHaveText("plan the trip fork");
+  await log.getByRole("button", { name: "Open source conversation" }).click();
+  await expect(heading).toHaveText("plan the trip");
+});
