@@ -157,14 +157,26 @@ test("D70–D74: thread cards in one list, named by node only while several are 
   await expect(onY.getByLabel("On studio", { exact: true })).toBeAttached();
 });
 
-test("D70: threads quiet for three days settle onto the Settled shelf", async ({ page }, info) => {
+test("D70, D446: threads the node settles go onto the Settled shelf, live", async ({
+  page,
+}, info) => {
   const x = await start({ mode: "ui" });
   await addThread(x, "first quiet thread");
   await addThread(x, "second quiet thread");
-  // The client's clock four days on: both threads saw no activity for three days.
-  await page.clock.install({ time: Date.now() + 4 * 24 * 60 * 60 * 1000 });
-  await page.clock.resume();
   await page.goto(`${x.ui}#token=${x.token}`);
+  await expect(page.getByTestId("sidebar-row-card")).toHaveCount(2);
+
+  // The node settles them by its own rule, here on their pull requests closing (D447); the
+  // client settles nothing by itself (its clock four days on would change nothing).
+  const threads = await x.client().call<{ id: string }[]>("threads.list", {});
+  const closedAt = new Date(Date.now() + 60_000).toISOString();
+  for (const thread of threads) {
+    await x.client().call("threads.auto-settle", {
+      threadId: thread.id,
+      reason: "pull-request-closed",
+      closedAt,
+    });
+  }
 
   const shelf = page.getByRole("button", { name: "Settled (2)" });
   await expect(shelf).toHaveAttribute("aria-expanded", "false");
@@ -357,4 +369,44 @@ test("D78: dragging reorders the pinned and active threads and settles onto the 
   const shot = info.outputPath("sidebar-dragged.png");
   await page.screenshot({ path: shot });
   await info.attach("sidebar-dragged", { path: shot, contentType: "image/png" });
+});
+
+test("D445: a thread's Auto-settle behavior, kept on the node", async ({ page }, info) => {
+  const x = await start({ mode: "ui" });
+  await addThread(x, "keep me around");
+  const [thread] = await x.client().call<{ id: string }[]>("threads.list", {});
+  await page.goto(`${x.ui}#token=${x.token}`);
+
+  await threadRow(page, "keep me around").click({ button: "right" });
+  // Opened with the keyboard: a hover-opened submenu closes when the pointer leaves its trigger.
+  await page.getByRole("menuitem", { name: "Auto-settle behavior" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("menuitemradio", { name: "Enabled" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  const shot = info.outputPath("auto-settle-menu.png");
+  await page.screenshot({ path: shot });
+  await info.attach("auto-settle-menu", { path: shot, contentType: "image/png" });
+  await page.getByRole("menuitemradio", { name: "Disabled" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Disabled" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  // Kept on the node: its rule leaves the thread alone, even for a closed pull request.
+  const { thread: record } = await x
+    .client()
+    .call<{ thread: { autoSettleDisabledAt?: string } }>("threads.get", { threadId: thread!.id });
+  expect(record.autoSettleDisabledAt).toEqual(expect.any(String));
+  expect(
+    await x.client().call("threads.auto-settle", {
+      threadId: thread!.id,
+      reason: "pull-request-closed",
+      closedAt: new Date(Date.now() + 60_000).toISOString(),
+    }),
+  ).toEqual({ settled: false });
+  await expect(page.getByRole("button", { name: "Settled (0)" })).toBeVisible();
 });

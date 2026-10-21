@@ -129,8 +129,17 @@ function toPullRequest(raw: RawPullRequest): PullRequest | undefined {
     headBranch: typeof raw.headRefName === "string" ? raw.headRefName : "",
     baseBranch: typeof raw.baseRefName === "string" ? raw.baseRefName : "",
     ...(typeof raw.updatedAt === "string" ? { updatedAt: raw.updatedAt } : {}),
-    ...(typeof raw.mergedAt === "string" && raw.mergedAt !== "" ? { mergedAt: raw.mergedAt } : {}),
-    ...(typeof raw.closedAt === "string" && raw.closedAt !== "" ? { closedAt: raw.closedAt } : {}),
+    // gh gives an open pull request the zero time (0001-01-01): only a closed one has times.
+    ...(state !== "open" &&
+    typeof raw.mergedAt === "string" &&
+    Date.parse(raw.mergedAt) > Date.parse("1970-01-01T00:00:00Z")
+      ? { mergedAt: raw.mergedAt }
+      : {}),
+    ...(state !== "open" &&
+    typeof raw.closedAt === "string" &&
+    Date.parse(raw.closedAt) > Date.parse("1970-01-01T00:00:00Z")
+      ? { closedAt: raw.closedAt }
+      : {}),
     checks: rollupChecks(Array.isArray(raw.statusCheckRollup) ? raw.statusCheckRollup : []),
   };
 }

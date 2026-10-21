@@ -607,6 +607,46 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     return next;
   };
 
+  /**
+   * T3 settles a thread whose pull request merged or closed (D447): the node's
+   * threads decide whether it may (`threads.auto-settle`), source control says
+   * which threads work on the branch. Told once per pull request and state.
+   */
+  /** Threads told about a pull request in a state; a failed call is told again next lookup. */
+  const announced = new Set<string>();
+  const settleOnPullRequest = (repo: Repo, branch: string, pr: PullRequest) => {
+    // The time it merged or closed, never its last update (a later comment moves that);
+    // without one there is nothing to weigh against the user's last message.
+    const closedAt = (pr.state === "merged" ? pr.mergedAt : undefined) ?? pr.closedAt;
+    if (closedAt === undefined) return;
+    for (const thread of threads.values()) {
+      if (thread.projectId !== repo.project.id || thread.branch !== branch) continue;
+      const key = JSON.stringify([repo.project.id, thread.threadId, pr.number, pr.state, closedAt]);
+      if (announced.has(key)) continue;
+      announced.add(key);
+      context.commands
+        .execute("threads.auto-settle", {
+          threadId: thread.threadId,
+          reason: pr.state === "merged" ? "pull-request-merged" : "pull-request-closed",
+          closedAt,
+        })
+        .then(
+          // Not settled now (the rule off, a pin): asked again next lookup, the rule may allow it.
+          (result) => {
+            if ((result as { settled?: boolean }).settled !== true) announced.delete(key);
+          },
+          (error: unknown) => {
+            announced.delete(key);
+            context.log.warn("settling a thread on its pull request failed", {
+              threadId: thread.threadId,
+              pullRequest: pr.number,
+              error: String(error),
+            });
+          },
+        );
+    }
+  };
+
   /** Looks up the pull requests of the branches of interest whose answer is missing or stale. */
   const lookUpPullRequests = (repo: Repo, options: { force: boolean }): Promise<void> => {
     const next = repo.prChain.then(async () => {
@@ -631,6 +671,7 @@ export function activateSourceControl(context: PluginContext): SourceControl {
         try {
           const pr = await pullRequestFor(ghPath, location.root, branch);
           repo.pullRequests.set(branch, { pr, at: Date.now() });
+          if (pr !== null && pr.state !== "open") settleOnPullRequest(repo, branch, pr);
         } catch (error) {
           if (!(error instanceof GitHubUnavailable)) throw error;
           provider = { kind: "github", available: false, reason: error.message };

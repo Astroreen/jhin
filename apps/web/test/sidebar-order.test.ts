@@ -14,7 +14,6 @@ import {
   settledAt,
   shouldRecede,
   shownSettled,
-  threadActivityAt,
   sidebarThreadStatus,
   sidebarThreads,
   sidebarTopStatus,
@@ -115,33 +114,18 @@ describe("a thread's status in the sidebar (D70)", () => {
   });
 });
 
-describe("settling (D70)", () => {
-  it("settles a thread after three days without activity, as of its last activity", () => {
-    expect(settledAt(thread("t", ago(80)), NOW)).toBe(ago(80));
-    expect(settledAt(thread("t", ago(70)), NOW)).toBeUndefined();
-    expect(
-      settledAt(thread("t", ago(200), { lastTurn: turn("completed", ago(10)) }), NOW),
-    ).toBeUndefined();
-    expect(settledAt(thread("t", ago(200), { lastTurn: turn("completed", ago(100)) }), NOW)).toBe(
-      ago(100),
-    );
-  });
-
-  it("never settles a thread whose turn runs or waits for the user", () => {
-    expect(
-      settledAt(thread("t", ago(200), { lastTurn: turn("running", ago(100)) }), NOW),
-    ).toBeUndefined();
-    expect(
-      settledAt(thread("t", ago(200), { lastTurn: turn("waiting", ago(100), "approval") }), NOW),
-    ).toBeUndefined();
-  });
-
-  it("settles by the activity the card shows: a thread without turns changed lately stays", () => {
-    // Renamed an hour ago, created 80 hours ago: the card reads "1h", so it is not settled.
-    const renamed = thread("t", ago(80), { updatedAt: ago(1) });
-    expect(threadActivityAt(renamed)).toBe(ago(1));
-    expect(settledAt(renamed, NOW)).toBeUndefined();
-    expect(settledAt(thread("t", ago(80), { updatedAt: ago(75) }), NOW)).toBe(ago(75));
+describe("settling (D70, D446)", () => {
+  it("settles nothing by itself: a thread is settled only once its node says so", () => {
+    // Quiet for weeks: still active until the node's sweep writes it as settled.
+    expect(settledAt(thread("t", ago(800)), NOW)).toBeUndefined();
+    expect(threadSection(thread("t", ago(800)), NOW)).toBe("active");
+    const swept = thread("t", ago(800), {
+      lastTurn: turn("completed", ago(100)),
+      settledOverride: "settled",
+      settledAt: ago(100),
+    });
+    expect(settledAt(swept, NOW)).toBe(ago(100));
+    expect(threadSection(swept, NOW)).toBe("settled");
   });
 });
 
@@ -163,37 +147,6 @@ describe("settling by hand, and what the automatic rule leaves alone (D75)", () 
     const pinned = thread("t", ago(200), { pinnedAt: ago(150) });
     expect(settledAt(pinned, NOW)).toBeUndefined();
     expect(threadSection(pinned, NOW)).toBe("pinned");
-  });
-
-  it("settles a completed thread nobody looked at (Done), as T3 does", () => {
-    const done = thread("t", ago(200), { lastTurn: turn("completed", ago(100)) });
-    expect(isUnread(done, ago(150))).toBe(true);
-    expect(settledAt(done, NOW)).toBe(ago(100));
-  });
-
-  it("does not settle a thread whose activity time does not parse", () => {
-    const garbled = thread("t", "not a time", { lastTurn: turn("completed", "yesterday") });
-    expect(threadActivityAt(garbled)).toBe("yesterday");
-    expect(settledAt(garbled, NOW)).toBeUndefined();
-    expect(threadSection(garbled, NOW)).toBe("active");
-    expect(settledAt(thread("t", "not a time"), NOW)).toBeUndefined();
-  });
-
-  it("counts a snooze that ended, by hand or by its time, as activity", () => {
-    const quiet = { lastTurn: turn("completed", ago(100)) };
-    expect(settledAt(thread("t", ago(200), { ...quiet, lastSnoozeWakeAt: ago(10) }), NOW)).toBe(
-      undefined,
-    );
-    expect(settledAt(thread("t", ago(200), { ...quiet, lastSnoozeWakeAt: ago(80) }), NOW)).toBe(
-      ago(80),
-    );
-    // Woke by its time 75 hours ago: settled as of then.
-    expect(
-      settledAt(
-        thread("t", ago(200), { ...quiet, snoozedAt: ago(99), snoozedUntil: ago(75) }),
-        NOW,
-      ),
-    ).toBe(ago(75));
   });
 });
 
@@ -278,7 +231,12 @@ describe("the sidebar's list (D70)", () => {
     [
       thread("old-active", ago(30), { projectId: "web", lastTurn: turn("completed", ago(1)) }),
       thread("new", ago(2), { projectId: "scratch" }),
-      thread("settled-later", ago(300), { projectId: "web", lastTurn: turn("completed", ago(90)) }),
+      thread("settled-later", ago(300), {
+        projectId: "web",
+        lastTurn: turn("completed", ago(90)),
+        settledOverride: "settled",
+        settledAt: ago(90),
+      }),
       thread("archived", ago(1), { archivedAt: ago(0.5) }),
     ],
   );
@@ -287,7 +245,11 @@ describe("the sidebar's list (D70)", () => {
     [scratch, project("web", "web")],
     [
       thread("middle", ago(10), { projectId: "web" }),
-      thread("settled-earlier", ago(400), { projectId: "web" }),
+      thread("settled-earlier", ago(400), {
+        projectId: "web",
+        settledOverride: "settled",
+        settledAt: ago(400),
+      }),
     ],
   );
 
