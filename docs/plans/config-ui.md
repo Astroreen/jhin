@@ -365,6 +365,12 @@ context.config.define("acme.http", Config);
 - Sending a draft again after its node could not take it (D486): the text
   goes to the node when it is typed; if the call fails, the node has it
   only after the next edit of that draft.
+- Review notes left from #132 (D486, D487): a text another device saved
+  while this composer is in use is kept but shown only when the composer
+  opens again (not on blur); two devices sending the same `at` keep the
+  first text and the second is not told; `host.device-settings.get` reads a
+  damaged file as empty while `patch` refuses it; the per-key draft queue's
+  test does not hold a write open to force the interleaving.
 - Pruning kept drafts (D486): a node keeps a draft per thread and project
   until it is cleared, also after its thread is deleted.
 - Clock skew between devices: a draft's and a device setting's `at` is
