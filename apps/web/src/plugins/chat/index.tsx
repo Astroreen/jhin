@@ -498,12 +498,12 @@ export const chatPlugin = builtin(
               route.remote === target.remote
             );
           };
-          // An open thread's composer holds its text itself and would write it back.
-          if (threadId !== undefined && composer.current?.draftKey === key) {
-            throw new Error("The thread is open: clear its composer there.");
-          }
           let kept: ComposerDraft | undefined;
           const perform = async () => {
+            // An open thread's composer holds its text itself and would write it back.
+            if (threadId !== undefined && composer.current?.draftKey === key) {
+              throw new Error("The thread is open: clear its composer there.");
+            }
             kept = services.drafts.get(key);
             const open = isOpen();
             if (kept === undefined && !open) return false;
