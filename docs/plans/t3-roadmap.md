@@ -316,6 +316,12 @@ free block of 20 after D1040 and writes it here.
   questions in `agent.runtime`, so the literal mode can be turned on from
   the composer (`t3-parity.md` D853). What is not done stays in the Deferred
   lists of `t3-parity.md` and `terminal.md`.
+  Done: `t3-parity.md` D1001–D1013 (#171, #176, #182, #183, #184):
+  `initialAnswer` and the literal answer, T3's context chips with their
+  popovers, context records for a mentioned pull request or thread (and
+  their chips in a sent message), the terminal-context chip, quotes of an
+  agent's answer with "Cite". Captured window context waits for the desktop
+  SnapShot (D1013); the rest is in `t3-parity.md`'s Deferred list.
 - **W28:** a secret store plugin: secrets kept apart from the config files
   (the OS keychain or an encrypted file, `security.md` D417), a private
   prompt for a secret in a thread (T3's `request_secret`) and one-use

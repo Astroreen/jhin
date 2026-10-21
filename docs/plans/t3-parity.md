@@ -2064,6 +2064,11 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   free thread with nothing queued starts its turn under the queue's lock,
   and a thread's first message runs the hook. Edits of that thread's queue
   wait for it.
+- The e2e test "implements the plan in build mode, or refines it with what
+  was typed" failed on CI twice during W27 and passed when run again: an
+  Enter pressed 45 ms after `fill("")` sent the text just cleared ("also
+  tests"). Not reproduced locally (ten runs and the whole file); the race
+  between the editor's clearing and the send is not found yet.
 - A browser component test of the composer's queue banner (the `mod-enter`
   send shortcut with something queued, the "Retry" label of a refused
   message): the e2e spec covers the flows with the default shortcut only.
