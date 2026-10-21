@@ -10,7 +10,7 @@ import { useSyncExternalStore } from "react";
 
 import { useCatalog } from "../../lib/hooks.ts";
 import { DelegationLineage } from "./lineage.tsx";
-import { LaunchedRow, SubagentRow, WorkflowBlock, type WorkflowMark } from "./rows.tsx";
+import { LaunchedRow, runOfTask, SubagentRow, WorkflowBlock, type WorkflowMark } from "./rows.tsx";
 import type { DelegationStore } from "./store.ts";
 
 export { createDelegationStore } from "./store.ts";
@@ -45,7 +45,7 @@ function Subagent({ target, thread, event, services }: Props) {
     <SubagentRow
       title={task?.title ?? mark.title}
       status={task?.status ?? (view.status === "loading" ? "starting" : "unknown")}
-      task={task}
+      run={runOfTask(task)}
       onOpen={() => services.open(target, mark.childThreadId)}
     />
   );
@@ -73,21 +73,13 @@ function ProviderSubagent({ target, event, services }: Props) {
   return (
     <SubagentRow
       title={child?.title ?? title}
-      status={
-        turn === undefined ? (catalog?.status === "ready" ? "unknown" : "starting") : turn.status
-      }
-      task={
+      // As the bar says it: starting until its thread's turn is known (D880).
+      status={turn === undefined ? "starting" : turn.status}
+      run={
         turn === undefined
           ? undefined
           : {
-              taskId: childThreadId,
-              parentThreadId: "",
-              childThreadId,
-              title,
-              agentId: turn.agentId,
-              status: turn.status,
-              createdAt: child?.createdAt ?? turn.at,
-              updatedAt: turn.at,
+              startedAt: child?.createdAt ?? turn.at,
               ...(turn.status === "running" || turn.status === "waiting"
                 ? {}
                 : { endedAt: turn.at }),

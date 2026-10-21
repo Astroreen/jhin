@@ -17,6 +17,10 @@ const LABELS: Record<string, string> = {
   failed: "Failed",
 };
 
+/** The state alone, announced without a ticking time (T3's announcement). */
+export const subagentLabel = (thread: ThreadRecord): string =>
+  thread.lastTurn === undefined ? "Starting" : (LABELS[thread.lastTurn.status] ?? "Working");
+
 /** T3's status line of a subagent: "Working 12s", "Completed in 1m 3s", or the state. */
 export function subagentStatus(thread: ThreadRecord, nowMs: number): string {
   const turn = thread.lastTurn;
@@ -64,7 +68,7 @@ export function SubagentBar(props: {
         className="min-w-0 truncate text-muted-foreground tabular-nums"
       />
       <span role="status" className="sr-only">
-        {`${model} subagent: ${subagentStatus(thread, 0)}`}
+        {`${model} subagent: ${subagentLabel(thread)}`}
       </span>
       <span className="ms-auto shrink-0 text-muted-foreground max-sm:hidden">Runs on its own</span>
       {props.onOpenParent ? (

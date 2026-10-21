@@ -43,12 +43,16 @@ import {
 import { ChatHeader } from "./header.tsx";
 import { dispatchMode, resumeThread, sendMessage } from "./send.ts";
 import { useChat } from "./services.ts";
-import { SubagentBar } from "./subagent-bar.tsx";
 import { useThreadFind } from "./thread-find.tsx";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
 import { AttachmentLoaderContext, TimelineView } from "./timeline.tsx";
 
+/** T3's ProviderSubagentBar, a chunk of its own: few threads show it (D440, D880). */
+const SubagentBar = lazyChunk(
+  () => import("./subagent-bar.tsx").then((module) => module.SubagentBar),
+  { loading: () => null, failed: () => null },
+);
 /** T3's find bar, a chunk of its own (D440): the find itself stays with the view. */
 const ThreadFindBar = lazyChunk(
   () => import("./thread-find-bar.tsx").then((module) => module.ThreadFindBar),
@@ -555,7 +559,15 @@ export function ThreadView(props: {
           >
             <div className="w-full px-[calc(env(safe-area-inset-left)+0.75rem)] sm:px-12">
               <div className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-content-max-width)">
-                {timeline.deleted ? null : thread?.subagentOrigin === "provider" ? (
+                {timeline.deleted ? null : thread?.archivedAt !== undefined ? (
+                  <ArchivedNotice
+                    onUnarchive={() =>
+                      void chat.context.commands
+                        .execute("thread.unarchive", { ...target, threadId })
+                        .catch((failure: unknown) => setError((failure as Error).message))
+                    }
+                  />
+                ) : thread?.subagentOrigin === "provider" ? (
                   // T3's ProviderSubagentBar: its parent's agent runs it (D880).
                   <SubagentBar
                     thread={thread}
@@ -567,14 +579,6 @@ export function ThreadView(props: {
                               ...target,
                               thread: thread.parentThreadId as string,
                             })
-                    }
-                  />
-                ) : thread?.archivedAt !== undefined ? (
-                  <ArchivedNotice
-                    onUnarchive={() =>
-                      void chat.context.commands
-                        .execute("thread.unarchive", { ...target, threadId })
-                        .catch((failure: unknown) => setError((failure as Error).message))
                     }
                   />
                 ) : (
