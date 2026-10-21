@@ -1895,25 +1895,31 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   a record's payload (D1006). A title, a search snippet and a copy read the
   quote's text, a comment after it.
 - **D1011. Its chips,** as T3's `AssistantCitationChip`: in the prompt,
-  "View cited assistant text: <label>" (its comment, else its quote, at
-  most 64 characters) shows the quote in its message, selected, and the
-  pencil ("Add comment to citation" / "Edit citation comment") opens T3's
-  comment editor ("Comment on selected text", "Add an optional comment...",
-  Enter saves, Escape cancels, "Cancel" and "Save"), which writes the link
-  again with the comment. In a sent message the chip ("Quoted assistant
-  text: <label>") shows the quote and comment, and "Go to source". The
-  quote is looked for in the messages on screen; when its thread is not
-  open, its thread opens (D1005's routing). `@jhin/ui` gains T3's
-  `ContextChipAction`.
+  "View cited assistant text: <label>" (its comment, else its quote, at most
+  64 characters) shows the quote in its message, selected, and the pencil
+  ("Add comment to citation" / "Edit citation comment") opens T3's comment
+  editor ("Comment on selected text", "Add an optional comment...", Enter
+  saves, Escape cancels, "Cancel" and "Save"), which writes the link again
+  with the comment. In a sent message the chip ("Quoted assistant text:
+  <label>") shows the quote and comment, and "Go to source". The quote is
+  looked for in the messages on screen, those of its own node only (ids are
+  unique per node, so the thread view marks its node); when they are not
+  there, its thread opens (D1005's routing). The chip is the link labelled
+  "Assistant quote" only, in the prompt, in a message and for the agent
+  alike. `@jhin/ui` gains T3's `ContextChipAction`.
 - **D1012. "Cite" by a selection,** as T3's `AssistantSelectionToolbar`: a
-  selection in an agent's message, once made, shows "Cite" by its end
-  ("Cite selection in composer"; past 8 000 characters "Shorten
-  selection"), which puts the quote at the composer's cursor as its chip.
-  The selection is read as T3's `captureAssistantTextSelection` reads it
-  (`lib/assistant-text-selection.ts`): text of the message's own, not of
-  its buttons or of rows that cannot be selected. A prefilled answer
-  (D1001) or an approval takes no quote. The button is a chunk of its own
-  (D440).
+  selection in an agent's message, once made, shows "Cite" by its end ("Cite
+  selection in composer"; past 8 000 characters "Shorten selection"), which
+  puts the quote at the composer's cursor as its chip through the new client
+  command `chat.composer.insert-citation` (`{ citation }` → `{ inserted,
+  reason? }`, as D1009's). A selection made with a pointer is offered once
+  it is made, also when the pointer is released outside the window or the
+  touch is cancelled; while the node's id is not known yet (the mesh's
+  members load), the button shows disabled. The selection is read as T3's
+  `captureAssistantTextSelection` reads it
+  (`lib/assistant-text-selection.ts`): text of the message's own, not of its
+  buttons or of rows that cannot be selected. A prefilled answer (D1001) or
+  an approval takes no quote. The button is a chunk of its own (D440).
 - **D1013. Captured window context on screenshots is left out:** T3 takes
   it with its desktop SnapShot (a window's app, title and accessibility
   text, read when the capture is taken), which Jhin's desktop app does not

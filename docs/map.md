@@ -164,6 +164,8 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
 - `@jhin/agent-api`'s `citations.ts` — a quote of an agent's message in a user's
   (`jhin-citation://`), and what the agent reads of it (`plans/t3-parity.md`
   D1010).
+- `chat.composer.insert-citation` (the chat plugin) — puts a quote of an agent's message
+  into the open composer as its chip; "Cite" uses it (`plans/t3-parity.md` D1012).
 - `chat.composer.insert-context` (the chat plugin) — puts a context record and its
   chip into the open composer; the terminal's "Add to chat" uses it
   (`plans/t3-parity.md` D1009).

@@ -32,6 +32,8 @@ function findAssistantCitationSourceAnchor(
   );
   const viewport = source?.closest<HTMLElement>("[data-assistant-citation-viewport]");
   if (!source || !viewport) return null;
+  // Ids are unique per node only: the messages on screen must be the quote's node's.
+  if (viewport.dataset["assistantCitationNode"] !== citation.nodeId) return null;
   const range = resolveAssistantCitationRange(source, citation);
   return range ? { source, range, viewport } : null;
 }

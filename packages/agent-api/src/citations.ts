@@ -20,7 +20,7 @@ export interface AssistantCitation {
   /** The agent message's item. */
   readonly messageId: string;
   readonly text: string;
-  readonly comment?: string;
+  readonly comment?: string | undefined;
   readonly start: number;
   readonly end: number;
   readonly prefix: string;
@@ -154,8 +154,9 @@ export function parseAssistantCitationHref(href: string): AssistantCitation | nu
 
 /** What a citation's chip shows: its comment, else its quote, at most 64 characters. */
 export function assistantCitationLabel(citation: AssistantCitation): string {
-  const preview = (citation.comment?.trim() || citation.text).replace(/\s+/g, " ");
-  return preview.length > 64 ? `${preview.slice(0, 64)}…` : preview;
+  // By code points: a pair cut in half would show as a replacement character.
+  const preview = Array.from((citation.comment?.trim() || citation.text).replace(/\s+/g, " "));
+  return preview.length > 64 ? `${preview.slice(0, 64).join("")}…` : preview.join("");
 }
 
 /** The link a quote is in the prompt. */

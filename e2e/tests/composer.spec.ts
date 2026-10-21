@@ -407,16 +407,23 @@ test("cites a selection of the agent's answer, with a comment, as T3's quote", a
 
   // A selection in the answer offers "Cite" (D1012).
   await answer.evaluate((article) => {
-    const text = [...article.querySelectorAll("p")]
-      .map((paragraph) => paragraph.firstChild)
-      .find((child) => child?.textContent?.includes("the results")) as Text;
-    const start = text.data.indexOf("the results");
+    // The answer's text node, however it is rendered (markdown or its plain text first).
+    const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT);
+    let text: Text | null = null;
+    while (walker.nextNode()) {
+      if (walker.currentNode.textContent?.includes("the results")) {
+        text = walker.currentNode as Text;
+        break;
+      }
+    }
+    const start = text!.data.indexOf("the results");
     const range = document.createRange();
-    range.setStart(text, start);
-    range.setEnd(text, start + "the results".length);
+    range.setStart(text!, start);
+    range.setEnd(text!, start + "the results".length);
     document.getSelection()!.removeAllRanges();
     document.getSelection()!.addRange(range);
   });
+
   await page.getByRole("button", { name: "Cite selection in composer" }).click();
   const chip = message.getByRole("button", { name: "View cited assistant text: the results" });
   await expect(chip).toBeVisible();

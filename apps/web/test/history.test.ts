@@ -65,6 +65,7 @@ function setup(options: {
       focus: () => undefined,
       insert: () => undefined,
       insertContext: () => "not-now",
+      insertCitation: () => "not-now",
       toggleModelPicker: () => undefined,
       cycleRuntimeMode: () => undefined,
       togglePlanMode: () => undefined,

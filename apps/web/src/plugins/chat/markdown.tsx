@@ -138,7 +138,11 @@ const COMPONENTS: Components = {
   a({ children, href, node: _node, ...props }) {
     const reference = typeof href === "string" ? parseContextHref(href) : null;
     if (reference !== null) return <ContextReference href={href!} label={textOf(children)} />;
-    const citation = typeof href === "string" ? parseAssistantCitationHref(href) : null;
+    // A quote is the link labelled as T3 labels it, as the prompt and the agent's text read it.
+    const citation =
+      typeof href === "string" && textOf(children) === "Assistant quote"
+        ? parseAssistantCitationHref(href)
+        : null;
     if (citation !== null) return <CitationReference citation={citation} />;
     return (
       <a {...props} href={href} rel="noopener noreferrer" target="_blank">

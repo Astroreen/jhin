@@ -196,6 +196,7 @@ export function ThreadView(props: {
       focus: () => handle.current?.focus(),
       insert: (text) => handle.current?.insert(text),
       insertContext: (record) => handle.current?.insertContext(record) ?? "not-now",
+      insertCitation: (citation) => handle.current?.insertCitation(citation) ?? "not-now",
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),
       togglePlanMode: () => handle.current?.togglePlanMode(),
@@ -477,6 +478,7 @@ export function ThreadView(props: {
           <div
             aria-label="Messages"
             // Where a quote's message is looked for (D1011).
+            data-assistant-citation-node={nodeId}
             data-assistant-citation-viewport=""
             className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 [overflow-anchor:none] [scrollbar-gutter:stable_both-edges] sm:px-12"
             onScroll={onScroll}
@@ -487,12 +489,15 @@ export function ThreadView(props: {
           >
             <CiteSelection
               nodeId={nodeId}
-              onCite={(citation) => {
-                const done = handle.current?.insertCitation(citation) ?? "not-now";
-                if (done !== "inserted") {
+              onCite={async (citation) => {
+                // Through the command, as any caller would (AGENTS.md rule 6).
+                const done = (await chat.context.commands.execute("chat.composer.insert-citation", {
+                  citation,
+                })) as { inserted: boolean };
+                if (!done.inserted) {
                   chat.toasts?.show({ type: "info", title: "The message box takes no quote now" });
                 }
-                return done === "inserted";
+                return done.inserted;
               }}
               threadId={threadId}
               viewport={scroller}
@@ -697,6 +702,7 @@ export function DraftView(props: {
       focus: () => handle.current?.focus(),
       insert: (text) => handle.current?.insert(text),
       insertContext: (record) => handle.current?.insertContext(record) ?? "not-now",
+      insertCitation: (citation) => handle.current?.insertCitation(citation) ?? "not-now",
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),
       togglePlanMode: () => handle.current?.togglePlanMode(),

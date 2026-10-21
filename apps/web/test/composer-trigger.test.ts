@@ -1,3 +1,4 @@
+import { serializeAssistantCitation } from "@jhin/agent-api";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -157,6 +158,29 @@ describe("a pull request or thread in the prompt", () => {
       },
       { type: "text", text: " now" },
     ]);
+  });
+
+  it("is a citation chip for a quote, only as T3 labels one (D1010)", () => {
+    const link = serializeAssistantCitation({
+      version: 1,
+      nodeId: "n",
+      threadId: "t",
+      messageId: "m",
+      text: "a cache",
+      start: 0,
+      end: 7,
+      prefix: "",
+      suffix: "",
+    });
+    expect(splitPromptIntoSegments(`why ${link} ok`)[1]).toMatchObject({
+      type: "reference",
+      kind: "citation",
+      label: "Assistant quote",
+      source: link,
+    });
+    // Another label is a link the user wrote.
+    const other = link.replace("[Assistant quote]", "[quote]");
+    expect(splitPromptIntoSegments(other)).toEqual([{ type: "text", text: other }]);
   });
 
   it("is a chip still as a #number link to the pull request, as W23 wrote it", () => {

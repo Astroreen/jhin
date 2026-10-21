@@ -14,19 +14,21 @@ import { captureAssistantTextSelection } from "../../lib/assistant-text-selectio
 export function CiteSelection(props: {
   /** The messages' scroller: only a selection inside it is offered. */
   readonly viewport: { readonly current: HTMLElement | null };
-  /** The thread's node and id, which the quote names. */
+  /** The thread's node, which the quote names; not known for a moment while the mesh loads. */
   readonly nodeId: string | undefined;
   readonly threadId: string;
   /** Puts the quote into the composer; false when it takes none now. */
-  onCite(citation: AssistantCitation): boolean;
+  onCite(citation: AssistantCitation): Promise<boolean>;
 }) {
   const [shown, setShown] = useState<{
-    citation: AssistantCitation;
+    selector: Omit<AssistantCitation, "version" | "nodeId" | "threadId">;
     x: number;
     y: number;
   } | null>(null);
+  const shownNow = useRef(shown);
+  shownNow.current = shown;
   const button = useRef<HTMLButtonElement>(null);
-  const { nodeId, threadId } = props;
+  const { threadId } = props;
 
   useLayoutEffect(() => {
     const element = button.current;
@@ -38,7 +40,7 @@ export function CiteSelection(props: {
 
   useEffect(() => {
     const viewport = props.viewport.current;
-    if (viewport === null || nodeId === undefined) return;
+    if (viewport === null) return;
     // While a pointer selects, nothing shows: T3 offers it once the selection is made.
     let selecting = false;
     const update = () => {
@@ -57,45 +59,71 @@ export function CiteSelection(props: {
         return;
       }
       setShown({
-        citation: { version: 1, nodeId, threadId, messageId, ...captured.selector },
+        selector: { messageId, ...captured.selector },
         x: last.right,
         y: last.bottom + 6,
       });
     };
     const down = (event: PointerEvent) => {
-      if (button.current?.contains(event.target as Node)) return;
+      if (!viewport.contains(event.target as Node)) return;
       selecting = true;
       setShown(null);
     };
+    // A release outside the window, a cancelled touch or the window losing focus end it too.
     const up = () => {
       if (!selecting) return;
       selecting = false;
       update();
     };
-    viewport.addEventListener("pointerdown", down);
-    document.addEventListener("pointerup", up);
-    document.addEventListener("selectionchange", update);
-    viewport.addEventListener("scroll", update);
-    return () => {
-      viewport.removeEventListener("pointerdown", down);
-      document.removeEventListener("pointerup", up);
-      document.removeEventListener("selectionchange", update);
-      viewport.removeEventListener("scroll", update);
+    // Scrolling moves what shows; nothing is read while nothing shows.
+    const scrolled = () => {
+      if (shownNow.current !== null) update();
     };
-  }, [props.viewport, nodeId, threadId]);
+    document.addEventListener("pointerdown", down);
+    document.addEventListener("pointerup", up);
+    document.addEventListener("pointercancel", up);
+    window.addEventListener("blur", up);
+    document.addEventListener("selectionchange", update);
+    viewport.addEventListener("scroll", scrolled);
+    return () => {
+      document.removeEventListener("pointerdown", down);
+      document.removeEventListener("pointerup", up);
+      document.removeEventListener("pointercancel", up);
+      window.removeEventListener("blur", up);
+      document.removeEventListener("selectionchange", update);
+      viewport.removeEventListener("scroll", scrolled);
+    };
+  }, [props.viewport, threadId]);
 
   if (shown === null) return null;
-  const tooLong = shown.citation.text.length > ASSISTANT_CITATION_MAX_TEXT_LENGTH;
+  const tooLong = shown.selector.text.length > ASSISTANT_CITATION_MAX_TEXT_LENGTH;
+  // The node's id comes with the mesh's members: until then the quote cannot name it.
+  const waiting = props.nodeId === undefined;
   const cite = () => {
-    if (tooLong || !props.onCite(shown.citation)) return;
-    document.getSelection()?.removeAllRanges();
-    setShown(null);
+    if (tooLong || props.nodeId === undefined) return;
+    const citation: AssistantCitation = {
+      version: 1,
+      nodeId: props.nodeId,
+      threadId,
+      ...shown.selector,
+    };
+    void props.onCite(citation).then((done) => {
+      if (!done) return;
+      document.getSelection()?.removeAllRanges();
+      setShown(null);
+    });
   };
   return createPortal(
     <Button
-      aria-label={tooLong ? "Selection is too long to cite" : "Cite selection in composer"}
+      aria-label={
+        tooLong
+          ? "Selection is too long to cite"
+          : waiting
+            ? "Cite selection in composer, once the node is known"
+            : "Cite selection in composer"
+      }
       className="fixed z-50 max-w-[calc(100vw-1rem)]"
-      disabled={tooLong}
+      disabled={tooLong || waiting}
       onClick={cite}
       onKeyDown={(event) => {
         event.stopPropagation();

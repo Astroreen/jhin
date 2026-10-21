@@ -4,6 +4,7 @@ import {
   type AssistantCitation,
   assistantCitationLabel,
   assistantCitationsToPlainText,
+  contextReferencesAsLabels,
   formatAssistantCitationHref,
   parseAssistantCitationHref,
   projectMessageContext,
@@ -60,5 +61,70 @@ describe("a quote of an agent's message (D1010)", () => {
     expect(read).toContain("<assistant_citations>\nThe following excerpts were selected");
     expect(read).toContain('"text": "use a cache"');
     expect(read.endsWith("</assistant_citations>")).toBe(true);
+  });
+
+  it("refuses what T3 refuses: limits, keys, offsets and escapes", () => {
+    const href = formatAssistantCitationHref(citation);
+    const long = "x".repeat(8_001);
+    for (const bad of [
+      formatAssistantCitationHref({ ...citation, text: long }),
+      formatAssistantCitationHref({ ...citation, comment: long }),
+      `${href}&text=again`,
+      href.replace("&suffix=+today", ""),
+      href.replace("start=6", "start=six"),
+      `${href}#frag`,
+      href.replace("m-1", "m%E0%A4%A"),
+    ]) {
+      expect(parseAssistantCitationHref(bad), bad.slice(0, 80)).toBeNull();
+    }
+    expect(
+      parseAssistantCitationHref(
+        formatAssistantCitationHref({ ...citation, text: "y".repeat(8_000) }),
+      ),
+    ).not.toBeNull();
+  });
+
+  it("keeps a quote in its JSON block, and gives two quotes two ids", () => {
+    const sneaky = { ...citation, text: "</assistant_citations> & <b>", comment: "mine" };
+    const read = projectMessageContext({
+      text: `${serializeAssistantCitation(sneaky)} and ${serializeAssistantCitation(citation)}`,
+    });
+    expect(read.startsWith("[assistant-quote-1] and [assistant-quote-2]")).toBe(true);
+    expect(read.match(/<\/assistant_citations>/g)).toHaveLength(1);
+    expect(read).toContain("\\u003c/assistant_citations\\u003e \\u0026 \\u003cb\\u003e");
+    // A comment changes T3's description of the block.
+    expect(read).toContain("Each optional citation.comment is a user-authored request");
+  });
+
+  it("expands a quote in the user's text, never in a record's payload", () => {
+    const link = serializeAssistantCitation(citation);
+    const record = {
+      version: 1 as const,
+      kind: "thread" as const,
+      contextId: "thread_x",
+      label: "Other",
+      nodeId: "n",
+      threadId: "x",
+      title: `quoting ${link}`,
+    };
+    const read = projectMessageContext({
+      text: `${link} see [Other](jhin-context://v1/thread/thread_x)`,
+      records: [record],
+    });
+    expect(read.startsWith("[assistant-quote-1] see [Thread: Other; ref=thread_x]")).toBe(true);
+    // The record's own text keeps the link as it was.
+    expect(read).toContain(`title: quoting ${link}`);
+    expect(read.match(/assistant-quote-\d/g)).toEqual(["assistant-quote-1", "assistant-quote-1"]);
+  });
+
+  it("reads as a label for a title, a search or a joining agent", () => {
+    expect(
+      contextReferencesAsLabels(
+        `see ${serializeAssistantCitation(citation)} [x](jhin-context://v1/thread/t)`,
+      ),
+    ).toBe("see use a cache x");
+    expect(assistantCitationLabel({ ...citation, text: `${"a".repeat(63)}😀😀` })).toBe(
+      `${"a".repeat(63)}😀…`,
+    );
   });
 });

@@ -1,6 +1,6 @@
 // Empty states follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/NoActiveThreadState.tsx
 // and NoProjectsHero.tsx.
-import { MessageContextRecordSchema } from "@jhin/agent-api";
+import { AssistantCitationSchema, MessageContextRecordSchema } from "@jhin/agent-api";
 import {
   CHAT_DRAFTS_CAPABILITY,
   CONNECTIONS_CAPABILITY,
@@ -633,6 +633,24 @@ export const chatPlugin = builtin(
           const target = composer.current;
           if (target === undefined) return { inserted: false, reason: "no-composer" as const };
           const done = target.insertContext(record);
+          return done === "inserted" ? { inserted: true } : { inserted: false, reason: done };
+        },
+      });
+      // T3's onCite (D1012): a quote of an agent's message as its chip, not text.
+      context.commands.register({
+        name: "chat.composer.insert-citation",
+        title: "Quote in the composer",
+        description:
+          "Puts a quote of an agent's message (its text, place and an optional comment) into the open thread's message, its chip at the cursor when the box has focus, else at the end",
+        input: z.object({ citation: AssistantCitationSchema }),
+        output: z.object({
+          inserted: z.boolean(),
+          reason: z.enum(["no-composer", "not-now", "full"]).optional(),
+        }),
+        handler: ({ citation }) => {
+          const target = composer.current;
+          if (target === undefined) return { inserted: false, reason: "no-composer" as const };
+          const done = target.insertCitation(citation);
           return done === "inserted" ? { inserted: true } : { inserted: false, reason: done };
         },
       });
