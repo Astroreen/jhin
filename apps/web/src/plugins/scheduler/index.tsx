@@ -125,7 +125,12 @@ export const schedulerPlugin = builtin(
                 );
               },
           ),
-        { loading: () => null, failed: () => null },
+        {
+          loading: () => null,
+          failed: (_props, retry) => (
+            <ChunkFailed retry={retry}>Couldn't load the automations.</ChunkFailed>
+          ),
+        },
       );
       context.subscriptions.add(
         slots.contribute<ChatThreadDetailsProps>("chat.thread.details", {

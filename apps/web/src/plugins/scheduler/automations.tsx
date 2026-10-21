@@ -76,9 +76,9 @@ export function ThreadAutomations(
   const nowMs = useNow();
   const [busy, setBusy] = useState<string | null>(null);
   // A mesh member's tasks are not this connection's (orchestration.md W11 Deferred).
-  const tasks =
-    target.remote === undefined ? view.tasks.filter((task) => task.threadId === thread.id) : [];
-  if (view.status !== "error" && tasks.length === 0) return null;
+  const tasks = view.tasks.filter((task) => task.threadId === thread.id);
+  // As T3: shown with the thread's tasks, or with the error that keeps them from showing.
+  if (target.remote !== undefined || (view.status !== "error" && tasks.length === 0)) return null;
 
   const manage = () =>
     services.navigation.navigate({
