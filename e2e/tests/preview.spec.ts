@@ -85,9 +85,14 @@ test("D403: the agent's tab shows in the right panel, and the user takes it over
 
   // A click on the page and typing reach it, through the canvas and the hidden input.
   const canvas = panel.locator("[data-preview-canvas]");
+  // A click lands once the page is on the canvas.
+  await expect(canvas).toHaveAttribute("data-painted", "true");
   const box = (await canvas.boundingBox())!;
-  await page.mouse.click(box.x + 40, box.y + 20);
+  // The canvas's middle is on the page however the frame is letterboxed.
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await expect(panel.getByRole("textbox", { name: "Browser page" })).toBeFocused();
+  // Tab reaches the page's first field, then the typing goes into it.
+  await page.keyboard.press("Tab");
   await page.keyboard.type("hello");
   // The agent may read a tab the user drives: it waits until the page shows the text.
   await node.client().call("preview.wait.for", {

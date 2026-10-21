@@ -74,7 +74,7 @@ export function BrowserSurface(props: SurfaceProps) {
   }, [agentPointer]);
   /** Keys pressed in the page and not yet released, by code. */
   const heldKeys = useRef(new Map<string, { key: string; code: string; keyCode: number }>());
-  const [, setRendered] = useState(0);
+  const [rendered, setRendered] = useState(0);
   const canOperateRef = useRef(canOperate);
   canOperateRef.current = canOperate;
   const firstFrame = useRef(props.onFirstFrame);
@@ -363,6 +363,7 @@ export function BrowserSurface(props: SurfaceProps) {
         aria-hidden="true"
         className="block size-full touch-none object-contain"
         data-preview-canvas=""
+        data-painted={rendered > 0 ? "true" : "false"}
         onContextMenu={(event) => event.preventDefault()}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
