@@ -26,8 +26,17 @@ describe("T3's icon of one file (D923)", () => {
     expect(light.querySelector("use")?.getAttribute("href")).toBe("#file-tree-builtin-typescript");
     expect(light.style.color).toBe("rgb(26, 133, 212)");
     expect(render("src/a.ts", "file", "dark").style.color).toBe("rgb(105, 177, 255)");
-    // The sprite the icons draw from is on the page once.
-    expect(document.querySelectorAll("#jhin-pierre-file-icon-sprite")).toHaveLength(1);
+  });
+
+  it("adds the sprite the icons draw from to the page once", () => {
+    document.getElementById("jhin-pierre-file-icon-sprite")?.remove();
+    render("a.ts", "file", "light");
+    render("b.kt", "file", "dark");
+    const sprites = document.querySelectorAll("#jhin-pierre-file-icon-sprite");
+    expect(sprites).toHaveLength(1);
+    // Pierre's symbols and T3's own, in that one sheet.
+    expect(sprites[0]!.querySelector("#file-tree-builtin-typescript")).not.toBeNull();
+    expect(sprites[0]!.querySelector("#t3-file-icon-kotlin")).not.toBeNull();
   });
 
   it("draws a folder with Lucide's icon, as T3 does", () => {
