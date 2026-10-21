@@ -206,10 +206,10 @@ const SNOOZED_EXPANDED_STORAGE_KEY = "jhin.sidebar.snoozed-expanded";
 const WORKING_EXPANDED_STORAGE_KEY = "jhin.sidebar.working-expanded";
 /** How long the jump modifiers are held before the rows show their numbers (T3's). */
 const JUMP_HINT_DELAY_MS = 200;
-/** How far a sweep moves before it is one (T3's SIDEBAR_DRAG_DISTANCE). */
+/** How far a sweep or a drag moves before it is one (T3's SIDEBAR_DRAG_DISTANCE). */
 const SWEEP_DISTANCE = 6;
 /** A row drags once the pointer moved this far (T3's SIDEBAR_DRAG_DISTANCE); one object, as useSensor memoizes on it. */
-const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: 6 } };
+const POINTER_SENSOR_OPTIONS = { activationConstraint: { distance: SWEEP_DISTANCE } };
 const PROJECT_SCOPE_STORAGE_KEY = "jhin.sidebar.project-scope";
 
 /**
@@ -1076,7 +1076,6 @@ export const sidebarPlugin = builtin(
         );
       }
 
-      /** Keeps a click on a row's button from opening, renaming or dragging the row. */
       // T3's sweep (D455): pressing a row's Settle, Un-settle or Wake button and dragging over the
       // rows of its section does the same to each of them on release.
       type SweepAction = "settle" | "unsettle" | "unsnooze";
@@ -1136,7 +1135,11 @@ export const sidebarPlugin = builtin(
         const done = sweep.get();
         cancelSweep();
         if (done === undefined || !done.active) return;
+        // The click that may follow this release on the button; none comes when it ended elsewhere.
         sweptClick = true;
+        setTimeout(() => {
+          sweptClick = false;
+        }, 0);
         const every = everyThread();
         void (async () => {
           for (const key of done.keys) {
@@ -1189,6 +1192,7 @@ export const sidebarPlugin = builtin(
         },
       });
 
+      /** Keeps a click on a row's button from opening, renaming or dragging the row. */
       const inRow = (action: () => void) => ({
         onClick: (event: { preventDefault(): void; stopPropagation(): void }) => {
           event.preventDefault();
