@@ -592,11 +592,17 @@ test("D454: a selection's Delete asks once, and Mark unread marks them all", asy
   await page.goto(`${x.ui}#token=${x.token}`);
   await expect(cardTitles(page)).toHaveText(["drop b", "drop a", "keep"]);
 
+  // Seen first: no "Done" on them; marked unread together, both say "Done" again.
+  for (const title of ["drop b", "drop a"]) await threadRow(page, title).click();
+  await threadRow(page, "keep").click();
+  for (const title of ["drop b", "drop a"])
+    await expect(threadRow(page, title).getByText("Done")).toHaveCount(0);
   await threadRow(page, "drop b").click({ modifiers: ["Control"] });
   await threadRow(page, "drop a").click({ modifiers: ["Control"] });
   await threadRow(page, "drop a").click({ button: "right" });
   await page.getByRole("menuitem", { name: "Mark unread (2)" }).click();
-  await expect(threadRow(page, "drop a")).not.toHaveAttribute("data-selected");
+  for (const title of ["drop b", "drop a"])
+    await expect(threadRow(page, title).getByText("Done")).toBeVisible();
 
   await threadRow(page, "drop b").click({ modifiers: ["Control"] });
   await threadRow(page, "drop a").click({ modifiers: ["Control"] });

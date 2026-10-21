@@ -613,18 +613,21 @@ export const sidebarPlugin = builtin(
       ) => {
         const entries = selected().filter(pick);
         selection.set({ keys: [] });
-        let failed = 0;
+        // What failed stays selected, as T3 keeps it, to try again.
+        const failed: string[] = [];
         let reason = "";
         for (const entry of entries) {
           try {
             await each(entry);
           } catch (error) {
-            failed += 1;
+            failed.push(entry.key);
             reason = (error as Error).message;
           }
         }
-        if (failed > 0)
-          toasts?.show({ type: "error", title: failure(failed), description: reason });
+        if (failed.length > 0) {
+          selection.set({ keys: failed });
+          toasts?.show({ type: "error", title: failure(failed.length), description: reason });
+        }
         return {};
       };
       const SelectionInput = z.object({});
