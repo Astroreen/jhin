@@ -19,6 +19,7 @@ import type {
   TurnRequest,
 } from "@jhin/agent-api";
 import { DEFAULT_RUNTIME_MODE, ThreadEvents, historyTranscript } from "@jhin/agent-api";
+import { MCP_SERVER_NAME } from "@jhin/mcp-api";
 import type {
   CanUseTool,
   Options,
@@ -111,7 +112,7 @@ export interface ClaudeTurnDependencies {
 }
 
 /** The name Claude Code knows the node's MCP server by; its tools are `mcp__jhin__<tool>`. */
-export const MCP_SERVER_NAME = "jhin";
+export { MCP_SERVER_NAME };
 
 /** The tools of the node's MCP server, approved without asking (T3's `mcp__t3-code__*`). */
 const MCP_TOOL_PREFIX = `mcp__${MCP_SERVER_NAME}__`;

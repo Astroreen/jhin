@@ -1,5 +1,25 @@
 export const MCP_SERVER_CAPABILITY = "mcp.server";
 
+/** The name a thread's agent knows the node's MCP server by (T3's `t3-code`). */
+export const MCP_SERVER_NAME = "jhin";
+
+/**
+ * What a thread's agent may do through the node's MCP server (D341), whichever agent runs
+ * it: Claude Code (D340) or Codex (D889).
+ */
+export const AGENT_PERMISSIONS: readonly string[] = [
+  "threads.read",
+  "threads.write",
+  "projects.read",
+  "projects.write",
+  "projects.browse",
+  "git.read",
+  "git.write",
+  "mesh.read",
+  "missions.read",
+  "missions.write",
+];
+
 /** Who a credential acts as, and for which thread's agent (docs/plans/providers.md, D340). */
 export interface McpGrant {
   /** The caller id its calls run as, e.g. `jhin.agent-claude:<threadId>`. */

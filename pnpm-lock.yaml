@@ -756,6 +756,9 @@ importers:
       '@jhin/agent-api':
         specifier: workspace:*
         version: link:../../packages/agent-api
+      '@jhin/mcp-api':
+        specifier: workspace:*
+        version: link:../../packages/mcp-api
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk

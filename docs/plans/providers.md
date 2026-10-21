@@ -651,6 +651,21 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   the first listed model that has some, so a newer model Codex does not
   list yet can be picked and given an effort.
 
+- **D889. Codex gets the node's own MCP server (W24).** As D340 gives it to
+  Claude Code and T3 gives Codex its own (`codexThreadRuntimeParams`):
+  `jhin.agent-codex` lists `mcp.server@^1` as optional, and each app-server
+  it starts for a thread gets a credential of its own (as
+  `jhin.agent-codex:<threadId>`, with D341's permissions), revoked when that
+  app-server ends. The server goes into `thread/start`'s and
+  `thread/resume`'s config as `mcp_servers.jhin` (`url`, `http_headers` with
+  the credential, a 65-minute `tool_timeout_sec`, T3's), so the token is in
+  neither Codex's argv nor its commands' environment. The developer
+  instructions say what the tools are for, before the turn's own. The
+  config's `mcp` (on by default) turns it off; it is part of the launch key,
+  so changing it starts a new app-server. D341's list and the server's name
+  move to `@jhin/mcp-api` (`AGENT_PERMISSIONS`, `MCP_SERVER_NAME`, additive;
+  the Claude plugin re-exports them), so both agents share one list.
+
 ### Deferred
 
 - Goals (`/goal`) and `/feedback` in the composer; reverting, forking and
@@ -659,8 +674,9 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   Codex asks while it goes on working: shown as the message's text today.
 - Subagent threads (`collabAgentToolCall`, `subAgentActivity`) and their
   transcripts; background terminals Codex keeps after a turn.
-- MCP elicitations, app access requests and MCP apps; attaching the node's
-  own MCP server to Codex (as for Claude, W9).
+- MCP elicitations, app access requests and MCP apps; approving the node's
+  read-only tools without asking, as Claude's are (D340): Codex decides on
+  its MCP tools itself.
 - Usage limits and rate-limit windows (`account/rateLimits/*`) and T3's
   usage-limit wording with the reset time.
 - ChatGPT sign-in from Jhin, several Codex accounts per node and shadow

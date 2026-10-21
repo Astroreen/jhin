@@ -16,6 +16,7 @@ import {
 } from "@jhin/agent-api";
 
 import {
+  JHIN_MCP_INSTRUCTIONS,
   THREAD_CONFIG,
   approvalDecision,
   fileChangePrompt,
@@ -72,6 +73,11 @@ export interface CodexTurnDependencies {
   readonly settings: CodexSettings;
   /** The turn's model; a promise while it is still being asked for (`status()`). */
   readonly model: string | Promise<string>;
+  /** Gives a new app-server the node's MCP server (D889); absent when it gets none. */
+  readonly mcp?: (threadId: string) => {
+    readonly servers: Record<string, unknown>;
+    dispose(): void;
+  };
   /** What a turn can choose for `model`, as `model/list` described it (D881). */
   readonly modelOptions?: (model: string) => readonly ModelOptionDescriptor[] | undefined;
   /** Sent in `initialize`. */
@@ -713,7 +719,13 @@ export function codexTurn(
   const ensureThread = async (current: Lease, recorded: string | undefined) => {
     const connection = current.session.connection;
     if (current.session.codexThreadId !== undefined) return;
-    const params = { cwd: request.cwd, model, config: THREAD_CONFIG };
+    const mcpServers = current.session.mcpServers;
+    const params = {
+      cwd: request.cwd,
+      model,
+      config:
+        mcpServers === undefined ? THREAD_CONFIG : { ...THREAD_CONFIG, mcp_servers: mcpServers },
+    };
     if (recorded !== undefined) {
       const resume = () =>
         connection.request("thread/resume", { threadId: recorded, excludeTurns: true, ...params });
@@ -753,6 +765,14 @@ export function codexTurn(
 
   /** The turn's model, once known. */
   let model = "";
+  /** What Codex is told besides the conversation: the Jhin tools when it has them (D889). */
+  const developerInstructions = () => {
+    const parts = [
+      ...(lease?.session.mcpServers === undefined ? [] : [JHIN_MCP_INSTRUCTIONS.trim()]),
+      ...(request.instructions === undefined ? [] : [request.instructions]),
+    ];
+    return parts.length === 0 ? {} : { instructions: parts.join("\n\n") };
+  };
 
   const run = async () => {
     model = await deps.model;
@@ -773,6 +793,8 @@ export function codexTurn(
         env: deps.settings.env ?? {},
         inheritEnv: deps.settings.inheritEnv ?? ["*"],
         home: deps.home,
+        // Turning the node's MCP server on or off starts a new app-server.
+        mcp: deps.mcp !== undefined,
       }),
     });
     const current = await untilEnded(leasing).catch((error: unknown) => {
@@ -790,6 +812,15 @@ export function codexTurn(
       throw error;
     });
     lease = current;
+    if (current.started && deps.mcp !== undefined) {
+      // A credential for this app-server alone, revoked once it ends.
+      const attachment = deps.mcp(request.threadId);
+      current.session.mcpServers = attachment.servers;
+      void current.session.connection.exited.then(
+        () => attachment.dispose(),
+        () => attachment.dispose(),
+      );
+    }
     let keep = false;
     try {
       current.hold({
@@ -857,7 +888,7 @@ export function codexTurn(
                 request.modelOptions,
                 deps.settings.effort,
               ),
-              ...(request.instructions === undefined ? {} : { instructions: request.instructions }),
+              ...developerInstructions(),
             }),
           ),
         )) as { turn?: { id?: unknown } } | null;

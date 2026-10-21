@@ -383,6 +383,11 @@ export function retryProgress(message: string): string | undefined {
   return attempt < 1 || maxAttempts < 1 ? undefined : `${attempt}/${maxAttempts}`;
 }
 
+/** What Codex is told about the node's MCP server (as Claude's appended prompt, D889). */
+export const JHIN_MCP_INSTRUCTIONS = `## Jhin tools
+
+The \`jhin\` MCP server exposes this Jhin node's commands as tools: a command \`threads.send\` is the tool \`threads_send\`. Use them when the user asks you to work with Jhin itself: list and read projects and threads (\`projects_list\`, \`threads_list\`, \`threads_get\`, \`threads_events\`), start a thread in a project (\`threads_create\`) and send it a message (\`threads_send\`). Calls act for the current thread and only reach what this thread's agent may do. Threads you start are ordinary top-level threads the user sees in the sidebar: start one only when the user asks for a separate thread.`;
+
 /** T3's COMPACT_SLASH_COMMAND, which Codex runs as `thread/compact/start` (D884). */
 export const COMPACT_COMMAND: AgentSlashCommand = {
   name: "compact",

@@ -12,7 +12,7 @@ import {
   type AgentSlashCommand,
   type AgentTurn,
 } from "@jhin/agent-api";
-import { MCP_SERVER_CAPABILITY, type McpServer } from "@jhin/mcp-api";
+import { AGENT_PERMISSIONS, MCP_SERVER_CAPABILITY, type McpServer } from "@jhin/mcp-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
@@ -74,19 +74,8 @@ const UNAVAILABLE_TTL_MS = 10_000;
 /** A probe that takes longer reports Claude Code as unavailable. */
 const PROBE_TIMEOUT_MS = 25_000;
 
-/** What a thread's Claude Code may do through the node's MCP server (D341). */
-export const AGENT_PERMISSIONS: readonly string[] = [
-  "threads.read",
-  "threads.write",
-  "projects.read",
-  "projects.write",
-  "projects.browse",
-  "git.read",
-  "git.write",
-  "mesh.read",
-  "missions.read",
-  "missions.write",
-];
+/** What a thread's Claude Code may do through the node's MCP server (D341): `@jhin/mcp-api`'s. */
+export { AGENT_PERMISSIONS };
 
 /** A permission that only reads: `threads.read`, `projects.browse`. */
 const readsOnly = (permission: string) =>

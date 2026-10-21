@@ -41,6 +41,11 @@ interface Session {
   model: string | undefined;
   /** A message of the thread reached `codexThreadId` (its turn/start answered). */
   delivered: boolean;
+  /**
+   * The node's MCP server for this app-server (D889): `thread/start`'s and `thread/resume`'s
+   * `mcp_servers`, with a credential revoked when the app-server ends.
+   */
+  mcpServers?: Readonly<Record<string, unknown>>;
 }
 
 export interface Lease {
