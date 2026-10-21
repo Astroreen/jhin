@@ -1464,6 +1464,9 @@ describe("checkpoints in the client", () => {
     await userEvent.click(page.getByRole("button", { name: /^lib/ }), { button: "right" });
     await act(async () => undefined);
     expect(document.querySelector('[role="menu"]')).toBeNull();
+    // The same steps on the file do open it: the check above waited long enough.
+    await userEvent.click(file, { button: "right" });
+    await expect.element(page.getByRole("menuitem", { name: "Reveal in Finder" })).toBeVisible();
   });
 
   it("offers no file menu for a file outside the project's folder, nor without editors (D905)", async () => {

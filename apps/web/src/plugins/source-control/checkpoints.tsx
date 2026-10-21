@@ -330,13 +330,62 @@ export function createChangedFilesFooter(
   open: (target: NodeTarget, threadId: string) => void,
 ) {
   const { selections, threads } = services;
-  return function ChangedFilesFooter({ target, thread, turnId, state }: ChatTurnFooterProps) {
-    const checkpoints = useThreadCheckpoints(services, target, thread.id);
+
+  /** The card with its file menu: mounted only for a turn that has one, so other turns read nothing more. */
+  function Card(props: {
+    target: NodeTarget;
+    thread: ChatTurnFooterProps["thread"];
+    checkpoint: TurnCheckpoint;
+    onOpen(filePath?: string): void;
+  }) {
+    const { target, thread, checkpoint, onOpen } = props;
     const view = useSourceControl(services.store, target);
     const catalog = useCatalog(threads, target);
     const editors = services.editors.useEditors(target);
     const revealKind = services.editors.useRevealKind(target);
+    // The file whose row was right-clicked: set before the menu opens (D905).
     const [menuPath, setMenuPath] = useState<string | null>(null);
+    return (
+      <ChangedFilesCard
+        checkpoint={checkpoint}
+        menu={{
+          // The same menu as the diff panel's file names (D922): "Reveal in …", "Open with".
+          onMenu: (filePath) => {
+            const path = resolveDiffPathForWorkspace({
+              filePath,
+              workspaceRoot: catalog?.projects.find((item) => item.id === thread.projectId)?.path,
+              repositoryRoot: view.projects.get(thread.projectId)?.root,
+            });
+            if (path === null || editors.length === 0) return false;
+            setMenuPath(path);
+            return true;
+          },
+          popup: (
+            <FileContextMenuPopup
+              editors={editors}
+              onOpen={(editor) => {
+                if (menuPath !== null) {
+                  void services.editors.open(target, thread.projectId, menuPath, editor);
+                }
+              }}
+              onReveal={(fileManager) => {
+                if (menuPath !== null) {
+                  void services.editors.open(target, thread.projectId, menuPath, fileManager, {
+                    reveal: true,
+                  });
+                }
+              }}
+              revealKind={revealKind}
+            />
+          ),
+        }}
+        onOpen={onOpen}
+      />
+    );
+  }
+
+  return function ChangedFilesFooter({ target, thread, turnId, state }: ChatTurnFooterProps) {
+    const checkpoints = useThreadCheckpoints(services, target, thread.id);
     if (state === "running") return null;
     const checkpoint = checkpoints?.find((item) => item.turnId === turnId);
     if (checkpoint === undefined || checkpoint.status !== "ready" || checkpoint.fileCount === 0) {
@@ -344,39 +393,8 @@ export function createChangedFilesFooter(
     }
     return (
       <div className="pb-4">
-        <ChangedFilesCard
+        <Card
           checkpoint={checkpoint}
-          menu={{
-            // The same menu as the diff panel's file names (D922): "Reveal in …", "Open with".
-            onMenu: (filePath) => {
-              const path = resolveDiffPathForWorkspace({
-                filePath,
-                workspaceRoot: catalog?.projects.find((item) => item.id === thread.projectId)?.path,
-                repositoryRoot: view.projects.get(thread.projectId)?.root,
-              });
-              if (path === null || editors.length === 0) return false;
-              setMenuPath(path);
-              return true;
-            },
-            popup: (
-              <FileContextMenuPopup
-                editors={editors}
-                onOpen={(editor) => {
-                  if (menuPath !== null) {
-                    void services.editors.open(target, thread.projectId, menuPath, editor);
-                  }
-                }}
-                onReveal={(fileManager) => {
-                  if (menuPath !== null) {
-                    void services.editors.open(target, thread.projectId, menuPath, fileManager, {
-                      reveal: true,
-                    });
-                  }
-                }}
-                revealKind={revealKind}
-              />
-            ),
-          }}
           onOpen={(filePath) => {
             const key = selectionKey({
               target,
@@ -394,6 +412,8 @@ export function createChangedFilesFooter(
             });
             open(target, thread.id);
           }}
+          target={target}
+          thread={thread}
         />
       </div>
     );
