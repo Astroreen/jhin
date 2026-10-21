@@ -61,6 +61,15 @@ function PreviousWorktreeItemContent({ branch }: { branch: string | null }) {
   );
 }
 
+/** "Previous worktree": the draft's thread will work in that worktree (the menu and D907). */
+function choosePrevious(
+  drafts: DraftWorkspaces,
+  key: string,
+  previous: NonNullable<DraftWorkspace["previous"]>,
+) {
+  drafts.set(key, { mode: "previous", startFromOrigin: false, previous });
+}
+
 /**
  * T3's workspace menu in the branch toolbar (D253): where a draft's thread will
  * work. A thread already started shows where it works, fixed.
@@ -81,7 +90,42 @@ export function WorkspaceSelector(props: {
   const [open, setOpen] = useState(false);
   // A draft's menu answers T3's `composer.workspace` shortcut; a started thread's is fixed.
   const offers = thread === undefined;
-  useEffect(() => (offers ? drafts.offerMenu(() => setOpen(true)) : undefined), [drafts, offers]);
+  useEffect(
+    () =>
+      offers
+        ? drafts.offer("workspace", () => {
+            setOpen(true);
+            return true;
+          })
+        : undefined,
+    [drafts, offers],
+  );
+  const previous = previousWorktree(
+    props.threads,
+    project.id,
+    (threadId) => view.threads.get(threadId)?.branch,
+  );
+  // T3's composer.previousWorktree (D907): the draft takes the previous worktree and the
+  // composer gets the focus back.
+  const previousPath = previous?.path;
+  const previousBranch = previous?.branch ?? null;
+  useEffect(
+    () =>
+      offers && previousPath !== undefined
+        ? drafts.offer("previous-worktree", () => {
+            choosePrevious(drafts, key, { path: previousPath, branch: previousBranch });
+            void props.services.context.commands
+              .execute("chat.composer.focus", {})
+              .catch((error: unknown) =>
+                props.services.context.log.warn("could not focus the composer", {
+                  error: String(error),
+                }),
+              );
+            return true;
+          })
+        : undefined,
+    [drafts, key, offers, previousBranch, previousPath, props.services.context],
+  );
   if (thread !== undefined) {
     const label = lockedWorkspaceLabel(thread.worktreePath);
     return (
@@ -107,11 +151,6 @@ export function WorkspaceSelector(props: {
       </Tooltip>
     );
   }
-  const previous = previousWorktree(
-    props.threads,
-    project.id,
-    (threadId) => view.threads.get(threadId)?.branch,
-  );
   const label =
     draft.mode === "worktree"
       ? "New worktree"
@@ -126,7 +165,7 @@ export function WorkspaceSelector(props: {
         ...(status.branch === null ? {} : { baseRef: draft.baseRef ?? status.branch }),
       });
     } else if (value === "previous" && previous !== undefined) {
-      drafts.set(key, { mode: "previous", startFromOrigin: false, previous });
+      choosePrevious(drafts, key, previous);
     } else drafts.set(key, LOCAL);
   };
   return (

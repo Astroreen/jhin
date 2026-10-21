@@ -62,6 +62,11 @@ test("D250–D255: a draft starts its thread in a new worktree; deleting the thr
   await shot(page, info, "workspace-menu-shortcut");
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menuitemradio", { name: "New worktree" })).toBeHidden();
+  // And composer.branch opens the branch picker (D907).
+  await page.keyboard.press("ControlOrMeta+Shift+G");
+  await expect(page.getByRole("combobox", { name: "Search refs" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("combobox", { name: "Search refs" })).toBeHidden();
   await workspace.click();
   await page.getByRole("menuitemradio", { name: "New worktree" }).click();
   await expect(workspace).toHaveText(/New worktree/);
@@ -106,6 +111,17 @@ test("D250–D255: a draft starts its thread in a new worktree; deleting the thr
   expect(Fs.existsSync(Path.join(path, "later.txt"))).toBe(false);
   expect(Fs.readFileSync(Path.join(path, "notes.txt"), "utf8")).toBe("in a worktree\n");
   await message.fill("");
+
+  // A new draft of the project takes that worktree with composer.previous-worktree (D907).
+  await page.getByRole("button", { name: "Command palette", exact: true }).click();
+  await palette.getByRole("option", { name: "New thread in...", exact: true }).click();
+  await palette.getByRole("option", { name: /^acme/ }).click();
+  await expect(palette).toBeHidden();
+  await expect(page.getByRole("button", { name: "Workspace" })).toHaveText(/Current checkout/);
+  await page.keyboard.press("ControlOrMeta+Shift+L");
+  await expect(page.getByRole("button", { name: "Workspace" })).toHaveText(/Previous worktree/);
+  await shot(page, info, "workspace-previous-worktree-shortcut");
+  await card.click();
 
   // Deleting the thread: T3 asks about the worktree only it used.
   await card.click({ button: "right" });

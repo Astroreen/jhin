@@ -40,29 +40,38 @@ export interface DraftWorkspaces {
   get(key: string): DraftWorkspace;
   set(key: string, workspace: DraftWorkspace): void;
   subscribe(listener: () => void): () => void;
-  /** The workspace menu on screen offers to be opened by T3's `composer.workspace` (D906). */
-  offerMenu(open: () => void): () => void;
-  /** Opens the workspace menu on screen; false when there is none (no draft shown). */
-  openMenu(): boolean;
+  /**
+   * A control of the branch toolbar on screen offers itself to T3's composer
+   * shortcuts (D906, D907): `run` answers whether it did something.
+   */
+  offer(control: ToolbarControl, run: () => boolean): () => void;
+  /** Runs the control on screen; false when there is none, or it could not. */
+  run(control: ToolbarControl): boolean;
 }
+
+/** `composer.workspace`, `composer.branch` and `composer.previous-worktree`. */
+type ToolbarControl = "workspace" | "branch" | "previous-worktree";
 
 export function createDraftWorkspaces(): DraftWorkspaces {
   const drafts = new Map<string, DraftWorkspace>();
   const listeners = new Set<() => void>();
-  // The last menu shown is the one opened.
-  const menus: (() => void)[] = [];
+  // The last control shown of each kind that can run is the one run.
+  const controls: { control: ToolbarControl; run: () => boolean }[] = [];
   return {
-    offerMenu(open) {
-      menus.push(open);
+    offer(control, run) {
+      const entry = { control, run };
+      controls.push(entry);
       return () => {
-        const index = menus.lastIndexOf(open);
-        if (index !== -1) menus.splice(index, 1);
+        const index = controls.lastIndexOf(entry);
+        if (index !== -1) controls.splice(index, 1);
       };
     },
-    openMenu() {
-      const open = menus.at(-1);
-      open?.();
-      return open !== undefined;
+    run(control) {
+      // Newest first; one that cannot (a toolbar showing nothing) leaves it to the next.
+      for (const entry of controls.toReversed()) {
+        if (entry.control === control && entry.run()) return true;
+      }
+      return false;
     },
     get: (key) => drafts.get(key) ?? LOCAL,
     set(key, workspace) {

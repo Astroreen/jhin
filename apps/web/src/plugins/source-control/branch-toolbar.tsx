@@ -21,7 +21,7 @@ import {
   TooltipTrigger,
 } from "@jhin/ui";
 import { ChevronDownIcon, GitBranchIcon, RefreshCwIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { ComposerControl } from "../../lib/composer-control.tsx";
 import { useCatalog } from "../../lib/hooks.ts";
@@ -79,25 +79,52 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
     const originSwitch = useId();
     const key = draftKey(target, project?.id ?? "");
     const draft = useDraftWorkspace(drafts, key);
-    if (project === undefined || project.scratch) return null;
-    const projectStatus = view.projects.get(project.id);
-    const status = statusOfThread(view, project.id, thread) ?? projectStatus;
-    if (projectStatus === undefined || !projectStatus.isRepo || status === undefined) return null;
+    const projectId = project !== undefined && !project.scratch ? project.id : undefined;
+    const projectStatus = projectId === undefined ? undefined : view.projects.get(projectId);
+    const status =
+      projectId === undefined
+        ? undefined
+        : (statusOfThread(view, projectId, thread) ?? projectStatus);
+    // The toolbar renders its picker for a project's repository with a status.
+    const shown = projectStatus?.isRepo === true && status !== undefined;
+    const threadDir = thread?.worktreePath === undefined ? undefined : thread.id;
+    /** The refs the picker lists (`git.branches`), read when it opens however it opens. */
+    const load = () => {
+      if (projectId === undefined) return;
+      void threads
+        .call<{ branches: Branch[] }>(target, "git.branches", {
+          projectId,
+          ...(threadDir === undefined ? {} : { threadId: threadDir }),
+        })
+        .then((answer) => setBranches(answer.branches))
+        .catch(() => setBranches([]));
+    };
+    const loadRef = useRef(load);
+    useEffect(() => {
+      loadRef.current = load;
+    });
+    // T3's composer.branch (D907): the picker opens as a click opens it, a draft's or a
+    // thread's; offered only while the toolbar renders it.
+    useEffect(
+      () =>
+        shown
+          ? drafts.offer("branch", () => {
+              setOpen(true);
+              loadRef.current();
+              return true;
+            })
+          : undefined,
+      [shown],
+    );
+    if (project === undefined || projectStatus === undefined || !shown || status === undefined) {
+      return null;
+    }
     // A draft for a new worktree picks the worktree's base, not a checkout (D253).
     const choosingBase = thread === undefined && draft.mode === "worktree";
     const branch = choosingBase
       ? (draft.baseRef ?? status.branch)
       : (pending ?? branchOf(view, status, thread?.id));
     const pr = branch === null || choosingBase ? undefined : projectStatus.pullRequests[branch];
-
-    const load = () =>
-      void threads
-        .call<{ branches: Branch[] }>(target, "git.branches", {
-          projectId: project.id,
-          ...(thread?.worktreePath === undefined ? {} : { threadId: thread.id }),
-        })
-        .then((answer) => setBranches(answer.branches))
-        .catch(() => setBranches([]));
 
     const select = (item: RefItem) => {
       setOpen(false);

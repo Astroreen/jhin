@@ -730,6 +730,19 @@ with screenshots).
   `mod+shift+x` (`!terminalFocus`), overridable like every keybinding. A
   started thread's fixed label has no menu and does not answer it.
 
+- **D907. T3's `composer.branch` and `composer.previousWorktree`
+  shortcuts**: `composer.branch` (`{ opened }`, default `mod+shift+g`) opens
+  the branch picker under the composer of a draft or a thread, reading its
+  refs as a click does; `composer.previous-worktree` (T3's
+  `composer.previousWorktree`, as Jhin's command names are lowercase dotted
+  ids; `{ used }`, default
+  `mod+shift+l`) has the draft on screen start its thread in the project's
+  previous worktree (D253's "Previous worktree") and gives the composer the
+  focus back (`chat.composer.focus`), as T3's `usePreviousWorktree` does; it
+  answers false for a started thread or a project without one. Both are
+  `!terminalFocus`. The toolbar's controls offer themselves to the shortcuts
+  while they are on screen (`DraftWorkspaces.offer`, a disposable).
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -1069,8 +1082,7 @@ with the node's token, and without one).
   branch naming settings (semantic, a custom prefix, custom instructions,
   and with them a way to turn the rename off), the cleanup rules
   (keep when, after days, on merge, on delete without asking), submodules,
-  one worktree per model of a multi-model send, T3's `composer.branch` and
-  `composer.previousWorktree` shortcuts, MCP tools that act as the calling thread (T3's `t3_worktree_status`;
+  one worktree per model of a multi-model send, MCP tools that act as the calling thread (T3's `t3_worktree_status`;
   `git.worktree.handoff` takes a `threadId`), a handoff's continuation
   prompt (W1's queue), deleting a removed worktree's branch from the client's
   question (T3 keeps it too; `git.worktree.remove` takes `deleteBranch`), the
