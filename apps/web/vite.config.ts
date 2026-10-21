@@ -20,6 +20,8 @@ export default defineConfig({
     proxy: {
       "/rpc": { target: node, ws: true },
       "/client/": { target: node },
+      // Pairing and the page's session cookie (security.md D421).
+      "/auth/": { target: node },
     },
   },
   build: {

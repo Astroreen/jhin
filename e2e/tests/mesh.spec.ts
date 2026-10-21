@@ -123,7 +123,7 @@ test("D47: a client connected to a creates a thread on c, two hops away, and get
   const other = await start({ mode: "serve" });
   await page.getByRole("button", { name: "Add node" }).click();
   await page.getByRole("textbox", { name: "Node URL" }).fill(other.rpc);
-  await page.getByRole("textbox", { name: "Token" }).fill(other.token);
+  await page.getByRole("textbox", { name: "Pairing code or token" }).fill(other.token);
   await page.getByRole("button", { name: "Connect" }).click();
   await expectOpenConnections(page, 2);
   await newThreadOn(page, "c");
@@ -191,7 +191,7 @@ test("D47: one client shows two independent nodes at once", async ({ page }, inf
   await expect(page.getByRole("form", { name: "Connect a node" })).toHaveCount(0);
   await page.getByRole("button", { name: "Add node" }).click();
   await page.getByRole("textbox", { name: "Node URL" }).fill(y.rpc);
-  await page.getByRole("textbox", { name: "Token" }).fill(y.token);
+  await page.getByRole("textbox", { name: "Pairing code or token" }).fill(y.token);
   await page.getByRole("button", { name: "Connect" }).click();
 
   await expectOpenConnections(page, 2);
@@ -216,7 +216,7 @@ test("the node config editor asks before another node's config replaces unsaved 
   await page.goto(`${x.ui}#token=${x.token}`);
   await page.getByRole("button", { name: "Add node" }).click();
   await page.getByRole("textbox", { name: "Node URL" }).fill(y.rpc);
-  await page.getByRole("textbox", { name: "Token" }).fill(y.token);
+  await page.getByRole("textbox", { name: "Pairing code or token" }).fill(y.token);
   await page.getByRole("button", { name: "Connect" }).click();
   await expectOpenConnections(page, 2);
 

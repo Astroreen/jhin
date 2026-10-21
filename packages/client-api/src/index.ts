@@ -40,6 +40,16 @@ export interface Connections {
   remove(id: string): void;
   /** Gives a connection another label on this device (1.1). */
   rename?(id: string, label: string): void;
+  /**
+   * Since 1.2: pairs with the node at `url` by a one-time pairing code and
+   * remembers it with the device token it gives (security.md D420).
+   */
+  pair?(node: { url: string; code: string; label?: string }): Promise<NodeConnection>;
+  /**
+   * Since 1.2: why the token or pairing code this page was opened with
+   * (`#token=`) was refused by its node, if it was (D422).
+   */
+  refusedCredential?(): string | undefined;
   /** Fires when the list or any connection state changes. */
   subscribe(listener: () => void): Disposable;
 }

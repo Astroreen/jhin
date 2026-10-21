@@ -242,7 +242,7 @@ test("jhin client serves only the web client and connects to a remote node", asy
     await page.goto(node.ui);
 
     await page.getByRole("textbox", { name: "Node URL" }).fill(remote.rpc);
-    await page.getByRole("textbox", { name: "Token" }).fill(remote.token);
+    await page.getByRole("textbox", { name: "Pairing code or token" }).fill(remote.token);
     await page.getByRole("button", { name: "Connect" }).click();
     await page.getByRole("button", { name: "Start a thread" }).click();
     await page.getByRole("textbox", { name: "Message" }).fill("from the client");

@@ -236,6 +236,8 @@ and engineering practices.
 - Notifications: providers as plugins (UnifiedPush/ntfy, blind relay for
   APNs/FCM, Web Push, Telegram, Electron native).
 - QR pairing with one-time codes and device tokens (replaces `auth.token`).
+  Done in `security.md` (D411, D419–D424); the owner token stays for the
+  CLI.
 - Discovery plugins: mDNS, Tailscale.
 - Hiding selected nodes on a specific client.
 - History sync into on-device storage (IndexedDB, SQLite in Electron/mobile).
@@ -263,9 +265,9 @@ and engineering practices.
   `jhin client` and other nodes' pages keep working (D21); the page's own
   session cookie (D421) is only ever accepted from the node's own or a
   listed origin.
-- Keeping node tokens somewhere safer than `localStorage` in the web client:
-  any script on the client's origin (including user client plugins) can read
-  them today.
+- Keeping node tokens somewhere safer than `localStorage` in the web client.
+  Done in `security.md` (D421, D423): the page's own node is reached through
+  an httpOnly cookie, other nodes' tokens are in IndexedDB.
 - Runtime client plugins under `vp dev` need a `jhin serve --ui` node behind
   `JHIN_NODE_URL`: a headless `jhin serve` does not serve `/client/*`.
 - Unloading a removed client plugin's modules: the browser keeps imported ES

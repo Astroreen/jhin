@@ -59,6 +59,7 @@ import { DraftView, ThreadView } from "./thread-view.tsx";
 import { registerHistory } from "./history.tsx";
 import { implementPlan } from "./plan-follow-up.ts";
 import { createUnconfirmed } from "./unconfirmed.ts";
+import { looksLikePairingCode, parsePairingUrl, rpcUrl } from "../../lib/session.ts";
 
 /** The page header of a view without a thread. */
 function PageHeader({ title }: { title: string }) {
@@ -77,7 +78,11 @@ function Connect({ cancellable }: { cancellable: boolean }) {
     `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/rpc`,
   );
   const [token, setToken] = useState("");
-  const [error, setError] = useState<string | undefined>();
+  const [typedError, setError] = useState<string | undefined>();
+  // The page's own credential is checked in the background; its refusal shows when it comes.
+  const refused = useExternal(connections, () => connections.refusedCredential?.());
+  const error = typedError ?? refused;
+  const [pairing, setPairing] = useState(false);
   const close = () => {
     const { panel: _panel, ...rest } = navigation.current();
     navigation.navigate(rest);
@@ -91,23 +96,49 @@ function Connect({ cancellable }: { cancellable: boolean }) {
           className="flex w-full max-w-sm flex-col gap-3 rounded-2xl border border-border/60 bg-card/40 p-6 shadow-xs/5"
           onSubmit={(event) => {
             event.preventDefault();
-            try {
-              connections.add({ url, token });
-              setError(undefined);
-              close();
-            } catch (failure) {
+            const report = (failure: unknown) =>
               setError(
                 failure instanceof z.ZodError
                   ? failure.issues.map((issue) => issue.message).join("; ")
-                  : String(failure),
+                  : failure instanceof Error
+                    ? failure.message
+                    : String(failure),
               );
+            // A pairing link names its node; a pairing code pairs with the node above (D424).
+            const link = parsePairingUrl(url) ?? parsePairingUrl(token);
+            // A pairing link carries its own code: a typed one beside it is not dropped silently.
+            if (parsePairingUrl(url) !== undefined && token.trim() !== "") {
+              setError("The pairing link has its own code: clear the code or token field.");
+              return;
+            }
+            const target =
+              link?.url ??
+              (URL.canParse(url) && /^https?:$/.test(new URL(url).protocol) ? rpcUrl(url) : url);
+            const code = link?.code ?? (looksLikePairingCode(token) ? token : undefined);
+            if (code !== undefined && connections.pair !== undefined) {
+              setPairing(true);
+              connections
+                .pair({ url: target, code })
+                .then(() => {
+                  setError(undefined);
+                  close();
+                }, report)
+                .finally(() => setPairing(false));
+              return;
+            }
+            try {
+              connections.add({ url: target, token });
+              setError(undefined);
+              close();
+            } catch (failure) {
+              report(failure);
             }
           }}
         >
           <h1 className="text-lg font-semibold">Connect a node</h1>
           <p className="text-sm text-muted-foreground">
-            The token is printed by <code>jhin serve</code> on first start, or by{" "}
-            <code>jhin auth.token.show</code>.
+            Paste a pairing link, or a pairing code from <code>jhin pair</code> or the node&apos;s
+            Authorized clients settings. A token printed by <code>jhin serve</code> works too.
           </p>
           <Input
             aria-label="Node URL"
@@ -115,9 +146,10 @@ function Connect({ cancellable }: { cancellable: boolean }) {
             value={url}
           />
           <Input
-            aria-label="Token"
+            aria-label="Pairing code or token"
+            autoComplete="off"
             onChange={(event) => setToken(event.target.value)}
-            placeholder="Token"
+            placeholder="PAIRCODE"
             type="password"
             value={token}
           />
@@ -126,8 +158,11 @@ function Connect({ cancellable }: { cancellable: boolean }) {
               {error}
             </p>
           )}
-          <Button disabled={token === ""} type="submit">
-            Connect
+          <Button
+            disabled={pairing || (token === "" && parsePairingUrl(url) === undefined)}
+            type="submit"
+          >
+            {pairing ? "Pairing…" : "Connect"}
           </Button>
           {cancellable ? (
             <Button onClick={close} type="button" variant="outline">

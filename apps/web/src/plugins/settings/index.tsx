@@ -33,6 +33,7 @@ import {
 import {
   ArchiveIcon,
   ArrowLeftIcon,
+  KeyRoundIcon,
   KeyboardIcon,
   PaletteIcon,
   ServerIcon,
@@ -78,6 +79,7 @@ const KeybindingsSection = lazySection(() =>
   import("./keybindings.tsx").then((m) => m.KeybindingsSection),
 );
 const NodesSection = lazySection(() => import("./nodes.tsx").then((m) => m.NodesSection));
+const ClientsSection = lazySection(() => import("./clients.tsx").then((m) => m.ClientsSection));
 const NodeConfigSection = lazySection(() =>
   import("./node-config.tsx").then((m) => m.NodeConfigSection),
 );
@@ -200,6 +202,13 @@ export const settingsPlugin = builtin(
           component: KeybindingsSection,
         },
         { id: "nodes", label: "Nodes", icon: ServerIcon, order: 40, component: NodesSection },
+        {
+          id: "authorized-clients",
+          label: "Authorized clients",
+          icon: KeyRoundIcon,
+          order: 45,
+          component: ClientsSection,
+        },
         {
           id: "node-config",
           label: "Node config",
