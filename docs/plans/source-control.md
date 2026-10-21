@@ -419,7 +419,8 @@ with screenshots).
   pnpm's `patchedDependencies`; the web client is bundled at build, so the
   patch ships in the client) adds a find panel to Pierre's code view.
   ⌘/Ctrl F in the diff opens it ("Search", "N results", "1 of N", "No
-  results"), Enter and ⇧Enter (and ⌘/Ctrl G) move between matches, Escape
+  results"; typing moves to the first match), Enter and ⇧Enter (and ⌘/Ctrl
+  G) move between matches, Escape
   closes it. Matches are found in every file of the diff, folded or not;
   moving to one in a folded file unfolds it (`onRevealSearchMatch`), never
   folding a file. The patch also adds the package exports T3 imports

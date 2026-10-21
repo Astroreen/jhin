@@ -471,16 +471,29 @@ describe("the diff panel", () => {
     const mounted = mount(<Panel />);
     await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
     // The view takes the keys once it has focus, as a click in it gives it.
-    const view = panel().element().querySelector<HTMLElement>('div[tabindex="-1"]')!;
+    const view = panel().element().querySelector<HTMLElement>(".diff-render-surface")!;
     act(() => view.focus());
     await userEvent.keyboard("{ControlOrMeta>}f{/ControlOrMeta}");
     const search = page.getByPlaceholder("Search");
     await expect.element(search).toBeVisible();
-    await userEvent.type(search, "two = 3");
-    await userEvent.keyboard("{Enter}");
-    // The match's file was folded: moving to it unfolds it.
+    // "const" is on three lines of the folded src/app.ts; typing moves to the first,
+    // and that unfolds its file.
+    await userEvent.type(search, "const");
     await expect.element(page.getByRole("button", { name: "Collapse src/app.ts" })).toBeVisible();
-    await expect.element(page.getByText("1 of 1")).toBeVisible();
+    await expect.element(page.getByText("1 of 3")).toBeVisible();
+    await userEvent.keyboard("{Enter}");
+    await expect.element(page.getByText("2 of 3")).toBeVisible();
+    await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+    await expect.element(page.getByText("1 of 3")).toBeVisible();
+    await userEvent.keyboard("{ControlOrMeta>}g{/ControlOrMeta}");
+    await expect.element(page.getByText("2 of 3")).toBeVisible();
+    // Moving within the unfolded file never folds it.
+    expect(page.getByRole("button", { name: "Collapse src/app.ts" }).query()).not.toBeNull();
+    await userEvent.clear(search);
+    await userEvent.type(search, "nowhere in the diff");
+    await expect.element(page.getByText("No results")).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(search).not.toBeInTheDocument();
     mounted.unmount();
   });
 

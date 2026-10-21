@@ -19,7 +19,8 @@ its file tree, base ref picker, turn scopes and comments on lines (T3's
 `DiffCommentAnnotation.tsx`), T3's file icons (`apps/web/src/lib/pierre-icons.ts`,
 `pierre-entry-icon.tsx`; their sprite keeps T3's Lucide (ISC) and Simple
 Icons (CC0) symbols with those notes), find in the diff (T3's patch of
-`@pierre/diffs`, `patches/@pierre%2Fdiffs@1.5.2.patch`), a turn's changed files card, the
+`@pierre/diffs` at T3's commit `eb7b35ac`, `patches/@pierre%2Fdiffs@1.5.2.patch`), a
+turn's changed files card, the
 workspace selector, the worktree icon and clean-up, the "Checkout pull request"
 dialog, the forges' icons, the terminal drawer, its
 links, selection menu and right-panel placement, tabs and splits and the terminal indicator of a thread's card, node machine
