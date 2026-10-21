@@ -111,7 +111,10 @@ async function ensureRemote(git: Git, name: string, url: string): Promise<string
 async function headRemote(git: Git, target: CheckoutTarget): Promise<string> {
   if (!target.crossRepository) return primaryRemote(git, target.pr.url);
   if (target.headRepository === undefined) {
-    throw new SourceControlError("PULL_REQUEST_FAILED", "The fork of this pull request is gone.");
+    throw new SourceControlError(
+      "PULL_REQUEST_FAILED",
+      "The fork this pull request comes from could not be found.",
+    );
   }
   const name = target.headOwner ?? target.headRepository.split("/")[0] ?? "fork";
   return ensureRemote(git, name, await forkUrl(git, target));
@@ -216,18 +219,25 @@ export async function checkoutLocal(
       "Commit or stash the changes in the project's checkout before checking a pull request out in it.",
     );
   }
+  let ref: string | undefined;
   try {
-    const { commit, ref } = await headCommit(git, target, warn);
-    if (await branchExists(git, local)) {
-      await assertBehind(git, local, commit, pr.number);
-      await git(["switch", "--quiet", "--", local]);
+    let commit: string;
+    ({ commit, ref } = await headCommit(git, target, warn));
+    const current = (await git(["branch", "--show-current"])).stdout.trim();
+    const existed = await branchExists(git, local);
+    if (existed) await assertBehind(git, local, commit, pr.number);
+    if (current === local) {
       await git(["merge", "--ff-only", "--quiet", commit]);
     } else {
-      await git(["branch", "--", local, commit]);
-      await git(["switch", "--quiet", "--", local]);
-    }
-    if (ref !== undefined) {
-      await git(["branch", `--set-upstream-to=${ref.slice("refs/remotes/".length)}`, "--", local]);
+      // Moved (forward only, as checked) or made first: a switch that fails leaves the
+      // checkout where it was, and a branch made for it goes again.
+      await git(["branch", "--force", "--", local, commit]);
+      try {
+        await git(["switch", "--quiet", "--", local]);
+      } catch (error) {
+        if (!existed) await git(["branch", "-D", "--", local], { ok: [0, 1] });
+        throw error;
+      }
     }
   } catch (error) {
     if (error instanceof SourceControlError && error.code !== "GIT_FAILED") throw error;
@@ -236,6 +246,20 @@ export async function checkoutLocal(
       "GIT_FAILED",
       `The pull request could not be checked out with git. ${(error as Error).message}`,
       { number: pr.number },
+    );
+  }
+  if (ref !== undefined) {
+    // Checked out already: an upstream that cannot be set only warns.
+    await git([
+      "branch",
+      `--set-upstream-to=${ref.slice("refs/remotes/".length)}`,
+      "--",
+      local,
+    ]).catch((error: unknown) =>
+      warn("could not set the pull request branch's upstream", {
+        branch: local,
+        error: (error as Error).message,
+      }),
     );
   }
   const branch = (await git(["branch", "--show-current"])).stdout.trim() || local;

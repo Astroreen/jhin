@@ -243,6 +243,18 @@ describe("checking a pull request out without losing work (D902)", () => {
     expect(git(dir, "branch", "--show-current").trim()).toBe("main");
   });
 
+  it("leaves the checkout where it was when git cannot switch", async () => {
+    const { dir } = withPullRequest();
+    // An untracked file the pull request also adds is in the way.
+    write(dir, "feature.txt", "mine\n");
+    await expect(
+      checkoutLocal(createGit("git", dir), { pr: pr(), crossRepository: false }, warn),
+    ).rejects.toThrow("The pull request could not be checked out with git.");
+    expect(git(dir, "branch", "--show-current").trim()).toBe("main");
+    expect(git(dir, "branch", "--list", "feature").trim()).toBe("");
+    expect(Fs.readFileSync(Path.join(dir, "feature.txt"), "utf8")).toBe("mine\n");
+  });
+
   it("moves an existing branch that is behind forward, an untracked file aside", async () => {
     const { dir, head } = withPullRequest();
     write(dir, "notes.txt", "untracked\n");
