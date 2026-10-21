@@ -97,6 +97,7 @@ The host itself adds `host.inspect`, `host.identity`, `host.commands.list`,
 | `inspector`       | the dev panel showing `host.inspect`                                                                                                                                                                                                       | `foundation.md#D36`                                                                       |
 | `source-control`  | branch, diff, pull request indicators, branch toolbar, git actions, diff panel                                                                                                                                                             | `source-control.md`                                                                       |
 | `terminal`        | the terminal drawer and the card's terminal indicator                                                                                                                                                                                      | `terminal.md`                                                                             |
+| `scheduler`       | the Settings → Scheduled tasks page (`scheduled-tasks` section, `scheduler.task.actions` slot)                                                                                                                                             | `orchestration.md#w11-scheduled-tasks-and-webhooks`                                       |
 
 ## Apps, tests, scripts
 
