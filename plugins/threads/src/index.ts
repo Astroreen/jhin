@@ -1991,6 +1991,118 @@ export default definePlugin({
       });
     const ThreadId = z.object({ threadId: z.string() });
 
+    /**
+     * What each arrangement command does to a record, checked and changed in
+     * memory; `threads.arrange` (D449) runs several of them as one write.
+     */
+    const changes = {
+      settle(thread: Thread, at: string): Thread {
+        if (thread.lastTurn?.status === "waiting") {
+          throw new ThreadsError(
+            "TURN_IN_PROGRESS",
+            "The thread is waiting on an approval or question: answer it before settling",
+            { threadId: thread.id },
+          );
+        }
+        if (active.has(thread.id) || thread.lastTurn?.status === "running") {
+          throw new ThreadsError(
+            "TURN_IN_PROGRESS",
+            "The thread is still running: stop it before settling",
+            { threadId: thread.id },
+          );
+        }
+        const snoozed = thread.snoozedUntil !== undefined;
+        if (thread.settledOverride === "settled" && thread.pinnedAt === undefined && !snoozed) {
+          return thread;
+        }
+        const {
+          unsettledAt: _unsettledAt,
+          pinnedAt: _pinnedAt,
+          pinOrderKey: _pinOrderKey,
+          activeOrderKey: _activeOrderKey,
+          snoozedUntil: _until,
+          snoozedAt: _snoozedAt,
+          ...rest
+        } = thread;
+        // A thread on the shelf already keeps its place there: settled by hand
+        // as of then, by the rule as of its last activity (T3 keeps settledAt).
+        const since =
+          thread.settledOverride === "settled"
+            ? thread.settledAt
+            : autoSettledAt(thread, Date.parse(at), settleRule());
+        return {
+          ...rest,
+          settledOverride: "settled",
+          settledAt: since ?? at,
+          // Settling wakes a snoozed thread, as T3's drop onto the shelf does:
+          // the Snoozed shelf would otherwise keep showing it.
+          ...(snoozed ? { lastSnoozeWakeAt: at } : {}),
+        };
+      },
+      unsettle(thread: Thread, at: string): Thread {
+        // Only a thread on the shelf comes back: T3's command would also move an
+        // active one to the top and switch the automatic rule off for it. A
+        // snooze stays; it still hides the thread until it wakes.
+        if (!isSettled(thread, Date.parse(at), settleRule())) return thread;
+        const { settledAt: _settledAt, ...rest } = thread;
+        return { ...rest, settledOverride: "active", unsettledAt: at };
+      },
+      pin(thread: Thread, at: string, orderKey?: string): Thread {
+        const settled = isSettled(thread, Date.parse(at), settleRule());
+        if (thread.pinnedAt !== undefined && !settled && thread.snoozedUntil === undefined) {
+          return thread;
+        }
+        const {
+          settledAt: _settledAt,
+          snoozedUntil: _until,
+          snoozedAt: _snoozedAt,
+          ...rest
+        } = thread;
+        return {
+          ...rest,
+          pinnedAt: thread.pinnedAt ?? at,
+          ...(thread.pinnedAt === undefined && orderKey !== undefined
+            ? { pinOrderKey: orderKey }
+            : {}),
+          ...(settled ? { settledOverride: "active" as const } : {}),
+          ...(thread.snoozedUntil === undefined ? {} : { lastSnoozeWakeAt: at }),
+        };
+      },
+      unpin(thread: Thread): Thread {
+        if (thread.pinnedAt === undefined) return thread;
+        const { pinnedAt: _pinnedAt, pinOrderKey: _pinOrderKey, ...rest } = thread;
+        return rest;
+      },
+      reorder(thread: Thread, at: string, list: "pinned" | "active", orderKey: string): Thread {
+        // Refused rather than pinning, un-settling or waking in passing: a
+        // reorder that races an unpin must not bring the pin back, and a key
+        // written on a shelf would place the thread when it comes back.
+        if (list === "pinned" && thread.pinnedAt === undefined) {
+          throw new ThreadsError("THREAD_NOT_PINNED", "The thread is not pinned", {
+            threadId: thread.id,
+          });
+        }
+        const nowMs = Date.parse(at);
+        if (
+          list === "active" &&
+          (thread.pinnedAt !== undefined ||
+            isSettled(thread, nowMs, settleRule()) ||
+            isSnoozed(thread, nowMs))
+        ) {
+          throw new ThreadsError("THREAD_NOT_ACTIVE", "The thread is pinned, settled or snoozed", {
+            threadId: thread.id,
+          });
+        }
+        const key = list === "pinned" ? "pinOrderKey" : "activeOrderKey";
+        return thread[key] === orderKey ? thread : { ...thread, [key]: orderKey };
+      },
+      unsnooze(thread: Thread, at: string): Thread {
+        if (thread.snoozedUntil === undefined) return thread;
+        const { snoozedUntil: _until, snoozedAt: _snoozedAt, ...rest } = thread;
+        return { ...rest, lastSnoozeWakeAt: at };
+      },
+    };
+
     context.commands.register({
       name: "threads.settle",
       description:
@@ -1998,50 +2110,7 @@ export default definePlugin({
       input: ThreadId,
       output: Thread,
       permissions: ["threads.write"],
-      handler: ({ threadId }) =>
-        arrange(threadId, (thread, at) => {
-          if (thread.lastTurn?.status === "waiting") {
-            throw new ThreadsError(
-              "TURN_IN_PROGRESS",
-              "The thread is waiting on an approval or question: answer it before settling",
-              { threadId },
-            );
-          }
-          if (active.has(threadId) || thread.lastTurn?.status === "running") {
-            throw new ThreadsError(
-              "TURN_IN_PROGRESS",
-              "The thread is still running: stop it before settling",
-              { threadId },
-            );
-          }
-          const snoozed = thread.snoozedUntil !== undefined;
-          if (thread.settledOverride === "settled" && thread.pinnedAt === undefined && !snoozed) {
-            return thread;
-          }
-          const {
-            unsettledAt: _unsettledAt,
-            pinnedAt: _pinnedAt,
-            pinOrderKey: _pinOrderKey,
-            activeOrderKey: _activeOrderKey,
-            snoozedUntil: _until,
-            snoozedAt: _snoozedAt,
-            ...rest
-          } = thread;
-          // A thread on the shelf already keeps its place there: settled by hand
-          // as of then, by the rule as of its last activity (T3 keeps settledAt).
-          const since =
-            thread.settledOverride === "settled"
-              ? thread.settledAt
-              : autoSettledAt(thread, Date.parse(at), settleRule());
-          return {
-            ...rest,
-            settledOverride: "settled",
-            settledAt: since ?? at,
-            // Settling wakes a snoozed thread, as T3's drop onto the shelf does:
-            // the Snoozed shelf would otherwise keep showing it.
-            ...(snoozed ? { lastSnoozeWakeAt: at } : {}),
-          };
-        }),
+      handler: ({ threadId }) => arrange(threadId, (thread, at) => changes.settle(thread, at)),
     });
 
     context.commands.register({
@@ -2051,15 +2120,7 @@ export default definePlugin({
       input: ThreadId,
       output: Thread,
       permissions: ["threads.write"],
-      handler: ({ threadId }) =>
-        arrange(threadId, (thread, at) => {
-          // Only a thread on the shelf comes back: T3's command would also move an
-          // active one to the top and switch the automatic rule off for it. A
-          // snooze stays; it still hides the thread until it wakes.
-          if (!isSettled(thread, Date.parse(at), settleRule())) return thread;
-          const { settledAt: _settledAt, ...rest } = thread;
-          return { ...rest, settledOverride: "active", unsettledAt: at };
-        }),
+      handler: ({ threadId }) => arrange(threadId, (thread, at) => changes.unsettle(thread, at)),
     });
 
     context.commands.register({
@@ -2070,27 +2131,7 @@ export default definePlugin({
       output: Thread,
       permissions: ["threads.write"],
       handler: ({ threadId, orderKey }) =>
-        arrange(threadId, (thread, at) => {
-          const settled = isSettled(thread, Date.parse(at), settleRule());
-          if (thread.pinnedAt !== undefined && !settled && thread.snoozedUntil === undefined) {
-            return thread;
-          }
-          const {
-            settledAt: _settledAt,
-            snoozedUntil: _until,
-            snoozedAt: _snoozedAt,
-            ...rest
-          } = thread;
-          return {
-            ...rest,
-            pinnedAt: thread.pinnedAt ?? at,
-            ...(thread.pinnedAt === undefined && orderKey !== undefined
-              ? { pinOrderKey: orderKey }
-              : {}),
-            ...(settled ? { settledOverride: "active" as const } : {}),
-            ...(thread.snoozedUntil === undefined ? {} : { lastSnoozeWakeAt: at }),
-          };
-        }),
+        arrange(threadId, (thread, at) => changes.pin(thread, at, orderKey)),
     });
 
     context.commands.register({
@@ -2099,12 +2140,7 @@ export default definePlugin({
       input: ThreadId,
       output: Thread,
       permissions: ["threads.write"],
-      handler: ({ threadId }) =>
-        arrange(threadId, (thread) => {
-          if (thread.pinnedAt === undefined) return thread;
-          const { pinnedAt: _pinnedAt, pinOrderKey: _pinOrderKey, ...rest } = thread;
-          return rest;
-        }),
+      handler: ({ threadId }) => arrange(threadId, (thread) => changes.unpin(thread)),
     });
 
     context.commands.register({
@@ -2115,29 +2151,7 @@ export default definePlugin({
       output: Thread,
       permissions: ["threads.write"],
       handler: ({ threadId, list, orderKey }) =>
-        arrange(threadId, (thread, at) => {
-          // Refused rather than pinning, un-settling or waking in passing: a
-          // reorder that races an unpin must not bring the pin back, and a key
-          // written on a shelf would place the thread when it comes back.
-          if (list === "pinned" && thread.pinnedAt === undefined) {
-            throw new ThreadsError("THREAD_NOT_PINNED", "The thread is not pinned", { threadId });
-          }
-          const nowMs = Date.parse(at);
-          if (
-            list === "active" &&
-            (thread.pinnedAt !== undefined ||
-              isSettled(thread, nowMs, settleRule()) ||
-              isSnoozed(thread, nowMs))
-          ) {
-            throw new ThreadsError(
-              "THREAD_NOT_ACTIVE",
-              "The thread is pinned, settled or snoozed",
-              { threadId },
-            );
-          }
-          const key = list === "pinned" ? "pinOrderKey" : "activeOrderKey";
-          return thread[key] === orderKey ? thread : { ...thread, [key]: orderKey };
-        }),
+        arrange(threadId, (thread, at) => changes.reorder(thread, at, list, orderKey)),
     });
 
     context.commands.register({
@@ -2175,12 +2189,80 @@ export default definePlugin({
       input: ThreadId,
       output: Thread,
       permissions: ["threads.write"],
-      handler: ({ threadId }) =>
-        arrange(threadId, (thread, at) => {
-          if (thread.snoozedUntil === undefined) return thread;
-          const { snoozedUntil: _until, snoozedAt: _snoozedAt, ...rest } = thread;
-          return { ...rest, lastSnoozeWakeAt: at };
-        }),
+      handler: ({ threadId }) => arrange(threadId, (thread, at) => changes.unsnooze(thread, at)),
+    });
+
+    const ArrangeStep = z.discriminatedUnion("op", [
+      ThreadId.extend({ op: z.literal("settle") }),
+      ThreadId.extend({ op: z.literal("unsettle") }),
+      ThreadId.extend({ op: z.literal("pin"), orderKey: OrderKey.optional() }),
+      ThreadId.extend({ op: z.literal("unpin") }),
+      ThreadId.extend({ op: z.literal("unsnooze") }),
+      ThreadId.extend({
+        op: z.literal("reorder"),
+        list: z.enum(["pinned", "active"]),
+        orderKey: OrderKey,
+      }),
+    ]);
+    /** Runs `task` holding every record of `ids` (in one order, so two runs never wait on each other). */
+    const holding = <T>(ids: readonly string[], task: () => Promise<T>): Promise<T> =>
+      [...new Set(ids)]
+        .toSorted()
+        .reduceRight<() => Promise<T>>((inner, id) => () => queued(id, inner), task)();
+
+    context.commands.register({
+      name: "threads.arrange",
+      description:
+        "Several arrangement steps (settle, unsettle, pin, unpin, unsnooze, reorder) as one write, as a sidebar drop needs: every step is checked first, and one refused leaves every thread as it was",
+      // A drop rewrites at most the keys of the threads a sidebar shows; a node keeps far fewer.
+      input: z.object({ steps: z.array(ArrangeStep).min(1).max(10_000) }),
+      output: z.object({ threads: z.array(Thread) }),
+      permissions: ["threads.write"],
+      handler: ({ steps }) =>
+        holding(
+          steps.map((step) => step.threadId),
+          async () => {
+            const at = now();
+            const records = new Map<string, Thread>();
+            const before = new Map<string, Thread>();
+            for (const step of steps) {
+              if (!before.has(step.threadId))
+                before.set(step.threadId, await getThread(step.threadId));
+              const thread = records.get(step.threadId) ?? before.get(step.threadId)!;
+              if (thread.archivedAt !== undefined) throw archivedError(step.threadId);
+              records.set(
+                step.threadId,
+                step.op === "pin"
+                  ? changes.pin(thread, at, step.orderKey)
+                  : step.op === "reorder"
+                    ? changes.reorder(thread, at, step.list, step.orderKey)
+                    : step.op === "unpin"
+                      ? changes.unpin(thread)
+                      : changes[step.op](thread, at),
+              );
+            }
+            // Every step held: the records and their events in one transaction (D208).
+            const written = [...records]
+              .filter(([id, next]) => next !== before.get(id))
+              .map(([, next]) => Thread.parse(next));
+            if (written.length === 0) return { threads: written };
+            await log.append(
+              THREADS_STREAM,
+              written.map((thread) => ({
+                type: ThreadEvents.threadUpdated,
+                payload: thread as unknown as Json,
+              })),
+              {
+                records: written.map((thread) => ({
+                  namespace: NAMESPACE,
+                  key: `thread/${thread.id}`,
+                  value: thread as unknown as Json,
+                })),
+              },
+            );
+            return { threads: written };
+          },
+        ),
     });
 
     // --- Settling by itself (D444–D447) ------------------------------------------

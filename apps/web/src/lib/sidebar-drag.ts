@@ -1,6 +1,8 @@
 // Dragging threads between and within the sidebar's sections follows T3 Code (MIT, see
 // THIRD_PARTY_NOTICES.md): apps/web/src/components/Sidebar.logic.ts (resolveSidebarDropTarget,
-// resolveSidebarDropVerb, planSidebarThreadDrop).
+// resolveSidebarDropVerb, planSidebarThreadDrop) and Sidebar.drag.ts
+// (createSidebarCollisionDetection).
+import { closestCenter, type CollisionDetection } from "@dnd-kit/core";
 import type { ThreadSection } from "@jhin/client-api";
 
 import { planReorder, type OrderAssignment } from "./thread-order.ts";
@@ -185,4 +187,73 @@ export function planDrop(input: {
       };
     }
   }
+}
+
+/** The class of the pinned divider's label, which the collision detection measures. */
+export const DRAG_BOUNDARY_LABEL_CLASS = "sidebar-drag-boundary-label";
+
+/**
+ * dnd-kit's closest centre, made sticky around the pinned boundary (T3's
+ * createSidebarCollisionDetection): over the divider's label, the side the
+ * row is on changes only when the pointer moves across the label, up into
+ * the pinned threads or down into the active ones, so opening the
+ * destination (which moves the divider) never flips a still pointer back.
+ * A nearest target where a drop would do nothing (`isValidTarget`) leaves
+ * the row where it is.
+ */
+export function createSidebarCollisionDetection(
+  isValidTarget: (id: string) => boolean,
+  options: { items?: readonly SidebarListItem[]; activationY?: number | null } = {},
+): CollisionDetection {
+  const validity = new Map<string, boolean>();
+  const sections = new Map<string, DropSection | null>();
+  let previousPointerY = options.activationY;
+  let boundarySection: "pinned" | "active" | undefined;
+  return (args) => {
+    let collisions = closestCenter(args);
+    const pointer = args.pointerCoordinates;
+    const items = options.items;
+    const source = items?.find((item) => item.kind === "thread" && item.key === args.active.id);
+    const boundary = args.droppableContainers
+      .find((container) => container.id === markerId("pinned-divider"))
+      ?.node.current?.querySelector(`.${DRAG_BOUNDARY_LABEL_CLASS}`)
+      ?.getBoundingClientRect();
+    if (items && boundary && source?.kind === "thread" && pointer) {
+      boundarySection ??= source.section === "pinned" ? "pinned" : "active";
+      // The visible divider row, sortable translation included. Only pointer
+      // movement changes sections: opening the destination moves this row.
+      const previousY = previousPointerY ?? pointer.y;
+      previousPointerY = pointer.y;
+      if (pointer.x >= boundary.left && pointer.x <= boundary.right) {
+        if (pointer.y < previousY && pointer.y <= boundary.bottom) boundarySection = "pinned";
+        else if (pointer.y > previousY && pointer.y >= boundary.top) boundarySection = "active";
+        const nextHeader = (["snoozed-header", "settled-header"] as const)
+          .map((marker) =>
+            args.droppableContainers.find((container) => container.id === markerId(marker)),
+          )
+          .find((container) => container !== undefined);
+        const activeBottom = nextHeader?.node.current?.getBoundingClientRect().top;
+        if (boundarySection === "pinned" || (activeBottom != null && pointer.y < activeBottom)) {
+          const target = collisions.find((collision) => {
+            const id = String(collision.id);
+            if (!sections.has(id)) {
+              sections.set(
+                id,
+                resolveDropTarget(items, String(args.active.id), id)?.section ?? null,
+              );
+            }
+            return sections.get(id) === boundarySection;
+          });
+          if (target)
+            collisions = [target, ...collisions.filter((collision) => collision !== target)];
+        }
+      }
+    }
+    const nearest = collisions[0];
+    if (!nearest || nearest.id === args.active.id) return collisions;
+    const id = String(nearest.id);
+    const valid = validity.get(id) ?? isValidTarget(id);
+    validity.set(id, valid);
+    return valid ? collisions : collisions.filter((collision) => collision.id === args.active.id);
+  };
 }

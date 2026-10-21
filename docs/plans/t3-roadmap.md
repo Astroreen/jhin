@@ -152,13 +152,14 @@ account is out of scope.
 
 ### W14. Sidebar
 
-Everything left in the sidebar item of `t3-parity.md` Deferred (one write
-per drop, the Working shelf, multi-select, undo of a pin, collision
-detection, jump-number hints, discarding a draft from its card). Done: code
+Everything left in the sidebar item of `t3-parity.md` Deferred (the Working
+shelf, multi-select, undo of a pin, jump-number hints, discarding a draft
+from its card). Done: code
 splitting of the web client (D440), warnings for conflicting keybindings
 (D441), the Icon submenu for mesh members (D442), the branch-mismatch
 warning (D443), and settling by the node: per-thread auto-settle, its sweep
-and settling on a merged pull request (D444–D447).
+and settling on a merged pull request (D444–D447), T3's collision detection
+and one write per drop (D448–D449).
 
 ### W15. Terminal follow-ups
 
