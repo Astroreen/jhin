@@ -1749,10 +1749,12 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   typed answer, the composer holds the prefilled answer in D853's literal
   mode, as T3's `isLiteralPendingAnswer`: no chips, no styling, no menus,
   "Add to chat" leaves it alone, and the answer goes back exactly as edited,
-  white space too (an empty one cannot be sent). T3 keeps the answer apart
+  white space too: an answer of spaces is sent as typed, only an empty one
+  cannot be. T3 keeps the answer apart
   from the prompt; here the composer puts its draft aside while the answer
   shows and brings it back once the question is answered or gone, and the
-  answer is never saved as the thread's draft. The fake agent's `/edit` asks
+  answer is never saved as the thread's draft; a draft another device sends
+  meanwhile (D486) replaces the one put aside, not the answer. The fake agent's `/edit` asks
   one.
 
 ### Sidebar leftovers (W26)

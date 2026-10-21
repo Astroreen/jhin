@@ -1228,12 +1228,20 @@ export function Composer(props: ComposerProps) {
 
   /** Whether the user is in the composer: another device's text never replaces what is typed. */
   const typingHere = useRef(false);
+  /**
+   * The draft a prefilled answer put aside (D1001): T3 keeps the two apart, so it comes back
+   * once the question goes.
+   */
+  const asideDraft = useRef<string | undefined>(undefined);
   // Another device's text for this draft (D486): read from the node when the
   // composer opens, and taken while the composer is not in use.
   useEffect(() => {
     const key = props.draftKey;
     const stop = drafts.follow(key, (draft) => {
-      if (!typingHere.current && editing === undefined) setPrompt(draft.prompt);
+      if (typingHere.current || editing !== undefined) return;
+      // While a prefilled answer shows, the draft that arrives is the one kept aside.
+      if (asideDraft.current !== undefined) asideDraft.current = draft.prompt;
+      else setPrompt(draft.prompt);
     });
     const node = nodeDraftKey(key);
     if (node !== undefined && readSection(chat.context, SYNC_SECTION, SyncSettings).drafts) {
@@ -1634,8 +1642,6 @@ export function Composer(props: ComposerProps) {
    */
   const literalAnswer =
     currentQuestion?.initialAnswer !== undefined && currentQuestion.allowCustomAnswer !== false;
-  /** The draft a prefilled answer put aside: T3 keeps the two apart, so it comes back after. */
-  const asideDraft = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!literalAnswer || currentQuestion?.initialAnswer === undefined) return;
     if (asideDraft.current === undefined) asideDraft.current = prompt;
