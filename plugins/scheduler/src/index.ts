@@ -695,39 +695,41 @@ function activateScheduler(context: PluginContext): void {
       }
       projectId = owner;
     }
-    // Consumed once the task's project is known; a retried create above returned before.
-    const scheduleInput = redeem(input.schedule, projectId);
-    const now = Date.now();
-    const schedule = storedSchedule(scheduleInput);
-    const task: StoredTask = {
-      id,
-      title: input.title ?? titleFrom(input.prompt),
-      prompt: input.prompt,
-      enabled: input.enabled,
-      schedule,
-      projectId,
-      threadId: input.threadId,
-      ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
-      ...(input.model === undefined ? {} : { model: input.model }),
-      ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
-      ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
-      ...(input.workspaceStrategy === undefined
-        ? {}
-        : { workspaceStrategy: input.workspaceStrategy }),
-      createdAt: iso(now),
-      updatedAt: iso(now),
-      nextRunAt: nextRunAt({ enabled: input.enabled, schedule }, now),
-      lastRunAt: null,
-      lastRunStatus: "never",
-      lastRunError: null,
-      lastRunThreadId: null,
-      runCount: 0,
-      ...webhookCredentials(scheduleInput, undefined),
+    const build = (scheduleInput: ScheduleInput): StoredTask => {
+      const now = Date.now();
+      const schedule = storedSchedule(scheduleInput);
+      const task: StoredTask = {
+        id,
+        title: input.title ?? titleFrom(input.prompt),
+        prompt: input.prompt,
+        enabled: input.enabled,
+        schedule,
+        projectId,
+        threadId: input.threadId,
+        ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
+        ...(input.model === undefined ? {} : { model: input.model }),
+        ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
+        ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
+        ...(input.workspaceStrategy === undefined
+          ? {}
+          : { workspaceStrategy: input.workspaceStrategy }),
+        createdAt: iso(now),
+        updatedAt: iso(now),
+        nextRunAt: nextRunAt({ enabled: input.enabled, schedule }, now),
+        lastRunAt: null,
+        lastRunStatus: "never",
+        lastRunError: null,
+        lastRunThreadId: null,
+        runCount: 0,
+        ...webhookCredentials(scheduleInput, undefined),
+      };
+      return task;
     };
     return locked(id, async () => {
-      // Two tries of one request at once create the task once.
+      // Two tries of one request at once create the task once, and use a
+      // secretRef once: it is consumed only by the try that writes (D1034).
       const raced = await load(id);
-      return raced === undefined ? save(task) : toPublic(raced);
+      return raced === undefined ? save(build(redeem(input.schedule, projectId))) : toPublic(raced);
     });
   };
 
@@ -737,15 +739,12 @@ function activateScheduler(context: PluginContext): void {
       parsed.threadId === undefined || parsed.threadId === null
         ? undefined
         : await threadProject(parsed.threadId);
-    // A ref is consumed for the project the task is in after this update.
-    const input =
-      parsed.schedule?.type === "webhook" && parsed.schedule.signature?.secretRef !== undefined
-        ? {
-            ...parsed,
-            schedule: redeem(parsed.schedule, projectId ?? (await getTask(parsed.id)).projectId),
-          }
-        : parsed;
-    const updated = await mutate(input.id, (existing) => {
+    const updated = await mutate(parsed.id, (existing) => {
+      // A ref is consumed for the task's project after this update, under its lock (D1034).
+      const input =
+        parsed.schedule === undefined
+          ? parsed
+          : { ...parsed, schedule: redeem(parsed.schedule, projectId ?? existing.projectId) };
       const now = Date.now();
       const enabled = input.enabled ?? existing.enabled;
       // A webhook schedule sent without `signature` keeps the stored check and
@@ -810,7 +809,7 @@ function activateScheduler(context: PluginContext): void {
         ...credentials,
       };
     });
-    if (updated === undefined) throw notFound(input.id);
+    if (updated === undefined) throw notFound(parsed.id);
     return toPublic(updated);
   };
 

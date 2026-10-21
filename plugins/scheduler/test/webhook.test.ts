@@ -187,6 +187,19 @@ describe("jhin.scheduler: webhooks", () => {
       }),
     ).rejects.toMatchObject({ code: "SECRET_REF_UNAVAILABLE" });
 
+    // Two tries of one create at once: one task, the ref used once.
+    refs.set("secret-ref:" + "d".repeat(32), { projectId: "scratch", value: "retried" });
+    const retry = {
+      clientRequestId: "create-1",
+      schedule: {
+        type: "webhook",
+        signature: { ...signature, secretRef: "secret-ref:" + "d".repeat(32) },
+      },
+    };
+    const [one, two] = await Promise.all([webhookTask(client, retry), webhookTask(client, retry)]);
+    expect(two.id).toBe(one.id);
+    expect(refs.has("secret-ref:" + "d".repeat(32))).toBe(false);
+
     // An update consumes a ref for the task's project.
     await client.call("scheduler.tasks.update", {
       id: created.id,
