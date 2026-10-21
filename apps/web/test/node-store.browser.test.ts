@@ -24,4 +24,22 @@ describe("saved nodes (security.md D423)", () => {
     await mine.save([]);
     await heard;
   });
+
+  it("adds legacy nodes to those already saved, and moves an unreadable entry as nothing", async () => {
+    const store = createNodeStore();
+    await store.save([{ url: "ws://kept.example/rpc", session: true, label: "kept" }]);
+    localStorage.setItem(
+      LEGACY_STORAGE_KEY,
+      JSON.stringify([{ url: "ws://old.example/rpc", token: "t".repeat(43), label: "old" }]),
+    );
+    expect(await createNodeStore().load()).toEqual([
+      { url: "ws://kept.example/rpc", session: true, label: "kept" },
+      { url: "ws://old.example/rpc", token: "t".repeat(43), label: "old" },
+    ]);
+
+    await store.save([]);
+    localStorage.setItem(LEGACY_STORAGE_KEY, "{ not json");
+    expect(await createNodeStore().load()).toEqual([]);
+    expect(localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull();
+  });
 });

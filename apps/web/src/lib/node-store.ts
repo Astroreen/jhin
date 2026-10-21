@@ -13,6 +13,10 @@ function request<T>(run: (store: IDBObjectStore) => IDBRequest<T>, mode: IDBTran
     const opening = indexedDB.open(DATABASE, 1);
     opening.addEventListener("upgradeneeded", () => opening.result.createObjectStore(STORE));
     opening.addEventListener("error", () => reject(opening.error));
+    // Another tab holds an older version open: fail instead of waiting forever.
+    opening.addEventListener("blocked", () =>
+      reject(new Error("The saved nodes are held open by another tab")),
+    );
     opening.addEventListener("success", () => {
       const database = opening.result;
       const transaction = database.transaction(STORE, mode);
@@ -24,6 +28,11 @@ function request<T>(run: (store: IDBObjectStore) => IDBRequest<T>, mode: IDBTran
       transaction.addEventListener("error", () => {
         database.close();
         reject(transaction.error);
+      });
+      // A quota or constraint failure aborts without an `error` on the transaction.
+      transaction.addEventListener("abort", () => {
+        database.close();
+        reject(transaction.error ?? new Error("Saving the nodes was aborted"));
       });
     });
   });
