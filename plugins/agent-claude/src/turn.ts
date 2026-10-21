@@ -623,7 +623,9 @@ export function claudeTurn(
         (deps.mcp === undefined ? "" : JHIN_MCP_INSTRUCTIONS) +
         (deps.settings.appendSystemPrompt === undefined
           ? ""
-          : `\n${deps.settings.appendSystemPrompt}`),
+          : `\n${deps.settings.appendSystemPrompt}`) +
+        // What a defined agent's generation is told (D605): part of the launch key (D99).
+        (request.instructions === undefined ? "" : `\n\n${request.instructions}`),
     },
   });
 

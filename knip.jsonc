@@ -35,6 +35,7 @@
         "@jhin/plugin-agent-fake",
         "@jhin/plugin-orchestration",
         "@jhin/plugin-agent-opencode",
+        "@jhin/plugin-agents",
         "@jhin/plugin-mcp-server",
         "@jhin/plugin-web-ui",
         "@jhin/plugin-mesh",

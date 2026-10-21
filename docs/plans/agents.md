@@ -222,8 +222,9 @@ types and the schemas of the `agents.*` commands) is
 - **D610. `agents.list` stays and grows.** It lists runtimes and defined
   agents, with the additive fields `kind` (`runtime` or `defined`),
   `runtimeId` and `role`. A node's default agent is never a defined agent,
-  unless `jhin.threads.defaultAgent` names one. `agent.turn.started` and the
-  thread's `lastTurn` record `runtimeId` for a defined agent's turn. A runtime
+  unless `jhin.threads.defaultAgent` names one. `agent.turn.started` records
+  `runtimeId` for a defined agent's turn (the thread's `lastTurn` keeps
+  `agentId` only). A runtime
   that tells turns apart by agent (Claude's D102) compares
   `runtimeId ?? agentId`, so a generation's own earlier turns are never
   handed to it as another agent's.
@@ -232,8 +233,9 @@ types and the schemas of the `agents.*` commands) is
   the next generation, since inheritance belongs to the address.
 - **D612. Stop and resume.** `agents.stop` interrupts the current
   generation's running turn and marks the agent stopped (`stoppedAt`):
-  `agents.rotate` and A2's messages are refused with `AGENT_STOPPED` until
-  `agents.resume`. A whole team stops through its agents (A5).
+  `agents.rotate`, A2's messages and any turn of the agent (its runtime
+  refuses to start one, so `threads.send` fails with `AGENT_STOPPED`) are
+  refused until `agents.resume`. A whole team stops through its agents (A5).
 - **D613. Skills are names in A1.** The definition lists them and the
   instructions name them; installing or limiting a runtime's skills per agent
   is deferred.

@@ -520,6 +520,11 @@ const AgentInfo = z.object({
   default: z.boolean(),
   /** Its turns take messages while they run (D204). */
   steering: z.boolean(),
+  /** A runtime, or a defined agent running on one (D601, D610). */
+  kind: z.enum(["runtime", "defined"]),
+  /** The runtime its turns run on: its own id for a runtime. */
+  runtimeId: z.string(),
+  role: z.string().optional(),
 });
 
 class ThreadsError extends Error {
@@ -744,8 +749,10 @@ export default definePlugin({
       const configured = context.config.get<Config>(CONFIG_SECTION).defaultAgent;
       const chosen = all.find((runtime) => runtime.agentId === configured);
       if (chosen !== undefined) return chosen;
-      for (const runtime of all) if ((await statusOf(runtime)).available) return runtime;
-      return all[0];
+      // A defined agent is the default only when the config names it (D610).
+      const plain = all.filter((runtime) => runtime.runtimeId === undefined);
+      for (const runtime of plain) if ((await statusOf(runtime)).available) return runtime;
+      return plain[0];
     };
 
     // --- Records ---------------------------------------------------------------
@@ -1174,6 +1181,8 @@ export default definePlugin({
                 payload: {
                   turnId,
                   agentId: runtime.agentId,
+                  // A defined agent's turns name the runtime they ran on too (D601).
+                  ...(runtime.runtimeId === undefined ? {} : { runtimeId: runtime.runtimeId }),
                   input: input as unknown as Json,
                   ...(settings as unknown as Record<string, Json>),
                   ...(messageId === undefined ? {} : { messageId }),
@@ -1769,7 +1778,8 @@ export default definePlugin({
     // --- Agents ----------------------------------------------------------------
     context.commands.register({
       name: "agents.list",
-      description: "Agent runtimes on this node with their models, modes and whether they can run",
+      description:
+        "Agents on this node: its runtimes and its defined agents, with their models, modes and whether they can run",
       input: z.object({}),
       output: z.array(AgentInfo),
       permissions: ["threads.read"],
@@ -1800,6 +1810,9 @@ export default definePlugin({
               ...(status.version === undefined ? {} : { version: status.version }),
               default: runtime === fallback,
               steering: runtime.steering === true,
+              kind: runtime.runtimeId === undefined ? ("runtime" as const) : ("defined" as const),
+              runtimeId: runtime.runtimeId ?? runtime.agentId,
+              ...(runtime.role === undefined ? {} : { role: runtime.role }),
             };
           }),
         );
