@@ -70,6 +70,12 @@ describe("applySchedulerEvent", () => {
       payload: { id: "h1" },
     });
     expect(gone.urls?.has("h1")).toBe(false);
+    // Nor one changed from a webhook to a timer.
+    const timer = applySchedulerEvent(loading, {
+      type: SchedulerEvents.taskUpdated,
+      payload: task({ id: "h1" }),
+    });
+    expect(timer.urls?.has("h1")).toBe(false);
     expect(applySchedulerEvent(view, { type: "other", payload: {} })).toBe(view);
     expect(applySchedulerEvent(view, { type: SchedulerEvents.taskUpdated, payload: null })).toBe(
       view,

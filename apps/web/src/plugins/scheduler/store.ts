@@ -46,7 +46,12 @@ export function applySchedulerEvent(
         : view.tasks.map((item, at) => (at === index ? task : item));
     // The stream never carries the URL: it is unknown until the task is read
     // again, never the old one a rotation may have killed.
-    if (task.webhook?.path !== null) return { ...view, tasks };
+    // A task that is no webhook (any more), or came with its URL, has no URL to wait for.
+    if (task.webhook?.path !== null) {
+      return view.urls?.has(task.id)
+        ? { ...view, tasks, urls: withUrlState(view, task.id, undefined) }
+        : { ...view, tasks };
+    }
     return { ...view, tasks, urls: withUrlState(view, task.id, "loading") };
   }
   if (event.type === SchedulerEvents.taskDeleted) {

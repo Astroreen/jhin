@@ -419,11 +419,12 @@ the rest of it is unchanged since D53's tag.
   the node's default agent and model unless a command gives others.
 - Tasks of mesh members on the settings page: it shows the nodes the client
   is connected to.
-- Tests of the page below its one end-to-end flow: the editor's validation
-  and webhook parts (signature and secret, Rotate), the Deliveries dialog,
-  several nodes and a node without the scheduler: the server tests of `jhin.scheduler` and the store's unit tests
-  cover them below the UI; the e2e spec covers create, pause, run now and
-  delete.
+- Component tests of the page. Its one end-to-end spec covers create, pause,
+  run now and delete. The webhook parts (signature and secret, Rotate), the
+  Deliveries dialog, several nodes and a node without the scheduler have no
+  test in the UI yet. Below the UI, the server tests of `jhin.scheduler`
+  cover them, and unit tests cover the store and the editor's validation
+  (`draftProblem`).
 - `secretRef` for webhook signing secrets, entered through
   `request_secret` (W13's secrets).
 - A public webhook URL through a relay, held deliveries while the node is

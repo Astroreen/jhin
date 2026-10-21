@@ -36,6 +36,7 @@ import {
 import { CopyIcon, MoreHorizontalIcon, PlusIcon } from "lucide-react";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -91,6 +92,32 @@ function useServices(): SchedulerServices {
 /** A node's tasks, kept current: one subscription per connection however often the caller renders. */
 function useSchedulerView(store: SchedulerStore, connection: string): SchedulerView {
   return useSyncExternalStore(store.watch(connection), () => store.view(connection));
+}
+
+/**
+ * Which of `ids` have a scheduler, kept current: every node's view is
+ * followed, so the list changes when a node turns out to have none.
+ */
+function useNodesWithScheduler(store: SchedulerStore, ids: readonly string[]): readonly string[] {
+  const key = ids.join("\n");
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      const unsubscribes = (key === "" ? [] : key.split("\n")).map((id) =>
+        store.watch(id)(listener),
+      );
+      return () => {
+        for (const unsubscribe of unsubscribes) unsubscribe();
+      };
+    },
+    [store, key],
+  );
+  // A string, so an unchanged answer is the same snapshot.
+  const snapshot = useSyncExternalStore(subscribe, () =>
+    (key === "" ? [] : key.split("\n"))
+      .filter((id) => store.view(id).status !== "unavailable")
+      .join("\n"),
+  );
+  return snapshot === "" ? [] : snapshot.split("\n");
 }
 
 /** A rejection may be anything, not only an Error. */
@@ -618,9 +645,11 @@ function EditorForm(props: {
   const report = useReportFailure();
   const nodes = useExternal(connections, connections.list);
   // Only nodes that have a scheduler can take a task.
-  const openNodes = nodes.filter(
-    (node) => node.state === "open" && store.view(node.id).status !== "unavailable",
+  const withScheduler = useNodesWithScheduler(
+    store,
+    nodes.filter((node) => node.state === "open").map((node) => node.id),
   );
+  const openNodes = nodes.filter((node) => withScheduler.includes(node.id));
   const [connection, setConnection] = useState(props.initialConnection);
   const node = nodes.find((entry) => entry.id === connection);
   const connected = node?.state === "open";
