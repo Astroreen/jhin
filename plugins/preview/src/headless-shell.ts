@@ -174,7 +174,8 @@ export function createHeadlessShell(options: HeadlessShellOptions) {
   const download = options.fetch ?? fetch;
   const executableName =
     platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell";
-  const installRoot = Path.join(options.root, release?.platform ?? `${platform}`);
+  // Absolute, so the unpacking's containment check compares like with like.
+  const installRoot = Path.resolve(options.root, release?.platform ?? `${platform}`);
   const progress = { downloadedBytes: 0, unpacking: false };
   let installing: Promise<string> | undefined;
   /** Stops a download in progress when the plugin goes (rule 5). */
