@@ -3472,18 +3472,25 @@ export default definePlugin({
         }
         if (!turns.includes(target)) throw turnNotFound(threadId, target);
         const payload = startedWith(events, target);
+        // A turn whose start was never recorded has no message to run again.
+        if (payload.input === undefined) {
+          throw new ThreadsError(
+            "TURN_NOT_FOUND",
+            `Turn ${target} recorded no message to send again`,
+            { threadId, turnId: target },
+          );
+        }
         // A turn whose message cannot be sent again is refused before anything is dropped.
-        assertMessage(payload.input?.text ?? "", payload.input?.attachments);
+        const { input } = payload;
+        assertMessage(input.text ?? "", input.attachments);
         let dropped: string[] = [];
         // Its agent, unless that is gone from the node: then the thread's, as a send.
         const own = payload.agentId !== undefined && registry.get(payload.agentId) !== undefined;
         const next = await startTurn(
           threadId,
           {
-            text: payload.input?.text ?? "",
-            ...(payload.input?.attachments === undefined
-              ? {}
-              : { attachments: payload.input.attachments }),
+            text: input.text ?? "",
+            ...(input.attachments === undefined ? {} : { attachments: input.attachments }),
             ...(own ? { agentId: payload.agentId } : {}),
             ...(own && payload.model !== undefined ? { model: payload.model } : {}),
             ...(payload.runtimeMode === undefined ? {} : { runtimeMode: payload.runtimeMode }),
@@ -3512,6 +3519,29 @@ export default definePlugin({
         return { turnId: next, turnIds: dropped };
       },
     });
+
+    /**
+     * How far into a fork's own turns the parent already got it: the index of the
+     * latest own turn a parent's turn carried as its handoff, -1 when none.
+     */
+    async function mergedUpTo(
+      parentId: string,
+      forkId: string,
+      own: readonly string[],
+    ): Promise<number> {
+      const { events } = await visibleTurns(parentId);
+      let latest = -1;
+      for (const event of events) {
+        if (event.type !== ThreadEvents.turnStarted) continue;
+        const payload = event.payload as {
+          inheritedAt?: unknown;
+          handoff?: { threadId?: unknown; turnId?: unknown };
+        };
+        if (payload.inheritedAt !== undefined || payload.handoff?.threadId !== forkId) continue;
+        latest = Math.max(latest, own.indexOf(String(payload.handoff.turnId)));
+      }
+      return latest;
+    }
 
     /** A fork's turns of its own after its fork point, oldest first, and its visible events. */
     async function ownTurns(fork: Thread) {
@@ -3555,6 +3585,10 @@ export default definePlugin({
         const { events, own } = await ownTurns(fork);
         const index = own.indexOf(merge.turnId);
         if (index === -1) return "gone";
+        // The parent already got the fork this far (two merges raced): it is not said twice.
+        if (merge.id !== undefined && (await mergedUpTo(thread.id, fork.id, own)) >= index) {
+          return "gone";
+        }
         return {
           payload: {
             kind: "merge-back",
@@ -3674,6 +3708,16 @@ export default definePlugin({
           );
         }
         const parentId = fork.forkedFrom.threadId;
+        // An archived parent is refused first: it takes no message to deliver a merge with.
+        if ((await getThread(parentId)).archivedAt !== undefined) throw archivedError(parentId);
+        // The parent already got the fork up to this turn: merging it again would say it twice.
+        if ((await mergedUpTo(parentId, threadId, own)) >= own.indexOf(target)) {
+          throw new ThreadsError(
+            "NOTHING_TO_MERGE",
+            "The source thread already has this fork up to that turn",
+            { threadId, turnId: target },
+          );
+        }
         return updateThread(parentId, (parent) => {
           // An archived parent takes no message, so a mark there would never be delivered.
           if (parent.archivedAt !== undefined) throw archivedError(parentId);

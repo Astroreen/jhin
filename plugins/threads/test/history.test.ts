@@ -732,6 +732,72 @@ describe("jhin.threads: merging a fork back (D226)", () => {
     expect(await pendingOf(client, parent.id)).toBeUndefined();
   });
 
+  it("refuses merging again what the parent already got, until the fork goes on", async () => {
+    const { client, parent, fork, tried } = await forked();
+    await client.call("threads.merge-back", { threadId: fork.id });
+    await turn(client, parent.id, "go on");
+    await expect(client.call("threads.merge-back", { threadId: fork.id })).rejects.toMatchObject({
+      code: "NOTHING_TO_MERGE",
+    });
+    const more = await turn(client, fork.id, "and more");
+    expect(await client.call<Fork>("threads.merge-back", { threadId: fork.id })).toMatchObject({
+      pendingMergeBack: { turnId: more },
+    });
+    await turn(client, parent.id, "once more");
+    // An earlier turn than the one the parent got is refused too.
+    await expect(
+      client.call("threads.merge-back", { threadId: fork.id, turnId: tried }),
+    ).rejects.toMatchObject({ code: "NOTHING_TO_MERGE" });
+    // The fork rolled back past what the parent got: its new turn merges again.
+    await client.call("threads.rollback", { threadId: fork.id });
+    const again = await turn(client, fork.id, "start over");
+    expect(await client.call<Fork>("threads.merge-back", { threadId: fork.id })).toMatchObject({
+      pendingMergeBack: { turnId: again },
+    });
+    // An archived parent that already got the turn is THREAD_ARCHIVED, not NOTHING_TO_MERGE.
+    await turn(client, parent.id, "take it");
+    await client.call("threads.archive", { threadId: parent.id });
+    await expect(client.call("threads.merge-back", { threadId: fork.id })).rejects.toMatchObject({
+      code: "THREAD_ARCHIVED",
+    });
+  });
+
+  it("delivers no mark for a fork turn the parent already got (two merges raced)", async () => {
+    const { client, storage, parent, fork, tried, requests } = await forked();
+    await client.call("threads.merge-back", { threadId: fork.id });
+    await turn(client, parent.id, "go on");
+    // A second mark for the same turn, as a merge-back that passed its check just before.
+    const { thread: record } = await client.call<{ thread: Fork }>("threads.get", {
+      threadId: parent.id,
+    });
+    await storage.storage.kv.set("jhin.threads", `thread/${parent.id}`, {
+      ...record,
+      pendingMergeBack: {
+        id: "raced",
+        threadId: fork.id,
+        turnId: tried,
+        at: new Date().toISOString(),
+      },
+    } as never);
+    await turn(client, parent.id, "and then");
+    expect(requests.at(-1)!.input.text).toBe("and then");
+    expect(await pendingOf(client, parent.id)).toBeUndefined();
+  });
+
+  it("regenerates no turn whose start recorded no message", async () => {
+    const { client, storage } = await node();
+    const thread = await client.call<Thread>("threads.create", {});
+    await turn(client, thread.id, "one");
+    // A start without its input, as an older or broken writer could leave it.
+    await storage.storage.log.append(`thread/${thread.id}`, [
+      { type: "agent.turn.started", payload: { turnId: "bare", agentId: "jhin.agent-fake" } },
+      { type: "agent.turn.completed", payload: { turnId: "bare" } },
+    ]);
+    await expect(
+      client.call("threads.regenerate", { threadId: thread.id, turnId: "bare" }),
+    ).rejects.toMatchObject({ code: "TURN_NOT_FOUND" });
+  });
+
   it("merges again into a regenerated turn, leaving no mark", async () => {
     const { client, parent, fork, requests } = await forked();
     await client.call("threads.merge-back", { threadId: fork.id });

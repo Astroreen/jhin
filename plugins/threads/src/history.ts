@@ -31,7 +31,7 @@ function deltaLines(events: readonly StoredEvent[], turnIds: ReadonlySet<string>
       const tool = payload["tool"] as { kind?: unknown; detail?: unknown } | undefined;
       const detail = typeof tool?.detail === "string" ? tool.detail : "";
       if (tool?.kind === "command") lines.push(`- Command: ${compactText(detail)}`);
-      else if (tool?.kind === "file_change") lines.push(`- File change: ${detail}`);
+      else if (tool?.kind === "file_change") lines.push(`- File change: ${compactText(detail)}`);
     }
   }
   return lines;

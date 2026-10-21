@@ -14,7 +14,7 @@ import { Alert, AlertAction, AlertDescription, Button, Slot } from "@jhin/ui";
 import { ArchiveRestoreIcon, ChevronDownIcon, CircleAlertIcon, XIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { buildPromptHistory, threadDraftKey } from "../../lib/composer.ts";
+import { buildPromptHistory, newThreadDraftKey, threadDraftKey } from "../../lib/composer.ts";
 import { useCatalog } from "../../lib/hooks.ts";
 import { CHAT_SECTION, ChatSettings, useSection } from "../../lib/settings.ts";
 import { wokeAt } from "../../lib/sidebar-order.ts";
@@ -558,7 +558,7 @@ export function DraftView(props: {
   useEffect(() => setSelection(lastSelection), [lastSelection]);
   useEffect(() => {
     chat.composer.current = {
-      draftKey: `${targetKey(target)}|draft|${project.id}`,
+      draftKey: newThreadDraftKey(target, project.id),
       restore: (draft) => handle.current?.restore(draft),
       draft: () => handle.current?.draft(),
       focus: () => handle.current?.focus(),
@@ -658,7 +658,7 @@ export function DraftView(props: {
               </div>
               <Composer
                 context={{ target, project }}
-                draftKey={`${targetKey(target)}|draft|${project.id}`}
+                draftKey={newThreadDraftKey(target, project.id)}
                 handleRef={handle}
                 history={[]}
                 onRespond={async () => false}

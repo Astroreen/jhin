@@ -262,7 +262,8 @@ export function registerHistory(
     const parent = catalog?.threads.find(
       (candidate) => candidate.id === thread.forkedFrom!.threadId,
     );
-    // The fork's own turns: its record follows them, never the copied ones.
+    // Whether the fork ran a turn. After a rollback in the fork the record may name a
+    // copied turn; the node then refuses with T3's "Complete a run in this fork".
     const ran = thread.lastTurn !== undefined && thread.lastTurn.status !== "running";
     const label =
       parent === undefined ? "Merge back to source conversation" : `Merge back to ${parent.title}`;
