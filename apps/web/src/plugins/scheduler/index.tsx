@@ -19,7 +19,8 @@ import { CalendarClockIcon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
 import { TASK_ACTIONS_SLOT, taskActions } from "./actions.tsx";
-import { ScheduledTasksSection, SchedulerProvider, type SchedulerServices } from "./page.tsx";
+import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import type { SchedulerServices } from "./page.tsx";
 import { createSchedulerStore } from "./store.ts";
 
 /**
@@ -58,13 +59,26 @@ export const schedulerPlugin = builtin(
         toasts: context.services.get<Toasts>(UI_TOASTS_CAPABILITY),
         dialogs: context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY),
       };
-      function Section() {
-        return (
-          <SchedulerProvider services={services}>
-            <ScheduledTasksSection />
-          </SchedulerProvider>
-        );
-      }
+      // A chunk of its own, loaded when the section first opens, as the other settings sections (D440).
+      const Section = lazyChunk(
+        () =>
+          import("./page.tsx").then(
+            ({ SchedulerProvider, ScheduledTasksSection }) =>
+              function Section() {
+                return (
+                  <SchedulerProvider services={services}>
+                    <ScheduledTasksSection />
+                  </SchedulerProvider>
+                );
+              },
+          ),
+        {
+          loading: () => null,
+          failed: (_props, retry) => (
+            <ChunkFailed retry={retry}>Couldn't load this section.</ChunkFailed>
+          ),
+        },
+      );
       context.subscriptions.add(
         settings.addSection({
           id: "scheduled-tasks",
