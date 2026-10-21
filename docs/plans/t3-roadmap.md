@@ -245,6 +245,10 @@ free block of 20 after D1000 and writes it here.
   Code subagents shown as child threads; the thread's automations panel, the
   editor's workspace and model pickers, `secretRef` webhook secrets through
   `request_secret`.
+  Done: D861–D884 (#125, #148, #154, #158, #161, #164, #166, #168); left
+  in `orchestration.md`'s Deferred lists: `secretRef` through
+  `request_secret` (needs a secret store, W13), custom `agentType`s,
+  background Claude subagents, stopping a provider subagent from the panel.
 - **W21:** worktree setup scripts and their progress card, a temporary branch
   named from the first message, cleanup rules, one worktree per model of a
   multi-model send, `composer.workspace`; the pull request right panel, chat

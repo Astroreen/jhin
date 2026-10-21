@@ -631,7 +631,12 @@ the rest of it is unchanged since D53's tag.
   `releaseStuckRun`): today a storage failure at that write leaves the task
   marked running until the next start's recovery.
 - `secretRef` for webhook signing secrets, entered through
-  `request_secret` (W13's secrets).
+  `request_secret`. It needs what W13 left out (`security.md`, secrets
+  Deferred): a secret store apart from the config files, a request the user
+  answers privately in the thread (T3's secret prompt), and single-use
+  references only the node's own plugins can redeem. W20 stops short of it:
+  that store is security work of its own, not a scheduler change. Until
+  then a signing secret is typed into the editor's write-only field.
 - A public webhook URL through a relay, held deliveries while the node is
   offline and their maximum age (`maxDeliveryAgeMinutes`): T3 does this with
   T3 Connect; Jhin's remote access is W13.
