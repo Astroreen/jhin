@@ -38,6 +38,9 @@ import {
   type KeyValueStore,
 } from "@jhin/storage-api";
 
+import { AgentsError } from "./errors.ts";
+import { registerMessaging } from "./messaging.ts";
+
 const NAMESPACE = "jhin.agents";
 /** How much inherited knowledge goes in front of a generation's first message (D607). */
 export const MAX_KNOWLEDGE_CHARS = 64_000;
@@ -60,17 +63,6 @@ interface ProjectInfo {
 interface ThreadInfo {
   readonly title: string;
   readonly lastTurn?: { readonly status: TurnStatus };
-}
-
-class AgentsError extends Error {
-  readonly code: string;
-  readonly details: Record<string, unknown>;
-
-  constructor(code: string, message: string, details: Record<string, unknown> = {}) {
-    super(message);
-    this.code = code;
-    this.details = details;
-  }
 }
 
 const titleOf = (agentId: string, definition: AgentDefinition | undefined) =>
@@ -678,6 +670,9 @@ export default definePlugin({
         }),
       );
     }
+
+    // Messaging between agents and the owner (A2, D621–D629).
+    registerMessaging(context, { nodeId, kv, log });
 
     // --- Commands (D609) --------------------------------------------------------
     const commands = AgentCommands;

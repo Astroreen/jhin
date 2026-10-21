@@ -71,7 +71,7 @@ describe("messaging contract", () => {
     expect(text.endsWith("Slice 3 is yours.")).toBe(true);
     expect(messageText({ ...message, kind: "ask", generation: 2 })).toContain("generation #2");
     expect(messageText({ ...message, kind: "answer", inReplyTo: "q1" })).toContain(
-      "your question q1",
+      "your message q1",
     );
   });
 });
