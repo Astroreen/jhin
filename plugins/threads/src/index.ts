@@ -18,7 +18,11 @@ import {
   SUBAGENT_WORK_KINDS,
   THREADS_STREAM,
   applicableModelOptions,
+  contextReferencesAsLabels,
+  MessageContextSchema,
   MessageOrigin,
+  projectMessageContext,
+  referencedContext,
   ThreadEvents,
   ThreadHooks,
   threadStream,
@@ -32,6 +36,8 @@ import {
   type AgentSlashCommand,
   type AgentTurn,
   type InteractionMode,
+  type MessageContext,
+  type MessageContextRecord,
   type ModelOptionSelection,
   type RuntimeMode,
   type TurnAttachment,
@@ -459,6 +465,8 @@ const QueuedMessage = z.object({
   id: z.string(),
   text: z.string(),
   attachments: z.array(z.union([AttachmentRef, Attachment])).optional(),
+  /** Its context records (D1006), named by the text's `jhin-context://` links. */
+  context: MessageContextSchema.optional(),
   ...AgentSettings,
   origin: MessageOrigin.optional(),
   createdAt: z.string(),
@@ -530,11 +538,29 @@ const Outgoing = z.object({
   threadId: z.string(),
   text: z.string(),
   attachments: Attachments.optional(),
+  /**
+   * Context records the text names by `jhin-context://` links (D1006): kept with the message,
+   * and what its agent reads besides the text. A record that fails its check is dropped.
+   */
+  context: MessageContextSchema.optional(),
   ...AgentSettings,
   /** A message between agents (agents.md D623): its turn's start carries it, so it shows its sender. */
   origin: MessageOrigin.optional(),
 });
 type Outgoing = Omit<z.infer<typeof Outgoing>, "threadId">;
+
+/**
+ * A message with only the context records its text names (D1006): what is kept is what its
+ * agent reads, whoever sent it (the web client, the CLI, an agent over MCP).
+ */
+function withNamedContext<Message extends { text: string; context?: MessageContext | undefined }>(
+  message: Message,
+  records: readonly MessageContextRecord[] | undefined = message.context?.records,
+): Message {
+  const { context: _context, ...rest } = message;
+  const named = records === undefined ? undefined : referencedContext(message.text, records);
+  return (named === undefined ? rest : { ...rest, context: named }) as Message;
+}
 
 /** A message id a caller chooses (D201): queuing it again changes nothing. */
 const MessageIdInput = z
@@ -1275,7 +1301,7 @@ export default definePlugin({
 
     async function runTurn(
       thread: Thread,
-      input: { text: string; attachments?: readonly TurnAttachment[] },
+      input: { text: string; attachments?: readonly TurnAttachment[]; context?: MessageContext },
       runtime: AgentRuntime,
       settings: TurnSettings,
       { entry, release, finish, started }: ReturnType<typeof reserve>,
@@ -1372,7 +1398,10 @@ export default definePlugin({
             threadId: thread.id,
             turnId,
             input: {
-              text: handoff === undefined ? input.text : handoff.text,
+              text:
+                handoff === undefined
+                  ? projectMessageContext({ text: input.text, records: input.context?.records })
+                  : handoff.text,
               ...(resolved === undefined ? {} : { attachments: resolved }),
             },
             history,
@@ -3234,7 +3263,7 @@ export default definePlugin({
      */
     async function startTurn(
       threadId: string,
-      { text, attachments, origin, ...requested }: Outgoing,
+      { text, attachments, origin, context: messageContext, ...requested }: Outgoing,
       options: {
         messageId?: string;
         progress?: { recorded: boolean };
@@ -3270,15 +3299,19 @@ export default definePlugin({
       if (runtime === undefined) {
         throw new ThreadsError("NO_AGENT", "No agent runtime is installed on this node");
       }
+      // The text names its context records by links (D1006): a title reads their labels, the
+      // agent the text with the records projected in.
+      const shownText = contextReferencesAsLabels(text);
+      const agentText = projectMessageContext({ text, records: messageContext?.records });
       // A first message names its thread. The hook runs before the thread is
       // taken: one that is slow, or never answers, holds nothing.
       const firstTitle =
         read.lastTurn === undefined && read.title === DEFAULT_THREAD_TITLE
           ? await context.hooks
-              .run(ThreadHooks.title, { thread: read, text }, ({ text: input }) =>
+              .run(ThreadHooks.title, { thread: read, text: shownText }, ({ text: input }) =>
                 titleFromText(input),
               )
-              .catch(() => titleFromText(text))
+              .catch(() => titleFromText(shownText))
           : undefined;
       const merge = options.merge;
       const turnId = Crypto.randomUUID();
@@ -3320,7 +3353,9 @@ export default definePlugin({
         const marked = merge === undefined ? thread.pendingMergeBack : undefined;
         const delivering = merge ?? marked;
         const found =
-          delivering === undefined ? undefined : await mergeBackHandoff(thread, delivering, text);
+          delivering === undefined
+            ? undefined
+            : await mergeBackHandoff(thread, delivering, agentText);
         if (typeof found === "object") handoff = found;
         // A pending mark whose fork or turn is gone goes now; one delivered goes once the
         // turn has started, so a turn that cannot start keeps it for the next message.
@@ -3377,7 +3412,11 @@ export default definePlugin({
       }
       await runTurn(
         thread,
-        { text, ...(attachments === undefined ? {} : { attachments }) },
+        {
+          text,
+          ...(attachments === undefined ? {} : { attachments }),
+          ...(messageContext === undefined ? {} : { context: messageContext }),
+        },
         runtime,
         settings,
         reservation,
@@ -3410,7 +3449,8 @@ export default definePlugin({
       input: Outgoing,
       output: z.object({ turnId: z.string() }),
       permissions: ["threads.write"],
-      handler: async ({ threadId, ...sent }) => {
+      handler: async ({ threadId, ...given }) => {
+        const sent = withNamedContext(given);
         assertMessage(sent.text, sent.attachments);
         // Uploads become the thread's: checked, then moved under it (D293).
         const message =
@@ -3620,7 +3660,11 @@ export default definePlugin({
       // A turn still starting takes it once it has; nothing is locked meanwhile.
       await current.started;
       const steer = async (
-        { text, attachments }: Pick<Outgoing, "text" | "attachments">,
+        {
+          text,
+          attachments,
+          context: steerContext,
+        }: Pick<Outgoing, "text" | "attachments" | "context">,
         alongside?: { event: NewEvent; record: RecordWrite },
       ) => {
         const turn = current.turn;
@@ -3632,11 +3676,18 @@ export default definePlugin({
         ) {
           return false;
         }
-        const input: TurnInput = { text, ...(attachments === undefined ? {} : { attachments }) };
+        const input: TurnInput & { context?: MessageContext } = {
+          text,
+          ...(attachments === undefined ? {} : { attachments }),
+          ...(steerContext === undefined ? {} : { context: steerContext }),
+        };
         // The runtime reads the uploads' bytes and files; the event keeps their ids.
         const resolved = await attachmentStore.resolve(input.attachments);
         try {
-          turn.steer({ text, ...(resolved === undefined ? {} : { attachments: resolved }) });
+          turn.steer({
+            text: projectMessageContext({ text, records: steerContext?.records }),
+            ...(resolved === undefined ? {} : { attachments: resolved }),
+          });
         } catch {
           // It ended before it took the message.
           return false;
@@ -3804,7 +3855,8 @@ export default definePlugin({
      * thread. Its uploads become the thread's (D293): the message as returned
      * names them as the node knows them.
      */
-    const checkOutgoing = async (threadId: string, message: Outgoing): Promise<Outgoing> => {
+    const checkOutgoing = async (threadId: string, given: Outgoing): Promise<Outgoing> => {
+      const message = withNamedContext(given);
       assertMessage(message.text, message.attachments);
       if (message.agentId !== undefined && registry.get(message.agentId) === undefined) {
         throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${message.agentId} on this node`, {
@@ -3854,20 +3906,29 @@ export default definePlugin({
 
     context.commands.register({
       name: "threads.queue.edit",
-      description: "Changes the text, and the images if given, of a queued message",
-      input: QueueTarget.extend({ text: z.string(), attachments: Attachments.optional() }),
+      description:
+        "Changes the text, and the images and context records if given, of a queued message",
+      input: QueueTarget.extend({
+        text: z.string(),
+        attachments: Attachments.optional(),
+        context: MessageContextSchema.optional(),
+      }),
       output: QueueView,
       permissions: ["threads.write"],
-      handler: ({ threadId, messageId, text, attachments }) =>
+      handler: ({ threadId, messageId, text, attachments, context: edited }) =>
         changeQueue(threadId, async (queue) => {
           const message = queue.messages.find((item) => item.id === messageId);
           if (message === undefined) throw notQueued(threadId, messageId);
-          const next: QueuedMessage = {
-            ...message,
-            text,
-            ...(attachments === undefined ? {} : { attachments }),
-            updatedAt: now(),
-          };
+          // The records the new text still names: the given ones, else those it had.
+          const next: QueuedMessage = withNamedContext(
+            {
+              ...message,
+              text,
+              ...(attachments === undefined ? {} : { attachments }),
+              updatedAt: now(),
+            },
+            edited?.records ?? message.context?.records,
+          );
           assertMessage(next.text, next.attachments);
           return viewOf(
             await writeQueue(threadId, {
@@ -4265,7 +4326,7 @@ export default definePlugin({
       );
       return (started?.payload ?? {}) as {
         agentId?: string;
-        input?: { text?: string; attachments?: TurnAttachment[] };
+        input?: { text?: string; attachments?: TurnAttachment[]; context?: MessageContext };
         model?: string;
         runtimeMode?: RuntimeMode;
         interactionMode?: InteractionMode;
@@ -4286,6 +4347,7 @@ export default definePlugin({
         input: z.object({
           text: z.string(),
           attachments: z.array(z.union([AttachmentRef, Attachment])).optional(),
+          context: MessageContextSchema.optional(),
         }),
         ...AgentSettings,
         agentId: z.string(),
@@ -4308,6 +4370,7 @@ export default definePlugin({
             ...(payload.input?.attachments === undefined
               ? {}
               : { attachments: [...payload.input.attachments] }),
+            ...(payload.input?.context === undefined ? {} : { context: payload.input.context }),
           },
           ...(payload.model === undefined ? {} : { model: payload.model }),
           ...(payload.runtimeMode === undefined ? {} : { runtimeMode: payload.runtimeMode }),

@@ -161,6 +161,10 @@ The desktop app's client plugin `jhin.desktop` lives in `plugins/desktop`
   plugin folders, as the dev layer (D15); the desktop app adds its plugin so.
 - `agent.runtime` 1.5 (`@jhin/agent-api`): a question's `initialAnswer`, an
   answer to edit (`plans/t3-parity.md` D1001).
+- `@jhin/agent-api`'s message context records (`context.ts`): `jhin-context://`
+  references, `projectMessageContext` (what an agent reads of a message with
+  records), the records `threads.send` and the queue take
+  (`plans/t3-parity.md` D1006).
 - `projects.read-file` and `agents.skill.read` (`jhin.threads`) — the start of
   a project's file and of a skill's SKILL.md, for the composer's file and skill
   chips (`plans/t3-parity.md` D1003, D1004).

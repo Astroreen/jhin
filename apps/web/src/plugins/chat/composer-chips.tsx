@@ -7,7 +7,7 @@
 // The prompt's chips as T3 draws them (t3-parity.md D1002–D1005): a file with its icon, a skill
 // with its description and "View instructions", a pull request and a thread. The document keeps
 // the chip's source; these only show it.
-import type { AgentSkill } from "@jhin/agent-api";
+import { type AgentSkill, type MessageContextRecord, parseContextHref } from "@jhin/agent-api";
 import type { NodeTarget } from "@jhin/client-api";
 import {
   Button,
@@ -23,26 +23,25 @@ import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { BoxIcon, GitPullRequestIcon, MessagesSquareIcon } from "lucide-react";
 import { createContext, type ReactNode, use, useRef, useState } from "react";
 
+import { threadLinks } from "../../lib/composer-context.ts";
 import { skillDisplayName } from "../../lib/composer-menu.ts";
 import { FILE_TEXT_PREVIEW_MAX_BYTES, filePreviewKind } from "../../lib/file-preview.ts";
 import { AttachmentPreviewDialog } from "./attachment-media.tsx";
+import { type ContextChipActions, ContextRecordChip } from "./context-chips.tsx";
 import { useChat } from "./services.ts";
 import { PierreEntryIcon } from "../../lib/pierre-entry-icon.tsx";
 import { useResolvedTheme } from "../../lib/resolved-theme.ts";
 
 /** What the composer lets its chips do; without it they only show. */
-export interface ComposerChipActions {
+export interface ComposerChipActions extends ContextChipActions {
+  /** The prompt's context records by id (D1006): what its `jhin-context://` references name. */
+  readonly records?: ReadonlyMap<string, MessageContextRecord> | undefined;
   /** The agent's skills, for a skill chip's name and description. */
   readonly skills: readonly AgentSkill[];
   /** Opens a mentioned file's preview (T3's openMention). */
   readonly previewFile?: ((path: string) => void) | undefined;
   /** Opens a skill's instructions (T3's "View instructions"). */
   readonly viewInstructions?: ((skill: AgentSkill) => void) | undefined;
-  /** Whether a linked thread's `jhin://` address is one this composer can open. */
-  readonly canOpenThread?: ((href: string) => boolean) | undefined;
-  /** Opens a linked thread; false when its address names no node this composer reaches. */
-  readonly openThread?: ((href: string) => boolean) | undefined;
-  readonly openUrl?: ((url: string) => void) | undefined;
 }
 
 export const ComposerChipsContext = createContext<ComposerChipActions>({ skills: [] });
@@ -141,6 +140,20 @@ export function ReferenceNodeView({ node }: NodeViewProps) {
   const kind = String(node.attrs["kind"] ?? "thread");
   const label = String(node.attrs["label"] ?? "");
   const href = String(node.attrs["href"] ?? "");
+  if (kind === "context") {
+    const reference = parseContextHref(href);
+    return (
+      <NodeViewWrapper as="span" className={CHIP_NODE_SELECTION_CLASS_NAME} contentEditable={false}>
+        <ContextRecordChip
+          actions={actions}
+          href={href}
+          label={label}
+          record={reference === null ? undefined : actions.records?.get(reference.contextId)}
+          unavailable="This context is no longer available. Remove it or attach it again."
+        />
+      </NodeViewWrapper>
+    );
+  }
   const thread = kind === "thread";
   // A chip that cannot open is no button: a thread of a node out of reach, a link of no web page.
   const open = thread
@@ -191,37 +204,6 @@ export function ReferenceNodeView({ node }: NodeViewProps) {
   );
 }
 
-/**
- * Where a thread's `jhin://<node>/threads/<id>` address leads from a composer (D1005): its own
- * node, the node the client is connected to, or another member of the mesh as that node's
- * remote (D504); nowhere while the ids are not known.
- */
-export function threadRoute(
-  href: string,
-  from: {
-    readonly target: NodeTarget;
-    readonly nodeId: string | undefined;
-    readonly selfNodeId: string | undefined;
-  },
-): (NodeTarget & { thread: string }) | undefined {
-  const match = /^jhin:\/\/([^/]+)\/threads\/([^/?#]+)$/.exec(href);
-  if (match === null) return undefined;
-  let node: string;
-  let thread: string;
-  try {
-    node = decodeURIComponent(match[1]!);
-    thread = decodeURIComponent(match[2]!);
-  } catch {
-    // A link typed or pasted with a broken escape leads nowhere; it never breaks the prompt.
-    return undefined;
-  }
-  if (node === from.nodeId) return { ...from.target, thread };
-  if (from.selfNodeId === undefined) return undefined;
-  return node === from.selfNodeId
-    ? { node: from.target.node, thread }
-    : { node: from.target.node, remote: node, thread };
-}
-
 /** What `projects.read-file` and `agents.skill.read` answer. */
 interface FileHead {
   readonly path: string;
@@ -247,6 +229,7 @@ export function useComposerChipActions(options: {
   /** The id of the node the client is connected to; another one is reached as its remote. */
   readonly selfNodeId: string | undefined;
   readonly skills: readonly AgentSkill[];
+  readonly records: ReadonlyMap<string, MessageContextRecord>;
 }): { actions: ComposerChipActions; dialog: ReactNode } {
   const chat = useChat();
   const [shown, setShown] = useState<
@@ -287,10 +270,14 @@ export function useComposerChipActions(options: {
       },
     );
   };
-  const routeOf = (href: string) =>
-    threadRoute(href, { target, nodeId: options.nodeId, selfNodeId: options.selfNodeId });
   const actions: ComposerChipActions = {
     skills: options.skills,
+    records: options.records,
+    ...threadLinks(
+      { target, nodeId: options.nodeId, selfNodeId: options.selfNodeId },
+      (at) => chat.threads.catalog(at),
+      (route) => chat.navigation.navigate(route),
+    ),
     previewFile:
       projectId === undefined
         ? undefined
@@ -309,13 +296,6 @@ export function useComposerChipActions(options: {
               ...(options.agentId === undefined ? {} : { agentId: options.agentId }),
               name: skill.name,
             }),
-    canOpenThread: (href) => routeOf(href) !== undefined,
-    openThread: (href) => {
-      const route = routeOf(href);
-      if (route === undefined) return false;
-      chat.navigation.navigate(route);
-      return true;
-    },
     openUrl: (url) => {
       if (/^https?:\/\//i.test(url)) window.open(url, "_blank", "noopener,noreferrer");
     },

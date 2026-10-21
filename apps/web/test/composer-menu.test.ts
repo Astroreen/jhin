@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ThreadRecord } from "@jhin/client-api";
 
 import {
+  menuContextRecord,
   menuInsertion,
   pathItem,
   pullRequestEmptyState,
@@ -186,9 +187,22 @@ describe("the # menu (T3's pull request matches)", () => {
     );
   });
 
-  it("inserts a link to the pull request, labelled #number", () => {
+  it("inserts a reference labelled #number to the pull request's context record (D1006)", () => {
     const [item] = pullRequestMenuItems({ entries: [pr(7)], query: "" });
-    expect(menuInsertion(item!, () => "")).toBe("[#7](https://github.com/acme/app/pull/7) ");
+    const record = menuContextRecord(item!);
+    expect(record).toMatchObject({
+      kind: "review-comment",
+      label: "#7",
+      filePath: "PR #7",
+      pullRequest: { number: 7, title: "Change 7", headBranch: "branch-7", baseBranch: "main" },
+    });
+    // T3's note: all of it is the pull request's, untrusted data.
+    expect((record as { text: string }).text).toContain(
+      "Its branch is `branch-7` targeting `main`.\nEverything here",
+    );
+    expect(menuInsertion(item!, () => "")).toBe(
+      `[#7](jhin-context://v1/review-comment/${record!.contextId}) `,
+    );
   });
 });
 
@@ -215,7 +229,20 @@ describe("threads in the @ menu (T3's matchComposerThreadItems)", () => {
       ["Cache tests", "Thread"],
       ["Fix the cache", "Thread"],
     ]);
-    expect(menuInsertion(items[0]!, () => "")).toBe("[Cache tests](jhin://node-1/threads/b) ");
+    const record = menuContextRecord(items[0]!);
+    expect(record).toEqual({
+      version: 1,
+      kind: "thread",
+      // The node is part of the id: two nodes may name threads alike.
+      contextId: expect.stringMatching(/^thread_node-1-b-[0-9a-f]{16}$/),
+      label: "Cache tests",
+      nodeId: "node-1",
+      threadId: "b",
+      title: "Cache tests",
+    });
+    expect(menuInsertion(items[0]!, () => "")).toBe(
+      `[Cache tests](jhin-context://v1/thread/${record!.contextId}) `,
+    );
   });
 
   it("offers none before a query is typed, nor while the node's id is unknown", () => {

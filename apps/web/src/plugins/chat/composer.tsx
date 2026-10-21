@@ -3,9 +3,11 @@
 // ComposerPendingApprovalPanel.tsx, ComposerPendingApprovalActions.tsx,
 // ComposerPendingUserInputPanel.tsx, QueuedRunsControl.tsx, ProviderModelPicker.tsx,
 // ContextWindowMeter.tsx and runtimeModeConfig.ts. The prompt is T3's tiptap editor (prompt-editor.tsx).
-import { applicableModelOptions } from "@jhin/agent-api";
+import { applicableModelOptions, referencedContext } from "@jhin/agent-api";
 import type {
   AgentResponse,
+  MessageContext,
+  MessageContextRecord,
   ModelOptionDescriptor,
   ModelOptionSelection,
   TokenUsage,
@@ -86,7 +88,11 @@ import {
   pastedTextFile,
   shouldHandleAttachmentPaste,
 } from "../../lib/attachment-files.ts";
-import { menuInsertion, type ComposerMenuItem } from "../../lib/composer-menu.ts";
+import {
+  menuContextRecord,
+  menuInsertion,
+  type ComposerMenuItem,
+} from "../../lib/composer-menu.ts";
 import {
   detectComposerTrigger,
   parseStandaloneComposerSlashCommand,
@@ -122,6 +128,7 @@ const PromptEditor = lazy(() =>
 );
 import { useComposerMenu } from "./use-composer-menu.ts";
 import { type PutAside, usePutAside } from "./put-aside.ts";
+import { knownRecordsById, withContexts } from "../../lib/composer-context.ts";
 import { ComposerChipsContext, useComposerChipActions } from "./composer-chips.tsx";
 import {
   useAttachmentLoader,
@@ -202,11 +209,21 @@ export interface QueueActions {
   steer(messageId: string): Promise<boolean>;
   /** Moves a message before another one, or to the end (`null`). */
   reorder(messageId: string, beforeMessageId: string | null): Promise<boolean>;
-  edit(messageId: string, text: string, attachments: readonly TurnAttachment[]): Promise<boolean>;
-  /** A queued message with its images, for editing. */
-  load(
+  edit(
     messageId: string,
-  ): Promise<{ text: string; attachments: readonly TurnAttachment[] } | undefined>;
+    text: string,
+    attachments: readonly TurnAttachment[],
+    context?: MessageContext,
+  ): Promise<boolean>;
+  /** A queued message with its images and context records, for editing. */
+  load(messageId: string): Promise<
+    | {
+        text: string;
+        attachments: readonly TurnAttachment[];
+        context?: MessageContext | undefined;
+      }
+    | undefined
+  >;
 }
 
 function SendIcon() {
@@ -1162,6 +1179,8 @@ export interface ComposerProps {
     text: string,
     attachments: readonly TurnAttachment[],
     alternate?: boolean,
+    /** The context records the text names (D1006). */
+    context?: MessageContext,
   ): Promise<boolean>;
   onStop(): void;
   /**
@@ -1194,6 +1213,10 @@ export function Composer(props: ComposerProps) {
   const settings = useSection(chat.context, CHAT_SECTION, ChatSettings);
   const initial = drafts.get(props.draftKey);
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
+  /** The context records picks put beside the prompt (D1006), which its references name. */
+  const [contexts, setContexts] = useState<readonly MessageContextRecord[]>(
+    initial?.contexts ?? [],
+  );
   /** Where the caret is in the prompt (a markdown string): the menus read the trigger there. */
   const [cursor, setCursor] = useState(prompt.length);
   const uploads = useComposerAttachments({
@@ -1223,7 +1246,11 @@ export function Composer(props: ComposerProps) {
   const [editing, setEditing] = useState<
     | {
         readonly id: string;
-        readonly draft: { prompt: string; attachments: readonly ComposerAttachment[] };
+        readonly draft: {
+          prompt: string;
+          attachments: readonly ComposerAttachment[];
+          contexts: readonly MessageContextRecord[];
+        };
       }
     | undefined
   >();
@@ -1272,14 +1299,15 @@ export function Composer(props: ComposerProps) {
     if (draft.prompt.trim() !== "" || draft.attachments.length > 0) {
       setPrompt((typed) => (draft.prompt.trim() === "" ? typed : `${typed}\n\n${draft.prompt}`));
       uploads.replace([...uploads.items, ...draft.attachments]);
+      setContexts((current) => withContexts(current, draft.contexts));
     }
     setEditing(undefined);
   }, [editedGone]);
 
   // The draft as typed now, for an edit that starts after a network call: what
   // is typed while the queued message loads is what comes back after the edit.
-  const typedNow = useRef({ prompt, attachments });
-  typedNow.current = { prompt, attachments };
+  const typedNow = useRef({ prompt, attachments, contexts });
+  typedNow.current = { prompt, attachments, contexts };
   /** An edit or a steer from a shortcut is on its way: one at a time. */
   const queueBusy = useRef(false);
   const startEdit = async (messageId: string) => {
@@ -1294,6 +1322,7 @@ export function Composer(props: ComposerProps) {
       setEditing({ id: messageId, draft: typedNow.current });
       setPrompt(message.text);
       uploads.replace(attachmentItems(message.attachments));
+      setContexts(message.context?.records ?? []);
       editor.current?.focus();
     } finally {
       queueBusy.current = false;
@@ -1303,6 +1332,7 @@ export function Composer(props: ComposerProps) {
     if (editing === undefined) return;
     setPrompt(editing.draft.prompt);
     uploads.replace(editing.draft.attachments);
+    setContexts(editing.draft.contexts);
     setEditing(undefined);
   };
 
@@ -1380,7 +1410,7 @@ export function Composer(props: ComposerProps) {
   const pathTrigger = detectComposerTrigger(prompt, cursor)?.kind === "path";
   const catalog = useCatalog(chat.threads, pathTrigger ? props.target : undefined);
   // A thread chip opens its thread wherever in the mesh it is: the members are followed then too.
-  const threadChip = prompt.includes("](jhin://");
+  const threadChip = prompt.includes("](jhin://") || prompt.includes("](jhin-context://v1/thread/");
   const members = useMeshMembers(
     chat.mesh,
     pathTrigger || threadChip ? props.target.node : undefined,
@@ -1409,6 +1439,7 @@ export function Composer(props: ComposerProps) {
     nodeId,
     selfNodeId,
     skills: menu.skills,
+    records: knownRecordsById(contexts),
   });
   /**
    * T3's onSelectComposerItem: inserts the command, skill, file, pull request or thread, or
@@ -1418,6 +1449,9 @@ export function Composer(props: ComposerProps) {
     const trigger = menu.trigger;
     if (trigger === null) return;
     const insertion = menuInsertion(item, serializeComposerFileLink);
+    // A pull request or a thread goes in as a record its reference names (D1006).
+    const record = menuContextRecord(item);
+    if (record !== undefined) setContexts((current) => withContexts(current, [record]));
     editor.current?.replaceRange(trigger.rangeStart, trigger.rangeEnd, insertion ?? "");
     if (item.type !== "slash-command") return;
     if (item.command === "model") setPickerOpen(true);
@@ -1447,13 +1481,17 @@ export function Composer(props: ComposerProps) {
   };
   useImperativeHandle(props.handleRef, () => ({
     restore(draft) {
-      const restored = appendToDraft({ prompt, attachments: draftAttachments(attachments) }, draft);
+      const restored = appendToDraft(
+        { prompt, attachments: draftAttachments(attachments), contexts },
+        draft,
+      );
+      setContexts(restored.contexts ?? []);
       setPrompt(restored.prompt);
       uploads.replace(restored.attachments.map((item) => attachmentItems([item])[0]!));
       historyPosition.current = null;
       focus();
     },
-    draft: () => ({ prompt, attachments: draftAttachments(attachments) }),
+    draft: () => ({ prompt, attachments: draftAttachments(attachments), contexts }),
     focus,
     insert,
     toggleModelPicker: () => setPickerOpen((open) => !open),
@@ -1606,9 +1644,11 @@ export function Composer(props: ComposerProps) {
       if (props.queueActions === undefined) return false;
       setBusy(true);
       try {
-        if (await props.queueActions.edit(editing.id, text, ready.attachments)) {
+        const edited = referencedContext(text, contexts) ?? { version: 1, records: [] };
+        if (await props.queueActions.edit(editing.id, text, ready.attachments, edited)) {
           setPrompt(editing.draft.prompt);
           uploads.replace(editing.draft.attachments);
+          setContexts(editing.draft.contexts);
           setEditing(undefined);
         }
       } finally {
@@ -1616,16 +1656,21 @@ export function Composer(props: ComposerProps) {
       }
       return false;
     }
+    // Only the records the text still names go with it (T3's buildMessageContext).
+    const context = referencedContext(text, contexts);
+    const kept = contexts;
     // Cleared first, restored if sending fails (as T3 Code does).
     setPrompt("");
     setCursor(0);
+    setContexts([]);
     const taken = uploads.take();
     historyPosition.current = null;
     setBusy(true);
     try {
-      const sent = await props.onSend(text, ready.attachments, alternate);
+      const sent = await props.onSend(text, ready.attachments, alternate, context);
       if (!sent) {
         setPrompt(text);
+        setContexts(kept);
         taken.restore();
       } else {
         taken.sent();
@@ -1676,9 +1721,14 @@ export function Composer(props: ComposerProps) {
   useEffect(() => {
     // A queued message being edited is not the thread's draft, nor is a prefilled answer.
     if (editing === undefined && !putAside.active) {
-      drafts.set(props.draftKey, { prompt, attachments: draftAttachments(attachments) });
+      const kept = referencedContext(prompt, contexts)?.records;
+      drafts.set(props.draftKey, {
+        prompt,
+        attachments: draftAttachments(attachments),
+        ...(kept === undefined ? {} : { contexts: kept }),
+      });
     }
-  }, [drafts, props.draftKey, prompt, attachments, editing, putAside.active]);
+  }, [drafts, props.draftKey, prompt, attachments, contexts, editing, putAside.active]);
   const custom = literalAnswer ? prompt : prompt.trim();
   /** A question's answer with the typed one: added to a multi-select's options, else instead. */
   const withCustom = (item: UserQuestion): readonly string[] => {

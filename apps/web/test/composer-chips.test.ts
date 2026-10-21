@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { threadRoute } from "../src/plugins/chat/composer-chips.tsx";
+import { threadRoute } from "../src/lib/composer-context.ts";
 
 describe("a thread chip's address (D1005)", () => {
   const local = { target: { node: "conn" }, nodeId: "self", selfNodeId: "self" };

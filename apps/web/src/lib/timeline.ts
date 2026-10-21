@@ -4,6 +4,7 @@ import {
   ThreadEvents,
   type AgentRequest,
   type AgentResponse,
+  type MessageContext,
   type PlanStep,
   type TokenUsage,
   type ToolCall,
@@ -70,6 +71,8 @@ interface SteerItem {
   readonly messageId: string;
   readonly text: string;
   readonly attachments: readonly TurnAttachment[];
+  /** The context records its text names (D1006). */
+  readonly context?: MessageContext;
   readonly at: string;
 }
 
@@ -142,6 +145,8 @@ export interface TimelineTurn {
   readonly interactionMode?: string;
   readonly text: string;
   readonly attachments: readonly TurnAttachment[];
+  /** The context records its text names (D1006). */
+  readonly context?: MessageContext;
   readonly startedAt: string;
   readonly endedAt?: string;
   readonly state: TurnState;
@@ -172,7 +177,11 @@ interface Payload {
   readonly runtimeMode?: string;
   readonly interactionMode?: string;
   readonly kind?: string;
-  readonly input?: { readonly text?: string; readonly attachments?: readonly TurnAttachment[] };
+  readonly input?: {
+    readonly text?: string;
+    readonly attachments?: readonly TurnAttachment[];
+    readonly context?: MessageContext;
+  };
   readonly text?: string;
   readonly error?: string;
   readonly reason?: string;
@@ -304,6 +313,7 @@ export function createTimeline() {
             : { interactionMode: payload.interactionMode }),
           text: payload.input?.text ?? "",
           attachments: payload.input?.attachments ?? [],
+          ...(payload.input?.context === undefined ? {} : { context: payload.input.context }),
           // A merge into the parent is the parent's: a fork's copy of that turn shows none.
           ...(payload.inheritedAt === undefined &&
           payload.handoff?.kind === "merge-back" &&
@@ -342,6 +352,7 @@ export function createTimeline() {
             messageId: payload.messageId,
             text: payload.input?.text ?? "",
             attachments: payload.input?.attachments ?? [],
+            ...(payload.input?.context === undefined ? {} : { context: payload.input.context }),
             at: event.at,
           });
           break;

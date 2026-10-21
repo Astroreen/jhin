@@ -196,6 +196,11 @@ Words about Jhin:
   agent takes it into the work it is doing (`threads.steer`). For an agent
   that cannot steer, the turn stops and the message starts the next one at
   once (a **restart**, T3's restart dispatch).
+- **Context record** — structured context a user message carries beside its
+  text: a pull request, another thread, a terminal excerpt (T3's composer
+  context). The text names it by a **context reference**, a
+  `jhin-context://v1/<kind>/<id>` link, shown as a **chip**; the agent reads
+  the records projected into the text (`plans/t3-parity.md` D1006).
 - **Proposed plan** — a plan an agent proposes in plan mode for the user to
   accept (`agent.plan.proposed`); the composer offers to implement the latest
   one, in its thread or a new one. T3 Code's term.

@@ -2,7 +2,7 @@
 // apps/web/src/components/chat/MessagesTimeline.tsx (RevertUserMessageButton, AssistantForkButton,
 // the hover row of a message), ChatOverlayHosts.tsx (the confirmation), ChatView.tsx
 // (rewindToMessage, onForkFromRun) and ThreadRelationshipsControl.tsx (merging back).
-import type { TurnAttachment } from "@jhin/agent-api";
+import type { MessageContext, TurnAttachment } from "@jhin/agent-api";
 import type {
   ChatHeaderActionProps,
   ChatMessageActionProps,
@@ -70,7 +70,7 @@ export async function editFromHere(
   const key = threadDraftKey(target, input.threadId);
   const turn = await threads
     .call<{
-      input: { text: string; attachments?: TurnAttachment[] };
+      input: { text: string; attachments?: TurnAttachment[]; context?: MessageContext };
     }>(target, "threads.turn", { threadId: input.threadId, turnId: input.turnId })
     .catch((failure: unknown) => {
       toasts?.show({
@@ -84,6 +84,8 @@ export async function editFromHere(
   const message = {
     prompt: turn.input.text,
     attachments: (turn.input.attachments ?? []).filter((item) => "id" in item),
+    // Its references find their records again (D1006).
+    ...(turn.input.context === undefined ? {} : { contexts: turn.input.context.records }),
   };
   /** What the thread's composer holds now: the one on screen, else the stored draft. */
   const draftNow = () =>

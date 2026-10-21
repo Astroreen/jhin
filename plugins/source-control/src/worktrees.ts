@@ -9,7 +9,7 @@ import * as Fs from "node:fs/promises";
 import * as Os from "node:os";
 import * as Path from "node:path";
 
-import { ThreadEvents, visibleThreadEvents } from "@jhin/agent-api";
+import { contextReferencesAsLabels, ThreadEvents, visibleThreadEvents } from "@jhin/agent-api";
 
 import { SourceControlError, type Git } from "./git.ts";
 
@@ -83,7 +83,9 @@ export function firstMessageOf(
   const first = visible.find((event) => event.type === ThreadEvents.turnStarted)?.payload as
     | { turnId?: string; input?: { text?: string } }
     | undefined;
-  const text = first?.input?.text?.trim();
+  const typed = first?.input?.text;
+  // A context reference names the branch by its label (D1006).
+  const text = typed === undefined ? undefined : contextReferencesAsLabels(typed).trim();
   return first?.turnId === turnId && text ? text : undefined;
 }
 

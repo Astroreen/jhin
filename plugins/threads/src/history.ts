@@ -1,7 +1,7 @@
 // The merge-back handoff follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/server/src/orchestration-v2/ContextHandoffService.ts (compactText,
 // summarizeDeltaItem, makeForkDeltaSummary, providerMessageWithContextHandoffs).
-import { ThreadEvents } from "@jhin/agent-api";
+import { contextReferencesAsLabels, ThreadEvents } from "@jhin/agent-api";
 import type { StoredEvent } from "@jhin/storage-api";
 
 /** Whitespace collapsed, cut at `maxLength` with "..." (T3's compactText). */
@@ -22,7 +22,9 @@ function deltaLines(events: readonly StoredEvent[], turnIds: ReadonlySet<string>
     const payload = event.payload as Record<string, unknown>;
     if (event.type === ThreadEvents.turnStarted) {
       const text = (payload["input"] as { text?: unknown } | undefined)?.text;
-      if (typeof text === "string") lines.push(`- User: ${compactText(text)}`);
+      if (typeof text === "string") {
+        lines.push(`- User: ${compactText(contextReferencesAsLabels(text))}`);
+      }
     } else if (event.type === ThreadEvents.itemCompleted && payload["kind"] === "message") {
       if (typeof payload["text"] === "string") {
         lines.push(`- Assistant: ${compactText(payload["text"])}`);
@@ -90,8 +92,10 @@ export function searchTexts(events: readonly StoredEvent[]): SearchText[] {
     const payload = event.payload as Record<string, unknown>;
     const at = typeof payload["inheritedAt"] === "string" ? payload["inheritedAt"] : event.at;
     if (event.type === ThreadEvents.turnStarted) {
-      const text = (payload["input"] as { text?: unknown } | undefined)?.text;
-      if (typeof text === "string" && text !== "") {
+      const typed = (payload["input"] as { text?: unknown } | undefined)?.text;
+      // A context reference is found by its label, as the message shows it (D1006).
+      const text = typeof typed === "string" ? contextReferencesAsLabels(typed) : undefined;
+      if (text !== undefined && text !== "") {
         texts.push({ turnId, source: "user", text, folded: foldForSearch(text), at });
       }
     } else if (

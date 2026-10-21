@@ -1,6 +1,6 @@
 // Prompt history is derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/composerPromptHistory.ts. Drafts follow apps/web/src/composerDraftStore.ts.
-import type { StoredAttachment } from "@jhin/agent-api";
+import type { MessageContextRecord, StoredAttachment } from "@jhin/agent-api";
 import { targetKey, type NodeTarget } from "@jhin/client-api";
 
 import { ATTACHMENT_LIMITS } from "./uploads.ts";
@@ -71,6 +71,11 @@ export type DraftAttachment = StoredAttachment & { readonly previewUrl?: string 
 export interface ComposerDraft {
   readonly prompt: string;
   readonly attachments: readonly DraftAttachment[];
+  /**
+   * The context records the prompt names by `jhin-context://` references (D1006): kept on this
+   * device only; another device gets the text, whose references then show as unavailable.
+   */
+  readonly contexts?: readonly MessageContextRecord[];
   /** When the text was last typed (ms), here or on another device (D486). */
   readonly at?: number;
 }
@@ -141,6 +146,18 @@ export function createDrafts(storage: Storage = localStorage, remote?: DraftsRem
         ),
       );
     }
+    // Then the context records (a terminal excerpt is up to 64 000 characters): their chips
+    // show as unavailable after a reload, the text stays.
+    if (text.length > MAX_STORED_BYTES) {
+      text = JSON.stringify(
+        Object.fromEntries(
+          Object.entries(drafts).map(([key, { contexts: _contexts, ...draft }]) => [
+            key,
+            { ...draft, attachments: [] },
+          ]),
+        ),
+      );
+    }
     try {
       storage.setItem(DRAFTS_STORAGE_KEY, text);
     } catch {
@@ -191,7 +208,13 @@ export function createDrafts(storage: Storage = localStorage, remote?: DraftsRem
       const before = drafts[key];
       const latest = Math.max(before?.at ?? -1, cleared.get(key) ?? -1);
       if (at <= latest || (before?.prompt ?? "") === prompt) return false;
-      const draft: ComposerDraft = { prompt, attachments: before?.attachments ?? [], at };
+      // The records stay: a reference another device kept still finds its record here.
+      const draft: ComposerDraft = {
+        prompt,
+        attachments: before?.attachments ?? [],
+        ...(before?.contexts === undefined ? {} : { contexts: before.contexts }),
+        at,
+      };
       const next = { ...drafts };
       if (prompt === "" && draft.attachments.length === 0) {
         delete next[key];
@@ -265,7 +288,15 @@ export function appendToDraft(
       : message.prompt === ""
         ? current.prompt
         : `${current.prompt}\n\n${message.prompt}`;
-  return { prompt, attachments: [...current.attachments, ...message.attachments] };
+  const contexts = [...(current.contexts ?? [])];
+  for (const record of message.contexts ?? []) {
+    if (!contexts.some((kept) => kept.contextId === record.contextId)) contexts.push(record);
+  }
+  return {
+    prompt,
+    attachments: [...current.attachments, ...message.attachments],
+    ...(contexts.length === 0 ? {} : { contexts }),
+  };
 }
 
 /**

@@ -6,6 +6,7 @@
 // Pure helpers over the prompt, which is a markdown string: what the caret is typing (a `/`
 // command, a `#` pull request, a `$` skill, an `@` path or thread), how a picked file, pull
 // request or thread is written, and where the chips are.
+import { parseContextHref } from "@jhin/agent-api";
 
 type ComposerTriggerKind = "path" | "pull-request" | "slash-command" | "skill";
 
@@ -40,35 +41,6 @@ function encodeMarkdownLinkDestination(path: string): string {
 export function serializeComposerFileLink(path: string): string {
   const label = escapeMarkdownLinkLabel(basename(path));
   return `[${label}](${encodeMarkdownLinkDestination(path)})`;
-}
-
-/** T3's sanitizeComposerContextLabel: one line, no brackets, at most 200 characters. */
-function sanitizeReferenceLabel(label: string, fallback: string): string {
-  const cleaned = label
-    .replace(/[[\]\\\r\n]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 200);
-  return cleaned.length > 0 ? cleaned : fallback;
-}
-
-/**
- * A picked pull request as the prompt writes it: a link labelled `#number` (T3's chip label)
- * to the pull request, which the agent can read.
- */
-export function serializeComposerPullRequestLink(pullRequest: {
-  readonly number: number;
-  readonly url: string;
-}): string {
-  return `[#${pullRequest.number}](${encodeMarkdownLinkDestination(pullRequest.url)})`;
-}
-
-/**
- * A picked thread as the prompt writes it: a link labelled with its title to its
- * `jhin://<nodeId>/threads/<id>` address (D24), as T3 links a thread context.
- */
-export function serializeComposerThreadLink(title: string, address: string): string {
-  return `[${sanitizeReferenceLabel(title, "thread")}](${encodeMarkdownLinkDestination(address)})`;
 }
 
 const THREAD_ADDRESS_REGEX = /^jhin:\/\/[^/\s]+\/threads\/[^/\s?#]+$/;
@@ -186,7 +158,8 @@ export type ComposerPromptSegment =
     };
 
 /** What a reference chip points at: a pull request or a thread. */
-type ReferenceKind = "pull-request" | "thread";
+/** `context`: a `jhin-context://` reference to one of the prompt's context records (D1006). */
+type ReferenceKind = "pull-request" | "thread" | "context";
 
 interface InlineToken {
   readonly type: "mention" | "skill" | ReferenceKind;
@@ -232,11 +205,14 @@ function collectInlineTokens(text: string): InlineToken[] {
     } catch {}
     const external = URI_SCHEME_REGEX.test(path) && !WINDOWS_DRIVE_PATH_REGEX.test(path);
     const start = (match.index ?? 0) + prefix.length;
-    const reference: ReferenceKind | undefined = THREAD_ADDRESS_REGEX.test(encoded)
-      ? "thread"
-      : isPullRequestLink(label, path)
-        ? "pull-request"
-        : undefined;
+    const reference: ReferenceKind | undefined =
+      parseContextHref(encoded) !== null
+        ? "context"
+        : THREAD_ADDRESS_REGEX.test(encoded)
+          ? "thread"
+          : isPullRequestLink(label, path)
+            ? "pull-request"
+            : undefined;
     if (reference !== undefined) {
       tokens.push({
         type: reference,
