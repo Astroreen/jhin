@@ -52,6 +52,7 @@ import {
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
 } from "./update-logic.ts";
+import { pasteAsText } from "./paste-as-text.ts";
 
 const DOWNLOAD_PROGRESS_RADIUS = 14;
 const DOWNLOAD_PROGRESS_CIRCUMFERENCE = 2 * Math.PI * DOWNLOAD_PROGRESS_RADIUS;
@@ -225,8 +226,7 @@ export default definePlugin({
     };
     context.services.provide(DESKTOP_SHELL_CAPABILITY, shell);
 
-    // T3's Paste as Text from the Edit menu (D946): the composer is armed first,
-    // so the paste that follows stays inline however large it is.
+    // T3's Paste as Text from the Edit menu (D946, paste-as-text.ts).
     context.commands.register({
       name: "desktop.paste-as-text",
       title: "Paste as Text",
@@ -235,13 +235,11 @@ export default definePlugin({
       input: z.object({}),
       output: z.object({}),
       handler: async () => {
-        // An older app cannot paste for the page: arm nothing then.
-        if (bridge.pasteAsText === undefined) return {};
-        // A public command (rule 8), present when the chat plugin runs.
-        if (context.commands.list().some((info) => info.name === "chat.composer.paste-as-text")) {
-          await context.commands.execute("chat.composer.paste-as-text", {});
-        }
-        await bridge.pasteAsText();
+        await pasteAsText({
+          has: (command) => context.commands.list().some((info) => info.name === command),
+          execute: (command) => context.commands.execute(command, {}),
+          paste: bridge.pasteAsText?.bind(bridge),
+        });
         return {};
       },
     });
