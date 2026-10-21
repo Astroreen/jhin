@@ -85,6 +85,8 @@ const SUBAGENT_WORK: ReadonlySet<string> = new Set(SUBAGENT_WORK_KINDS);
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 /** What `projects.write-file` writes at most: a plan, a note, never a dump. */
 const MAX_WRITTEN_FILE_CHARS = 1_000_000;
+/** The most `projects.read-file` and `agents.skill.read` read of a file: a video's 50 MB (D855). */
+const MAX_READ_FILE_BYTES = 50 * 1024 * 1024;
 /** Images sent as data URLs, together: they are stored in the turn's first event. */
 const MAX_INLINE_ATTACHMENTS_TOTAL = 20 * 1024 * 1024;
 const MAX_BROWSE_ENTRIES = 500;
@@ -563,6 +565,35 @@ const AgentInfo = z.object({
   /** The runtime its turns run on: its own id for a runtime. */
   runtimeId: z.string(),
   role: z.string().optional(),
+});
+
+/** The first `maxBytes` of a file as base64, or undefined when it is not a file. */
+async function readFileHead(
+  path: string,
+  maxBytes: number,
+): Promise<{ path: string; sizeBytes: number; data: string; truncated: boolean } | undefined> {
+  const stat = await Fs.promises.stat(path);
+  if (!stat.isFile()) return undefined;
+  const file = await Fs.promises.open(path, "r");
+  try {
+    const buffer = Buffer.alloc(Math.min(maxBytes, stat.size));
+    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+    return {
+      path,
+      sizeBytes: stat.size,
+      data: buffer.subarray(0, bytesRead).toString("base64"),
+      truncated: bytesRead < stat.size,
+    };
+  } finally {
+    await file.close();
+  }
+}
+
+const FileHead = z.object({
+  path: z.string(),
+  sizeBytes: z.number(),
+  data: z.string(),
+  truncated: z.boolean(),
 });
 
 class ThreadsError extends Error {
@@ -1926,6 +1957,55 @@ export default definePlugin({
       },
     });
 
+    // T3 opens a mentioned file in its file panel; here its preview dialog (t3-parity.md D1003).
+    context.commands.register({
+      name: "projects.read-file",
+      description:
+        "Reads the start of a file inside a project's directory, or a thread's worktree, by a path relative to it (base64), for previewing a mentioned file",
+      input: z.object({
+        projectId: z.string(),
+        /** Its worktree, when it has one, is the folder the path is in. */
+        threadId: z.string().optional(),
+        path: z.string().trim().min(1).max(4096),
+        maxBytes: z
+          .number()
+          .int()
+          .positive()
+          .max(MAX_READ_FILE_BYTES)
+          .default(1024 * 1024),
+      }),
+      output: FileHead,
+      permissions: ["projects.read"],
+      handler: async ({ projectId, threadId, path, maxBytes }) => {
+        const project = await getProject(projectId);
+        const thread = threadId === undefined ? undefined : await getThread(threadId);
+        if (thread !== undefined && thread.projectId !== projectId) {
+          throw new ThreadsError("THREAD_NOT_FOUND", `No thread ${threadId} in this project`, {
+            threadId,
+          });
+        }
+        const root = Path.resolve(thread?.worktreePath ?? project.path);
+        const refuse = () =>
+          new ThreadsError("PATH_OUTSIDE_PROJECT", "The path must be a file inside the project", {
+            projectId,
+            path,
+          });
+        const outside = (relative: string) =>
+          relative === ".." || relative.startsWith(`..${Path.sep}`) || Path.isAbsolute(relative);
+        // A link inside the project must not lead the read out of it.
+        const realRoot = await Fs.promises.realpath(root);
+        const real = await Fs.promises.realpath(Path.resolve(root, path)).catch(() => undefined);
+        if (real === undefined) {
+          throw new ThreadsError("FILE_NOT_FOUND", `${path} does not exist`, { path });
+        }
+        const relative = Path.relative(realRoot, real);
+        if (relative === "" || outside(relative)) throw refuse();
+        const head = await readFileHead(real, maxBytes);
+        if (head === undefined) throw refuse();
+        return head;
+      },
+    });
+
     context.commands.register({
       name: "projects.browse",
       description:
@@ -2069,6 +2149,48 @@ export default definePlugin({
           commands: AgentSlashCommand[];
           skills: AgentSkill[];
         };
+      },
+    });
+
+    // T3's "View instructions" of a skill chip (t3-parity.md D1004): only a file the agent
+    // names as one of its skills is read.
+    context.commands.register({
+      name: "agents.skill.read",
+      description:
+        "Reads the start of a skill's instructions (its SKILL.md, base64), a skill the agent offers in a project's folder",
+      input: z.object({
+        projectId: z.string(),
+        agentId: z.string().optional(),
+        name: z.string().min(1),
+        maxBytes: z
+          .number()
+          .int()
+          .positive()
+          .max(MAX_READ_FILE_BYTES)
+          .default(1024 * 1024),
+      }),
+      output: FileHead,
+      permissions: ["threads.read"],
+      handler: async ({ projectId, agentId, name, maxBytes }) => {
+        const project = await getProject(projectId);
+        const runtime = agentId === undefined ? await defaultRuntime() : registry.get(agentId);
+        if (runtime === undefined) {
+          throw new ThreadsError("AGENT_NOT_FOUND", `No agent ${agentId ?? ""} on this node`, {
+            agentId,
+          });
+        }
+        const found = (await runtime.commands?.({ cwd: project.path }))?.skills ?? [];
+        const skill = found.find((candidate) => candidate.name === name);
+        const head =
+          skill === undefined
+            ? undefined
+            : await readFileHead(skill.path, maxBytes).catch(() => undefined);
+        if (head === undefined) {
+          throw new ThreadsError("SKILL_NOT_FOUND", `No instructions for the skill ${name}`, {
+            name,
+          });
+        }
+        return head;
       },
     });
 

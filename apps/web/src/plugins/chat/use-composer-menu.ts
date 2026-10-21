@@ -18,7 +18,11 @@ import {
   threadMenuItems,
   type ComposerMenuItem,
 } from "../../lib/composer-menu.ts";
-import { detectComposerTrigger, type ComposerTrigger } from "../../lib/composer-trigger.ts";
+import {
+  detectComposerTrigger,
+  splitPromptIntoSegments,
+  type ComposerTrigger,
+} from "../../lib/composer-trigger.ts";
 import type { NodeCall } from "../../lib/uploads.ts";
 
 const PATH_SEARCH_DEBOUNCE_MS = 120;
@@ -98,9 +102,11 @@ export function useComposerMenu(options: {
   const [offered, setOffered] = useState<{ key: string; at: number; value: Offered }>();
   const offeredKey = `${projectId}|${agentId}`;
   const loading = useRef<string | undefined>(undefined);
+  // A skill chip in the prompt shows the skill's name and description too (D1004).
+  const hasSkillChip = splitPromptIntoSegments(prompt).some((segment) => segment.type === "skill");
   const needsCommands =
-    trigger !== null &&
-    (trigger.kind === "slash-command" || trigger.kind === "skill") &&
+    ((trigger !== null && (trigger.kind === "slash-command" || trigger.kind === "skill")) ||
+      hasSkillChip) &&
     projectId !== undefined;
   useEffect(() => {
     if (!needsCommands) return;
@@ -319,6 +325,8 @@ export function useComposerMenu(options: {
   return {
     trigger,
     items,
+    /** The agent's skills, once asked of the node: for the prompt's skill chips. */
+    skills: value.skills,
     isLoading,
     /** What the menu says when it has no rows and is not loading; T3's own words otherwise. */
     emptyState,

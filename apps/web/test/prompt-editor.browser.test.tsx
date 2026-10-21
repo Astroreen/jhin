@@ -4,6 +4,10 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
+import {
+  type ComposerChipActions,
+  ComposerChipsContext,
+} from "../src/plugins/chat/composer-chips.tsx";
 import { PromptEditor, type PromptEditorHandle } from "../src/plugins/chat/prompt-editor.tsx";
 
 interface Mounted {
@@ -25,6 +29,13 @@ interface Mounted {
 
 let unmount: (() => void) | undefined;
 
+/** A chip's text, once its view rendered: tiptap renders a React node view after the document. */
+async function expectChipText(chip: Element | null | undefined, text: string): Promise<void> {
+  expect(chip).toBeTruthy();
+  await expect.element(page.getByText(text, { exact: true }).first()).toBeInTheDocument();
+  expect(chip!.textContent).toBe(text);
+}
+
 afterEach(() => {
   unmount?.();
   unmount = undefined;
@@ -37,6 +48,7 @@ function mount(
     onKeyDown?: (event: KeyboardEvent) => boolean;
     richText?: boolean;
     literalText?: boolean;
+    chips?: ComposerChipActions;
   } = {},
 ): Mounted {
   const handleRef = createRef<PromptEditorHandle>();
@@ -57,26 +69,28 @@ function mount(
     setOutside = setValue;
     setDisabledOutside = setDisabled;
     return (
-      <PromptEditor
-        value={value}
-        onChange={(next, cursor) => {
-          current = next;
-          changes.push([next, cursor]);
-          setValue(next);
-          for (const waiter of waiters.filter((item) => item.matches(next, cursor))) {
-            waiters.splice(waiters.indexOf(waiter), 1);
-            waiter.resolve();
-          }
-        }}
-        onSubmit={() => submits.push(current)}
-        onKeyDown={options.onKeyDown}
-        disabled={disabled}
-        placeholder="Ask anything"
-        sendShortcut={options.sendShortcut ?? "enter"}
-        richText={richText}
-        literalText={options.literalText}
-        handleRef={handleRef}
-      />
+      <ComposerChipsContext value={options.chips ?? { skills: [] }}>
+        <PromptEditor
+          value={value}
+          onChange={(next, cursor) => {
+            current = next;
+            changes.push([next, cursor]);
+            setValue(next);
+            for (const waiter of waiters.filter((item) => item.matches(next, cursor))) {
+              waiters.splice(waiters.indexOf(waiter), 1);
+              waiter.resolve();
+            }
+          }}
+          onSubmit={() => submits.push(current)}
+          onKeyDown={options.onKeyDown}
+          disabled={disabled}
+          placeholder="Ask anything"
+          sendShortcut={options.sendShortcut ?? "enter"}
+          richText={richText}
+          literalText={options.literalText}
+          handleRef={handleRef}
+        />
+      </ComposerChipsContext>
     );
   }
 
@@ -174,8 +188,9 @@ describe("the prompt editor (D303)", () => {
     const editor = mount(prompt);
     const chip = editor.editable().querySelector("[data-mention]")!;
     expect(chip.getAttribute("data-mention")).toBe("src/a.ts");
-    expect(chip.getAttribute("title")).toBe("src/a.ts");
-    expect(chip.textContent).toBe("a.ts");
+    await expectChipText(chip, "a.ts");
+    // T3's file icon, by the file's name (D1002).
+    expect(chip.querySelector("svg[data-pierre-icon]")).not.toBeNull();
     expect(editor.handle.cursor()).toBe(prompt.length);
 
     editor.handle.focus();
@@ -183,13 +198,54 @@ describe("the prompt editor (D303)", () => {
     await editor.reported(`${prompt}!`);
   });
 
+  it("opens T3's chip details: a file's preview, a skill's description and instructions, a link", async () => {
+    const opened: string[] = [];
+    const skill = { name: "deploy", description: "Ship it to production", path: "/s/SKILL.md" };
+    mount(
+      "[a.ts](src/a.ts) $deploy $gone [#12](https://github.com/acme/app/pull/12) [Fix](jhin://n/threads/t)",
+      {
+        chips: {
+          skills: [skill],
+          previewFile: (path) => opened.push(`file ${path}`),
+          viewInstructions: (picked) => opened.push(`skill ${picked.name}`),
+          openUrl: (url) => opened.push(`url ${url}`),
+          openThread: (href) => opened.push(`thread ${href}`) > 0,
+        },
+      },
+    );
+    await page.getByRole("button", { name: "Preview src/a.ts" }).click();
+
+    await page.getByRole("button", { name: "Skill Deploy. Show details" }).click();
+    await expect.element(page.getByText("Ship it to production")).toBeVisible();
+    await page.getByRole("button", { name: "View instructions" }).click();
+    // A skill the agent does not offer says so, with nothing to open.
+    await page.getByRole("button", { name: "Skill Gone. Show details" }).click();
+    await expect
+      .element(page.getByText("No description is available for this skill."))
+      .toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: "View instructions" }))
+      .not.toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+
+    await page.getByRole("button", { name: "Open pull request #12" }).click();
+    await page.getByRole("button", { name: "Thread, Fix" }).click();
+    expect(opened).toEqual([
+      "file src/a.ts",
+      "skill deploy",
+      "url https://github.com/acme/app/pull/12",
+      "thread jhin://n/threads/t",
+    ]);
+  });
+
   it("shows a legacy @path and a skill as chips that write back their exact text", async () => {
     const prompt = "use $review on @./lib/b.ts and €deploy";
     const editor = mount(prompt);
     const root = editor.editable();
-    expect(root.querySelector("[data-skill='review']")?.textContent).toBe("review");
-    expect(root.querySelector("[data-skill='deploy']")?.getAttribute("title")).toBe("€deploy");
-    expect(root.querySelector("[data-mention='./lib/b.ts']")?.textContent).toBe("b.ts");
+    // T3's label: the skill's display name, else its name in title case (D1004).
+    await expectChipText(root.querySelector("[data-skill='review']"), "Review");
+    await expectChipText(root.querySelector("[data-skill='deploy']"), "Deploy");
+    await expectChipText(root.querySelector("[data-mention='./lib/b.ts']"), "b.ts");
 
     editor.handle.focus();
     await userEvent.keyboard(" ok");
@@ -202,14 +258,14 @@ describe("the prompt editor (D303)", () => {
     editor.handle.replaceRange(4, 6, pr);
     const root = editor.editable();
     const prChip = root.querySelector("[data-reference='pull-request']")!;
-    expect(prChip.textContent).toBe("#12");
-    expect(prChip.getAttribute("title")).toBe("https://github.com/acme/app/pull/12");
+    await expectChipText(prChip, "#12");
+    expect(prChip.getAttribute("data-href")).toBe("https://github.com/acme/app/pull/12");
 
     const thread = "[Fix the cache](jhin://node-1/threads/t-2) ";
     const end = editor.value().length;
     editor.handle.replaceRange(end, end, `and @fix`);
     editor.handle.replaceRange(end + 4, end + 8, thread);
-    expect(root.querySelector("[data-reference='thread']")?.textContent).toBe("Fix the cache");
+    await expectChipText(root.querySelector("[data-reference='thread']"), "Fix the cache");
     expect(editor.value()).toBe(`see ${pr}and ${thread}`);
 
     editor.handle.focus();
@@ -588,7 +644,7 @@ describe("plain and literal text (T3's Rich text composer setting and literal an
     const root = editor.editable();
     expect(root.getAttribute("data-composer-rich-text")).toBe("false");
     expect(root.querySelector("strong, code, ul, blockquote, h1, hr, pre")).toBeNull();
-    expect(root.querySelector("[data-mention='src/a.ts']")?.textContent).toBe("a.ts");
+    await expectChipText(root.querySelector("[data-mention='src/a.ts']"), "a.ts");
     editor.handle.setValue(editor.value());
     expect(editor.value()).toBe(prompt);
   });

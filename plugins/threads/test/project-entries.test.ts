@@ -107,4 +107,52 @@ describe("jhin.threads: project files for @ mentions (D302)", () => {
       client.call("agents.commands", { projectId: project.id, agentId: "acme.none" }),
     ).rejects.toMatchObject({ code: "AGENT_NOT_FOUND" });
   });
+
+  it("reads a mentioned file of a project and a skill's instructions, nothing else (D1003, D1004)", async () => {
+    const { client, data } = await node();
+    const dir = Path.join(data, "app");
+    write(dir, ["src/main.ts"]);
+    Fs.writeFileSync(Path.join(dir, "src", "main.ts"), "export const answer = 42;\n");
+    Fs.writeFileSync(Path.join(data, "secret.txt"), "keep");
+    Fs.symlinkSync(Path.join(data, "secret.txt"), Path.join(dir, "linked.txt"));
+    const project = await client.call<{ id: string }>("projects.create", { path: dir });
+    const decode = (head: { data: string }) => Buffer.from(head.data, "base64").toString("utf8");
+
+    const read = await client.call<{ data: string; sizeBytes: number; truncated: boolean }>(
+      "projects.read-file",
+      { projectId: project.id, path: "src/main.ts" },
+    );
+    expect(decode(read)).toBe("export const answer = 42;\n");
+    expect(read).toMatchObject({ sizeBytes: 26, truncated: false });
+    // Only the start, when asked for less.
+    const head = await client.call<{ data: string; truncated: boolean }>("projects.read-file", {
+      projectId: project.id,
+      path: "src/main.ts",
+      maxBytes: 6,
+    });
+    expect([decode(head), head.truncated]).toEqual(["export", true]);
+    for (const path of ["../secret.txt", Path.join(data, "secret.txt"), "linked.txt", "src"]) {
+      await expect(
+        client.call("projects.read-file", { projectId: project.id, path }),
+      ).rejects.toMatchObject({ code: "PATH_OUTSIDE_PROJECT" });
+    }
+    await expect(
+      client.call("projects.read-file", { projectId: project.id, path: "gone.ts" }),
+    ).rejects.toMatchObject({ code: "FILE_NOT_FOUND" });
+
+    // The test runtime's skill `deploy` points at its SKILL.md; another name reads nothing.
+    write(dir, [".claude/skills/deploy/SKILL.md"]);
+    Fs.writeFileSync(Path.join(dir, ".claude", "skills", "deploy", "SKILL.md"), "# Deploy\n");
+    expect(
+      decode(
+        await client.call<{ data: string }>("agents.skill.read", {
+          projectId: project.id,
+          name: "deploy",
+        }),
+      ),
+    ).toBe("# Deploy\n");
+    await expect(
+      client.call("agents.skill.read", { projectId: project.id, name: "other" }),
+    ).rejects.toMatchObject({ code: "SKILL_NOT_FOUND" });
+  });
 });
