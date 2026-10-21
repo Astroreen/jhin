@@ -22,7 +22,7 @@ const PACKAGED: UpdateEnvironment = {
 /** An updater whose answers the test chooses; it records what the controller asked. */
 function fakeUpdater() {
   const calls: string[] = [];
-  let next: { version: string } | null | Error = null;
+  let next: { version: string; releaseNotes?: unknown } | null | Error = null;
   let download: ((onProgress: (percent: number) => void) => Promise<void>) | undefined;
   let quit: () => void = () => calls.push("quitAndInstall");
   let reportError: (error: unknown) => void = () => undefined;
@@ -44,7 +44,8 @@ function fakeUpdater() {
   return {
     updater,
     calls,
-    offer: (value: { version: string } | null | Error) => void (next = value),
+    offer: (value: { version: string; releaseNotes?: unknown } | null | Error) =>
+      void (next = value),
     onDownload: (run: (onProgress: (percent: number) => void) => Promise<void>) =>
       void (download = run),
     onQuit: (run: () => void) => void (quit = run),
@@ -170,6 +171,34 @@ describe("UpdateController", () => {
     const result = await updates.check();
 
     expect(result.state).toMatchObject({ status: "up-to-date", availableVersion: null });
+  });
+
+  it("shows nightly's release notes of its own track, and clears them when up to date (D948)", async () => {
+    const fake = fakeUpdater();
+    const { updates } = controller(fake, { channel: "nightly" });
+    fake.offer({
+      version: "1.3.0-nightly.20261021.2",
+      releaseNotes: [
+        {
+          version: "1.3.0-nightly.20261021.2",
+          note: "## What's Changed\n- fix: second\n- feat: first",
+        },
+        { version: "1.3.0-preview.20261021.1", note: "- a preview cut" },
+        { version: "1.3.0-nightly.20261020.1", note: "<ul><li>older &amp; done</li></ul>" },
+      ],
+    });
+
+    const offered = await updates.check();
+
+    expect(offered.state.releaseNotes).toEqual([
+      { version: "1.3.0-nightly.20261021.2", items: ["feat: first", "fix: second"], totalItems: 2 },
+      { version: "1.3.0-nightly.20261020.1", items: ["older & done"], totalItems: 1 },
+    ]);
+    expect(offered.state.omittedReleaseCount).toBe(0);
+
+    fake.offer(null);
+    const latest = await updates.check();
+    expect(latest.state).toMatchObject({ status: "up-to-date", releaseNotes: [] });
   });
 
   it("keeps the offer after a failed download, so it can be retried", async () => {

@@ -78,6 +78,19 @@ export function getDesktopUpdateInstallConfirmation(
 
 const RELEASES = "https://github.com/Astroreen/jhin/releases";
 
+/** This repository's GitHub releases, for older releases' notes (D948). */
+export function getDesktopUpdateReleaseHistoryUrl(): string {
+  return RELEASES;
+}
+
+/** T3's rule: nightly shows its release notes in a popover on the update control (D948). */
+export function shouldShowUpdateReleaseNotes(
+  showUpdateDetails: boolean,
+  state: DesktopUpdateState,
+): boolean {
+  return showUpdateDetails && state.channel === "nightly" && state.releaseNotes.length > 0;
+}
+
 /** The release page of a version on this repository's GitHub releases (D519). */
 export function getDesktopUpdateReleaseUrl(version: string | null): string | null {
   const normalized = version?.trim();

@@ -303,6 +303,21 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   (Direct, Hold, Double press) sits in General → Behavior through the new
   slot `settings.general.behavior`, where other plugins add rows too.
 
+- **D948. Nightly shows T3's release notes in the update control.** On the
+  nightly track electron-updater collects the notes of every release since
+  the running one (`fullChangelog`); the controller keeps those of its own
+  track through T3's `normalizeDesktopUpdateReleaseNotes`
+  (`apps/desktop/src/updates/release-notes.ts`, with T3's tests): at most six
+  releases of at most eight items each, markup stripped, "What's Changed"
+  and the changelog links left out. `DesktopUpdateState` gets
+  `releaseNotes` and `omittedReleaseCount` (with defaults, so the shape is
+  additive), kept while a downloaded version is offered and cleared when up
+  to date, as T3's machine does. When the control has an update to show and
+  notes exist, hovering it opens T3's popover ("Update ready to download",
+  "What's changed", "Changes in <version>", links to each release and to
+  older ones on GitHub) instead of the tooltip; a press still runs the
+  action. Stable keeps the tooltip.
+
 ## Deferred
 
 - The `desktop.update.*`, `desktop.paste-as-text` and `desktop.quit-shortcut.set` commands over RPC, CLI and MCP: they are client
@@ -313,8 +328,7 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   `--url`).
 - A graceful stop of the node on Windows: `SIGTERM` is an immediate kill
   there, so D522's "stops the node first" waits for no shutdown work.
-- Release notes in the update control (T3's popover for nightly builds), the
-  Intel-on-Apple-Silicon warning, the record of an install that did not
+- The Intel-on-Apple-Silicon warning, the record of an install that did not
   apply, and telling a .deb install apart (D519 treats Linux outside an
   AppImage as not updatable).
 - Checking the macOS chrome (traffic lights, the controls

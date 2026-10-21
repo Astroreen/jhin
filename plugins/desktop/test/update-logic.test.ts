@@ -7,6 +7,7 @@ import {
   getDesktopUpdateInstallConfirmation,
   getDesktopUpdateReleaseUrl,
   resolveDesktopUpdateButtonAction,
+  shouldShowUpdateReleaseNotes,
 } from "../src/update-logic.ts";
 
 const IDLE: DesktopUpdateState = {
@@ -16,6 +17,8 @@ const IDLE: DesktopUpdateState = {
   currentVersion: "0.1.0",
   availableVersion: null,
   downloadedVersion: null,
+  releaseNotes: [],
+  omittedReleaseCount: 0,
   downloadPercent: null,
   checkedAt: null,
   message: null,
@@ -75,5 +78,16 @@ describe("the update control (T3's desktopUpdate.logic)", () => {
       "https://github.com/Astroreen/jhin/releases/tag/v1.2.0",
     );
     expect(getDesktopUpdateReleaseUrl(null)).toBeNull();
+  });
+});
+
+describe("shouldShowUpdateReleaseNotes (D948)", () => {
+  const note = { version: "1.0.0-nightly.20261021.1", items: ["fix: a"], totalItems: 1 };
+  it("shows nightly's notes when the control has details", () => {
+    const nightly = { ...IDLE, channel: "nightly" as const, releaseNotes: [note] };
+    expect(shouldShowUpdateReleaseNotes(true, nightly)).toBe(true);
+    expect(shouldShowUpdateReleaseNotes(false, nightly)).toBe(false);
+    expect(shouldShowUpdateReleaseNotes(true, { ...nightly, releaseNotes: [] })).toBe(false);
+    expect(shouldShowUpdateReleaseNotes(true, { ...nightly, channel: "latest" })).toBe(false);
   });
 });

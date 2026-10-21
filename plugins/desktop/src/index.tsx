@@ -18,6 +18,9 @@ import {
 import { definePlugin, toDisposable, z, type Disposable } from "@jhin/sdk";
 import {
   Button,
+  Popover,
+  PopoverPopup,
+  PopoverTrigger,
   Select,
   SelectItem,
   SelectPopup,
@@ -53,8 +56,10 @@ import {
   getDesktopUpdateReleaseUrl,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
+  shouldShowUpdateReleaseNotes,
 } from "./update-logic.ts";
 import { pasteAsText } from "./paste-as-text.ts";
+import { UpdateReleaseNotes } from "./release-notes.tsx";
 import { QuitHoldOverlay, QuitShortcutRow } from "./quit-shortcut.tsx";
 
 const DOWNLOAD_PROGRESS_RADIUS = 14;
@@ -439,35 +444,59 @@ export default definePlugin({
           action === "download" ? download(true) : action === "install" ? install() : check();
         void work.finally(() => setPending(false));
       };
+      const showNotes = shouldShowUpdateReleaseNotes(showDetails, state);
+      const button = (
+        <button
+          aria-disabled={inert || undefined}
+          aria-label={tooltip}
+          className={cn(
+            "inline-flex size-8 items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2 focus-visible:ring-inset",
+            inert ? "cursor-not-allowed" : "cursor-pointer",
+            showDetails
+              ? cn(
+                  "bg-sidebar-control-surface text-sidebar-foreground",
+                  !inert && "hover:bg-sidebar-row-hover",
+                )
+              : cn(
+                  "text-(--sidebar-icon-color)",
+                  !inert && "hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+                ),
+            disabled && !showDetails && "opacity-60",
+          )}
+          onClick={run}
+          type="button"
+        />
+      );
+      const icon = <StatusIcon downloadPercent={state.downloadPercent} status={iconStatus} />;
+      if (showNotes) {
+        // T3's nightly notes (D948): a popover that opens on hover; a press runs the action.
+        return (
+          <SidebarMenuItem className="shrink-0">
+            <Popover
+              onOpenChange={(_open, details) => {
+                if (details.reason === "trigger-press") details.cancel();
+              }}
+            >
+              <PopoverTrigger closeDelay={150} openOnHover render={button}>
+                {icon}
+              </PopoverTrigger>
+              <PopoverPopup
+                align="center"
+                aria-label="Nightly update release notes"
+                initialFocus={false}
+                side="top"
+                tooltipStyle
+              >
+                <UpdateReleaseNotes state={state} tooltip={tooltip} />
+              </PopoverPopup>
+            </Popover>
+          </SidebarMenuItem>
+        );
+      }
       return (
         <SidebarMenuItem className="shrink-0">
           <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  aria-disabled={inert || undefined}
-                  aria-label={tooltip}
-                  className={cn(
-                    "inline-flex size-8 items-center justify-center rounded-full outline-hidden ring-ring transition-colors focus-visible:ring-2 focus-visible:ring-inset",
-                    inert ? "cursor-not-allowed" : "cursor-pointer",
-                    showDetails
-                      ? cn(
-                          "bg-sidebar-control-surface text-sidebar-foreground",
-                          !inert && "hover:bg-sidebar-row-hover",
-                        )
-                      : cn(
-                          "text-(--sidebar-icon-color)",
-                          !inert && "hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
-                        ),
-                    disabled && !showDetails && "opacity-60",
-                  )}
-                  onClick={run}
-                  type="button"
-                />
-              }
-            >
-              <StatusIcon downloadPercent={state.downloadPercent} status={iconStatus} />
-            </TooltipTrigger>
+            <TooltipTrigger render={button}>{icon}</TooltipTrigger>
             <TooltipPopup side="top">{tooltip}</TooltipPopup>
           </Tooltip>
         </SidebarMenuItem>
