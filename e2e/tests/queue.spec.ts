@@ -136,6 +136,7 @@ test("resumes a stopped turn with T3's message, then lets the held queue go on (
   // Typed text keeps the send button; an empty composer offers the resume.
   const resume = page.getByRole("button", { name: "Resume thread" });
   await message.fill("typed");
+  await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
   await expect(resume).toHaveCount(0);
   await message.fill("");
   await expect(resume).toBeVisible();
