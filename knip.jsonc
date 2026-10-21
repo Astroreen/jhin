@@ -59,6 +59,8 @@
     },
     "e2e": {
       "entry": ["playwright.config.ts", "tests/**/*.spec.ts", "tests/support/*.ts"],
+      // The desktop test finds the app's node process with procps' pgrep.
+      "ignoreBinaries": ["pgrep"],
     },
   },
 }
