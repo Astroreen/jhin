@@ -77,6 +77,8 @@ const MAX_ATTACHMENTS_TOTAL = 20 * 1024 * 1024;
 const MAX_BROWSE_ENTRIES = 500;
 /** The message texts a node keeps for searching, in characters, across its threads (D227). */
 const SEARCH_CACHE_CHARS = 32_000_000;
+/** How many threads one search reads at once. */
+const SEARCH_READS = 8;
 
 /** Every node has this project for chats without a project (D51). */
 export const SCRATCH_PROJECT = "scratch";
@@ -3578,10 +3580,11 @@ export default definePlugin({
     const searchCache = new Map<string, { head: number; texts: SearchText[]; size: number }>();
     let cachedChars = 0;
     /**
-     * Reads under way, by thread: one whose thread is deleted or archived
-     * meanwhile keeps nothing. An entry goes with its last read.
+     * Reads under way, by thread: searches at once share one read. One whose
+     * thread is deleted or archived meanwhile matches and keeps nothing. An
+     * entry goes with its read.
      */
-    const reading = new Map<string, { count: number; dropped: boolean }>();
+    const reading = new Map<string, { dropped: boolean; promise: Promise<SearchText[]> }>();
     const uncache = (threadId: string) => {
       const entry = searchCache.get(threadId);
       if (entry === undefined) return;
@@ -3593,16 +3596,18 @@ export default definePlugin({
       if (read !== undefined) read.dropped = true;
       uncache(threadId);
     };
-    async function textsOf(threadId: string): Promise<SearchText[]> {
-      const read = reading.get(threadId) ?? { count: 0, dropped: false };
-      read.count += 1;
+    function textsOf(threadId: string): Promise<SearchText[]> {
+      const current = reading.get(threadId);
+      if (current !== undefined) return current.promise;
+      const read: { dropped: boolean; promise: Promise<SearchText[]> } = {
+        dropped: false,
+        promise: Promise.resolve([]),
+      };
+      read.promise = readTexts(threadId, read).finally(() => {
+        if (reading.get(threadId) === read) reading.delete(threadId);
+      });
       reading.set(threadId, read);
-      try {
-        return await readTexts(threadId, read);
-      } finally {
-        read.count -= 1;
-        if (read.count === 0 && reading.get(threadId) === read) reading.delete(threadId);
-      }
+      return read.promise;
     }
     async function readTexts(
       threadId: string,
@@ -3682,8 +3687,19 @@ export default definePlugin({
             (projectId === undefined || thread.projectId === projectId),
         );
         const found: z.infer<typeof SearchMatch>[] = [];
-        for (const thread of threads) {
-          const match = matchTexts(await textsOf(thread.id), query);
+        // A few threads at a time: a cold cache reads each thread's whole stream.
+        const results: (ReturnType<typeof matchTexts> | undefined)[] = [];
+        let next = 0;
+        await Promise.all(
+          Array.from({ length: Math.min(SEARCH_READS, threads.length) }, async () => {
+            while (next < threads.length) {
+              const index = next++;
+              results[index] = matchTexts(await textsOf(threads[index]!.id), query);
+            }
+          }),
+        );
+        for (const [index, thread] of threads.entries()) {
+          const match = results[index];
           if (match === undefined) continue;
           found.push({
             threadId: thread.id,

@@ -1207,8 +1207,10 @@ for, built from the same rewind.
   T3's snippet (whitespace collapsed; past 240 characters a window of 236
   from 72 before the match, "…" at cut ends). The node keeps each thread's
   texts in memory by stream head and reads only what came since; a rollback
-  among the new events drops its turns' texts. The texts held are capped at
-  32 million characters, the least recently searched threads going first,
+  among the new events drops its turns' texts. A search reads eight threads
+  at a time, and searches at once share a thread's read. The texts held are capped at
+  32 million characters, the least recently searched threads going first
+  (the thread just read stays, even alone past the cap),
   and a deleted or archived thread's go at once (also when it goes while
   they are read).
 - **D228. The palette and the sidebar search contents too.** While a query
