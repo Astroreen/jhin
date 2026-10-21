@@ -140,6 +140,17 @@ describe("jhin.source-control: pull requests through the GitHub CLI", () => {
     expect((await get()).settledOverride).toBe("settled");
   });
 
+  it("takes gh's zero time on an open pull request for no close time", async () => {
+    const gh = fakeGh();
+    gh.pullRequest("feature", [ghPullRequest({ closedAt: "0001-01-01T00:00:00Z" })]);
+    const dir = githubRepository();
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const status = await sc.status(projectId, true);
+    expect(only(status).pullRequests["feature"]).toMatchObject({ state: "open" });
+    expect(only(status).pullRequests["feature"]?.closedAt).toBeUndefined();
+  });
+
   it("degrades without gh: pull requests stay unknown and the reason is given", async () => {
     const sc = await node({ ghPath: "jhin-no-such-gh" });
     const projectId = await sc.project(githubRepository());

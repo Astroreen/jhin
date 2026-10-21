@@ -613,7 +613,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
    * which threads work on the branch. Told once per pull request and state.
    */
   const settleOnPullRequest = (repo: Repo, branch: string, pr: PullRequest) => {
-    const closedAt = pr.closedAt ?? pr.updatedAt ?? new Date().toISOString();
+    // Without a time it closed, there is nothing to weigh against the user's last message.
+    const closedAt = pr.closedAt ?? pr.updatedAt;
+    if (closedAt === undefined) return;
     for (const thread of threads.values()) {
       if (thread.projectId !== repo.project.id || thread.branch !== branch) continue;
       context.commands

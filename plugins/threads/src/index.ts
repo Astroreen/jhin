@@ -2240,7 +2240,11 @@ export default definePlugin({
           (current) =>
             closedMs >=
             Math.max(
-              ...[current.createdAt, current.lastMessageAt ?? ""]
+              ...[
+                current.createdAt,
+                // A thread from before lastMessageAt was kept: its latest turn, to be safe.
+                current.lastMessageAt ?? current.lastTurn?.at ?? "",
+              ]
                 .map(millis)
                 .filter((value) => !Number.isNaN(value)),
             ),
