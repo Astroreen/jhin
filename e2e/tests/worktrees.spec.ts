@@ -112,6 +112,17 @@ test("D250–D255: a draft starts its thread in a new worktree; deleting the thr
   expect(Fs.readFileSync(Path.join(path, "notes.txt"), "utf8")).toBe("in a worktree\n");
   await message.fill("");
 
+  // A new draft of the project takes that worktree with composer.previous-worktree (D907).
+  await page.getByRole("button", { name: "Command palette", exact: true }).click();
+  await palette.getByRole("option", { name: "New thread in...", exact: true }).click();
+  await palette.getByRole("option", { name: /^acme/ }).click();
+  await expect(palette).toBeHidden();
+  await expect(page.getByRole("button", { name: "Workspace" })).toHaveText(/Current checkout/);
+  await page.keyboard.press("ControlOrMeta+Shift+L");
+  await expect(page.getByRole("button", { name: "Workspace" })).toHaveText(/Previous worktree/);
+  await shot(page, info, "workspace-previous-worktree-shortcut");
+  await card.click();
+
   // Deleting the thread: T3 asks about the worktree only it used.
   await card.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Delete" }).click();
