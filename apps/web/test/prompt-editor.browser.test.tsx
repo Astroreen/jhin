@@ -641,6 +641,8 @@ describe("plain and literal text (T3's Rich text composer setting and literal an
     expect(
       view.someProp("handleTextInput", (handle) => handle(view, 1, 5, "(", () => view.state.tr)),
     ).toBeFalsy();
+    // Nothing was wrapped; the same call wraps in rich text (D844's test is the positive control).
+    expect(editor.value()).toBe(prompt);
 
     tiptap.commands.setTextSelection(tiptap.state.doc.content.size - 1);
     paste(editor, " [c.ts](src/c.ts)");
