@@ -84,7 +84,7 @@ import {
   PREFERRED_HIGHLIGHTER,
 } from "./diff/rendering.ts";
 import { selectionKey, useScopeEntries, type ScopeEntry } from "./diff/scopes.ts";
-import { useResolvedTheme } from "./diff/theme.ts";
+import { useResolvedTheme } from "../../lib/resolved-theme.ts";
 import {
   DIFF_PANEL,
   statusOfThread,

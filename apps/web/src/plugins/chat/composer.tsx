@@ -122,6 +122,11 @@ const PromptEditor = lazy(() =>
 );
 import { useComposerMenu } from "./use-composer-menu.ts";
 import {
+  useAttachmentLoader,
+  useAttachmentUrl,
+  type AttachmentLoader,
+} from "./attachment-media.tsx";
+import {
   ComposerAttachments,
   attachmentItems,
   draftAttachments,
@@ -434,6 +439,35 @@ function heldText(held: NonNullable<ThreadQueue["held"]>): string {
   return `${held.reason === "interrupted" ? "The turn was stopped" : "The turn failed"}: the queue waits`;
 }
 
+/** A queued image as T3 shows it: a small thumbnail, read from the node by its id. */
+function QueuedThumbnail(props: {
+  attachment: ThreadQueue["messages"][number]["attachments"][number];
+  loader: AttachmentLoader;
+}) {
+  const { attachment } = props;
+  const stored =
+    attachment.id === undefined || attachment.sizeBytes === undefined
+      ? undefined
+      : {
+          kind: "image" as const,
+          id: attachment.id,
+          name: attachment.name,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+        };
+  // A data URL's image (D54) has its data in the queue's record only: a placeholder, as T3 shows while loading.
+  const url = useAttachmentUrl(stored, props.loader);
+  return (
+    <span className="size-4 overflow-hidden rounded border border-border/70 bg-background">
+      {url ? (
+        <img alt={attachment.name} className="size-full object-cover" src={url} />
+      ) : (
+        <span aria-label={attachment.name} className="block size-full bg-muted/60" role="img" />
+      )}
+    </span>
+  );
+}
+
 /** T3's QueuedRunsControl: the thread's queue on its node, above the composer. */
 function QueueBanner(props: {
   queue: ThreadQueue;
@@ -443,6 +477,8 @@ function QueueBanner(props: {
   /** The message being edited in the composer. */
   editing: string | undefined;
   actions: QueueActions;
+  /** Reads the queued images back for their thumbnails. */
+  loader: AttachmentLoader;
   onEdit(messageId: string): void;
   onCancelEdit(): void;
   steerShortcut?: string;
@@ -526,8 +562,12 @@ function QueueBanner(props: {
           <ComposerBanner.Children id={listId} render={<ol />}>
             {messages.map((message, index) => {
               const editing = message.id === props.editing;
+              const thumbnails = message.attachments.filter((item) => item.kind === "image");
               const images = message.attachments.length;
-              const preview = message.text.trim() || `${images} image${images === 1 ? "" : "s"}`;
+              // T3 shows the images as thumbnails, so a message of images alone has no text.
+              const preview =
+                message.text.trim() ||
+                (thumbnails.length > 0 ? "" : `${images} image${images === 1 ? "" : "s"}`);
               return (
                 <ComposerBanner.Row
                   aria-current={editing ? "true" : undefined}
@@ -613,6 +653,17 @@ function QueueBanner(props: {
                   </ComposerBanner.Icon>
                   <ComposerBanner.Content className="text-foreground/80">
                     {editing ? <span className="sr-only">Editing queued message: </span> : null}
+                    {thumbnails.length > 0 ? (
+                      <span className="flex shrink-0 items-center gap-0.5">
+                        {thumbnails.map((thumbnail, thumbnailIndex) => (
+                          <QueuedThumbnail
+                            attachment={thumbnail}
+                            key={thumbnail.id ?? `${thumbnail.name}-${thumbnailIndex}`}
+                            loader={props.loader}
+                          />
+                        ))}
+                      </span>
+                    ) : null}
                     <Tooltip>
                       <TooltipTrigger render={<span className="min-w-0 flex-1 truncate" />}>
                         {preview}
@@ -1149,6 +1200,7 @@ export function Composer(props: ComposerProps) {
     initial: initial?.attachments,
   });
   const attachments = uploads.items;
+  const attachmentLoader = useAttachmentLoader(props.target);
   /** Ctrl/⌘+Shift+V was pressed: the next paste stays text, however large (T3). */
   const pasteAsText = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -1801,6 +1853,7 @@ export function Composer(props: ComposerProps) {
           props.queueActions !== undefined ? (
           <QueueBanner
             actions={props.queueActions}
+            loader={attachmentLoader}
             canSteer={props.canSteer === true}
             editing={editing?.id}
             onCancelEdit={cancelEdit}
@@ -1846,7 +1899,9 @@ export function Composer(props: ComposerProps) {
                     )}
                   >
                     <ComposerAttachments
+                      fileOf={uploads.fileOf}
                       items={attachments}
+                      loader={attachmentLoader}
                       onRemove={uploads.remove}
                       onRetry={uploads.retry}
                     />

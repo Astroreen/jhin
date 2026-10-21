@@ -182,6 +182,79 @@ test("attaches any file: uploads it, sends it by id and shows it in the message"
   await info.attach("attachments in the message", { path: sentShot, contentType: "image/png" });
 });
 
+test("previews an attached file in the composer and the message, shows videos and queued thumbnails", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  await page.locator('input[type="file"]').setInputFiles([
+    {
+      name: "notes.md",
+      mimeType: "text/markdown",
+      buffer: Buffer.from("# Release notes\n\nHello, world"),
+    },
+    // No type: the composer types a video by its name, as T3 does.
+    { name: "clip.webm", mimeType: "", buffer: Buffer.from("not really a video") },
+  ]);
+  const composer = page.getByRole("form", { name: "Composer" });
+  await expect(composer.getByRole("button", { name: "Play clip.webm" })).toBeVisible();
+  await expect(composer.getByText("1 KB")).toBeVisible();
+
+  // The draft's file opens in T3's preview: rendered markdown, under "Draft".
+  await composer.getByRole("button", { name: "notes.md", exact: true }).click();
+  const draftPreview = page.getByRole("dialog", { name: "notes.md" });
+  await expect(draftPreview.getByRole("heading", { name: "Release notes" })).toBeVisible();
+  await expect(draftPreview.getByText("Draft")).toBeVisible();
+  await expect(draftPreview.getByRole("button", { name: "Remove from draft" })).toBeVisible();
+  await draftPreview.getByRole("button", { name: "Close" }).click();
+  await expect(draftPreview).toBeHidden();
+
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("/attachments");
+  await message.press("Enter");
+  const log = page.getByRole("log", { name: "Messages" });
+  await expect(log.getByRole("article", { name: "Agent" })).toContainText(
+    "notes.md (29 bytes: # Release notes",
+  );
+  await expect(log.getByRole("article", { name: "Agent" })).toContainText("clip.webm (18 bytes)");
+  const sent = log.getByRole("article", { name: "You" });
+  await expect(sent.getByRole("button", { name: "Play clip.webm" })).toBeVisible();
+
+  // The sent file opens in the same preview, its bytes read back from the node.
+  await sent.getByRole("button", { name: "Preview notes.md" }).click();
+  const preview = page.getByRole("dialog", { name: "notes.md" });
+  await expect(preview.getByRole("heading", { name: "Release notes" })).toBeVisible();
+  await expect(preview.getByText("Attachment", { exact: true })).toBeVisible();
+  const shot = info.outputPath("attachment-preview.png");
+  await page.screenshot({ path: shot });
+  await info.attach("attachment preview", { path: shot, contentType: "image/png" });
+  // Its source, highlighted as T3 shows it.
+  await preview.getByRole("button", { name: "Show markdown source" }).click();
+  await expect(preview.getByRole("button", { name: "Show rendered markdown" })).toBeVisible();
+  await expect(preview.getByText("Hello, world")).toBeVisible();
+  const sourceShot = info.outputPath("attachment-preview-source.png");
+  await page.screenshot({ path: sourceShot });
+  await info.attach("attachment preview, source", { path: sourceShot, contentType: "image/png" });
+  await preview.getByRole("button", { name: "Close" }).click();
+  await expect(preview).toBeHidden();
+
+  // A queued message's image shows as T3's thumbnail, read from the node by its id.
+  await message.fill("/hold on");
+  await message.press("Enter");
+  await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText("Holding");
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles([{ name: "dot.png", mimeType: "image/png", buffer: PNG }]);
+  await expect(composer.getByRole("img", { name: "dot.png" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Queue message" })).toBeVisible();
+  await message.press("Enter");
+  const queued = page.getByRole("region", { name: "1 queued message" });
+  await expect(queued.locator('img[alt="dot.png"]')).toHaveAttribute("src", /^blob:/);
+  const queueShot = info.outputPath("queued-thumbnail.png");
+  await page.screenshot({ path: queueShot });
+  await info.attach("queued thumbnail", { path: queueShot, contentType: "image/png" });
+});
+
 test("attaches a large paste as pasted-text.txt", async ({ page }) => {
   await page.goto(`${node.ui}#token=${node.token}`);
   await page.getByRole("button", { name: "Start a thread" }).click();

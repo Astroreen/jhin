@@ -473,12 +473,22 @@ const Queue = z.object({
 });
 type Queue = z.infer<typeof Queue>;
 
-/** A queue as `threads.queue.updated` carries it: images by name and type only. */
+/**
+ * A queue as `threads.queue.updated` carries it: attachments by name and type,
+ * and an upload by its id too (read with `attachments.read`, for T3's
+ * thumbnails); a data URL's data stays in the queue's record.
+ */
 const QueueView = z.object({
   messages: z.array(
     QueuedMessage.extend({
       attachments: z.array(
-        z.object({ kind: z.enum(["image", "file"]), name: z.string(), mimeType: z.string() }),
+        z.object({
+          kind: z.enum(["image", "file"]),
+          name: z.string(),
+          mimeType: z.string(),
+          id: z.string().optional(),
+          sizeBytes: z.number().optional(),
+        }),
       ),
     }),
   ),
@@ -489,11 +499,17 @@ type QueueView = z.infer<typeof QueueView>;
 const viewOf = ({ resumedPast: _resumedPast, ...queue }: Queue): QueueView => ({
   messages: queue.messages.map((message) => ({
     ...message,
-    attachments: (message.attachments ?? []).map(({ kind, name, mimeType }) => ({
-      kind,
-      name,
-      mimeType,
-    })),
+    attachments: (message.attachments ?? []).map((item) =>
+      "id" in item
+        ? {
+            kind: item.kind,
+            name: item.name,
+            mimeType: item.mimeType,
+            id: item.id,
+            sizeBytes: item.sizeBytes,
+          }
+        : { kind: item.kind, name: item.name, mimeType: item.mimeType },
+    ),
   })),
   ...(queue.held === undefined ? {} : { held: queue.held }),
 });

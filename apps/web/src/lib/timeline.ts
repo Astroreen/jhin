@@ -102,8 +102,17 @@ type TimelineItem =
 interface QueuedMessage {
   readonly id: string;
   readonly text: string;
-  /** Images by name and type: `threads.queue.list` has their data. */
-  readonly attachments: readonly { readonly name: string; readonly mimeType: string }[];
+  /**
+   * Attachments by name and type, an upload with its id and size too (its
+   * thumbnail reads it); `threads.queue.list` has a data URL's data.
+   */
+  readonly attachments: readonly {
+    readonly kind: "image" | "file";
+    readonly name: string;
+    readonly mimeType: string;
+    readonly id?: string;
+    readonly sizeBytes?: number;
+  }[];
   readonly agentId?: string;
   readonly model?: string;
   readonly runtimeMode?: string;

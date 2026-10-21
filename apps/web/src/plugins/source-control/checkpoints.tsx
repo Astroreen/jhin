@@ -34,7 +34,7 @@ import {
 } from "../../lib/turn-diff-tree.ts";
 import { FileContextMenuPopup, resolveDiffPathForWorkspace } from "./diff/editors.tsx";
 import { selectionKey } from "./diff/scopes.ts";
-import { useResolvedTheme } from "./diff/theme.ts";
+import { useResolvedTheme } from "../../lib/resolved-theme.ts";
 import { LATEST_TURN, turnValue } from "./diff/turns.ts";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
 

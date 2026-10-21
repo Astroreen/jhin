@@ -1710,6 +1710,32 @@ T3 Code `eb7b35ac` as D290 says.
   that goes in exactly as copied. Nothing in the composer turns it on yet:
   T3 does for a pending question with an `initialAnswer`, which no Jhin
   runtime asks (Deferred).
+- **D854. T3's file preview** (`AttachmentFilePreview.tsx`, the kinds of
+  `packages/shared/src/filePreview.ts`): a dialog with T3's header ("Draft"
+  or "Attachment" › name and size) and actions (Show rendered or source,
+  word wrap, Copy contents, Save file, Remove from draft, Close). Markdown
+  renders; text and code are highlighted; HTML and PDF show in a sandboxed
+  frame; images, video and audio in the browser's own element; anything else
+  says "No preview for this file". Text reads the first 1 MiB, with T3's note
+  when cut. The composer opens it from a file's name; a message's file row is
+  T3's (icon, name, "Preview" and "Download"). T3 opens a message's file in
+  its right-hand file panel, which Jhin lacks, so it opens the same dialog.
+  The bytes come from `attachments.read`; no new command.
+- **D855. Video attachments,** as T3's `video.ts`: avi, m4v, mkv, mov, mp4,
+  ogv and webm (or `video/*`), typed by name when the browser gives no type,
+  an ordinary file attachment up to 50 MB outside the images' 80 MiB. The
+  composer shows a 64 px tile of the first frame with "Play <name>"; a
+  message shows it among the images, its frame loaded once it is in view; a
+  click opens T3's player ("Close video preview", "Video unavailable",
+  "Retry video").
+- **D856. Queued messages show their images as thumbnails,** as T3's
+  `QueuedRunsControl.tsx`, and a message of images alone shows no text.
+  `threads.queue.updated` and the queue commands now give an uploaded
+  attachment's `id` and `sizeBytes` (additive). A queue entry from before
+  attachments were blobs (D54 data URLs) shows a grey tile.
+
+To keep the entry chunk under D440's budget, a message's attachments (images
+too) render from a chunk of their own, so they appear once it loaded.
 
 ### Sidebar leftovers (W26)
 
@@ -1782,9 +1808,9 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   - `aria-activedescendant` from the editor to the menu.
 - Attachments (D291–D296): the node finds a thread's attachments by listing
   every attachment's record when the thread is deleted (fine for thousands,
-  not for millions); T3's preview of a file in the composer and in the
-  message (here a file downloads), video attachments, and T3's captured
-  window context on screenshots. A live Claude Code session starts again
+  not for millions); T3's captured window context on screenshots; T3's
+  right-hand file panel for a message's file (D854 opens a dialog), its table
+  preview of CSV and TSV, and its virtualized preview of text past 1 MiB. A live Claude Code session starts again
   when a turn's attachments add their folder to `additionalDirectories`.
 - Thread history (W2, D220–D228): Claude Code's native rewind and fork (`resumeSessionAt` and
   `forkSession` instead of a new session with the transcript, D222, D225;
@@ -1840,9 +1866,6 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   free thread with nothing queued starts its turn under the queue's lock,
   and a thread's first message runs the hook. Edits of that thread's queue
   wait for it.
-- Thumbnails of queued images: `threads.queue.updated` carries their names
-  and types only (the data stays in the queue's record), so a queued row shows
-  text, not T3's thumbnails, until attachments are blobs (W6).
 - A browser component test of the composer's queue banner (the `mod-enter`
   send shortcut with something queued, the "Retry" label of a refused
   message): the e2e spec covers the flows with the default shortcut only.
