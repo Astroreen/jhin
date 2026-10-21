@@ -1,12 +1,4 @@
 // The diff panel follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/DiffPanel.tsx
-<<<<<<< HEAD
-// (the scope menu, the "head → base" label, the header's controls and its empty states),
-// DiffPanelShell.tsx (the inline panel and its loading skeleton) and chat/DiffStatLabel.tsx;
-// the turn scopes ("Latest turn", "Turn N") follow DiffPanel.tsx at the same commit.
-// T3 renders files with @pierre/diffs; here a stacked view of the unified diff stands in.
-import type { NodeTarget } from "@jhin/client-api";
-import type { Diff, ProjectStatus } from "@jhin/source-control-api";
-=======
 // (the scope menu, the header's controls, the file view and its empty states), DiffPanelShell.tsx
 // (the inline panel and its loading skeleton), DiffFilePathCopyButton.tsx, lib/diffCollapse.ts,
 // diffs/useCodeViewFileReveal.ts and chat/DiffStatLabel.tsx.
@@ -14,7 +6,6 @@ import type { NodeTarget } from "@jhin/client-api";
 import type { DiffScopeContext, DiffScopeResult, ProjectStatus } from "@jhin/source-control-api";
 import type { CodeViewDiffItem, CodeViewScrollTarget, FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
->>>>>>> be892adb (feat(web): render the diff panel with @pierre/diffs, as T3 Code does)
 import {
   Button,
   Menu,
@@ -52,23 +43,9 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-<<<<<<< HEAD
-import { parsePatch, type DiffFile } from "../../lib/diff.ts";
-import { formatShortTimestamp } from "../../lib/format.ts";
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
-import {
-  DiffStatLabel,
-  selectionKey,
-  useDiffSelection,
-  useThreadCheckpoints,
-  type DiffSelection,
-} from "./checkpoints.tsx";
-import { useSourceControl, type SourceControlServices, DIFF_PANEL } from "./services.ts";
-
-=======
-import { useCatalog, useExternal } from "../../lib/hooks.ts";
-import { formatCompactDiffCount } from "../../lib/pull-request.ts";
 import { DIFF_SECTION, DiffSettings, useSection } from "../../lib/settings.ts";
+import { DiffStatLabel } from "./checkpoints.tsx";
 import { BaseRefPicker } from "./diff/base-ref-picker.tsx";
 import { StyledDiffCodeView } from "./diff/code-view.tsx";
 import { diffFileTreeEntries } from "./diff/file-tree-logic.ts";
@@ -89,25 +66,6 @@ import { DIFF_PANEL, useSourceControl, type SourceControlServices } from "./serv
 
 const DIFF_FILE_TREE_STORAGE_KEY = "jhin.diffFileTreeOpen";
 
-/** T3's DiffStatLabel, inline layout. */
-function DiffStatLabel(props: { additions: number; deletions: number; className?: string }) {
-  return (
-    <span
-      aria-label={`${props.additions} additions, ${props.deletions} deletions`}
-      className={cn("inline-flex items-center gap-1 tabular-nums align-middle", props.className)}
-      role="group"
-    >
-      <span aria-hidden="true" className="font-mono text-diff-addition">
-        +{formatCompactDiffCount(props.additions)}
-      </span>
-      <span aria-hidden="true" className="font-mono text-diff-deletion">
-        -{formatCompactDiffCount(props.deletions)}
-      </span>
-    </span>
-  );
-}
-
->>>>>>> be892adb (feat(web): render the diff panel with @pierre/diffs, as T3 Code does)
 function DiffFileHeaderSkeleton({ width }: { width: string }) {
   return (
     <div className="flex h-8 items-center gap-2 px-2 pr-3">
@@ -381,23 +339,8 @@ function ScopeMenu(props: {
   );
 }
 
-/** The label of the scope menu's trigger, as T3's DiffPanel names the selection. */
-function scopeLabel(
-  selection: DiffSelection,
-  turn: number | undefined,
-  latest: number | undefined,
-) {
-  if (selection.kind === "branch") return "Changes";
-  if (selection.kind === "uncommitted") return "Uncommitted";
-  return turn === undefined || turn === latest ? "Latest turn" : `Turn ${turn}`;
-}
-
 export function createDiffPanel(services: SourceControlServices) {
-<<<<<<< HEAD
-  const { store, threads, navigation, selections } = services;
-=======
   const { store, threads, navigation, scopes, selections } = services;
->>>>>>> be892adb (feat(web): render the diff panel with @pierre/diffs, as T3 Code does)
 
   function Panel(props: {
     target: NodeTarget;
@@ -406,75 +349,6 @@ export function createDiffPanel(services: SourceControlServices) {
     status: ProjectStatus | undefined;
   }) {
     const { target, projectId, threadId, status } = props;
-<<<<<<< HEAD
-    const key = selectionKey(target, { thread: threadId, project: projectId });
-    const selection = useDiffSelection(selections, key);
-    const timestampFormat = services.timestampFormat();
-    const checkpoints = useThreadCheckpoints(services, target, threadId ?? "");
-    // Newest first, as T3 lists them; only turns whose checkpoint can be diffed.
-    const turns = (threadId === undefined ? [] : (checkpoints ?? []))
-      .filter((checkpoint) => checkpoint.status === "ready")
-      .toSorted((a, b) => b.turn - a.turn);
-    const latest = turns[0];
-    const selectedTurn =
-      selection.kind !== "turn"
-        ? undefined
-        : (turns.find((checkpoint) => checkpoint.turn === selection.turn) ?? latest);
-    const [wrap, setWrap] = useState(false);
-    const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
-    const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-    const [state, setState] = useState<{
-      key: string;
-      /** The scope the answer is for: another scope's diff is never shown under this one. */
-      scope?: DiffSelection["kind"];
-      diff?: Diff;
-      error?: string;
-    }>({ key: "" });
-    const [refreshing, setRefreshing] = useState(false);
-    const [reloads, setReloads] = useState(0);
-    const isRepo = status?.isRepo ?? true;
-    const scope = selection.kind;
-    // A git scope is read again whenever the project's status changes on its node, a turn
-    // when its checkpoint does.
-    const fetchKey = JSON.stringify([
-      target,
-      projectId,
-      threadId,
-      scope,
-      ignoreWhitespace,
-      scope === "turn"
-        ? [selectedTurn?.turn, selectedTurn?.capturedAt, reloads]
-        : status?.checkedAt,
-    ]);
-    const waitingForTurns = scope === "turn" && checkpoints === undefined && threadId !== undefined;
-    useEffect(() => {
-      if (!isRepo || waitingForTurns) return;
-      if (scope === "turn" && selectedTurn === undefined) return;
-      let current = true;
-      const request =
-        scope === "turn"
-          ? { threadId, scope, turn: selectedTurn!.turn, ignoreWhitespace }
-          : { projectId, scope, ignoreWhitespace };
-      void threads.call<Diff>(target, "git.diff", request).then(
-        (diff) => current && setState({ key: fetchKey, scope, diff }),
-        (error: unknown) =>
-          current && setState({ key: fetchKey, scope, error: (error as Error).message }),
-      );
-      return () => {
-        current = false;
-      };
-    }, [fetchKey, isRepo, waitingForTurns]);
-
-    // A git scope keeps showing its last diff while the status that changed is read
-    // again; a turn, or another scope, waits for its own.
-    const diff =
-      state.key === fetchKey || (scope !== "turn" && state.scope === scope)
-        ? state.diff
-        : undefined;
-    const files = diff === undefined ? [] : parsePatch(diff.patch);
-    const loading = waitingForTurns || (state.key !== fetchKey && diff === undefined);
-    const allCollapsed = files.length > 0 && files.every((file) => collapsed.has(file.path));
-=======
     const resolvedTheme = useResolvedTheme();
     const settings = useSection(services.context, DIFF_SECTION, DiffSettings);
     const [wordWrap, setWordWrap] = useState(settings.wordWrap);
@@ -629,124 +503,31 @@ export function createDiffPanel(services: SourceControlServices) {
       });
       requestTreeReveal(file.fileKey);
     };
->>>>>>> be892adb (feat(web): render the diff panel with @pierre/diffs, as T3 Code does)
     const refresh = () => {
-      if (scope === "turn") {
-        setReloads((count) => count + 1);
-        return;
-      }
       setRefreshing(true);
       void store.refresh(target, projectId).finally(() => {
         setRefreshing(false);
         setVersion((v) => v + 1);
       });
     };
-<<<<<<< HEAD
-    // A file opened from a turn's changed files card is shown, unfolded.
-    const filesRef = useRef<HTMLDivElement>(null);
-    const reveal = selection.kind === "turn" ? selection.filePath : undefined;
-    const revealRequest = selection.kind === "turn" ? selection.reveal : 0;
-    const revealed = reveal !== undefined && files.some((file) => file.path === reveal);
+    // A file asked for from outside (a turn's changed files card) is revealed once its diff holds it.
+    const handledReveal = useRef<string | null>(null);
+    const askedPath = selection.filePath;
+    const askedReveal = `${selection.reveal ?? 0}:${askedPath ?? ""}`;
+    const askedReady =
+      askedPath !== undefined &&
+      renderableFileEntries.some((file) => resolveFileDiffPath(file.fileDiff) === askedPath);
     useEffect(() => {
-      if (reveal === undefined || !revealed) return;
-      setCollapsed((previous) => {
-        if (!previous.has(reveal)) return previous;
-        const next = new Set(previous);
-        next.delete(reveal);
-        return next;
-      });
-      filesRef.current
-        ?.querySelector(`[data-diff-file="${CSS.escape(reveal)}"]`)
-        ?.scrollIntoView({ block: "start" });
-    }, [reveal, revealRequest, revealed]);
-    const select = (next: DiffSelection) => selections.set(key, next);
-    const selectValue = (value: string) => {
-      if (value === "branch" || value === "uncommitted") select({ kind: value });
-      else if (value === "latest") select({ kind: "turn", reveal: 0 });
-      else if (value.startsWith("turn:")) {
-        select({ kind: "turn", turn: Number(value.slice(5)), reveal: 0 });
-      }
-    };
-    const label = scopeLabel(selection, selectedTurn?.turn, latest?.turn);
-    const scopeValue =
-      selection.kind !== "turn"
-        ? selection.kind
-        : selectedTurn === undefined || selectedTurn.turn === latest?.turn
-          ? "latest"
-          : "";
-    const turnValue = selectedTurn === undefined ? "" : `turn:${selectedTurn.turn}`;
-=======
-    const selectScope = (value: string) => selections.update(key, { value });
->>>>>>> be892adb (feat(web): render the diff panel with @pierre/diffs, as T3 Code does)
+      if (!askedReady || askedPath === undefined || handledReveal.current === askedReveal) return;
+      handledReveal.current = askedReveal;
+      revealFile(askedPath);
+    }, [askedReady, askedReveal]);
+    const selectScope = (value: string) =>
+      selections.update(key, { value, filePath: undefined, reveal: undefined });
 
     const header = (
       <>
         <div className="flex min-w-0 flex-1 items-center gap-3">
-<<<<<<< HEAD
-          <Menu>
-            <MenuTrigger
-              aria-label={`Diff scope: ${label}`}
-              className="max-w-full"
-              render={<Button size="xs" variant="secondary" />}
-            >
-              <span className="truncate">{label}</span>
-              <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
-            </MenuTrigger>
-            <MenuPopup align="start">
-              <MenuRadioGroup
-                onValueChange={(value) => selectValue(String(value))}
-                value={scopeValue}
-              >
-                <MenuRadioItem closeOnClick value="branch">
-                  <span>Changes</span>
-                </MenuRadioItem>
-                <MenuRadioItem closeOnClick value="uncommitted">
-                  <span>Uncommitted</span>
-                </MenuRadioItem>
-                {threadId === undefined ? null : (
-                  <MenuRadioItem closeOnClick value="latest">
-                    <span>Latest turn</span>
-                  </MenuRadioItem>
-                )}
-              </MenuRadioGroup>
-              {threadId === undefined ? null : (
-                <MenuSub>
-                  <MenuSubTrigger>Turn</MenuSubTrigger>
-                  <MenuSubPopup>
-                    <MenuRadioGroup
-                      onValueChange={(value) => selectValue(String(value))}
-                      value={turnValue}
-                    >
-                      {turns.map((checkpoint) => (
-                        <MenuRadioItem
-                          closeOnClick
-                          key={checkpoint.turnId}
-                          value={`turn:${checkpoint.turn}`}
-                        >
-                          <span className="flex items-center gap-2">
-                            <span>Turn {checkpoint.turn}</span>
-                            <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                              {formatShortTimestamp(checkpoint.capturedAt, timestampFormat)}
-                            </span>
-                          </span>
-                        </MenuRadioItem>
-                      ))}
-                    </MenuRadioGroup>
-                  </MenuSubPopup>
-                </MenuSub>
-              )}
-            </MenuPopup>
-          </Menu>
-          {scope === "branch" && diff?.baseRef ? (
-            <div
-              aria-label={`Comparing ${diff.headRef ?? "HEAD"} against ${diff.baseRef}`}
-              className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden text-xs text-muted-foreground"
-            >
-              <span className="min-w-0 max-w-48 truncate">{diff.headRef ?? "HEAD"}</span>
-              <ArrowRightIcon className="size-3.5 shrink-0 opacity-70" />
-              <span className="min-w-0 max-w-48 truncate">{diff.baseRef}</span>
-            </div>
-=======
           <ScopeMenu entries={entries} onSelect={selectScope} selected={selected} />
           {selected?.option.baseRefs === true && result?.baseRef ? (
             <BaseRefPicker
@@ -758,7 +539,6 @@ export function createDiffPanel(services: SourceControlServices) {
               target={target}
               threads={threads}
             />
->>>>>>> be892adb (feat(web): render the diff panel with @pierre/diffs, as T3 Code does)
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -894,63 +674,6 @@ export function createDiffPanel(services: SourceControlServices) {
       </>
     );
 
-<<<<<<< HEAD
-    return (
-      <aside
-        aria-label="Diff panel"
-        className="flex h-full w-[42vw] min-w-[360px] max-w-[560px] shrink-0 flex-col border-l border-border bg-background"
-        data-diff-panel
-      >
-        <div className="flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background px-4">
-          {header}
-        </div>
-        {!isRepo ? (
-          <EmptyState>
-            Turn diffs are unavailable because this project is not a git repository.
-          </EmptyState>
-        ) : scope === "turn" && checkpoints !== undefined && selectedTurn === undefined ? (
-          <EmptyState>No completed turns yet.</EmptyState>
-        ) : loading ? (
-          <DiffPanelLoadingState
-            label={
-              scope === "turn"
-                ? "Loading checkpoint diff..."
-                : scope === "uncommitted"
-                  ? "Loading uncommitted changes..."
-                  : "Loading changes..."
-            }
-          />
-        ) : state.key === fetchKey && state.error !== undefined && diff === undefined ? (
-          <div className="px-3 py-2">
-            <p className="mb-2 text-2xs text-error/80">{state.error}</p>
-          </div>
-        ) : files.length === 0 ? (
-          <EmptyState>No net changes in this selection.</EmptyState>
-        ) : (
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-            {diff?.truncated ? (
-              <p className="shrink-0 border-b border-border/70 bg-muted/40 px-3 py-1.5 text-2xs text-muted-foreground">
-                This preview exceeds the size limit. Changes shown are incomplete. Totals include
-                all changes.
-              </p>
-            ) : null}
-            <div className="min-h-0 flex-1 overflow-auto" data-diff-files ref={filesRef}>
-              {files.map((file) => (
-                <FileDiff
-                  collapsed={collapsed.has(file.path)}
-                  file={file}
-                  key={file.path}
-                  onToggle={() =>
-                    setCollapsed((previous) => {
-                      const next = new Set(previous);
-                      if (!next.delete(file.path)) next.add(file.path);
-                      return next;
-                    })
-                  }
-                  wrap={wrap}
-                />
-              ))}
-=======
     let body: React.ReactNode;
     if (!isRepo) {
       body = (
@@ -964,7 +687,6 @@ export function createDiffPanel(services: SourceControlServices) {
           {error === undefined ? null : (
             <div className="px-3">
               <p className="mb-2 text-2xs text-error/80">{error}</p>
->>>>>>> be892adb (feat(web): render the diff panel with @pierre/diffs, as T3 Code does)
             </div>
           )}
           {loading ? (
@@ -1130,11 +852,7 @@ export function createDiffPanel(services: SourceControlServices) {
         projectId={projectId}
         status={view.projects.get(projectId)}
         target={props.target}
-<<<<<<< HEAD
-        threadId={props.thread}
-=======
         threadId={props.project === undefined ? props.thread : undefined}
->>>>>>> be892adb (feat(web): render the diff panel with @pierre/diffs, as T3 Code does)
       />
     );
   }

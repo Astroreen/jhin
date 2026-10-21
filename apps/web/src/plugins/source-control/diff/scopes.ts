@@ -216,6 +216,10 @@ export interface DiffSelection {
   readonly value?: string;
   /** The base chosen in the picker; none is automatic (the default branch). */
   readonly base?: string;
+  /** A file to show, unfolded (a turn's changed files card opens one). */
+  readonly filePath?: string;
+  /** Bumped by every request to reveal `filePath` again. */
+  readonly reveal?: number;
 }
 
 const SELECTION_STORAGE_KEY = "jhin.diff-panel.v1";
@@ -224,6 +228,8 @@ const SELECTION_STORAGE_KEY = "jhin.diff-panel.v1";
 const StoredSelection = z.object({
   value: z.string().min(1).optional(),
   base: z.string().min(1).optional(),
+  filePath: z.string().min(1).optional(),
+  reveal: z.number().int().nonnegative().optional(),
 });
 /** The most recently changed selections kept; older threads fall back to the defaults. */
 const MAX_SELECTIONS = 200;

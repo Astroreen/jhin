@@ -44,6 +44,7 @@ import { createBranchToolbar } from "./branch-toolbar.tsx";
 import { createRunningActions } from "./running.ts";
 import { createChangedFilesFooter } from "./checkpoints.tsx";
 import { createDiffScopes, createDiffSelections, gitScopeProvider } from "./diff/scopes.ts";
+import { turnScopeProvider } from "./diff/turns.ts";
 import { createCardIndicators } from "./indicators.tsx";
 import { createLinkActions } from "./links.tsx";
 import { DIFF_PANEL, useSourceControl, type SourceControlServices } from "./services.ts";
@@ -104,6 +105,7 @@ export const sourceControlPlugin = builtin(
         timestampFormat: () => readSection(context, CHAT_SECTION, ChatSettings).timestampFormat,
         shortcut: () => keybindings?.labelFor("diff.toggle"),
       };
+      context.subscriptions.add(scopes.register(turnScopeProvider(services)));
 
       /** Opens or closes the diff panel of the thread (or draft) on screen. */
       const toggle = () => {
@@ -273,7 +275,7 @@ export const sourceControlPlugin = builtin(
       context.subscriptions.add(
         slots.contribute<ChatTurnFooterProps>("chat.turn.footer", {
           id: "jhin.source-control.changed-files",
-          component: createChangedFilesFooter(services, services.selections, (target, threadId) => {
+          component: createChangedFilesFooter(services, (target, threadId) => {
             const route = navigation.current();
             if (
               route.node === target.node &&

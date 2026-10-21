@@ -29,12 +29,13 @@ export interface SourceControlServices {
   /** The git actions running from this client. */
   readonly running: RunningActions;
   readonly toasts: Toasts | undefined;
-import type { TimestampFormat } from "../../lib/format.ts";
   /** The diff panel's scopes (D283) and what each thread has selected. */
   readonly scopes: DiffScopes;
   readonly selections: DiffSelections;
   /** This device's settings, where the panel's layout toggle writes. */
   readonly settings: DeviceSettings | undefined;
+  /** How the chat shows times (its `timestampFormat` setting). */
+  timestampFormat(): TimestampFormat;
   /** The label of the diff panel's shortcut, e.g. "⌘D". */
   shortcut(): string | undefined;
 }

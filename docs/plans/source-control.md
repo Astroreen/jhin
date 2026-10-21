@@ -227,7 +227,10 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   changed, and `load` returning the patch with its totals and refs. The
   panel's menu lists every provider's options in order. The builtin provider
   `jhin.source-control.git` offers "Changes" and "Uncommitted" through
-  `git.diff`. The selection is kept per thread (or draft) on the device
+  `git.diff`; `jhin.source-control.turns` (order 10) offers W3's "Latest
+  turn" and, in the "Turn" submenu, every turn whose checkpoint is ready, with
+  its time. A turn's changed files card opens the panel through the same
+  selection, with the file to reveal. The selection is kept per thread (or draft) on the device
   (`jhin.diff-panel.v1`), defaulting to "Changes" as T3 does; a value no
   provider offers any more falls back to the first option. Every scope is
   read again when its project's status changes, when its provider says so,
