@@ -104,3 +104,54 @@ export async function sendMessage(
     return failure(error);
   }
 }
+
+/** What "Resume thread" sends into a stopped turn's thread (T3's text, D800). */
+export const RESUME_TEXT = "Continue where you left off.";
+
+/** What resuming a thread came to: `failed` says which step did not happen. */
+export type ResumeOutcome =
+  | { readonly kind: "resumed" }
+  /** Nothing to resume, or a turn runs already: nothing was sent. */
+  | { readonly kind: "nothing" }
+  | { readonly kind: "failed"; readonly message: string };
+
+/**
+ * T3's "Resume thread" (D800): a stopped turn goes on with T3's message as
+ * the next turn, then a held queue goes on after it. The message is sent only
+ * while the thread is free (`start`), so a second press never sends it twice.
+ */
+export async function resumeThread(
+  threads: Pick<ThreadsCatalog, "call">,
+  target: NodeTarget,
+  threadId: string,
+  state: {
+    /** The latest turn was interrupted. */
+    readonly stopped: boolean;
+    /** The queue is held with messages waiting. */
+    readonly held: boolean;
+    readonly settings: MessageSettings;
+  },
+): Promise<ResumeOutcome> {
+  let resumed = false;
+  if (state.stopped) {
+    const message = { text: RESUME_TEXT, attachments: [], settings: state.settings };
+    const outcome = await sendMessage(threads, target, threadId, message, "start");
+    if (outcome.kind === "failed") {
+      return { kind: "failed", message: `Could not resume thread: ${outcome.message}` };
+    }
+    resumed = outcome.kind === "sent";
+  }
+  if (!state.held) return resumed ? { kind: "resumed" } : { kind: "nothing" };
+  try {
+    await threads.call(target, "threads.queue.resume", { threadId });
+    return { kind: "resumed" };
+  } catch (error) {
+    const reason = (error as Error | null)?.message ?? String(error);
+    return {
+      kind: "failed",
+      message: resumed
+        ? `The thread resumed, but its queue did not: ${reason}`
+        : `Could not resume the queue: ${reason}`,
+    };
+  }
+}

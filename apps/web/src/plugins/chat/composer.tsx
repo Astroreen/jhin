@@ -1308,8 +1308,10 @@ export function Composer(props: ComposerProps) {
     }
   };
   /** T3's "Resume thread" stands in for the send button while nothing is typed (D800). */
+  // A proposed plan's Implement comes first, as the button it would replace.
   const canResume = (text = prompt) =>
     props.onResume !== undefined &&
+    planFollowUp === undefined &&
     !props.running &&
     editing === undefined &&
     question === undefined &&
@@ -1373,6 +1375,7 @@ export function Composer(props: ComposerProps) {
     },
     resume() {
       // What the editor holds now, as `send` reads it.
+      if (busy || props.unavailable !== undefined) return false;
       if (!canResume(editor.current?.value() ?? prompt)) return false;
       void resume();
       return true;

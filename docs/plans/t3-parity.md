@@ -1481,7 +1481,10 @@ Reference: T3 Code at `eb7b35ac` (D53).
   model and modes; it shows as the user's message, as in T3), then lets a
   held queue go on (`threads.queue.resume`), so the queued messages follow
   the continued turn. With nothing interrupted it only resumes the queue. A
-  failure shows T3's "Could not resume thread." under the timeline. The
+  failure says which step failed ("Could not resume thread: …", or "The
+  thread resumed, but its queue did not: …") under the timeline. The message
+  goes only to a free thread (`threads.send`, never queued), so pressing
+  again never sends it twice. The
   client command `chat.thread.resume` ("Resume thread") does the same for
   the open thread. T3 also resumes a turn that failed on a usage limit; Jhin
   has no usage-limit failures yet (Deferred).
@@ -1569,6 +1572,8 @@ Reference: T3 Code at `eb7b35ac` (D53).
 - Secret config values. Done in `security.md` (D417): `host.config.get`
   redacts `writeOnly` values and a save keeps them.
 
+- "Resume thread" (D800) for a turn that failed on a usage limit, as T3
+  offers: Jhin has no usage-limit failures to tell apart yet.
 - Steering (W1): moving Claude's foreground subagents to the background
   before a steer (T3 does, so a steer does not cancel them; here the steer's
   `priority: "now"` may stop them), restarting a turn with the new message

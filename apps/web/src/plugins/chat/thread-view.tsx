@@ -40,7 +40,7 @@ import {
   type Selection,
 } from "./composer.tsx";
 import { ChatHeader } from "./header.tsx";
-import { dispatchMode, sendMessage } from "./send.ts";
+import { dispatchMode, resumeThread, sendMessage } from "./send.ts";
 import { useAgents, useChat } from "./services.ts";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
@@ -94,9 +94,6 @@ function useHeight<T extends HTMLElement>() {
   }, []);
   return { ref, height };
 }
-
-/** What "Resume thread" sends into a stopped turn's thread (T3's text, D800). */
-const RESUME_TEXT = "Continue where you left off.";
 
 const selectionOf = (thread: ThreadRecord): Selection => ({
   ...(thread.agentId === undefined ? {} : { agentId: thread.agentId }),
@@ -230,21 +227,12 @@ export function ThreadView(props: {
   const stopped = lastTurn?.state === "interrupted";
   const resume = async (): Promise<void> => {
     setError(undefined);
-    if (stopped) {
-      const message = { text: RESUME_TEXT, attachments: [], settings: selection };
-      const outcome = await sendMessage(chat.threads, target, threadId, message, "start");
-      if (outcome.kind === "failed") {
-        setError(outcome.message || "Could not resume thread.");
-        return;
-      }
-      if (outcome.kind === "busy") return;
-    }
-    if (!held) return;
-    try {
-      await chat.threads.call(target, "threads.queue.resume", { threadId });
-    } catch (failure) {
-      setError((failure as Error).message || "Could not resume thread.");
-    }
+    const outcome = await resumeThread(chat.threads, target, threadId, {
+      stopped,
+      held,
+      settings: selection,
+    });
+    if (outcome.kind === "failed") setError(outcome.message);
   };
 
   /** What the queue banner and the composer do to the thread's queue on its node. */

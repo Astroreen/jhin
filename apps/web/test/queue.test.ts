@@ -4,7 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { createTimeline, turnBlocks } from "../src/lib/timeline.ts";
 import { dropTarget } from "../src/plugins/chat/composer.tsx";
-import { dispatchMode, sendMessage } from "../src/plugins/chat/send.ts";
+import { dispatchMode, RESUME_TEXT, resumeThread, sendMessage } from "../src/plugins/chat/send.ts";
 
 function stream(...entries: [type: string, payload: unknown][]): StoredEvent[] {
   return entries.map(([type, payload], index) => ({
@@ -141,4 +141,83 @@ describe("an answer to a steer the client does not know", () => {
       expect(outcome).toMatchObject({ kind: "failed" });
     },
   );
+});
+
+describe("resuming a thread (D800)", () => {
+  const target = { node: "local" };
+  /** A node that answers what `answers` says and records each call. */
+  function node(answers: Record<string, () => unknown> = {}) {
+    const calls: [string, Record<string, unknown>][] = [];
+    return {
+      calls,
+      threads: {
+        call: async <T>(_target: unknown, method: string, params: Record<string, unknown>) => {
+          calls.push([method, params]);
+          return (answers[method]?.() ?? {}) as T;
+        },
+      },
+    };
+  }
+  const settings = { agentId: "fake" };
+
+  it("sends T3's message into a stopped turn's thread, then resumes its held queue", async () => {
+    const { calls, threads } = node();
+    const outcome = await resumeThread(threads, target, "t1", {
+      stopped: true,
+      held: true,
+      settings,
+    });
+    expect(outcome).toEqual({ kind: "resumed" });
+    expect(calls).toEqual([
+      ["threads.send", { threadId: "t1", text: RESUME_TEXT, agentId: "fake" }],
+      ["threads.queue.resume", { threadId: "t1" }],
+    ]);
+  });
+
+  it("only sends the message when nothing is queued, and only resumes a queue held otherwise", async () => {
+    const stopped = node();
+    await resumeThread(stopped.threads, target, "t1", { stopped: true, held: false, settings });
+    expect(stopped.calls.map(([method]) => method)).toEqual(["threads.send"]);
+
+    const held = node();
+    await resumeThread(held.threads, target, "t1", { stopped: false, held: true, settings });
+    expect(held.calls.map(([method]) => method)).toEqual(["threads.queue.resume"]);
+  });
+
+  it("sends nothing into a thread that runs a turn already", async () => {
+    const busy = Object.assign(new Error("busy"), { code: "TURN_IN_PROGRESS" });
+    const { calls, threads } = node({
+      "threads.send": () => {
+        throw busy;
+      },
+    });
+    const outcome = await resumeThread(threads, target, "t1", {
+      stopped: true,
+      held: false,
+      settings,
+    });
+    expect(outcome).toEqual({ kind: "nothing" });
+    expect(calls.map(([method]) => method)).toEqual(["threads.send"]);
+  });
+
+  it("says which step failed", async () => {
+    const refused = node({
+      "threads.send": () => {
+        throw new Error("no agent");
+      },
+    });
+    expect(
+      await resumeThread(refused.threads, target, "t1", { stopped: true, held: true, settings }),
+    ).toEqual({ kind: "failed", message: "Could not resume thread: no agent" });
+    expect(refused.calls.map(([method]) => method)).toEqual(["threads.send"]);
+
+    const queue = node({
+      "threads.queue.resume": () => {
+        throw new Error("gone");
+      },
+    });
+    expect(
+      await resumeThread(queue.threads, target, "t1", { stopped: true, held: true, settings }),
+    ).toEqual({ kind: "failed", message: "The thread resumed, but its queue did not: gone" });
+  });
 });
