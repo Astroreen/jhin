@@ -971,7 +971,7 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           return "";
         });
         if (places.length === 0) continue;
-        writeConfig(layer, section, Date.now(), (original, path) => {
+        const written = writeConfig(layer, section, Date.now(), (original, path) => {
           let text = original;
           const current = parseConfigText(text, path)[section];
           for (const place of places) {
@@ -988,6 +988,15 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
           }
           return text;
         });
+        if (!written.applied) {
+          // A change dated later holds the section: nothing was stored or moved.
+          throw Object.assign(
+            new Error(
+              `Config section ${section} in the ${layer} file changed later; migrate again`,
+            ),
+            { code: "CONFIG_WRITE_CONFLICT", details: { layer, section } },
+          );
+        }
         for (const place of places) {
           if (place.reference !== "") moved.push({ layer, section, path: place.path });
         }

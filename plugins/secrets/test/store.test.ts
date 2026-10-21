@@ -91,6 +91,21 @@ describe("the secret store (security.md D1023)", () => {
     expect(Fs.readFileSync(Path.join(dir, "store.json"), "utf8")).toBe(sealed);
   });
 
+  it("is unreadable when its file was tampered with or damaged", async () => {
+    const dir = tempDir();
+    const first = await openStore({ dir, keychain: undefined });
+    first.putConfig(VALUE, place);
+    const file = Path.join(dir, "store.json");
+    const sealed = JSON.parse(Fs.readFileSync(file, "utf8"));
+    const data = Buffer.from(sealed.data, "base64");
+    data[0]! ^= 1;
+    Fs.writeFileSync(file, JSON.stringify({ ...sealed, data: data.toString("base64") }));
+    expect((await openStore({ dir, keychain: undefined })).readable).toBe(false);
+    Fs.writeFileSync(file, "{ not json");
+    expect((await openStore({ dir, keychain: undefined })).status().state).toBe("unreadable");
+    expect(Fs.readFileSync(file, "utf8")).toBe("{ not json");
+  });
+
   it("resolves a config reference only where it was made (D1025)", async () => {
     const store = await openStore({ dir: tempDir(), keychain: undefined });
     const reference = store.putConfig(VALUE, { section: "acme.vault", path: ["keys", 0] });

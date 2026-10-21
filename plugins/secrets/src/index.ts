@@ -66,7 +66,18 @@ export default definePlugin({
     timer.unref?.();
     context.subscriptions.add(toDisposable(() => clearInterval(timer)));
 
-    const capability: SecretStore = store;
+    // Only the contract: the store's status and sweep stay the plugin's own.
+    const capability: SecretStore = {
+      get readable() {
+        return store.readable;
+      },
+      resolveConfig: (reference, place) => store.resolveConfig(reference, place),
+      putConfig: (value, place) => store.putConfig(value, place),
+      deleteConfig: (reference) => store.deleteConfig(reference),
+      putRef: (value, owner) => store.putRef(value, owner),
+      hasRef: (ref) => store.hasRef(ref),
+      consumeRef: (input) => store.consumeRef(input),
+    };
     context.services.provide(SECRETS_STORE_CAPABILITY, capability);
 
     describePermissions(context, {
