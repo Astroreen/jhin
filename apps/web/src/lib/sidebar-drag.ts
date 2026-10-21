@@ -160,6 +160,8 @@ export function planDrop(input: {
   readonly activeOrder: readonly string[];
   readonly pinnedKeysById: ReadonlyMap<string, string | undefined>;
   readonly activeKeysById: ReadonlyMap<string, string | undefined>;
+  /** The inbox is ordered by time (the Working section is on): no place among it to keep. */
+  readonly activeTimeOrdered?: boolean | undefined;
 }): DropPlan {
   const { key, from, target } = input;
   const same = (a: readonly string[], b: readonly string[]) =>
@@ -168,14 +170,21 @@ export function planDrop(input: {
     case "settled":
       return from === "settled" ? { kind: "none" } : { kind: "settle" };
     case "active": {
-      if (from === "active" && same(target.activeOrder, input.activeOrder)) return { kind: "none" };
+      if (
+        from === "active" &&
+        (input.activeTimeOrdered === true || same(target.activeOrder, input.activeOrder))
+      )
+        return { kind: "none" };
       return {
         kind: "move-active",
-        assignments: planReorder({
-          orderedIds: target.activeOrder,
-          keysById: input.activeKeysById,
-          movedId: key,
-        }),
+        assignments:
+          input.activeTimeOrdered === true
+            ? []
+            : planReorder({
+                orderedIds: target.activeOrder,
+                keysById: input.activeKeysById,
+                movedId: key,
+              }),
         unpin: from === "pinned",
         unsettle: from === "settled",
         unsnooze: from === "snoozed",

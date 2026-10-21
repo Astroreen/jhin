@@ -228,4 +228,42 @@ describe("the Working section in a drag (D452)", () => {
     // The active order stops at the Working header: w1 is not in it.
     expect(resolveDropTarget(items, "s1", "a1")?.activeOrder).toEqual(["s1", "a1"]);
   });
+
+  it("keeps no hand-made order in a time-ordered inbox", () => {
+    const keys = new Map<string, string | undefined>();
+    const plan = (from: "active" | "settled", key: string) =>
+      planDrop({
+        key,
+        from,
+        target: resolveDropTarget(items, key, "a1")!,
+        pinnedOrder: ["p1"],
+        activeOrder: ["a1"],
+        pinnedKeysById: keys,
+        activeKeysById: keys,
+        activeTimeOrdered: true,
+      });
+    expect(plan("settled", "s1")).toMatchObject({
+      kind: "move-active",
+      assignments: [],
+      unsettle: true,
+    });
+    const active = sidebarListItems({
+      pinned: [],
+      active: ["a1", "a2"],
+      snoozed: undefined,
+      settled: [],
+    });
+    expect(
+      planDrop({
+        key: "a2",
+        from: "active",
+        target: resolveDropTarget(active, "a2", "a1")!,
+        pinnedOrder: [],
+        activeOrder: ["a1", "a2"],
+        pinnedKeysById: keys,
+        activeKeysById: keys,
+        activeTimeOrdered: true,
+      }),
+    ).toEqual({ kind: "none" });
+  });
 });

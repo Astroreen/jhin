@@ -2087,6 +2087,7 @@ export const sidebarPlugin = builtin(
               activeOrder: keys(list.active),
               pinnedKeysById: keysOf((item) => item.thread.pinOrderKey),
               activeKeysById: keysOf((item) => item.thread.activeOrderKey),
+              activeTimeOrdered: readSection(context, CHAT_SECTION, ChatSettings).workingSection,
             }).kind !== "none"
           );
         };
@@ -2761,6 +2762,8 @@ export const sidebarPlugin = builtin(
                   activeOrder: list.active.map((item) => item.key),
                   pinnedKeysById: keysOf((item) => item.thread.pinOrderKey),
                   activeKeysById: keysOf((item) => item.thread.activeOrderKey),
+                  activeTimeOrdered: readSection(context, CHAT_SECTION, ChatSettings)
+                    .workingSection,
                 });
           if (plan.kind === "none") return {};
           // One write per node the drop touches (D449): its steps go as one `threads.arrange`.
