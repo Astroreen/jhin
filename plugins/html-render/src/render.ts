@@ -222,13 +222,27 @@ export function createRenderer(options: RendererOptions = {}) {
       return holding(async () => {
         const heights: [number, number][] = [];
         const queue = [...widths];
+        // The first failure stops every worker, so none opens pages after the caller moved on.
+        let failed = false;
         const worker = async () => {
-          for (let width = queue.shift(); width !== undefined; width = queue.shift()) {
+          for (let width = queue.shift(); width !== undefined && !failed; width = queue.shift()) {
             const measured = width;
-            heights.push([measured, await withPage(measured, (page) => load(page, html, "dark"))]);
+            try {
+              heights.push([
+                measured,
+                await withPage(measured, (page) => load(page, html, "dark")),
+              ]);
+            } catch (error) {
+              failed = true;
+              throw error;
+            }
           }
         };
-        await Promise.all(Array.from({ length: MEASURE_CONCURRENCY }, worker));
+        const results = await Promise.allSettled(
+          Array.from({ length: MEASURE_CONCURRENCY }, worker),
+        );
+        const rejected = results.find((result) => result.status === "rejected");
+        if (rejected !== undefined) throw rejected.reason;
         return heights.toSorted((a, b) => a[0] - b[0]);
       });
     },

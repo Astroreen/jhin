@@ -17,6 +17,11 @@ for (const [network, prefix] of [
   ["192.168.0.0", 16],
   ["198.18.0.0", 15],
   ["224.0.0.0", 3],
+  // Reserved and documentation ranges: nothing public lives there.
+  ["192.0.0.0", 24],
+  ["192.0.2.0", 24],
+  ["198.51.100.0", 24],
+  ["203.0.113.0", 24],
 ] as const) {
   LOCAL_ADDRESSES.addSubnet(network, prefix, "ipv4");
 }
@@ -29,6 +34,7 @@ for (const [network, prefix] of [
   ["fc00::", 7],
   ["fe80::", 10],
   ["ff00::", 8],
+  ["2001:db8::", 32],
 ] as const) {
   LOCAL_ADDRESSES.addSubnet(network, prefix, "ipv6");
 }
@@ -92,7 +98,11 @@ async function publicAddresses(host: string) {
   const addresses =
     Net.isIP(host) !== 0
       ? [{ address: host, family: Net.isIP(host) }]
-      : await Dns.lookup(host, { all: true, verbatim: true }).catch(() => []);
+      : await Promise.race([
+          Dns.lookup(host, { all: true, verbatim: true }).catch(() => []),
+          // A name that never resolves is no address.
+          new Promise<[]>((resolve) => setTimeout(() => resolve([]), TIMEOUT_MS).unref()),
+        ]);
   if (addresses.length === 0) return undefined;
   return addresses.some(({ address }) => isLocalAddress(address)) ? undefined : addresses;
 }
@@ -100,6 +110,8 @@ async function publicAddresses(host: string) {
 // SOCKS5 (RFC 1928) replies: success, refused by rule, host unreachable, command unsupported.
 const reply = (code: number) => Buffer.from([5, code, 0, 1, 0, 0, 0, 0, 0, 0]);
 const MAX_EARLY_BYTES = 64 * 1024;
+/** A host that does not answer, or a connection that idles, ends after this. */
+const TIMEOUT_MS = 15_000;
 
 function readRequest(data: Buffer) {
   if (data.length < 5) return "short" as const;
@@ -184,7 +196,10 @@ export async function startPublicProxy(): Promise<{ port: number; close(): Promi
                 : callback(null, addresses[0]!.address, addresses[0]!.family),
           }),
         );
+        upstream.setTimeout(TIMEOUT_MS, () => upstream.destroy());
+        client.setTimeout(TIMEOUT_MS * 4, () => client.destroy());
         upstream.once("connect", () => {
+          upstream.setTimeout(TIMEOUT_MS * 4);
           client.write(reply(0));
           for (const chunk of early) upstream.write(chunk);
           upstream.pipe(client);

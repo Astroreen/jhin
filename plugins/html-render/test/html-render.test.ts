@@ -182,6 +182,14 @@ describe("jhin.html-render", () => {
         payload: { turnId: "u1", agentId: "fake", input: { text: "x" } },
       },
     ]);
+    // A long turn: its start lies more than one page of events back.
+    await node.log.append(
+      stream,
+      Array.from({ length: 600 }, (_, index) => ({
+        type: "agent.item.delta",
+        payload: { turnId: "u1", itemId: "m1", kind: "message", text: String(index) },
+      })),
+    );
     const result = await node.client.call<{
       htmlRender: { renderId: string; heights?: unknown[] };
     }>("html.render", {
