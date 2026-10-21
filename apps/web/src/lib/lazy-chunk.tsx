@@ -9,9 +9,13 @@ import {
   type ReactNode,
 } from "react";
 
-/** Catches a chunk that failed to load, so only its place shows it. */
+/**
+ * Catches a chunk that failed to load, so only its place shows it. An error
+ * of the loaded component itself is not a load failure: it goes on to the
+ * boundary above, as it would without the chunk.
+ */
 class ChunkBoundary extends Component<
-  { failed: ReactNode; onError: () => void; children: ReactNode },
+  { failed: ReactNode; onError: () => void; loaded: () => boolean; children: ReactNode },
   { error: unknown }
 > {
   override state: { error: unknown } = { error: undefined };
@@ -21,11 +25,13 @@ class ChunkBoundary extends Component<
   }
 
   override componentDidCatch(): void {
-    this.props.onError();
+    if (!this.props.loaded()) this.props.onError();
   }
 
   override render(): ReactNode {
-    return this.state.error === undefined ? this.props.children : this.props.failed;
+    if (this.state.error === undefined) return this.props.children;
+    if (this.props.loaded()) throw this.state.error;
+    return this.props.failed;
   }
 }
 
@@ -43,7 +49,16 @@ export function lazyChunk<P extends object>(
     failed: (props: P, retry: () => void) => ReactNode;
   },
 ): ComponentType<P> {
-  const fresh = () => lazy(async () => ({ default: await load() }));
+  // Whether the current load has its component: errors after that are the component's.
+  let resolved = false;
+  const fresh = () => {
+    resolved = false;
+    return lazy(async () => {
+      const component = await load();
+      resolved = true;
+      return { default: component };
+    });
+  };
   // The current load and its generation change together, outside render.
   let generation = 0;
   let Loaded = fresh();
@@ -74,6 +89,7 @@ export function lazyChunk<P extends object>(
         // A new load is a new boundary: every instance leaves its failure behind.
         failed={views.failed(props, () => retry(seen))}
         key={seen}
+        loaded={() => resolved}
         onError={() => {
           if (seen === generation) failedGeneration = seen;
         }}

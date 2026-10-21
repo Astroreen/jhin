@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, Component } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
@@ -142,5 +142,35 @@ describe("lazyChunk (D440)", () => {
     expect(attempts).toHaveLength(2);
     await act(async () => attempts[1]!.resolve());
     expect(container.textContent).toBe("Hello Ada LovelaceHello Grace");
+  });
+
+  it("passes a loaded component's own error on, not as a load failure", async () => {
+    function Broken(): never {
+      throw new Error("bad message");
+    }
+    const Chunk = lazyChunk(async () => Broken as unknown as typeof Greeting, {
+      loading: () => <p>loading</p>,
+      failed: () => <p>failed</p>,
+    });
+    class Above extends Component<{ children: React.ReactNode }, { error?: string }> {
+      override state: { error?: string } = {};
+      static getDerivedStateFromError(error: Error) {
+        return { error: error.message };
+      }
+      override render() {
+        return this.state.error === undefined ? (
+          this.props.children
+        ) : (
+          <p>above: {this.state.error}</p>
+        );
+      }
+    }
+    const container = await mount(
+      <Above>
+        <Chunk name="Ada" />
+      </Above>,
+    );
+    await act(async () => undefined);
+    expect(container.textContent).toBe("above: bad message");
   });
 });
