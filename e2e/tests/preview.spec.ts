@@ -165,6 +165,49 @@ test("D950: a server a terminal started shows under Local servers and opens", as
   }
 });
 
+test("D953: a profile made in the settings opens a tab of its own, marked with its name", async ({
+  page,
+}, info) => {
+  await startThread(page, "profiles please");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Browser" }).click();
+  const section = page.getByRole("region", { name: "Browser" });
+  await section.getByRole("button", { name: "Add profile" }).click();
+  const name = section.getByRole("textbox", { name: "Rename New profile" });
+  await name.fill("Work");
+  await name.press("Enter");
+  const list = section.getByRole("list", { name: "Browser profiles" });
+  await expect(list.getByRole("listitem")).toHaveCount(2);
+  await expect(list.getByRole("listitem").first()).toContainText("Default");
+  await shot(page, info, "browser-profiles");
+  await page.getByRole("button", { name: "Back" }).click();
+
+  await page.getByRole("button", { name: "Toggle right panel" }).click();
+  const panel = page.getByRole("complementary", { name: "Right panel" });
+  await panel.getByRole("button", { name: "Open browser in a profile" }).click();
+  await page.getByRole("menuitem", { name: "Work" }).click();
+  await expect(panel.getByRole("tab", { name: "Browser Work" })).toBeVisible();
+  const address = panel.getByRole("textbox", { name: "Address" });
+  await address.fill(`${origin}/second`);
+  await address.press("Enter");
+  await expect(panel.getByRole("tab", { name: "Second page" })).toBeVisible();
+  // A tab of another profile than the default says which.
+  await expect(panel.getByText("Work", { exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "Preview menu" }).click();
+  await expect(page.getByRole("menuitem", { name: "Profile: Work" })).toBeVisible();
+  await shot(page, info, "profile-tab");
+  await page.keyboard.press("Escape");
+
+  // Work as the default: "+" opens in it, and its tabs carry no badge any more.
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Browser" }).click();
+  await section.getByRole("button", { name: "Work options" }).click();
+  await page.getByRole("menuitem", { name: "Set as default" }).click();
+  await expect(list.getByRole("listitem").nth(1)).toContainText("Default");
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(panel.getByText("Work", { exact: true })).toHaveCount(0);
+});
+
 test("D403: the user opens a page from the address bar and sizes it like a device", async ({
   page,
 }, info) => {

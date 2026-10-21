@@ -16,6 +16,7 @@ import {
 } from "@jhin/preview-api";
 import type { RpcClient } from "@jhin/rpc";
 import {
+  Badge,
   Button,
   Empty,
   EmptyDescription,
@@ -51,6 +52,7 @@ import {
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  ChevronDownIcon,
   ExternalLinkIcon,
   GlobeIcon,
   Globe2Icon,
@@ -66,6 +68,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
+import { profileName, type BrowserProfile } from "./profiles.tsx";
 import { BrowserSurface } from "./surface.tsx";
 
 // --- Recently used pages (T3's browser history) ----------------------------------
@@ -200,6 +203,11 @@ export interface PanelServices {
   call<T>(method: string, params: unknown): Promise<T>;
   readonly shortcut: (command: string) => string | undefined;
   readonly onError: (title: string, error: unknown) => void;
+  /** This device's browser profiles and its default one (D953). */
+  useProfiles(): {
+    readonly profiles: readonly BrowserProfile[];
+    readonly defaultProfileId: string;
+  };
 }
 
 const WIDTH_KEY = "jhin:preview-panel-width";
@@ -285,7 +293,15 @@ export function BrowserPanel(props: BrowserPanelProps) {
   const chosen = services.activeTab(panelKey);
   // A new tab placeholder (T3's `browser:new`) shows until a page opens.
   const [drafting, setDrafting] = useState(false);
+  /** The profile the next tab opens in, when the user picked one (T3's "Open browser in a profile"). */
+  const [draftProfile, setDraftProfile] = useState<string | undefined>(undefined);
   const active = drafting ? undefined : (tabs.find((tab) => tab.tabId === chosen) ?? tabs.at(-1));
+  const { profiles, defaultProfileId } = services.useProfiles();
+  // A profile removed in the settings meanwhile is not opened: the default is.
+  const openingProfile =
+    draftProfile !== undefined && profiles.some((profile) => profile.id === draftProfile)
+      ? draftProfile
+      : defaultProfileId;
 
   const openUrl = async (raw: string) => {
     let url: string;
@@ -296,9 +312,14 @@ export function BrowserPanel(props: BrowserPanelProps) {
       return;
     }
     try {
-      const tab = await services.call<PreviewTab>("preview.tab.open", { threadId, url });
+      const tab = await services.call<PreviewTab>("preview.tab.open", {
+        threadId,
+        url,
+        profileId: openingProfile,
+      });
       services.setActiveTab(panelKey, tab.tabId);
       setDrafting(false);
+      setDraftProfile(undefined);
       recordRecentUrl(url, "");
     } catch (error) {
       services.onError("Unable to open the page", error);
@@ -334,6 +355,7 @@ export function BrowserPanel(props: BrowserPanelProps) {
                   className="flex min-w-0 items-center gap-1 outline-none"
                   onClick={() => {
                     setDrafting(false);
+                    setDraftProfile(undefined);
                     services.setActiveTab(panelKey, tab.tabId);
                   }}
                   role="tab"
@@ -367,16 +389,53 @@ export function BrowserPanel(props: BrowserPanelProps) {
             >
               <Globe2Icon className="size-3 shrink-0" />
               <span className="truncate">Browser</span>
+              {openingProfile === defaultProfileId ? null : (
+                <Badge className="max-w-20 shrink-0" variant="outline">
+                  <span className="truncate">{profileName(profiles, openingProfile)}</span>
+                </Badge>
+              )}
             </div>
           ) : null}
         </div>
         <IconButton
           label="Add panel surface"
-          onClick={() => setDrafting(true)}
+          onClick={() => {
+            setDraftProfile(undefined);
+            setDrafting(true);
+          }}
           tooltip="New browser tab"
         >
           <PlusIcon className="size-4" />
         </IconButton>
+        {profiles.length > 1 ? (
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  aria-label="Open browser in a profile"
+                  size="icon-xs"
+                  type="button"
+                  variant="ghost"
+                />
+              }
+            >
+              <ChevronDownIcon className="size-3.5" />
+            </MenuTrigger>
+            <MenuPopup align="end" className="max-w-56" side="bottom" sideOffset={6}>
+              {profiles.map((profile) => (
+                <MenuItem
+                  key={profile.id}
+                  onClick={() => {
+                    setDraftProfile(profile.id);
+                    setDrafting(true);
+                  }}
+                >
+                  <span className="min-w-0 truncate">{profile.name}</span>
+                </MenuItem>
+              ))}
+            </MenuPopup>
+          </Menu>
+        ) : null}
         <div className="w-1" />
       </div>
       {active === undefined ? (
@@ -474,6 +533,8 @@ function ChromeRow(props: {
   onRefresh: () => void;
   onSubmit: (value: string) => void;
   menu?: ReactNode;
+  /** Before the address: T3's badge of a tab's non-default profile. */
+  leading?: ReactNode;
 }) {
   const refresh = props.services.shortcut("preview.refresh");
   return (
@@ -506,6 +567,7 @@ function ChromeRow(props: {
           <RefreshCwIcon className={cn("size-4", props.loading && "animate-spin")} />
         </IconButton>
       </div>
+      {props.leading}
       <AddressBar
         disabled={props.disabled}
         onSubmit={props.onSubmit}
@@ -894,6 +956,17 @@ function TabView(props: {
 }) {
   const { tab, services, threadId } = props;
   const { viewer } = services;
+  const { profiles, defaultProfileId } = services.useProfiles();
+  // T3 marks a tab that browses with another profile than the default.
+  const profileBadge =
+    tab.profileId === undefined || tab.profileId === defaultProfileId ? undefined : (
+      <Tooltip>
+        <TooltipTrigger render={<Badge className="max-w-28 shrink-0" variant="outline" />}>
+          <span className="truncate">{profileName(profiles, tab.profileId)}</span>
+        </TooltipTrigger>
+        <TooltipPopup side="top">{profileName(profiles, tab.profileId)}</TooltipPopup>
+      </Tooltip>
+    );
   const ids = { threadId, tabId: tab.tabId };
   const youControl = tab.controller === viewer;
   // Unset until the user edits the prompt: its default answers until then.
@@ -949,6 +1022,16 @@ function TabView(props: {
         <TooltipPopup side="bottom">More</TooltipPopup>
       </Tooltip>
       <MenuPopup align="end" sideOffset={6}>
+        {tab.profileId === undefined ? null : (
+          <>
+            <MenuItem disabled>
+              <span className="block truncate">
+                Profile: {profileName(profiles, tab.profileId)}
+              </span>
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        )}
         <MenuItem onClick={() => adjust({ hardReload: true })}>Hard reload</MenuItem>
         <MenuItem
           onClick={() => {
@@ -1010,6 +1093,7 @@ function TabView(props: {
         canGoBack={tab.canGoBack}
         canGoForward={tab.canGoForward}
         disabled={!youControl}
+        leading={profileBadge}
         loading={status.state === "loading"}
         menu={menu}
         onBack={() => navigate({ delta: -1 })}

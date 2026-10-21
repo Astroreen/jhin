@@ -388,6 +388,21 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
   profile starts from nothing. Every profile starts through D951's browser
   choice.
 
+- **D953. The web client manages profiles as T3 does.** This device keeps
+  its profiles in the client section `jhin.preview.browser` (`profiles`:
+  id and name, at most 24, names up to 48 characters; `defaultProfileId`),
+  shown after T3's built-in Default and Incognito. Settings → Browser has
+  T3's "Browser profiles" row: "Add profile" (a fresh "New profile" name), a
+  rename field per user profile, a Default badge, and a menu per profile
+  with "Set as default", "Clear cookies and cache" (`preview.profile.clear`
+  on every connected node, as T3 clears every environment) and "Remove
+  profile and data" (after a confirmation). In the right panel, "+" opens a
+  tab in the default profile and T3's "Open browser in a profile" menu
+  beside it in another; a tab of another profile than the default shows its
+  name before the address, every human tab's menu says "Profile: <name>"
+  (T3's More menu), and a profile this device no longer has shows as
+  "Removed profile".
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -403,9 +418,8 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
 - T3's desktop runtime (an Electron webview per tab, its DevTools, separate
   windows and picture-in-picture, annotation of elements, "Open in
   {environment}'s browser"): with the desktop app (W18).
-- The profiles' web client part (T3's Browser profiles settings: create,
-  rename, remove, the default profile, "Clear profile"; the tab's profile
-  picker): the node takes `profileId` since D952.
+- Importing cookies into a profile from the machine's browsers (T3's "Import
+  from" in Add profile).
 - A test of the pinned browser's progress answer itself: it needs the
   install a test leaves running to be awaitable once it settles.
 - T3's host setup hints for the pinned browser (the AppArmor profile, the

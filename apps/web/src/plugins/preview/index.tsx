@@ -6,10 +6,12 @@ import {
   CONNECTIONS_CAPABILITY,
   KEYBINDINGS_CAPABILITY,
   NAVIGATION_CAPABILITY,
+  SETTINGS_CAPABILITY,
   THREADS_CAPABILITY,
   targetKey,
   type ChatHeaderActionProps,
   type Connections,
+  type DeviceSettings,
   type Keybindings,
   type Navigation,
   type NodeTarget,
@@ -22,17 +24,29 @@ import {
   Tooltip,
   TooltipPopup,
   TooltipTrigger,
+  UI_DIALOGS_CAPABILITY,
+  UI_SETTINGS_CAPABILITY,
   UI_SLOTS_CAPABILITY,
   UI_TOASTS_CAPABILITY,
+  type Dialogs,
+  type SettingsPages,
   type SlotRegistry,
   type Toasts,
 } from "@jhin/ui";
-import { PanelRightIcon } from "lucide-react";
+import { Globe2Icon, PanelRightIcon } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 
 import { builtin } from "../../lib/builtin.ts";
 import { useExternal, useShortcutLabels } from "../../lib/hooks.ts";
 import { createTabFeeds } from "./feed.ts";
+import { readSection, useSection } from "../../lib/settings.ts";
+import {
+  BrowserProfilesSection,
+  PREVIEW_BROWSER_SECTION,
+  PreviewBrowserSettings,
+  resolveBrowserProfiles,
+  type ProfilesServices,
+} from "./profiles.tsx";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import type { BrowserPanelProps, PanelServices } from "./panel.tsx";
 
@@ -84,7 +98,13 @@ export const previewPanelPlugin = builtin(
       [NAVIGATION_CAPABILITY]: "^1",
       [THREADS_CAPABILITY]: "^1",
     },
-    optional: { [KEYBINDINGS_CAPABILITY]: "^1", [UI_TOASTS_CAPABILITY]: "^1" },
+    optional: {
+      [SETTINGS_CAPABILITY]: "^1",
+      [KEYBINDINGS_CAPABILITY]: "^1",
+      [UI_TOASTS_CAPABILITY]: "^1",
+      [UI_DIALOGS_CAPABILITY]: "^1",
+      [UI_SETTINGS_CAPABILITY]: "^1",
+    },
   },
   definePlugin({
     activate(context) {
@@ -95,6 +115,29 @@ export const previewPanelPlugin = builtin(
       const keybindings = context.services.tryGet<Keybindings>(KEYBINDINGS_CAPABILITY);
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const feeds = context.subscriptions.add(createTabFeeds(connections));
+      // T3's browser profiles, kept on this device (D953).
+      context.config.define(PREVIEW_BROWSER_SECTION, PreviewBrowserSettings);
+      const deviceSettings = context.services.tryGet<DeviceSettings>(SETTINGS_CAPABILITY);
+      const profiles: ProfilesServices = {
+        settings: deviceSettings,
+        connections,
+        dialogs: context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY),
+        toasts: context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY),
+        read: () => readSection(context, PREVIEW_BROWSER_SECTION, PreviewBrowserSettings),
+        use: () => useSection(context, PREVIEW_BROWSER_SECTION, PreviewBrowserSettings),
+      };
+      const pages = context.services.tryGet<SettingsPages>(UI_SETTINGS_CAPABILITY);
+      if (pages !== undefined && deviceSettings !== undefined) {
+        context.subscriptions.add(
+          pages.addSection({
+            id: "browser",
+            label: "Browser",
+            icon: Globe2Icon,
+            order: 50,
+            component: () => <BrowserProfilesSection services={profiles} />,
+          }),
+        );
+      }
       /** This client's name as a viewer of tabs. */
       // Kept for the browser tab's session, so a reload is the same viewer and may let go of
       // the control it held (the node releases it too once nobody watches).
@@ -360,6 +403,7 @@ export const previewPanelPlugin = builtin(
           call: (method, params) => threads.call(props.target, method, params),
           shortcut,
           onError,
+          useProfiles: () => resolveBrowserProfiles(profiles.use()),
         };
         return (
           <BrowserPanel
