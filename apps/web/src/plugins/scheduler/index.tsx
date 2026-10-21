@@ -1,6 +1,9 @@
 import {
   CONNECTIONS_CAPABILITY,
+  NAVIGATION_CAPABILITY,
   THREADS_CAPABILITY,
+  type ChatThreadDetailsProps,
+  type Navigation,
   type Connections,
   type ThreadsCatalog,
 } from "@jhin/client-api";
@@ -34,6 +37,7 @@ export const schedulerPlugin = builtin(
       [UI_SETTINGS_CAPABILITY]: "^1",
       [CONNECTIONS_CAPABILITY]: "^1",
       [THREADS_CAPABILITY]: "^1",
+      [NAVIGATION_CAPABILITY]: "^1",
       // Every failure and refused save is told through a toast: without one it would go unseen.
       [UI_TOASTS_CAPABILITY]: "^1",
       [UI_SLOTS_CAPABILITY]: "^1",
@@ -57,24 +61,37 @@ export const schedulerPlugin = builtin(
         toasts: context.services.get<Toasts>(UI_TOASTS_CAPABILITY),
         dialogs: context.services.tryGet<Dialogs>(UI_DIALOGS_CAPABILITY),
       };
-      // A chunk of its own with its store, loaded when the section first opens, as the other
-      // settings sections (D440).
+      // A chunk of its own with the store, loaded with the section or the thread's automations,
+      // whichever comes first (D440, D982); one that failed to load is tried again.
+      let chunk:
+        | Promise<{ module: typeof import("./page.tsx"); services: SchedulerServices }>
+        | undefined;
+      const load = () =>
+        (chunk ??= import("./page.tsx")
+          .then((module) => ({
+            module,
+            services: {
+              ...shared,
+              store: context.subscriptions.add(
+                module.createSchedulerStore(connections, context.log),
+              ),
+            },
+          }))
+          .catch((error: unknown) => {
+            chunk = undefined;
+            throw error;
+          }));
       const Section = lazyChunk(
         () =>
-          import("./page.tsx").then(
-            ({ SchedulerProvider, ScheduledTasksSection, createSchedulerStore }) => {
-              const services: SchedulerServices = {
-                ...shared,
-                store: context.subscriptions.add(createSchedulerStore(connections, context.log)),
-              };
-              return function Section() {
+          load().then(
+            ({ module: { SchedulerProvider, ScheduledTasksSection }, services }) =>
+              function Section() {
                 return (
                   <SchedulerProvider services={services}>
                     <ScheduledTasksSection />
                   </SchedulerProvider>
                 );
-              };
-            },
+              },
           ),
         {
           loading: () => null,
@@ -82,6 +99,40 @@ export const schedulerPlugin = builtin(
             <ChunkFailed retry={retry}>Couldn't load this section.</ChunkFailed>
           ),
         },
+      );
+      // T3's thread automations, in the thread details panel (D981).
+      const navigation = context.services.get<Navigation>(NAVIGATION_CAPABILITY);
+      const Automations = lazyChunk<ChatThreadDetailsProps>(
+        () =>
+          load().then(
+            ({ module, services }) =>
+              function Automations(props: ChatThreadDetailsProps) {
+                return (
+                  <module.ThreadAutomations
+                    {...props}
+                    services={{
+                      store: services.store,
+                      navigation,
+                      toasts: services.toasts,
+                      call: (connection, method, params) => {
+                        const node = connections.get(connection);
+                        return node === undefined || node.state !== "open"
+                          ? Promise.reject(new Error("The node is not connected."))
+                          : node.client.call(method, params);
+                      },
+                    }}
+                  />
+                );
+              },
+          ),
+        { loading: () => null, failed: () => null },
+      );
+      context.subscriptions.add(
+        slots.contribute<ChatThreadDetailsProps>("chat.thread.details", {
+          id: "jhin.scheduler.automations",
+          order: 30,
+          component: Automations,
+        }),
       );
       context.subscriptions.add(
         settings.addSection({
