@@ -990,6 +990,8 @@ the notice, and undo bringing back its text), with screenshots.
   rows do not drag, as in T3. A thread back from it (its turn ended or asks
   for something) is on top of the inbox: T3's return tracker, read from the
   record (`lastTurn.at` of a turn no longer running) instead of remembered.
+  While it is on, the inbox is ordered by time, not by hand (T3's
+  activeTimeOrdered): dragged keys wait until it is off again.
   The shortcuts count its shown rows between the inbox and the shelves.
 
 The proof of D452: `apps/web/test/sidebar-order.test.ts` ("the Working

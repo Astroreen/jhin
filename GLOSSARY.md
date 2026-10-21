@@ -171,6 +171,10 @@ Words about Jhin:
   pull request merged or closed. The sidebar lists it on its Settled shelf instead of
   among the active threads until it is un-settled or runs again (T3 Code's
   term).
+- **Working section** — with T3's "Working section (beta)" device setting
+  on, the threads whose turn runs leave the active threads for a section
+  below them, and come back on top once the turn ends or asks for
+  something.
 - **Pinned** — a thread kept on top of the sidebar's list, in an order the
   user drags it into.
 - **Snoozed** — a thread hidden on the sidebar's Snoozed shelf until a time;

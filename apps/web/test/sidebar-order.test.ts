@@ -368,4 +368,41 @@ describe("the Working section (D452)", () => {
     // for an answer came back too.
     expect(ids(lists.active)).toEqual(["back", "asks", "idle"]);
   });
+
+  it("orders the inbox by time while it is on, dragged keys aside", () => {
+    const b = node(
+      { node: "b" },
+      [project("web", "web")],
+      [
+        thread("dragged", ago(30), {
+          projectId: "web",
+          activeOrderKey: "c",
+          lastTurn: turn("completed", ago(20)),
+        }),
+        thread("fresh", ago(1), { projectId: "web" }),
+      ],
+    );
+    expect(ids(sidebarThreads([b], { nowMs: NOW }).active)).toEqual(["fresh", "dragged"]);
+    expect(ids(sidebarThreads([b], { nowMs: NOW, working: true }).active)).toEqual([
+      "fresh",
+      "dragged",
+    ]);
+    const back = node(
+      { node: "b" },
+      [project("web", "web")],
+      [
+        thread("dragged", ago(30), {
+          projectId: "web",
+          activeOrderKey: "c",
+          lastTurn: turn("completed", ago(0.1)),
+        }),
+        thread("fresh", ago(1), { projectId: "web" }),
+      ],
+    );
+    // Back from work a moment ago: on top, its dragged key aside.
+    expect(ids(sidebarThreads([back], { nowMs: NOW, working: true }).active)).toEqual([
+      "dragged",
+      "fresh",
+    ]);
+  });
 });

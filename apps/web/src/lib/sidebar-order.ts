@@ -253,7 +253,8 @@ export function sidebarThreads<Node extends CatalogNode>(
         options.working === true
           ? later(entry.thread.unsettledAt, returnedAt(entry.thread))
           : entry.thread.unsettledAt,
-      orderKey: entry.thread.activeOrderKey,
+      // With the Working section the inbox is ordered by time, not by hand (T3's activeTimeOrdered).
+      orderKey: options.working === true ? undefined : entry.thread.activeOrderKey,
     })),
     // Newest sent first (T3's sortWorkingThreadsBySend).
     working: lists.working.toSorted(
