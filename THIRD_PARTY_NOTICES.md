@@ -75,9 +75,11 @@ links, saved nodes in IndexedDB, Authorized clients settings and QR code
 component) and the desktop app (`apps/desktop`, `plugins/desktop`,
 `packages/desktop-api`: the window and its chrome, the application and context
 menus, the notification badge, the update flow, its state machine and its
-controls, the nightly release notes, the quit hold and its hint; `scripts/desktop-release.ts` and `.github/workflows/release-desktop.yml`:
-the packaging configuration, signing and the release workflow). `apps/web/src/lib/qr-code.ts` is Project Nayuki's QR Code generator
-(MIT, copyright Project Nayuki) as T3 Code vendors it; its notice is kept in the
+controls, the nightly release notes, the quit hold and its hint;
+`scripts/desktop-release.ts` and `.github/workflows/release-desktop.yml`: the
+packaging configuration, signing and the release workflow).
+`apps/web/src/lib/qr-code.ts` is Project Nayuki's QR Code generator (MIT,
+copyright Project Nayuki) as T3 Code vendors it; its notice is kept in the
 file. Files derived from T3 Code say so in a header comment.
 
 ```

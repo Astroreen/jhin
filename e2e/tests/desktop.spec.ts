@@ -448,6 +448,12 @@ test("nightly shows its release notes in the update control's popover (D948)", a
     "href",
     `https://github.com/Astroreen/jhin/releases/tag/v${version}`,
   );
+  // Keyboard users reach them too: a keyboard focus opens the popover (T3).
+  await window.mouse.move(600, 300);
+  await expect(notes).toHaveCount(0);
+  await window.keyboard.press("Shift");
+  await download.focus();
+  await expect(notes.getByRole("heading", { name: "What's changed" })).toBeVisible();
   const shot = test.info().outputPath("release-notes.png");
   await window.screenshot({ path: shot });
   await test.info().attach("release notes", { path: shot, contentType: "image/png" });

@@ -7,6 +7,11 @@ import {
   type Updater,
   type UpdateEnvironment,
 } from "../src/updates/controller.ts";
+import {
+  createBaseUpdateState,
+  reduceDesktopUpdateStateOnCheckStart,
+  reduceDesktopUpdateStateOnUpdateAvailable,
+} from "../src/updates/machine.ts";
 
 const PACKAGED: UpdateEnvironment = {
   appVersion: "0.1.0",
@@ -322,5 +327,35 @@ describe("UpdateController", () => {
     // The action is free again.
     expect(await updates.check()).toMatchObject({ checked: true });
     updates.stop();
+  });
+});
+
+describe("release notes in the update state (D948)", () => {
+  const note = { version: "1.3.0-nightly.20261021.2", items: ["fix: a"], totalItems: 1 };
+  const base = {
+    ...createBaseUpdateState("1.2.0-nightly.20261020.1", "nightly", null),
+    downloadedVersion: "1.3.0-nightly.20261021.2",
+    status: "downloaded" as const,
+    releaseNotes: [note],
+    omittedReleaseCount: 2,
+  };
+
+  it("keeps a downloaded version's notes through a check that brings none (T3)", () => {
+    const checking = reduceDesktopUpdateStateOnCheckStart(base, "t");
+    expect(checking).toMatchObject({ releaseNotes: [note], omittedReleaseCount: 2 });
+    const again = reduceDesktopUpdateStateOnUpdateAvailable(checking, note.version, "t");
+    expect(again).toMatchObject({
+      status: "downloaded",
+      releaseNotes: [note],
+      omittedReleaseCount: 2,
+    });
+  });
+
+  it("drops the notes when a check starts without a download", () => {
+    const idle = { ...base, downloadedVersion: null, status: "available" as const };
+    expect(reduceDesktopUpdateStateOnCheckStart(idle, "t")).toMatchObject({
+      releaseNotes: [],
+      omittedReleaseCount: 0,
+    });
   });
 });
