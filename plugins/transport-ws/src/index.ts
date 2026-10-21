@@ -71,7 +71,12 @@ export function originAllowed(
   if (origin === undefined) return true;
   const parsed = URL.canParse(origin) ? new URL(origin) : undefined;
   if (parsed === undefined) return false;
-  if (requestedHost !== undefined && parsed.host === requestedHost) return true;
+  // `URL` drops a scheme's default port; a forwarded host may still name it.
+  const asked = requestedHost?.replace(
+    parsed.protocol === "https:" ? /:443$/ : parsed.protocol === "http:" ? /:80$/ : /$^/,
+    "",
+  );
+  if (asked !== undefined && parsed.host === asked) return true;
   if (allowed.length === 0) return true;
   return allowed.some((entry) => new URL(entry).origin === parsed.origin);
 }
