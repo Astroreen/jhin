@@ -209,7 +209,7 @@ unless a workstream needs it.
 | --- | ------------------------------------------------------- | ------------------------------------------------------------ | --------- |
 | W19 | Steering and thread history leftovers                   | `t3-parity.md`                                               | D800–D819 |
 | W20 | Delegated work in the UI, subagent threads, automations | `orchestration.md`, `providers.md`                           | D861–D880 |
-| W21 | Worktree, git and pull request leftovers                | `source-control.md`                                          | D640–D659 |
+| W21 | Worktree, git and pull request leftovers                | `source-control.md`                                          | D901–D920 |
 | W22 | Diff panel leftovers                                    | `source-control.md`                                          | D660–D679 |
 | W23 | Composer leftovers                                      | `t3-parity.md`, `terminal.md`                                | D841–D860 |
 | W24 | Codex and OpenCode parity                               | `providers.md`                                               | D881–D900 |
@@ -221,7 +221,8 @@ free block D841–D860 instead. W19 first had D600–D619, which `agents.md`
 gives to A1; it took D800–D819.
 W20 first had D620–D639, which `agents.md` gives to A1 and A2; it took
 D861–D880. W24 first had D700–D719, which `agents.md` gives to A5 and A6; it
-took D881–D900.
+took D881–D900. W21 first had D640–D659, which `agents.md` gives to A2 and
+A3; it took D901–D920.
 
 - **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
   that waits for an approval, foreground subagents moved to the background
