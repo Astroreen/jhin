@@ -15,6 +15,7 @@ import {
   GenerationOf,
   INTERACTION_MODES,
   RUNTIME_MODES,
+  SUBAGENT_WORK_KINDS,
   THREADS_STREAM,
   applicableModelOptions,
   ThreadEvents,
@@ -77,6 +78,8 @@ const STATUS_TTL_MS = 30_000;
 /** The title a thread gets until its first message names it. */
 export const DEFAULT_THREAD_TITLE = "New thread";
 const MAX_TITLE_LENGTH = 60;
+/** What a subagent's thread shows of its items (D877). */
+const SUBAGENT_WORK: ReadonlySet<string> = new Set(SUBAGENT_WORK_KINDS);
 /** Per image sent as a data URL (D54; base64 adds a third). */
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 /** What `projects.write-file` writes at most: a plan, a note, never a dump. */
@@ -206,6 +209,8 @@ const Thread = z.object({
   parentThreadId: z.string().optional(),
   /** How it relates to `parentThreadId`: a delegated child task's thread is a `subagent`. */
   relationshipToParent: z.enum(["subagent"]).optional(),
+  /** A subagent the parent's agent ran itself (Claude Code's `Agent` tool), not a delegated task (D877). */
+  subagentOrigin: z.enum(["provider"]).optional(),
   /** The thread and turn this thread was forked at (D225). */
   forkedFrom: z.object({ threadId: z.string(), turnId: z.string() }).optional(),
   /** A fork merged back: its result goes to the agent with the next message (D226). */
@@ -1086,6 +1091,11 @@ export default definePlugin({
     /** The thread-stream event an agent item becomes. */
     function eventOf(turnId: string, item: AgentItem): { type: string; payload: Json } {
       switch (item.kind) {
+        case "subagent.started":
+        case "subagent.item":
+        case "subagent.ended":
+          // Projected into the subagent's own thread (D877), never into the turn's.
+          throw new Error(`${item.kind} is not an event of the turn`);
         case "message.delta":
         case "reasoning.delta":
           return {
@@ -1316,6 +1326,92 @@ export default definePlugin({
           await recordEnd(ThreadEvents.requestResolved, { turnId, requestId });
         }
       };
+      /**
+       * The turn's subagents as child threads (D877): each gets a thread with
+       * one turn holding its own items, ended with it or with this turn.
+       */
+      const subagents = new Map<
+        string,
+        { threadId: string; turnId: string; open: boolean; endRecorded?: boolean }
+      >();
+      const endSubagent = async (
+        subagentId: string,
+        status: "completed" | "failed" | "interrupted",
+        error?: string,
+      ) => {
+        const child = subagents.get(subagentId);
+        if (child === undefined || !child.open) return;
+        const type =
+          status === "completed"
+            ? ThreadEvents.turnCompleted
+            : status === "failed"
+              ? ThreadEvents.turnFailed
+              : ThreadEvents.turnInterrupted;
+        // Its end is written once; a retry only records the status again.
+        if (child.endRecorded !== true) {
+          await log.append(threadStream(child.threadId), [
+            {
+              type,
+              payload: { turnId: child.turnId, ...(error === undefined ? {} : { error }) },
+            },
+          ]);
+          child.endRecorded = true;
+        }
+        await setTurnStatus(child.threadId, child.turnId, runtime.agentId, status);
+        // Closed once its end is recorded: a failed write leaves it to the turn's end to close.
+        child.open = false;
+      };
+      const projectSubagent = async (item: Extract<AgentItem, { kind: `subagent.${string}` }>) => {
+        if (item.kind === "subagent.started") {
+          if (subagents.has(item.subagentId)) return;
+          const title = item.title.trim().slice(0, MAX_TITLE_LENGTH) || "Subagent";
+          const child = await createThread(Crypto.randomUUID(), thread.projectId, title, {
+            agentId: runtime.agentId,
+            ...(item.model === undefined ? {} : { model: item.model }),
+            ...(thread.worktreePath === undefined ? {} : { worktreePath: thread.worktreePath }),
+            parentThreadId: thread.id,
+            relationshipToParent: "subagent",
+            subagentOrigin: "provider",
+          });
+          const childTurn = Crypto.randomUUID();
+          try {
+            await setTurnStatus(child.id, childTurn, runtime.agentId, "running");
+            await log.append(threadStream(child.id), [
+              {
+                type: ThreadEvents.turnStarted,
+                payload: {
+                  turnId: childTurn,
+                  agentId: runtime.agentId,
+                  input: { text: item.prompt, attachments: [] },
+                },
+              },
+            ]);
+          } catch (error) {
+            // Half made: its thread does not stay running (a node restart would close it too).
+            await setTurnStatus(child.id, childTurn, runtime.agentId, "failed").catch(
+              () => undefined,
+            );
+            throw error;
+          }
+          // Known once its turn is recorded: its items and its end have somewhere to go.
+          subagents.set(item.subagentId, { threadId: child.id, turnId: childTurn, open: true });
+          // The turn ended while it was being made: it ends with the turn too.
+          if (entry.ending) await endSubagent(item.subagentId, "interrupted");
+          await log.append(stream, [
+            {
+              type: ThreadEvents.subagentStarted,
+              payload: { turnId, subagentId: item.subagentId, childThreadId: child.id, title },
+            },
+          ]);
+        } else if (item.kind === "subagent.item") {
+          const child = subagents.get(item.subagentId);
+          // Only its work items (D877): a runtime's others have no place in its thread.
+          if (child === undefined || !child.open || !SUBAGENT_WORK.has(item.item.kind)) return;
+          await log.append(threadStream(child.threadId), [eventOf(child.turnId, item.item)]);
+        } else {
+          await endSubagent(item.subagentId, item.status, item.error);
+        }
+      };
       /** Records the end of the turn once, whether the agent ended it or a stop gave up on it. */
       const end = async (ending: {
         type: string;
@@ -1329,6 +1425,15 @@ export default definePlugin({
         let restartMessage: string | undefined;
         try {
           await closeRequests();
+          // Subagents still open end with their turn.
+          for (const subagentId of subagents.keys()) {
+            await endSubagent(subagentId, "interrupted").catch((error: unknown) =>
+              context.log.error("could not end a subagent's thread", {
+                threadId: thread.id,
+                error: String(error),
+              }),
+            );
+          }
           // Before the end is recorded: whoever sees the turn end sees what the hooks did.
           const endInput: TurnEndHookInput = {
             ...hookInput,
@@ -1419,6 +1524,20 @@ export default definePlugin({
             // Given up on (it ignored an interrupt): what the agent still says is dropped.
             if (next === undefined || next.done === true || entry.ending) break;
             const item = next.value;
+            if (
+              item.kind === "subagent.started" ||
+              item.kind === "subagent.item" ||
+              item.kind === "subagent.ended"
+            ) {
+              // Shown apart, in the subagent's thread: a failure there never fails this turn.
+              await projectSubagent(item).catch((error: unknown) =>
+                context.log.error("could not record a subagent", {
+                  threadId: thread.id,
+                  error: String(error),
+                }),
+              );
+              continue;
+            }
             answered = item.kind === "message.completed";
             if (item.kind === "request.opened") {
               entry.openRequests.set(item.requestId, item.request.kind);

@@ -622,20 +622,50 @@ describe("jhin.agent-claude: a turn", () => {
     ]);
   });
 
-  it("keeps a subagent's own messages inside its tool call", async () => {
+  it("shows a subagent's own work as its items, apart from the turn's (D878)", async () => {
     const { turn } = start([
       async function* () {
         yield init();
         yield toolUse("m1", "agent-1", "Agent", { description: "Explore", prompt: "look" });
         yield toolUse("sub", "inner", "Read", { file_path: "/x" }, "agent-1");
+        yield toolResult("inner", "contents", { parent: "agent-1" });
+        // The subagent's own subagent: its call shows in the subagent, its messages nowhere.
+        yield toolUse(
+          "sub2",
+          "nested",
+          "Agent",
+          { description: "Deeper", prompt: "dig" },
+          "agent-1",
+        );
+        yield toolUse("deep", "deep-read", "Read", { file_path: "/y" }, "nested");
         yield toolResult("agent-1", "found it");
         yield result();
       },
     ]);
     const items = await drain(turn);
+    // The turn's own tool calls: the Agent call and its result.
     expect(items.filter((item) => item.kind.startsWith("tool."))).toEqual([
       expect.objectContaining({ kind: "tool.started", itemId: "agent-1" }),
       { kind: "tool.completed", itemId: "agent-1", status: "completed", output: "found it" },
+    ]);
+    expect(items.filter((item) => item.kind.startsWith("subagent."))).toEqual([
+      { kind: "subagent.started", subagentId: "agent-1", title: "Explore", prompt: "look" },
+      {
+        kind: "subagent.item",
+        subagentId: "agent-1",
+        item: expect.objectContaining({ kind: "tool.started", itemId: "inner" }),
+      },
+      {
+        kind: "subagent.item",
+        subagentId: "agent-1",
+        item: { kind: "tool.completed", itemId: "inner", status: "completed", output: "contents" },
+      },
+      {
+        kind: "subagent.item",
+        subagentId: "agent-1",
+        item: expect.objectContaining({ kind: "tool.started", itemId: "nested" }),
+      },
+      { kind: "subagent.ended", subagentId: "agent-1", status: "completed" },
     ]);
   });
 
