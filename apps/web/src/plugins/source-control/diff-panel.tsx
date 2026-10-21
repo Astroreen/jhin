@@ -416,11 +416,14 @@ export function createDiffPanel(services: SourceControlServices) {
     useEffect(() => {
       if (!isRepo || selected === undefined) return;
       let current = true;
-      void selected.provider
-        .load(scopeContext, selected.option.value, {
-          ignoreWhitespace,
-          ...(base === undefined ? {} : { base }),
-        })
+      // A provider's `load` that throws at once takes the same path as one that rejects.
+      void Promise.resolve()
+        .then(() =>
+          selected.provider.load(scopeContext, selected.option.value, {
+            ignoreWhitespace,
+            ...(base === undefined ? {} : { base }),
+          }),
+        )
         .then(
           (result) => current && setState({ key: loadKey, what, result }),
           (error: unknown) =>

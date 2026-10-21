@@ -344,6 +344,7 @@ describe("the diff panel", () => {
     const { value, calls } = services(viewWith(status()), { "git.diff": diff });
     const Panel = createDiffPanel(value);
     const mounted = mount(<Panel />);
+    await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
     // T3's default scope is "Changes", whitespace hidden.
     expect(calls).toEqual([
       {
@@ -351,7 +352,6 @@ describe("the diff panel", () => {
         params: { projectId: "app", scope: "branch", ignoreWhitespace: true },
       },
     ]);
-    await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
     expect(
       page.getByRole("combobox", { name: "Change comparison target. Currently main" }).element(),
     ).toBeTruthy();

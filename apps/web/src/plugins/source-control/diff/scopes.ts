@@ -228,17 +228,21 @@ const SELECTION_STORAGE_KEY = "jhin.diff-panel.v1";
 const StoredSelection = z.object({
   value: z.string().min(1).optional(),
   base: z.string().min(1).optional(),
-  filePath: z.string().min(1).optional(),
-  reveal: z.number().int().nonnegative().optional(),
 });
 /** The most recently changed selections kept; older threads fall back to the defaults. */
 const MAX_SELECTIONS = 200;
 
 /** The panel's selection per thread or draft, kept on this device (T3's diffPanelStore). */
-export function createDiffSelections(storage: Storage = localStorage) {
+export function createDiffSelections(given?: Storage) {
+  let storage: Pick<Storage, "getItem" | "setItem"> | undefined;
+  try {
+    storage = given ?? localStorage;
+  } catch {
+    // Blocked storage: selections last for this page only.
+  }
   let selections: Record<string, DiffSelection> = {};
   try {
-    const value: unknown = JSON.parse(storage.getItem(SELECTION_STORAGE_KEY) ?? "{}");
+    const value: unknown = JSON.parse(storage?.getItem(SELECTION_STORAGE_KEY) ?? "{}");
     if (typeof value === "object" && value !== null && !Array.isArray(value)) {
       for (const [key, entry] of Object.entries(value)) {
         const parsed = StoredSelection.safeParse(entry);
@@ -260,7 +264,14 @@ export function createDiffSelections(storage: Storage = localStorage) {
       const kept = Object.entries(rest).slice(-(MAX_SELECTIONS - 1));
       selections = { ...Object.fromEntries(kept), [key]: next as DiffSelection };
       try {
-        storage.setItem(SELECTION_STORAGE_KEY, JSON.stringify(selections));
+        // Only the choice is kept: a request to reveal a file is for this page.
+        const choices = Object.fromEntries(
+          Object.entries(selections).map(([entry, { value, base }]) => [
+            entry,
+            { ...(value === undefined ? {} : { value }), ...(base === undefined ? {} : { base }) },
+          ]),
+        );
+        storage?.setItem(SELECTION_STORAGE_KEY, JSON.stringify(choices));
       } catch {
         // Full or blocked storage: the selection lasts for this page only.
       }

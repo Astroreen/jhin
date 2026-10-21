@@ -569,6 +569,9 @@ describe("the diff panel's scopes", () => {
       {},
       {},
     ]);
+    // A request to reveal a file is not kept across pages.
+    read.update("good", { filePath: "src/a.ts", reveal: 3 });
+    expect(JSON.parse(stored.get("jhin.diff-panel.v1")!).good).toEqual({ base: "main" });
     // Only the most recent 200 are kept.
     for (let index = 0; index < 205; index++) read.update(`t${index}`, { value: "branch" });
     const kept = Object.keys(JSON.parse(stored.get("jhin.diff-panel.v1")!));
