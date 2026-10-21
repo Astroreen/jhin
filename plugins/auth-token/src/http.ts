@@ -41,22 +41,26 @@ interface IssuedToken {
 
 class BodyTooLarge extends Error {}
 
-/** The body as JSON; past `MAX_BODY` it stops reading, so the caller can still answer 413. */
+/**
+ * The body as JSON. Past `MAX_BODY` it stops at once with `BodyTooLarge`; the
+ * caller answers 413 and the connection is closed, so nothing more is read.
+ */
 function readJson(request: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
-    let tooLarge = false;
-    request.on("data", (chunk: Buffer) => {
+    const onData = (chunk: Buffer) => {
       size += chunk.length;
-      if (size > MAX_BODY) tooLarge = true;
-      else chunks.push(chunk);
-    });
-    request.on("end", () => {
-      if (tooLarge) {
-        reject(new BodyTooLarge());
+      if (size <= MAX_BODY) {
+        chunks.push(chunk);
         return;
       }
+      request.off("data", onData);
+      request.pause();
+      reject(new BodyTooLarge());
+    };
+    request.on("data", onData);
+    request.on("end", () => {
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
       } catch (error) {
@@ -155,7 +159,13 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       const body = await readJson(request).catch((error: unknown) => error);
       if (body instanceof BodyTooLarge) {
         missed("pair", request);
-        send(response, 413, { code: "TOO_LARGE", message: "The request body is too large" }, CORS);
+        send(
+          response,
+          413,
+          { code: "TOO_LARGE", message: "The request body is too large" },
+          { ...CORS, connection: "close" },
+        );
+        response.on("finish", () => request.destroy());
         return;
       }
       const parsed = PairRequest.safeParse(body instanceof Error ? undefined : body);
@@ -200,7 +210,13 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
       const body = await readJson(request).catch((error: unknown) => error);
       if (body instanceof BodyTooLarge) {
         missed("session", request);
-        send(response, 413, { code: "TOO_LARGE", message: "The request body is too large" });
+        send(
+          response,
+          413,
+          { code: "TOO_LARGE", message: "The request body is too large" },
+          { connection: "close" },
+        );
+        response.on("finish", () => request.destroy());
         return;
       }
       const parsed = SessionRequest.safeParse(body instanceof Error ? undefined : body);

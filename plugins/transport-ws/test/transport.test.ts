@@ -664,6 +664,39 @@ describe("pairing (security.md D419–D422)", () => {
     expect(listed.clients.find((client) => client.id === opened.id)?.method).toBe("issued");
   });
 
+  it("keeps open codes through a reload of the token plugin", async () => {
+    const node = await startNode();
+    const { code } = await createCode(node);
+    await node.kernel.reload("jhin.auth-token");
+    expect((await post(`${httpUrl(node)}/auth/pair`, { code })).status).toBe(200);
+  });
+
+  it("refuses to sign a page out from another origin", async () => {
+    const node = await startNode();
+    const refused = await fetch(`${httpUrl(node)}/auth/session`, {
+      method: "DELETE",
+      headers: { origin: "https://evil.example" },
+    });
+    expect(refused.status).toBe(403);
+  });
+
+  it("refuses a base URL with credentials, a query or a fragment", async () => {
+    const node = await startNode();
+    for (const baseUrl of [
+      "https://user:pw@jhin.example",
+      "https://jhin.example/?x=1",
+      "https://jhin.example/#x",
+      "ftp://jhin.example",
+    ]) {
+      await expect(createCode(node, { baseUrl })).rejects.toMatchObject({
+        code: "COMMAND_INPUT_INVALID",
+      });
+    }
+    expect((await createCode(node, { baseUrl: "https://jhin.example/node/" })).url).toMatch(
+      /^https:\/\/jhin\.example\/node\/pair#token=/,
+    );
+  });
+
   it("ends a page session with the token that opened it", async () => {
     const node = await startNode();
     const source = (await node.kernel.commands.execute("auth.tokens.issue", {

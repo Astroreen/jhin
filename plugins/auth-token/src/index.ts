@@ -269,7 +269,18 @@ export default definePlugin({
         /** Where the device reaches this node, e.g. https://jhin.example.com; defaults to its HTTP address. */
         baseUrl: z
           .string()
-          .refine((value) => URL.canParse(value) && /^https?:$/.test(new URL(value).protocol))
+          .refine((value) => {
+            if (!URL.canParse(value)) return false;
+            const url = new URL(value);
+            // A node's address, perhaps under a path; never credentials, a query or a fragment.
+            return (
+              /^https?:$/.test(url.protocol) &&
+              url.username === "" &&
+              url.password === "" &&
+              url.search === "" &&
+              url.hash === ""
+            );
+          }, "must be the node's http(s) address, without credentials, query or fragment")
           .optional(),
       }),
       output: PairingLink.extend({ code: z.string(), url: z.string().optional() }),
