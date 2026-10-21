@@ -713,7 +713,9 @@ D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
 - A8: asking a node for its agents again when what was missing arrives (an
   `agents` event, the agents plugin activating) rather than on the next
   change of the connections: today an unknown answer on a connection that
-  stays open is asked again only when some connection changes (D747).
+  stays open is asked again only when some connection changes (D747), and a
+  node still activating its plugins answers `COMMAND_NOT_FOUND`, taken as
+  none until it reopens.
 - A8: leaving generations out of `threads.search` as well: D745 filters the lists
   and catalogs only, so a search can still find a generation's text.
 

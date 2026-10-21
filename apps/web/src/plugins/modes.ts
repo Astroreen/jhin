@@ -39,6 +39,8 @@ export const modesPlugin = builtin(
           get: (id) => places[id],
           set: (id, route) => {
             places[id] = route;
+            // Written back each time: the state need not keep this object's reference.
+            context.state.set(PLACES_KEY, places);
           },
         }),
       );
