@@ -376,7 +376,7 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
 - **D952. A human's tab browses with a profile, as in T3.** `default` and
   user profiles keep cookies, logins and storage in a folder of their own
   under the plugin's data (`profiles/<id>`, `.` and `..` escaped as T3
-  does), started with Playwright's `launchPersistentContext` for the
+  does, and capitals too so case-blind file systems keep profiles apart), started with Playwright's `launchPersistentContext` for the
   profile's first tab and kept until the plugin goes; `incognito` is a
   context of the shared browser and keeps nothing past it. An agent's tab
   keeps a context of its own, and a popup its opener's profile.
