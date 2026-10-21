@@ -148,6 +148,10 @@ A browser preview pane the user and the agent drive (open, navigate, click,
 type, scroll, snapshot, screenshot, recording), devices (open, screenshot)
 and self-contained HTML pages an agent renders into the chat.
 
+Done: the node's browser with T3's preview tools (D390–D402, #49), the right
+panel (D403, D404, #96), rendered HTML pages (D405–D407, #110) and devices
+(D408, #116). What is left is in `preview.md#deferred`.
+
 ### W13. Pairing, remote access, scoped tokens, secrets
 
 Pairing a device with a node by QR or one-time code, giving it a device
