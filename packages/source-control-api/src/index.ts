@@ -332,6 +332,18 @@ export const Diff = z.object({
 });
 export type Diff = z.output<typeof Diff>;
 
+/** T3's limit for a file whose unchanged lines a diff expands (D921). */
+export const MAX_DIFF_FILE_BYTES = 1024 * 1024;
+
+/** One file of a diff, both sides whole, to expand its unchanged lines (D921). */
+export const DiffFileContents = z.object({
+  /** Empty for a new file. */
+  oldContents: z.string(),
+  /** Empty for a deleted file. */
+  newContents: z.string(),
+});
+export type DiffFileContents = z.output<typeof DiffFileContents>;
+
 export const Branch = z.object({
   /** `main`, or `origin/main` for a remote branch. */
   name: z.string(),
@@ -353,6 +365,8 @@ export type SourceControlErrorCode =
   | "BRANCH_INVALID"
   /** A turn diff names a turn without a ready checkpoint. */
   | "CHECKPOINT_UNAVAILABLE"
+  /** A diff's file cannot be read whole: not in the diff, too large or binary (D921). */
+  | "DIFF_FILE_UNAVAILABLE"
   /** A new worktree's branch exists already. */
   | "BRANCH_EXISTS"
   /** The worktrees directory setting, or a path given as a worktree, is unusable. */
@@ -392,6 +406,23 @@ export interface SourceControl {
     turn: number,
     options?: { fromTurn?: number; ignoreWhitespace?: boolean },
   ): Promise<Diff>;
+  /**
+   * One file of `diff` or `turnDiff`, both sides whole (D921, 1.2): pass the same
+   * scope, and the file as the patch names it. A path the diff does not list is
+   * refused with `DIFF_FILE_UNAVAILABLE`.
+   */
+  diffFile(
+    /** A project, or a thread (its worktree; the only target of the turn scope). */
+    target: { projectId?: string; threadId?: string },
+    file: DiffFileRequest,
+    options?: {
+      scope?: DiffScope;
+      base?: string;
+      /** For the turn scope, with `fromTurn` as `turnDiff` takes it. */
+      turn?: number;
+      fromTurn?: number;
+    },
+  ): Promise<DiffFileContents>;
   /** A thread's checkpoints, oldest first (1.1). */
   checkpoints(threadId: string): Promise<TurnCheckpoint[]>;
   /** A new worktree of a project's repository (1.1, D250). */
@@ -750,6 +781,18 @@ export interface DiffScopeResult {
   /** For a comparison: the ref compared against and the one compared. */
   readonly baseRef: string | null;
   readonly headRef: string | null;
+  /**
+   * Both sides of one of the patch's files, whole, so the panel can expand
+   * the unchanged lines between its hunks (D921, 1.1). Without it, none expand.
+   */
+  readonly loadFile?: (file: DiffFileRequest) => Promise<DiffFileContents>;
+}
+
+/** A file of a scope's patch, as `DiffScopeResult.loadFile` is asked for it (D921). */
+export interface DiffFileRequest {
+  readonly path: string;
+  /** The path before a rename. */
+  readonly previousPath?: string;
 }
 
 export interface DiffScopeProvider {

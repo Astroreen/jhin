@@ -18,6 +18,7 @@ import { definePlugin, z, type PluginContext, describePermissions } from "@jhin/
 import {
   Branch,
   Diff,
+  DiffFileContents,
   DiffScope,
   GIT_ACTION_PROGRESS,
   GitActionOptions,
@@ -59,6 +60,7 @@ import {
   locate,
   readBranches,
   readDefaultBranch,
+  readDiffFile,
   readLocalStatus,
   readPatch,
   readRemoteUrl,
@@ -1275,6 +1277,32 @@ export function activateSourceControl(context: PluginContext): SourceControl {
       });
     },
     turnDiff: (threadId, turn, options = {}) => turns.diff(threadId, turn, options),
+    diffFile: async (target, file, options = {}) => {
+      if (options.scope === "turn") {
+        if (target.threadId === undefined || options.turn === undefined) {
+          throw new SourceControlError(
+            "CHECKPOINT_UNAVAILABLE",
+            "The turn scope takes a thread and a turn",
+          );
+        }
+        return turns.diffFile(
+          target.threadId,
+          options.turn,
+          file,
+          options.fromTurn === undefined ? {} : { fromTurn: options.fromTurn },
+        );
+      }
+      const projectId = target.projectId ?? (await threadProject(target.threadId!));
+      const repo = await repoFor(projectId, target.threadId);
+      const status = await statusOf(repo);
+      const { git, root } = await gitOf(repo);
+      return readDiffFile(
+        git,
+        root,
+        { scope: options.scope ?? "uncommitted", base: options.base ?? status.defaultBranch },
+        file,
+      );
+    },
     checkpoints: (threadId) => turns.list(threadId),
     // Worktrees are made, attached and removed one at a time per project.
     createWorktree: (projectId, options) =>
@@ -1778,37 +1806,38 @@ export function activateSourceControl(context: PluginContext): SourceControl {
     },
   });
 
+  /** The target and scope of `git.diff`, which `git.diff.file` takes too. */
+  const DiffInput = z.object({
+    projectId: z.string().min(1).optional(),
+    threadId: z.string().min(1).optional(),
+    scope: DiffScope.optional(),
+    base: z.string().min(1).optional().meta({
+      description:
+        "For the branch scope: the branch to compare with (the default branch otherwise)",
+    }),
+    ignoreWhitespace: z.boolean().optional(),
+    turn: z.number().int().positive().optional().meta({
+      description: "For the turn scope: the thread's turn count after the turn (1 is its first)",
+    }),
+    fromTurn: z.number().int().nonnegative().optional().meta({
+      description:
+        "For the turn scope: the turn count to compare from (the turn before by default; 0 is before the first turn)",
+    }),
+  });
+  const diffInputRules = (input: z.output<typeof DiffInput>, check: z.RefinementCtx) => {
+    if ((input.projectId === undefined) === (input.threadId === undefined)) {
+      check.addIssue({ code: "custom", message: "Name a projectId or a threadId" });
+    }
+    if (input.scope === "turn" && (input.threadId === undefined || input.turn === undefined)) {
+      check.addIssue({ code: "custom", message: "The turn scope takes a threadId and a turn" });
+    }
+  };
+
   context.commands.register({
     name: "git.diff",
     description:
       "The diff of a project (or a thread's project): uncommitted changes against HEAD, the branch's changes against its base (untracked files count as added), or what a thread's turn changed (`turn` scope: between its checkpoints)",
-    input: z
-      .object({
-        projectId: z.string().min(1).optional(),
-        threadId: z.string().min(1).optional(),
-        scope: DiffScope.optional(),
-        base: z.string().min(1).optional().meta({
-          description:
-            "For the branch scope: the branch to compare with (the default branch otherwise)",
-        }),
-        ignoreWhitespace: z.boolean().optional(),
-        turn: z.number().int().positive().optional().meta({
-          description:
-            "For the turn scope: the thread's turn count after the turn (1 is its first)",
-        }),
-        fromTurn: z.number().int().nonnegative().optional().meta({
-          description:
-            "For the turn scope: the turn count to compare from (the turn before by default; 0 is before the first turn)",
-        }),
-      })
-      .refine((input) => (input.projectId === undefined) !== (input.threadId === undefined), {
-        message: "Name a projectId or a threadId",
-      })
-      .refine(
-        (input) =>
-          input.scope !== "turn" || (input.threadId !== undefined && input.turn !== undefined),
-        { message: "The turn scope takes a threadId and a turn" },
-      ),
+    input: DiffInput.superRefine(diffInputRules),
     output: Diff,
     permissions: ["git.read"],
     handler: async (input) =>
@@ -1827,6 +1856,39 @@ export function activateSourceControl(context: PluginContext): SourceControl {
               ? {}
               : { ignoreWhitespace: input.ignoreWhitespace }),
           }),
+  });
+
+  context.commands.register({
+    name: "git.diff.file",
+    description:
+      "One file of a `git.diff`, both sides whole, to show the unchanged lines between its hunks: the same target and scope as the diff, and one of the files it lists (at most 1 MB a side, no binary files)",
+    input: DiffInput.omit({ ignoreWhitespace: true })
+      .extend({
+        path: z.string().min(1),
+        previousPath: z
+          .string()
+          .min(1)
+          .optional()
+          .meta({ description: "The path before a rename" }),
+      })
+      .superRefine(diffInputRules),
+    output: DiffFileContents,
+    permissions: ["git.read"],
+    handler: async ({ path, previousPath, ...input }) =>
+      service.diffFile(
+        // A turn's file is read from its thread alone, as `git.diff` reads a turn's diff.
+        {
+          ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+          ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
+        },
+        { path, ...(previousPath === undefined ? {} : { previousPath }) },
+        {
+          ...(input.scope === undefined ? {} : { scope: input.scope }),
+          ...(input.base === undefined ? {} : { base: input.base }),
+          ...(input.turn === undefined ? {} : { turn: input.turn }),
+          ...(input.fromTurn === undefined ? {} : { fromTurn: input.fromTurn }),
+        },
+      ),
   });
 
   context.commands.register({

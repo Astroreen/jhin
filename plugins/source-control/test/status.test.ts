@@ -1,7 +1,7 @@
 import * as Fs from "node:fs";
 import * as Path from "node:path";
 
-import type { Branch, Diff, ProjectStatus } from "@jhin/source-control-api";
+import type { Branch, Diff, DiffFileContents, ProjectStatus } from "@jhin/source-control-api";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { countLines, mapLimited, parseNameStatus } from "../src/git.ts";
@@ -278,6 +278,118 @@ describe("jhin.source-control: diffs", () => {
     const projectId = await sc.project(temp("jhin-sc-plain-"));
     await expect(sc.client.call("git.diff", { projectId })).rejects.toMatchObject({
       code: "NOT_A_REPOSITORY",
+    });
+  });
+});
+
+describe("jhin.source-control: a diff's files whole (D921)", () => {
+  it("reads both sides of uncommitted, new and deleted files", async () => {
+    const dir = repository();
+    write(dir, "gone.md", "bye\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "--quiet", "-m", "gone");
+    write(dir, "README.md", "one\nTWO\nthree\n");
+    write(dir, "new.txt", "hello\n");
+    Fs.rmSync(Path.join(dir, "gone.md"));
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const file = (path: string) =>
+      sc.client.call<DiffFileContents>("git.diff.file", { projectId, path });
+    expect(await file("README.md")).toEqual({
+      oldContents: "one\ntwo\nthree\n",
+      newContents: "one\nTWO\nthree\n",
+    });
+    expect(await file("new.txt")).toEqual({ oldContents: "", newContents: "hello\n" });
+    expect(await file("gone.md")).toEqual({ oldContents: "bye\n", newContents: "" });
+  });
+
+  it("reads a branch's old side at the merge base, a renamed file at its old path", async () => {
+    const dir = repository();
+    git(dir, "switch", "--quiet", "--create", "feature");
+    git(dir, "mv", "README.md", "READ.md");
+    git(dir, "commit", "--quiet", "-m", "rename");
+    // main moves on; the branch's old side stays where the branch left it.
+    git(dir, "switch", "--quiet", "main");
+    write(dir, "README.md", "main\n");
+    git(dir, "commit", "--quiet", "-am", "main");
+    git(dir, "switch", "--quiet", "feature");
+    write(dir, "READ.md", "one\ntwo\nthree\nfour\n");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    expect(
+      await sc.client.call<DiffFileContents>("git.diff.file", {
+        projectId,
+        scope: "branch",
+        path: "READ.md",
+        previousPath: "README.md",
+      }),
+    ).toEqual({ oldContents: "one\ntwo\nthree\n", newContents: "one\ntwo\nthree\nfour\n" });
+  });
+
+  it("reads a repository without a commit, every file new", async () => {
+    const dir = temp("jhin-sc-unborn-");
+    git(dir, "init", "--quiet", "--initial-branch=main");
+    write(dir, "first.txt", "first\n");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    expect(
+      await sc.client.call<DiffFileContents>("git.diff.file", { projectId, path: "first.txt" }),
+    ).toEqual({ oldContents: "", newContents: "first\n" });
+  });
+
+  it("reads only the files the diff lists", async () => {
+    const dir = repository();
+    write(dir, ".gitignore", "ignored.txt\n");
+    git(dir, "add", ".");
+    git(dir, "commit", "--quiet", "-m", "ignore");
+    write(dir, "ignored.txt", "secret\n");
+    write(dir, "src/a.ts", "a\n");
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    for (const path of [".git/config", "ignored.txt", "README.md", "src", "../escape.txt"]) {
+      await expect(sc.client.call("git.diff.file", { projectId, path })).rejects.toMatchObject({
+        code: "DIFF_FILE_UNAVAILABLE",
+        message: `Diff file '${path}' is not part of this diff.`,
+      });
+    }
+    // A listed file named with another old path is not the file the diff lists.
+    await expect(
+      sc.client.call("git.diff.file", { projectId, path: "src/a.ts", previousPath: "README.md" }),
+    ).rejects.toMatchObject({ code: "DIFF_FILE_UNAVAILABLE" });
+  });
+
+  it("refuses binary and large files on either side, and reads a link as its path", async () => {
+    const dir = repository();
+    write(dir, "old.bin", "\0\0binary");
+    write(dir, "old.txt", "x".repeat(1024 * 1024 + 1));
+    git(dir, "add", ".");
+    git(dir, "commit", "--quiet", "-m", "large");
+    // Deleted: only the committed side is read.
+    Fs.rmSync(Path.join(dir, "old.bin"));
+    Fs.rmSync(Path.join(dir, "old.txt"));
+    write(dir, "image.bin", "\0\0binary");
+    write(dir, "big.txt", "x".repeat(1024 * 1024 + 1));
+    const outside = temp("jhin-sc-outside-");
+    write(outside, "secret.txt", "secret\n");
+    Fs.symlinkSync(Path.join(outside, "secret.txt"), Path.join(dir, "link.txt"));
+    const sc = await node();
+    const projectId = await sc.project(dir);
+    const file = (path: string) => sc.client.call("git.diff.file", { projectId, path });
+    for (const path of ["old.bin", "image.bin"]) {
+      await expect(file(path)).rejects.toMatchObject({
+        code: "DIFF_FILE_UNAVAILABLE",
+        message: `Cannot expand binary file '${path}'.`,
+      });
+    }
+    for (const path of ["old.txt", "big.txt"]) {
+      await expect(file(path)).rejects.toMatchObject({
+        message: `Diff file '${path}' exceeds the 1 MB expansion limit.`,
+      });
+    }
+    // A link is its path, as git diffs it, never the file it leads to.
+    await expect(file("link.txt")).resolves.toEqual({
+      oldContents: "",
+      newContents: Path.join(outside, "secret.txt"),
     });
   });
 });

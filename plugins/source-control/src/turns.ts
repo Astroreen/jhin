@@ -15,6 +15,8 @@ import {
   SourceControlEvents,
   TurnCheckpoint,
   type Diff,
+  type DiffFileContents,
+  type DiffFileRequest,
 } from "@jhin/source-control-api";
 import type { Json, KeyValueStore } from "@jhin/storage-api";
 import { z } from "@jhin/sdk";
@@ -30,7 +32,14 @@ import {
   listCheckpoints,
   restoreCheckpoint,
 } from "./checkpoints.ts";
-import { SourceControlError, createGit, locate, summarize, type Git } from "./git.ts";
+import {
+  SourceControlError,
+  createGit,
+  locate,
+  readDiffFileBetween,
+  summarize,
+  type Git,
+} from "./git.ts";
 
 const NAMESPACE = "jhin.source-control";
 
@@ -90,6 +99,13 @@ export interface TurnCheckpoints {
     turn: number,
     options: { fromTurn?: number; ignoreWhitespace?: boolean },
   ): Promise<Diff>;
+  /** One file of `diff`, both sides read from the two checkpoints (D921). */
+  diffFile(
+    threadId: string,
+    turn: number,
+    file: DiffFileRequest,
+    options: { fromTurn?: number },
+  ): Promise<DiffFileContents>;
   /** Forgets a thread's checkpoints and deletes their refs. */
   remove(threadId: string): Promise<void>;
 }
@@ -412,16 +428,7 @@ export function followTurns(
         ),
     list: async (threadId) => (await listStored(threadId)).map(publicOf),
     diff: async (threadId, turn, options) => {
-      const known = await readTurns(threadId);
-      const target = (await listStored(threadId)).find((checkpoint) => checkpoint.turn === turn);
-      if (known === undefined || target?.status !== "ready") throw unavailable(threadId, turn);
-      const fromTurn = options.fromTurn ?? turn - 1;
-      if (fromTurn < 0 || fromTurn > turn) throw unavailable(threadId, fromTurn);
-      const git = createGit(deps.gitPath(), target.cwd);
-      const from = checkpointRef(threadId, fromTurn);
-      if (!(await hasCheckpoint(git, from)) || !(await hasCheckpoint(git, target.ref))) {
-        throw unavailable(threadId, fromTurn);
-      }
+      const { known, target, fromTurn, git, from } = await compared(threadId, turn, options);
       const ignoreWhitespace = options.ignoreWhitespace === true;
       const files = await checkpointFiles(git, from, target.ref, { ignoreWhitespace });
       const { patch, truncated } = await checkpointPatch(git, from, target.ref, files, {
@@ -442,8 +449,28 @@ export function followTurns(
         deletions: totals.deletions,
       };
     },
+    diffFile: async (threadId, turn, file, options) => {
+      const { target, git, from } = await compared(threadId, turn, options);
+      const files = await checkpointFiles(git, from, target.ref, { ignoreWhitespace: false });
+      return readDiffFileBetween(git, target.cwd, { from, to: target.ref }, files, file);
+    },
     remove: (threadId) => locked(`thread:${threadId}`, () => removeThread(threadId)),
   };
+
+  /** The two checkpoints a turn's diff compares, both still there. */
+  async function compared(threadId: string, turn: number, options: { fromTurn?: number }) {
+    const known = await readTurns(threadId);
+    const target = (await listStored(threadId)).find((checkpoint) => checkpoint.turn === turn);
+    if (known === undefined || target?.status !== "ready") throw unavailable(threadId, turn);
+    const fromTurn = options.fromTurn ?? turn - 1;
+    if (fromTurn < 0 || fromTurn > turn) throw unavailable(threadId, fromTurn);
+    const git = createGit(deps.gitPath(), target.cwd);
+    const from = checkpointRef(threadId, fromTurn);
+    if (!(await hasCheckpoint(git, from)) || !(await hasCheckpoint(git, target.ref))) {
+      throw unavailable(threadId, fromTurn);
+    }
+    return { known, target, fromTurn, git, from };
+  }
 
   /**
    * The dropped turns' checkpoints go stale and their refs away; the thread's

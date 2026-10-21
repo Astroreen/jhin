@@ -3,6 +3,7 @@ import { targetKey, type ThreadsCatalog } from "@jhin/client-api";
 import { toDisposable, z, type Disposable } from "@jhin/sdk";
 import type {
   Diff,
+  DiffFileContents,
   DiffScopeContext,
   DiffScopeOption,
   DiffScopeProvider,
@@ -53,14 +54,17 @@ export function gitScopeProvider(threads: ThreadsCatalog): DiffScopeProvider {
     order: 0,
     options: () => GIT_OPTIONS,
     load: async (context, value, input) => {
-      const diff = await threads.call<Diff>(context.target, "git.diff", {
+      const scope = {
         // A thread's diff is read where it works: its worktree when it has one (D251).
         ...(context.threadId === undefined
           ? { projectId: context.projectId }
           : { threadId: context.threadId }),
         scope: value === "uncommitted" ? "uncommitted" : "branch",
-        ignoreWhitespace: input.ignoreWhitespace,
         ...(input.base === undefined ? {} : { base: input.base }),
+      };
+      const diff = await threads.call<Diff>(context.target, "git.diff", {
+        ...scope,
+        ignoreWhitespace: input.ignoreWhitespace,
       });
       return {
         patch: diff.patch,
@@ -69,6 +73,13 @@ export function gitScopeProvider(threads: ThreadsCatalog): DiffScopeProvider {
         deletions: diff.deletions,
         baseRef: diff.baseRef,
         headRef: diff.headRef,
+        // The base the diff resolved, so both read the same comparison.
+        loadFile: (file) =>
+          threads.call<DiffFileContents>(context.target, "git.diff.file", {
+            ...scope,
+            ...(diff.baseRef === null ? {} : { base: diff.baseRef }),
+            ...file,
+          }),
       };
     },
   };

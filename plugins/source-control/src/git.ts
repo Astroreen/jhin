@@ -7,10 +7,13 @@ import * as Fs from "node:fs/promises";
 import * as Path from "node:path";
 
 import {
+  MAX_DIFF_FILE_BYTES,
   MAX_PATCH_BYTES,
   MAX_STATUS_FILES,
   type Branch,
   type ChangedFile,
+  type DiffFileContents,
+  type DiffFileRequest,
   type DiffScope,
   type FileChangeStatus,
   type SourceControlErrorCode,
@@ -617,20 +620,16 @@ async function resolveBase(git: Git, base: string): Promise<string | undefined> 
   return undefined;
 }
 
-/**
- * A unified diff of the working tree against `HEAD` (`uncommitted`) or against
- * where the branch left its base (`branch`), untracked files as additions.
- */
-export async function readPatch(
+/** What a scope compares the working tree with: `HEAD`, or the merge base with the base. */
+async function diffFrom(
   git: Git,
-  root: string,
-  local: LocalStatus,
-  options: PatchOptions,
-): Promise<Patch> {
-  let from = local.head.unborn ? EMPTY_TREE : "HEAD";
+  head: { readonly unborn: boolean },
+  options: { scope: DiffScope; base: string | null },
+): Promise<{ from: string; baseRef: string | null }> {
+  let from = head.unborn ? EMPTY_TREE : "HEAD";
   let baseRef: string | null = null;
   if (options.scope === "branch") {
-    if (local.head.unborn) {
+    if (head.unborn) {
       throw new SourceControlError("BRANCH_NOT_FOUND", "The branch has no commit yet");
     }
     if (options.base === null) {
@@ -648,6 +647,211 @@ export async function readPatch(
     baseRef = resolved;
     from = (await git(["merge-base", "HEAD", resolved])).stdout.trim();
   }
+  return { from, baseRef };
+}
+
+const fileUnavailable = (message: string, path: string) =>
+  new SourceControlError("DIFF_FILE_UNAVAILABLE", message, { path });
+
+/** A file of a revision whole; T3's limits and messages (D921). */
+async function readFileAt(git: Git, revision: string, path: string): Promise<string> {
+  const shown = await git(["show", "--end-of-options", `${revision}:${path}`], {
+    ok: [0, 128],
+    // Cut, and marked truncated, once it passes the limit.
+    maxBytes: MAX_DIFF_FILE_BYTES,
+  });
+  if (shown.code !== 0 && !shown.truncated) {
+    throw fileUnavailable(`Could not read diff file '${path}'.`, path);
+  }
+  if (shown.truncated) {
+    throw fileUnavailable(`Diff file '${path}' exceeds the 1 MB expansion limit.`, path);
+  }
+  if (shown.stdout.includes("\0")) {
+    throw fileUnavailable(`Cannot expand binary file '${path}'.`, path);
+  }
+  return shown.stdout;
+}
+
+const isWithin = (root: string, candidate: string) => {
+  const relative = Path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (relative !== ".." && !relative.startsWith(`..${Path.sep}`) && !Path.isAbsolute(relative))
+  );
+};
+
+/** A working tree file whole, never one that leads out of the repository (T3's checks). */
+async function readWorkingFile(root: string, path: string): Promise<string> {
+  const outside = () =>
+    fileUnavailable(`Diff file '${path}' resolves outside the review workspace.`, path);
+  const requested = Path.resolve(root, path);
+  if (!isWithin(root, requested)) throw outside();
+  // A link is what git diffs it as: the path it holds, never the file it leads to.
+  const link = await Fs.lstat(requested).catch(() => undefined);
+  if (link?.isSymbolicLink() === true) {
+    try {
+      return await Fs.readlink(requested);
+    } catch {
+      throw fileUnavailable(`Could not read diff file '${path}'.`, path);
+    }
+  }
+  let real: string;
+  let realRoot: string;
+  try {
+    [realRoot, real] = await Promise.all([Fs.realpath(root), Fs.realpath(requested)]);
+  } catch {
+    throw fileUnavailable(`Could not resolve diff file '${path}'.`, path);
+  }
+  if (!isWithin(realRoot, real)) throw outside();
+  // One handle for the checks and the read, so the file read is the one checked. A
+  // folder of the path swapped for a link between `realpath` and `open` could lead the
+  // open elsewhere, so the path is resolved again once the file is open, and the open
+  // file must be the very file it resolves to, still inside the repository.
+  let bytes: Buffer;
+  let handle: Fs.FileHandle | undefined;
+  try {
+    handle = await Fs.open(real, Fs.constants.O_RDONLY | Fs.constants.O_NOFOLLOW);
+    const info = await handle.stat();
+    const again = await Fs.realpath(requested);
+    const there = await Fs.stat(again);
+    if (!isWithin(realRoot, again) || there.dev !== info.dev || there.ino !== info.ino) {
+      throw outside();
+    }
+    if (!info.isFile()) throw fileUnavailable(`Diff path '${path}' is not a file.`, path);
+    if (info.size > MAX_DIFF_FILE_BYTES) {
+      throw fileUnavailable(`Diff file '${path}' exceeds the 1 MB expansion limit.`, path);
+    }
+    bytes = await handle.readFile();
+  } catch (error) {
+    if (error instanceof SourceControlError) throw error;
+    throw fileUnavailable(`Could not read diff file '${path}'.`, path);
+  } finally {
+    await handle?.close();
+  }
+  if (bytes.length > MAX_DIFF_FILE_BYTES) {
+    throw fileUnavailable(`Diff file '${path}' exceeds the 1 MB expansion limit.`, path);
+  }
+  if (bytes.includes(0)) throw fileUnavailable(`Cannot expand binary file '${path}'.`, path);
+  return bytes.toString("utf8");
+}
+
+/** A file of a diff as the diff itself names it: its paths and what happened to it. */
+export interface DiffEntry {
+  readonly path: string;
+  readonly previousPath?: string | undefined;
+  readonly status: FileChangeStatus;
+}
+
+/**
+ * Both sides of one of `files` (the diff's own list) whole, `to` `null` for the
+ * working tree (D921). Only a file the diff lists is read, and what it says the
+ * file is decides which side is empty, so no other path of the node is reachable.
+ */
+export async function readDiffFileBetween(
+  git: Git,
+  root: string,
+  range: { from: string; to: string | null },
+  files: readonly DiffEntry[],
+  file: DiffFileRequest,
+): Promise<DiffFileContents> {
+  const entry = files.find(
+    (candidate) =>
+      candidate.path === file.path &&
+      (candidate.previousPath ?? candidate.path) === (file.previousPath ?? file.path),
+  );
+  if (entry === undefined) {
+    throw fileUnavailable(`Diff file '${file.path}' is not part of this diff.`, file.path);
+  }
+  const added = entry.status === "added" || entry.status === "untracked";
+  const [oldContents, newContents] = await Promise.all([
+    added ? "" : readFileAt(git, range.from, entry.previousPath ?? entry.path),
+    entry.status === "deleted"
+      ? ""
+      : range.to === null
+        ? readWorkingFile(root, entry.path)
+        : readFileAt(git, range.to, entry.path),
+  ]);
+  return { oldContents, newContents };
+}
+
+/**
+ * The tracked files a diff against `from` changes, with what happened to each:
+ * `readPatch`'s list for the branch scope, and what `readDiffFile` may read.
+ */
+async function trackedChanges(
+  git: Git,
+  from: string,
+  whitespace: readonly string[],
+  /** Only these paths (taken literally); every changed file without. */
+  paths: readonly string[] = [],
+): Promise<ChangedFile[]> {
+  const range = [
+    "-M",
+    "-z",
+    ...whitespace,
+    from,
+    "--",
+    ...paths.map((path) => `:(literal)${path}`),
+  ];
+  const [numstat, names] = await Promise.all([
+    git(["diff", "--numstat", ...range]),
+    git(["diff", "--name-status", ...range]),
+  ]);
+  const statuses = new Map(
+    parseNameStatus(names.stdout).map((entry) => [entry.path, entry.status]),
+  );
+  return parseNumstat(numstat.stdout).map((entry): ChangedFile => ({
+    path: entry.path,
+    ...(entry.previousPath === undefined ? {} : { previousPath: entry.previousPath }),
+    status: statuses.get(entry.path) ?? (entry.previousPath === undefined ? "modified" : "renamed"),
+    insertions: entry.insertions,
+    deletions: entry.deletions,
+    binary: entry.binary,
+  }));
+}
+
+/** One file of `readPatch`'s diff, both sides whole (D921). */
+export async function readDiffFile(
+  git: Git,
+  root: string,
+  options: { scope: DiffScope; base: string | null },
+  file: DiffFileRequest,
+): Promise<DiffFileContents> {
+  const head = await git(["rev-parse", "--verify", "--quiet", "HEAD"], { ok: [0, 1, 128] });
+  const { from } = await diffFrom(git, { unborn: head.code !== 0 }, options);
+  // The files `readPatch` shows, listed the same way but only for this file's paths
+  // (a rename is found from both): tracked ones against `from` (whitespace never hides
+  // a file from the list), untracked ones as added.
+  const paths = [...new Set([file.path, file.previousPath ?? file.path])];
+  // git refuses a pathspec outside the repository; no diff lists one anyway.
+  if (paths.some((path) => !isWithin(root, Path.resolve(root, path)))) {
+    throw fileUnavailable(`Diff file '${file.path}' is not part of this diff.`, file.path);
+  }
+  const [tracked, untracked] = await Promise.all([
+    trackedChanges(git, from, [], paths),
+    git(["ls-files", "--others", "--exclude-standard", "-z", "--", `:(literal)${file.path}`]),
+  ]);
+  const files: DiffEntry[] = [
+    ...tracked,
+    ...untracked.stdout
+      .split("\0")
+      .filter((path) => path !== "")
+      .map((path) => ({ path, status: "untracked" as const })),
+  ];
+  return readDiffFileBetween(git, root, { from, to: null }, files, file);
+}
+
+/**
+ * A unified diff of the working tree against `HEAD` (`uncommitted`) or against
+ * where the branch left its base (`branch`), untracked files as additions.
+ */
+export async function readPatch(
+  git: Git,
+  root: string,
+  local: LocalStatus,
+  options: PatchOptions,
+): Promise<Patch> {
+  const { from, baseRef } = await diffFrom(git, local.head, options);
   const whitespace = options.ignoreWhitespace ? ["--ignore-all-space"] : [];
   const tracked = await git(
     ["diff", "-M", "--no-color", "--no-ext-diff", ...whitespace, from, "--"],
@@ -669,23 +873,7 @@ export async function readPatch(
   if (options.scope === "branch") {
     // The branch's diff is the working tree against the merge base: its own name-status
     // says what each file is (added, deleted, renamed) across commits and edits alike.
-    const range = ["-M", "-z", ...whitespace, from, "--"];
-    const [numstat, names] = await Promise.all([
-      git(["diff", "--numstat", ...range]),
-      git(["diff", "--name-status", ...range]),
-    ]);
-    const statuses = new Map(
-      parseNameStatus(names.stdout).map((entry) => [entry.path, entry.status]),
-    );
-    const committed = parseNumstat(numstat.stdout).map((entry): ChangedFile => ({
-      path: entry.path,
-      ...(entry.previousPath === undefined ? {} : { previousPath: entry.previousPath }),
-      status:
-        statuses.get(entry.path) ?? (entry.previousPath === undefined ? "modified" : "renamed"),
-      insertions: entry.insertions,
-      deletions: entry.deletions,
-      binary: entry.binary,
-    }));
+    const committed = await trackedChanges(git, from, whitespace);
     files = [...committed, ...untracked].toSorted((a, b) =>
       a.path < b.path ? -1 : a.path > b.path ? 1 : 0,
     );

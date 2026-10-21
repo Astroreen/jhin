@@ -122,6 +122,42 @@ describe("jhin.source-control: checkpoints", () => {
     await expect(
       sc.client.call("git.diff", { threadId, scope: "turn", turn: 7 }),
     ).rejects.toMatchObject({ code: "CHECKPOINT_UNAVAILABLE" });
+    // A turn's file whole, both sides from its checkpoints (D921).
+    await expect(
+      sc.client.call("git.diff.file", {
+        threadId,
+        scope: "turn",
+        turn: 3,
+        path: "a.txt",
+      }),
+    ).resolves.toEqual({ oldContents: "one\n", newContents: "three\n" });
+    // From any earlier turn: before the first, a.txt is new.
+    await expect(
+      sc.client.call("git.diff.file", {
+        threadId,
+        scope: "turn",
+        turn: 3,
+        fromTurn: 0,
+        path: "a.txt",
+      }),
+    ).resolves.toEqual({ oldContents: "", newContents: "three\n" });
+    // Only the files the turn changed: b.txt is the second turn's.
+    await expect(
+      sc.client.call("git.diff.file", { threadId, scope: "turn", turn: 3, path: "b.txt" }),
+    ).rejects.toMatchObject({ code: "DIFF_FILE_UNAVAILABLE" });
+    await expect(
+      sc.client.call("git.diff.file", { threadId, scope: "turn", path: "a.txt" }),
+    ).rejects.toThrow("Invalid input for git.diff.file");
+    // A file gone from the working tree by the next turn has no new side.
+    Fs.rmSync(Path.join(dir, "b.txt"));
+    await turn(sc, threadId, "/write c.txt four");
+    await sc.until(checkpointEvent(threadId, 4));
+    await expect(
+      sc.client.call("git.diff.file", { threadId, scope: "turn", turn: 4, path: "b.txt" }),
+    ).resolves.toEqual({ oldContents: "two\n", newContents: "" });
+    await expect(
+      sc.client.call("git.diff.file", { threadId, scope: "turn", turn: 4, path: "c.txt" }),
+    ).resolves.toEqual({ oldContents: "", newContents: "four\n" });
     await expect(sc.client.call("git.diff", { threadId, scope: "turn" })).rejects.toThrow(
       "Invalid input for git.diff",
     );
