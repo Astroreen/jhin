@@ -67,6 +67,12 @@ export interface Field {
   readonly secret: boolean;
   /** The schema's first example, shown while the field is empty. */
   readonly example?: string;
+  /** T3's `clearWhenEmpty` (D478): `"persist"` keeps an emptied text field as `""`. */
+  readonly clearWhenEmpty: "omit" | "persist";
+  /** `.meta({ when })` (D481): shown only while these siblings have these values. */
+  readonly when?: Readonly<Record<string, unknown>>;
+  /** `.meta({ control })` (D482): a control a plugin contributes, by name. */
+  readonly controlName?: string;
 }
 
 export interface SectionForm {
@@ -212,7 +218,12 @@ function controlOf(
       if (!isObject(items)) return { kind: "json" };
       const item = fieldOf("", [...path, "*"], items, root, comments, secret);
       const kind = item.control.kind;
-      return kind === "text" || kind === "number" || kind === "switch" || kind === "select"
+      // Objects with keys are a list of groups (D479).
+      return kind === "text" ||
+        kind === "number" ||
+        kind === "switch" ||
+        kind === "select" ||
+        kind === "group"
         ? { kind: "list", item }
         : { kind: "json" };
     }
@@ -243,6 +254,8 @@ function fieldOf(
   const examples = outer["examples"];
   const example =
     Array.isArray(examples) && isPrimitive(examples[0]) ? String(examples[0]) : undefined;
+  const when = isObject(outer["when"]) ? outer["when"] : undefined;
+  const controlName = typeof outer["control"] === "string" ? outer["control"] : undefined;
   return {
     key,
     path,
@@ -257,7 +270,39 @@ function fieldOf(
     deprecated: outer["deprecated"] === true,
     secret,
     ...(example === undefined ? {} : { example }),
+    clearWhenEmpty: outer["clearWhenEmpty"] === "persist" ? "persist" : "omit",
+    ...(when === undefined ? {} : { when }),
+    ...(controlName === undefined ? {} : { controlName }),
   };
+}
+
+/**
+ * Whether a field with `when` (D481) shows: every sibling it names has one
+ * of the listed values. `valueOf` gives a sibling's value in effect.
+ */
+export function isShown(field: Field, valueOf: (key: string) => unknown): boolean {
+  if (field.when === undefined) return true;
+  return Object.entries(field.when).every(([key, allowed]) => {
+    const value = valueOf(key);
+    return Array.isArray(allowed)
+      ? allowed.some((item) => equal(item, value))
+      : equal(allowed, value);
+  });
+}
+
+/**
+ * `value` with its key `from` renamed to `to` in place (D480): same value,
+ * same position. `undefined` when `to` is empty or taken.
+ */
+export function renameKey(
+  value: Readonly<Record<string, unknown>>,
+  from: string,
+  to: string,
+): Record<string, unknown> | undefined {
+  if (to === "" || (to !== from && Object.hasOwn(value, to))) return undefined;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key === from ? to : key, item]),
+  );
 }
 
 /**

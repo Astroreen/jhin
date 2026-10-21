@@ -8,8 +8,10 @@ import {
   HIDDEN,
   humanize,
   redact,
+  renameKey,
   restore,
   sectionForm,
+  isShown,
   setAt,
   Unparsed,
   validate,
@@ -109,7 +111,11 @@ describe("a section's schema as a form (D80)", () => {
   });
 
   it("edits what the form cannot render as JSON in place, not failing the form", () => {
-    expect(fields.get("rules")?.control).toEqual({ kind: "json" });
+    // An array of objects is a list of groups since D479.
+    expect(fields.get("rules")?.control).toMatchObject({
+      kind: "list",
+      item: { control: { kind: "group" } },
+    });
     expect(fields.get("shape")?.control).toEqual({ kind: "json" });
     expect(fields.get("anything")?.control).toEqual({ kind: "json" });
   });
@@ -324,5 +330,55 @@ describe("secrets (D83)", () => {
     expect(validate(schema, restore({ token: HIDDEN }, {}))).toEqual([
       { path: "token", message: "Enter the secret: there is no stored one here" },
     ]);
+  });
+});
+
+describe("the W16 form hints (D478–D482)", () => {
+  const Rule = z.object({
+    key: z.string().meta({ clearWhenEmpty: "persist" }),
+    command: z.string().min(1),
+    scope: z.enum(["global", "chat"]).default("global"),
+    note: z.string().optional(),
+  });
+  const form = sectionForm(
+    "acme",
+    served(
+      z.object({
+        rules: z.array(Rule).default([]),
+        mode: z.enum(["auto", "custom"]).default("auto"),
+        text: z
+          .string()
+          .optional()
+          .meta({ when: { mode: ["custom"] }, control: "editor" }),
+      }),
+    ),
+  );
+  const [rules, mode, text] = form.fields as [Field, Field, Field];
+
+  it("reads the hints from the schema", () => {
+    expect(rules.control.kind).toBe("list");
+    const item = (rules.control as { item: Field }).item;
+    expect(item.control.kind).toBe("group");
+    const [key, command] = (item.control as unknown as { fields: Field[] }).fields as [
+      Field,
+      Field,
+    ];
+    expect(key.clearWhenEmpty).toBe("persist");
+    expect(command.clearWhenEmpty).toBe("omit");
+    expect(text).toMatchObject({ when: { mode: ["custom"] }, controlName: "editor" });
+    expect(mode.when).toBeUndefined();
+  });
+
+  it("shows a field while its siblings have the values it names", () => {
+    expect(isShown(text, () => "custom")).toBe(true);
+    expect(isShown(text, () => "auto")).toBe(false);
+    expect(isShown(mode, () => undefined)).toBe(true);
+  });
+
+  it("renames a key in place, or not at all", () => {
+    expect(Object.keys(renameKey({ a: 1, b: 2, c: 3 }, "b", "x")!)).toEqual(["a", "x", "c"]);
+    expect(renameKey({ a: 1, b: 2 }, "a", "b")).toBeUndefined();
+    expect(renameKey({ a: 1 }, "a", "")).toBeUndefined();
+    expect(renameKey({ a: 1 }, "a", "a")).toEqual({ a: 1 });
   });
 });
