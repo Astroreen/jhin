@@ -48,6 +48,7 @@ import {
   resolveFileDiffPath,
 } from "../src/plugins/source-control/diff/rendering.ts";
 import {
+  pathInside,
   preferredEditor,
   resolveDiffPathForWorkspace,
 } from "../src/plugins/source-control/diff/editors.tsx";
@@ -1225,5 +1226,22 @@ describe("reading a pull request reference (D903)", () => {
     );
     expect(parsePullRequestReference("feature/x")).toBeNull();
     expect(parsePullRequestReference("")).toBeNull();
+  });
+});
+
+describe("a node path inside a project (terminal.md D965)", () => {
+  it("is relative to the project's folder, with . and .. resolved", () => {
+    expect(pathInside("/home/me/repo", "/home/me/repo/src/./lib/../app.ts")).toBe("src/app.ts");
+    expect(pathInside("/home/me/repo/", "/home/me/repo/README.md")).toBe("README.md");
+  });
+
+  it("is nothing outside it, or for the folder itself", () => {
+    expect(pathInside("/home/me/repo", "/home/me/other/a.ts")).toBeUndefined();
+    expect(pathInside("/home/me/repo", "/home/me/repo/../repo-copy/a.ts")).toBeUndefined();
+    expect(pathInside("/home/me/repo", "/home/me/repo")).toBeUndefined();
+  });
+
+  it("compares Windows paths without case", () => {
+    expect(pathInside("C:\\Users\\Me\\Repo", "c:\\users\\me\\repo\\a.ts")).toBe("a.ts");
   });
 });

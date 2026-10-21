@@ -53,6 +53,30 @@ export function resolveDiffPathForWorkspace(input: {
   return relative.length > 0 ? relative.join("/") : null;
 }
 
+/**
+ * `path` relative to `root`, with `.` and `..` resolved; undefined when it is
+ * not inside it. Windows paths compare without case, as their file systems do.
+ */
+export function pathInside(root: string, path: string): string | undefined {
+  const windows = /^[A-Za-z]:[\\/]/.test(root) || root.startsWith("\\\\");
+  const segments = (value: string) => {
+    const out: string[] = [];
+    for (const part of value.replaceAll("\\", "/").split("/")) {
+      if (part === "" || part === ".") continue;
+      if (part === "..") out.pop();
+      else out.push(part);
+    }
+    return out;
+  };
+  const rootSegments = segments(root);
+  const pathSegments = segments(path);
+  const same = (a: string | undefined, b: string | undefined) =>
+    windows ? a?.toLowerCase() === b?.toLowerCase() : a === b;
+  if (pathSegments.length <= rootSegments.length) return undefined;
+  if (!rootSegments.every((segment, index) => same(segment, pathSegments[index]))) return undefined;
+  return pathSegments.slice(rootSegments.length).join("/");
+}
+
 const LAST_EDITOR_KEY = "jhin.lastEditor";
 
 /** The editor to open with: the last one chosen on this device if the node has it, else its first. */
@@ -143,7 +167,7 @@ export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefine
     projectId: string,
     path: string,
     editor: EditorInfo,
-    options: { reveal?: boolean } = {},
+    options: { reveal?: boolean; line?: number; column?: number } = {},
   ): Promise<void> => {
     const reveal = options.reveal === true;
     try {
@@ -152,6 +176,8 @@ export function createEditors(threads: ThreadsCatalog, toasts: Toasts | undefine
         path,
         editor: editor.id,
         ...(reveal ? { reveal: true } : {}),
+        ...(options.line === undefined ? {} : { line: options.line }),
+        ...(options.column === undefined ? {} : { column: options.column }),
       });
       // Remembered once it opened: an editor that fails is not the one the next click uses.
       if (editor.id !== "file-manager") rememberEditor(editor.id);

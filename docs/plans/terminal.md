@@ -471,6 +471,22 @@ shown has at most T3's 8 events on their way while the shell printed
 20000 lines, and gets the rest once it shows them; an ended subscription
 read again from a snapshot).
 
+## Leftovers (W26)
+
+- **D965. A path in terminal output opens in the editor, as T3's.** A path
+  the links find (D472) is a link too: ⌘-click (macOS) or Ctrl-click
+  elsewhere resolves it against the terminal's folder as T3's
+  `resolvePathLinkTarget` does (`~/` from the home the folder shows, a
+  relative path joined to it, `:line:column` kept) and opens it with T3's
+  `openInPreferredEditor`: the client command `files.open-in-editor`
+  (`jhin.source-control`, which keeps the editor last chosen on this
+  device, D287) takes the node, the thread and the absolute path, finds the
+  thread's project, and runs `editors.open` with the path relative to the
+  project's folder, at its line and column, in the preferred editor. A path
+  outside the project, or a node with no editor, fails with its reason,
+  which the terminal writes into itself as T3's "Unable to open path". The
+  terminal offers path links only while that command is there.
+
 ## Deferred
 
 - Permissions on subscriptions to the event log. Done in `security.md`
@@ -494,8 +510,9 @@ read again from a snapshot).
 - `terminals.write` is in effect shell access as the node's user, whoever
   holds it (an MCP client included); grant it only where that is meant.
   D461 narrows what a shell inherits, not what it can read on the machine.
-- Opening a path from terminal output (D472): Jhin has no "open in
-  editor" yet (W5 ports it); paths are found but not links.
+- A path in a thread's worktree (D965): `editors.open` opens files of a
+  project's folder only, so a terminal in a worktree opens none of its own
+  files.
 - T3's inline terminal-context chip in the composer and its
   `inlineMessageContext` records (D473): the composer inserts T3's legacy
   text; the chip needs W6's rich text composer.

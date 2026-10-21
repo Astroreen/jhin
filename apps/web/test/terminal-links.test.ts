@@ -4,6 +4,7 @@ import { formatTerminalContext, terminalSelectionLines } from "../src/plugins/te
 import {
   collectWrappedTerminalLinkLine,
   extractTerminalLinks,
+  resolvePathLinkTarget,
   resolveWrappedTerminalLinkRange,
 } from "../src/plugins/terminal/links.ts";
 
@@ -54,6 +55,28 @@ describe("Add to chat (D473)", () => {
       }),
     ).toBe(
       "@terminal-1:3-4\n\n<terminal_context>\n- Terminal 1 lines 3-4:\n  3 | $ ls\n  4 | README.md\n</terminal_context>",
+    );
+  });
+});
+
+describe("a path link's target (D965, T3's resolvePathLinkTarget)", () => {
+  it("joins a relative path to the terminal's folder and keeps its position", () => {
+    expect(resolvePathLinkTarget("src/app.ts:12:4", "/home/me/repo")).toEqual({
+      path: "/home/me/repo/src/app.ts",
+      line: 12,
+      column: 4,
+    });
+    expect(resolvePathLinkTarget("/etc/hosts", "/home/me/repo")).toEqual({ path: "/etc/hosts" });
+  });
+
+  it("takes ~/ from the home the folder shows, on macOS, Linux and Windows", () => {
+    expect(resolvePathLinkTarget("~/notes.md:3", "/Users/me/repo")).toEqual({
+      path: "/Users/me/notes.md",
+      line: 3,
+    });
+    expect(resolvePathLinkTarget("~/notes.md", "/home/me/repo").path).toBe("/home/me/notes.md");
+    expect(resolvePathLinkTarget("src\\a.ts", "C:\\Users\\me\\repo").path).toBe(
+      "C:\\Users\\me\\repo\\src\\a.ts",
     );
   });
 });

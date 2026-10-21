@@ -15,10 +15,12 @@ import {
   type DeviceSettings,
   type Keybindings,
   type Navigation,
+  type NodeTarget,
   type ThreadActionProps,
   type ThreadIndicatorProps,
   type ThreadsCatalog,
 } from "@jhin/client-api";
+import type { EditorInfo } from "@jhin/host-api";
 import { definePlugin, z } from "@jhin/sdk";
 import { DIFF_SCOPES_CAPABILITY } from "@jhin/source-control-api";
 import {
@@ -42,7 +44,7 @@ import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { DIFF_SECTION, DiffSettings } from "../../lib/settings.ts";
 import { createRunningActions } from "./running.ts";
 import { createChangedFilesFooter } from "./checkpoints.tsx";
-import { createEditors } from "./diff/editors.tsx";
+import { createEditors, pathInside, preferredEditor } from "./diff/editors.tsx";
 import { createDiffScopes, createDiffSelections, gitScopeProvider } from "./diff/scopes.ts";
 import { turnScopeProvider } from "./diff/turns.ts";
 import {
@@ -164,6 +166,47 @@ export const sourceControlPlugin = builtin(
         input: z.object({}),
         output: z.object({ toggled: z.boolean() }),
         handler: () => ({ toggled: toggle() }),
+      });
+      // T3's openInPreferredEditor, for a path found in terminal output (terminal.md D965).
+      context.commands.register({
+        name: "files.open-in-editor",
+        title: "Open in editor",
+        description:
+          "Opens a file of a thread's project, by its absolute path on the node, in the editor last chosen on this device",
+        input: z.object({
+          node: z.string(),
+          remote: z.string().optional(),
+          threadId: z.string(),
+          path: z.string().min(1),
+          line: z.number().int().positive().optional(),
+          column: z.number().int().positive().optional(),
+        }),
+        output: z.object({}),
+        handler: async ({ threadId, path, line, column, ...input }) => {
+          const target: NodeTarget = {
+            node: input.node,
+            ...(input.remote === undefined ? {} : { remote: input.remote }),
+          };
+          const catalog = threads.catalog(target);
+          const projectId = catalog.threads.find((thread) => thread.id === threadId)?.projectId;
+          const project = catalog.projects.find((item) => item.id === projectId);
+          const relative = project === undefined ? undefined : pathInside(project.path, path);
+          if (project === undefined || relative === undefined) {
+            throw new Error(`${path} is not a file of the thread's project`);
+          }
+          const { editors } = await threads.call<{ editors: EditorInfo[] }>(
+            target,
+            "editors.list",
+            {},
+          );
+          const editor = preferredEditor(editors);
+          if (editor === undefined) throw new Error("No editor is installed on this node");
+          await services.editors.open(target, project.id, relative, editor, {
+            ...(line === undefined ? {} : { line }),
+            ...(column === undefined ? {} : { column }),
+          });
+          return {};
+        },
       });
       if (keybindings !== undefined) {
         context.subscriptions.add(
