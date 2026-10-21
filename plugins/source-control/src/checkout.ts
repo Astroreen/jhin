@@ -230,7 +230,8 @@ export async function checkoutLocal(
       await git(["merge", "--ff-only", "--quiet", commit]);
     } else {
       // Moved (forward only, as checked) or made first: a switch that fails leaves the
-      // checkout where it was, and a branch made for it goes again.
+      // checkout on its branch, a branch made for it goes again, and one that existed
+      // stays moved forward, which loses nothing.
       await git(["branch", "--force", "--", local, commit]);
       try {
         await git(["switch", "--quiet", "--", local]);
@@ -288,10 +289,10 @@ async function materialize(
   let commit: string;
   try {
     ({ commit } = await headCommit(git, target, warn));
-  } catch {
+  } catch (error) {
     throw new SourceControlError(
       "GIT_FAILED",
-      `Failed to materialize pull request #${pr.number} branch ${pr.headBranch} as ${local}.`,
+      `Failed to materialize pull request #${pr.number} branch ${pr.headBranch} as ${local}. ${(error as Error).message}`,
       { number: pr.number },
     );
   }
