@@ -191,11 +191,13 @@ export function withCustomModels(
   custom: readonly (string | { readonly slug: string; readonly name?: string | undefined })[],
 ): readonly AgentModel[] {
   if (custom.length === 0) return models;
-  const entries = custom.map((entry) =>
-    typeof entry === "string"
-      ? { slug: entry, name: entry }
-      : { slug: entry.slug, name: entry.name ?? entry.slug },
-  );
+  // The first entry of a slug counts; a later one of the same slug is ignored.
+  const entries: { slug: string; name: string }[] = [];
+  for (const entry of custom) {
+    const slug = typeof entry === "string" ? entry : entry.slug;
+    if (entries.some((kept) => kept.slug === slug)) continue;
+    entries.push({ slug, name: typeof entry === "string" ? entry : (entry.name ?? entry.slug) });
+  }
   const renamed = new Map(
     entries.filter((entry) => entry.name !== entry.slug).map((entry) => [entry.slug, entry.name]),
   );
@@ -208,7 +210,6 @@ export function withCustomModels(
   const added: AgentModel[] = [];
   for (const entry of entries) {
     if (seen.has(entry.slug)) continue;
-    seen.add(entry.slug);
     added.push({ id: entry.slug, name: entry.name, ...(options === undefined ? {} : { options }) });
   }
   return [...listed, ...added];

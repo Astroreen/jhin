@@ -284,8 +284,22 @@ export function createCodexRuntime(options: {
   const current = () => (probed?.key === probeKey() ? probed.probe : undefined);
   /** The skills of each folder Codex was asked about, by config and folder. */
   const skillProbes = new Map<string, { at: number; skills: Promise<AgentSkill[]> }>();
-  const models = () =>
-    withCustomModels(current()?.models ?? BUNDLED_MODELS, options.config().customModels);
+  /** The last list with the config's custom models, kept while neither changed. */
+  let withCustom:
+    | { listed: readonly AgentModel[]; custom: string; models: readonly AgentModel[] }
+    | undefined;
+  const models = () => {
+    const listed = current()?.models ?? BUNDLED_MODELS;
+    const custom = JSON.stringify(options.config().customModels);
+    if (withCustom?.listed !== listed || withCustom.custom !== custom) {
+      withCustom = {
+        listed,
+        custom,
+        models: withCustomModels(listed, options.config().customModels),
+      };
+    }
+    return withCustom.models;
+  };
   const defaultModel = () =>
     options.config().defaultModel ??
     current()?.defaultModel ??

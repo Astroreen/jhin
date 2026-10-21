@@ -650,7 +650,8 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
 - **D888. Custom Codex models come from the config (W24).** The config
   section gains `customModels` (T3's setting of the same name): slugs, or
   `{ slug, name }` entries. They follow Codex's own models, also before
-  Codex listed any (T3's `providerModelsFromSettings`): an entry whose slug
+  Codex listed any (T3's `providerModelsFromSettings`); the first entry of a
+  slug counts. An entry whose slug
   Codex lists only renames it, any other is added once, with the options of
   the first listed model that has some, so a newer model Codex does not
   list yet can be picked and given an effort.

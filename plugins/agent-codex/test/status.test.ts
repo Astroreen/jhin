@@ -5,6 +5,7 @@ import { z } from "@jhin/sdk";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { CODEX_AGENT_ID, Config, createCodexRuntime, expandHome } from "../src/index.ts";
+import { BUNDLED_MODELS } from "../src/mapping.ts";
 import { fakeCodex, node, stopAll, type Scenario } from "./support.ts";
 
 afterEach(async () => {
@@ -314,9 +315,41 @@ describe("jhin.agent-codex: status", () => {
     codex.dispose();
   });
 
-  it("offers the custom models before Codex listed any", () => {
-    const { codex } = runtime({}, { customModels: ["gpt-7"] });
-    expect(codex.models?.at(-1)).toEqual({ id: "gpt-7", name: "gpt-7" });
+  it("offers the custom models before Codex listed any, the first entry of a slug counting", () => {
+    const { codex } = runtime(
+      {},
+      {
+        customModels: [
+          { slug: "gpt-6-astra", name: "Astra" },
+          { slug: "gpt-6-astra", name: "Ignored" },
+          "gpt-7",
+          { slug: "gpt-7", name: "Ignored too" },
+        ],
+        defaultModel: "gpt-7",
+      },
+    );
+    const models = codex.models!;
+    expect(models.map(({ id, name }) => ({ id, name }))).toEqual([
+      ...BUNDLED_MODELS.map(({ id, name }) => ({
+        id,
+        name: id === "gpt-6-astra" ? "Astra" : name,
+      })),
+      { id: "gpt-7", name: "gpt-7" },
+    ]);
+    // No listed model has options yet: none to lend.
+    expect(models.at(-1)).not.toHaveProperty("options");
+    // The same list while nothing changed.
+    expect(codex.models).toBe(models);
+    expect(codex.defaultModel).toBe("gpt-7");
+  });
+
+  it("checks the custom models it is given", () => {
+    expect(Config.parse({}).customModels).toEqual([]);
+    expect(
+      Config.parse({ customModels: [" gpt-7 ", { slug: "a", name: " A " }] }).customModels,
+    ).toEqual(["gpt-7", { slug: "a", name: "A" }]);
+    expect(Config.safeParse({ customModels: [""] }).success).toBe(false);
+    expect(Config.safeParse({ customModels: [{ slug: "a", name: "" }] }).success).toBe(false);
   });
 
   it("falls back to Codex's own default, and the config's wins", async () => {
