@@ -24,7 +24,7 @@ icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.
 prompt editor, menus, attachments and model options, editing from a
 message, forks and merging them back, searching thread contents, the
 find in a thread with its highlights (`plugins/chat/thread-find.tsx`), the
-thread details panel and its Lineage section (`plugins/chat/thread-details.tsx`,
+thread details panel and its Lineage section (`plugins/chat/thread-details-panel.tsx`,
 `lineage.tsx`, `packages/ui/src/components/thread-details-section.tsx`), the
 scheduled tasks settings page), the
 threads plugin's merge-back handoff and search snippets

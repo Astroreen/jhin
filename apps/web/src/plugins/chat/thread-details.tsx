@@ -1,7 +1,6 @@
-// The thread details panel follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
-// apps/web/src/components/chat/ThreadDetailsCard.tsx (the card, its popover presentation) and
-// PanelLayoutControls.tsx (the toggle); its Lineage section is lineage.tsx.
-// docs/plans/t3-parity.md, D802.
+// The thread details panel (D802): its command, keybinding and contributions. The
+// toggle and panel are thread-details-panel.tsx and the Lineage section lineage.tsx,
+// each a chunk of its own (D440). docs/plans/t3-parity.md, D802.
 import type {
   ChatHeaderActionProps,
   ChatThreadDetailsProps,
@@ -10,22 +9,8 @@ import type {
   ThreadsCatalog,
 } from "@jhin/client-api";
 import { z, type PluginContext } from "@jhin/sdk";
-import {
-  Popover,
-  PopoverPopup,
-  PopoverTrigger,
-  ScrollArea,
-  Slot,
-  Toggle,
-  Tooltip,
-  TooltipPopup,
-  TooltipTrigger,
-  type SlotRegistry,
-} from "@jhin/ui";
-import { SquareMenuIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import type { SlotRegistry } from "@jhin/ui";
 
-import { useShortcutLabels } from "../../lib/hooks.ts";
 import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 
 /**
@@ -67,86 +52,14 @@ export function registerThreadDetails(
     );
   }
 
-  function ThreadDetailsToggle({ target, thread, project }: ChatHeaderActionProps) {
-    const threadId = thread?.id;
-    // The thread the panel is open for: another thread starts with it closed,
-    // in the same render.
-    const [openFor, setOpenFor] = useState<string | undefined>();
-    // Leaving the thread closes it, so coming back finds it closed too.
-    const [shown, setShown] = useState(threadId);
-    if (shown !== threadId) {
-      setShown(threadId);
-      setOpenFor(undefined);
-    }
-    const open = openFor !== undefined && openFor === threadId;
-    const setOpen = (next: boolean) => setOpenFor(next ? threadId : undefined);
-    const shortcut = useShortcutLabels(keybindings)("chat.thread-details.toggle");
-    // The Lineage chunk loads while the panel is still closed.
-    useEffect(() => {
-      void import("./lineage.tsx").catch(() => undefined);
-    }, []);
-    useEffect(() => {
-      if (threadId === undefined) return;
-      const own = () => setOpenFor((current) => (current === threadId ? undefined : threadId));
-      toggles.push(own);
-      return () => {
-        const at = toggles.indexOf(own);
-        if (at !== -1) toggles.splice(at, 1);
-      };
-    }, [threadId]);
-    if (thread === undefined) return null;
-    return (
-      <Popover onOpenChange={setOpen} open={open}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <PopoverTrigger
-                render={
-                  <Toggle
-                    aria-label="Toggle thread details panel"
-                    className="relative shrink-0"
-                    pressed={open}
-                    size="sm"
-                    variant="ghost"
-                  />
-                }
-              />
-            }
-          >
-            <SquareMenuIcon className="size-4" />
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">
-            Toggle thread details{shortcut ? ` (${shortcut})` : ""}
-          </TooltipPopup>
-        </Tooltip>
-        <PopoverPopup align="end" padding="none" side="bottom" variant="panel">
-          <div
-            aria-label="Thread details"
-            className="dropdown-glass isolate grid max-h-[min(calc(100dvh-6.5rem),calc(var(--available-height,100dvh)-1rem))] w-80 grid-rows-[minmax(0,1fr)] overflow-hidden rounded-3xl"
-            role="region"
-          >
-            <ScrollArea className="min-h-0" scrollFade>
-              <div className="peer empty:hidden">
-                <Slot
-                  name="chat.thread.details"
-                  props={
-                    {
-                      target,
-                      thread,
-                      ...(project === undefined ? {} : { project }),
-                    } satisfies ChatThreadDetailsProps
-                  }
-                />
-              </div>
-              <p className="hidden px-4 py-3 text-sm text-muted-foreground peer-empty:block">
-                No details for this thread
-              </p>
-            </ScrollArea>
-          </div>
-        </PopoverPopup>
-      </Popover>
-    );
-  }
+  // The toggle and its panel are a chunk of their own (D440), loaded with the header.
+  const ThreadDetailsToggle = lazyChunk(
+    () =>
+      import("./thread-details-panel.tsx").then((module) =>
+        module.createThreadDetailsToggle({ keybindings, toggles }),
+      ),
+    { loading: () => null, failed: () => null },
+  );
   context.subscriptions.add(
     slots.contribute<ChatHeaderActionProps>("chat.header.actions", {
       id: "jhin.chat.thread-details",
