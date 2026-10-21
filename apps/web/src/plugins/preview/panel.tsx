@@ -58,6 +58,7 @@ import {
   MinusIcon,
   MoreVerticalIcon,
   PlusIcon,
+  RadioTowerIcon,
   RefreshCwIcon,
   RotateCcwIcon,
   SmartphoneIcon,
@@ -523,9 +524,69 @@ function ChromeRow(props: {
 
 // --- The empty state ---------------------------------------------------------------------
 
-function EmptyState(props: { onOpen: (url: string) => void }) {
+/** A browser-ready server a terminal of the node started (`preview.servers.list`, D950). */
+interface LocalServer {
+  readonly host: string;
+  readonly port: number;
+  readonly url: string;
+  readonly processName: string | null;
+}
+
+/** T3 rescans every 3 s while the empty state shows. */
+const LOCAL_SERVERS_SCAN_MS = 3_000;
+
+/** The node's local servers, rescanned while the empty state shows (T3's port discovery). */
+function useLocalServers(services: Pick<PanelServices, "call">): readonly LocalServer[] {
+  const [servers, setServers] = useState<readonly LocalServer[]>([]);
+  // The latest services, so a new object each render does not restart the scans.
+  const latest = useRef(services);
+  latest.current = services;
+  useEffect(() => {
+    let live = true;
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const scan = () => {
+      // A hidden page does not scan; it looks again as soon as it is shown.
+      if (document.hidden) {
+        document.addEventListener("visibilitychange", scan, { once: true });
+        return;
+      }
+      latest.current.call<{ servers: LocalServer[] }>("preview.servers.list", {}).then(
+        (result) => {
+          if (!live) return;
+          failures = 0;
+          setServers((current) =>
+            JSON.stringify(current) === JSON.stringify(result.servers) ? current : result.servers,
+          );
+          timer = setTimeout(scan, LOCAL_SERVERS_SCAN_MS);
+        },
+        // A failure (a reconnecting socket, a node without the command) waits longer each time.
+        () => {
+          if (!live) return;
+          // A node that does not answer offers no servers that may be gone.
+          setServers((current) => (current.length === 0 ? current : []));
+          failures += 1;
+          timer = setTimeout(scan, Math.min(LOCAL_SERVERS_SCAN_MS * 2 ** failures, 60_000));
+        },
+      );
+    };
+    scan();
+    return () => {
+      live = false;
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", scan);
+    };
+  }, []);
+  return servers;
+}
+
+function EmptyState(props: {
+  onOpen: (url: string) => void;
+  services: Pick<PanelServices, "call">;
+}) {
   const [recent, setRecent] = useState(readRecentUrls);
-  if (recent.length === 0) {
+  const servers = useLocalServers(props.services);
+  if (recent.length === 0 && servers.length === 0) {
     return (
       <Empty size="compact">
         <EmptyHeader>
@@ -544,50 +605,87 @@ function EmptyState(props: { onOpen: (url: string) => void }) {
   return (
     <div className="scrollbar-gutter-both flex h-full min-h-0 overflow-y-auto px-5 py-8">
       <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
-        <section aria-label="Recently used" className="flex flex-col gap-2">
-          <h2 className="flex items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground">
-            <HistoryIcon className="size-3.5" />
-            Recently used
-          </h2>
-          <ul className="flex flex-col">
-            {recent.slice(0, 8).map((entry) => {
-              const label = urlLabel(entry.url);
-              return (
+        {recent.length > 0 ? (
+          <section aria-label="Recently used" className="flex flex-col gap-2">
+            <h2 className="flex items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground">
+              <HistoryIcon className="size-3.5" />
+              Recently used
+            </h2>
+            <ul className="flex flex-col">
+              {recent.slice(0, 8).map((entry) => {
+                const label = urlLabel(entry.url);
+                return (
+                  <li
+                    className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/60"
+                    key={entry.url}
+                  >
+                    <button
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                      onClick={() => props.onOpen(entry.url)}
+                      type="button"
+                    >
+                      <Globe2Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm">{entry.title || label}</span>
+                        {entry.title ? (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {label}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                    <button
+                      aria-label={`Remove ${label} from history`}
+                      className="opacity-0 group-hover:opacity-100"
+                      onClick={() => {
+                        forgetRecentUrl(entry.url);
+                        setRecent(readRecentUrls());
+                      }}
+                      type="button"
+                    >
+                      <XIcon className="size-3.5" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
+        {servers.length > 0 ? (
+          <section aria-label="Local servers" className="flex flex-col gap-2">
+            <h2 className="flex items-center gap-1.5 px-1 text-xs font-medium text-muted-foreground">
+              <RadioTowerIcon className="size-3.5" />
+              Local servers
+            </h2>
+            <ul className="flex flex-col">
+              {servers.map((server) => (
                 <li
-                  className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/60"
-                  key={entry.url}
+                  className="rounded-md px-2 py-1.5 hover:bg-accent/60"
+                  key={`${server.host}:${server.port}`}
                 >
                   <button
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                    onClick={() => props.onOpen(entry.url)}
+                    className="flex w-full min-w-0 items-center gap-2 text-left"
+                    onClick={() => props.onOpen(server.url)}
                     type="button"
                   >
                     <Globe2Icon className="size-3.5 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm">{entry.title || label}</span>
-                      {entry.title ? (
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {label}
-                        </span>
-                      ) : null}
+                      <span className="block truncate text-sm">
+                        {server.processName ?? "Listening"}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {`${server.host}:${server.port}`}
+                      </span>
                     </span>
                   </button>
-                  <button
-                    aria-label={`Remove ${label} from history`}
-                    className="opacity-0 group-hover:opacity-100"
-                    onClick={() => {
-                      forgetRecentUrl(entry.url);
-                      setRecent(readRecentUrls());
-                    }}
-                    type="button"
-                  >
-                    <XIcon className="size-3.5" />
-                  </button>
                 </li>
-              );
-            })}
-          </ul>
-        </section>
+              ))}
+            </ul>
+            <p className="px-1 text-xs text-muted-foreground">
+              Select a live local server to open it in this browser tab.
+            </p>
+          </section>
+        ) : null}
       </div>
     </div>
   );
@@ -609,7 +707,7 @@ function DraftView(props: { onOpen: (url: string) => void; services: PanelServic
         url=""
       />
       <div className="relative min-h-0 flex-1 overflow-hidden">
-        <EmptyState onOpen={props.onOpen} />
+        <EmptyState onOpen={props.onOpen} services={props.services} />
       </div>
     </div>
   );
@@ -972,7 +1070,10 @@ function TabView(props: {
         </div>
         {status.state === "idle" ? (
           <div className="absolute inset-0">
-            <EmptyState onOpen={(value) => navigate({ url: resolveAddressBarInput(value) })} />
+            <EmptyState
+              onOpen={(value) => navigate({ url: resolveAddressBarInput(value) })}
+              services={services}
+            />
           </div>
         ) : null}
         {status.state === "failed" ? (

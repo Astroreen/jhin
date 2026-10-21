@@ -5,6 +5,7 @@ import * as Path from "node:path";
 
 import { THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
+import { TERMINAL_SESSIONS_CAPABILITY, type TerminalSessions } from "@jhin/terminal-api";
 import {
   PREVIEW_BROWSER_CAPABILITY,
   PREVIEW_STREAM_PREFIX,
@@ -57,6 +58,10 @@ import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
 
 import { Chromium } from "./chromium.ts";
 import { createTabs, sessionKey } from "./tabs.ts";
+import { createLocalServerScanner, DiscoveredLocalServer, nodeScanHost } from "./local-servers.ts";
+
+/** How long one local server scan answers every panel (D950). */
+const SCAN_REUSE_MS = 2_000;
 
 const CONFIG_SECTION = "jhin.preview";
 
@@ -165,6 +170,59 @@ export default definePlugin({
       "preview.write": {
         title: "Control previews",
         description: "Open browser previews and host browser automation.",
+      },
+    });
+    // T3's discovered local servers (D950): what terminals of this node serve.
+    const scanner = createLocalServerScanner(nodeScanHost);
+    /**
+     * The scan running or just done, shared by the panels that ask meanwhile. Only a
+     * cache: lost on a reload, it is not kept in kernel state (rule 5).
+     */
+    let lastScan:
+      | {
+          finishedAt?: number;
+          readonly result: Promise<{ servers: DiscoveredLocalServer[]; scannedAt: string }>;
+        }
+      | undefined;
+    context.commands.register({
+      name: "preview.servers.list",
+      title: "List local servers",
+      description:
+        "Lists the browser-ready servers on this node that its terminals started (a process of a terminal listens on a local port and answers HTTP or HTTPS with a page), by port, with the terminal each runs in",
+      input: z.object({}),
+      output: z.object({ servers: z.array(DiscoveredLocalServer), scannedAt: z.string() }),
+      // It tells which threads' terminals run what: reading terminals is asked for too.
+      permissions: [...read, "terminals.read"],
+      // Every open panel asks every 3 s: one scan serves them all for a while (T3 scans once per tick).
+      handler: () => {
+        // A scan still running is shared however long it takes; a finished one for 2 s.
+        if (
+          lastScan !== undefined &&
+          (lastScan.finishedAt === undefined || Date.now() - lastScan.finishedAt < SCAN_REUSE_MS)
+        ) {
+          return lastScan.result;
+        }
+        const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
+        const owners = new Map<number, { threadId: string; terminalId: string }>();
+        for (const terminal of terminals?.list() ?? []) {
+          for (const pid of terminals?.processIds?.(terminal.threadId, terminal.terminalId) ?? []) {
+            owners.set(pid, { threadId: terminal.threadId, terminalId: terminal.terminalId });
+          }
+        }
+        const result = scanner
+          .scan(owners)
+          .then((servers) => ({ servers, scannedAt: new Date().toISOString() }));
+        const scan: { finishedAt?: number; result: typeof result } = { result };
+        lastScan = scan;
+        void result.then(
+          () => (scan.finishedAt = Date.now()),
+          () => undefined,
+        );
+        // A failed scan is not reused.
+        result.catch(() => {
+          if (lastScan?.result === result) lastScan = undefined;
+        });
+        return result;
       },
     });
     context.commands.register({

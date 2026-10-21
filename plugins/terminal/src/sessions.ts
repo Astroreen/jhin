@@ -23,7 +23,7 @@ import { realDelay, type Delay } from "./delay.ts";
 import { envKey, shellEnv, type EnvFilter } from "./env.ts";
 import type { HistoryStore } from "./history.ts";
 import type { PtyProcess, PtySpawner } from "./pty.ts";
-import { subprocessOf, type ProcessTable } from "./processes.ts";
+import { descendantsOf, subprocessOf, type ProcessTable } from "./processes.ts";
 import { lineBreaks, planTrim, type HistoryLimits } from "./scrollback.ts";
 
 const DEFAULT_COLS = 120;
@@ -144,6 +144,8 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
   let spawner: Promise<PtySpawner> | undefined;
   let poll: ReturnType<typeof setTimeout> | undefined;
   let pollFailures = 0;
+  /** The last process table read, for the processes a terminal runs (D949). */
+  let lastTable: ProcessTable | undefined;
   /** This run of the node's terminals: a client that comes back tells a restart by it. */
   const instance = options.instance ?? Crypto.randomUUID();
   const pollInterval = options.pollIntervalMs ?? POLL_INTERVAL_MS;
@@ -487,9 +489,12 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
     try {
       table = await options.processTable!();
       pollFailures = 0;
+      lastTable = table;
     } catch (error) {
       // A partial table would make every terminal look idle: this round is skipped.
       pollFailures += 1;
+      // An old table must not vouch for processes that may be gone (D949).
+      lastTable = undefined;
       // Said once per run of failures: polling backs off, and the indicator and
       // tab labels stop until `ps` answers again (a process table past its buffer).
       if (pollFailures === 1) {
@@ -662,6 +667,11 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
       return [...sessions.values()]
         .filter((session) => threadId === undefined || session.threadId === threadId)
         .map((session) => session.summary);
+    },
+    processIds(threadId, terminalId) {
+      const pid = sessions.get(key(threadId, terminalId))?.process?.pid;
+      if (pid === undefined) return [];
+      return lastTable === undefined ? [pid] : descendantsOf(lastTable, pid);
     },
     get(threadId, terminalId): TerminalSnapshot | undefined {
       const session = sessions.get(key(threadId, terminalId));

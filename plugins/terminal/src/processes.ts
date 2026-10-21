@@ -84,6 +84,17 @@ export function subprocessOf(table: ProcessTable, shellPid: number): Subprocess 
   return { running: true, label: (name(child) ?? "").slice(0, MAX_LABEL_LENGTH) };
 }
 
+/** `pid` and every process below it, parents first (D949). */
+export function descendantsOf(table: ProcessTable, pid: number): number[] {
+  const found = [pid];
+  for (let index = 0; index < found.length; index += 1) {
+    for (const child of table.childrenByParent.get(found[index]!) ?? []) {
+      if (!found.includes(child)) found.push(child);
+    }
+  }
+  return found;
+}
+
 /** The most output a process table read may take (D467). */
 const MAX_TABLE_BYTES = 16 * 1024 * 1024;
 

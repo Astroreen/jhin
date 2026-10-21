@@ -66,7 +66,7 @@ run bookkeeping, webhook tokens, signatures, prompt placeholders, rate limits
 and the delivery log), the browser preview (`plugins/preview` and
 `@jhin/preview-api`: the server browser's tabs, their control by agents and
 viewers, page operations, snapshots, recordings, viewport presets, URL
-normalisation and the tools' wording), rendered HTML (`plugins/html-render` and
+normalisation, the tools' wording and the local server scan), rendered HTML (`plugins/html-render` and
 `@jhin/preview-api`: the page's bootstrap, theme variables and guides, image
 inlining, the public proxy, console capture and measuring; the web client's
 frame), devices (`plugins/devices`: finding the Android SDK, the device tools'

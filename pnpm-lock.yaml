@@ -1121,6 +1121,9 @@ importers:
       '@jhin/storage-api':
         specifier: workspace:*
         version: link:../../packages/storage-api
+      '@jhin/terminal-api':
+        specifier: workspace:*
+        version: link:../../packages/terminal-api
       playwright-core:
         specifier: 'catalog:'
         version: 1.61.1
