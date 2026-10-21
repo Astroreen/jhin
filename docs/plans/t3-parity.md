@@ -1292,7 +1292,9 @@ and as events arrive).
   "Resume thread" for a stopped turn ("Continue where you left off.", which
   belongs with the composer, W6), a search index on disk (the node reads
   each thread's texts once per run and one thread after another on the first
-  search, D227) and T3's Lineage panel listing a
+  search, D227), searching again while a query stays typed (T3 asks again
+  after 30 s; here the next change of the query or of the nodes does) and
+  T3's Lineage panel listing a
   thread's forks.
 - Sidebar (T3's layout, D70, D75–D79): settling on a merged pull request,
   T3's per-thread "Auto-settle behavior" and its configurable number of days
