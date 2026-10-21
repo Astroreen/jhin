@@ -9,6 +9,8 @@ import {
   result,
   scriptedQuery,
   streamedBlock,
+  toolResult,
+  toolUse,
   type Script,
 } from "./support.ts";
 
@@ -184,5 +186,62 @@ describe("jhin.agent-claude: steering (D206)", () => {
       }
     });
     expect(answers(items)).toEqual(["working"]);
+  });
+
+  describe("moves the turn's foreground subagents to the background first (D805)", () => {
+    /** A turn that runs subagents, then streams; it records what was asked before the steer. */
+    function subagents(seen: { controls?: string[] }): Script {
+      return async function* (player) {
+        const first = player.call.prompt[0]!.uuid;
+        yield marked([first], init());
+        // Running in the foreground: the one to move.
+        yield marked([first], toolUse("a1", "toolu_fg", "Agent", { prompt: "look around" }));
+        // Already in the background, a nested one, and one that returned: left alone.
+        yield marked(
+          [first],
+          toolUse("a2", "toolu_bg", "Agent", { prompt: "watch", run_in_background: true }),
+        );
+        yield marked([first], toolUse("a3", "toolu_nested", "Agent", {}, "toolu_fg"));
+        yield marked([first], toolUse("a4", "toolu_done", "Task", { prompt: "quick" }));
+        yield marked([first], toolResult("toolu_done", "done"));
+        yield* streamedBlock("m1", 0, "text", ["working"]);
+        const steer = await player.nextPrompt();
+        seen.controls = player.call.controls.filter((entry) => entry.startsWith("background:"));
+        yield marked([first], aborted());
+        yield marked([steer!.uuid], init());
+        yield* streamedBlock("m2", 0, "text", ["steered"]);
+        yield marked([steer!.uuid], result());
+        await player.nextPrompt();
+      };
+    }
+
+    it("asks Claude Code to move each one before the steer goes in", async () => {
+      const seen: { controls?: string[] } = {};
+      const { turn } = start(subagents(seen));
+      let sent = false;
+      const items = await drain(turn, (item) => {
+        if (item.kind === "message.completed" && !sent) {
+          sent = true;
+          turn.steer!({ text: "change course" });
+        }
+      });
+      expect(seen.controls).toEqual(["background:toolu_fg"]);
+      expect(answers(items)).toEqual(["working", "steered"]);
+    });
+
+    it("steers as before when Claude Code refuses to move them", async () => {
+      const seen: { controls?: string[] } = {};
+      const { turn, state } = start(subagents(seen));
+      state.background = () => Promise.reject(new Error("background tasks are disabled"));
+      let sent = false;
+      const items = await drain(turn, (item) => {
+        if (item.kind === "message.completed" && !sent) {
+          sent = true;
+          turn.steer!({ text: "change course" });
+        }
+      });
+      expect(seen.controls).toEqual(["background:toolu_fg"]);
+      expect(answers(items)).toEqual(["working", "steered"]);
+    });
   });
 });

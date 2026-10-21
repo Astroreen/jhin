@@ -820,8 +820,19 @@ export function claudeTurn(
           }),
         );
         if (finished) return;
+        // Its foreground subagents keep running: a steer would cancel them (D805).
+        await current?.backgroundSubagents();
+        if (finished) return;
         // Into the running query now, or after the turn's message once it has one.
-        current?.steer(message);
+        try {
+          current?.steer(message);
+        } catch (error) {
+          // The turn's messages ended while Claude Code moved the subagents (see Deferred).
+          deps.log?.("claude code ended the turn before it took a steer", {
+            error: String(error),
+          });
+          return;
+        }
         steered.push(message);
       });
     },

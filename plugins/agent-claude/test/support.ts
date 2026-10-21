@@ -51,6 +51,8 @@ export function scriptedQuery(...scripts: Script[]) {
     mcp: "connect" | "fail" | "silent";
     /** What an interrupt answers with: the receipt of a current CLI (D350). */
     receipt?: (call: Call) => unknown;
+    /** How `backgroundTasks` answers (D805); it moves the task by default. */
+    background?: (toolUseId: string | undefined) => Promise<boolean>;
   } = {
     refuseControls: false,
     mcp: "connect",
@@ -122,6 +124,10 @@ export function scriptedQuery(...scripts: Script[]) {
       close: () => {
         call.closed = true;
         closeCall();
+      },
+      backgroundTasks: (toolUseId?: string) => {
+        call.controls.push(`background:${toolUseId}`);
+        return state.background?.(toolUseId) ?? Promise.resolve(true);
       },
       setModel: (model) => control(`model:${model}`),
       setPermissionMode: (mode) => control(`mode:${mode}`),
