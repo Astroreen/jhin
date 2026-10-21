@@ -367,13 +367,21 @@ describe("code blocks in the prompt (D841–D843)", () => {
     await editor.reported("```python title=x\nconst a = 1;2\n```");
     expect(page.getByRole("combobox", { name: "Code language: Python" }).query()).toBeTruthy();
 
+    await userEvent.click(page.getByRole("combobox", { name: "Code language: Python" }));
+    await userEvent.fill(page.getByRole("combobox", { name: "Search languages" }), "zzz");
+    await expect.element(page.getByText("No matching languages.")).toBeVisible();
+    await userEvent.fill(page.getByRole("combobox", { name: "Search languages" }), "plain");
+    await userEvent.click(page.getByRole("option", { name: "Plain text" }));
+    // Something follows the language, so plain text writes `text` to keep it.
+    await editor.reported("```text title=x\nconst a = 1;2\n```");
+
     editor.setDisabled(true);
     await expect
-      .element(page.getByRole("combobox", { name: "Code language: Python" }))
+      .element(page.getByRole("combobox", { name: "Code language: Plain text" }))
       .toBeDisabled();
     editor.setDisabled(false);
     await expect
-      .element(page.getByRole("combobox", { name: "Code language: Python" }))
+      .element(page.getByRole("combobox", { name: "Code language: Plain text" }))
       .toBeEnabled();
   });
 });

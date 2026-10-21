@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { codeLanguageEntry } from "../src/lib/code-languages.ts";
+import { CODE_BLOCK_LANGUAGES, codeLanguageEntry } from "../src/lib/code-languages.ts";
 import { highlightTokens, languageOf } from "../src/lib/highlight.ts";
 
 describe("highlightTokens (D841)", () => {
@@ -22,6 +22,10 @@ describe("highlightTokens (D841)", () => {
     expect(languageOf("__proto__")).toBeUndefined();
     expect(codeLanguageEntry("toString")).toBeNull();
     expect(languageOf("ts")).toBe("typescript");
+    // Every language the composer's picker offers has a grammar.
+    for (const { id } of CODE_BLOCK_LANGUAGES.filter((entry) => entry.id !== "")) {
+      expect(languageOf(id), id).toBeDefined();
+    }
     expect(codeLanguageEntry("py")?.label).toBe("Python");
   });
 });

@@ -122,7 +122,8 @@ export const ComposerCodeBlockHighlight = Extension.create({
               // Identical blocks share a signature: one tokenize serves them all.
               if (inFlight.has(signature)) continue;
               inFlight.add(signature);
-              // A grammar that fails to load leaves the block plain, once, not on every keystroke.
+              // A failed tokenize leaves this text plain; a grammar that failed stays a rejected
+              // promise in `lib/highlight.ts`, so later edits do not load it again.
               void highlightTokens(node.textContent, language!)
                 .catch(() => [])
                 .then((tokens) => {
