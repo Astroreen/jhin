@@ -113,11 +113,11 @@ async function startNode(options: { executablePath?: string } = {}) {
     },
   });
   const { client } = connectInMemory(kernel, { log: storage.storage.log, streams: live });
-  const other = (id: string) =>
+  const other = (id: string, permissions: string[] = ["*"]) =>
     connectInMemory(kernel, {
       log: storage.storage.log,
       streams: live,
-      caller: { id, permissions: ["*"] },
+      caller: { id, permissions },
     }).client;
   const stop = async () => {
     client.close();
@@ -608,5 +608,44 @@ describe("jhin.preview", () => {
     } finally {
       await tabs.dispose();
     }
+  });
+  it("keeps the panel's commands from an agent's token", async () => {
+    const { client, other } = await node();
+    const opened = await client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/second`,
+    });
+    const agent = other("agent-token", ["preview.read", "preview.write"]);
+    const refused = await rejection(
+      agent.call("preview.tab.control", {
+        threadId: thread,
+        tabId: opened.tabId,
+        viewer: "v1",
+        take: true,
+      }),
+    );
+    expect(refused.code).toBe("PERMISSION_DENIED");
+    agent.close();
+  });
+
+  it("lets only a session that may act stop a tab's recording", async () => {
+    const { client } = await node();
+    const opened = await client.call<PreviewStatus>("preview.open", {
+      threadId: thread,
+      url: `${origin}/second`,
+    });
+    await client.call("preview.recording.start", { threadId: thread });
+    const refused = await rejection(
+      client.call("preview.recording.stop", {
+        threadId: thread,
+        tabId: opened.tabId,
+        session: "subagent",
+      }),
+    );
+    expect(refused.details).toMatchObject({ reason: "agentMismatch" });
+    const artifact = await client.call<{ path: string }>("preview.recording.stop", {
+      threadId: thread,
+    });
+    Fs.rmSync(artifact.path);
   });
 });

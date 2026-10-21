@@ -77,7 +77,10 @@ CLI, and the web client through RPC.
   `preview.snapshot`, `preview.wait.for`) and subscribing to its streams takes
   `preview.read`; everything else, `preview.evaluate` and `preview.upload`
   included (they run code in the page and read the node's files), takes
-  `preview.write`. `html.preview` takes `preview.write` (it reads image files
+  `preview.write`. The panel's commands (`preview.tab.*`, D402) act as a
+  human viewer that may take a tab from any agent, so they take
+  `preview.control`, which a token given to an agent should not hold.
+  `html.preview` takes `preview.write` (it reads image files
   of the node, as T3 only lets its own agents do), `html.render` takes
   `threads.write`; the device commands take `devices.read` (`device.list`,
   `device.screenshot`) and `devices.write`.

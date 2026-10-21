@@ -114,6 +114,8 @@ interface Tab {
   reveal: boolean;
   dialog: Dialog | null;
   fileChooser: FileChooser | null;
+  /** The open chooser's `accept` attribute. */
+  fileChooserAccept: string;
   readonly downloads: {
     fileName: string;
     path: string;
@@ -129,6 +131,7 @@ interface Tab {
   viewers: number;
   frameScale: number;
   screencast: Promise<Screencast | null> | null;
+  screencastSync: Promise<void>;
   /** Snapshots and recordings in progress: the viewers' screencast waits for them. */
   capturing: number;
   captureLock: Promise<void>;
@@ -234,7 +237,7 @@ export function createTabs(options: TabsOptions) {
         ? null
         : {
             multiple: tab.fileChooser.isMultiple(),
-            accept: "",
+            accept: tab.fileChooserAccept,
           },
     recording: tab.recording !== null,
     visible: tab.viewers > 0,
@@ -343,6 +346,7 @@ export function createTabs(options: TabsOptions) {
       reveal: input.reveal,
       dialog: null,
       fileChooser: null,
+      fileChooserAccept: "",
       downloads: [],
       consoleEntries: [],
       networkEntries: [],
@@ -352,6 +356,7 @@ export function createTabs(options: TabsOptions) {
       viewers: 0,
       frameScale: 1,
       screencast: null,
+      screencastSync: Promise.resolve(),
       capturing: 0,
       captureLock: Promise.resolve(),
       lastFrame: undefined,
@@ -434,7 +439,17 @@ export function createTabs(options: TabsOptions) {
     });
     page.on("filechooser", (chooser) => {
       tab.fileChooser = chooser;
+      tab.fileChooserAccept = "";
       changed(tab);
+      void chooser
+        .element()
+        .getAttribute("accept")
+        .then((accept) => {
+          if (tab.fileChooser !== chooser) return;
+          tab.fileChooserAccept = accept ?? "";
+          changed(tab);
+        })
+        .catch(() => undefined);
     });
     page.on("download", (download) => void saveDownload(tab, download));
     // Popups become tabs and keep `window.opener`, so sign-in popups can report back.
@@ -593,7 +608,14 @@ export function createTabs(options: TabsOptions) {
   }
 
   /** Starts, restarts (another size) or stops the viewers' screencast. */
-  async function syncScreencast(tab: Tab) {
+  /** Calls run one after another per tab, so two never start a screencast each. */
+  function syncScreencast(tab: Tab): Promise<void> {
+    const next = tab.screencastSync.then(() => syncScreencastNow(tab));
+    tab.screencastSync = next.catch(() => undefined);
+    return next;
+  }
+
+  async function syncScreencastNow(tab: Tab) {
     if (tab.viewers === 0 || tab.closing || tab.capturing > 0) {
       await stopScreencast(tab);
       return;
@@ -1274,6 +1296,10 @@ export function createTabs(options: TabsOptions) {
           }
           throw error;
         }
+        // Only a session that may act on the tab stops its recording, as one starts it.
+        if (!tab.control.agentMayAct(agent)) throw controlError("agentMismatch");
+        if (tab.control.controller !== null) throw controlError("humanControl");
+        markUsed(agent, tab);
         return withCapture(tab, () => stopRecording(tab));
       });
     },

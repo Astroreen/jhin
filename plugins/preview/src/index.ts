@@ -151,6 +151,8 @@ export default definePlugin({
 
     const read = ["preview.read"];
     const write = ["preview.write"];
+    // The panel's commands act as a human viewer: agents' tokens do not hold this (D393).
+    const control = ["preview.control"];
     const agent = (input: PreviewTarget, invocation: Invocation) => sessionKey(input, invocation);
 
     // --- The agent's tools (T3's preview_* and t3_preview_*) --------------------------
@@ -403,7 +405,7 @@ export default definePlugin({
       description: "Opens a tab for the user in a thread's browser, optionally at a URL.",
       input: PreviewTabOpenInput,
       output: PreviewTab,
-      permissions: write,
+      permissions: control,
       handler: (input) => tabs.openForHuman(input),
     });
     context.commands.register({
@@ -412,7 +414,7 @@ export default definePlugin({
       description: "Closes a tab of a thread's browser, whoever owns it.",
       input: PreviewTabCloseInput,
       output: z.object({ closed: z.number().int() }),
-      permissions: write,
+      permissions: control,
       handler: async (input) => ({ closed: await tabs.close(input.threadId, input.tabId) }),
     });
     context.commands.register({
@@ -422,7 +424,7 @@ export default definePlugin({
         "Changes a tab's viewport, appearance or zoom, reloads it ignoring the cache, or clears cookies or the cache; needs no control of the tab.",
       input: PreviewTabAdjustInput,
       output: PreviewTab,
-      permissions: write,
+      permissions: control,
       handler: (input) => tabs.adjust(input),
     });
     context.commands.register({
@@ -432,7 +434,7 @@ export default definePlugin({
         "A viewer takes control of a tab (from an agent too) or releases it; while it holds control, its input and navigation reach the page.",
       input: PreviewTabControlInput,
       output: PreviewTab,
-      permissions: write,
+      permissions: control,
       handler: (input) => tabs.control(input),
     });
     context.commands.register({
@@ -441,7 +443,7 @@ export default definePlugin({
       description: "Goes to a URL, back, forward or reloads, for the viewer holding control.",
       input: PreviewTabNavigateInput,
       output: PreviewTab,
-      permissions: write,
+      permissions: control,
       handler: (input) => tabs.navigateAsHuman(input),
     });
     context.commands.register({
@@ -450,7 +452,7 @@ export default definePlugin({
       description: "Accepts or dismisses a tab's dialog, for the viewer holding control.",
       input: PreviewTabDialogInput,
       output: PreviewTab,
-      permissions: write,
+      permissions: control,
       handler: (input) => tabs.dialogAsHuman(input),
     });
     context.commands.register({
@@ -460,7 +462,7 @@ export default definePlugin({
         "Mouse, wheel, key and text input of the viewer holding control, in page CSS pixels; a resize (the panel's size) needs no control.",
       input: PreviewTabInputInput,
       output: Done,
-      permissions: write,
+      permissions: control,
       handler: async (input) => {
         await tabs.input(input);
         return {};
