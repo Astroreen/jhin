@@ -360,6 +360,9 @@ context.config.define("acme.http", Config);
 - Drafts and device settings through mesh members: a device shares them
   with the nodes it is connected to (D486, D487); two devices that share no
   node do not agree, and a member's `threads/drafts` is not followed.
+- Sending a draft again after its node could not take it (D486): the text
+  goes to the node when it is typed; if the call fails, the node has it
+  only after the next edit of that draft.
 - Pruning kept drafts (D486): a node keeps a draft per thread and project
   until it is cleared, also after its thread is deleted.
 - Clock skew between devices: a draft's and a device setting's `at` is
