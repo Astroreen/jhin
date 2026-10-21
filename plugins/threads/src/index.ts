@@ -15,6 +15,7 @@ import {
   GenerationOf,
   INTERACTION_MODES,
   RUNTIME_MODES,
+  SUBAGENT_WORK_KINDS,
   THREADS_STREAM,
   applicableModelOptions,
   ThreadEvents,
@@ -78,14 +79,7 @@ const STATUS_TTL_MS = 30_000;
 export const DEFAULT_THREAD_TITLE = "New thread";
 const MAX_TITLE_LENGTH = 60;
 /** What a subagent's thread shows of its items (D877). */
-const SUBAGENT_WORK: ReadonlySet<string> = new Set([
-  "message.delta",
-  "message.completed",
-  "reasoning.delta",
-  "reasoning.completed",
-  "tool.started",
-  "tool.completed",
-]);
+const SUBAGENT_WORK: ReadonlySet<string> = new Set(SUBAGENT_WORK_KINDS);
 /** Per image sent as a data URL (D54; base64 adds a third). */
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 /** What `projects.write-file` writes at most: a plan, a note, never a dump. */
@@ -1393,6 +1387,8 @@ export default definePlugin({
           ]);
           // Known once its turn is recorded: its items and its end have somewhere to go.
           subagents.set(item.subagentId, { threadId: child.id, turnId: childTurn, open: true });
+          // The turn ended while it was being made: it ends with the turn too.
+          if (entry.ending) await endSubagent(item.subagentId, "interrupted");
           await log.append(stream, [
             {
               type: ThreadEvents.subagentStarted,

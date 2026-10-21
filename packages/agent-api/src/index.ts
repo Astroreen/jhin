@@ -207,18 +207,19 @@ export type AgentItem =
       readonly error?: string;
     };
 
-/** The items a subagent's thread shows (D877); a runtime's others stay in the turn. */
+/** The kinds of items a subagent's thread shows (D877); a runtime's others stay in the turn. */
+export const SUBAGENT_WORK_KINDS = [
+  "message.delta",
+  "message.completed",
+  "reasoning.delta",
+  "reasoning.completed",
+  "tool.started",
+  "tool.completed",
+] as const;
+
 export type SubagentWorkItem = Extract<
   AgentItem,
-  {
-    readonly kind:
-      | "message.delta"
-      | "message.completed"
-      | "reasoning.delta"
-      | "reasoning.completed"
-      | "tool.started"
-      | "tool.completed";
-  }
+  { readonly kind: (typeof SUBAGENT_WORK_KINDS)[number] }
 >;
 
 export interface AgentTurn {

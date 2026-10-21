@@ -407,19 +407,22 @@ export function claudeTurn(
 
   /** A subagent's own messages, as items of its thread (D878): whole messages, not streamed. */
   const subagentTools = new Map<string, string>();
+  /** Numbers a subagent's message and reasoning items, unique within the turn. */
+  let subagentItems = 0;
   /** The subagents this turn started; a subagent's own subagents are not among them. */
   const subagentIds = new Set<string>();
   const projectSubagent = (subagentId: string, message: SDKMessage) => {
     const items: SubagentWorkItem[] = [];
     if (message.type === "assistant") {
-      message.message.content.forEach((block, index) => {
+      message.message.content.forEach((block) => {
         if (block.type === "text" || block.type === "thinking") {
           const text = block.type === "text" ? block.text : block.thinking;
           if (text.trim().length === 0) return;
           const kind = block.type === "text" ? "message" : "reasoning";
           items.push({
             kind: `${kind}.completed`,
-            itemId: `${subagentId}:${message.message.id}:${index}`,
+            // Claude Code sends a message's blocks in frames of their own, each at index 0.
+            itemId: `${subagentId}:${(subagentItems += 1)}`,
             text,
           });
         } else if (block.type === "tool_use") {
