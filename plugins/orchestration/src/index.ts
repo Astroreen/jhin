@@ -1179,7 +1179,7 @@ export default definePlugin({
             agentId: z.string().min(1).optional(),
             model: z.string().min(1).optional(),
             options: TargetOptions.optional().describe(
-              "Model option selections advertised by orchestration_capabilities, as [{id, value}] or {id: value}.",
+              "Model option selections advertised by orchestration_capabilities, as [{id, value}] or {id: value}: at most 20 distinct ids, the last value of an id winning. Options the model does not declare are dropped.",
             ),
           })
           .optional(),

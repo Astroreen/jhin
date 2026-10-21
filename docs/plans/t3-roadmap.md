@@ -238,8 +238,8 @@ block of 20 after D980 and writes it here.
   commands answering whether they did anything (#144);
   what is left is in `t3-parity.md` Deferred.
 - **W20:** subagent rows and child threads hidden from the sidebar, the
-  workflow progress tree with its Stop button, a task's completion steered
-  into the parent's turn, per-turn options for a child, worktree isolation for
+  workflow progress tree with its Stop button, a task's completion delivered
+  after the parent's turn (T3 queues it, D869), per-turn options for a child, worktree isolation for
   launches, `resumeFromRunId`, `budget`, nested and saved workflows; Claude
   Code subagents shown as child threads; the thread's automations panel, the
   editor's workspace and model pickers, `secretRef` webhook secrets through
