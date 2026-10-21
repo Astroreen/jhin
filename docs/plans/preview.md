@@ -347,8 +347,8 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
   process name (or "Listening") and `host:port`, T3's hint "Select a live
   local server to open it in this browser tab.", and a click opens the
   server in the browser tab. It rescans every 3 s while it shows and the
-  page is visible, T3's cadence, from the client, and stops when the node
-  refuses the command; the node answers every panel that asks within 2 s
+  page is visible, T3's cadence, from the client, backing off up to a minute while the node does not
+  answer; the node answers every panel that asks within 2 s
   from one scan. `lsof`'s exit code 1 after a warning still counts, as in
   T3.
 

@@ -543,6 +543,7 @@ function useLocalServers(services: Pick<PanelServices, "call">): readonly LocalS
   latest.current = services;
   useEffect(() => {
     let live = true;
+    let failures = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const scan = () => {
       // A hidden page does not scan; it looks again once shown.
@@ -553,13 +554,18 @@ function useLocalServers(services: Pick<PanelServices, "call">): readonly LocalS
       latest.current.call<{ servers: LocalServer[] }>("preview.servers.list", {}).then(
         (result) => {
           if (!live) return;
+          failures = 0;
           setServers((current) =>
             JSON.stringify(current) === JSON.stringify(result.servers) ? current : result.servers,
           );
           timer = setTimeout(scan, LOCAL_SERVERS_SCAN_MS);
         },
-        // A node without the command (or one that refuses it) has no local servers: stop asking.
-        () => undefined,
+        // A failure (a reconnecting socket, a node without the command) waits longer each time.
+        () => {
+          if (!live) return;
+          failures += 1;
+          timer = setTimeout(scan, Math.min(LOCAL_SERVERS_SCAN_MS * 2 ** failures, 60_000));
+        },
       );
     };
     scan();

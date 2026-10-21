@@ -174,7 +174,10 @@ export default definePlugin({
     });
     // T3's discovered local servers (D950): what terminals of this node serve.
     const scanner = createLocalServerScanner(nodeScanHost);
-    /** The scan running or just done, shared by the panels that ask meanwhile. */
+    /**
+     * The scan running or just done, shared by the panels that ask meanwhile. Only a
+     * cache: lost on a reload, it is not kept in kernel state (rule 5).
+     */
     let lastScan:
       | {
           readonly startedAt: number;

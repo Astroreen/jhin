@@ -282,6 +282,8 @@ export function createLocalServerScanner(host: ScanHost) {
       return cached.isWeb;
     }
     const web = await probeWebUrl(url);
+    // Ports come and go: expired probes leave, so the cache stays as small as the live servers.
+    for (const [key, probe] of webProbes) if (probe.expiresAt <= host.now()) webProbes.delete(key);
     webProbes.set(url, { pid, isWeb: web, expiresAt: host.now() + WEB_PROBE_CACHE_TTL_MS });
     return web;
   }
