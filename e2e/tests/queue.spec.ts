@@ -1,6 +1,6 @@
 // The queue on the node and steering (docs/plans/t3-parity.md, D201–D210),
 // against the fake agent: "/hold" holds its turn until it is stopped or steered.
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { startNode, type RunningNode } from "./support/node.ts";
 
@@ -21,6 +21,16 @@ async function holdingThread(page: Page) {
   await message.press("Enter");
   await expect(page.getByRole("article", { name: "Agent" })).toHaveText("Holding");
   return message;
+}
+
+/**
+ * Empties the composer as a user would: select all, then delete. `fill("")` can
+ * leave the rich-text editor's text in place.
+ */
+async function clear(message: Locator) {
+  await message.press("ControlOrMeta+a");
+  await message.press("Backspace");
+  await expect(message).toHaveText("");
 }
 
 const queued = (page: Page) => page.getByRole("region", { name: /queued message/ });
@@ -113,7 +123,7 @@ test("holds the queue after a stop until it is resumed, and steers with the othe
   await message.press("End");
   await message.press("Alt+ArrowUp");
   await expect(message).toHaveText("half typed");
-  await message.fill("");
+  await clear(message);
   // The cleared composer is rendered (the caret at its start) before Alt+↑.
   await expect(message).toHaveText("");
   await expect(page.getByRole("button", { name: "Stop generation" })).toBeVisible();
@@ -141,7 +151,7 @@ test("resumes a stopped turn with T3's message, then lets the held queue go on (
   await message.fill("typed");
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
   await expect(resume).toHaveCount(0);
-  await message.fill("");
+  await clear(message);
   await expect(resume).toBeVisible();
   const shot = info.outputPath("resume-thread.png");
   await page.screenshot({ path: shot });
