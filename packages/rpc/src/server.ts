@@ -184,7 +184,11 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
           if (subscriptions.get(id) !== followed || event.sequence <= lastSent) return;
           lastSent = event.sequence;
           peer.send(
-            JSON.stringify({ jsonrpc: "2.0", method: RPC_EVENT, params: { subscription: id, event } }),
+            JSON.stringify({
+              jsonrpc: "2.0",
+              method: RPC_EVENT,
+              params: { subscription: id, event },
+            }),
           );
         },
         (error) => {
