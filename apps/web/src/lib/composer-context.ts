@@ -7,14 +7,24 @@
 // "Add to chat" put beside the prompt, named in it by a `jhin-context://` reference.
 import {
   isKnownContextRecord,
+  MESSAGE_CONTEXT_TERMINAL_TEXT_MAX_CHARS,
   type MessageContextRecord,
   type PullRequestContextMetadata,
   type ReviewCommentContextRecord,
   sanitizeContextLabel,
+  type TerminalContextRecord,
   type ThreadContextRecord,
   toKindScopedContextId,
 } from "@jhin/agent-api";
 import type { NodeTarget } from "@jhin/client-api";
+
+const TRUNCATION_MARKER = "\n… truncated …";
+
+/** T3's clampContextText: the text, or its start with T3's marker within `max`. */
+function clampContextText(value: string, max: number): string {
+  if (value.length <= max) return value;
+  return `${value.slice(0, Math.max(0, max - TRUNCATION_MARKER.length))}${TRUNCATION_MARKER}`;
+}
 
 /** T3's boundedField: one line of a pull request's own text, at most 2 048 characters. */
 function boundedField(value: string): string {
@@ -78,6 +88,45 @@ export function threadContextRecord(input: {
     nodeId: input.nodeId,
     threadId: input.threadId,
     title: label,
+  };
+}
+
+/** T3's formatTerminalContextLabel: `Terminal 1 lines 3-5`, `Terminal 1 line 3`. */
+function terminalContextLabel(input: {
+  readonly terminalLabel: string;
+  readonly lineStart: number;
+  readonly lineEnd: number;
+}): string {
+  return input.lineStart === input.lineEnd
+    ? `${input.terminalLabel} line ${input.lineStart}`
+    : `${input.terminalLabel} lines ${input.lineStart}-${input.lineEnd}`;
+}
+
+/** Lines of a terminal, from "Add to chat" (T3's terminalContextRecord). */
+export function terminalContextRecord(input: {
+  /** Names this excerpt: two excerpts of one terminal are two records. */
+  readonly id: string;
+  readonly terminalId: string;
+  readonly terminalLabel: string;
+  readonly lineStart: number;
+  readonly lineEnd: number;
+  readonly text: string;
+}): TerminalContextRecord {
+  return {
+    version: 1,
+    kind: "terminal",
+    contextId: toKindScopedContextId("terminal", input.id),
+    label: sanitizeContextLabel(terminalContextLabel(input), "terminal"),
+    terminalId: input.terminalId,
+    terminalLabel: input.terminalLabel,
+    lineStart: input.lineStart,
+    lineEnd: input.lineEnd,
+    // T3's normalizeTerminalContextText (line ends as `\n`, no blank lines around) and its
+    // clampContextText: at most 64 000 characters, the cut marked.
+    text: clampContextText(
+      input.text.replace(/\r\n/g, "\n").replace(/^\n+|\n+$/g, ""),
+      MESSAGE_CONTEXT_TERMINAL_TEXT_MAX_CHARS,
+    ),
   };
 }
 

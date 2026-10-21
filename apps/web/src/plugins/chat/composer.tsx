@@ -3,7 +3,12 @@
 // ComposerPendingApprovalPanel.tsx, ComposerPendingApprovalActions.tsx,
 // ComposerPendingUserInputPanel.tsx, QueuedRunsControl.tsx, ProviderModelPicker.tsx,
 // ContextWindowMeter.tsx and runtimeModeConfig.ts. The prompt is T3's tiptap editor (prompt-editor.tsx).
-import { applicableModelOptions, referencedContext } from "@jhin/agent-api";
+import {
+  applicableModelOptions,
+  formatContextReference,
+  MESSAGE_CONTEXT_MAX_RECORDS,
+  referencedContext,
+} from "@jhin/agent-api";
 import type {
   AgentResponse,
   MessageContext,
@@ -150,7 +155,7 @@ import {
   ComposerSelectControl,
 } from "../../lib/composer-control.tsx";
 import { dispatchMode } from "./send.ts";
-import { useAgents, useChat } from "./services.ts";
+import { type ContextInsertion, useAgents, useChat } from "./services.ts";
 import { ComposerSurface } from "./surface.tsx";
 
 /** What the next turn runs with. */
@@ -189,6 +194,11 @@ export interface ComposerHandleApi {
   focus(): void;
   /** Puts text at the cursor (after the prompt when the field is not focused), then focuses. */
   insert(text: string): void;
+  /**
+   * Puts a context record beside the prompt and its reference at the cursor (T3's
+   * addTerminalContext, D1009), or why it cannot.
+   */
+  insertContext(record: MessageContextRecord): ContextInsertion;
   toggleModelPicker(): void;
   cycleRuntimeMode(): void;
   togglePlanMode(): void;
@@ -1404,6 +1414,19 @@ export function Composer(props: ComposerProps) {
     editor.current?.replaceRange(at, at, `${gap}${text}`);
     editor.current?.focus();
   };
+  const insertContext = (record: MessageContextRecord): ContextInsertion => {
+    if (literalAnswer || approval !== undefined) return "not-now";
+    // T3's bound on a message's records; one picked again replaces its own.
+    const fresh = !contexts.some((kept) => kept.contextId === record.contextId);
+    if (fresh && contexts.length >= MESSAGE_CONTEXT_MAX_RECORDS) return "full";
+    setContexts((current) => withContexts(current, [record]));
+    const at = focused ? Math.min(cursor, prompt.length) : prompt.length;
+    const before = prompt.slice(0, at);
+    const gap = before.length > 0 && !/\s$/.test(before) ? " " : "";
+    editor.current?.replaceRange(at, at, `${gap}${formatContextReference(record)} `);
+    editor.current?.focus();
+    return "inserted";
+  };
   const menuListId = useId();
   // `@` offers the node's other threads, linked by their address (D24): the node's own id.
   // They are followed only while `@` is typed, as T3's useThreadShells(isPathTrigger).
@@ -1494,6 +1517,7 @@ export function Composer(props: ComposerProps) {
     draft: () => ({ prompt, attachments: draftAttachments(attachments), contexts }),
     focus,
     insert,
+    insertContext,
     toggleModelPicker: () => setPickerOpen((open) => !open),
     cycleRuntimeMode,
     togglePlanMode,

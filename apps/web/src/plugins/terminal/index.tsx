@@ -50,7 +50,7 @@ import {
   type ThreadTerminalUiState,
 } from "../../lib/terminal-state.ts";
 import { terminalChannel } from "./channel.ts";
-import { formatTerminalContext, type TerminalContextSelection } from "./context.ts";
+import { addToChatCall, type TerminalContextSelection } from "./context.ts";
 import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { createNodeTerminals } from "./sessions.ts";
 
@@ -135,14 +135,29 @@ export const terminalPlugin = builtin(
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const threads = context.services.get<ThreadsCatalog>(THREADS_CAPABILITY);
       context.config.define(SETTINGS_SECTION, TerminalSettings);
-      /** "Add to chat" (D473): the selection into the open thread's composer. */
+      /** Without the chat plugin there is no composer: the menus leave the item out. */
+      const hasCommand = (name: string) =>
+        context.commands.list().some((command) => command.name === name);
+      /**
+       * "Add to chat" (D473): the selection into the open thread's composer, as T3's inline
+       * terminal chip with its record (D1009); as T3's legacy text where the chat takes no records.
+       */
       const addToChat = (selection: TerminalContextSelection) => {
+        const { command, input } = addToChatCall(selection, hasCommand);
         void context.commands
-          .execute("chat.composer.insert", { text: formatTerminalContext(selection) })
+          .execute(command, input)
           .then((result) => {
-            if ((result as { inserted?: boolean }).inserted !== true) {
-              toasts?.show({ type: "info", title: "No message box to add the selection to" });
-            }
+            const answer = result as { inserted?: boolean; reason?: string };
+            if (answer.inserted === true) return;
+            toasts?.show({
+              type: "info",
+              title:
+                answer.reason === "full"
+                  ? "The message holds as much context as it can"
+                  : answer.reason === "not-now"
+                    ? "The message box takes no context now"
+                    : "No message box to add the selection to",
+            });
           })
           .catch((error: unknown) => {
             context.log.warn("terminal selection not added to chat", { error: String(error) });
@@ -153,10 +168,8 @@ export const terminalPlugin = builtin(
             });
           });
       };
-      /** Without the chat plugin there is no composer: the menus leave the item out. */
-      const hasCommand = (name: string) =>
-        context.commands.list().some((command) => command.name === name);
-      const canAddToChat = () => hasCommand("chat.composer.insert");
+      const canAddToChat = () =>
+        hasCommand("chat.composer.insert-context") || hasCommand("chat.composer.insert");
       const ui = context.subscriptions.add(createTerminalUiStore());
       const terminals = context.subscriptions.add(createNodeTerminals(connections));
       /** Bumped to put the focus back in the active terminal. */

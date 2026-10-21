@@ -1,8 +1,8 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md) at eb7b35ac: the schemas of
 // packages/contracts/src/composerContext.ts (OrchestrationMessageContext and its records).
 //
-// A message's context records as commands take them (t3-parity.md D1006): `threads.send` and the
-// queue. In a message each record is checked on its own, and one that fails is dropped, not the
+// A message's context records as commands take them (t3-parity.md D1006): `threads.send`, the
+// queue and the composer's `chat.composer.insert-context` (D1009). In a message each record is checked on its own, and one that fails is dropped, not the
 // message, as in T3.
 import { z } from "@jhin/sdk";
 

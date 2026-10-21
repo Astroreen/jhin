@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { formatTerminalContext, terminalSelectionLines } from "../src/plugins/terminal/context.ts";
+import { terminalContextRecord } from "../src/lib/composer-context.ts";
+import {
+  addToChatCall,
+  formatTerminalContext,
+  terminalSelectionLines,
+} from "../src/plugins/terminal/context.ts";
 import {
   collectWrappedTerminalLinkLine,
   extractTerminalLinks,
@@ -56,6 +61,47 @@ describe("Add to chat (D473)", () => {
     ).toBe(
       "@terminal-1:3-4\n\n<terminal_context>\n- Terminal 1 lines 3-4:\n  3 | $ ls\n  4 | README.md\n</terminal_context>",
     );
+  });
+});
+
+describe("Add to chat as T3's inline terminal chip (D1009)", () => {
+  const selection = {
+    terminalId: "term-1",
+    terminalLabel: "Terminal 1",
+    lineStart: 3,
+    lineEnd: 4,
+    text: "\r\n$ ls\r\nREADME.md\r\n\n",
+  };
+
+  it("is a terminal record: T3's label, its lines without blank ones around", () => {
+    expect(terminalContextRecord({ id: "a", ...selection })).toEqual({
+      version: 1,
+      kind: "terminal",
+      contextId: "terminal_a",
+      label: "Terminal 1 lines 3-4",
+      terminalId: "term-1",
+      terminalLabel: "Terminal 1",
+      lineStart: 3,
+      lineEnd: 4,
+      text: "$ ls\nREADME.md",
+    });
+    expect(terminalContextRecord({ id: "b", ...selection, lineEnd: 3, text: "x" }).label).toBe(
+      "Terminal 1 line 3",
+    );
+    // T3's bound: 64 000 characters, the cut marked.
+    const long = terminalContextRecord({ id: "c", ...selection, text: "y".repeat(70_000) });
+    expect(long.text).toHaveLength(64_000);
+    expect(long.text.endsWith("\n… truncated …")).toBe(true);
+  });
+
+  it("goes as a record where the chat takes one, else as T3's legacy text", () => {
+    expect(addToChatCall(selection, () => true, "a")).toEqual({
+      command: "chat.composer.insert-context",
+      input: { record: terminalContextRecord({ id: "a", ...selection }) },
+    });
+    const legacy = addToChatCall(selection, (name) => name === "chat.composer.insert", "a");
+    expect(legacy.command).toBe("chat.composer.insert");
+    expect(legacy.input["text"]).toMatch(/^@terminal-1:3-4\n\n<terminal_context>/);
   });
 });
 

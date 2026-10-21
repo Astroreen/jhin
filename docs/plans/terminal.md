@@ -489,6 +489,8 @@ read again from a snapshot).
 
 ## Deferred
 
+- T3's inline terminal-context chip (D473). Done in `t3-parity.md` (D1009,
+  W27): "Add to chat" puts a terminal record and its chip into the composer.
 - Permissions on subscriptions to the event log. Done in `security.md`
   (D415).
 - Provider environments for a terminal (T3's `providerInstanceId`, D462):
@@ -513,8 +515,5 @@ read again from a snapshot).
 - A path in a thread's worktree (D965): `editors.open` opens files of a
   project's folder only, so a terminal in a worktree opens none of its own
   files.
-- T3's inline terminal-context chip in the composer and its
-  `inlineMessageContext` records (D473): the composer inserts T3's legacy
-  text; the chip needs W6's rich text composer.
 - Right-panel terminals as surfaces of their own, beside the drawer's
   (D474): Jhin moves one layout between the two places.

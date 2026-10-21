@@ -64,6 +64,7 @@ function setup(options: {
       restore: (draft) => restored.push(draft),
       focus: () => undefined,
       insert: () => undefined,
+      insertContext: () => "not-now",
       toggleModelPicker: () => undefined,
       cycleRuntimeMode: () => undefined,
       togglePlanMode: () => undefined,

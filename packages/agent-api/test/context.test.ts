@@ -89,4 +89,36 @@ describe("message context records (D1006)", () => {
     expect(bounded).toContain('<context kind="thread" id="thread_small" truncated="true"/>');
     expect(bounded.length).toBeLessThan(MESSAGE_CONTEXT_PROJECTED_MAX_CHARS + 2_000);
   });
+
+  it("gives the agent a terminal excerpt as T3's numbered lines (D1009)", () => {
+    const record = {
+      version: 1 as const,
+      kind: "terminal" as const,
+      contextId: "terminal_x",
+      label: "Terminal 1 lines 3-4",
+      terminalId: "t1",
+      terminalLabel: "Terminal 1",
+      lineStart: 3,
+      lineEnd: 4,
+      text: "$ make\nok\n",
+    };
+    expect(
+      projectMessageContext({
+        text: `why ${formatContextReference(record)}`,
+        records: [record],
+      }),
+    ).toBe(
+      [
+        "why [Terminal: Terminal 1 lines 3-4; ref=terminal_x]",
+        "",
+        '<jhin_context version="1">',
+        '<context kind="terminal" id="terminal_x">',
+        "terminal: Terminal 1",
+        "3 | $ make",
+        "4 | ok",
+        "</context>",
+        "</jhin_context>",
+      ].join("\n"),
+    );
+  });
 });
