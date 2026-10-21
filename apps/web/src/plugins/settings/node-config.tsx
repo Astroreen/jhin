@@ -283,7 +283,7 @@ function ConfigEditor({
   const [asJson, setAsJson] = useState(false);
   const [scope, setScope] = useState<readonly string[] | undefined>();
   const [saving, setSaving] = useState(false);
-  /** A save in flight reads the section back itself; a change heard meanwhile waits for it. */
+  /** A save in flight reads the section back itself; a change heard meanwhile is skipped. */
   const savingNow = useRef(false);
   /** Grows with every save: a read started before one is older than its read-back. */
   const reads = useRef(0);
@@ -342,9 +342,13 @@ function ConfigEditor({
           // A save began meanwhile: its read-back is newer than this answer.
           const current = loadedNow.current;
           if (current?.section !== section || started !== reads.current) return;
-          const { rebased: changedUnder, ...updated } = rebase(current, next);
-          setLoaded((latest) => (latest === current ? updated : latest));
-          if (changedUnder) setRebased(true);
+          // Rebased onto whatever the editor holds by now, edits made during the read included.
+          setLoaded((latest) => {
+            if (latest?.section !== section) return latest;
+            const { rebased: _rebased, ...updated } = rebase(latest, next);
+            return updated;
+          });
+          if (rebase(current, next).rebased) setRebased(true);
         })
         // Unreadable now: the next change, a save or a reload reads it again.
         .catch(() => undefined);

@@ -29,18 +29,13 @@ export const nodeConfigFeedPlugin = builtin(
       const wasOpen = new Set<string>();
       const sync = () => {
         const listed = connections.list();
+        /** Connections open again: told once they are followed again, below. */
+        const reopened: string[] = [];
         for (const connection of listed) {
           const before = states.get(connection.id);
           states.set(connection.id, connection.state);
-          // Nothing is replayed from host/config: whatever changed while away is read again.
-          if (connection.state === "open" && wasOpen.has(connection.id) && before !== "open") {
-            context.events.emit(NODE_CONFIG_CHANGED, {
-              connection: connection.id,
-              layer: "node",
-              sections: [],
-              all: true,
-            } satisfies NodeConfigChanged);
-          }
+          if (connection.state === "open" && wasOpen.has(connection.id) && before !== "open")
+            reopened.push(connection.id);
         }
         for (const connection of listed)
           if (connection.state === "open") wasOpen.add(connection.id);
@@ -81,6 +76,15 @@ export const nodeConfigFeedPlugin = builtin(
             client: connection.client,
             stop: () => subscription.dispose(),
           });
+        }
+        // Nothing is replayed from host/config: whatever changed while away is read again.
+        for (const id of reopened) {
+          context.events.emit(NODE_CONFIG_CHANGED, {
+            connection: id,
+            layer: "node",
+            sections: [],
+            all: true,
+          } satisfies NodeConfigChanged);
         }
       };
       sync();
