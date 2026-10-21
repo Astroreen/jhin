@@ -67,7 +67,7 @@ function setup(options: {
       toggleModelPicker: () => undefined,
       cycleRuntimeMode: () => undefined,
       togglePlanMode: () => undefined,
-      sendAlternate: () => undefined,
+      sendAlternate: () => false,
       steerNext: () => false,
       editLatest: () => false,
       resume: () => false,

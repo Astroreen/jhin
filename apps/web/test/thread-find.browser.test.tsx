@@ -9,9 +9,9 @@ import {
   findRanges,
   formatCount,
   stepIndex,
-  ThreadFindBar,
   useThreadFind,
 } from "../src/plugins/chat/thread-find.tsx";
+import { ThreadFindBar } from "../src/plugins/chat/thread-find-bar.tsx";
 
 const containers: HTMLElement[] = [];
 afterEach(() => {

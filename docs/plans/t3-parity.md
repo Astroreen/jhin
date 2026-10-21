@@ -1508,10 +1508,17 @@ Reference: T3 Code at `eb7b35ac` (D53).
   changes; the current match scrolls into view. T3 searches on its server,
   because its timeline is virtualized and pages its history; Jhin's
   timeline renders every turn, so the find runs over the page's text and
-  adds no node command. Another thread opens with the bar closed. Text
+  adds no node command. Another thread opens with the bar closed. The bar is
+  a chunk of its own (D440); the find stays with the thread view. Text
   inside a finished turn's folded work is not rendered until it is
   unfolded, so it is not found (T3 opens the fold holding the current
   match; Deferred).
+- **D806. The queue's client commands say whether they did anything,** as
+  `chat.thread.resume` does (D800): `chat.queue.steer-next`,
+  `chat.queue.edit-latest` and `chat.composer.send-alternate` answer
+  `{ done }`, false when there was nothing to do (nothing queued or typed, a
+  message being edited, the composer unable to send), so the palette and
+  MCP can tell.
 - **D805. Claude's foreground subagents go to the background before a
   steer**, as T3's `ClaudeAdapterV2.ts` (`backgroundForegroundSubagents`
   before `steerTurn`). A steer reaches Claude Code with priority "now",
@@ -1793,9 +1800,6 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
 - `threads.queue.steer` into a turn that is ending answers `TURN_NOT_RUNNING`,
   as for an idle thread; a code of its own (or queueing it first, as
   `threads.steer` does) would let a client tell the two apart.
-- The client commands `chat.queue.steer-next`, `chat.queue.edit-latest` and
-  `chat.composer.send-alternate` succeed when there is nothing to steer, edit
-  or send (from the palette or MCP); they could say so.
 - Idempotent sends: `threads.queue.add` ignores a `messageId` already queued,
   but a message that already left the queue (started or cancelled) is taken
   again; `threads.send` takes no id. So a client that retries a send whose

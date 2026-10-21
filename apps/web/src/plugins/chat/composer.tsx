@@ -175,7 +175,7 @@ export interface ComposerHandleApi {
   cycleRuntimeMode(): void;
   togglePlanMode(): void;
   /** Sends the message the other way while a turn runs: queued instead of steered, or back. */
-  sendAlternate(): void;
+  sendAlternate(): boolean;
   /** Steers the first queued message into the running turn; false when it cannot. */
   steerNext(): boolean;
   /** Edits the last queued message in the composer; false when it cannot (T3's editLatest). */
@@ -1374,7 +1374,14 @@ export function Composer(props: ComposerProps) {
     toggleModelPicker: () => setPickerOpen((open) => !open),
     cycleRuntimeMode,
     togglePlanMode,
-    sendAlternate: () => void send(true),
+    // False when nothing goes: nothing typed or attached, or the composer cannot send now.
+    sendAlternate() {
+      const text = editor.current?.value() ?? prompt;
+      if (busy || props.unavailable !== undefined || approval !== undefined) return false;
+      if (text.trim() === "" && attachments.length === 0) return false;
+      void send(true);
+      return true;
+    },
     steerNext() {
       const next = queued[0];
       const actions = props.queueActions;
