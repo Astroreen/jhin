@@ -403,6 +403,8 @@ export function createLiveSessions(options: {
   readonly query: QueryFunction;
   readonly keepAlive: () => KeepAlive;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
+  /** How long a steer waits for Claude Code to move the subagents (D805); T3's 5 s by default. */
+  readonly backgroundMoveMs?: number;
 }): LiveSessions {
   const sessions = new Map<string, Live>();
   /** The exits of each thread's Claude Codes still running, also those replaced. */
@@ -907,7 +909,7 @@ export function createLiveSessions(options: {
           await Promise.race([
             Promise.all(waits),
             new Promise<void>((resolve) => {
-              timer = setTimeout(resolve, BACKGROUND_MOVE_MS);
+              timer = setTimeout(resolve, options.backgroundMoveMs ?? BACKGROUND_MOVE_MS);
             }),
           ]);
           clearTimeout(timer);

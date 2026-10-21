@@ -2,7 +2,7 @@ import { ThreadEvents, type AgentItem, type AgentTurn } from "@jhin/agent-api";
 import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it } from "vite-plus/test";
 
-import { Config, createClaudeRuntime, transcript } from "../src/index.ts";
+import { Config, createClaudeRuntime, createLiveSessions, transcript } from "../src/index.ts";
 import {
   init,
   memorySessions,
@@ -337,5 +337,42 @@ describe("jhin.agent-claude: steering (D206)", () => {
       expect(controls).toEqual(["background:toolu_fg"]);
       expect(answers(items)).toEqual(["working", "steered"]);
     });
+  });
+
+  it("steers once Claude Code leaves a move unanswered past the wait, and waits on it no more (D805)", async () => {
+    let stop!: () => void;
+    const scripted = scriptedQuery(async function* (player) {
+      yield init();
+      yield toolUse("a1", "toolu_fg", "Agent", { prompt: "look around" });
+      yield* streamedBlock("m1", 0, "text", ["working"]);
+      await new Promise<void>((resolve) => (stop = resolve));
+      yield result();
+      await player.nextPrompt();
+    });
+    // Claude Code never answers the move.
+    scripted.state.background = () => new Promise<boolean>(() => {});
+    const live = createLiveSessions({
+      query: scripted.query,
+      keepAlive: () => ({ keepAlive: false, idleMs: 0 }),
+      backgroundMoveMs: 0,
+    });
+    const held = await live.lease({
+      threadId: THREAD,
+      options: { cwd: "/work" },
+      message: { type: "user", message: { role: "user", content: "hi" }, parent_tool_use_id: null },
+    });
+    const messages = held.messages[Symbol.asyncIterator]();
+    // Read on until the turn's text: the subagent's tool call has been seen.
+    for (let next = await messages.next(); !next.done; next = await messages.next()) {
+      if (next.value.type === "stream_event") break;
+    }
+    // The first steer waits for the move and goes on unanswered; the second asks nothing.
+    await held.backgroundSubagents();
+    await held.backgroundSubagents();
+    const asked = scripted.calls[0]!.controls.filter((entry) => entry.startsWith("background:"));
+    expect(asked).toEqual(["background:toolu_fg"]);
+    stop();
+    for (let next = await messages.next(); !next.done; next = await messages.next());
+    held.release(false);
   });
 });
