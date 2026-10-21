@@ -119,6 +119,10 @@ return { echoed, failed, piped, counted, stubborn }`;
     expect((await client.call<WorkflowView>("workflows.status", { workflowId })).status).toBe(
       "stopped",
     );
+    // The record's agents follow their tasks after the stop too (D867).
+    await feed.workflow(workflowId, (record) =>
+      (record.agents as WorkflowView["agents"]).every((agent) => agent.status === "cancelled"),
+    );
   });
 
   it("runs scripts only for a thread in full-access mode", async () => {

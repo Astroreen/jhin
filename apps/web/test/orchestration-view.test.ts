@@ -2,6 +2,7 @@ import { OrchestrationEvents } from "@jhin/agent-api";
 import type { Connections, ThreadsCatalog } from "@jhin/client-api";
 import { describe, expect, it } from "vite-plus/test";
 
+import { taskStatusLabel } from "../src/plugins/orchestration/lineage.tsx";
 import { workflowAgentsLabel } from "../src/plugins/orchestration/rows.tsx";
 import {
   applyOrchestrationEvent,
@@ -169,5 +170,23 @@ describe("the delegation store", () => {
     changed!();
     await completed;
     store.dispose();
+  });
+});
+
+describe("a Lineage row's status (D867)", () => {
+  it("is T3's label for a task", () => {
+    expect(
+      (
+        [
+          "starting",
+          "running",
+          "waiting",
+          "completed",
+          "failed",
+          "cancelled",
+          "interrupted",
+        ] as const
+      ).map(taskStatusLabel),
+    ).toEqual(["Running", "Running", "Waiting", "Done", "Failed", "Stopped", "Stopped"]);
   });
 });

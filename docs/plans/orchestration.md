@@ -243,8 +243,6 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
 
 ### Deferred
 
-- The workflow progress tree of T3's thread details panel and its Stop
-  button. The subagent rows and hidden child threads are W20's D864, D865.
 - Steering a task's completion into the parent's running turn (W1); today
   it waits for the turn's end.
 - Per-turn model options for a child (T3's `target.options`, a workflow
@@ -349,8 +347,30 @@ user sees, which their Deferred lists left out.
   `client.threads@1`'s `ThreadRecord` lists `parentThreadId` and
   `relationshipToParent`.
 
+- **D866. Delegated work in the Lineage section.** T3 lists a thread's
+  subagents and workflows in the Lineage section of the thread details panel
+  (`ThreadRelationshipsControl.tsx`, `ThreadLineageWorkflowRow.tsx`). Jhin's
+  Lineage section (`t3-parity.md` D802) gets the slot `chat.thread.lineage`
+  (props `ChatThreadDetailsProps`): rows other plugins put into its list
+  after the fork rows; the section shows while any row does.
+- **D867. The rows of delegated work** (`jhin.orchestration.lineage`): for a
+  subagent thread, its parent ("Parent thread", the thread's own status); a
+  row per task of the thread outside workflows, newest first, with its status
+  (`Running`, `Waiting`, `Done`, `Stopped`, `Failed`), opening the child, and
+  T3's "Stop subagent" while it runs (`tasks.cancel`); a row per workflow with
+  its name and status, T3's "Stop entire workflow" while it runs
+  (`workflows.stop`), and a chevron that unfolds its phases ("<n>/<m>
+  agents", open while running; "No agents yet") and their agents, each
+  opening its thread.
+- **D868. Stopping from the panel** runs the command as the thread's owner
+  with `parentThreadId`; a refusal is shown in a toast, and the button
+  spins until the command answers.
+
 ### Deferred
 
+- The running count in the Lineage title ("Lineage · 2 running").
+- A thread whose Lineage section is hidden (no rows) still counts as having
+  details, so the panel does not say "No details for this thread" then.
 - T3's grouping of a turn's subagents into one "N subagents" row, the hover
   card of a subagent (model, result, progress), and the bar that replaces the
   composer in a Claude subagent's thread ("Runs on its own", "Open parent").

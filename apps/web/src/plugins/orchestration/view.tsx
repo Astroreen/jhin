@@ -1,7 +1,14 @@
 import { OrchestrationThreadEvents } from "@jhin/agent-api";
-import type { ChatTurnItemProps, NodeTarget } from "@jhin/client-api";
+import type {
+  ChatThreadDetailsProps,
+  ChatTurnItemProps,
+  NodeTarget,
+  ThreadsCatalog,
+} from "@jhin/client-api";
+import type { Toasts } from "@jhin/ui";
 import { useSyncExternalStore } from "react";
 
+import { DelegationLineage } from "./lineage.tsx";
 import { LaunchedRow, SubagentRow, WorkflowBlock, type WorkflowMark } from "./rows.tsx";
 import type { DelegationStore } from "./store.ts";
 
@@ -16,6 +23,8 @@ interface TaskMark {
 export interface DelegatedWorkServices {
   readonly store: DelegationStore;
   readonly open: (target: NodeTarget, threadId: string) => void;
+  readonly threads: ThreadsCatalog;
+  readonly toasts: Toasts | undefined;
 }
 
 type Props = ChatTurnItemProps & { readonly services: DelegatedWorkServices };
@@ -73,4 +82,12 @@ export function DelegatedWork(props: Props) {
     return <LaunchedRow title={title} onOpen={() => props.services.open(props.target, threadId)} />;
   }
   return null;
+}
+
+/** The thread's delegated work in its Lineage section (D866, D867). */
+export function Lineage(
+  props: ChatThreadDetailsProps & { readonly services: DelegatedWorkServices },
+) {
+  const view = useDelegation(props.services, props.target, props.thread.id);
+  return <DelegationLineage {...props} view={view} />;
 }

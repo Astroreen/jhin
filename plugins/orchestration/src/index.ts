@@ -410,6 +410,20 @@ export default definePlugin({
         saved as unknown as Json,
         OrchestrationEvents.taskUpdated,
       );
+      // A workflow's record follows its agents' tasks, also once the run stopped them (D867).
+      const workflow = saved.workflowId === undefined ? undefined : workflows.get(saved.workflowId);
+      const agent = workflow?.agents.find((entry) => entry.taskId === saved.taskId);
+      if (workflow !== undefined && agent !== undefined && agent.status !== saved.status) {
+        // Its own write: a failure there is logged and leaves the task's write standing.
+        void updateWorkflow(workflow.workflowId, (current) => ({
+          ...current,
+          agents: current.agents.map((entry) =>
+            entry.taskId === saved.taskId ? { ...entry, status: saved.status } : entry,
+          ),
+        })).catch((error: unknown) =>
+          context.log.error("could not record a workflow's progress", { error: String(error) }),
+        );
+      }
       return saved;
     }
 
