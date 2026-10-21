@@ -70,15 +70,15 @@ import { BrowserSurface } from "./surface.tsx";
 // --- Recently used pages (T3's browser history) ----------------------------------
 
 const HISTORY_KEY = "jhin:browser-history:v1";
-export const RECENT_URL_LIMIT = 10;
+const RECENT_URL_LIMIT = 10;
 
-export interface RecentUrl {
+interface RecentUrl {
   readonly url: string;
   readonly title: string;
   readonly visitedAt: number;
 }
 
-export function readRecentUrls(): RecentUrl[] {
+function readRecentUrls(): RecentUrl[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]") as unknown;
     return Array.isArray(parsed) ? (parsed as RecentUrl[]).slice(0, RECENT_URL_LIMIT) : [];
@@ -87,7 +87,7 @@ export function readRecentUrls(): RecentUrl[] {
   }
 }
 
-export function recordRecentUrl(url: string, title: string): void {
+function recordRecentUrl(url: string, title: string): void {
   if (!/^https?:/.test(url)) return;
   const kept = readRecentUrls().filter((entry) => entry.url !== url);
   const next = [{ url, title, visitedAt: Date.now() }, ...kept].slice(0, RECENT_URL_LIMIT);
@@ -104,7 +104,7 @@ function forgetRecentUrl(url: string): void {
 // --- Labels ---------------------------------------------------------------------------
 
 /** T3's tab title: the page's title, else its host, else "Browser". */
-export function tabTitle(tab: PreviewTab | undefined): string {
+function tabTitle(tab: PreviewTab | undefined): string {
   const status = tab?.navStatus;
   if (status === undefined || status.state === "idle") return "Browser";
   if (status.title.trim() !== "") return status.title;
@@ -140,7 +140,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 /** What the control strip says (T3's `previewStreamControlLabel`). */
-export function controlLabel(tab: PreviewTab, viewer: string): string {
+function controlLabel(tab: PreviewTab, viewer: string): string {
   if (tab.controller === viewer) return "You have control";
   if (tab.controller !== null) return "Another viewer has control";
   if (tab.owner === "agent") return "Agent has control";
@@ -208,7 +208,7 @@ function readWidth(): number {
 }
 
 /** T3's PreviewPanelShell with its resize handle on the left edge. */
-export function PanelShell(props: { children: ReactNode; label: string }) {
+function PanelShell(props: { children: ReactNode; label: string }) {
   const [width, setWidth] = useState(readWidth);
   const drag = useRef<{ startX: number; startWidth: number } | undefined>(undefined);
   const shown = Math.min(width, maxWidth());

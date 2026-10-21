@@ -28,15 +28,41 @@ import {
   type Toasts,
 } from "@jhin/ui";
 import { PanelRightIcon } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { builtin } from "../../lib/builtin.ts";
 import { useExternal, useShortcutLabels } from "../../lib/hooks.ts";
 import { createTabFeeds } from "./feed.ts";
-import { BrowserPanel, PanelShell, type PanelServices } from "./panel.tsx";
+import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
+import type { BrowserPanelProps, PanelServices } from "./panel.tsx";
+
+/** A placeholder of the panel's size while its chunk loads or the node connects. */
+function PanelPlaceholder(props: { children?: ReactNode }) {
+  return (
+    <aside
+      aria-label="Right panel"
+      className="flex h-full w-[540px] max-w-[70vw] shrink-0 flex-col border-l border-border bg-background"
+    >
+      {props.children}
+    </aside>
+  );
+}
+
+// A chunk of its own, loaded when the panel first opens (D440).
+const BrowserPanel = lazyChunk<BrowserPanelProps>(
+  () => import("./panel.tsx").then((module) => module.BrowserPanel),
+  {
+    loading: () => <PanelPlaceholder />,
+    failed: (_props, retry) => (
+      <PanelPlaceholder>
+        <ChunkFailed retry={retry}>Couldn't load the browser.</ChunkFailed>
+      </PanelPlaceholder>
+    ),
+  },
+);
 
 /** The route's `panel` while the right panel shows the browser. */
-export const BROWSER_PANEL = "browser";
+const BROWSER_PANEL = "browser";
 
 /** Focus is in the right panel (T3's `previewFocus`). */
 function isPreviewFocused(): boolean {
@@ -303,9 +329,9 @@ export const previewPanelPlugin = builtin(
         }, [key]);
         if (connection === undefined) {
           return (
-            <PanelShell label="Right panel">
+            <PanelPlaceholder>
               <p className="p-4 text-xs text-muted-foreground">Connecting…</p>
-            </PanelShell>
+            </PanelPlaceholder>
           );
         }
         const services: PanelServices = {
