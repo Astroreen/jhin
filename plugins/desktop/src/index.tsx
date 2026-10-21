@@ -495,11 +495,17 @@ export default definePlugin({
           mode: QuitConfirmationMode.parse(await setQuitShortcut(mode)),
         }),
       });
+      /** The mode now set, or null after a failure, which a toast reports. */
       const setMode = async (mode: QuitConfirmationMode) => {
-        const result = (await context.commands.execute("desktop.quit-shortcut.set", {
-          mode,
-        })) as { mode: QuitConfirmationMode };
-        return result.mode;
+        try {
+          const result = (await context.commands.execute("desktop.quit-shortcut.set", {
+            mode,
+          })) as { mode: QuitConfirmationMode };
+          return result.mode;
+        } catch (error) {
+          failed("Could not change the quit shortcut", error, "Quit shortcut change failed.");
+          return null;
+        }
       };
       context.subscriptions.add(
         slots.contribute("app.global", {

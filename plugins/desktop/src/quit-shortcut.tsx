@@ -72,23 +72,30 @@ export function QuitHoldOverlay(props: { readonly bridge: DesktopBridge }) {
 /** T3's "Quit shortcut" row of the General settings (D947). */
 export function QuitShortcutRow(props: {
   readonly bridge: DesktopBridge;
-  readonly set: (mode: QuitConfirmationMode) => Promise<QuitConfirmationMode>;
+  /** Resolves with the mode now set, or null when setting it failed (and was reported). */
+  readonly set: (mode: QuitConfirmationMode) => Promise<QuitConfirmationMode | null>;
   readonly defaultMode: QuitConfirmationMode;
 }) {
   const { bridge, set, defaultMode } = props;
   const [mode, setMode] = useState<QuitConfirmationMode | null>(null);
   useEffect(() => {
     let live = true;
-    void bridge.getQuitShortcut?.().then((value) => {
-      if (live) setMode(value);
-    });
+    bridge.getQuitShortcut?.().then(
+      (value) => {
+        if (live) setMode(value);
+      },
+      // Without the current mode the row stays hidden rather than guessing.
+      () => undefined,
+    );
     return () => {
       live = false;
     };
   }, [bridge]);
   if (mode === null) return null;
   const choose = (value: QuitConfirmationMode) => {
-    void set(value).then(setMode);
+    void set(value).then((now) => {
+      if (now !== null) setMode(now);
+    });
   };
   return (
     <SettingsRow
