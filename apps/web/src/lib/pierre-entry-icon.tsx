@@ -79,6 +79,8 @@ export const PierreEntryIcon = memo(function PierreEntryIcon(props: {
     );
   }
 
+  // T3's own symbols (`t3-file-icon-*`) carry their colours (or `light-dark()`) in the
+  // sprite; for them this colour only fills what they leave as `currentColor`.
   const colors = ICON_COLORS[icon.token ?? "default"] ?? ICON_COLORS.default;
   return (
     <svg
