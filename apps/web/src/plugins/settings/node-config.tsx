@@ -134,7 +134,9 @@ export function useLoadedSection(
       current = false;
     };
   }, [client, section, layer]);
-  return [loaded, setLoaded] as const;
+  // Until the read of another section or file lands, nothing is shown, so nothing is edited.
+  const current = loaded?.section === section && loaded?.layer === layer ? loaded : undefined;
+  return [current, setLoaded] as const;
 }
 
 /**

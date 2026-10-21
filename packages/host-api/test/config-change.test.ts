@@ -34,6 +34,16 @@ describe("configEdits (D476)", () => {
     expect(configEdits({ n: 1 }, { n: typed })).toEqual([{ path: ["n"], value: typed }]);
   });
 
+  it("reads a key set to undefined as removed, in both forms", () => {
+    expect(configChange("node", "s", { a: 1, b: 2 }, { a: undefined, b: 2 })).toEqual({
+      layer: "node",
+      section: "s",
+      values: {},
+      unset: ["a"],
+      edits: [{ path: ["a"] }],
+    });
+  });
+
   it("gives both forms of a change", () => {
     expect(
       configChange("node", "jhin.example", { a: 1, b: { c: 1, d: 2 } }, { b: { c: 1, d: 3 } }),
