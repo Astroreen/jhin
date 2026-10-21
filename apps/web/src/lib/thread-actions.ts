@@ -1,6 +1,6 @@
 // The actions and their wording follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/hooks/useThreadActionMenu.ts and apps/web/src/components/Sidebar.tsx.
-import type { TurnAttachment } from "@jhin/agent-api";
+import type { MessageContext, TurnAttachment } from "@jhin/agent-api";
 import {
   THREAD_DELETE_HOOK,
   type MeshMembership,
@@ -69,6 +69,8 @@ export async function startThread(
     readonly title?: string;
     readonly text: string;
     readonly attachments: readonly TurnAttachment[];
+    /** The context records the text names (D1006). */
+    readonly context?: MessageContext | undefined;
     /** The agent, model and modes the thread runs with. */
     readonly selection: {
       readonly agentId?: string;
@@ -106,6 +108,7 @@ export async function startThread(
       threadId: thread.id,
       text: first.text,
       ...(first.attachments.length === 0 ? {} : { attachments: first.attachments }),
+      ...(first.context === undefined ? {} : { context: first.context }),
       ...first.selection,
     });
   } catch (error) {

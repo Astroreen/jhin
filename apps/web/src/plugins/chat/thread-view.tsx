@@ -1,6 +1,11 @@
 // The layout and scroll behaviour follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/ChatView.tsx and chat/MessagesTimeline.tsx.
-import type { AgentResponse, TurnAttachment } from "@jhin/agent-api";
+import {
+  type AgentResponse,
+  contextReferencesAsLabels,
+  type MessageContext,
+  type TurnAttachment,
+} from "@jhin/agent-api";
 import {
   THREAD_CREATE_HOOK,
   targetKey,
@@ -212,9 +217,10 @@ export function ThreadView(props: {
     text: string,
     attachments: readonly TurnAttachment[],
     alternate = false,
+    context?: MessageContext,
   ): Promise<boolean> => {
     setError(undefined);
-    const message = { text, attachments, settings: selection };
+    const message = { text, attachments, context, settings: selection };
     const mode = running ? dispatchMode(settings.followUpBehavior, alternate, canSteer) : "send";
     const outcome = await sendMessage(chat.threads, target, threadId, message, mode);
     if (outcome.kind === "failed") {
@@ -265,17 +271,30 @@ export function ThreadView(props: {
     steer: (messageId) => call("threads.queue.steer", { messageId }, "Not steered"),
     reorder: (messageId, beforeMessageId) =>
       call("threads.queue.reorder", { messageId, beforeMessageId }, "Not moved"),
-    edit: (messageId, text, attachments) =>
-      call("threads.queue.edit", { messageId, text, attachments }, "Queued message not saved"),
+    edit: (messageId, text, attachments, context) =>
+      call(
+        "threads.queue.edit",
+        { messageId, text, attachments, ...(context === undefined ? {} : { context }) },
+        "Queued message not saved",
+      ),
     load: async (messageId) => {
       try {
         const queue = await chat.threads.call<{
-          messages: { id: string; text: string; attachments?: TurnAttachment[] }[];
+          messages: {
+            id: string;
+            text: string;
+            attachments?: TurnAttachment[];
+            context?: MessageContext;
+          }[];
         }>(target, "threads.queue.list", { threadId });
         const message = queue.messages.find((item) => item.id === messageId);
         return message === undefined
           ? undefined
-          : { text: message.text, attachments: message.attachments ?? [] };
+          : {
+              text: message.text,
+              attachments: message.attachments ?? [],
+              context: message.context,
+            };
       } catch (failure) {
         chat.toasts?.show({
           type: "error",
@@ -396,7 +415,7 @@ export function ThreadView(props: {
                     <AlertDescription>
                       <div className="line-clamp-3">
                         Your message may not have reached the node: &ldquo;
-                        {unconfirmed.message.text}&rdquo;
+                        {contextReferencesAsLabels(unconfirmed.message.text)}&rdquo;
                       </div>
                     </AlertDescription>
                     <AlertAction>
@@ -670,12 +689,17 @@ export function DraftView(props: {
   // The new thread's id, kept until the thread is made: sending again after a
   // failure asks for the same thread, so it makes no second one (D207).
   const nextThreadId = useRef<string>(crypto.randomUUID());
-  const send = async (text: string, attachments: readonly TurnAttachment[]): Promise<boolean> => {
+  const send = async (
+    text: string,
+    attachments: readonly TurnAttachment[],
+    _alternate?: boolean,
+    context?: MessageContext,
+  ): Promise<boolean> => {
     try {
       const { threadId, uncertain } = await startThread(
         chat.threads,
         target,
-        { projectId: project.id, text, attachments, selection },
+        { projectId: project.id, text, attachments, context, selection },
         nextThreadId.current,
         // Plugins add to the new thread (its workspace, D253).
         async (params) =>
@@ -694,6 +718,7 @@ export function DraftView(props: {
         chat.unconfirmed.set(visitKey(target, threadId), {
           text,
           attachments,
+          context,
           settings: selection,
         });
         chat.toasts?.show({

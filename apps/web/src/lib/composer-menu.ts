@@ -6,14 +6,16 @@
 // rankPullRequestMatches), packages/client-runtime/src/composerThreadItems.ts
 // (matchComposerThreadItems) and the menu items of apps/web/src/components/chat/ChatComposer.tsx
 // (the built-in commands, files and folders, pull requests and their empty states).
-import type { AgentSkill, AgentSlashCommand } from "@jhin/agent-api";
+import {
+  type AgentSkill,
+  type AgentSlashCommand,
+  formatContextReference,
+  type MessageContextRecord,
+} from "@jhin/agent-api";
 import type { ThreadRecord } from "@jhin/client-api";
 import type { PullRequest } from "@jhin/source-control-api";
 
-import {
-  serializeComposerPullRequestLink,
-  serializeComposerThreadLink,
-} from "./composer-trigger.ts";
+import { pullRequestContextRecord, threadContextRecord } from "./composer-context.ts";
 import {
   insertRankedSearchResult,
   normalizeSearchQuery,
@@ -451,6 +453,18 @@ export function threadMenuItems(input: {
   return items;
 }
 
+/**
+ * The context record a pick puts beside the prompt (D1006): a pull request's or a thread's,
+ * which its reference link names.
+ */
+export function menuContextRecord(item: ComposerMenuItem): MessageContextRecord | undefined {
+  if (item.type === "pull-request") return pullRequestContextRecord(item.pullRequest);
+  if (item.type !== "thread") return undefined;
+  const nodeId = /^jhin:\/\/([^/]+)\/threads\//.exec(item.address)?.[1];
+  if (nodeId === undefined) return undefined;
+  return threadContextRecord({ nodeId, threadId: item.threadId, title: item.label });
+}
+
 /** The text a pick puts in place of the typed trigger (T3: `/name `, `$name `, a file link). */
 export function menuInsertion(
   item: ComposerMenuItem,
@@ -464,9 +478,10 @@ export function menuInsertion(
     case "path":
       return `${serializeFileLink(item.path)} `;
     case "pull-request":
-      return `${serializeComposerPullRequestLink(item.pullRequest)} `;
-    case "thread":
-      return `${serializeComposerThreadLink(item.label, item.address)} `;
+    case "thread": {
+      const record = menuContextRecord(item);
+      return record === undefined ? undefined : `${formatContextReference(record)} `;
+    }
     case "slash-command":
       // Built-ins act instead of inserting: the token goes.
       return undefined;

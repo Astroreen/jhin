@@ -1,7 +1,7 @@
 // Sending, queueing and steering follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // packages/client-runtime/src/state/composerDispatch.ts (what a send does while a turn runs).
 // The queue itself lives on the node (docs/plans/t3-parity.md, D201).
-import type { ModelOptionSelection, TurnAttachment } from "@jhin/agent-api";
+import type { MessageContext, ModelOptionSelection, TurnAttachment } from "@jhin/agent-api";
 import type { NodeTarget, ThreadsCatalog } from "@jhin/client-api";
 
 /** The agent, model and modes a message is sent with. */
@@ -17,6 +17,8 @@ interface MessageSettings {
 export interface OutgoingMessage {
   readonly text: string;
   readonly attachments: readonly TurnAttachment[];
+  /** The context records its text names (D1006). */
+  readonly context?: MessageContext | undefined;
   /** What it was typed with: it goes with these, whatever the composer shows later. */
   readonly settings: MessageSettings;
 }
@@ -69,6 +71,7 @@ export async function sendMessage(
     threadId,
     text: message.text,
     ...(message.attachments.length === 0 ? {} : { attachments: message.attachments }),
+    ...(message.context === undefined ? {} : { context: message.context }),
     ...message.settings,
   };
   try {

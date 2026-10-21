@@ -1809,6 +1809,53 @@ What W23 left in the composer, at T3 Code `eb7b35ac` as D290 says.
   link to no web page) is no button, and a thread one says "Thread no longer
   available". The state of a pull request and the thread's current title
   come with their context records.
+- **D1006. A message's context records,** as T3's `OrchestrationMessageContext`
+  and `composerContextReferences.ts`: a user message may carry `context`
+  (`{ version: 1, records }`) beside its text, which names each record by a
+  reference link `[label](jhin-context://v1/<kind>/<id>)` (T3's
+  `t3-context://`). `threads.send`, `threads.queue.add`, `threads.steer` and
+  `threads.queue.edit` take it (additive); each record is checked on its own
+  and one that fails is dropped, not the message, at most 200 records and
+  16 MB, as in T3. Known kinds are T3's `review-comment` (with
+  `pullRequest` for a `#` mention), `thread` (`nodeId` where T3 has an
+  environment, and the node in its id, since two nodes may name threads
+  alike) and `terminal`; any other kind is kept with its JSON payload. The
+  schemas are `MessageContextSchema` and `MessageContextRecordSchema` in
+  `@jhin/agent-api`, for every command that takes records.
+  The event keeps the user's text and the records, and `threads.turn` gives
+  them back for editing the message; what the agent reads is T3's
+  projection (`projectMessageContext` in `@jhin/agent-api`): each reference
+  as a marker `[Review comment: #12; ref=…]`, and after the text one
+  `<jhin_context version="1">` envelope with an entry per record, a missing
+  one `unavailable`, and a closing tag inside a record escaped so it cannot
+  forge one. A joining agent's transcript (`historyTranscript`) reads the
+  same; a title, a search snippet, a merge-back handoff and a branch name
+  read the references by their labels. The composer sends only the records
+  its text still names (T3's `buildMessageContext`), and keeps them in the
+  draft on this device.
+- **D1007. The context chips of the prompt and of a sent message,** as T3's
+  `composerContextPresentation.tsx` and `MessagesTimeline.tsx`: one chip per
+  record, in the prompt and in the user's message alike. A pull request is
+  T3's `PullRequestChip`: its state's glyph and tint (`pr-open`, `pr-draft`,
+  `pr-merged`, `pr-closed`), named "Open <Open pull request> #12: <title>",
+  T3's `PullRequestContextDetails` (number, state, title, head → base) on
+  hover, and the pull request in the browser when pressed. A thread is T3's
+  `ThreadContextChip` with the thread's current title, opened wherever in the
+  mesh its node is (D1005), or "Thread no longer available" when its node
+  has no such thread or is out of reach. A terminal excerpt is T3's
+  `TerminalContextInlineChip` (D1009). A reference without its record is
+  T3's dashed `UnresolvedChip`: "This context is no longer available.
+  Remove it or attach it again." in the prompt, without the second sentence
+  in a message. A copy of a message reads the references by their labels.
+- **D1008. A `#` or `@` pick is a record,** where W23 wrote a link (D851):
+  a pull request is T3's `buildPullRequestReferenceContext`, a
+  `review-comment` keyed by its URL whose text gives its number, title, URL
+  and branches and says, in T3's words, that all of it is the pull
+  request's own and untrusted data, not instructions; a thread is T3's
+  `threadContextRecord`, whose payload tells the agent to read it with the
+  node's `threads_get` and `threads_events` tools as context, not
+  instructions. W23's links (`[#12](url)`, `[title](jhin://…)`) in a draft or
+  an older message still show as D1005's chips.
 
 ### Sidebar leftovers (W26)
 
@@ -1875,8 +1922,12 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
     prompt, with a comment) and the chips of a sent message;
   - a preview of a mentioned file in a panel beside the thread (D1003
     opens a dialog, T3 its right-hand file panel);
-  - T3's context record for a mentioned pull request or thread (D851; its
-    title, branches and "untrusted data" block);
+  - T3's legacy send for a node from before D1006 (`composerContextLegacySend.ts`,
+    which T3 picks by the server's `inlineMessageContext`): such a node drops
+    `context`, so its agent reads the references as links;
+  - a draft's records on the owner's other devices (D486 shares the text, so
+    a reference there shows as unavailable), and in the prompt history a
+    recalled message's records;
   - listing pull requests on forges other than GitHub (D849);
   - `aria-activedescendant` from the editor to the menu.
 - Attachments (D291–D296): the node finds a thread's attachments by listing

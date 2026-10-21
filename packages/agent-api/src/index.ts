@@ -13,7 +13,10 @@ export * from "./modes.ts";
 export * from "./agents.ts";
 export * from "./messages.ts";
 export * from "./orchestration.ts";
+export * from "./context.ts";
+export * from "./context-schema.ts";
 
+import { type MessageContextRecord, projectMessageContext } from "./context.ts";
 import type { InteractionMode, RuntimeMode } from "./modes.ts";
 
 /** D54's form: an image inlined as a data URL, still accepted and read from older events. */
@@ -560,6 +563,15 @@ export const THREADS_STREAM = "threads";
  * names an agent with no turn in the history (its session already holds what it saw).
  * The text ends with a line saying the user's new message follows.
  */
+/** A user message's text as its agent read it: its context records projected in (D1006). */
+function userText(input: unknown): string | undefined {
+  const message = input as
+    | { text?: unknown; context?: { records?: readonly MessageContextRecord[] } }
+    | undefined;
+  if (typeof message?.text !== "string") return undefined;
+  return projectMessageContext({ text: message.text, records: message.context?.records });
+}
+
 export function historyTranscript(
   history: readonly StoredEvent[],
   since?: string,
@@ -574,13 +586,13 @@ export function historyTranscript(
       const turn = { agentId: payload["runtimeId"] ?? payload["agentId"], lines: [] as string[] };
       turns.push(turn);
       byId.set(payload["turnId"], turn);
-      const input = payload["input"] as { text?: unknown } | undefined;
-      if (typeof input?.text === "string") turn.lines.push(`User: ${input.text}`);
+      const text = userText(payload["input"]);
+      if (text !== undefined) turn.lines.push(`User: ${text}`);
     } else if (event.type === ThreadEvents.turnSteered) {
       // A message steered into a turn is the user's too.
       const turn = byId.get(payload["turnId"]) ?? turns.at(-1);
-      const input = payload["input"] as { text?: unknown } | undefined;
-      if (typeof input?.text === "string") turn?.lines.push(`User: ${input.text}`);
+      const text = userText(payload["input"]);
+      if (text !== undefined) turn?.lines.push(`User: ${text}`);
     } else if (event.type === ThreadEvents.itemCompleted && payload["kind"] === "message") {
       const turn = byId.get(payload["turnId"]) ?? turns.at(-1);
       if (typeof payload["text"] === "string") turn?.lines.push(`Assistant: ${payload["text"]}`);

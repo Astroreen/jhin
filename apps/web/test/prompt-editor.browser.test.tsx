@@ -242,6 +242,49 @@ describe("the prompt editor (D303)", () => {
     ]);
   });
 
+  it("shows a context reference by its record, and one without a record as unavailable", async () => {
+    const record = {
+      version: 1 as const,
+      kind: "review-comment" as const,
+      contextId: "review-comment_pr-12",
+      label: "#12",
+      sectionId: "pull-request:12",
+      sectionTitle: "PR #12",
+      filePath: "PR #12",
+      startIndex: 0,
+      endIndex: 0,
+      rangeLabel: "Add a cache",
+      text: "",
+      diff: "",
+      pullRequest: {
+        number: 12,
+        title: "Add a cache",
+        url: "https://github.com/acme/app/pull/12",
+        headBranch: "cache",
+        baseBranch: "main",
+        state: "merged" as const,
+        isDraft: false,
+      },
+    };
+    const prompt =
+      "see [#12](jhin-context://v1/review-comment/review-comment_pr-12) and [gone](jhin-context://v1/thread/thread_x) ok";
+    const editor = mount(prompt, {
+      chips: { skills: [], records: new Map([[record.contextId, record]]) },
+    });
+    // T3's pull request chip (D1007): the state in its name, the details on hover.
+    const chip = page.getByRole("button", { name: "Open Merged pull request #12: Add a cache" });
+    await expect.element(chip).toBeVisible();
+    await chip.hover();
+    await expect.element(page.getByText("Pull request #12", { exact: true })).toBeVisible();
+    // T3's dashed chip for a reference whose record is gone.
+    await expect.element(page.getByText("gone", { exact: true })).toBeInTheDocument();
+    expect(editor.editable().querySelector("[data-context-unresolved='true']")?.textContent).toBe(
+      "gone",
+    );
+    // The references write back as they were.
+    expect(editor.value()).toBe(prompt);
+  });
+
   it("shows a legacy @path and a skill as chips that write back their exact text", async () => {
     const prompt = "use $review on @./lib/b.ts and €deploy";
     const editor = mount(prompt);

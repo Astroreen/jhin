@@ -1,22 +1,26 @@
 // The rendering follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/ChatMarkdown.tsx.
+import { parseContextHref } from "@jhin/agent-api";
 import { Button, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
 import { CheckIcon, CopyIcon, WrapTextIcon } from "lucide-react";
 import {
   Children,
   isValidElement,
+  use,
   useEffect,
   useState,
   type ComponentProps,
   type ReactElement,
   type ReactNode,
 } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, { type Components, defaultUrlTransform } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 import { highlight, languageOf } from "../../lib/highlight.ts";
 import { useCopy } from "../../lib/hooks.ts";
+import { ContextRecordChip } from "./context-chips.tsx";
 import { CHAT_MARKDOWN_CLASS, type ChatMarkdownProps } from "./markdown-style.ts";
+import { MessageContextChipsContext } from "./message-context.ts";
 
 /** The text of a React subtree (a code element's children). */
 function textOf(node: ReactNode): string {
@@ -127,6 +131,8 @@ const COMPONENTS: Components = {
     return <CodeBlock code={code} fence={fence} />;
   },
   a({ children, href, node: _node, ...props }) {
+    const reference = typeof href === "string" ? parseContextHref(href) : null;
+    if (reference !== null) return <ContextReference href={href!} label={textOf(children)} />;
     return (
       <a {...props} href={href} rel="noopener noreferrer" target="_blank">
         {children}
@@ -163,6 +169,27 @@ const COMPONENTS: Components = {
   },
 };
 
+/** A message's context references (D1007) keep their `jhin-context:` links; others as before. */
+function keepContextReferences(url: string): string {
+  return parseContextHref(url) === null ? defaultUrlTransform(url) : url;
+}
+
+/** A `jhin-context://` reference: its record's chip, or its label outside a user message. */
+function ContextReference(props: { href: string; label: string }) {
+  const chips = use(MessageContextChipsContext);
+  if (chips === undefined) return <span>{props.label}</span>;
+  const reference = parseContextHref(props.href);
+  return (
+    <ContextRecordChip
+      actions={chips.actions}
+      href={props.href}
+      label={props.label}
+      record={reference === null ? undefined : chips.records.get(reference.contextId)}
+      unavailable="This context is no longer available."
+    />
+  );
+}
+
 const PLUGINS = [remarkGfm];
 const PLUGINS_WITH_BREAKS = [remarkGfm, remarkBreaks];
 
@@ -175,6 +202,7 @@ export function ChatMarkdown(props: ChatMarkdownProps) {
     >
       <ReactMarkdown
         components={COMPONENTS}
+        urlTransform={keepContextReferences}
         remarkPlugins={props.lineBreaks === true ? PLUGINS_WITH_BREAKS : PLUGINS}
       >
         {props.text}

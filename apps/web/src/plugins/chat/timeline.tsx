@@ -1,8 +1,12 @@
 // The timeline's design follows T3 Code (MIT, see THIRD_PARTY_NOTICES.md):
 // apps/web/src/components/chat/MessagesTimeline.tsx, WorkLog.tsx, TimelineSystemDivider.tsx,
 // MessageCopyButton.tsx and ProposedPlanCard.tsx.
-import type { TurnAttachment } from "@jhin/agent-api";
-import type { ChatMessageActionProps, NodeTarget } from "@jhin/client-api";
+import {
+  contextReferencesAsLabels,
+  type MessageContext,
+  type TurnAttachment,
+} from "@jhin/agent-api";
+import type { ChatMessageActionProps, MeshMembership, NodeTarget } from "@jhin/client-api";
 import { Badge, Button, Slot, Tooltip, TooltipPopup, TooltipTrigger, cn } from "@jhin/ui";
 import {
   BotIcon,
@@ -50,6 +54,8 @@ import {
   formatWorkingTimer,
   type TimestampFormat,
 } from "../../lib/format.ts";
+import { knownRecordsById, threadLinks } from "../../lib/composer-context.ts";
+import { useMeshMembers } from "../../lib/mesh.ts";
 import { useCopy, useNow } from "../../lib/hooks.ts";
 import {
   answerPreview,
@@ -65,6 +71,8 @@ import {
   type WorkEntry,
 } from "../../lib/timeline.ts";
 import { lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { type MessageContextChips, MessageContextChipsContext } from "./message-context.ts";
+import { ChatContext } from "./services.ts";
 import { MessageText } from "./message-text.tsx";
 import type { SavePlan } from "./proposed-plan-card.tsx";
 
@@ -128,6 +136,49 @@ function MessageActions(props: {
   );
 }
 
+/**
+ * A user message's context records for its chips (D1007): a thread opens when this node has it,
+ * a pull request in the browser.
+ */
+function useMessageContextChips(
+  context: MessageContext | undefined,
+): MessageContextChips | undefined {
+  const where = useContext(MessageActionsContext);
+  const chat = useContext(ChatContext);
+  // The mesh's members, to reach a thread chip's node: followed only for a message with one.
+  const threads = context?.records.some((record) => record.kind === "thread") === true;
+  // Without the chat there is no connection to follow, and the mesh is never read.
+  const members = useMeshMembers(
+    chat?.mesh as MeshMembership,
+    threads && chat !== undefined ? where?.target.node : undefined,
+  );
+  const selfNodeId = members?.find((member) => member.self)?.nodeId;
+  return useMemo(() => {
+    if (context === undefined) return undefined;
+    const links =
+      where === undefined || chat === undefined
+        ? {}
+        : threadLinks(
+            {
+              target: where.target,
+              nodeId: where.target.remote ?? selfNodeId,
+              selfNodeId,
+            },
+            (at) => chat.threads.catalog(at),
+            (route) => chat.navigation.navigate(route),
+          );
+    return {
+      records: knownRecordsById(context.records),
+      actions: {
+        ...links,
+        openUrl: (url: string) => {
+          if (/^https?:\/\//i.test(url)) window.open(url, "_blank", "noopener,noreferrer");
+        },
+      },
+    };
+  }, [context, where, chat, selfNodeId]);
+}
+
 /** The clock of the timeline: "today" and "yesterday" labels roll over with it. */
 const NowContext = createContext(Date.now());
 
@@ -173,12 +224,17 @@ function UserMessage({
   latest = false,
 }: {
   /** With its `turnId` when it is the message a turn answers: only that one is edited from here. */
-  turn: Pick<TimelineTurn, "text" | "attachments" | "startedAt"> & { turnId?: string };
+  turn: Pick<TimelineTurn, "text" | "attachments" | "startedAt" | "context"> & {
+    turnId?: string;
+  };
   format: TimestampFormat;
   latest?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const long = isLong(turn.text);
+  const chips = useMessageContextChips(turn.context);
+  // A copy reads the references by their labels, as the message shows them.
+  const copied = contextReferencesAsLabels(turn.text);
   return (
     <div className="group flex flex-col items-end gap-1 pb-4">
       <article
@@ -198,7 +254,9 @@ function UserMessage({
                 : undefined
             }
           >
-            <MessageText className="text-foreground" lineBreaks text={turn.text} />
+            <MessageContextChipsContext value={chips}>
+              <MessageText className="text-foreground" lineBreaks text={turn.text} />
+            </MessageContextChipsContext>
           </div>
         )}
       </article>
@@ -220,10 +278,10 @@ function UserMessage({
           <div className="flex items-center gap-0.5">
             {turn.turnId === undefined ? (
               turn.text === "" ? null : (
-                <MessageCopyButton text={turn.text} />
+                <MessageCopyButton text={copied} />
               )
             ) : (
-              <MessageActions latest={latest} role="user" text={turn.text} turnId={turn.turnId} />
+              <MessageActions latest={latest} role="user" text={copied} turnId={turn.turnId} />
             )}
           </div>
         </div>
@@ -694,6 +752,7 @@ function TurnView(props: {
                 turn={{
                   text: block.item.text,
                   attachments: block.item.attachments,
+                  ...(block.item.context === undefined ? {} : { context: block.item.context }),
                   startedAt: block.item.at,
                 }}
               />

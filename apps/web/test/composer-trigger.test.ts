@@ -5,8 +5,6 @@ import {
   isPathWord,
   parseStandaloneComposerSlashCommand,
   serializeComposerFileLink,
-  serializeComposerPullRequestLink,
-  serializeComposerThreadLink,
   splitPromptIntoSegments,
   submitsOnKey,
 } from "../src/lib/composer-trigger.ts";
@@ -145,13 +143,24 @@ describe("the prompt's chips", () => {
   });
 });
 
-describe("a picked pull request or thread in the prompt", () => {
-  it("is a link labelled #number to the pull request, split back out as a reference chip", () => {
-    const link = serializeComposerPullRequestLink({
-      number: 12,
-      url: "https://github.com/acme/app/pull/12",
-    });
-    expect(link).toBe("[#12](https://github.com/acme/app/pull/12)");
+describe("a pull request or thread in the prompt", () => {
+  it("is a reference chip for a context record (D1006)", () => {
+    const link = "[#12](jhin-context://v1/review-comment/review-comment_pr-1)";
+    expect(splitPromptIntoSegments(`see ${link} now`)).toEqual([
+      { type: "text", text: "see " },
+      {
+        type: "reference",
+        kind: "context",
+        label: "#12",
+        href: "jhin-context://v1/review-comment/review-comment_pr-1",
+        source: link,
+      },
+      { type: "text", text: " now" },
+    ]);
+  });
+
+  it("is a chip still as a #number link to the pull request, as W23 wrote it", () => {
+    const link = "[#12](https://github.com/acme/app/pull/12)";
     expect(splitPromptIntoSegments(`look at ${link} please`)).toEqual([
       { type: "text", text: "look at " },
       {
@@ -183,21 +192,8 @@ describe("a picked pull request or thread in the prompt", () => {
     ).toEqual(["pull-request"]);
   });
 
-  it("encodes a thread address that holds a parenthesis or a space", () => {
-    const link = serializeComposerThreadLink("Cache", "jhin://node (a)/threads/t)1");
-    const [segment] = splitPromptIntoSegments(link);
-    expect(segment).toMatchObject({ type: "reference", kind: "thread", source: link });
-  });
-
-  it("is a link labelled with the thread's title to its jhin:// address", () => {
-    const link = serializeComposerThreadLink(
-      "  Fix [the] cache\n now ",
-      "jhin://node-1/threads/t-2",
-    );
-    expect(link).toBe("[Fix the cache now](jhin://node-1/threads/t-2)");
-    expect(serializeComposerThreadLink("[]", "jhin://n/threads/t")).toBe(
-      "[thread](jhin://n/threads/t)",
-    );
+  it("is a chip still as a link to a thread's jhin:// address, as W23 wrote it", () => {
+    const link = "[Fix the cache now](jhin://node-1/threads/t-2)";
     expect(splitPromptIntoSegments(link)).toEqual([
       {
         type: "reference",
