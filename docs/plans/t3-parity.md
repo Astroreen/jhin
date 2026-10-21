@@ -989,6 +989,12 @@ stopped its menu says so and its kinds are disabled), with a screenshot.
 - A steered message whose removal from the queue could not be written, twice
   (the steer's write and its retry), is kept from running again only in
   memory: a node restarted before it would start sends it once more.
+- `threads.queue.steer` into a turn that is ending answers `TURN_NOT_RUNNING`,
+  as for an idle thread; a code of its own (or queueing it first, as
+  `threads.steer` does) would let a client tell the two apart.
+- The client commands `chat.queue.steer-next`, `chat.queue.edit-latest` and
+  `chat.composer.send-alternate` succeed when there is nothing to steer, edit
+  or send (from the palette or MCP); they could say so.
 - Idempotent sends: `threads.queue.add` ignores a `messageId` already queued,
   but a message that already left the queue (started or cancelled) is taken
   again; `threads.send` takes no id. So a client that retries a send whose
