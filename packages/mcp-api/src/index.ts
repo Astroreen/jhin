@@ -1,5 +1,37 @@
 export const MCP_SERVER_CAPABILITY = "mcp.server";
 
+/** The name a thread's agent knows the node's MCP server by (T3's `t3-code`). */
+export const MCP_SERVER_NAME = "jhin";
+
+/**
+ * What an agent is told about the node's MCP server (T3's orchestration section): one text
+ * for every agent; `shownAs` says how the agent itself names a tool, when it names it
+ * otherwise (Claude Code's `mcp__jhin__threads_send`).
+ */
+export function jhinToolsInstructions(shownAs?: (tool: string) => string): string {
+  const shown = shownAs === undefined ? "" : ` (${shownAs("threads_send")})`;
+  return `## Jhin tools
+
+The \`${MCP_SERVER_NAME}\` MCP server exposes this Jhin node's commands as tools: a command \`threads.send\` is the tool \`threads_send\`${shown}. Use them when the user asks you to work with Jhin itself: list and read projects and threads (\`projects_list\`, \`threads_list\`, \`threads_get\`, \`threads_events\`), start a thread in a project (\`threads_create\`) and send it a message (\`threads_send\`). Calls act for the current thread and only reach what this thread's agent may do. Threads you start are ordinary top-level threads the user sees in the sidebar: start one only when the user asks for a separate thread.`;
+}
+
+/**
+ * What a thread's agent may do through the node's MCP server (D341), whichever agent runs
+ * it: Claude Code (D340) or Codex (D889).
+ */
+export const AGENT_PERMISSIONS: readonly string[] = [
+  "threads.read",
+  "threads.write",
+  "projects.read",
+  "projects.write",
+  "projects.browse",
+  "git.read",
+  "git.write",
+  "mesh.read",
+  "missions.read",
+  "missions.write",
+];
+
 /** Who a credential acts as, and for which thread's agent (docs/plans/providers.md, D340). */
 export interface McpGrant {
   /** The caller id its calls run as, e.g. `jhin.agent-claude:<threadId>`. */

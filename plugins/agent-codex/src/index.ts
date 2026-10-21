@@ -16,6 +16,12 @@ import {
   type AgentSkill,
   type AgentTurn,
 } from "@jhin/agent-api";
+import {
+  AGENT_PERMISSIONS,
+  MCP_SERVER_CAPABILITY,
+  MCP_SERVER_NAME,
+  type McpServer,
+} from "@jhin/mcp-api";
 import { definePlugin, z } from "@jhin/sdk";
 import {
   EVENTLOG_CAPABILITY,
@@ -117,6 +123,11 @@ export const Config = z
       description:
         "The node's environment variables Codex gets: names, or prefixes ending in * (e.g. LC_*). * passes all of them; a narrower list keeps variables meant for the node away from Codex and the commands it runs",
       advanced: true,
+    }),
+    mcp: z.boolean().default(true).meta({
+      title: "Jhin tools",
+      description:
+        "Give Codex this node's MCP server, so it can work with Jhin's threads and projects when asked",
     }),
     sessionIdleMinutes: z.number().int().nonnegative().default(10).meta({
       title: "Idle minutes",
@@ -222,6 +233,44 @@ export async function probe(launch: Launcher, config: Config): Promise<Probe> {
   }
 }
 
+/** A permission that only reads: `threads.read`, `projects.browse`. */
+const readsOnly = (permission: string) =>
+  permission.endsWith(".read") || permission === "projects.browse";
+
+/**
+ * Codex aborts an MCP call after its own default; a tool that waits (a thread's turn, W10's
+ * tasks) may take up to an hour, so T3's budget (`CODEX_T3_MCP_TOOL_TIMEOUT_SEC`).
+ */
+const MCP_TOOL_TIMEOUT_SEC = 65 * 60;
+
+/**
+ * The node's MCP server for one app-server (T3's `codexThreadRuntimeParams`, D889): a
+ * credential of its own, sent in the thread's config, so it is in neither Codex's argv nor
+ * the environment of the commands it runs.
+ */
+export function mcpAttachment(
+  server: McpServer,
+  threadId: string,
+  writes: boolean,
+): { readonly servers: Record<string, unknown>; dispose(): void } {
+  const credential = server.issue({
+    id: `${CODEX_AGENT_ID}:${threadId}`,
+    // Codex calls MCP tools without Jhin's approval: only a thread with full access writes.
+    permissions: writes ? AGENT_PERMISSIONS : AGENT_PERMISSIONS.filter(readsOnly),
+    threadId,
+  });
+  return {
+    servers: {
+      [MCP_SERVER_NAME]: {
+        url: credential.url,
+        tool_timeout_sec: MCP_TOOL_TIMEOUT_SEC,
+        http_headers: { ...credential.headers },
+      },
+    },
+    dispose: () => credential.dispose(),
+  };
+}
+
 /** Starts `codex app-server` in `cwd` and lists its skills (T3's probeCodexSkillsForCwd). */
 export async function probeSkills(
   launch: Launcher,
@@ -259,6 +308,8 @@ export function createCodexRuntime(options: {
   readonly threads: ThreadStore;
   readonly config: () => Config;
   readonly launch?: Launcher;
+  /** The node's MCP server, given to each app-server unless the config's `mcp` is off (D889). */
+  readonly mcp?: McpServer;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
 }): AgentRuntime & {
   readonly sessions: Sessions;
@@ -392,6 +443,12 @@ export function createCodexRuntime(options: {
           config.defaultModel ??
           (current() === undefined ? waitedDefault() : defaultModel()),
         modelOptions: (model) => models().find((listed) => listed.id === model)?.options,
+        ...(config.mcp && options.mcp !== undefined
+          ? {
+              mcp: (threadId: string, writes: boolean) =>
+                mcpAttachment(options.mcp!, threadId, writes),
+            }
+          : {}),
         version: VERSION,
         home: expandHome(config.homePath),
         ...(options.log === undefined ? {} : { log: options.log }),
@@ -483,9 +540,11 @@ export function codexPlugin(launch: Launcher = launchAppServer) {
       const log = context.services.get<EventLog>(EVENTLOG_CAPABILITY);
       const registry = context.services.get<AgentRegistry>(AGENT_REGISTRY_CAPABILITY);
       const threads = threadRecords(kv);
+      const mcp = context.services.tryGet<McpServer>(MCP_SERVER_CAPABILITY);
       const runtime = createCodexRuntime({
         threads,
         launch,
+        ...(mcp === undefined ? {} : { mcp }),
         config: () => context.config.get<Config>(CONFIG_SECTION),
         log: (message, data) => context.log.warn(message, data),
       });

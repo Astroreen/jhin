@@ -36,8 +36,9 @@ import {
   type FileUpdateChange,
   type TurnInput,
 } from "./mapping.ts";
+import { jhinToolsInstructions } from "@jhin/mcp-api";
 import { CodexEnded, CodexRpcError, CodexSpawnError, codexEnvironment } from "./rpc.ts";
-import { SessionTakenOver, type Lease, type Sessions } from "./session.ts";
+import { SessionTakenOver, type Lease, type McpAttachment, type Sessions } from "./session.ts";
 
 /** The turn ended while it still waited on Codex (a stop's grace ran out). */
 class TurnEnded extends Error {}
@@ -72,6 +73,11 @@ export interface CodexTurnDependencies {
   readonly settings: CodexSettings;
   /** The turn's model; a promise while it is still being asked for (`status()`). */
   readonly model: string | Promise<string>;
+  /**
+   * Gives a new app-server the node's MCP server (D889); absent when it gets none. `writes`:
+   * the credential may run writing commands too (full access only).
+   */
+  readonly mcp?: (threadId: string, writes: boolean) => McpAttachment;
   /** What a turn can choose for `model`, as `model/list` described it (D881). */
   readonly modelOptions?: (model: string) => readonly ModelOptionDescriptor[] | undefined;
   /** Sent in `initialize`. */
@@ -713,7 +719,13 @@ export function codexTurn(
   const ensureThread = async (current: Lease, recorded: string | undefined) => {
     const connection = current.session.connection;
     if (current.session.codexThreadId !== undefined) return;
-    const params = { cwd: request.cwd, model, config: THREAD_CONFIG };
+    const mcpServers = current.session.mcpServers;
+    const params = {
+      cwd: request.cwd,
+      model,
+      config:
+        mcpServers === undefined ? THREAD_CONFIG : { ...THREAD_CONFIG, mcp_servers: mcpServers },
+    };
     if (recorded !== undefined) {
       const resume = () =>
         connection.request("thread/resume", { threadId: recorded, excludeTurns: true, ...params });
@@ -753,11 +765,20 @@ export function codexTurn(
 
   /** The turn's model, once known. */
   let model = "";
+  /** What Codex is told besides the conversation: the Jhin tools when it has them (D889). */
+  const developerInstructions = () => {
+    const parts = [
+      ...(lease?.session.mcpServers === undefined ? [] : [jhinToolsInstructions()]),
+      ...(request.instructions === undefined ? [] : [request.instructions]),
+    ];
+    return parts.length === 0 ? {} : { instructions: parts.join("\n\n") };
+  };
 
   const run = async () => {
     model = await deps.model;
     const recorded = await deps.threads.get(request.threadId);
     if (interrupted) return;
+    const mcpWrites = runtimeMode === "full-access";
     const leasing = deps.sessions.lease(request.threadId, {
       binaryPath: deps.settings.binaryPath,
       args: deps.settings.args ?? [],
@@ -773,7 +794,10 @@ export function codexTurn(
         env: deps.settings.env ?? {},
         inheritEnv: deps.settings.inheritEnv ?? ["*"],
         home: deps.home,
+        // Turning the node's MCP server on or off, or its writes, starts a new app-server.
+        mcp: deps.mcp === undefined ? false : mcpWrites ? "writes" : "reads",
       }),
+      ...(deps.mcp === undefined ? {} : { mcp: () => deps.mcp!(request.threadId, mcpWrites) }),
     });
     const current = await untilEnded(leasing).catch((error: unknown) => {
       // Given up while the app-server started: it is ended once it is there.
@@ -857,7 +881,7 @@ export function codexTurn(
                 request.modelOptions,
                 deps.settings.effort,
               ),
-              ...(request.instructions === undefined ? {} : { instructions: request.instructions }),
+              ...developerInstructions(),
             }),
           ),
         )) as { turn?: { id?: unknown } } | null;

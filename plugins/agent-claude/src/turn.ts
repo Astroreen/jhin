@@ -19,6 +19,7 @@ import type {
   TurnRequest,
 } from "@jhin/agent-api";
 import { DEFAULT_RUNTIME_MODE, ThreadEvents, historyTranscript } from "@jhin/agent-api";
+import { MCP_SERVER_NAME, jhinToolsInstructions } from "@jhin/mcp-api";
 import type {
   CanUseTool,
   Options,
@@ -111,17 +112,15 @@ export interface ClaudeTurnDependencies {
 }
 
 /** The name Claude Code knows the node's MCP server by; its tools are `mcp__jhin__<tool>`. */
-export const MCP_SERVER_NAME = "jhin";
+export { MCP_SERVER_NAME };
 
 /** The tools of the node's MCP server, approved without asking (T3's `mcp__t3-code__*`). */
 const MCP_TOOL_PREFIX = `mcp__${MCP_SERVER_NAME}__`;
 
 /** What the appended system prompt says about the node's MCP server (T3's orchestration section). */
-export const JHIN_MCP_INSTRUCTIONS = `
-
-## Jhin tools
-
-The \`${MCP_SERVER_NAME}\` MCP server exposes this Jhin node's commands as tools: a command \`threads.send\` is the tool \`threads_send\` (Claude Code shows it as \`mcp__${MCP_SERVER_NAME}__threads_send\`). Use them when the user asks you to work with Jhin itself: list and read projects and threads (\`projects_list\`, \`threads_list\`, \`threads_get\`, \`threads_events\`), start a thread in a project (\`threads_create\`) and send it a message (\`threads_send\`). Calls act for the current thread and only reach what this thread's agent may do. Threads you start are ordinary top-level threads the user sees in the sidebar: start one only when the user asks for a separate thread.`;
+export const JHIN_MCP_INSTRUCTIONS = `\n\n${jhinToolsInstructions(
+  (tool) => `Claude Code shows it as \`${MCP_TOOL_PREFIX}${tool}\``,
+)}`;
 
 /** The environment Claude Code runs with: the node's variables the allow-list lets through, plus the config's `env`. */
 export function claudeEnvironment(
