@@ -287,7 +287,6 @@ const MCP_REGISTRATION_TIMEOUT_MS = 90_000;
 /** The longest delay setTimeout takes (2^31 - 1 ms, about 24.8 days). */
 const MAX_TIMER = 2 ** 31 - 1;
 
-/** The uuids of the messages a frame answers, when Claude Code marked it. */
 /** The tools that start a subagent: `Agent`, and `Task` in older CLIs. */
 const SUBAGENT_TOOLS = new Set(["Agent", "Task"]);
 /** How long a steer waits for Claude Code to move the turn's subagents (T3's 5 s). */
@@ -315,6 +314,7 @@ function trackForegroundSubagents(message: SDKMessage, running: Set<string>): vo
   }
 }
 
+/** The uuids of the messages a frame answers, when Claude Code marked it. */
 function stampOf(message: SDKMessage): readonly string[] | undefined {
   const marked = message as { user_message_uuid?: unknown; user_message_uuids?: unknown };
   if (Array.isArray(marked.user_message_uuids) && marked.user_message_uuids.length > 0) {

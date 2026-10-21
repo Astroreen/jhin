@@ -30,10 +30,12 @@ const aborted = () =>
 
 function start(...scripts: Script[]) {
   const scripted = scriptedQuery(...scripts);
+  const logged: string[] = [];
   const claude = createClaudeRuntime({
     query: scripted.query,
     sessions: memorySessions(),
     config: () => Config.parse({}),
+    log: (message) => logged.push(message),
   });
   const turn = claude.startTurn({
     threadId: THREAD,
@@ -44,7 +46,7 @@ function start(...scripts: Script[]) {
     model: "claude-haiku-5-5",
     runtimeMode: "full-access",
   });
-  return { claude, turn, ...scripted };
+  return { claude, turn, logged, ...scripted };
 }
 
 /** Every item of a turn; `onItem` runs as each one comes. */
@@ -231,7 +233,7 @@ describe("jhin.agent-claude: steering (D206)", () => {
 
     it("steers as before when Claude Code refuses to move them", async () => {
       const seen: { controls?: string[] } = {};
-      const { turn, state } = start(subagents(seen));
+      const { turn, state, logged } = start(subagents(seen));
       state.background = () => Promise.reject(new Error("background tasks are disabled"));
       let sent = false;
       const items = await drain(turn, (item) => {
@@ -241,6 +243,52 @@ describe("jhin.agent-claude: steering (D206)", () => {
         }
       });
       expect(seen.controls).toEqual(["background:toolu_fg"]);
+      expect(answers(items)).toEqual(["working", "steered"]);
+      expect(logged).toContain("claude code did not move a subagent to the background");
+    });
+
+    it("steers as before with a CLI that cannot move tasks to the background", async () => {
+      const seen: { controls?: string[] } = {};
+      const { turn, state } = start(subagents(seen));
+      state.noBackground = true;
+      let sent = false;
+      const items = await drain(turn, (item) => {
+        if (item.kind === "message.completed" && !sent) {
+          sent = true;
+          turn.steer!({ text: "change course" });
+        }
+      });
+      expect(seen.controls).toEqual([]);
+      expect(answers(items)).toEqual(["working", "steered"]);
+    });
+
+    it("asks once per tool call: a second steer waits on the same answer", async () => {
+      let controls: string[] = [];
+      const { turn, state } = start(async function* (player) {
+        const first = player.call.prompt[0]!.uuid;
+        yield marked([first], init());
+        yield marked([first], toolUse("a1", "toolu_fg", "Agent", { prompt: "look around" }));
+        yield* streamedBlock("m1", 0, "text", ["working"]);
+        const one = await player.nextPrompt();
+        const two = await player.nextPrompt();
+        controls = player.call.controls.filter((entry) => entry.startsWith("background:"));
+        yield marked([first], aborted());
+        yield marked([one!.uuid, two!.uuid], init());
+        yield* streamedBlock("m2", 0, "text", ["steered"]);
+        yield marked([one!.uuid, two!.uuid], result());
+        await player.nextPrompt();
+      });
+      // Claude Code moves nothing: the subagent stays in the foreground.
+      state.background = () => Promise.resolve(false);
+      let sent = false;
+      const items = await drain(turn, (item) => {
+        if (item.kind === "message.completed" && !sent) {
+          sent = true;
+          turn.steer!({ text: "one" });
+          turn.steer!({ text: "two" });
+        }
+      });
+      expect(controls).toEqual(["background:toolu_fg"]);
       expect(answers(items)).toEqual(["working", "steered"]);
     });
   });
