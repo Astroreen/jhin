@@ -26,7 +26,7 @@ import fake from "@jhin/plugin-agent-fake";
 import threads from "@jhin/plugin-threads";
 import agents from "../src/index.ts";
 
-const manifest = (dir: string) =>
+export const manifest = (dir: string) =>
   JSON.parse(Fs.readFileSync(new URL(`../../${dir}/package.json`, import.meta.url), "utf8")).jhin;
 
 const stops: (() => Promise<void>)[] = [];
@@ -38,11 +38,18 @@ export const NODE_ID = "node-a";
 /** A runtime whose id is also a valid agent id, to test that ids are not shared. */
 export const CAPTURE = "capture";
 
+/** How the capture runtime answers: its text, and what a turn waits for before it. */
+export interface CaptureControl {
+  answer?: (request: TurnRequest) => string;
+  /** Awaited before the turn answers, so a test holds the agent busy. */
+  gate?: () => Promise<void>;
+}
+
 /**
  * A runtime that records every turn request it gets and answers "ok", so a
  * test can read what a defined agent handed its runtime.
  */
-function captureRuntime(requests: TurnRequest[]): TestPlugin {
+export function captureRuntime(requests: TurnRequest[], control: CaptureControl = {}): TestPlugin {
   return {
     manifest: testManifest("test.capture", {
       side: "server",
@@ -60,7 +67,12 @@ function captureRuntime(requests: TurnRequest[]): TestPlugin {
               requests.push(request);
               return {
                 items: (async function* (): AsyncGenerator<AgentItem> {
-                  yield { kind: "message.completed", itemId: `${request.turnId}:1`, text: "ok" };
+                  await control.gate?.();
+                  yield {
+                    kind: "message.completed",
+                    itemId: `${request.turnId}:1`,
+                    text: control.answer?.(request) ?? "ok",
+                  };
                 })(),
                 interrupt() {},
               };
@@ -145,6 +157,8 @@ export async function node(
     project?: Record<string, unknown>;
     /** More plugins on the node, such as a `lore.brief` command. */
     plugins?: readonly TestPlugin[];
+    /** How the capture runtime answers. */
+    capture?: CaptureControl;
   } = {},
 ) {
   const data = options.restart?.data ?? Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-agents-"));
@@ -173,7 +187,7 @@ export async function node(
     storage,
     { manifest: manifest("threads"), definition: threads },
     { manifest: manifest("agent-fake"), definition: fake },
-    captureRuntime(requests),
+    captureRuntime(requests, options.capture),
     hostConfig(() => kernel!, layers, patches),
     { manifest: manifest("agents"), definition: agents },
     ...(options.plugins ?? []),

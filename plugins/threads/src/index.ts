@@ -18,6 +18,7 @@ import {
   SUBAGENT_WORK_KINDS,
   THREADS_STREAM,
   applicableModelOptions,
+  MessageOrigin,
   ThreadEvents,
   ThreadHooks,
   threadStream,
@@ -455,6 +456,7 @@ const QueuedMessage = z.object({
   text: z.string(),
   attachments: z.array(z.union([AttachmentRef, Attachment])).optional(),
   ...AgentSettings,
+  origin: MessageOrigin.optional(),
   createdAt: z.string(),
   updatedAt: z.string().optional(),
 });
@@ -525,6 +527,8 @@ const Outgoing = z.object({
   text: z.string(),
   attachments: Attachments.optional(),
   ...AgentSettings,
+  /** A message between agents (agents.md D623): its turn's start carries it, so it shows its sender. */
+  origin: MessageOrigin.optional(),
 });
 type Outgoing = Omit<z.infer<typeof Outgoing>, "threadId">;
 
@@ -1208,6 +1212,8 @@ export default definePlugin({
       alongside?: { events: readonly NewEvent[]; records: readonly RecordWrite[] },
       /** A fork's result the agent gets before the message (D226). */
       handoff?: { readonly payload: Json; readonly text: string },
+      /** The message between agents the turn answers (agents.md D623). */
+      origin?: MessageOrigin,
     ): Promise<void> {
       const { turnId } = entry;
       const stream = threadStream(thread.id);
@@ -1244,6 +1250,7 @@ export default definePlugin({
                   ...(settings as unknown as Record<string, Json>),
                   ...(messageId === undefined ? {} : { messageId }),
                   ...(handoff === undefined ? {} : { handoff: handoff.payload }),
+                  ...(origin === undefined ? {} : { origin: origin as unknown as Json }),
                 },
               },
               ...(alongside?.events ?? []),
@@ -3049,7 +3056,7 @@ export default definePlugin({
      */
     async function startTurn(
       threadId: string,
-      { text, attachments, ...requested }: Outgoing,
+      { text, attachments, origin, ...requested }: Outgoing,
       options: {
         messageId?: string;
         progress?: { recorded: boolean };
@@ -3200,6 +3207,7 @@ export default definePlugin({
         options.progress,
         options.alongside,
         handoff,
+        origin,
       );
       if (deliveredMerge !== undefined) {
         const id = deliveredMerge;
@@ -4331,7 +4339,7 @@ export default definePlugin({
           const id = turnIdOf(event);
           return event.type !== ThreadEvents.threadForked && typeof id === "string" && kept.has(id);
         });
-        const { agentId, model, runtimeMode, interactionMode } = parent;
+        const { agentId, model, runtimeMode, interactionMode, generationOf } = parent;
         return creatingIn(parent.projectId, () =>
           createThread(
             Crypto.randomUUID(),
@@ -4342,6 +4350,8 @@ export default definePlugin({
               ...(model === undefined ? {} : { model }),
               ...(runtimeMode === undefined ? {} : { runtimeMode }),
               ...(interactionMode === undefined ? {} : { interactionMode }),
+              // A fork of a generation is its agent's too: Threads mode leaves it out (agents.md D625).
+              ...(generationOf === undefined ? {} : { generationOf }),
               forkedFrom: { threadId, turnId: target },
             },
             false,

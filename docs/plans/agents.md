@@ -311,7 +311,11 @@ the message, the inbox, events and the schemas of `agents.send`,
   as `origin` (`MessageOrigin`: id, kind, sender, trace, reply), so the thread
   shows it as from its sender, with a link back. A message for another node
   is sent there with `mesh.call` to the same command, with the resolved
-  `from`, the `messageId` and the trace.
+  `from`, the `messageId` and the trace, holding no more than
+  `agents.message` (the caller here held it). A `messageId` the node has
+  delivered is not delivered again; given again by another sender it is
+  `MESSAGE_EXISTS`. A reply names the message it answers (`inReplyTo`) and
+  goes as an `answer`.
 - **D624. An ask is answered in a turn.** `agents.ask` delivers like
   `agents.send` (kind `ask`), then waits for the turn its message started to
   end: the answer is that turn's last assistant message, and a failed,
@@ -320,9 +324,10 @@ the message, the inbox, events and the schemas of `agents.send`,
   no timeout of its own (an agent's MCP call has its client's).
 - **D625. The library of minds.** With `generation` naming an earlier
   generation, the ask goes to that dormant generation in a **side turn**: its
-  thread is forked at its last ended turn (`threads.fork`) into a thread
-  marked with the agent (`generationOf`, so Threads mode leaves it out, D745)
-  but recorded as no generation, and the question runs there. Neither the
+  thread is forked at its last ended turn (`threads.fork`, whose fork of a
+  generation keeps `generationOf`, so Threads mode leaves it out, D745) into
+  a thread recorded as no generation, and the question runs there. A
+  generation with no ended turn has nothing to answer from (`NO_ANSWER`). Neither the
   asked generation nor the current one changes. The fork resumes from the
   generation's turns (the runtime gets them as history, D102). Naming the
   current generation is the same as naming none.
@@ -824,6 +829,12 @@ Each workstream lists its PRs here as they merge.
   `agents/messages` and `agents/inbox` streams, the schemas of `agents.send`,
   `agents.ask` and `agents.inbox.*`). D621–D629 recorded; the server side and
   the inbox follow.
+- A2 #177: `agents.send`, `agents.ask` (side turns for earlier
+  generations), `agents.inbox.list` and `agents.inbox.answer` in
+  `jhin.agents`, across nodes through `mesh.call`; `origin` on queued
+  messages and `agent.turn.started`, and forks of generations keep
+  `generationOf` (`jhin.threads`); `agents.read` and `agents.message` for
+  agents over MCP (D621–D629).
 - A3 #104: `@jhin/missions-api` (records, the `missions` stream's events and
   fold, intent chain, Markdown) and the `jhin.missions` plugin: `missions.*`
   and `slices.*` commands, the stream guarded by `missions.read`, agents

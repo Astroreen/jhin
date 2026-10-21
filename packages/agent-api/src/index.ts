@@ -428,7 +428,8 @@ export const ThreadEvents = {
   projectDeleted: "threads.project.deleted",
   /**
    * `{ turnId, agentId, runtimeId?, input, model?, runtimeMode?, interactionMode?, modelOptions?, messageId?,
-   * handoff? }`; `runtimeId` only when the agent is not a runtime itself (D601).
+   * handoff?, origin? }`; `runtimeId` only when the agent is not a runtime itself (D601).
+   * `origin` (`MessageOrigin`) names the message between agents the turn answers (agents.md D623).
    * `handoff` (`{ kind: "merge-back", threadId, turnId }`) says the agent got a
    * fork's result before `input.text`. In a fork, events copied from its parent
    * carry `inheritedAt`, their original time.

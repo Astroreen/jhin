@@ -40,7 +40,7 @@ export function parseMessageAddress(address: string): MessageParty | undefined {
 /** The longest body or question a message carries, in characters. */
 export const MAX_MESSAGE_LENGTH = 32_000;
 
-/** What a message is (D621): a note, a question awaiting an answer, or that answer. */
+/** What a message is (D621): a note, a question awaiting an answer, or a reply to either. */
 export const MESSAGE_KINDS = ["message", "ask", "answer"] as const;
 export const MessageKind = z.enum(MESSAGE_KINDS);
 export type MessageKind = z.output<typeof MessageKind>;
@@ -61,7 +61,7 @@ export const AgentMessage = z.object({
   body: z.string(),
   traceId: z.string(),
   sentAt: z.string(),
-  /** An answer's ask. */
+  /** The message an `answer` replies to. */
   inReplyTo: z.string().optional(),
   /** An ask to an earlier generation (D625). */
   generation: z.number().int().positive().optional(),
@@ -137,6 +137,8 @@ export type MessageErrorCode =
   | "GENERATION_NOT_FOUND"
   /** The turn that was to answer failed or was interrupted, or said nothing (D624). */
   | "NO_ANSWER"
+  /** A `messageId` given again, by another sender. */
+  | "MESSAGE_EXISTS"
   /** `agents.inbox.answer` of an ask the inbox does not have. */
   | "ASK_NOT_FOUND"
   /** `agents.inbox.answer` of an ask already answered. */
@@ -169,6 +171,8 @@ export const MessageCommands = {
       to: Address,
       body: z.string().min(1).max(MAX_MESSAGE_LENGTH),
       from: From,
+      /** The message this one replies to: it goes as an `answer`. */
+      inReplyTo: z.string().min(1).optional(),
       messageId: MessageIdInput,
     }),
     output: z.object({
@@ -236,8 +240,8 @@ export function messageText(message: AgentMessage, replyTool = "agents_send"): s
     case "ask":
       return `[Question from ${message.from}${generation}; ${meta}]\n\n${message.body}\n\n[Your last message in this turn is the answer: answer it directly, and say so when you cannot judge it.]`;
     case "answer":
-      return `[Answer from ${message.from} to your question ${message.inReplyTo ?? "?"}; ${meta}]\n\n${message.body}`;
+      return `[Answer from ${message.from} to your message ${message.inReplyTo ?? "?"}; ${meta}]\n\n${message.body}`;
     default:
-      return `[Message from ${message.from}; ${meta}. Reply with ${replyTool} to ${message.from}.]\n\n${message.body}`;
+      return `[Message from ${message.from}; ${meta}. Reply with ${replyTool} to ${message.from}, inReplyTo ${message.messageId}.]\n\n${message.body}`;
   }
 }
