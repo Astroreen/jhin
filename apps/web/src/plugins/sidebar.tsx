@@ -613,8 +613,9 @@ export const sidebarPlugin = builtin(
         pick: (entry: Entry) => boolean,
         each: (entry: Entry) => Promise<unknown>,
         failure: (count: number) => string,
+        chosen: readonly Entry[] = selected(),
       ) => {
-        const entries = selected().filter(pick);
+        const entries = chosen.filter(pick);
         selection.set({ keys: [] });
         // What failed stays selected, as T3 keeps it, to try again.
         const failed: string[] = [];
@@ -668,7 +669,9 @@ export const sidebarPlugin = builtin(
         input: z.object({ until: z.iso.datetime({ offset: true }).optional() }),
         output: z.object({}),
         handler: async (input) => {
-          // "Custom…" asks once for every selected thread (t3-parity.md D962).
+          // "Custom…" asks once for every selected thread (t3-parity.md D962),
+          // and snoozes the threads chosen when it was asked.
+          const chosen = selected();
           const until =
             input.until ??
             ((await context.commands.execute("thread.snooze.choose", {})) as { until?: string })
@@ -678,6 +681,7 @@ export const sidebarPlugin = builtin(
             () => true,
             (entry) => context.commands.execute("thread.snooze", { ...refOf(entry), until }),
             (count) => `Failed to snooze ${count} thread${count === 1 ? "" : "s"}`,
+            chosen,
           );
         },
       });
