@@ -174,10 +174,11 @@ export async function registerSecretRequests(
           unwatch();
           try {
             await appendClosed(threadId, { requestId, status });
+            await kv.delete(NAMESPACE, pendingKey(requestId)).catch(() => false);
           } catch (error) {
+            // Its kv record stays, so the next start closes the card.
             context.log.warn("could not close a secret request card", { error: String(error) });
           } finally {
-            await kv.delete(NAMESPACE, pendingKey(requestId)).catch(() => false);
             settle(outcome);
           }
         },
