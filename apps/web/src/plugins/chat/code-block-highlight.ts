@@ -79,7 +79,6 @@ export const ComposerCodeBlockHighlight = Extension.create({
     // Bounded by the document: each scan drops the signatures it no longer holds.
     const cache = new Map<string, readonly HighlightedToken[]>();
     let live = new Set<string>();
-    const inFlight = new Set<string>();
     return [
       new Plugin<DecorationSet>({
         key: highlightKey,
@@ -96,6 +95,8 @@ export const ComposerCodeBlockHighlight = Extension.create({
         },
         view(view) {
           let disposed = false;
+          // Per view: a view the editor replaced must not leave its requests to the new one.
+          const inFlight = new Set<string>();
           let scanned: ProseMirrorNode | undefined;
           const refresh = () => {
             // A selection change cannot alter what needs tokenizing.
