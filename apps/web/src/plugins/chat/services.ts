@@ -1,4 +1,4 @@
-import type { ModelOptionSelection } from "@jhin/agent-api";
+import type { MessageContextRecord, ModelOptionSelection } from "@jhin/agent-api";
 import type {
   AgentInfo,
   Connections,
@@ -132,6 +132,12 @@ export interface ChatServices {
   readonly threadFind: { current: { open(): void } | undefined };
 }
 
+/**
+ * What putting a context record into the composer came to: `not-now` while it takes no chips
+ * (a prefilled answer, an approval), `full` at T3's 200 records.
+ */
+export type ContextInsertion = "inserted" | "not-now" | "full";
+
 /** The mounted composer, for commands (focus it, open its model picker). */
 export interface ComposerHandle {
   current:
@@ -144,6 +150,8 @@ export interface ComposerHandle {
         draft(): ComposerDraft | undefined;
         focus(): void;
         insert(text: string): void;
+        /** Puts a context record's reference at the cursor (D1009), or says why it cannot. */
+        insertContext(record: MessageContextRecord): ContextInsertion;
         toggleModelPicker(): void;
         cycleRuntimeMode(): void;
         togglePlanMode(): void;

@@ -1,5 +1,6 @@
 // Empty states follow T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/NoActiveThreadState.tsx
 // and NoProjectsHero.tsx.
+import { MessageContextRecordSchema } from "@jhin/agent-api";
 import {
   CHAT_DRAFTS_CAPABILITY,
   CONNECTIONS_CAPABILITY,
@@ -614,6 +615,25 @@ export const chatPlugin = builtin(
           if (target === undefined) return { inserted: false };
           target.insert(text);
           return { inserted: true };
+        },
+      });
+      // T3's addTerminalContext (D1009): a record and its chip, not text.
+      context.commands.register({
+        name: "chat.composer.insert-context",
+        title: "Add context to the composer",
+        description:
+          "Puts a context record (a terminal excerpt, a pull request, a thread) beside the open thread's message, its chip at the cursor when the box has focus, else at the end",
+        input: z.object({ record: MessageContextRecordSchema }),
+        output: z.object({
+          inserted: z.boolean(),
+          /** Why not: no composer open, one that takes no context now, or one holding T3's 200. */
+          reason: z.enum(["no-composer", "not-now", "full"]).optional(),
+        }),
+        handler: ({ record }) => {
+          const target = composer.current;
+          if (target === undefined) return { inserted: false, reason: "no-composer" as const };
+          const done = target.insertContext(record);
+          return done === "inserted" ? { inserted: true } : { inserted: false, reason: done };
         },
       });
       register(

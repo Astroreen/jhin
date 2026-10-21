@@ -134,9 +134,15 @@ test("D472–D474: the selection menu adds to the chat, and the terminals move t
   await info.attach("terminal-context-menu", { path: menuShot, contentType: "image/png" });
   await page.getByRole("menuitem", { name: "Add to chat" }).click();
   const message = page.getByRole("textbox", { name: "Message" });
-  // The reference shows as the editor's mention chip; it is sent as its text.
-  await expect(message.locator('[data-mention^="terminal-1:1-"]')).toHaveText(/terminal-1:1-\d+/);
-  await expect(message).toHaveText(/<terminal_context>[\s\S]*menu-42[\s\S]*<\/terminal_context>/);
+  // T3's inline terminal chip (D1009): its record holds the lines; pressed, it shows them.
+  const chip = message.getByRole("button", { name: /^Terminal excerpt, Terminal 1 lines? 1/ });
+  await expect(chip).toBeVisible();
+  await chip.click();
+  await expect(page.getByLabel("Captured terminal output")).toContainText("menu-42");
+  const chipShot = info.outputPath("terminal-chip.png");
+  await page.screenshot({ path: chipShot });
+  await info.attach("terminal-chip", { path: chipShot, contentType: "image/png" });
+  await page.keyboard.press("Escape");
 
   // The header's toggle shows the thread's terminals right of the chat.
   await page.getByRole("button", { name: "Toggle terminal panel" }).click();

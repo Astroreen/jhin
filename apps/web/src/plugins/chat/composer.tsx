@@ -128,7 +128,11 @@ const PromptEditor = lazy(() =>
 );
 import { useComposerMenu } from "./use-composer-menu.ts";
 import { type PutAside, usePutAside } from "./put-aside.ts";
-import { knownRecordsById, withContexts } from "../../lib/composer-context.ts";
+import {
+  knownRecordsById,
+  planContextInsertion,
+  withContexts,
+} from "../../lib/composer-context.ts";
 import { ComposerChipsContext, useComposerChipActions } from "./composer-chips.tsx";
 import {
   useAttachmentLoader,
@@ -150,7 +154,7 @@ import {
   ComposerSelectControl,
 } from "../../lib/composer-control.tsx";
 import { dispatchMode } from "./send.ts";
-import { useAgents, useChat } from "./services.ts";
+import { type ContextInsertion, useAgents, useChat } from "./services.ts";
 import { ComposerSurface } from "./surface.tsx";
 
 /** What the next turn runs with. */
@@ -189,6 +193,11 @@ export interface ComposerHandleApi {
   focus(): void;
   /** Puts text at the cursor (after the prompt when the field is not focused), then focuses. */
   insert(text: string): void;
+  /**
+   * Puts a context record beside the prompt and its reference at the cursor (T3's
+   * addTerminalContext, D1009), or why it cannot.
+   */
+  insertContext(record: MessageContextRecord): ContextInsertion;
   toggleModelPicker(): void;
   cycleRuntimeMode(): void;
   togglePlanMode(): void;
@@ -1217,6 +1226,9 @@ export function Composer(props: ComposerProps) {
   const [contexts, setContexts] = useState<readonly MessageContextRecord[]>(
     initial?.contexts ?? [],
   );
+  /** The records as the latest render or insert left them, for inserts between renders. */
+  const contextsNow = useRef(contexts);
+  contextsNow.current = contexts;
   /** Where the caret is in the prompt (a markdown string): the menus read the trigger there. */
   const [cursor, setCursor] = useState(prompt.length);
   const uploads = useComposerAttachments({
@@ -1404,6 +1416,22 @@ export function Composer(props: ComposerProps) {
     editor.current?.replaceRange(at, at, `${gap}${text}`);
     editor.current?.focus();
   };
+  const insertContext = (record: MessageContextRecord): ContextInsertion => {
+    if (literalAnswer || approval !== undefined) return "not-now";
+    // What the editor and the records hold now: two inserts in one tick see each other's.
+    const plan = planContextInsertion({
+      prompt: editor.current?.value() ?? prompt,
+      caret: focused ? (editor.current?.cursor() ?? cursor) : undefined,
+      records: contextsNow.current,
+      record,
+    });
+    if (plan.kind === "full") return "full";
+    contextsNow.current = plan.records;
+    setContexts(plan.records);
+    editor.current?.replaceRange(plan.at, plan.at, plan.text);
+    editor.current?.focus();
+    return "inserted";
+  };
   const menuListId = useId();
   // `@` offers the node's other threads, linked by their address (D24): the node's own id.
   // They are followed only while `@` is typed, as T3's useThreadShells(isPathTrigger).
@@ -1494,6 +1522,7 @@ export function Composer(props: ComposerProps) {
     draft: () => ({ prompt, attachments: draftAttachments(attachments), contexts }),
     focus,
     insert,
+    insertContext,
     toggleModelPicker: () => setPickerOpen((open) => !open),
     cycleRuntimeMode,
     togglePlanMode,

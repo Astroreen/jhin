@@ -1,6 +1,7 @@
 // Ported from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/lib/terminalContext.ts and
 // packages/shared/src/composerContextLegacySend.ts (the inline label and the
 // `<terminal_context>` block T3 sends to agents that do not read inline contexts).
+import { terminalContextRecord } from "../../lib/composer-context.ts";
 
 /** What "Add to chat" takes from a terminal: its selected lines (1-based, in the buffer). */
 export interface TerminalContextSelection {
@@ -56,4 +57,21 @@ export function formatTerminalContext(selection: TerminalContextSelection): stri
     .map((line, index) => `${selection.lineStart + index} | ${line}`)
     .join("\n");
   return `@${slug}:${span}\n\n<terminal_context>\n- ${selection.terminalLabel} ${range}:\n${indent(body)}\n</terminal_context>`;
+}
+
+/**
+ * The command "Add to chat" runs (D473, D1009): the chat's `chat.composer.insert-context` with a
+ * terminal record (T3's inline chip), else T3's legacy text through `chat.composer.insert`.
+ */
+export function addToChatCall(
+  selection: TerminalContextSelection,
+  hasCommand: (name: string) => boolean,
+  id: string = crypto.randomUUID(),
+): { readonly command: string; readonly input: Record<string, unknown> } {
+  return hasCommand("chat.composer.insert-context")
+    ? {
+        command: "chat.composer.insert-context",
+        input: { record: terminalContextRecord({ id, ...selection }) },
+      }
+    : { command: "chat.composer.insert", input: { text: formatTerminalContext(selection) } };
 }
