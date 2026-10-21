@@ -80,6 +80,9 @@ export interface ConfirmOptions {
   /** Default "Confirm". */
   readonly confirmLabel?: string;
   readonly variant?: "default" | "destructive";
+  /** A second way to agree, shown left of the confirm button (`choose` only). */
+  readonly alternativeLabel?: string;
+  readonly alternativeVariant?: "default" | "destructive" | "outline";
 }
 
 export interface PromptOptions {
@@ -100,10 +103,19 @@ export interface Dialogs {
   confirm(options: ConfirmOptions): Promise<boolean>;
   /** The entered value, or undefined when cancelled. */
   prompt(options: PromptOptions): Promise<string | undefined>;
+  /**
+   * A confirmation with two ways to agree (`alternativeLabel`): which one was
+   * chosen, or undefined when cancelled or when no host is mounted.
+   */
+  choose?(options: ConfirmOptions): Promise<"confirm" | "alternative" | undefined>;
 }
 
 type Request = { readonly id: number } & (
-  | { readonly kind: "confirm"; readonly options: ConfirmOptions; resolve(value: boolean): void }
+  | {
+      readonly kind: "confirm";
+      readonly options: ConfirmOptions;
+      resolve(value: "confirm" | "alternative" | undefined): void;
+    }
   | {
       readonly kind: "prompt";
       readonly options: PromptOptions;
@@ -117,6 +129,7 @@ type HostState =
 
 /** One request at a time, the rest queued, each answered exactly once. */
 export function createDialogs(): Dialogs & {
+  choose: NonNullable<Dialogs["choose"]>;
   state(): HostState;
   subscribe(listener: () => void): Disposable;
   /** `subscribe` as React's useSyncExternalStore takes it: one function, unsubscribing by return. */
@@ -135,8 +148,11 @@ export function createDialogs(): Dialogs & {
     for (const listener of Array.from(listeners)) listener();
   };
   const answer = (request: Request, value: boolean | string | undefined) => {
-    if (request.kind === "confirm") request.resolve(value === true);
-    else request.resolve(typeof value === "string" ? value : undefined);
+    if (request.kind === "confirm") {
+      request.resolve(
+        value === true ? "confirm" : value === "alternative" ? "alternative" : undefined,
+      );
+    } else request.resolve(typeof value === "string" ? value : undefined);
   };
   const enqueue = (request: Request) => {
     if (hosts === 0) {
@@ -148,6 +164,16 @@ export function createDialogs(): Dialogs & {
   };
   return {
     confirm: (options) =>
+      new Promise((resolve) =>
+        enqueue({
+          id: ++ids,
+          kind: "confirm",
+          // A plain confirmation has one way to agree.
+          options: (({ alternativeLabel: _label, ...rest }) => rest)(options),
+          resolve: (value) => resolve(value === "confirm"),
+        }),
+      ),
+    choose: (options) =>
       new Promise((resolve) => enqueue({ id: ++ids, kind: "confirm", options, resolve })),
     prompt: (options) =>
       new Promise((resolve) => enqueue({ id: ++ids, kind: "prompt", options, resolve })),
@@ -270,6 +296,14 @@ export function DialogHost({ dialogs }: { dialogs: ReturnType<typeof createDialo
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
+              {request.options.alternativeLabel === undefined ? null : (
+                <Button
+                  onClick={() => dialogs.respond("alternative")}
+                  variant={request.options.alternativeVariant ?? "outline"}
+                >
+                  {request.options.alternativeLabel}
+                </Button>
+              )}
               <Button
                 onClick={() => dialogs.respond(true)}
                 variant={request.options.variant ?? "default"}

@@ -51,7 +51,7 @@ export async function editFromHere(
     readonly threads: Pick<ThreadsCatalog, "call">;
     readonly drafts: Pick<Drafts, "get" | "set">;
     readonly composer: ComposerHandle;
-    readonly dialogs: Pick<Dialogs, "confirm"> | undefined;
+    readonly dialogs: Pick<Dialogs, "confirm" | "choose"> | undefined;
     readonly toasts: Pick<Toasts, "show"> | undefined;
   },
   input: {
@@ -60,6 +60,8 @@ export async function editFromHere(
     readonly threadId: string;
     readonly turnId: string;
     readonly confirmed?: boolean | undefined;
+    /** With `confirmed`: put the files back as before the message too (W3, D257). */
+    readonly restoreFiles?: boolean | undefined;
   },
 ): Promise<{ edited: boolean }> {
   const { threads, drafts, composer, dialogs, toasts } = services;
@@ -93,20 +95,35 @@ export async function editFromHere(
     return { edited: false };
   }
   // A destructive rewind is never taken as agreed when nobody can be asked.
-  const confirmed =
-    input.confirmed === true ||
-    (dialogs !== undefined &&
-      (await dialogs.confirm({
-        title: "Edit from here?",
-        description:
-          "Rewind chat to before this message. Your prompt and attachments return to the composer.",
-        confirmLabel: "Revert and keep changes",
-      })));
-  if (!confirmed) return { edited: false };
+  const options = {
+    title: "Edit from here?",
+    description:
+      "Rewind chat to before this message. Your prompt and attachments return to the composer.",
+    confirmLabel: "Revert and keep changes",
+  };
+  // T3's third way, its files reverted too (W3, D257), where the dialogs can offer it.
+  const choice =
+    input.confirmed === true
+      ? input.restoreFiles === true
+        ? "alternative"
+        : "confirm"
+      : dialogs === undefined
+        ? undefined
+        : dialogs.choose !== undefined
+          ? await dialogs.choose({
+              ...options,
+              alternativeLabel: "Revert files too",
+              alternativeVariant: "destructive",
+            })
+          : (await dialogs.confirm(options))
+            ? "confirm"
+            : undefined;
+  if (choice === undefined) return { edited: false };
   await threads
     .call(target, "threads.rollback", {
       threadId: input.threadId,
       beforeTurnId: input.turnId,
+      ...(choice === "alternative" ? { restoreFiles: true } : {}),
     })
     .catch((failure: unknown) => {
       toasts?.show({
@@ -188,12 +205,13 @@ export function registerHistory(
   context.commands.register({
     name: "thread.edit-from-here",
     description:
-      "Rewinds a thread to before one of its messages and puts the message's text and images back into the composer; nothing is sent. Asks first unless `confirmed`",
+      "Rewinds a thread to before one of its messages and puts the message's text and images back into the composer; nothing is sent. Asks first unless `confirmed`; with `confirmed`, `restoreFiles` puts its worktree's files back too (asked, the choice is the user's)",
     input: z.object({
       ...At,
       threadId: z.string(),
       turnId: z.string(),
       confirmed: z.boolean().optional(),
+      restoreFiles: z.boolean().optional(),
     }),
     output: z.object({ edited: z.boolean() }),
     handler: (input) => editFromHere({ threads, drafts, composer, dialogs, toasts }, input),

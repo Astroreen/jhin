@@ -112,6 +112,41 @@ function setup(options: {
 }
 
 describe("the thread.edit-from-here command (D223)", () => {
+  it('offers T3\'s "Revert files too" and asks the node to restore the files (W3, D257)', async () => {
+    const { calls } = setup({ open: "a|thread|t1" });
+    const asked: { confirmLabel?: string; alternativeLabel?: string }[] = [];
+    const services = {
+      threads: {
+        call: async <T>(_target: NodeTarget, method: string, params?: unknown) => {
+          calls.push({ method, params });
+          return (
+            method === "threads.turn" ? { input: { text: "sent", attachments: [] } } : {}
+          ) as T;
+        },
+      },
+      drafts: { get: () => undefined, set: () => undefined },
+      composer: { current: undefined } as unknown as Parameters<typeof editFromHere>[0]["composer"],
+      dialogs: {
+        confirm: async () => true,
+        choose: async (options: { confirmLabel?: string; alternativeLabel?: string }) => {
+          asked.push(options);
+          return "alternative" as const;
+        },
+      },
+      toasts: undefined,
+    };
+    expect(await editFromHere(services, { node: "a", threadId: "t1", turnId: "u2" })).toEqual({
+      edited: true,
+    });
+    expect(asked).toMatchObject([
+      { confirmLabel: "Revert and keep changes", alternativeLabel: "Revert files too" },
+    ]);
+    expect(calls.at(-1)).toEqual({
+      method: "threads.rollback",
+      params: { threadId: "t1", beforeTurnId: "u2", restoreFiles: true },
+    });
+  });
+
   it("rolls back to before the turn and puts the message into the composer on screen", async () => {
     const { run, calls, restored } = setup({ open: "a|thread|t1" });
     expect(await run()).toEqual({ edited: true });

@@ -38,7 +38,7 @@ import {
 } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
 import { LIVE_STREAMS_CAPABILITY, type LiveStreams } from "@jhin/rpc";
-import { definePlugin, toDisposable, z } from "@jhin/sdk";
+import { definePlugin, holdsPermission, toDisposable, z } from "@jhin/sdk";
 import {
   BLOBS_CAPABILITY,
   EVENTLOG_CAPABILITY,
@@ -3472,6 +3472,8 @@ export default definePlugin({
     async function dropTurns(
       thread: Thread,
       toTurnId: string | undefined,
+      /** Asks the rollback hooks to put the files back too (W3, D257). */
+      restoreFiles = false,
     ): Promise<{ thread: Thread; turnIds: string[] }> {
       const { events, turns } = await visibleTurns(thread.id);
       const kept = toTurnId === undefined ? 0 : turns.indexOf(toTurnId) + 1;
@@ -3493,7 +3495,12 @@ export default definePlugin({
       }
       return context.hooks.run(
         ThreadHooks.rollback,
-        { thread, turnIds: dropped, ...(toTurnId === undefined ? {} : { toTurnId }) },
+        {
+          thread,
+          turnIds: dropped,
+          ...(toTurnId === undefined ? {} : { toTurnId }),
+          ...(restoreFiles ? { restoreFiles } : {}),
+        },
         // A hook may wrap, delay or refuse the rollback, not change what it drops: the
         // event and the record are written from what the thread shows.
         async () => {
@@ -3557,6 +3564,7 @@ export default definePlugin({
     async function rollback(
       threadId: string,
       to: { turnId?: string | undefined } | { beforeTurnId: string },
+      restoreFiles = false,
     ): Promise<{ thread: Thread; turnIds: string[] }> {
       const read = await getThread(threadId);
       if (read.archivedAt !== undefined) throw archivedError(threadId);
@@ -3578,12 +3586,12 @@ export default definePlugin({
       try {
         const thread = await getThread(threadId);
         if (thread.archivedAt !== undefined) throw archivedError(threadId);
-        if (!("beforeTurnId" in to)) return await dropTurns(thread, to.turnId);
+        if (!("beforeTurnId" in to)) return await dropTurns(thread, to.turnId, restoreFiles);
         // Resolved under the hold: no turn comes or goes in between.
         const { turns } = await visibleTurns(threadId);
         const index = turns.indexOf(to.beforeTurnId);
         if (index === -1) throw turnNotFound(threadId, to.beforeTurnId);
-        return await dropTurns(thread, turns[index - 1]);
+        return await dropTurns(thread, turns[index - 1], restoreFiles);
       } finally {
         rollingBack.delete(threadId);
         release();
@@ -3601,6 +3609,10 @@ export default definePlugin({
           threadId: z.string(),
           turnId: z.string().optional(),
           beforeTurnId: z.string().optional(),
+          restoreFiles: z.boolean().optional().meta({
+            description:
+              "Put the thread's files back as they were before the dropped turns (its checkpoints, D257); only for a thread alone in its worktree",
+          }),
         })
         .refine(
           (input) => input.turnId === undefined || input.beforeTurnId === undefined,
@@ -3608,8 +3620,26 @@ export default definePlugin({
         ),
       output: z.object({ thread: Thread, turnIds: z.array(z.string()) }),
       permissions: ["threads.write"],
-      handler: ({ threadId, turnId, beforeTurnId }) =>
-        rollback(threadId, beforeTurnId === undefined ? { turnId } : { beforeTurnId }),
+      handler: ({ threadId, turnId, beforeTurnId, restoreFiles }, invocation) => {
+        // Restoring files cleans the worktree's untracked files: it takes the right to
+        // change a repository too, not only a thread's.
+        if (
+          restoreFiles === true &&
+          invocation?.caller !== undefined &&
+          !holdsPermission(invocation.caller.permissions, "git.write")
+        ) {
+          throw new ThreadsError(
+            "PERMISSION_DENIED",
+            "Restoring files takes the git.write permission",
+            { threadId, permission: "git.write" },
+          );
+        }
+        return rollback(
+          threadId,
+          beforeTurnId === undefined ? { turnId } : { beforeTurnId },
+          restoreFiles === true,
+        );
+      },
     });
 
     /** What a turn started with, as its first event says. */

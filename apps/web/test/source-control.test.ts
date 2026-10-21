@@ -160,6 +160,15 @@ describe("checkpoints in the view", () => {
       { type: SourceControlEvents.checkpointChanged, payload: checkpoint(2, { insertions: 3 }) },
     );
     expect(second.checkpoints.get("t1")).toMatchObject({ turn: 2, insertions: 3 });
+    // After a revert, the turn gone back to is the latest again.
+    const reverted = applySourceControlEvent(
+      applySourceControlEvent(second, {
+        type: SourceControlEvents.checkpointChanged,
+        payload: checkpoint(2, { status: "stale" }),
+      }),
+      { type: SourceControlEvents.checkpointChanged, payload: checkpoint(1) },
+    );
+    expect(reverted.checkpoints.get("t1")).toMatchObject({ turn: 1, status: "ready" });
     // A change to an earlier turn is not the latest one.
     const stale = applySourceControlEvent(second, {
       type: SourceControlEvents.checkpointChanged,

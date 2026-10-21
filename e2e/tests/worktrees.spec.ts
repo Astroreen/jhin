@@ -83,6 +83,24 @@ test("D250–D255: a draft starts its thread in a new worktree; deleting the thr
   expect(Fs.existsSync(Path.join(dir, "notes.txt"))).toBe(false);
   await shot(page, info, "worktree-thread");
 
+  // Reverting to before a message, files too (D257): the worktree is the thread's alone.
+  await message.fill("/write later.txt two");
+  await message.press("Enter");
+  await expect(page.getByRole("region", { name: "Changed files" })).toHaveCount(2);
+  expect(Fs.existsSync(Path.join(path, "later.txt"))).toBe(true);
+  const log = page.getByRole("log", { name: "Messages" });
+  await log.getByRole("article", { name: "You" }).nth(1).hover();
+  await log.getByRole("button", { name: "Edit from here" }).nth(1).click();
+  const rewind = page.getByRole("alertdialog", { name: "Edit from here?" });
+  await expect(rewind.getByRole("button", { name: "Revert and keep changes" })).toBeVisible();
+  await shot(page, info, "worktree-revert");
+  await rewind.getByRole("button", { name: "Revert files too" }).click();
+  await expect(log.getByRole("article", { name: "You" })).toHaveCount(1);
+  await expect(message).toHaveValue("/write later.txt two");
+  expect(Fs.existsSync(Path.join(path, "later.txt"))).toBe(false);
+  expect(Fs.readFileSync(Path.join(path, "notes.txt"), "utf8")).toBe("in a worktree\n");
+  await message.fill("");
+
   // Deleting the thread: T3 asks about the worktree only it used.
   await card.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Delete" }).click();
