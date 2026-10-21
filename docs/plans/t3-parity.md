@@ -1555,6 +1555,23 @@ T3 Code `eb7b35ac` as D290 says.
   that shares a skill's name shows again, as T3's
   `getProviderSkillsForSlashMenu` and `getProviderSlashCommandsForSlashMenu`. It is `showSkillsInSlashMenu` in
   the client's `jhin.chat` section.
+- **D846. Headings in the prompt,** as T3's `ComposerHeadingExtension`:
+  `#` to `######` and the space after them show as a heading and write back
+  exactly as typed (`##  Two` keeps both spaces); `#1234`, a lone `#` and
+  seven hashes stay text. Typing `# ` at the start of a top-level line makes
+  one (never inside a list or quote, whose lines have no place for it), and
+  tiptap's Mod-Alt-1…6 shortcuts are off, as in T3.
+- **D847. Horizontal rules,** as T3: a line of three or more `-`, `*` or `_`
+  (spaces between allowed) is a rule that keeps its source text. `---` turns
+  into one as typed, `***` and `___` after a space, and a rule at the end
+  keeps an empty line after it that is not written back, so `---` stays
+  `---`.
+- **D848. Task lists,** as T3's `ComposerTaskItemExtension`: `- [ ] ` and
+  `- [x] ` items with a checkbox that toggles the item, nested like other
+  lists, their spacing kept. `- [ ] ` typed at a top-level line opens one,
+  `[ ] ` at the start of a bullet item turns it into a task; Enter continues
+  with an unchecked task and leaves from an empty one. As T3's tests fix,
+  `[X]` is written back as `[x]`.
 
 ## Not ported (out of scope)
 
@@ -1572,8 +1589,8 @@ T3 Code `eb7b35ac` as D290 says.
 - The editor's parts T3 has and this port left out (D303): the file icons
   of the code-block language picker (D842; with the chips' file icons), a
   keyboard way out of a code block other than moving the caret (D843; T3 has
-  none), headings,
-  horizontal rules and task lists (kept as text), visible marks at the caret,
+  none), the vertical spacing T3 gives headings (the composer's blocks have
+  none), visible marks at the caret,
   citation and context-reference chips, chip popovers (file icons, a skill's
   description and "View instructions"), `#` pull-request mentions and other
   threads in the `@` menu, the

@@ -19,6 +19,8 @@ catalog:
   "@tiptap/extension-blockquote": 3.32.0
   "@tiptap/extension-code": 3.32.0
   "@tiptap/extension-code-block": 3.32.0
+  "@tiptap/extension-heading": 3.32.0
+  "@tiptap/extension-horizontal-rule": 3.32.0
   "@tiptap/extension-list": 3.32.0
   "@tiptap/pm": 3.32.0
   "@tiptap/react": 3.32.0

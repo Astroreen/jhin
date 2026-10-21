@@ -414,3 +414,117 @@ describe("wrapping a selection (D844)", () => {
     await editor.reported("[a.ts](src/a.ts)(");
   });
 });
+
+describe("headings, rules and task lists in the prompt", () => {
+  it("shows headings styled and writes back their hashes and spacing", () => {
+    const prompt = "# Title\n##  Two\n#\tTab\n#1234 is a reference\n####### seven\n# ";
+    const editor = mount(prompt);
+    const root = editor.editable();
+    expect(root.querySelector("h1")?.textContent).toBe("Title");
+    expect(root.querySelector("h2")?.textContent).toBe("Two");
+    expect(root.querySelectorAll("h1")).toHaveLength(3);
+    expect(root.querySelectorAll("p")).toHaveLength(2);
+
+    editor.handle.setValue(editor.value());
+    expect(editor.value()).toBe(prompt);
+  });
+
+  it("turns typed hashes and a space into a heading, but not in a list or without the space", async () => {
+    const editor = mount("");
+    editor.handle.focus();
+    await userEvent.keyboard("## Hi");
+    await editor.reported("## Hi");
+    expect(editor.editable().querySelector("h2")?.textContent).toBe("Hi");
+
+    editor.setFromParent("- a");
+    editor.handle.focus();
+    await userEvent.keyboard("{Shift>}{Enter}{/Shift}# x");
+    await editor.reported("- a\n- # x");
+    expect(editor.editable().querySelector("h1")).toBeNull();
+
+    editor.setFromParent("");
+    editor.handle.focus();
+    await userEvent.keyboard("#12");
+    await editor.reported("#12");
+    expect(editor.editable().querySelector("h1")).toBeNull();
+  });
+
+  it("shows rules and writes back the text each was written with", async () => {
+    const prompt = "a\n***\n- - -\ntext\n___";
+    const editor = mount(prompt);
+    const root = editor.editable();
+    expect(root.querySelectorAll("hr")).toHaveLength(3);
+    editor.handle.setValue(editor.value());
+    expect(editor.value()).toBe(prompt);
+
+    // The line kept after a final rule takes the caret, and is written only once it has text.
+    expect(editor.handle.cursor()).toBe(prompt.length);
+    editor.handle.focus();
+    await userEvent.keyboard("x");
+    await editor.reported(`${prompt}\nx`);
+  });
+
+  it("turns typed dashes into a rule, and stars or underscores once a space follows", async () => {
+    const editor = mount("");
+    editor.handle.focus();
+    await userEvent.keyboard("---");
+    await editor.reported("---");
+    expect(editor.editable().querySelectorAll("hr")).toHaveLength(1);
+    await userEvent.keyboard("x");
+    await editor.reported("---\nx");
+
+    editor.setFromParent("");
+    editor.handle.focus();
+    await userEvent.keyboard("***");
+    await editor.reported("***");
+    expect(editor.editable().querySelector("hr")).toBeNull();
+    await userEvent.keyboard(" ");
+    await editor.reported("*** ");
+    expect(editor.editable().querySelectorAll("hr")).toHaveLength(1);
+  });
+
+  it("shows tasks as checkboxes and writes back their markers", () => {
+    const prompt = "- [ ] one\n-  [x]  two\n  - [ ] child\n- [ ]";
+    const editor = mount(prompt);
+    const boxes = editor.editable().querySelectorAll<HTMLInputElement>("input[type=checkbox]");
+    expect([...boxes].map((box) => box.checked)).toEqual([false, true, false, false]);
+    editor.handle.setValue(editor.value());
+    expect(editor.value()).toBe(prompt);
+
+    // T3 writes an upper-case check as a lower-case one.
+    editor.setFromParent("- [X] done");
+    expect(editor.handle.value()).toBe("- [x] done");
+  });
+
+  it("checks and unchecks a task from its checkbox", async () => {
+    const editor = mount("- [ ] one\n- [x] two");
+    const boxes = editor.editable().querySelectorAll<HTMLInputElement>("input[type=checkbox]");
+    await userEvent.click(boxes[0]!);
+    await editor.reported("- [x] one\n- [x] two");
+    await userEvent.click(boxes[1]!);
+    await editor.reported("- [x] one\n- [ ] two");
+  });
+
+  it("opens a task list from typed `- [ ] `, continues it unchecked and leaves it from an empty task", async () => {
+    const editor = mount("");
+    editor.handle.focus();
+    await userEvent.keyboard("- [[x] buy");
+    await editor.reported("- [x] buy");
+    expect(editor.editable().querySelectorAll("input[type=checkbox]")).toHaveLength(1);
+
+    await userEvent.keyboard("{Shift>}{Enter}{/Shift}milk");
+    await editor.reported("- [x] buy\n- [ ] milk");
+    await userEvent.keyboard("{Shift>}{Enter}{Enter}{/Shift}after");
+    await editor.reported("- [x] buy\n- [ ] milk\nafter");
+    expect(editor.editable().querySelectorAll("input[type=checkbox]")).toHaveLength(2);
+    expect(editor.submits).toEqual([]);
+  });
+
+  it("turns a bullet into a task when `[ ] ` is typed at its start", async () => {
+    const editor = mount("");
+    editor.handle.focus();
+    await userEvent.keyboard("* [[ ] t");
+    await editor.reported("- [ ] t");
+    expect(editor.editable().querySelectorAll("input[type=checkbox]")).toHaveLength(1);
+  });
+});

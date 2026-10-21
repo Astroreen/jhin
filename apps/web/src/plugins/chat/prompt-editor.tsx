@@ -5,8 +5,8 @@
 // apps/web/src/composer-editor-mentions.ts at eb7b35ac.
 //
 // The composer's prompt editor (D303): a tiptap document over a prompt that stays a markdown
-// string. Inline marks, lists, quotes and code blocks show styled; file links and skills show as
-// chips that write back their exact text. The parent owns the prompt, its history and its menus.
+// string. Inline marks, lists, task lists, quotes, headings, rules and code blocks show styled;
+// file links and skills show as chips that write back their exact text. The parent owns the prompt, its history and its menus.
 import { cn } from "@jhin/ui";
 import {
   type Command,
@@ -16,11 +16,14 @@ import {
   type JSONContent,
   mergeAttributes,
   Node,
+  wrappingInputRule,
 } from "@tiptap/core";
 import { Blockquote } from "@tiptap/extension-blockquote";
 import { Code } from "@tiptap/extension-code";
 import { CodeBlock } from "@tiptap/extension-code-block";
-import { BulletList, ListItem, OrderedList } from "@tiptap/extension-list";
+import { Heading } from "@tiptap/extension-heading";
+import { HorizontalRule } from "@tiptap/extension-horizontal-rule";
+import { BulletList, ListItem, OrderedList, TaskItem, TaskList } from "@tiptap/extension-list";
 import {
   exitCode,
   joinBackward,
@@ -30,8 +33,20 @@ import {
   splitBlockKeepMarks,
 } from "@tiptap/pm/commands";
 import { closeHistory, isHistoryTransaction } from "@tiptap/pm/history";
-import { Fragment, type Node as ProseMirrorNode, type ResolvedPos } from "@tiptap/pm/model";
-import { type EditorState, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
+import {
+  Fragment,
+  type NodeType,
+  type Node as ProseMirrorNode,
+  type ResolvedPos,
+} from "@tiptap/pm/model";
+import {
+  type EditorState,
+  NodeSelection,
+  Plugin,
+  Selection,
+  TextSelection,
+  type Transaction,
+} from "@tiptap/pm/state";
 import { ReplaceStep } from "@tiptap/pm/transform";
 import type { EditorView } from "@tiptap/pm/view";
 import { EditorContent, ReactNodeViewRenderer, useEditor } from "@tiptap/react";
@@ -223,14 +238,40 @@ function isClosingFence(line: string, fence: string): boolean {
   return run[0] === fence[0] && run.length >= fence.length;
 }
 
-interface ListLinePrefix {
-  kind: "bullet" | "ordered";
+interface TaskLinePrefix {
   indent: string;
-  marker: string;
-  space: string;
+  checked: boolean;
+  markerSpace: string;
+  contentSpace: string;
 }
 
+function parseTaskPrefix(head: string): { prefix: TaskLinePrefix; markerLength: number } | null {
+  const match = /^([ \t]*)-([ \t]+)\[([ xX])\]([ \t]*)/.exec(head);
+  if (!match) return null;
+  const after = head.slice(match[0].length);
+  if (after.length > 0 && !match[4]) return null;
+  return {
+    prefix: {
+      indent: match[1] ?? "",
+      checked: (match[3] ?? " ").toLowerCase() === "x",
+      markerSpace: match[2]!,
+      contentSpace: match[4]!,
+    },
+    markerLength: match[0].length,
+  };
+}
+
+type ListLinePrefix =
+  | ({ kind: "task" } & TaskLinePrefix)
+  | { kind: "bullet" | "ordered"; indent: string; marker: string; space: string };
+
+/**
+ * A task first (it also looks like a bullet), then an ordered marker, then a bullet, the grammar
+ * the literal continuation uses too.
+ */
 function parseListPrefix(line: string): { prefix: ListLinePrefix; markerLength: number } | null {
+  const task = parseTaskPrefix(line);
+  if (task) return { prefix: { kind: "task", ...task.prefix }, markerLength: task.markerLength };
   const ordered = /^([ \t]*)(\d+[.)])((?:[ \t]+)|$)/.exec(line);
   if (ordered) {
     return {
@@ -249,9 +290,9 @@ function parseListPrefix(line: string): { prefix: ListLinePrefix; markerLength: 
 }
 
 function listKey(prefix: ListLinePrefix): string {
-  return prefix.kind === "ordered"
-    ? `ordered:${prefix.marker.slice(-1)}`
-    : `bullet:${prefix.marker}`;
+  if (prefix.kind === "task") return "task";
+  if (prefix.kind === "ordered") return `ordered:${prefix.marker.slice(-1)}`;
+  return `bullet:${prefix.marker}`;
 }
 
 interface PendingItem {
@@ -267,11 +308,27 @@ interface PendingList {
 
 function listJson(list: PendingList): Json {
   const first = list.items[0]!.prefix;
-  const items = list.items.map((item) => ({
-    type: "listItem",
-    attrs: { indent: item.prefix.indent, marker: item.prefix.marker, space: item.prefix.space },
-    content: [{ type: "paragraph", content: item.content }, ...item.children.map(listJson)],
-  }));
+  const items = list.items.map((item) => {
+    const content = [{ type: "paragraph", content: item.content }, ...item.children.map(listJson)];
+    if (item.prefix.kind === "task") {
+      return {
+        type: "taskItem",
+        attrs: {
+          checked: item.prefix.checked,
+          indent: item.prefix.indent,
+          markerSpace: item.prefix.markerSpace,
+          contentSpace: item.prefix.contentSpace,
+        },
+        content,
+      };
+    }
+    return {
+      type: "listItem",
+      attrs: { indent: item.prefix.indent, marker: item.prefix.marker, space: item.prefix.space },
+      content,
+    };
+  });
+  if (first.kind === "task") return { type: "taskList", content: items };
   if (first.kind === "ordered") {
     return {
       type: "orderedList",
@@ -337,6 +394,8 @@ function buildTiptapContent(value: string, options?: { blocks?: boolean }): Json
 
   type Entry =
     | { code: Json }
+    | { rule: string }
+    | { heading: { level: number; space: string; inline: Json[] } }
     | { quote: { prefix: string; inline: Json[] } }
     | { line: { list: ListLinePrefix | null; inline: Json[] } };
   const entries: Entry[] = [];
@@ -345,6 +404,21 @@ function buildTiptapContent(value: string, options?: { blocks?: boolean }): Json
     const line = sourceLines[index]!;
     const opening = blockSyntax ? parseOpeningFence(line) : null;
     if (!opening) {
+      if (blockSyntax && /^([-*_])(?:[ \t]*\1){2,}[ \t]*\r?$/.test(line)) {
+        entries.push({ rule: line });
+        continue;
+      }
+      const heading = blockSyntax ? /^(#{1,6})([ \t]+)([^\n]*)$/.exec(line) : null;
+      if (heading) {
+        entries.push({
+          heading: {
+            level: heading[1]!.length,
+            space: heading[2]!,
+            inline: buildInline(heading[3]!),
+          },
+        });
+        continue;
+      }
       const quote = blockSyntax ? /^(>[ \t]*)([^\n]*)$/.exec(line) : null;
       if (quote) {
         entries.push({ quote: { prefix: quote[1]!, inline: buildInline(quote[2]!) } });
@@ -420,6 +494,20 @@ function buildTiptapContent(value: string, options?: { blocks?: boolean }): Json
       blocks.push(entry.code);
       continue;
     }
+    if ("rule" in entry) {
+      flushLists();
+      blocks.push({ type: "horizontalRule", attrs: { source: entry.rule } });
+      continue;
+    }
+    if ("heading" in entry) {
+      flushLists();
+      blocks.push({
+        type: "heading",
+        attrs: { level: entry.heading.level, space: entry.heading.space },
+        content: entry.heading.inline,
+      });
+      continue;
+    }
     const line = entry.line;
     if (!line.list) {
       flushLists();
@@ -466,8 +554,11 @@ function buildTiptapContent(value: string, options?: { blocks?: boolean }): Json
   return blocks;
 }
 
+/** A draft ending in a rule gets an empty line after it, for the caret. */
 function buildDocJson(value: string): JSONContent {
-  return { type: "doc", content: buildTiptapContent(value) as JSONContent[] };
+  const content = buildTiptapContent(value);
+  if (content.at(-1)?.["type"] === "horizontalRule") content.push({ type: "paragraph" });
+  return { type: "doc", content: content as JSONContent[] };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -501,7 +592,8 @@ interface RichAccumulator {
   md: number;
 }
 
-const LIST_NODE_NAMES = new Set(["bulletList", "orderedList"]);
+const LIST_NODE_NAMES = new Set(["taskList", "bulletList", "orderedList"]);
+const LIST_ITEM_NODE_NAMES = new Set(["taskItem", "listItem"]);
 
 function atomSource(node: ProseMirrorNode): string {
   const source = (node.attrs as { source?: unknown }).source;
@@ -687,6 +779,16 @@ function appendInlineRuns(
 function listItemPrefix(item: ProseMirrorNode, empty: boolean): string {
   const attrs = item.attrs as Record<string, unknown>;
   const indent = typeof attrs["indent"] === "string" ? attrs["indent"] : "";
+  if (item.type.name === "taskItem") {
+    const markerSpace = typeof attrs["markerSpace"] === "string" ? attrs["markerSpace"] : " ";
+    const contentSpace =
+      typeof attrs["contentSpace"] === "string"
+        ? attrs["contentSpace"] || (empty ? "" : " ")
+        : empty
+          ? ""
+          : " ";
+    return `${indent}-${markerSpace}[${attrs["checked"] === true ? "x" : " "}]${contentSpace}`;
+  }
   const marker = typeof attrs["marker"] === "string" && attrs["marker"] ? attrs["marker"] : "-";
   const space =
     typeof attrs["space"] === "string" ? attrs["space"] || (empty ? "" : " ") : empty ? "" : " ";
@@ -779,6 +881,21 @@ function appendCodeBlockRun(
   acc.md += open.length + content.length + close.length;
 }
 
+/**
+ * The empty line kept after a final rule is where the caret goes, not a line of the draft, so
+ * `---` stays `---`.
+ */
+function isTrailingLineAfterRule(doc: ProseMirrorNode, index: number): boolean {
+  const block = doc.child(index);
+  return (
+    index === doc.childCount - 1 &&
+    index > 0 &&
+    block.type.name === "paragraph" &&
+    block.content.size === 0 &&
+    doc.child(index - 1).type.name === "horizontalRule"
+  );
+}
+
 function serializeEditorDoc(doc: ProseMirrorNode): RichDocMap {
   const acc: RichAccumulator = { runs: [], value: "", flat: 0, md: 0 };
   const blocks: ProseMirrorNode[] = [];
@@ -787,7 +904,7 @@ function serializeEditorDoc(doc: ProseMirrorNode): RichDocMap {
   });
   let pmBlockStart = 0;
   blocks.forEach((block, blockIndex) => {
-    if (blockIndex > 0) pushBreakRun(acc);
+    if (blockIndex > 0 && !isTrailingLineAfterRule(doc, blockIndex)) pushBreakRun(acc);
     if (blockIndex > 0 && needsBlankLineAfterQuote(blocks[blockIndex - 1]!, block)) {
       pushPrefixRun(acc, "\n", pmBlockStart + 1);
     }
@@ -795,7 +912,20 @@ function serializeEditorDoc(doc: ProseMirrorNode): RichDocMap {
     else if (block.type.name === "codeBlock") {
       appendCodeBlockRun(block, pmBlockStart + 1, blockIndex < blocks.length - 1, acc);
     } else if (block.type.name === "blockquote") walkBlockquote(block, pmBlockStart, acc);
-    else if (block.type.name === "paragraph") appendInlineRuns(block, pmBlockStart + 1, acc);
+    else if (block.type.name === "heading") {
+      const attrs = block.attrs as Record<string, unknown>;
+      const level = typeof attrs["level"] === "number" ? attrs["level"] : 1;
+      const space = typeof attrs["space"] === "string" ? attrs["space"] : " ";
+      pushPrefixRun(acc, `${"#".repeat(level)}${space}`, pmBlockStart + 1);
+      appendInlineRuns(block, pmBlockStart + 1, acc);
+    } else if (block.type.name === "horizontalRule") {
+      const source = block.attrs["source"];
+      pushPrefixRun(
+        acc,
+        typeof source === "string" && source ? source : "---",
+        pmBlockStart + block.nodeSize,
+      );
+    } else if (block.type.name === "paragraph") appendInlineRuns(block, pmBlockStart + 1, acc);
     pmBlockStart += block.nodeSize;
   });
   return { value: acc.value, runs: acc.runs, docLength: acc.flat };
@@ -816,7 +946,7 @@ function serializeSelection(doc: ProseMirrorNode, from: number, to: number): str
     while (depth > 0) {
       const shared = $from.node(depth);
       content = shared.copy(Fragment.from(content));
-      if (shared.type.name !== "listItem") break;
+      if (!LIST_ITEM_NODE_NAMES.has(shared.type.name)) break;
       depth -= 1;
     }
   }
@@ -1065,41 +1195,50 @@ function renumberFollowingItems(tr: Transaction, listPos: number, index: number,
  * Tiptap moves items between lists without touching these attributes, so without this the
  * stored draft keeps an outdented item at its old depth, and the next rebuild nests it again.
  */
-function alignListItemWithSiblings(tr: Transaction): void {
+function alignListItemWithSiblings(tr: Transaction, itemType: string): void {
   const $pos = tr.selection.$from;
-  if ($pos.depth < 3 || $pos.node(-1).type.name !== "listItem") return;
+  if ($pos.depth < 3 || $pos.node(-1).type.name !== itemType) return;
   const item = $pos.node(-1);
   const list = $pos.node(-2);
   const index = $pos.index(-2);
   const sibling =
     index > 0 ? list.child(index - 1) : index + 1 < list.childCount ? list.child(index + 1) : null;
   if (!sibling) return;
-  const marker = typeof sibling.attrs["marker"] === "string" ? sibling.attrs["marker"] : "-";
-  const attrs: Record<string, unknown> = {
-    ...item.attrs,
-    indent: sibling.attrs["indent"],
-    marker: index > 0 && /^\d+[.)]$/.test(marker) ? nextOrderedMarkerText(marker) : marker,
-  };
+  const attrs: Record<string, unknown> = { ...item.attrs, indent: sibling.attrs["indent"] };
+  if (item.type.name === "taskItem") {
+    attrs["markerSpace"] = sibling.attrs["markerSpace"];
+  } else {
+    const marker = typeof sibling.attrs["marker"] === "string" ? sibling.attrs["marker"] : "-";
+    attrs["marker"] =
+      index > 0 && /^\d+[.)]$/.test(marker) ? nextOrderedMarkerText(marker) : marker;
+  }
   tr.setNodeMarkup($pos.before(-1), undefined, attrs);
   if (typeof attrs["marker"] === "string" && /^\d+[.)]$/.test(attrs["marker"])) {
     renumberFollowingItems(tr, $pos.before(-2), index, attrs["marker"]);
   }
 }
 
-function inListItem($pos: ResolvedPos): boolean {
-  return $pos.depth > 1 && $pos.node(-1).type.name === "listItem";
+function listItemTypeAt($pos: ResolvedPos): "listItem" | "taskItem" | null {
+  const name = $pos.depth > 1 ? $pos.node(-1).type.name : null;
+  return name === "listItem" || name === "taskItem" ? name : null;
 }
 
-/** Enter in an item starts the next one; in an empty item it leaves the list. */
+/**
+ * Enter in an item starts the next one, a task unchecked; in an empty item it leaves the list.
+ */
 function splitOrLiftListItem(editor: Editor): boolean {
   const $from = editor.state.selection.$from;
-  if (!inListItem($from)) return false;
+  const itemType = listItemTypeAt($from);
+  if (!itemType) return false;
   const empty = $from.parent.content.size === 0;
   const move: Command = ({ commands, tr }) => {
     const moved =
-      commands.splitListItem("listItem", { space: " " }) ||
-      (empty && commands.liftListItem("listItem"));
-    if (moved) alignListItemWithSiblings(tr);
+      commands.splitListItem(
+        itemType,
+        itemType === "taskItem" ? { checked: false } : { space: " " },
+      ) ||
+      (empty && commands.liftListItem(itemType));
+    if (moved) alignListItemWithSiblings(tr, itemType);
     return moved;
   };
   return editor.can().command(move) && editor.chain().command(move).run();
@@ -1109,12 +1248,15 @@ function backspaceAcrossList(editor: Editor): boolean {
   const { state } = editor;
   const { $from, empty } = state.selection;
   if (!empty || $from.parentOffset !== 0) return false;
-  if (inListItem($from) && $from.index(-1) === 0) {
+  const itemType = listItemTypeAt($from);
+  if (itemType && $from.index(-1) === 0) {
     const lift: Command = ({ commands, tr }) => {
-      const moved = commands.liftListItem("listItem");
-      if (moved) alignListItemWithSiblings(tr);
+      const moved = commands.liftListItem(itemType);
+      if (moved) alignListItemWithSiblings(tr, itemType);
       return moved;
     };
+    // Not `can()` first: a dry run of the lift skips the schema check, so it says yes to a task
+    // under a bullet, which has no list to lift into.
     return editor.chain().command(lift).run() || joinBackward(state, editor.view.dispatch);
   }
   const before = $from.depth === 1 ? $from.node(0).maybeChild($from.index(0) - 1) : null;
@@ -1132,7 +1274,7 @@ function deleteAcrossList(editor: Editor): boolean {
   const next = Selection.findFrom(state.doc.resolve($from.after()), 1, true);
   if (!next) return false;
   if (next.$from.parent.type.name === "codeBlock") return $from.parent.type.name !== "codeBlock";
-  if (!inListItem($from) && !inListItem(next.$from)) return false;
+  if (!listItemTypeAt($from) && !listItemTypeAt(next.$from)) return false;
   return joinTextblockForward(state, editor.view.dispatch);
 }
 
@@ -1233,6 +1375,178 @@ const ComposerOrderedListExtension = OrderedList.extend({
   },
 });
 
+/** `[ ] ` or `[x] ` typed at the start of a bullet item turns that item into a task. */
+function convertBulletItemToTask(tr: Transaction, from: number, to: number, checked: boolean) {
+  tr.delete(from, to);
+  const $pos = tr.doc.resolve(from);
+  const item = $pos.node(-1);
+  const list = $pos.node(-2);
+  const index = $pos.index(-2);
+  const { schema } = tr.doc.type;
+  const before: ProseMirrorNode[] = [];
+  const after: ProseMirrorNode[] = [];
+  list.forEach((child, _, childIndex) => {
+    if (childIndex < index) before.push(child);
+    else if (childIndex > index) after.push(child);
+  });
+  const markerSpace =
+    typeof item.attrs["space"] === "string" && item.attrs["space"] ? item.attrs["space"] : " ";
+  const task = schema.nodes["taskItem"]!.create(
+    { checked, indent: item.attrs["indent"], markerSpace },
+    item.content,
+  );
+  const lists = [
+    ...(before.length > 0 ? [list.copy(Fragment.from(before))] : []),
+    schema.nodes["taskList"]!.create(null, task),
+    ...(after.length > 0 ? [list.copy(Fragment.from(after))] : []),
+  ];
+  const listStart = $pos.before(-2);
+  tr.replaceWith(listStart, listStart + list.nodeSize, lists);
+  const caret = listStart + (before.length > 0 ? lists[0]!.nodeSize : 0) + 3;
+  tr.setSelection(TextSelection.create(tr.doc, caret));
+}
+
+const bulletToTaskInputRule = new InputRule({
+  find: /^\[([ xX])\] $/,
+  handler: ({ state, range, match, chain }) => {
+    const $from = state.doc.resolve(range.from);
+    const item = $from.node(-1);
+    if ($from.parent.type.name !== "paragraph" || item?.type.name !== "listItem") return null;
+    if (!["-", "*", "+"].includes((item.attrs as { marker?: string }).marker ?? "")) return null;
+    const checked = (match[1] ?? " ").toLowerCase() === "x";
+    chain()
+      .command(({ tr }) => {
+        convertBulletItemToTask(tr, range.from, range.to, checked);
+        return true;
+      })
+      .run();
+    return undefined;
+  },
+});
+
+/** `- [ ] ` or `- [x] ` at a top-level paragraph opens a task list. */
+function taskInputRule(type: NodeType): InputRule {
+  const rule = wrappingInputRule({
+    find: /^- \[([ xX])\] $/,
+    type,
+    getAttributes: (match) => ({ checked: match[1]?.toLowerCase() === "x" }),
+  });
+  return new InputRule({
+    find: rule.find,
+    handler: (props) =>
+      props.state.doc.resolve(props.range.from).depth === 1 ? rule.handler(props) : null,
+  });
+}
+
+/** Task lists come from `- [ ]` alone; Mod-Shift-9 would nest one in a quote. */
+const ComposerTaskListExtension = TaskList.extend({
+  addKeyboardShortcuts() {
+    return withoutChords(this.parent?.(), ["Mod-Shift-9"]);
+  },
+});
+
+const ComposerTaskItemExtension = TaskItem.extend({
+  content: LIST_ITEM_CONTENT,
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      indent: { default: "" },
+      markerSpace: { default: " " },
+      contentSpace: { default: null },
+    };
+  },
+  addKeyboardShortcuts() {
+    return withoutChords(this.parent?.(), LIST_NESTING_KEYS);
+  },
+  addInputRules() {
+    return [taskInputRule(this.type), bulletToTaskInputRule];
+  },
+}).configure({ nested: true });
+
+/**
+ * `---` becomes a rule as the third dash lands; `***` and `___` need a space after them so typing
+ * bold or an underscore is not interrupted, matching Tiptap's own rule. Only at a top-level
+ * paragraph: the list and quote serializers have no line to write a rule into.
+ */
+const horizontalRuleInputRule = new InputRule({
+  find: /^(---|\*\*\*|___)\s?$/,
+  handler: ({ state, range, match, chain }) => {
+    const source = match[0] ?? "---";
+    if (!source.startsWith("---") && !/\s$/.test(source)) return null;
+    const $from = state.doc.resolve(range.from);
+    if ($from.parent.type.name !== "paragraph" || $from.depth !== 1) return null;
+    chain()
+      .deleteRange(range)
+      .setHorizontalRule()
+      .command(({ tr }) => {
+        const $pos = tr.selection.$from;
+        const index = $pos.index(0) - 1;
+        if (index < 0) return true;
+        const rulePos = $pos.posAtIndex(index, 0);
+        const rule = tr.doc.nodeAt(rulePos);
+        if (rule?.type.name === "horizontalRule") {
+          tr.setNodeMarkup(rulePos, undefined, { ...rule.attrs, source });
+        }
+        return true;
+      })
+      .run();
+    return undefined;
+  },
+});
+
+/** A rule keeps the text it was written with; a draft never ends in one, so the caret has a line. */
+const ComposerHorizontalRuleExtension = HorizontalRule.extend({
+  addAttributes() {
+    return { ...this.parent?.(), source: { default: "---" } };
+  },
+  addProseMirrorPlugins() {
+    return [
+      ...(this.parent?.() ?? []),
+      new Plugin({
+        appendTransaction: (transactions, _, state) => {
+          if (!transactions.some((tr) => tr.docChanged)) return null;
+          if (state.doc.lastChild?.type.name !== "horizontalRule") return null;
+          return state.tr.insert(state.doc.content.size, state.schema.nodes["paragraph"]!.create());
+        },
+      }),
+    ];
+  },
+  addInputRules() {
+    return [horizontalRuleInputRule];
+  },
+});
+
+/**
+ * The space is required, which is exactly what keeps `#1234` a pull request reference with its
+ * picker rather than a heading. Not inside lists or quotes, whose serializers have no line for
+ * one.
+ */
+const headingInputRule = new InputRule({
+  find: /^(#{1,6})(\s)$/,
+  handler: ({ state, range, match, chain }) => {
+    const $from = state.doc.resolve(range.from);
+    if ($from.parent.type.name !== "paragraph" || $from.depth !== 1) return null;
+    chain()
+      .deleteRange(range)
+      .setNode("heading", { level: match[1]?.length ?? 1, space: match[2] ?? " " })
+      .run();
+    return undefined;
+  },
+});
+
+/** A heading keeps the spacing after its hashes; Mod-Alt-1…6 are not offered. */
+const ComposerHeadingExtension = Heading.extend({
+  addAttributes() {
+    return { ...this.parent?.(), space: { default: " " } };
+  },
+  addKeyboardShortcuts() {
+    return {};
+  },
+  addInputRules() {
+    return [headingInputRule];
+  },
+});
+
 // Undo grouping (composer-undo-grouping.ts). ProseMirror's history starts a new undo step only
 // after a pause, so typing, backspacing and typing again would be one step; a change of kind
 // closes the step instead.
@@ -1307,9 +1621,13 @@ const EXTENSIONS = [
   ComposerCodeBlockExtension,
   ComposerCodeBlockHighlight,
   ComposerBlockquoteExtension,
+  ComposerHorizontalRuleExtension,
+  ComposerHeadingExtension,
   ComposerBulletListExtension,
   ComposerOrderedListExtension,
   ComposerListItemExtension,
+  ComposerTaskListExtension,
+  ComposerTaskItemExtension,
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -1565,8 +1883,15 @@ function caretOnVisualEdge(editor: Editor | null, edge: "start" | "end"): boolea
 // ---------------------------------------------------------------------------------------------
 // The component
 
-const EDITOR_CLASS_NAME =
-  "-m-1 block max-h-52 min-h-19.5 w-[calc(100%+0.5rem)] overflow-y-auto bg-transparent p-1 leading-relaxed whitespace-pre-wrap wrap-break-word text-foreground outline-none [&_blockquote]:border-s-2 [&_blockquote]:ps-3 [&_blockquote]:text-muted-foreground [&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-0.5 [&_code]:font-mono [&_code]:text-[0.9em] [&_ol]:list-decimal [&_ol]:ps-5 [&_pre]:font-mono [&_pre]:text-[0.9em] [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:list-disc [&_ul]:ps-5";
+// Headings, rules and task lists follow T3's index.css (`.composer-tiptap`), without the block
+// margins the composer's other blocks do not have either.
+const EDITOR_CLASS_NAME = [
+  "-m-1 block max-h-52 min-h-19.5 w-[calc(100%+0.5rem)] overflow-y-auto bg-transparent p-1 leading-relaxed whitespace-pre-wrap wrap-break-word text-foreground outline-none [&_blockquote]:border-s-2 [&_blockquote]:ps-3 [&_blockquote]:text-muted-foreground [&_code]:rounded-sm [&_code]:bg-muted [&_code]:px-0.5 [&_code]:font-mono [&_code]:text-[0.9em] [&_ol]:list-decimal [&_ol]:ps-5 [&_pre]:font-mono [&_pre]:text-[0.9em] [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_ul]:list-disc [&_ul]:ps-5",
+  "[&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold [&_:is(h1,h2,h3,h4,h5,h6)]:leading-[1.3] [&_:is(h1,h2,h3,h4,h5,h6)]:text-foreground [&_h1]:text-xl [&_h2]:text-lg [&_h3]:text-base [&_:is(h4,h5,h6)]:text-sm [&_h6]:text-muted-foreground",
+  "[&_hr]:my-2.5",
+  // Tiptap's task item view builds its <li> with only a data-checked attribute.
+  "[&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:ps-0 [&_ul[data-type=taskList]_ul[data-type=taskList]]:ps-[1.375rem] [&_li[data-checked]]:flex [&_li[data-checked]]:items-start [&_li[data-checked]]:gap-2 [&_li[data-checked]>label]:flex [&_li[data-checked]>label]:h-[1lh] [&_li[data-checked]>label]:flex-none [&_li[data-checked]>label]:cursor-pointer [&_li[data-checked]>label]:items-center [&_li[data-checked]>label>input]:m-0 [&_li[data-checked]>label>input]:block [&_li[data-checked]>label>input]:size-[0.95rem] [&_li[data-checked]>label>input]:cursor-pointer [&_li[data-checked]>div]:min-w-0 [&_li[data-checked]>div]:flex-auto",
+].join(" ");
 
 export function PromptEditor(props: PromptEditorProps) {
   const { value, placeholder, disabled = false, readOnly = false, className, handleRef } = props;
@@ -1704,7 +2029,7 @@ export function PromptEditor(props: PromptEditorProps) {
       const offset = caretInMarkdown(view.state, map);
       if (offset > 0 && !/\s/.test(map.value[offset - 1]!)) text = ` ${text}`;
     }
-    const nested = inListItem($from) || inBlockquote($from);
+    const nested = listItemTypeAt($from) !== null || inBlockquote($from);
     const blocks = buildTiptapContent(text, { blocks: !nested }) as JSONContent[];
     const content =
       blocks.length === 1 && blocks[0]?.type === "paragraph" ? (blocks[0].content ?? []) : blocks;
@@ -1716,6 +2041,17 @@ export function PromptEditor(props: PromptEditorProps) {
         return true;
       })
       .insertContent(content)
+      .command(({ tr }) => {
+        // A paste ending in a rule leaves the rule selected, and the next keystroke would replace
+        // it. The caret goes to the line after it, which is added when there is none.
+        const { selection } = tr;
+        if (!(selection instanceof NodeSelection) || !selection.node.isBlock) return true;
+        if (!tr.doc.resolve(selection.to).nodeAfter?.isTextblock) {
+          tr.insert(selection.to, tr.doc.type.schema.nodes["paragraph"]!.create());
+        }
+        tr.setSelection(TextSelection.create(tr.doc, selection.to + 1));
+        return true;
+      })
       .scrollIntoView()
       .run();
     return true;
