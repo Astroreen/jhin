@@ -141,6 +141,7 @@ export interface ComposerHandle {
         /** What it holds now, before its draft is stored. */
         draft(): ComposerDraft | undefined;
         focus(): void;
+        insert(text: string): void;
         toggleModelPicker(): void;
         cycleRuntimeMode(): void;
         togglePlanMode(): void;

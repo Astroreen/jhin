@@ -2,10 +2,12 @@
 // apps/web/src/components/ChatView.tsx and chat/MessagesTimeline.tsx.
 import type { AgentResponse, StoredAttachment, TurnAttachment } from "@jhin/agent-api";
 import {
+  THREAD_CREATE_HOOK,
   targetKey,
   visitKey,
   type ChatDrawerProps,
   type ChatTurnFooterProps,
+  type ThreadCreateInput,
   type NodeTarget,
   type ProjectRecord,
   type ThreadRecord,
@@ -158,6 +160,7 @@ export function ThreadView(props: {
       restore: (draft) => handle.current?.restore(draft),
       draft: () => handle.current?.draft(),
       focus: () => handle.current?.focus(),
+      insert: (text) => handle.current?.insert(text),
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),
       togglePlanMode: () => handle.current?.togglePlanMode(),
@@ -587,6 +590,7 @@ export function DraftView(props: {
       restore: (draft) => handle.current?.restore(draft),
       draft: () => handle.current?.draft(),
       focus: () => handle.current?.focus(),
+      insert: (text) => handle.current?.insert(text),
       toggleModelPicker: () => handle.current?.toggleModelPicker(),
       cycleRuntimeMode: () => handle.current?.cycleRuntimeMode(),
       togglePlanMode: () => handle.current?.togglePlanMode(),
@@ -610,6 +614,15 @@ export function DraftView(props: {
         target,
         { projectId: project.id, text, attachments, selection },
         nextThreadId.current,
+        // Plugins add to the new thread (its workspace, D253).
+        async (params) =>
+          (
+            await chat.context.hooks.run<ThreadCreateInput, ThreadCreateInput>(
+              THREAD_CREATE_HOOK,
+              { target, projectId: project.id, params },
+              (input) => input,
+            )
+          ).params as Record<string, unknown>,
       );
       nextThreadId.current = crypto.randomUUID();
       if (uncertain !== undefined) {

@@ -69,7 +69,12 @@ import {
 } from "./diff/rendering.ts";
 import { selectionKey, useScopeEntries, type ScopeEntry } from "./diff/scopes.ts";
 import { useResolvedTheme } from "./diff/theme.ts";
-import { DIFF_PANEL, useSourceControl, type SourceControlServices } from "./services.ts";
+import {
+  DIFF_PANEL,
+  statusOfThread,
+  useSourceControl,
+  type SourceControlServices,
+} from "./services.ts";
 
 const DIFF_FILE_TREE_STORAGE_KEY = "jhin.diffFileTreeOpen";
 
@@ -907,8 +912,8 @@ export function createDiffPanel(services: SourceControlServices) {
   }) {
     const catalog = useCatalog(threads, props.target);
     const view = useSourceControl(store, props.target);
-    const projectId =
-      props.project ?? catalog?.threads.find((thread) => thread.id === props.thread)?.projectId;
+    const record = catalog?.threads.find((thread) => thread.id === props.thread);
+    const projectId = props.project ?? record?.projectId;
     if (projectId === undefined) {
       return (
         <DiffPanelShell>
@@ -920,8 +925,12 @@ export function createDiffPanel(services: SourceControlServices) {
       <Panel
         key={`${JSON.stringify(props.target)}|${projectId}|${props.thread ?? ""}`}
         projectId={projectId}
-        projectPath={catalog?.projects.find((project) => project.id === projectId)?.path}
-        status={view.projects.get(projectId)}
+        // A worktree thread's files are its worktree's (D251).
+        projectPath={
+          (props.project === undefined ? record?.worktreePath : undefined) ??
+          catalog?.projects.find((project) => project.id === projectId)?.path
+        }
+        status={statusOfThread(view, projectId, props.project === undefined ? record : undefined)}
         target={props.target}
         threadId={props.project === undefined ? props.thread : undefined}
       />

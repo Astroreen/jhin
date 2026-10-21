@@ -23,7 +23,7 @@ import {
   threadPullRequestBadge,
   threadPullRequestBadgePresentation,
 } from "../../lib/pull-request.ts";
-import { useSourceControl, type SourceControlServices } from "./services.ts";
+import { statusOfThread, useSourceControl, type SourceControlServices } from "./services.ts";
 
 /** Opens a pull request in a new tab without the click reaching the row around it. */
 const openPullRequest = (event: MouseEvent<HTMLElement>) => event.stopPropagation();
@@ -227,7 +227,7 @@ export function createCardIndicators(services: SourceControlServices) {
     if (latest?.status === "ready") {
       counts = latest;
     } else {
-      const status = view.projects.get(thread.projectId);
+      const status = statusOfThread(view, thread.projectId, thread);
       const branch = view.threads.get(thread.id)?.branch;
       if (status !== undefined && status.isRepo && branch != null && branch === status.branch) {
         counts = status.workingTree;

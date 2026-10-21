@@ -14,10 +14,8 @@ import {
   normalizeImageFileMimeType,
 } from "../../lib/attachment-files.ts";
 import { fitAttachments, type DraftAttachment } from "../../lib/composer.ts";
-import {
-  createComposerImageThumbnail,
-  prepareImageForAttachment,
-} from "../../lib/image-compression.ts";
+/** Image compression loads with the first image attached, not with the page (D440). */
+const imageCompression = () => import("../../lib/image-compression.ts");
 import { ATTACHMENT_LIMITS, uploadAttachment, type NodeCall } from "../../lib/uploads.ts";
 
 /** An attachment in the composer: uploading, uploaded, or failed. */
@@ -158,6 +156,7 @@ export function useComposerAttachments(options: {
       }
       let file = original;
       if (classification === "image") {
+        const { prepareImageForAttachment } = await imageCompression();
         const result = await prepareImageForAttachment(
           normalizeImageFileMimeType(original),
           ATTACHMENT_LIMITS.imageBytes,
@@ -177,7 +176,11 @@ export function useComposerAttachments(options: {
       }
       const kind = classification === "image" ? "image" : "file";
       const previewUrl =
-        kind === "image" ? await createComposerImageThumbnail(file).catch(() => null) : null;
+        kind === "image"
+          ? await imageCompression()
+              .then(({ createComposerImageThumbnail }) => createComposerImageThumbnail(file))
+              .catch(() => null)
+          : null;
       prepared.push({
         file,
         item: {

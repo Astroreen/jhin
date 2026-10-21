@@ -4,7 +4,9 @@ Status: **implemented** (status, diffs, branches, pull requests, the card's
 indicators, the branch toolbar and the diff panel); W3 (checkpoints,
 reverting, worktrees, D240–D259) **in progress**: the turn hooks and a
 thread's own working directory (D241, D242), checkpoints, turn diffs, the
-changed files card and the card's latest turn (D243–D249) are done; git actions (W4 of
+changed files card and the card's latest turn (D243–D249), and worktrees per
+thread with the workspace selector, handoff and clean-up (D250–D256) are done
+(reverting, D257–D259, follows on W2's `threads.rollback`); git actions (W4 of
 `t3-roadmap.md`, D260–D266), linked pull requests (D267–D270), watching them
 (D271–D274) and other forges (D275–D279) **implemented**. This file records how
 Jhin reads the git repositories of a node's projects, how the web client
@@ -468,9 +470,12 @@ with screenshots).
   <start>`, `<branch>` defaulting to T3's temporary `jhin/<8 hex>` (`jhin-<8 hex>`
   when a branch `jhin` exists); with `startFromOrigin` (and an `origin`) it first
   runs `git fetch --quiet -- origin +refs/heads/<base>:refs/remotes/origin/<base>`
-  and starts from `origin/<base>` when that exists. `git.worktree.remove {
-  projectId, path, force? }` (`git worktree remove`, an already missing one is
-  pruned) and `git.worktree.list { projectId }` (`git worktree list
+  and starts from `origin/<base>` when that exists (`startedFromOrigin` says
+  whether it did; a base named `origin/<x>` is fetched as `<x>`); a folder that
+  another branch took (`a/b` and `a-b`) answers `WORKTREE_INVALID`. `git.worktree.remove {
+  projectId, path, force?, deleteBranch? }` (`git worktree remove` of a worktree
+  the repository lists and no thread works in, else `WORKTREE_INVALID` /
+  `WORKTREE_IN_USE`; one gone from disk is pruned) and `git.worktree.list { projectId }` (`git worktree list
   --porcelain`). Errors: `BRANCH_EXISTS`, `BRANCH_INVALID`, `WORKTREE_INVALID`,
   `GIT_FAILED`. `git.write` for the first two, `git.read` for the list.
 - **D251. A worktree thread's source control is its worktree's.** The plugin
@@ -485,9 +490,13 @@ with screenshots).
   `{ type: "worktree", baseRef, branch?, startFromOrigin? }` (the threads plugin
   runs `git.worktree.create` and records the new path; without a source control
   plugin it answers `WORKSPACE_UNSUPPORTED`) or `{ type: "existing_worktree",
-  worktreePath, branch? }`. `branch` checks that branch out in a new worktree, or
-  names the existing worktree's. The thread's branch stays the source control
-  plugin's record (D113), not a field of the thread.
+  worktreePath, branch? }` (a worktree the project's repository lists, on
+  `branch` when named, else `WORKSPACE_INVALID`). `branch` checks that branch out
+  in a new worktree, or names the existing worktree's. A new worktree whose thread
+  then fails to be created (its id existed, the project went) is removed again
+  with its branch; a creation repeated under its id (D207) makes none. The
+  thread's branch stays the source control plugin's record (D113), not a field
+  of the thread.
 - **D253. The branch toolbar gets T3's workspace selector** (`aria-label
   "Workspace"`): "Current checkout" (or "Current worktree"), "New worktree" and,
   when another thread of the project has one, "Previous worktree" with its
@@ -501,10 +510,12 @@ with screenshots).
 - **D254. A worktree thread's card shows T3's worktree icon**
   (`jhin.source-control.worktree`, order -50 in `sidebar.thread.indicators`):
   `FolderGit2`, tooltip "Worktree: <folder> (<branch>)".
-- **D255. Deleting a thread offers to delete its worktree**, as T3 asks: when no
-  other thread works in it, "This thread is the only one linked to this
-  worktree:\n<folder>\n\nDelete the worktree too?"; the thread is deleted first,
-  then the worktree is removed with `force`; a failure shows "Failed to delete
+- **D255. Deleting a thread offers to delete its worktree**, as T3 asks: when the
+  node made it and no other thread works in it (`git.worktree.list`'s `managed`
+  and `threadIds`, not the client's catalog), "Delete the worktree too?" with
+  "This thread is the only one linked to this worktree:\n<folder>" and that its
+  uncommitted changes are lost and its branch stays; the thread is deleted
+  first, then the worktree is removed with `force`; a failure shows "Failed to delete
   worktree" ("Could not remove <folder>. <reason>"). It runs through the new
   client hook `thread.delete` around the thread actions' delete.
 - **D256. Handing a thread over to a worktree**: `git.worktree.handoff {
@@ -515,10 +526,12 @@ with screenshots).
   '<id>' is already attached to worktree '<path>'.", `ALREADY_IN_WORKTREE`), an
   archived one and a project that is no repository. Called by an agent during its
   turn (MCP tool `git_worktree_handoff`), the turn finishes where it started and
-  the next one runs in the worktree. A thread's managed worktree (one under the
-  worktrees directory) that is gone is created again from its branch when the
-  thread's next turn starts (T3's "provider turn start recreating missing
-  worktree").
+  the next one runs in the worktree. Handoffs of one thread run one at a time,
+  so a second one finds it moved. A thread's managed worktree (one under the
+  worktrees directory) that is gone is created again from its branch (as git
+  still lists it) when the thread's next turn starts (T3's "provider turn start
+  recreating missing worktree"); if that fails the turn fails with
+  `WORKTREE_MISSING` and git's reason.
 
 #### Reverting
 
@@ -841,10 +854,17 @@ with the node's token, and without one).
 - **Reverting to a turn**: restoring a checkpoint into the working tree and
   truncating the thread after it; needs checkpoints first, and a thread
   operation to drop later turns (threads are append-only today).
-- **Worktrees per thread** (T3's "New worktree" workspace mode, the
-  workspace selector, "Start from origin", worktree cleanup): needs a thread
-  to carry a working directory of its own and the agent runtimes to run in
-  it (`agent.runtime@1.1` gets the project's directory).
+- Worktrees, from W3 (D240): T3's setup scripts and their progress card
+  ("Setting up worktree…", "Work locally", cancelling a setup), naming a
+  temporary `jhin/<hex>` branch from the first message, the cleanup rules
+  (keep when, after days, on merge, on delete without asking), submodules,
+  one worktree per model of a multi-model send, the `composer.workspace`
+  shortcut, MCP tools that act as the calling thread (T3's `t3_worktree_status`;
+  `git.worktree.handoff` takes a `threadId`), a handoff's continuation
+  prompt (W1's queue), deleting a removed worktree's branch from the client's
+  question (T3 keeps it too; `git.worktree.remove` takes `deleteBranch`), the
+  `branch` of a `root` workspace, and worktree folders that tell two
+  repositories of one name apart.
 - Forges (D275–D279): watching a pull request on forges other than GitHub,
   Bitbucket Server and Data Center, forges' icons and names in the client,
   tokens kept as the node's secrets instead of its environment, creating a

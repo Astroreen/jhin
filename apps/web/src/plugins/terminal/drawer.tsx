@@ -1,6 +1,7 @@
 // Ported from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/components/ThreadTerminalDrawer.tsx
-// (the drawer, its resize handle, action buttons, split panes and terminal sidebar) and
-// apps/web/src/components/ui/panel-tab-close-button.tsx.
+// (the drawer, its resize handle, action buttons, split panes and terminal sidebar, its
+// right-panel placement), apps/web/src/components/PersistentThreadTerminals.tsx (terminals
+// kept mounted while hidden) and apps/web/src/components/ui/panel-tab-close-button.tsx.
 import type { RpcClient } from "@jhin/rpc";
 import {
   Button,
@@ -39,6 +40,7 @@ import {
   type ThreadTerminalGroup,
   type ThreadTerminalUiState,
 } from "../../lib/terminal-state.ts";
+import type { TerminalContextSelection } from "./context.ts";
 
 // xterm.js is a chunk of its own, loaded when a terminal first shows (D440).
 const TerminalViewport = lazyChunk(
@@ -126,6 +128,14 @@ function TerminalActionButton(props: {
 }
 
 export interface TerminalDrawerProps {
+  /** Under the chat (T3's drawer), or right of it (T3's right-panel terminal, D474). */
+  placement: "drawer" | "panel";
+  /** Shown; a hidden drawer keeps its terminals mounted (D474). */
+  visible: boolean;
+  fontFamily: string;
+  fontSize: number;
+  /** "Add to chat" for a selection (D473). */
+  onAddToChat?: ((selection: TerminalContextSelection) => void) | undefined;
   client: RpcClient;
   threadId: string;
   cwd: string;
@@ -185,7 +195,6 @@ export function TerminalDrawer(props: TerminalDrawerProps) {
     groups[activeGroupIndex]?.terminalIds ?? (activeTerminalId === "" ? [] : [activeTerminalId]);
   const splitDirection = groups[activeGroupIndex]?.splitDirection ?? "horizontal";
   const hasTerminalSidebar = terminalIds.length > 1;
-  const isSplitView = visibleTerminalIds.length > 1;
   const showGroupHeaders =
     groups.length > 1 || groups.some((group) => group.terminalIds.length > 1);
   const hasReachedSplitLimit = visibleTerminalIds.length >= MAX_TERMINALS_PER_GROUP;
@@ -292,12 +301,17 @@ export function TerminalDrawer(props: TerminalDrawerProps) {
     return (
       <aside
         aria-label="Terminal"
-        className="thread-terminal-drawer relative z-45 flex min-w-0 shrink-0 flex-col overflow-hidden border-t border-border/80 bg-background"
-        data-terminal-owner="drawer"
+        className={cn(
+          props.placement === "panel"
+            ? "thread-terminal-panel relative flex h-full w-[42vw] min-w-[360px] max-w-[560px] shrink-0 flex-col overflow-hidden border-l border-border bg-background"
+            : "thread-terminal-drawer relative z-45 flex min-w-0 shrink-0 flex-col overflow-hidden border-t border-border/80 bg-background",
+          !props.visible && "hidden",
+        )}
+        data-terminal-owner={props.placement === "panel" ? "right-panel" : "drawer"}
         data-thread-terminal-drawer
-        style={{ height: `${drawerHeight}px` }}
+        style={props.placement === "panel" ? undefined : { height: `${drawerHeight}px` }}
       >
-        {handle}
+        {props.placement === "panel" ? null : handle}
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-muted-foreground">
           <p>No terminal sessions for this thread yet.</p>
           <Button onClick={props.onNew} size="xs" variant="outline">
@@ -308,21 +322,30 @@ export function TerminalDrawer(props: TerminalDrawerProps) {
     );
   }
 
-  const viewport = (terminalId: string, autoFocus: boolean) => (
+  const viewport = (terminalId: string, autoFocus: boolean, shown: boolean) => (
     <TerminalViewport
       autoFocus={autoFocus}
       client={props.client}
       cwd={props.cwd}
       drawerHeight={drawerHeight}
       focusRequestId={props.focusRequestId}
+      fontFamily={props.fontFamily}
+      fontSize={props.fontSize}
       key={terminalId}
+      onAddToChat={props.onAddToChat}
       onSessionExited={(reason) => props.onClosed(terminalId, reason)}
       resizeEpoch={resizeEpoch}
       terminalId={terminalId}
       terminalLabel={props.labelOf(terminalId)}
       threadId={props.threadId}
+      visible={props.visible && shown}
     />
   );
+  const panel = props.placement === "panel";
+  const frameClass = panel
+    ? "thread-terminal-panel relative flex h-full w-[42vw] min-w-[360px] max-w-[560px] shrink-0 flex-col overflow-hidden border-l border-border bg-background"
+    : "thread-terminal-drawer relative z-45 flex min-w-0 shrink-0 flex-col overflow-hidden border-t border-border/80 bg-background";
+  const frameStyle = panel ? undefined : { height: `${drawerHeight}px` };
 
   const actionClass = (base: string, limited: boolean) =>
     `${base} text-foreground/90 transition-colors ${
@@ -332,12 +355,12 @@ export function TerminalDrawer(props: TerminalDrawerProps) {
   return (
     <aside
       aria-label="Terminal"
-      className="thread-terminal-drawer relative z-45 flex min-w-0 shrink-0 flex-col overflow-hidden border-t border-border/80 bg-background"
-      data-terminal-owner="drawer"
+      className={cn(frameClass, !props.visible && "hidden")}
+      data-terminal-owner={panel ? "right-panel" : "drawer"}
       data-thread-terminal-drawer
-      style={{ height: `${drawerHeight}px` }}
+      style={frameStyle}
     >
-      {handle}
+      {panel ? null : handle}
       {hasTerminalSidebar ? null : (
         <div className="pointer-events-none absolute top-2 right-2 z-20">
           <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-md border border-border/80 bg-background shadow-xs">
@@ -384,40 +407,54 @@ export function TerminalDrawer(props: TerminalDrawerProps) {
           )}
         >
           <div className="min-w-0 flex-1">
-            {isSplitView ? (
-              <div
-                className="grid h-full w-full min-w-0 gap-0 overflow-hidden"
-                style={
-                  splitDirection === "vertical"
-                    ? { gridTemplateRows: `repeat(${visibleTerminalIds.length}, minmax(0, 1fr))` }
-                    : {
-                        gridTemplateColumns: `repeat(${visibleTerminalIds.length}, minmax(0, 1fr))`,
-                      }
-                }
-              >
-                {visibleTerminalIds.map((terminalId) => (
-                  <div
-                    className={cn(
-                      "min-h-0 min-w-0",
-                      splitDirection === "vertical"
-                        ? "border-t first:border-t-0"
-                        : "border-l first:border-l-0",
-                      terminalId === activeTerminalId ? "border-border" : "border-border/70",
-                    )}
-                    key={terminalId}
-                    onPointerDown={() => {
-                      if (terminalId !== activeTerminalId) props.onActiveChange(terminalId);
-                    }}
-                  >
-                    <div className="h-full">
-                      {viewport(terminalId, terminalId === activeTerminalId)}
+            {/* Every group stays mounted; only the active one shows (T3's persistent terminals). */}
+            {(groups.length > 0
+              ? groups
+              : [{ id: "single", terminalIds: visibleTerminalIds, splitDirection }]
+            ).map((group, index) => {
+              const shown = index === activeGroupIndex;
+              const ids = group.terminalIds;
+              const direction = group.splitDirection ?? "horizontal";
+              return (
+                <div
+                  className={cn(
+                    "grid h-full w-full min-w-0 gap-0 overflow-hidden",
+                    !shown && "hidden",
+                  )}
+                  key={group.id}
+                  style={
+                    direction === "vertical"
+                      ? { gridTemplateRows: `repeat(${ids.length}, minmax(0, 1fr))` }
+                      : { gridTemplateColumns: `repeat(${ids.length}, minmax(0, 1fr))` }
+                  }
+                >
+                  {ids.map((terminalId) => (
+                    <div
+                      className={cn(
+                        "min-h-0 min-w-0",
+                        ids.length > 1 &&
+                          (direction === "vertical"
+                            ? "border-t first:border-t-0"
+                            : "border-l first:border-l-0"),
+                        terminalId === activeTerminalId ? "border-border" : "border-border/70",
+                      )}
+                      key={terminalId}
+                      onPointerDown={() => {
+                        if (terminalId !== activeTerminalId) props.onActiveChange(terminalId);
+                      }}
+                    >
+                      <div className="h-full">
+                        {viewport(
+                          terminalId,
+                          shown && (terminalId === activeTerminalId || ids.length === 1),
+                          shown,
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="h-full">{viewport(activeTerminalId, true)}</div>
-            )}
+                  ))}
+                </div>
+              );
+            })}
           </div>
 
           {hasTerminalSidebar ? (

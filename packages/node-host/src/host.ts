@@ -277,9 +277,12 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
         input: z.object({
           layer: z.enum(["node", "project"]),
           section: z.string().regex(DOTTED_ID),
-          values: z.record(z.string(), z.unknown()),
+          values: z.record(
+            z.string().refine((key) => key !== UNSAFE_KEY),
+            z.unknown(),
+          ),
           /** Keys to remove from the section in the file, so they take their default again (D84). */
-          unset: z.array(z.string()).optional(),
+          unset: z.array(z.string().refine((key) => key !== UNSAFE_KEY)).optional(),
           /** When the change was made (ms); later changes win. Defaults to now. */
           at: z.number().int().nonnegative().optional(),
         }),
@@ -310,7 +313,12 @@ export async function startNodeHost(options: NodeHostOptions = {}): Promise<Node
            * The changed top-level keys whole, as the sender's file holds them:
            * written instead of an edit whose parent is no object in this file.
            */
-          values: z.record(z.string(), z.unknown()).optional(),
+          values: z
+            .record(
+              z.string().refine((key) => key !== UNSAFE_KEY),
+              z.unknown(),
+            )
+            .optional(),
           /** When the change was made (ms); later changes win. Defaults to now. */
           at: z.number().int().nonnegative().optional(),
         }),

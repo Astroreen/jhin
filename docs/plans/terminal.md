@@ -393,10 +393,12 @@ the same T3 Code nightly `eb7b35ac` unless a decision names another source.
   wrapped lines joined, underlined on hover, opened with ⌘-click (macOS) or
   Ctrl-click elsewhere. A URL opens in a new browser tab. A path has
   nowhere to open yet (Jhin has no "open in editor"), so only URLs are
-  activated. The font is a setting of the client section `jhin.terminal`
-  as in T3's appearance settings: `fontFamily` (empty: T3's monospace
-  stack) and `fontSize` (12 px, T3's default), applied to open terminals
-  as it changes.
+  activated (the extraction is T3's nightly, the buffer ranges its xterm.js
+  version before `acf761b2`). The font is a setting of the client section
+  `jhin.terminal-drawer` (its own name: the node's `jhin.terminal` is
+  another section) as in T3's appearance settings: `fontFamily` (empty:
+  T3's monospace stack) and `fontSize` (8–20, 12 px by default, T3's
+  limits), applied to open terminals as it changes.
 
 - **D473. The selection menu and "Add to chat".** Selecting text in a
   terminal shows T3's selection menu by the selection ("Add to chat",
@@ -408,14 +410,20 @@ the same T3 Code nightly `eb7b35ac` unless a decision names another source.
   `@terminal-1:3-5` label, and a `<terminal_context>` block with the
   numbered lines, which is what T3 sends to agents that do not read inline
   contexts. T3's inline chip in the composer comes with the rich text
-  composer (W6).
+  composer (W6). Without the chat plugin the menus leave "Add to chat"
+  out. The menus are Base UI's (`@jhin/ui`'s `Menu`) at the pointer: T3
+  shows them natively on desktop (W18).
 
 - **D474. The right-panel terminal and terminals that stay mounted.** A
   thread's terminals can also show in the panel right of the chat
   (`app.panel`'s `jhin.terminal.panel`, open while the route's panel is
   `terminal`), with the same tabs, splits and actions as the drawer, toggled
   by the client command `terminal.panel.toggle` and the header button, as
-  T3's right-panel surface. Terminals of a hidden drawer stay mounted
+  T3's right-panel surface. One layout per thread shows in one place at a
+  time: while the panel shows it the drawer gives its terminals up (they
+  come back from the scrollback), and ⌘/Ctrl+J closes the panel. T3 keeps
+  right-panel terminals as surfaces of their own beside the drawer's.
+  Terminals of a hidden drawer stay mounted
   (`display: none`), as T3's `PersistentThreadTerminals` keeps them, so
   showing the drawer again shows the screen as it was, without a replay;
   they unmount when the thread is left.
@@ -437,6 +445,18 @@ archived thread's terminals closed, the scrollback holding exactly its line
 limit), `apps/web/test/terminal-attach.test.ts` (a re-attach against a
 1.0 node opening a new shell, `restartIfNotRunning`) and the NixOS check
 of D471.
+
+The proof of D472–D474: `apps/web/test/terminal-links.test.ts` (URLs and
+paths without their punctuation, a wrapped URL mapped back to its lines,
+the inline label and the `<terminal_context>` block),
+`apps/web/test/terminal-viewport.browser.test.tsx` (the context menu with
+T3's items, "Add to chat" disabled without a selection, "Select all" then
+"Add to chat" giving the selected lines), `apps/web/test/terminal-plugin.browser.test.tsx`
+(a hidden drawer keeping the same terminal element and showing it again,
+`terminal.panel.toggle` moving the terminals to the right panel and back)
+and Playwright `e2e/tests/terminal.spec.ts` (the context menu, "Add to
+chat" filling the message box with the block, the header's toggle showing
+the terminal right of the chat, with screenshots).
 
 The proof of D470: `packages/rpc/test/flow-control.test.ts` (on the wire:
 at most the window unacknowledged, live events waiting too, one
@@ -464,11 +484,24 @@ read again from a snapshot).
 - Windows itself (D468): the PowerShell process table is tested with a
   fake runner only; no Windows machine ran it. PowerShell's cold start may
   pass T3's 1.5 s timeout, which the poll's back-off (D144) then absorbs.
+- From the last review of #86: `chat.composer.insert` builds the prompt
+  from the rendered one, so two inserts before a re-render keep only the
+  second (a ref to the latest prompt fixes it); the live font settings
+  (D472) and the ⌘/Ctrl-click activation of a URL have no test of their
+  own (the e2e run and the extraction tests cover the rest).
+- A per-connection bound on waiting events (D470): each windowed
+  subscription holds at most 16 MiB, so a client that opens many and never
+  acknowledges costs that many times 16 MiB (before D470 the socket's own
+  buffer held all of it, unbounded).
 - A terminal that cannot keep up with a flood (D470) re-reads its
   snapshot once per 16 MiB with no back-off; T3 blocks the stream instead.
 - `terminals.write` is in effect shell access as the node's user, whoever
   holds it (an MCP client included); grant it only where that is meant.
   D461 narrows what a shell inherits, not what it can read on the machine.
-- Links, the selection menu and "Add to chat", fonts, the right-panel
-  terminal and hidden terminals kept mounted (D472–D474): land in the
-  following PR of this workstream.
+- Opening a path from terminal output (D472): Jhin has no "open in
+  editor" yet (W5 ports it); paths are found but not links.
+- T3's inline terminal-context chip in the composer and its
+  `inlineMessageContext` records (D473): the composer inserts T3's legacy
+  text; the chip needs W6's rich text composer.
+- Right-panel terminals as surfaces of their own, beside the drawer's
+  (D474): Jhin moves one layout between the two places.

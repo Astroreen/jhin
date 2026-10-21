@@ -66,11 +66,11 @@ export function configEdits(before: unknown, after: unknown, path: string[] = []
     return [after === undefined ? { path } : { path, value: after }];
   }
   const removed = Object.keys(before)
-    .filter((key) => !Object.hasOwn(after, key))
+    .filter((key) => after[key] === undefined)
     .map((key) => ({ path: [...path, key] }));
-  const changed = Object.keys(after).flatMap((key) =>
-    configEdits(before[key], after[key], [...path, key]),
-  );
+  const changed = Object.keys(after)
+    .filter((key) => after[key] !== undefined)
+    .flatMap((key) => configEdits(before[key], after[key], [...path, key]));
   return [...removed, ...changed];
 }
 
@@ -86,10 +86,11 @@ export function configChange(
 ): ConfigChange {
   const previous = isObject(before) ? before : {};
   const values: Record<string, unknown> = {};
+  // A key set to `undefined` is a key removed, in both forms.
   for (const [key, item] of Object.entries(after)) {
-    if (!same(item, previous[key])) values[key] = item;
+    if (item !== undefined && !same(item, previous[key])) values[key] = item;
   }
-  const unset = Object.keys(previous).filter((key) => !Object.hasOwn(after, key));
+  const unset = Object.keys(previous).filter((key) => after[key] === undefined);
   return {
     layer,
     section,

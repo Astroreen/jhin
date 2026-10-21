@@ -353,6 +353,37 @@ describe("jhin.agent-claude: a turn", () => {
     expect(transcript([])).toBeUndefined();
   });
 
+  it("appends a defined agent's instructions to the system prompt (D605)", async () => {
+    const { turn, calls } = start(
+      [
+        async function* () {
+          yield init();
+          yield result();
+        },
+      ],
+      { instructions: "You are Builder." },
+    );
+    await drain(turn);
+    const prompt = calls[0]!.options.systemPrompt as { append: string };
+    expect(prompt.append.endsWith("\n\nYou are Builder.")).toBe(true);
+  });
+
+  it("counts a defined agent's turns as its runtime's (D610)", () => {
+    const history = [
+      {
+        type: "agent.turn.started",
+        payload: {
+          turnId: "a",
+          agentId: "builder",
+          runtimeId: "jhin.agent-claude",
+          input: { text: "q" },
+        },
+      },
+      { type: "agent.item.completed", payload: { turnId: "a", kind: "message", text: "a" } },
+    ] as unknown as StoredEvent[];
+    expect(transcript(history, "jhin.agent-claude")).toBeUndefined();
+  });
+
   it("asks before a tool runs and reports the tool's output", async () => {
     let decision: unknown;
     const { turn, calls } = start(

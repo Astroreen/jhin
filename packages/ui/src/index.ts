@@ -201,6 +201,7 @@ export {
   SlotsProvider,
   UI_SLOTS_CAPABILITY,
   createSlotRegistry,
+  useOptionalSlot,
   useSlot,
   type Contribution,
   type SlotRegistry,

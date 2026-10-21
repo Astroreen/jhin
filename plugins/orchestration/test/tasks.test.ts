@@ -467,7 +467,12 @@ describe("capabilities and launches", () => {
       inheritedAgentId: "jhin.agent-fake",
       inheritedModel: "echo",
       runtimeMode: "approval-required",
-      features: { workflows: true, scheduledTasks: false, workspaceStrategies: ["root"] },
+      features: {
+        workflows: true,
+        scheduledTasks: false,
+        // threads.create takes a workspace (W3); no source control here makes new worktrees.
+        workspaceStrategies: ["root", "existing_worktree"],
+      },
     });
     expect(
       capabilities.agents.map(({ agentId, canRunChildTask, constraints }) => ({

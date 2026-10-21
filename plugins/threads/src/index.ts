@@ -12,6 +12,7 @@ import {
   AGENT_REGISTRY_CAPABILITY,
   AGENT_RUNTIME_CAPABILITY,
   APPROVAL_DECISIONS,
+  GenerationOf,
   INTERACTION_MODES,
   RUNTIME_MODES,
   THREADS_STREAM,
@@ -206,7 +207,7 @@ const Thread = z.object({
   lastMessageAt: z.string().optional(),
   /** Set while the thread never settles by itself (T3's per-thread "Auto-settle behavior"). */
   autoSettleDisabledAt: z.string().optional(),
-  /** The agent whose generation this thread is (D606, D741): set once at creation, never changed. */
+  /** The defined agent this thread is a generation of; set at creation, never changed (D606, D741). */
   generationOf: GenerationOf.optional(),
 });
 type Thread = z.infer<typeof Thread>;
@@ -343,6 +344,22 @@ const ModelOptionSelectionSchema = z.object({
   id: z.string().min(1).max(100),
   value: z.union([z.string().max(100), z.boolean()]),
 });
+
+/** T3's workspace strategy of a new thread (ThreadLaunchService, D252). */
+const Workspace = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("root"), branch: z.string().min(1).optional() }),
+  z.object({
+    type: z.literal("worktree"),
+    baseRef: z.string().min(1),
+    branch: z.string().min(1).optional(),
+    startFromOrigin: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal("existing_worktree"),
+    worktreePath: z.string().min(1),
+    branch: z.string().min(1).optional(),
+  }),
+]);
 
 const AgentSettings = {
   agentId: z.string().min(1).optional(),
@@ -507,6 +524,11 @@ const AgentInfo = z.object({
   default: z.boolean(),
   /** Its turns take messages while they run (D204). */
   steering: z.boolean(),
+  /** A runtime, or a defined agent running on one (D601, D610). */
+  kind: z.enum(["runtime", "defined"]),
+  /** The runtime its turns run on: its own id for a runtime. */
+  runtimeId: z.string(),
+  role: z.string().optional(),
 });
 
 class ThreadsError extends Error {
@@ -731,8 +753,10 @@ export default definePlugin({
       const configured = context.config.get<Config>(CONFIG_SECTION).defaultAgent;
       const chosen = all.find((runtime) => runtime.agentId === configured);
       if (chosen !== undefined) return chosen;
-      for (const runtime of all) if ((await statusOf(runtime)).available) return runtime;
-      return all[0];
+      // A defined agent is the default only when the config names it (D610).
+      const plain = all.filter((runtime) => runtime.runtimeId === undefined);
+      for (const runtime of plain) if ((await statusOf(runtime)).available) return runtime;
+      return plain[0];
     };
 
     // --- Records ---------------------------------------------------------------
@@ -1161,6 +1185,8 @@ export default definePlugin({
                 payload: {
                   turnId,
                   agentId: runtime.agentId,
+                  // A defined agent's turns name the runtime they ran on too (D601).
+                  ...(runtime.runtimeId === undefined ? {} : { runtimeId: runtime.runtimeId }),
                   input: input as unknown as Json,
                   ...(settings as unknown as Record<string, Json>),
                   ...(messageId === undefined ? {} : { messageId }),
@@ -1756,7 +1782,8 @@ export default definePlugin({
     // --- Agents ----------------------------------------------------------------
     context.commands.register({
       name: "agents.list",
-      description: "Agent runtimes on this node with their models, modes and whether they can run",
+      description:
+        "Agents on this node: its runtimes and its defined agents, with their models, modes and whether they can run",
       input: z.object({}),
       output: z.array(AgentInfo),
       permissions: ["threads.read"],
@@ -1787,6 +1814,9 @@ export default definePlugin({
               ...(status.version === undefined ? {} : { version: status.version }),
               default: runtime === fallback,
               steering: runtime.steering === true,
+              kind: runtime.runtimeId === undefined ? ("runtime" as const) : ("defined" as const),
+              runtimeId: runtime.runtimeId ?? runtime.agentId,
+              ...(runtime.role === undefined ? {} : { role: runtime.role }),
             };
           }),
         );
@@ -1855,25 +1885,30 @@ export default definePlugin({
         parentThreadId: z.string().min(1).optional(),
         relationshipToParent: z.enum(["subagent"]).optional(),
         generationOf: GenerationOf.optional().meta({
-          description:
-            "The agent whose generation the thread is (D606); thread lists and catalogs leave it out unless asked",
+          description: "The defined agent whose generation the thread is (D606); set once, here",
         }),
         worktreePath: z.string().min(1).optional().meta({
           description:
             "The thread's own working directory (a git worktree of the project); its turns run there",
         }),
+        workspace: Workspace.optional().meta({
+          description:
+            "Where the thread works (T3's workspace strategy): the project's checkout (root), a new worktree made from baseRef, or an existing worktree",
+        }),
       }),
       output: Thread,
       permissions: ["threads.write"],
-      handler: async ({ projectId, title, threadId, worktreePath, ...rest }) => {
-        const settings =
-          worktreePath === undefined
-            ? rest
-            : { ...rest, worktreePath: await worktreeDirectory(worktreePath) };
+      handler: async ({ projectId, title, threadId, worktreePath, workspace, ...rest }) => {
+        if (worktreePath !== undefined && workspace !== undefined && workspace.type !== "root") {
+          throw new ThreadsError(
+            "WORKSPACE_INVALID",
+            "Name either a worktreePath or a workspace, not both",
+          );
+        }
         await getProject(projectId);
-        if (settings.parentThreadId !== undefined) {
+        if (rest.parentThreadId !== undefined) {
           // A child shares its parent's project (docs/plans/orchestration.md, D363).
-          const parent = await getThread(settings.parentThreadId);
+          const parent = await getThread(rest.parentThreadId);
           if (parent.projectId !== projectId) {
             throw new ThreadsError(
               "PARENT_PROJECT_MISMATCH",
@@ -1882,11 +1917,38 @@ export default definePlugin({
             );
           }
         }
+        /**
+         * Inside the creation's turn for its id: a thread created again under its id
+         * (D207) is returned as it is, with no second worktree; a worktree made for a
+         * thread that then fails to be created goes again.
+         */
+        const make = async (id: string) => {
+          if ((await kv.get(NAMESPACE, `thread/${id}`)) !== undefined) {
+            return createThread(id, projectId, title, rest);
+          }
+          let made: string | undefined;
+          try {
+            if (workspace?.type === "worktree") made = await newWorktree(projectId, workspace);
+            const directory =
+              made ??
+              (workspace?.type === "existing_worktree"
+                ? await existingWorktree(projectId, workspace)
+                : worktreePath);
+            const settings =
+              directory === undefined
+                ? rest
+                : { ...rest, worktreePath: await worktreeDirectory(directory) };
+            return await createThread(id, projectId, title, settings);
+          } catch (error) {
+            if (made !== undefined) await dropWorktree(projectId, made);
+            throw error;
+          }
+        };
         // Creations of one id run one at a time, so the second finds the first's thread.
         return creatingIn(projectId, () =>
           threadId === undefined
-            ? createThread(Crypto.randomUUID(), projectId, title, settings)
-            : queued(threadId, () => createThread(threadId, projectId, title, settings)),
+            ? make(Crypto.randomUUID())
+            : queued(threadId, () => make(threadId)),
         );
       },
     });
@@ -1908,6 +1970,95 @@ export default definePlugin({
         if (underWay.size === 0 && creations.get(projectId) === underWay) {
           creations.delete(projectId);
         }
+      }
+    }
+
+    /**
+     * An existing worktree a new thread works in: one the project's repository
+     * lists, on `branch` when it is named (D252). A node without source control
+     * takes the folder as given.
+     */
+    async function existingWorktree(
+      projectId: string,
+      workspace: { worktreePath: string; branch?: string | undefined },
+    ): Promise<string> {
+      const path = await worktreeDirectory(workspace.worktreePath);
+      let listed: { path: string; branch: string | null }[];
+      try {
+        listed = (
+          (await context.commands.execute("git.worktree.list", { projectId })) as {
+            worktrees: { path: string; branch: string | null }[];
+          }
+        ).worktrees;
+      } catch (error) {
+        if ((error as { code?: unknown }).code === "COMMAND_NOT_FOUND") return path;
+        throw error;
+      }
+      const real = async (value: string) =>
+        Fs.promises.realpath(value).catch(() => Path.resolve(value));
+      let entry: { path: string; branch: string | null } | undefined;
+      for (const item of listed) if ((await real(item.path)) === path) entry = item;
+      if (entry === undefined) {
+        throw new ThreadsError(
+          "WORKSPACE_INVALID",
+          `${workspace.worktreePath} is not a worktree of this project's repository`,
+          { projectId, path: workspace.worktreePath },
+        );
+      }
+      if (workspace.branch !== undefined && entry.branch !== workspace.branch) {
+        throw new ThreadsError(
+          "WORKSPACE_INVALID",
+          `The worktree ${workspace.worktreePath} is on ${entry.branch ?? "a detached HEAD"}, not ${workspace.branch}`,
+          { projectId, path: workspace.worktreePath, branch: workspace.branch },
+        );
+      }
+      return path;
+    }
+
+    /** Removes a worktree made for a thread that was not created after all, with its branch. */
+    async function dropWorktree(projectId: string, path: string) {
+      await context.commands
+        .execute("git.worktree.remove", { projectId, path, force: true, deleteBranch: true })
+        .catch((error: unknown) =>
+          context.log.warn("a new thread's worktree could not be removed again", {
+            projectId,
+            path,
+            error: String(error),
+          }),
+        );
+    }
+
+    /**
+     * Makes the worktree of a new thread through the source control plugin's
+     * `git.worktree.create` (D252); a node without one has no worktrees.
+     */
+    async function newWorktree(
+      projectId: string,
+      workspace: {
+        baseRef: string;
+        branch?: string | undefined;
+        startFromOrigin?: boolean | undefined;
+      },
+    ): Promise<string> {
+      try {
+        const created = (await context.commands.execute("git.worktree.create", {
+          projectId,
+          baseRef: workspace.baseRef,
+          ...(workspace.branch === undefined ? {} : { branch: workspace.branch }),
+          ...(workspace.startFromOrigin === undefined
+            ? {}
+            : { startFromOrigin: workspace.startFromOrigin }),
+        })) as { path: string };
+        return created.path;
+      } catch (error) {
+        if ((error as { code?: unknown }).code === "COMMAND_NOT_FOUND") {
+          throw new ThreadsError(
+            "WORKSPACE_UNSUPPORTED",
+            "This node makes no worktrees: it has no source control plugin",
+            { projectId },
+          );
+        }
+        throw error;
       }
     }
 

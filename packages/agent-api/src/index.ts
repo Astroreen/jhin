@@ -469,7 +469,8 @@ export const THREADS_STREAM = "threads";
  * The conversation an agent has not seen, as context for the first message it gets: every
  * earlier turn of a thread whose turns ran on other agents before this one joined (no
  * `since`), or the turns after the agent's last one (`since`: its agent id) of a thread that
- * went to another agent and came back. `undefined` when there is none, also when `since`
+ * went to another agent and came back; turns are told apart by `runtimeId ?? agentId`
+ * (D610). `undefined` when there is none, also when `since`
  * names an agent with no turn in the history (its session already holds what it saw).
  * The text ends with a line saying the user's new message follows.
  */
@@ -483,7 +484,8 @@ export function historyTranscript(
     const payload = event.payload as Record<string, unknown> | null;
     if (payload === null || typeof payload !== "object") continue;
     if (event.type === ThreadEvents.turnStarted) {
-      const turn = { agentId: payload["agentId"], lines: [] as string[] };
+      // A defined agent's turn ran on its runtime (D601, D610): it counts as that runtime's.
+      const turn = { agentId: payload["runtimeId"] ?? payload["agentId"], lines: [] as string[] };
       turns.push(turn);
       byId.set(payload["turnId"], turn);
       const input = payload["input"] as { text?: unknown } | undefined;

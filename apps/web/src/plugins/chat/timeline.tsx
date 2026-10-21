@@ -33,7 +33,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
+  Suspense,
   createContext,
+  lazy,
   Fragment,
   useContext,
   useEffect,
@@ -65,7 +67,12 @@ import {
   type WorkEntry,
 } from "../../lib/timeline.ts";
 import { MessageText } from "./message-text.tsx";
-import { ProposedPlanCard, type SavePlan } from "./proposed-plan-card.tsx";
+import type { SavePlan } from "./proposed-plan-card.tsx";
+
+/** The plan card loads with the first proposed plan, not with the page (D440). */
+const ProposedPlanCard = lazy(() =>
+  import("./proposed-plan-card.tsx").then((module) => ({ default: module.ProposedPlanCard })),
+);
 
 export function MessageCopyButton({
   text,
@@ -775,11 +782,15 @@ function TurnView(props: {
           if (block.kind === "proposed-plan") {
             return (
               <div className="min-w-0 px-1 py-0.5 pb-4" key={block.item.itemId}>
-                <ProposedPlanCard
-                  planMarkdown={block.item.markdown}
-                  {...(props.onSavePlan === undefined ? {} : { onSave: props.onSavePlan })}
-                  {...(props.projectPath === undefined ? {} : { workspaceRoot: props.projectPath })}
-                />
+                <Suspense fallback={null}>
+                  <ProposedPlanCard
+                    planMarkdown={block.item.markdown}
+                    {...(props.onSavePlan === undefined ? {} : { onSave: props.onSavePlan })}
+                    {...(props.projectPath === undefined
+                      ? {}
+                      : { workspaceRoot: props.projectPath })}
+                  />
+                </Suspense>
               </div>
             );
           }

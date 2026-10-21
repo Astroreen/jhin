@@ -1290,8 +1290,15 @@ export default definePlugin({
             scheduledTasks: context.commands
               .list()
               .some((command) => command.name === "scheduler.tasks.create"),
+            // A new worktree also needs the node's source control to make it (D250, D252).
             workspaceStrategies: workspaceSupported()
-              ? (["root", "worktree", "existing_worktree"] as const).slice()
+              ? (["root", "worktree", "existing_worktree"] as const).filter(
+                  (strategy) =>
+                    strategy !== "worktree" ||
+                    context.commands
+                      .list()
+                      .some((command) => command.name === "git.worktree.create"),
+                )
               : ["root" as const],
           },
         };
