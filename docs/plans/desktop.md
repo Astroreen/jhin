@@ -302,8 +302,9 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   apply, and telling a .deb install apart (D519 treats Linux outside an
   AppImage as not updatable).
 - Checking the macOS chrome (traffic lights, the controls
-  inset, full screen) and the Windows overlay badge on those systems: CI
-  proves Linux only.
+  inset, full screen), Paste as Text's shortcut reaching the page before
+  the menu (D946), and the Windows overlay badge on those systems: CI proves
+  Linux only.
 - Release builds beyond D945's three: macOS x64 (T3 merges the two
   `latest-mac.yml` files), Linux and Windows arm64; T3's scheduled nightly
   that skips days without changes, its preview channel, and promoting a
