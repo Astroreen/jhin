@@ -226,6 +226,8 @@ export function packageOptions(
 
 /** A version from the `catalog:` block of pnpm-workspace.yaml, without quotes or a comment. */
 export function catalogVersion(workspace: string, name: string): string {
+  // A Windows checkout may have CRLF line ends.
+  workspace = workspace.replaceAll("\r\n", "\n");
   const block = /^catalog:\n((?: {2}.*\n|\s*\n)*)/m.exec(workspace)?.[1] ?? "";
   for (const line of block.split("\n")) {
     const match = /^ {2}(["']?)([^"':\s]+)\1:\s*(["']?)([^"'\s#]+)\3\s*(#.*)?$/.exec(line);

@@ -294,6 +294,9 @@ to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
   `latest-mac.yml` files), Linux and Windows arm64; T3's scheduled nightly
   that skips days without changes, its preview channel, and promoting a
   nightly's commit to stable; T3's DMG background; the AUR package.
+- A protected GitHub environment (required reviewers) for the signing
+  secrets and the publishing job: today they are repository secrets, reachable
+  by anyone who may dispatch a workflow on `main`.
 - Pinning the release workflow's actions to commit SHAs (the repository's
   workflows use version tags today), and an Intel build for macOS: the feed
   offers the arm64 build only, which no Intel install exists to update from.

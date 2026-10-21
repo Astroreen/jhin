@@ -79,8 +79,13 @@ describe("startLocalNode (D512)", () => {
 });
 
 describe("cliEntry (D942)", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) Fs.rmSync(dir, { recursive: true, force: true });
+  });
   const manifest = (content: unknown) => {
     const dir = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-cli-entry-"));
+    dirs.push(dir);
     Fs.writeFileSync(Path.join(dir, "package.json"), JSON.stringify(content));
     return Path.join(dir, "package.json");
   };

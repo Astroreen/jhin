@@ -183,6 +183,7 @@ describe("catalogVersion", () => {
     expect(catalogVersion(workspace, "electron")).toBe("44.4.5");
     expect(catalogVersion(workspace, "electron-updater")).toBe("6.8.9");
     expect(catalogVersion(workspace, "@types/node")).toBe("24.19.2");
+    expect(catalogVersion(workspace.replaceAll("\n", "\r\n"), "electron")).toBe("44.4.5");
     expect(() => catalogVersion(workspace, "electron-builder")).toThrow(
       "not in the workspace catalog",
     );

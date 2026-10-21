@@ -58,7 +58,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-desktop-${{ github.ref }}
+  # A pull request's newer push replaces its older run; a dispatch or tag is
+  # never dropped as a pending duplicate (release uniqueness is the tag's).
+  group: release-desktop-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -157,6 +159,25 @@ jobs:
           if [[ -n "$REPOSITORY" ]]; then args+=(--repository "$REPOSITORY"); fi
           if [[ "$REQUIRE_SIGNING" == "true" ]]; then args+=(--require-signing); fi
           node scripts/package-desktop.ts "${args[@]}"
+      - name: Check the feed file
+        shell: bash
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          # The feed must name an installer that is uploaded beside it.
+          channel=latest
+          if [[ "$VERSION" == *-nightly.* ]]; then channel=nightly; fi
+          case "${{ matrix.platform }}" in
+            linux) feed="$channel-linux.yml" ;;
+            mac) feed="$channel-mac.yml" ;;
+            win) feed="$channel.yml" ;;
+          esac
+          feed="apps/desktop/release/$feed"
+          test -f "$feed" || { echo "missing $feed" >&2; exit 1; }
+          cat "$feed"
+          for file in $(sed -n 's/^ *- url: //p' "$feed"); do
+            test -f "apps/desktop/release/$file" || { echo "$feed names missing $file" >&2; exit 1; }
+          done
       - name: Upload installers
         uses: actions/upload-artifact@v7
         with:
