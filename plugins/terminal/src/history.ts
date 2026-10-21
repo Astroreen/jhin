@@ -7,6 +7,7 @@ import * as Path from "node:path";
 
 import type { Logger } from "@jhin/sdk";
 
+import { realDelay, type Delay } from "./delay.ts";
 import { boundHistory, type HistoryLimits } from "./scrollback.ts";
 
 /** How long output waits before its session's file is written (T3's debounce). */
@@ -29,7 +30,8 @@ export interface HistoryStore {
 }
 
 interface Pending {
-  timer: ReturnType<typeof setTimeout> | undefined;
+  /** Cancels the write waiting to run. */
+  timer: (() => void) | undefined;
   content: () => string | undefined;
   /** The write running now, if any. */
   running: Promise<void> | undefined;
@@ -53,12 +55,18 @@ export function historyName(id: string): string {
  * Terminal output may hold secrets: the folders are the owner's only (0700),
  * the files too (0600). They are not encrypted.
  */
-export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
+export function createHistoryFiles(
+  dir: string,
+  log: Logger,
+  delay: Delay = realDelay,
+): HistoryStore {
   const fileOf = (threadId: string, terminalId: string) =>
     Path.join(dir, historyName(threadId), `${historyName(terminalId)}.log`);
   const pending = new Map<string, Pending>();
   /** Deletes still running: a read of the same session waits for them. */
   const deleting = new Map<string, Promise<void>>();
+  /** Deletes started per session: a read whose session was deleted meanwhile rewrites nothing. */
+  const deletes = new Map<string, number>();
   const key = (threadId: string, terminalId: string) => `${threadId}\u0000${terminalId}`;
 
   /**
@@ -104,7 +112,10 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
     async read(threadId, terminalId, limits) {
       // A terminal closed and opened again under the same ids must not read
       // the history its close is deleting.
-      await deleting.get(key(threadId, terminalId));
+      const id = key(threadId, terminalId);
+      // Counted before waiting: a delete that starts after this point stops the rewrite.
+      const deletesBefore = deletes.get(id) ?? 0;
+      await deleting.get(id);
       const file = fileOf(threadId, terminalId);
       let handle: Fs.promises.FileHandle;
       try {
@@ -139,7 +150,9 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
         await handle.close();
       }
       const history = boundHistory(raw, limits);
-      if (cut || history !== raw) {
+      // Capped on disk, unless the session was closed while it was read:
+      // its delete must not be undone.
+      if ((cut || history !== raw) && (deletes.get(id) ?? 0) === deletesBefore) {
         await replace(file, history).catch((error: unknown) =>
           log.warn("terminal history not capped", { file, error: String(error) }),
         );
@@ -153,8 +166,7 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
       entry.content = content;
       pending.set(id, entry);
       if (entry.timer !== undefined) return;
-      entry.timer = setTimeout(() => void run(id, file, entry), WRITE_DELAY_MS);
-      entry.timer.unref?.();
+      entry.timer = delay(() => void run(id, file, entry), WRITE_DELAY_MS);
     },
     delete(threadId, terminalId) {
       const id = key(threadId, terminalId);
@@ -165,8 +177,9 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
         running: undefined,
       };
       pending.set(id, entry);
-      if (entry.timer !== undefined) clearTimeout(entry.timer);
+      entry.timer?.();
       entry.timer = undefined;
+      deletes.set(id, (deletes.get(id) ?? 0) + 1);
       const prior = entry.running;
       const file = fileOf(threadId, terminalId);
       const deleted = (async () => {
@@ -198,7 +211,7 @@ export function createHistoryFiles(dir: string, log: Logger): HistoryStore {
       const writes: Promise<void>[] = [];
       for (const [id, entry] of pending) {
         if (entry.timer !== undefined) {
-          clearTimeout(entry.timer);
+          entry.timer();
           const [threadId = "", terminalId = ""] = id.split("\u0000");
           writes.push(run(id, fileOf(threadId, terminalId), entry));
         } else if (entry.running !== undefined) writes.push(entry.running);

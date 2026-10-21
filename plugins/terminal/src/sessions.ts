@@ -19,6 +19,7 @@ import {
   type TerminalSummary,
 } from "@jhin/terminal-api";
 
+import { realDelay, type Delay } from "./delay.ts";
 import { envKey, shellEnv, type EnvFilter } from "./env.ts";
 import type { HistoryStore } from "./history.ts";
 import type { PtyProcess, PtySpawner } from "./pty.ts";
@@ -69,6 +70,8 @@ export interface SessionOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** How many sessions without a process are kept (128, T3's). */
   readonly maxExited?: number;
+  /** Timers (the coalesced `terminals` list); real ones unless a test drives them. */
+  readonly delay?: Delay;
   /** Reads the working directory; `fs.promises.stat` unless a test controls it. */
   readonly stat?: (path: string) => Promise<Fs.Stats>;
   /** This run's id (`TerminalSummary.instance`); a random one unless a test picks it. */
@@ -137,7 +140,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
   /** Closes still stopping their process: deactivation waits for them too. */
   const closing = new Set<Promise<void>>();
   let disposed = false;
-  let resizePublish: ReturnType<typeof setTimeout> | undefined;
+  let resizePublish: (() => void) | undefined;
   let spawner: Promise<PtySpawner> | undefined;
   let poll: ReturnType<typeof setTimeout> | undefined;
   let pollFailures = 0;
@@ -147,7 +150,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
 
   /** Every session after a change; the stream keeps only the latest list. */
   const publish = () => {
-    if (resizePublish !== undefined) clearTimeout(resizePublish);
+    resizePublish?.();
     resizePublish = undefined;
     streams.clear(TERMINALS_STREAM);
     streams.append(TERMINALS_STREAM, TerminalEvents.sessions, {
@@ -157,8 +160,10 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
   /** A change that is only a size: published once the window ends, or with the next change. */
   const publishSizes = () => {
     if (resizePublish !== undefined || disposed) return;
-    resizePublish = setTimeout(publish, RESIZE_PUBLISH_MS);
-    resizePublish.unref?.();
+    resizePublish = (options.delay ?? realDelay)(() => {
+      resizePublish = undefined;
+      publish();
+    }, RESIZE_PUBLISH_MS);
   };
   const update = (session: Session, change: Partial<Omit<TerminalSummary, "instance">>) => {
     session.summary = { ...session.summary, ...change, updatedAt: now() };
@@ -680,7 +685,7 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
         ...[...sessions.values()].map((session) => closeSession(session, true)),
         ...closing,
       ]);
-      if (resizePublish !== undefined) clearTimeout(resizePublish);
+      resizePublish?.();
       resizePublish = undefined;
       await options.history?.flush();
     },

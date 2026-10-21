@@ -39,6 +39,8 @@ export function attachTerminal(options: {
    * shell ends its tab, as in T3's web client.
    */
   readonly restartIfNotRunning?: boolean;
+  /** The terminal's own variables (D462), for every shell this attach starts. */
+  readonly env?: Readonly<Record<string, string>>;
 }): Disposable & {
   /**
    * Types into the terminal. What is typed before the terminal is open (its
@@ -108,6 +110,7 @@ export function attachTerminal(options: {
           terminalId,
           cwd: options.cwd,
           ...options.size(),
+          ...(options.env === undefined ? {} : { env: options.env }),
         });
         snapshot = await client.call<TerminalSnapshot>("terminals.get", { threadId, terminalId });
       } else if ("found" in read) {
@@ -124,6 +127,7 @@ export function attachTerminal(options: {
           terminalId,
           cwd: options.cwd,
           ...options.size(),
+          ...(options.env === undefined ? {} : { env: options.env }),
         });
         snapshot = await client.call<TerminalSnapshot>("terminals.get", { threadId, terminalId });
       }

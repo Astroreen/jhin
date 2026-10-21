@@ -367,8 +367,18 @@ describe("attaching a terminal (the drawer's viewport)", () => {
     await exited;
 
     const view = recorder();
-    attachTerminal({ ...input, client, size, sink: view.sink, restartIfNotRunning: true });
+    const attached = attachTerminal({
+      ...input,
+      client,
+      size,
+      sink: view.sink,
+      restartIfNotRunning: true,
+      env: { W15_VAR: "kept" },
+    });
     await view.until(() => view.log.some((entry) => entry.kind === "reset"));
+    // The new shell has the terminal's own variables.
+    attached.write("echo v-$W15_VAR\r");
+    await view.shows("v-kept");
     const now = await client.call<{ pid: number; status: string }>("terminals.get", input);
     expect(now.status).toBe("running");
     expect(now.pid).not.toBe(opened.pid);

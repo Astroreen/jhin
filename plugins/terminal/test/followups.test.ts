@@ -12,6 +12,7 @@ import {
 } from "@jhin/terminal-api";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
+import type { Delay } from "../src/delay.ts";
 import { envKey, shellEnv } from "../src/env.ts";
 import { createHistoryFiles, historyName } from "../src/history.ts";
 import {
@@ -104,8 +105,28 @@ function fakePty() {
   return { pty, spawned };
 }
 
+/** Timers the test fires by hand: no wall clock involved. */
+function manualDelay() {
+  const due: { run: () => void; ms: number; cancelled: boolean }[] = [];
+  const delay: Delay = (run, ms) => {
+    const entry = { run, ms, cancelled: false };
+    due.push(entry);
+    return () => {
+      entry.cancelled = true;
+    };
+  };
+  /** Fires every timer still armed; returns their delays. */
+  const fire = () => {
+    const now = due.splice(0).filter((entry) => !entry.cancelled);
+    for (const entry of now) entry.run();
+    return now.map((entry) => entry.ms);
+  };
+  return { delay, fire, armed: () => due.filter((entry) => !entry.cancelled).length };
+}
+
 function setup(
   options: {
+    delay?: Delay;
     streams?: MemoryStreams;
     history?: ReturnType<typeof createHistoryFiles>;
     maxExited?: number;
@@ -129,6 +150,7 @@ function setup(
     env: options.env ?? { PATH: "/usr/bin", HOME: "/home/someone" },
     ...(options.history === undefined ? {} : { history: options.history }),
     ...(options.maxExited === undefined ? {} : { maxExited: options.maxExited }),
+    ...(options.delay === undefined ? {} : { delay: options.delay }),
   });
   cleanups.push(() => sessions.dispose());
   return { cwd, streams, sessions, spawned };
@@ -178,22 +200,20 @@ describe("review follow-ups (D460)", () => {
 
 describe("resizes on the terminals stream (D469)", () => {
   it("sends one list for resizes in a row, with the last size, and answers it at once", async () => {
-    const { cwd, streams, sessions } = setup();
+    const timers = manualDelay();
+    const { cwd, streams, sessions } = setup({ delay: timers.delay });
     const input = { threadId: "t", terminalId: "term-1", cwd };
     await sessions.open(input);
     const lists: number[] = [];
-    let published!: () => void;
-    const next = new Promise<void>((resolve) => (published = resolve));
     streams.subscribe(TERMINALS_STREAM, (event) => {
       lists.push((event.payload as { terminals: TerminalSummary[] }).terminals[0]!.cols);
-      published();
     });
 
-    // Dragging the drawer's edge: one size after another.
+    // Dragging the drawer's edge: one size after another, one window.
     for (const cols of [81, 82, 83, 84, 85]) sessions.resize({ ...input, cols, rows: 24 });
     expect(sessions.list()[0]).toMatchObject({ cols: 85 });
     expect(lists).toEqual([]);
-    await next;
+    expect(timers.fire()).toEqual([100]);
     expect(lists).toEqual([85]);
 
     // Any other change sends the list at once, with the size waiting.
@@ -465,6 +485,33 @@ describe("history files (D464)", () => {
     await expect(opening).rejects.toMatchObject({ code: "TERMINAL_UNAVAILABLE" });
     await stopping;
     expect(Fs.readFileSync(file, "utf8")).toBe("from the last run\r\n");
+  });
+});
+
+describe("history writes (D464)", () => {
+  it("writes once per window, the newest content, and a delete during a read stays", async () => {
+    const dir = tempDir();
+    const timers = manualDelay();
+    const history = createHistoryFiles(dir, quiet, timers.delay);
+    const file = Path.join(dir, "t", "term-1.log");
+    let content = "";
+    for (const next of ["a", "ab", "abc"]) {
+      content = next;
+      history.write("t", "term-1", () => content);
+    }
+    // Three writes in a window: one timer, and the content as it is when it fires.
+    expect(timers.armed()).toBe(1);
+    expect(timers.fire()).toEqual([250]);
+    await history.flush();
+    expect(Fs.readFileSync(file, "utf8")).toBe("abc");
+
+    // A read that would cap the file, and a close of the session while it
+    // reads: the file stays deleted.
+    Fs.writeFileSync(file, "x".repeat(100));
+    const reading = history.read("t", "term-1", { lines: 10, bytes: 10 });
+    const deleting = history.delete("t", "term-1");
+    await Promise.all([reading, deleting]);
+    expect(Fs.existsSync(file)).toBe(false);
   });
 });
 

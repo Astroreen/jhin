@@ -43,6 +43,11 @@ const Config = z
       title: "Scrollback lines",
       description: "How much of a terminal's output the node keeps for clients that open it later.",
     }),
+    history: z.boolean().default(true).meta({
+      title: "Keep history across restarts",
+      description:
+        "Writes each terminal's output to the node's data folder (owner-only, unencrypted) so it shows again after a restart. Read when the plugin starts.",
+    }),
     env: z
       .object({
         strip: z
@@ -91,7 +96,7 @@ export default definePlugin({
       config: () => context.config.get<Config>(CONFIG_SECTION),
       log: context.log,
       // Output kept across node restarts (D464), where the node has a data folder.
-      ...(paths === undefined
+      ...(paths === undefined || !context.config.get<Config>(CONFIG_SECTION).history
         ? {}
         : {
             history: createHistoryFiles(
