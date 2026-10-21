@@ -297,3 +297,49 @@ test("D480, D481: renames a record key in place and shows a field for its siblin
     value: { mode: "custom", instructions: "be brief", env: { API_TOKEN: "x" } },
   });
 });
+
+test("D483, D484: a change made elsewhere reaches the open page, keeping the edits on top", async ({
+  page,
+}, info) => {
+  node = await startNode({ setup: writeDemoPlugin });
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page
+    .getByRole("navigation", { name: "Settings sections" })
+    .getByRole("button", { name: "Node config" })
+    .click();
+  await page.getByRole("combobox", { name: "Config section" }).click();
+  await page.getByRole("option", { name: /^Demo/ }).click();
+  const section = page.getByRole("region", { name: "Demo" });
+  await expect(section.getByRole("textbox", { name: "Label" })).toHaveValue("first");
+
+  // Without edits: the page shows what another client saved.
+  await node.client().call("host.config.patch", {
+    layer: "node",
+    section: "acme.demo",
+    values: { label: "from elsewhere" },
+  });
+  await expect(section.getByRole("textbox", { name: "Label" })).toHaveValue("from elsewhere");
+
+  // With edits: they stay, on top of the new file.
+  await section.getByRole("textbox", { name: "Retries" }).fill("7");
+  await node.client().call("host.config.patch", {
+    layer: "node",
+    section: "acme.demo",
+    values: { level: "low" },
+  });
+  await expect(
+    section.getByText("Changed on the node while you edited; your changes are kept on top of it."),
+  ).toBeVisible();
+  await expect(section.getByRole("combobox", { name: "Level" })).toContainText("low");
+  await expect(section.getByRole("textbox", { name: "Retries" })).toHaveValue("7");
+  const shot = info.outputPath("config-pushed.png");
+  await page.screenshot({ path: shot, fullPage: true });
+  await info.attach("config-pushed", { path: shot, contentType: "image/png" });
+
+  await section.getByRole("button", { name: "Save" }).click();
+  await expect(section.getByRole("list", { name: "Outcome" })).toContainText("applied");
+  expect(await node.client().call("host.config.get", { section: "acme.demo" })).toMatchObject({
+    layers: { node: { label: "from elsewhere", level: "low", retries: 7 } },
+  });
+});

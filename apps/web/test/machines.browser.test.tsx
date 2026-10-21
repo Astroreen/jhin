@@ -273,6 +273,16 @@ describe("the node-machines plugin", () => {
     const studio = t.changed({ node: A });
     kernel!.events.emit("settings.node-config.saved", { connection: A, section: "jhin.host" });
     expect(await studio).toBe("mac-studio");
+
+    // Changed on the node by anyone: the node says so through host/config (D484).
+    t.files.set(A, { machine: "laptop" });
+    const laptop = t.changed({ node: A });
+    kernel!.events.emit("node.config.changed", {
+      connection: A,
+      layer: "node",
+      sections: ["jhin.host"],
+    });
+    expect(await laptop).toBe("laptop");
   });
 
   it("logs why a node shows as a server when it refuses host.identity", async () => {

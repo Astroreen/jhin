@@ -1,5 +1,10 @@
-import type { NodeConnection } from "@jhin/client-api";
-import { configChange, sendConfigChange, type ConfigChange } from "@jhin/host-api";
+import {
+  coversSection,
+  NODE_CONFIG_CHANGED,
+  type NodeConfigChanged,
+  type NodeConnection,
+} from "@jhin/client-api";
+import { configChange, configEdits, sendConfigChange, type ConfigChange } from "@jhin/host-api";
 import {
   Alert,
   AlertDescription,
@@ -87,6 +92,25 @@ const loadedFrom = (section: string, layer: ConfigLayer, read: ConfigRead): Load
   original: read.layers[layer] ?? {},
   value: read.layers[layer] ?? {},
 });
+
+/**
+ * The editor once the node says the section changed underneath it (D484):
+ * without edits, the new file; with edits, each edited path set again on top
+ * of the new file, and `rebased` says so.
+ */
+export function rebase(current: Loaded, next: ConfigRead): Loaded & { readonly rebased: boolean } {
+  const original = next.layers[current.layer] ?? {};
+  // The file as already known (the echo of this page's own save): nothing to say.
+  if (equal(original, current.original)) return { ...current, read: next, rebased: false };
+  const edits = configEdits(current.original, current.value);
+  if (edits.length === 0)
+    return { ...current, read: next, original, value: original, rebased: false };
+  let value: unknown = original;
+  for (const edit of edits) {
+    value = setAt(value, edit.path, Object.hasOwn(edit, "value") ? edit.value : undefined) ?? {};
+  }
+  return { ...current, read: next, original, value, rebased: true };
+}
 
 /**
  * The editor once a save of `sent` to `section` is read back as `next`: the
@@ -259,7 +283,16 @@ function ConfigEditor({
   const [asJson, setAsJson] = useState(false);
   const [scope, setScope] = useState<readonly string[] | undefined>();
   const [saving, setSaving] = useState(false);
+  /** A save in flight reads the section back itself; a change heard meanwhile waits for it. */
+  const savingNow = useRef(false);
+  /** Grows with every save: a read started before one is older than its read-back. */
+  const reads = useRef(0);
+  /** The editor as last rendered, for answers that arrive later. */
+  const loadedNow = useRef(loaded);
+  loadedNow.current = loaded;
   const [outcomes, setOutcomes] = useState<readonly Outcome[]>([]);
+  /** The section changed on the node while it was being edited (D484). */
+  const [rebased, setRebased] = useState(false);
   const [pending, setPending] = useState<readonly Pending[]>([]);
   const members = useMeshMembers(mesh, connection.id) ?? [];
   const self = members.find((member) => member.self);
@@ -296,6 +329,29 @@ function ConfigEditor({
     };
   }, [client]);
 
+  // The node says the shown section changed, whoever changed it (D484).
+  useEffect(() => {
+    const subscription = plugin.events.on(NODE_CONFIG_CHANGED, (payload) => {
+      const changed = payload as NodeConfigChanged;
+      if (section === undefined || savingNow.current) return;
+      if (!coversSection(changed, connection.id, section)) return;
+      const started = reads.current;
+      void client
+        .call<ConfigRead>("host.config.get", { section })
+        .then((next) => {
+          // A save began meanwhile: its read-back is newer than this answer.
+          const current = loadedNow.current;
+          if (current?.section !== section || started !== reads.current) return;
+          const { rebased: changedUnder, ...updated } = rebase(current, next);
+          setLoaded((latest) => (latest === current ? updated : latest));
+          if (changedUnder) setRebased(true);
+        })
+        // Unreadable now: the next change, a save or a reload reads it again.
+        .catch(() => undefined);
+    });
+    return () => subscription.dispose();
+  }, [client, connection.id, section]);
+
   const read = loaded?.read;
   const edited = loaded !== undefined && !equal(loaded.value, loaded.original);
   useEffect(() => onEdited(edited), [edited]);
@@ -330,6 +386,7 @@ function ConfigEditor({
   const choose = async (next: string) => {
     if (next === section || !(await discard())) return;
     setOutcomes([]);
+    setRebased(false);
     setAsJson(false);
     setSection(next);
   };
@@ -338,6 +395,7 @@ function ConfigEditor({
   const chooseLayer = async (next: ConfigLayer) => {
     if (next === layer || !(await discard())) return;
     setOutcomes([]);
+    setRebased(false);
     setLayer(next);
   };
   const other: ConfigLayer = layer === "node" ? "project" : "node";
@@ -359,8 +417,11 @@ function ConfigEditor({
     // Only the paths that changed are written, so the rest keeps its comments (D84, D476).
     const change = configChange(file, saved, original, sent);
     setSaving(true);
+    savingNow.current = true;
+    reads.current += 1;
     // The previous save's outcome is not this one's.
     setOutcomes([]);
+    setRebased(false);
     try {
       const onlySelf = self === undefined || (targets.length === 1 && targets[0] === self.nodeId);
       if (onlySelf) {
@@ -396,6 +457,7 @@ function ConfigEditor({
       return;
     } finally {
       setSaving(false);
+      savingNow.current = false;
     }
     // Other plugins follow what the section means (the node icons, `jhin.host`).
     plugin.events.emit("settings.node-config.saved", {
@@ -513,6 +575,11 @@ function ConfigEditor({
                 {form.description}
               </p>
             )}
+            {rebased && edited ? (
+              <p className="text-xs text-info-foreground" role="status">
+                Changed on the node while you edited; your changes are kept on top of it.
+              </p>
+            ) : null}
             <p className="text-xs text-muted-foreground/80">
               {layer === "node"
                 ? "Changes go to this section of the node's config.jsonc, keeping its comments; a key left unset takes its default."

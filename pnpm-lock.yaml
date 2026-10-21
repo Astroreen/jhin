@@ -575,9 +575,15 @@ importers:
       '@jhin/kernel':
         specifier: workspace:*
         version: link:../kernel
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../rpc
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../storage-api
       jsonc-parser:
         specifier: 'catalog:'
         version: 3.3.1
