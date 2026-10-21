@@ -799,6 +799,19 @@ describe("the diff panel", () => {
     });
     // An editor that failed to open is not remembered as the preferred one.
     expect(localStorage.getItem("jhin.lastEditor")).toBeNull();
+    // A failed reveal says so in T3's words (D922).
+    await editors.open(
+      { node: "a" },
+      "app",
+      "app.ts",
+      { id: "file-manager", label: "File Manager" },
+      { reveal: true },
+    );
+    expect(shown.at(-1)).toEqual({
+      type: "error",
+      title: "Unable to reveal file",
+      description: "app.ts: Could not start zed: spawn EACCES",
+    });
     // Without a reveal kind the node cannot reveal: its menu opens the folder, as before.
     await userEvent.click(page.getByText("src/app.ts", { exact: true }), { button: "right" });
     await expect
