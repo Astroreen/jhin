@@ -819,6 +819,11 @@ Each workstream lists its PRs here as they merge.
   `threads.create` (D606); `agents.list` grows `kind`, `runtimeId`, `role`,
   and turns record `runtimeId` (D610). The Civilization-mode UI (D614) waits
   for A8's shell.
+- A2 #172: the messaging contract in `@jhin/agent-api` (`messages.ts`:
+  owner and thread addresses, `AgentMessage`, `MessageOrigin`, the
+  `agents/messages` and `agents/inbox` streams, the schemas of `agents.send`,
+  `agents.ask` and `agents.inbox.*`). D621–D629 recorded; the server side and
+  the inbox follow.
 - A3 #104: `@jhin/missions-api` (records, the `missions` stream's events and
   fold, intent chain, Markdown) and the `jhin.missions` plugin: `missions.*`
   and `slices.*` commands, the stream guarded by `missions.read`, agents
