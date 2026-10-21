@@ -615,6 +615,24 @@ with screenshots).
   thread itself is created by the client with that branch and worktree
   (D252), as T3 fills its draft.
 
+- **D903. T3's "Checkout pull request" dialog** (`PullRequestThreadDialog`),
+  in the branch picker of a draft whose repository is on GitHub: a search
+  that reads as a pull request (T3's `parsePullRequestReference`: a GitHub
+  pull request URL, `gh pr checkout <x>`, `123` or `#123`) puts "Checkout
+  pull request" with the reference first in the list, and choosing it opens
+  the dialog with that reference. The dialog keeps T3's words (title
+  "Checkout pull request", "Resolve a GitHub pull request, then create the
+  draft thread in the main repo or in a dedicated worktree.", placeholder "PR
+  URL, checkout command, or #42", "Resolving pull request...", the two
+  validation messages, the result card "#<n> · <head> to <base>" with its
+  state's colour, Cancel / Local / Worktree, "Preparing local..." and
+  "Preparing worktree...", Enter for Worktree, no closing while preparing).
+  It resolves the reference with `git.pr.resolve` once typing pauses for
+  450 ms and checks it out with `git.pr.checkout` (D902); a worktree becomes
+  the draft's workspace as an existing worktree (D252's `existing_worktree`,
+  the selector's "Previous worktree"), a local checkout keeps "Current
+  checkout".
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -970,12 +988,15 @@ with the node's token, and without one).
   the 50 most recently updated only, and GitLab's matching of a fork's merge
   request by its owner (a same-named branch of another fork can match), and
   checking a pull request out (D902) on forges other than GitHub.
-- Checking a pull request out (D902): T3's dialog and the branch picker's
-  "Checkout pull request" item (the next W21 PR), resetting a reused
+- Checking a pull request out (D902, D903): resetting a reused
   worktree whose head was rewritten (T3's `refs/t3code/pre-refresh`), setup
   scripts after a checkout, and a fork whose head is named like its base
   being compared with the base repository's default branch (Jhin compares it
-  with the pull request's base).
+  with the pull request's base); T3's other ways in (the thread details
+  panel, a draft that is not the current one: Jhin fills the draft the
+  branch picker belongs to), the dialog on forges other than GitHub (their
+  reference forms and terminology), and a "Checkout pull request" offered
+  while the node cannot write (T3's `canWriteSourceControl`).
 - Watching (D274): review thread comments on lines, required checks as the
   gate, read fingerprints, rate limit pauses, a notification for a wake and
   the sidebar's "Waiting" for a watched thread (W14 may take it).

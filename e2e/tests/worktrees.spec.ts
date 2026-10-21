@@ -116,3 +116,96 @@ test("D250–D255: a draft starts its thread in a new worktree; deleting the thr
   expect(Fs.existsSync(path)).toBe(false);
   expect(git(dir, "worktree", "list", "--porcelain")).not.toContain(folder);
 });
+
+test("D902–D903: a draft on GitHub finds a pull request from the branch search and checks it out", async ({
+  page,
+}, info) => {
+  const node = await startNode({
+    mode: "ui",
+    setup: (home) => {
+      // A stand-in for the GitHub CLI that knows pull request 7.
+      const fake = Path.join(home, "fake-gh");
+      Fs.mkdirSync(fake, { recursive: true });
+      Fs.writeFileSync(
+        Path.join(fake, "view-7.json"),
+        JSON.stringify({
+          number: 7,
+          title: "Greet in French",
+          url: "https://github.com/acme/app/pull/7",
+          state: "OPEN",
+          isDraft: false,
+          headRefName: "feature/french",
+          baseRefName: "main",
+          statusCheckRollup: [],
+          isCrossRepository: false,
+          headRepositoryOwner: { login: "acme" },
+          headRepository: { name: "app" },
+        }),
+      );
+      Fs.writeFileSync(
+        Path.join(fake, "gh"),
+        `#!/bin/sh
+if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  for arg in "$@"; do last="$arg"; done
+  file="${fake}/view-$(basename "$last").json"
+  if [ -f "$file" ]; then cat "$file"; exit 0; fi
+  echo "no pull requests found" >&2
+  exit 1
+fi
+if [ "$1" = "pr" ] && [ "$2" = "list" ]; then echo '[]'; exit 0; fi
+exit 1
+`,
+        { mode: 0o755 },
+      );
+      const file = Path.join(home, ".jhin", "config.jsonc");
+      const config = JSON.parse(Fs.readFileSync(file, "utf8"));
+      Fs.writeFileSync(
+        file,
+        JSON.stringify(
+          { ...config, "jhin.source-control": { ghPath: Path.join(fake, "gh") } },
+          null,
+          2,
+        ),
+      );
+    },
+  });
+  running.push(node);
+  const dir = Path.join(node.home, "acme");
+  Fs.mkdirSync(dir, { recursive: true });
+  git(dir, "init", "--quiet", "--initial-branch=main");
+  Fs.writeFileSync(Path.join(dir, "README.md"), "acme\n");
+  git(dir, "add", ".");
+  git(dir, "commit", "--quiet", "-m", "first");
+  git(dir, "remote", "add", "origin", "https://github.com/acme/app.git");
+  await node.client().call("projects.create", { path: dir });
+
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Command palette", exact: true }).click();
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("option", { name: "New thread in...", exact: true }).click();
+  await palette.getByRole("option", { name: /^acme/ }).click();
+  await expect(palette).toBeHidden();
+
+  // T3's branch picker offers the pull request the search names.
+  await page.getByRole("combobox", { name: "Branch main" }).click();
+  await page.getByRole("combobox", { name: "Search refs" }).fill("#7");
+  const item = page.getByRole("option", { name: /Checkout pull request/ });
+  await expect(item).toBeVisible();
+  await shot(page, info, "checkout-pull-request-item");
+  await item.click();
+
+  // The dialog resolves it through the node.
+  const dialog = page.getByRole("dialog", { name: "Checkout pull request" });
+  await expect(dialog.getByText("Greet in French")).toBeVisible();
+  await expect(dialog.getByText("#7 · feature/french to main")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Worktree" })).toBeEnabled();
+  await shot(page, info, "checkout-pull-request-dialog");
+
+  // A reference that is not one says so.
+  await dialog.getByRole("textbox").fill("not a pr");
+  await expect(
+    dialog.getByText("Use a pull request URL, checkout command, 123, or #123."),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+});

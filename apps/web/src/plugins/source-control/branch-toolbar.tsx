@@ -2,7 +2,8 @@
 // apps/web/src/components/BranchToolbar.tsx (the strip under the composer),
 // BranchToolbarBranchSelector.tsx (the pull request badge and the branch trigger, switching
 // and creating refs) and BranchPicker.tsx (the searchable list of refs and its badges);
-// a new worktree's base and "Start from origin" follow WorktreeBaseBranchPicker.tsx.
+// a new worktree's base and "Start from origin" follow WorktreeBaseBranchPicker.tsx; the
+// "Checkout pull request" item follows BranchToolbarBranchSelector.tsx (D903).
 import type { ChatComposerContextProps } from "@jhin/client-api";
 import type { Branch, ProjectStatus } from "@jhin/source-control-api";
 import {
@@ -19,13 +20,14 @@ import {
   TooltipPopup,
   TooltipTrigger,
 } from "@jhin/ui";
-import { ChevronDownIcon, GitBranchIcon, RefreshCwIcon } from "lucide-react";
+import { ChevronDownIcon, GitBranchIcon, GitPullRequestIcon, RefreshCwIcon } from "lucide-react";
 import { useId, useState } from "react";
 
 import { ComposerControl } from "../../lib/composer-control.tsx";
 import { useCatalog } from "../../lib/hooks.ts";
 import { MiddleTruncate } from "../../lib/middle-truncate.tsx";
 import { PullRequestBadge } from "./indicators.tsx";
+import { PullRequestCheckoutDialog, parsePullRequestReference } from "./pull-request-checkout.tsx";
 import {
   branchOf,
   statusOfThread,
@@ -40,6 +42,8 @@ interface RefItem {
   readonly label: string;
   /** A new ref named after the search. */
   readonly create?: true;
+  /** T3's "Checkout pull request" of the reference searched for. */
+  readonly checkout?: true;
   readonly branch?: Branch;
 }
 
@@ -69,6 +73,8 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
     const [query, setQuery] = useState("");
     const [branches, setBranches] = useState<readonly Branch[] | undefined>();
     const [pending, setPending] = useState<string | undefined>();
+    // The open dialog's reference; `key` gives each opening a fresh dialog, as T3 does.
+    const [checkout, setCheckout] = useState<{ reference: string; key: number }>();
     const originSwitch = useId();
     const key = draftKey(target, project?.id ?? "");
     const draft = useDraftWorkspace(drafts, key);
@@ -95,6 +101,10 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
     const select = (item: RefItem) => {
       setOpen(false);
       setQuery("");
+      if (item.checkout === true) {
+        setCheckout({ reference: item.value, key: Date.now() });
+        return;
+      }
       if (choosingBase) {
         drafts.set(key, { ...draft, baseRef: item.value });
         return;
@@ -119,6 +129,11 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
     };
 
     const trimmed = query.trim();
+    // A draft on GitHub can check a pull request out into its thread (D902, D903).
+    const pullRequestReference =
+      thread === undefined && projectStatus.provider?.kind === "github"
+        ? parsePullRequestReference(trimmed)
+        : null;
     const items: RefItem[] = (branches ?? []).map((ref) => ({
       value: ref.name,
       label: ref.name,
@@ -126,6 +141,13 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
     }));
     if (!choosingBase && trimmed !== "" && !items.some((item) => item.value === trimmed)) {
       items.push({ value: trimmed, label: `Create new ref "${trimmed}"`, create: true });
+    }
+    if (pullRequestReference !== null) {
+      items.unshift({
+        value: pullRequestReference,
+        label: "Checkout pull request",
+        checkout: true,
+      });
     }
     // T3's resolveBranchTriggerLabel: a new worktree says where it starts from.
     const remoteBase =
@@ -152,7 +174,9 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
           <Combobox
             autoHighlight
             filter={(item: RefItem, search: string) =>
-              item.create === true || item.label.toLowerCase().includes(search.trim().toLowerCase())
+              item.create === true ||
+              item.checkout === true ||
+              item.label.toLowerCase().includes(search.trim().toLowerCase())
             }
             inputValue={query}
             isItemEqualToValue={(a: RefItem, b: RefItem) => a.value === b.value}
@@ -201,10 +225,20 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
                   return (
                     <ComboboxItem
                       hideIndicator
-                      key={`${item.create ? "+" : ""}${item.value}`}
+                      key={`${item.checkout ? "#" : item.create ? "+" : ""}${item.value}`}
                       value={item}
                     >
-                      {item.create === true ? (
+                      {item.checkout === true ? (
+                        <div className="flex min-w-0 items-center gap-2">
+                          <GitPullRequestIcon className="size-4 shrink-0 text-muted-foreground" />
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{item.label}</div>
+                            <div className="truncate text-muted-foreground text-xs">
+                              {item.value}
+                            </div>
+                          </div>
+                        </div>
+                      ) : item.create === true ? (
                         <span className="truncate">{item.label}</span>
                       ) : (
                         <div className="flex w-full min-w-0 items-center justify-between gap-2">
@@ -254,6 +288,32 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
             </ComboboxPopup>
           </Combobox>
         </div>
+        {checkout === undefined ? null : (
+          <PullRequestCheckoutDialog
+            initialReference={checkout.reference}
+            key={checkout.key}
+            onOpenChange={(next) => {
+              if (!next) setCheckout(undefined);
+            }}
+            onPrepared={(prepared) =>
+              // The draft's thread starts where the pull request was checked out (T3's draft).
+              drafts.set(
+                key,
+                prepared.worktreePath === null
+                  ? { mode: "local", startFromOrigin: false }
+                  : {
+                      mode: "previous",
+                      startFromOrigin: false,
+                      previous: { path: prepared.worktreePath, branch: prepared.branch },
+                    },
+              )
+            }
+            open
+            projectId={project.id}
+            target={target}
+            threads={threads}
+          />
+        )}
       </div>
     );
   }
