@@ -1464,11 +1464,18 @@ export default definePlugin({
      * starting then is given up on as soon as it has started; its start only
      * waits on storage and the turn start hooks, as recording its end would.
      */
-    async function stopTurn(threadId: string, forRestart = false): Promise<void> {
+    async function stopTurn(
+      threadId: string,
+      /** A restart's stop (D803): only this turn, which keeps its restart. */
+      restarting?: Running,
+    ): Promise<void> {
       // A rollback under way is never cut short: it ends by itself (D220).
       await rollingBack.get(threadId);
       const current = active.get(threadId);
       if (current === undefined) return;
+      // The restarting turn ended meanwhile: the turn running now is not its to stop.
+      if (restarting !== undefined && current !== restarting) return;
+      const forRestart = restarting !== undefined;
       // Any other stop (archiving, deleting) is a stop: a restart under way gives way (D803).
       if (!forRestart) current.restartWith = undefined;
       current.interrupted = true;
@@ -3151,7 +3158,7 @@ export default definePlugin({
         if (
           stopping ||
           head === undefined ||
-          (queue.held !== undefined && head?.id !== restartMessage) ||
+          (queue.held !== undefined && head.id !== restartMessage) ||
           active.has(threadId)
         ) {
           return;
@@ -3359,10 +3366,16 @@ export default definePlugin({
       if (after === undefined && (current.ending || current.interrupted)) return false;
       if (active.get(threadId) !== current) return false;
       // Claimed before the queue is written, so a steer meanwhile goes after it.
-      if (after === undefined) current.restartWith = messageId;
+      const key = `${threadId}:${messageId}`;
+      if (after === undefined) {
+        current.restartWith = messageId;
+        // Awaited from now: the turn the message starts is recorded, however soon.
+        restartStarts.set(key, undefined);
+      }
       /** A restart that could not go on releases its claim: later steers restart again. */
       const release = () => {
         if (current.restartWith === messageId) current.restartWith = undefined;
+        restartStarts.delete(key);
       };
       await changeQueue(threadId, async (queue) => {
         const item =
@@ -3383,14 +3396,14 @@ export default definePlugin({
       if (after !== undefined) return "queued";
       // A Stop came while the queue was written (`restartWith` cleared): it waits,
       // as a steer that came too late.
-      if (current.restartWith !== messageId) return false;
-      const key = `${threadId}:${messageId}`;
-      restartStarts.set(key, undefined);
+      if (current.restartWith !== messageId) {
+        restartStarts.delete(key);
+        return false;
+      }
       // A user's Stop: bounded, and given up on for an agent that ignores it.
       try {
-        await stopTurn(threadId, true);
+        await stopTurn(threadId, current);
       } catch (error) {
-        restartStarts.delete(key);
         release();
         throw error;
       }
