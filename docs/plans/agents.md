@@ -518,3 +518,8 @@ Each workstream lists its PRs here as they merge.
   `threads.create` (D606); `agents.list` grows `kind`, `runtimeId`, `role`,
   and turns record `runtimeId` (D610). The Civilization-mode UI (D614) waits
   for A8's shell.
+- A3 #104: `@jhin/missions-api` (records, the `missions` stream's events and
+  fold, intent chain, Markdown) and the `jhin.missions` plugin: `missions.*`
+  and `slices.*` commands, the stream guarded by `missions.read`, agents
+  reaching it (D641–D652). The mission view in Civilization mode waits for
+  A8's slots (#105).
