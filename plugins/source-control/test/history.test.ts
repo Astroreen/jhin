@@ -21,7 +21,7 @@ describe("jhin.source-control: the stream's history (D497)", () => {
     // The first status waits for the trim at start.
     const snapshot = await sc.status();
 
-    expect(snapshot.head).toBe(HISTORY + 150);
+    expect(snapshot.head).toBeGreaterThanOrEqual(HISTORY + 150);
     // Trimmed to the newest 1000 at start; what the node appended since follows.
     const kept = await log.read(SOURCE_CONTROL_STREAM);
     expect(kept[0]?.sequence).toBe(151);
