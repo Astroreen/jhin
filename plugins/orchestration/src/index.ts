@@ -128,14 +128,26 @@ const OptionValue = z.union([z.string(), z.boolean()]);
 /** T3's target options: a list of selections, or a record of them by id (D870). */
 const TargetOptions = z
   .union([
-    z.array(z.object({ id: z.string().min(1), value: OptionValue })).max(20),
+    z.array(z.object({ id: z.string().min(1), value: OptionValue })),
     z.record(z.string().min(1), OptionValue),
   ])
   .transform((options): ModelOption[] =>
     Array.isArray(options)
       ? options
       : Object.entries(options).map(([id, value]) => ({ id, value })),
-  );
+  )
+  // One value per option, the last given winning; as many as a turn takes.
+  .transform((options) => [...new Map(options.map((option) => [option.id, option])).values()])
+  .refine((options) => options.length <= 20, "At most 20 model options.");
+
+/** `chosen` over `base`, by option id. */
+const layerOptions = (
+  base: readonly ModelOption[] | undefined,
+  chosen: readonly ModelOption[] | undefined,
+): ModelOption[] | undefined =>
+  chosen === undefined
+    ? base?.slice()
+    : [...new Map([...(base ?? []), ...chosen].map((option) => [option.id, option])).values()];
 
 const TaskStatus = z.enum([
   "running",
@@ -982,10 +994,12 @@ export default definePlugin({
       }
       const sameAgent = agent.agentId === parentAgent?.agentId;
       const model = requestedModel ?? (sameAgent ? parent.model : undefined);
-      // Options go with their model: the parent's only while the child runs the parent's model (D870).
-      const modelOptions =
-        request.target?.options ??
-        (sameAgent && model === parent.model ? parent.modelOptions : undefined);
+      // Options go with their model: the parent's are the base only while the child runs the
+      // parent's model, and the chosen ones are laid over them (D870).
+      const modelOptions = layerOptions(
+        sameAgent && model === parent.model ? parent.modelOptions : undefined,
+        request.target?.options,
+      );
       const runtimeMode = resolveMode<RuntimeMode>({
         kind: "runtime",
         requested: request.runtimeMode,

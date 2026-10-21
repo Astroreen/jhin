@@ -367,8 +367,9 @@ user sees, which their Deferred lists left out.
   change. Unlike T3, a result read before that turn ends is not delivered.
 - **D870. Model options of a child.** `tasks.delegate`'s `target.options` is
   T3's: `[{ id, value }]` or `{ id: value }`, passed as the child's
-  `modelOptions` (the threads plugin keeps those its model declares, D297).
-  Without it a child running the parent's model takes the parent's options;
+  `modelOptions` (the threads plugin keeps those its model declares, D297),
+  at most 20, the last of an id winning. A child running the parent's model
+  starts from the parent's options and the chosen ones are laid over them;
   another model starts with its defaults. A workflow agent's `effort` is the
   model's `effort` option. `orchestration.capabilities` lists each model's
   option descriptors, as T3 lists them.
