@@ -484,9 +484,9 @@ test("shows the prompt as plain text with T3's Rich text composer setting off", 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const toggle = page.getByRole("switch", { name: "Rich text composer" });
   await expect(toggle).toBeChecked();
-  await toggle.click();
-  await expect(toggle).not.toBeChecked();
   try {
+    await toggle.click();
+    await expect(toggle).not.toBeChecked();
     await page.goto(`${node.ui}#token=${node.token}`);
     await page.getByRole("button", { name: "Start a thread" }).click();
     const message = page.getByRole("textbox", { name: "Message" });
@@ -506,7 +506,8 @@ test("shows the prompt as plain text with T3's Rich text composer setting off", 
     // The node is shared with the other specs: put the default back even on a failure.
     await page.goto(`${node.ui}#token=${node.token}`);
     await page.getByRole("button", { name: "Settings", exact: true }).click();
-    await page.getByRole("switch", { name: "Rich text composer" }).click();
-    await expect(page.getByRole("switch", { name: "Rich text composer" })).toBeChecked();
+    const restore = page.getByRole("switch", { name: "Rich text composer" });
+    if (!(await restore.isChecked())) await restore.click();
+    await expect(restore).toBeChecked();
   }
 });
