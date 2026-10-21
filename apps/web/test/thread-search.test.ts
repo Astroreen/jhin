@@ -152,7 +152,7 @@ describe("searching thread contents on every node (D228)", () => {
     expect(calls).toHaveLength(4);
     search.request("lisbon!", [a]);
     vi.advanceTimersByTime(200);
-    calls[2]!.fail();
+    calls[4]!.fail();
     await until(search, (state) => state.query === "lisbon!" && !state.pending);
     expect(emptySearchLabel(search.get(), "lisbon!")).toBe("No threads found");
   });
