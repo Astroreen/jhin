@@ -172,7 +172,13 @@ types and the schemas of the `agents.*` commands) is
   `project` is a project's id or its path, the scratch project when unset.
   `agents.define`, `agents.update` and `agents.remove` write the layer through
   `host.config.patch` (the node layer unless `define` names `project`),
-  touching only the agent's own key; a file edited by hand counts the same.
+  touching only the agent's own entry in that file. `update` writes the
+  changed keys into the highest file that defines the agent and clears an
+  `unset` field from every file that sets it; `remove` empties the files
+  highest first, so a write that fails leaves a valid definition, and its
+  error names the files already done (`removedFrom`). A file edited by hand
+  counts the same; a hand edit that breaks the section keeps the agents as
+  they were until it is fixed.
   The plugin compares each change of the section with what it last recorded
   and appends the events, so the `agents` stream follows the files.
 - **D605. What a generation is told.** `TurnRequest` gets an optional
@@ -194,15 +200,20 @@ types and the schemas of the `agents.*` commands) is
   `threads.catalog` leave such threads out unless `includeGenerations: true`,
   and Threads mode's store drops them from the index). The generation's number is not on the thread: the list of
   generations (number, thread, start, reason) is kept in `storage.kv`
-  (`jhin.agents`, `agent/<id>`), one source for it. `agents.generations`
+  (`jhin.agents`, `agent/<id>`), one source for it. A generation is recorded
+  before its thread is made, under the thread id it chooses (W1's idempotent
+  `threads.create`): a failed creation takes the record back, and a current
+  generation whose thread a crash kept from being made gets it on the next
+  start. `agents.generations`
   reads the threads with `threads.get`, which is unfiltered. Rotating leaves
   the previous generation as it is, readable, not archived and not stopped;
   only new work goes to the current one.
 - **D607. Inherited knowledge** is the folder `.jhin/agents/<id>/` in the
   home project, created when a generation starts. The `*.md` files directly in
   it, by name, go in front of the first message of every generation (as D102
-  hands over a transcript), up to 64 000 characters; files past that are
-  named, not inlined. The transcript of earlier generations is not. The agent
+  hands over a transcript), the whole text with its headings up to 64 000
+  characters; files past that are named, not inlined, and one whose size
+  alone is past it is not read. The transcript of earlier generations is not. The agent
   writes the files with its own tools, as the instructions ask.
 - **D608. Status** is `working` or `waiting` while the current generation's
   latest turn runs or asks the owner, `stopped` (D612), `unavailable` when its

@@ -35,7 +35,8 @@ afterEach(async () => {
 });
 
 export const NODE_ID = "node-a";
-export const CAPTURE = "test.capture";
+/** A runtime whose id is also a valid agent id, to test that ids are not shared. */
+export const CAPTURE = "capture";
 
 /**
  * A runtime that records every turn request it gets and answers "ok", so a
@@ -75,7 +76,16 @@ function captureRuntime(requests: TurnRequest[]): TestPlugin {
  * The host's `host.config.get` and `host.config.patch` over the test kernel's
  * layers, as a node host writes its files (enough for one section's keys).
  */
-function hostConfig(kernel: () => TestKernel, layers: Record<string, Record<string, unknown>>) {
+/** Makes the next `host.config.patch` of a layer fail, as a write the host refused. */
+interface Patches {
+  failNext: "node" | "project" | undefined;
+}
+
+function hostConfig(
+  kernel: () => TestKernel,
+  layers: Record<string, Record<string, unknown>>,
+  patches: Patches,
+) {
   return {
     manifest: testManifest("test.host-config", { side: "server" }),
     definition: definePlugin({
@@ -99,6 +109,10 @@ function hostConfig(kernel: () => TestKernel, layers: Record<string, Record<stri
           }),
           output: z.unknown(),
           handler: ({ layer, section, values }) => {
+            if (patches.failNext === layer) {
+              patches.failNext = undefined;
+              throw new Error(`the ${layer} file cannot be written`);
+            }
             const current = layers[layer] ?? {};
             layers[layer] = {
               ...current,
@@ -113,17 +127,29 @@ function hostConfig(kernel: () => TestKernel, layers: Record<string, Record<stri
   };
 }
 
+/** What a node leaves behind for the next start on its data. */
+interface Restart {
+  readonly data: string;
+  readonly storage: ReturnType<typeof memoryStoragePlugin>;
+  readonly layers: Record<string, Record<string, unknown>>;
+}
+
 export async function node(
   options: {
     agents?: Record<string, unknown>;
     /** The pinned default agent; `null` leaves the node to pick one. */
     defaultAgent?: string | null;
+    /** To start a node again on the data, storage and config files of a stopped one. */
+    restart?: Restart;
+    /** What the project file says, as `{ section: value }`. */
+    project?: Record<string, unknown>;
   } = {},
 ) {
-  const data = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-agents-"));
-  const storage = memoryStoragePlugin();
+  const data = options.restart?.data ?? Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-agents-"));
+  const storage = options.restart?.storage ?? memoryStoragePlugin();
   const requests: TurnRequest[] = [];
-  const layers: Record<string, Record<string, unknown>> = {
+  const layers: Record<string, Record<string, unknown>> = options.restart?.layers ?? {
+    ...(options.project === undefined ? {} : { project: options.project }),
     node: {
       ...(options.defaultAgent === null
         ? {}
@@ -132,6 +158,7 @@ export async function node(
     },
   };
   let kernel: TestKernel | undefined;
+  const patches: Patches = { failNext: undefined };
   const plugins: TestPlugin[] = [
     mockCapability("host.paths", {
       home: data,
@@ -145,17 +172,20 @@ export async function node(
     { manifest: manifest("threads"), definition: threads },
     { manifest: manifest("agent-fake"), definition: fake },
     captureRuntime(requests),
-    hostConfig(() => kernel!, layers),
+    hostConfig(() => kernel!, layers, patches),
     { manifest: manifest("agents"), definition: agents },
   ];
-  kernel = await createTestKernel({ plugins, config: { node: layers["node"]! } });
+  kernel = await createTestKernel({ plugins, config: layers });
   const { client } = connectInMemory(kernel, { log: storage.storage.log });
+  let stopped = false;
   const stop = async () => {
+    if (stopped) return;
+    stopped = true;
     client.close();
     await kernel!.stop();
   };
   stops.push(stop);
-  return { kernel, client, data, requests, layers };
+  return { kernel, client, data, requests, layers, storage, hostConfig: patches, stop };
 }
 
 /** Follows a stream; `until(type)` resolves with the first event of that type, seen or future. */

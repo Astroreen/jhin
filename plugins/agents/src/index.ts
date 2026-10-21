@@ -1,6 +1,7 @@
 // Defined agents (docs/plans/agents.md, A1: D602–D614). Each is registered in
 // agent.registry@1 as a runtime of its own id that hands its turns to the
 // runtime it names, so threads, turns and agents.list need no second path.
+import * as Crypto from "node:crypto";
 import * as Fs from "node:fs";
 import * as Os from "node:os";
 import * as Path from "node:path";
@@ -94,8 +95,9 @@ function expandHome(path: string): string {
 
 /**
  * The inherited knowledge put in front of a generation's first message
- * (D607): the `*.md` files directly in `dir`, by name, up to
- * MAX_KNOWLEDGE_CHARS; the files past that are named only.
+ * (D607): the `*.md` files directly in `dir`, by name, while the whole text
+ * (headings included) stays within MAX_KNOWLEDGE_CHARS; the files past that
+ * are named only. A file whose size alone is past the budget is not read.
  */
 export function knowledgePreface(dir: string): string | undefined {
   let names: string[];
@@ -107,34 +109,34 @@ export function knowledgePreface(dir: string): string | undefined {
   } catch {
     return undefined;
   }
-  let budget = MAX_KNOWLEDGE_CHARS;
+  const head = `Your inherited knowledge, from ${dir}:\n\n`;
+  const tail = "\n\n---\n\nThe message follows.\n\n";
+  let budget = MAX_KNOWLEDGE_CHARS - head.length - tail.length;
   const parts: string[] = [];
   const skipped: string[] = [];
   for (const name of names) {
-    const text = Fs.readFileSync(Path.join(dir, name), "utf8").trim();
-    if (text === "") continue;
-    if (text.length > budget) {
+    const path = Path.join(dir, name);
+    // UTF-8 takes at most 4 bytes a character: past that, the file cannot fit.
+    if (Fs.statSync(path).size > budget * 4) {
       skipped.push(name);
       continue;
     }
-    budget -= text.length;
-    parts.push(`## ${name}\n\n${text}`);
+    const text = Fs.readFileSync(path, "utf8").trim();
+    if (text === "") continue;
+    const part = `${parts.length === 0 ? "" : "\n\n"}## ${name}\n\n${text}`;
+    if (part.length > budget) {
+      skipped.push(name);
+      continue;
+    }
+    budget -= part.length;
+    parts.push(part);
   }
   if (parts.length === 0 && skipped.length === 0) return undefined;
-  return [
-    `Your inherited knowledge, from ${dir}:`,
-    "",
-    ...parts,
-    ...(skipped.length === 0
-      ? []
-      : ["", `Not shown here, too long: ${skipped.join(", ")}. Read them in that folder.`]),
-    "",
-    "---",
-    "",
-    "The message follows.",
-    "",
-    "",
-  ].join("\n");
+  const note =
+    skipped.length === 0
+      ? ""
+      : `${parts.length === 0 ? "" : "\n\n"}Not shown here, too long: ${skipped.join(", ")}. Read them in that folder.`;
+  return `${head}${parts.join("")}${note}${tail}`;
 }
 
 /** What a generation is told besides the conversation (D605). */
@@ -218,8 +220,11 @@ export default definePlugin({
 
     const projects = () => run<ProjectInfo[]>("projects.list", {});
     /** The home project of a definition: by id, else by path; the scratch project when unset (D604). */
-    const homeOf = async (definition: AgentDefinition): Promise<ProjectInfo | undefined> => {
-      const all = await projects();
+    const homeOf = async (
+      definition: AgentDefinition,
+      listed?: readonly ProjectInfo[],
+    ): Promise<ProjectInfo | undefined> => {
+      const all = listed ?? (await projects());
       const wanted = definition.project;
       if (wanted === undefined) return all.find((project) => project.id === SCRATCH_PROJECT);
       const byId = all.find((project) => project.id === wanted);
@@ -244,16 +249,26 @@ export default definePlugin({
       return found;
     };
 
+    /** What building several records shares, read once: the layers and the projects. */
+    interface Lookup {
+      readonly layers: Record<string, string[]>;
+      readonly projects: readonly ProjectInfo[];
+    }
+    const lookup = async (): Promise<Lookup> => ({
+      layers: await layersOf(),
+      projects: await projects(),
+    });
+
     async function recordOf(
       agentId: string,
       definition: AgentDefinition,
-      layers?: Record<string, string[]>,
+      shared?: Lookup,
     ): Promise<AgentRecord> {
-      const home = await homeOf(definition);
+      const home = await homeOf(definition, shared?.projects);
       if (home === undefined) homes.delete(agentId);
       else homes.set(agentId, home);
       const state = storedOf(agentId);
-      const layer = (layers ?? (await layersOf()))[agentId]?.at(-1);
+      const layer = (shared?.layers ?? (await layersOf()))[agentId]?.at(-1);
       return {
         agentId,
         address: agentAddress(nodeId, agentId),
@@ -411,7 +426,7 @@ export default definePlugin({
     const reconcile = () =>
       serial(async () => {
         const current = definitions();
-        const layers = await layersOf();
+        const shared = await lookup();
         for (const [agentId, definition] of Object.entries(current)) {
           register(agentId);
           const state = storedOf(agentId);
@@ -422,7 +437,7 @@ export default definePlugin({
           await save(agentId, { ...state, recorded: definition });
           await append(
             isNew ? AgentEvents.defined : AgentEvents.updated,
-            await recordOf(agentId, definition, layers),
+            await recordOf(agentId, definition, shared),
           );
         }
         for (const [agentId, state] of stored) {
@@ -483,11 +498,23 @@ export default definePlugin({
     }
 
     // --- Writing definitions (D604) ---------------------------------------------
-    /** Writes one agent's key of a layer's `agents`, or removes it. */
-    async function writeDefinition(
-      layer: "node" | "project",
+    /** The config files this node writes, the highest last. */
+    const WRITABLE = ["node", "project"] as const;
+    type Writable = (typeof WRITABLE)[number];
+    const writableLayersOf = async (agentId: string): Promise<Writable[]> => {
+      const layers = (await layersOf())[agentId] ?? [];
+      return WRITABLE.filter((layer) => layers.includes(layer));
+    };
+
+    /**
+     * Changes one agent's own entry in one layer's `agents`: `change` gets
+     * what that file says of the agent (not the merged definition) and returns
+     * the new entry, or `undefined` to remove it.
+     */
+    async function writeLayer(
+      layer: Writable,
       agentId: string,
-      definition: AgentDefinition | undefined,
+      change: (own: Record<string, unknown> | undefined) => Record<string, unknown> | undefined,
     ): Promise<void> {
       if (!hasCommand("host.config.patch") || !hasCommand("host.config.get")) {
         throw new AgentsError("CONFIG_UNAVAILABLE", "This node cannot change its config");
@@ -497,8 +524,9 @@ export default definePlugin({
       });
       const existing = (layers[layer] as { agents?: Record<string, unknown> } | undefined)?.agents;
       const agents: Record<string, unknown> = { ...existing };
-      if (definition === undefined) delete agents[agentId];
-      else agents[agentId] = definition;
+      const next = change(agents[agentId] as Record<string, unknown> | undefined);
+      if (next === undefined) delete agents[agentId];
+      else agents[agentId] = next;
       const result = await run<{ applied: boolean }>("host.config.patch", {
         layer,
         section: AGENTS_CONFIG_SECTION,
@@ -516,6 +544,40 @@ export default definePlugin({
       Object.fromEntries(
         Object.entries(definition).filter(([, value]) => value !== undefined),
       ) as AgentDefinition;
+
+    /** Makes a generation's thread; idempotent, since the thread id is chosen here (D207). */
+    const createGeneration = (
+      agentId: string,
+      definition: AgentDefinition,
+      home: ProjectInfo,
+      generation: AgentGeneration,
+    ) =>
+      run("threads.create", {
+        threadId: generation.threadId,
+        projectId: home.id,
+        title: `${titleOf(agentId, definition)} #${generation.number}`,
+        agentId,
+        // The D741 mark: Threads mode leaves the thread out of its lists.
+        generationOf: agentId,
+      });
+
+    // A current generation whose thread a crash kept from being made is made
+    // now. One the owner deleted stays deleted (`THREAD_EXISTS`).
+    for (const [agentId, state] of stored) {
+      const current = state.generations.at(-1);
+      const definition = definitions()[agentId];
+      if (current === undefined || definition === undefined) continue;
+      if ((await threadOf(current.threadId)) !== undefined) continue;
+      const home = await homeOf(definition);
+      if (home === undefined) continue;
+      await createGeneration(agentId, definition, home, current).catch((error: unknown) =>
+        context.log.warn("could not make a generation's thread", {
+          agentId,
+          threadId: current.threadId,
+          error: String(error),
+        }),
+      );
+    }
 
     // --- Commands (D609) --------------------------------------------------------
     const commands = AgentCommands;
@@ -563,10 +625,10 @@ export default definePlugin({
       handler: async () => {
         // The head first: a change made while the records are read is delivered after it too.
         const head = await log.head(AGENTS_STREAM);
-        const layers = await layersOf();
+        const shared = await lookup();
         const agents = await Promise.all(
           Object.entries(definitions()).map(([agentId, definition]) =>
-            recordOf(agentId, definition, layers),
+            recordOf(agentId, definition, shared),
           ),
         );
         return { head, agents: agents.toSorted((a, b) => a.agentId.localeCompare(b.agentId)) };
@@ -589,7 +651,7 @@ export default definePlugin({
           if (registry.get(agentId) !== undefined) {
             throw new AgentsError("AGENT_ID_TAKEN", `${agentId} is a runtime's id`, { agentId });
           }
-          await writeDefinition(layer ?? "node", agentId, stripUndefined(definition));
+          await writeLayer(layer ?? "node", agentId, () => stripUndefined(definition));
           return recordOf(agentId, definitionOf(agentId));
         }),
     });
@@ -603,18 +665,32 @@ export default definePlugin({
       handler: ({ agentId: ref, unset, ...changes }) =>
         definitionWrites(async () => {
           const agentId = idOf(ref);
-          const current = definitionOf(agentId);
-          const next: Record<string, unknown> = { ...current, ...stripUndefined(changes) };
-          for (const key of unset ?? []) delete next[key];
-          const layer = (await layersOf())[agentId]?.at(-1);
-          if (layer !== "node" && layer !== "project") {
+          definitionOf(agentId);
+          const layers = await writableLayersOf(agentId);
+          const top = layers.at(-1);
+          if (top === undefined) {
             throw new AgentsError(
               "CONFIG_UNAVAILABLE",
               `The agent ${agentId} is not defined in a node or project file`,
               { agentId },
             );
           }
-          await writeDefinition(layer, agentId, next as AgentDefinition);
+          // Changes go to the highest file that defines the agent, as keys of
+          // its own entry, so a lower file's other fields keep applying. A
+          // field to clear goes from every file that sets it, highest first,
+          // so each step leaves a valid definition.
+          const given = stripUndefined(changes) as Record<string, unknown>;
+          const cleared = new Set<string>(unset ?? []);
+          for (const layer of layers.toReversed()) {
+            await writeLayer(layer, agentId, (own) => {
+              const next: Record<string, unknown> = {
+                ...own,
+                ...(layer === top ? given : {}),
+              };
+              for (const key of cleared) delete next[key];
+              return next;
+            });
+          }
           return recordOf(agentId, definitionOf(agentId));
         }),
     });
@@ -632,17 +708,26 @@ export default definePlugin({
             definitionOf(agentId);
             return { removed: false };
           }
-          const layers = (await layersOf())[agentId] ?? [];
-          for (const layer of layers) {
-            if (layer === "node" || layer === "project") {
-              await writeDefinition(layer, agentId, undefined);
+          // Highest first: should a later write fail, the agent is still defined
+          // by the files left (a valid definition), and removing again goes on.
+          const removedFrom: Writable[] = [];
+          for (const layer of (await writableLayersOf(agentId)).toReversed()) {
+            try {
+              await writeLayer(layer, agentId, () => undefined);
+            } catch (error) {
+              throw new AgentsError(
+                (error as { code?: string }).code ?? "CONFIG_UNAVAILABLE",
+                `The agent ${agentId} was removed from ${removedFrom.join(", ") || "no file"} but not from the ${layer} file: ${(error as Error).message}`,
+                { agentId, removedFrom, failed: layer },
+              );
             }
+            removedFrom.push(layer);
           }
           if (definitions()[agentId] !== undefined) {
             throw new AgentsError(
               "CONFIG_UNAVAILABLE",
               `The agent ${agentId} is still defined by a layer this node cannot write`,
-              { agentId },
+              { agentId, removedFrom },
             );
           }
           return { removed: true };
@@ -676,21 +761,23 @@ export default definePlugin({
           homes.set(agentId, home);
           Fs.mkdirSync(Path.join(home.path, agentKnowledgeDir(agentId)), { recursive: true });
           const number = (state.generations.at(-1)?.number ?? 0) + 1;
-          const thread = await run<{ id: string; createdAt: string }>("threads.create", {
-            projectId: home.id,
-            title: `${titleOf(agentId, definition)} #${number}`,
-            agentId,
-            // The D741 mark: Threads mode leaves the thread out of its lists.
-            generationOf: agentId,
-          });
           const generation: AgentGeneration = {
             number,
-            threadId: thread.id,
-            startedAt: thread.createdAt,
+            threadId: Crypto.randomUUID(),
+            startedAt: now(),
             ...(reason === undefined ? {} : { reason }),
           };
           const previous = state.generations.at(-1);
+          // The generation is recorded before its thread exists, under the id the
+          // thread will get: a thread is never left outside every generation
+          // list, and one a crash kept from being made is made on the next start.
           await save(agentId, { ...state, generations: [...state.generations, generation] });
+          try {
+            await createGeneration(agentId, definition, home, generation);
+          } catch (error) {
+            await save(agentId, state);
+            throw error;
+          }
           await append(AgentEvents.generationStarted, {
             agentId,
             generation,

@@ -4,6 +4,7 @@ import * as Path from "node:path";
 import { AGENTS_STREAM, AgentEvents, ThreadEvents, threadStream } from "@jhin/agent-api";
 import { describe, expect, it } from "vite-plus/test";
 
+import { MAX_KNOWLEDGE_CHARS } from "../src/index.ts";
 import { CAPTURE, NODE_ID, node, watch } from "./support.ts";
 
 const builder = { role: "Builds slices and proves them", runtime: CAPTURE, model: "m1" };
@@ -68,6 +69,10 @@ describe("defined agents", () => {
     await expect(
       client.call("agents.define", { agentId: "builder", ...builder }),
     ).rejects.toMatchObject({ code: "AGENT_EXISTS" });
+    // A runtime is already the implicit agent of its id (D603).
+    await expect(
+      client.call("agents.define", { agentId: CAPTURE, ...builder }),
+    ).rejects.toMatchObject({ code: "AGENT_ID_TAKEN" });
     await expect(
       client.call("agents.update", { agentId: "jhin.agent-fake", role: "x" }),
     ).rejects.toMatchObject({ code: "AGENT_IS_RUNTIME" });
@@ -271,5 +276,141 @@ describe("defined agents", () => {
     const started = await events.until(ThreadEvents.turnStarted);
     expect((started.payload as { agentId: string }).agentId).not.toBe("builder");
     expect(started.payload).not.toHaveProperty("runtimeId");
+  });
+
+  it("names the knowledge files past the budget instead of inlining them", async () => {
+    const { client, requests } = await node({ agents: { builder } });
+    const { generation } = await client.call<{ generation: { threadId: string } }>(
+      "agents.rotate",
+      { agentId: "builder" },
+    );
+    const { knowledgeDir } = await client.call<{ knowledgeDir: string }>("agents.get", {
+      agentId: "builder",
+    });
+    Fs.writeFileSync(Path.join(knowledgeDir, "a.md"), "small and kept");
+    Fs.writeFileSync(Path.join(knowledgeDir, "b.md"), "x".repeat(MAX_KNOWLEDGE_CHARS));
+    Fs.writeFileSync(Path.join(knowledgeDir, "c.md"), "y".repeat(MAX_KNOWLEDGE_CHARS * 5));
+    const events = watch(client, threadStream(generation.threadId));
+    await client.call("threads.send", { threadId: generation.threadId, text: "Go" });
+    await events.until(ThreadEvents.turnCompleted);
+    const text = requests[0]?.input.text ?? "";
+    expect(text).toContain("small and kept");
+    expect(text).toContain("Not shown here, too long: b.md, c.md");
+    expect(text.length - "Go".length).toBeLessThanOrEqual(MAX_KNOWLEDGE_CHARS);
+  });
+
+  it("updates the agent's own entry in the file that overrides it", async () => {
+    const { client, layers } = await node({
+      agents: { builder },
+      project: { "jhin.agents": { agents: { builder: { title: "Project builder" } } } },
+    });
+    expect(await client.call("agents.get", { agentId: "builder" })).toMatchObject({
+      title: "Project builder",
+      role: builder.role,
+      layer: "project",
+    });
+    await client.call("agents.update", { agentId: "builder", instructions: "Be brief" });
+    // Only the changed key lands in the project file; the node file keeps the rest.
+    expect(layers["project"]?.["jhin.agents"]).toEqual({
+      agents: { builder: { title: "Project builder", instructions: "Be brief" } },
+    });
+    expect(layers["node"]?.["jhin.agents"]).toEqual({ agents: { builder } });
+    // A field to clear goes from every file that sets it.
+    await client.call("agents.update", { agentId: "builder", unset: ["model"] });
+    expect(layers["node"]?.["jhin.agents"]).toEqual({
+      agents: { builder: { role: builder.role, runtime: CAPTURE } },
+    });
+    expect(
+      (await client.call<{ model?: string }>("agents.get", { agentId: "builder" })).model,
+    ).toBeUndefined();
+  });
+
+  it("says how far a removal got when a file cannot be written", async () => {
+    const { client, hostConfig } = await node({
+      agents: { builder },
+      project: { "jhin.agents": { agents: { builder: { title: "Project builder" } } } },
+    });
+    hostConfig.failNext = "node";
+    await expect(client.call("agents.remove", { agentId: "builder" })).rejects.toMatchObject({
+      details: { removedFrom: ["project"], failed: "node" },
+    });
+    // The node file still defines it, validly; removing again finishes.
+    expect(await client.call("agents.get", { agentId: "builder" })).toMatchObject({
+      title: "builder",
+      layer: "node",
+    });
+    expect(await client.call("agents.remove", { agentId: "builder" })).toEqual({ removed: true });
+  });
+
+  it("keeps an agent stopped across a restart", async () => {
+    const first = await node({ agents: { builder } });
+    const { generation } = await first.client.call<{ generation: { threadId: string } }>(
+      "agents.rotate",
+      { agentId: "builder" },
+    );
+    await first.client.call("agents.stop", { agentId: "builder" });
+    await first.stop();
+
+    const { client } = await node({ restart: first });
+    expect(await client.call("agents.get", { agentId: "builder" })).toMatchObject({
+      status: "stopped",
+    });
+    await expect(client.call("agents.rotate", { agentId: "builder" })).rejects.toMatchObject({
+      code: "AGENT_STOPPED",
+    });
+    await expect(
+      client.call("threads.send", { threadId: generation.threadId, text: "Go" }),
+    ).rejects.toMatchObject({ code: "AGENT_STOPPED" });
+  });
+
+  it("leaves no generation behind when its thread cannot be made", async () => {
+    const { client, storage } = await node({ agents: { builder } });
+    const { log } = storage.storage;
+    const append = log.append.bind(log);
+    log.append = async (stream, events, options) => {
+      if (stream.startsWith("thread/")) throw new Error("disk full");
+      return append(stream, events, options);
+    };
+    await expect(client.call("agents.rotate", { agentId: "builder" })).rejects.toThrow("disk full");
+    log.append = append;
+    expect(await client.call<unknown[]>("agents.generations", { agentId: "builder" })).toEqual([]);
+    const next = await client.call<{ generation: { number: number } }>("agents.rotate", {
+      agentId: "builder",
+    });
+    expect(next.generation.number).toBe(1);
+  });
+
+  it("keeps the agents as they were when a hand edit breaks the section", async () => {
+    const { client, kernel, layers } = await node({ agents: { builder } });
+    kernel.config.setLayer("node", {
+      ...layers["node"],
+      "jhin.agents": { agents: { builder: { role: 42 } } },
+    });
+    expect(await client.call("agents.get", { agentId: "builder" })).toMatchObject({
+      role: builder.role,
+      runtimeId: CAPTURE,
+    });
+    expect(
+      (await client.call<{ agentId: string }[]>("agents.list")).some(
+        (agent) => agent.agentId === "builder",
+      ),
+    ).toBe(true);
+  });
+
+  it("makes a recorded generation's thread on start when a crash kept it from being made", async () => {
+    const first = await node({ agents: { builder } });
+    await first.stop();
+    // As a crash between recording a generation and making its thread leaves it.
+    const threadId = "8f1c2a3e-0000-4000-8000-000000000001";
+    await first.storage.storage.kv.set("jhin.agents", "agent/builder", {
+      generations: [{ number: 1, threadId, startedAt: "2026-10-21T00:00:00.000Z" }],
+      recorded: builder,
+    });
+    const { client } = await node({ restart: first });
+    const { thread } = await client.call<{ thread: { generationOf?: string; title: string } }>(
+      "threads.get",
+      { threadId },
+    );
+    expect(thread).toMatchObject({ generationOf: "builder", title: "builder #1" });
   });
 });
