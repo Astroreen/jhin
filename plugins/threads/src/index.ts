@@ -3577,8 +3577,11 @@ export default definePlugin({
      */
     const searchCache = new Map<string, { head: number; texts: SearchText[]; size: number }>();
     let cachedChars = 0;
-    /** Bumped when a thread's texts are dropped: a read under way then keeps nothing. */
-    const searchEpochs = new Map<string, number>();
+    /**
+     * Reads under way, by thread: one whose thread is deleted or archived
+     * meanwhile keeps nothing. An entry goes with its last read.
+     */
+    const reading = new Map<string, { count: number; dropped: boolean }>();
     const uncache = (threadId: string) => {
       const entry = searchCache.get(threadId);
       if (entry === undefined) return;
@@ -3586,11 +3589,25 @@ export default definePlugin({
       searchCache.delete(threadId);
     };
     const forgetTexts = (threadId: string) => {
-      searchEpochs.set(threadId, (searchEpochs.get(threadId) ?? 0) + 1);
+      const read = reading.get(threadId);
+      if (read !== undefined) read.dropped = true;
       uncache(threadId);
     };
     async function textsOf(threadId: string): Promise<SearchText[]> {
-      const epoch = searchEpochs.get(threadId) ?? 0;
+      const read = reading.get(threadId) ?? { count: 0, dropped: false };
+      read.count += 1;
+      reading.set(threadId, read);
+      try {
+        return await readTexts(threadId, read);
+      } finally {
+        read.count -= 1;
+        if (read.count === 0 && reading.get(threadId) === read) reading.delete(threadId);
+      }
+    }
+    async function readTexts(
+      threadId: string,
+      read: { readonly dropped: boolean },
+    ): Promise<SearchText[]> {
       const stream = threadStream(threadId);
       const cached = searchCache.get(threadId);
       const head = await log.head(stream);
@@ -3606,7 +3623,7 @@ export default definePlugin({
       const kept = (cached?.texts ?? []).filter((text) => !dropped.has(text.turnId));
       const texts = [...kept, ...searchTexts(visibleThreadEvents(added))];
       // Deleted or archived while it was read: nothing is kept for it.
-      if ((searchEpochs.get(threadId) ?? 0) !== epoch) return texts;
+      if (read.dropped) return texts;
       uncache(threadId);
       // Each text is held twice: as written and folded for matching.
       const size = texts.reduce((total, text) => total + text.text.length + text.folded.length, 0);
