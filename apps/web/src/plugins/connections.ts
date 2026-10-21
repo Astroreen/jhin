@@ -93,7 +93,9 @@ export const connectionsPlugin = builtin(
       };
       // One save after another, each with the list as it is then: two quick
       // changes never land in the wrong order.
-      let saving: Promise<void> = Promise.resolve();
+      // Saves wait for the saved list to be read first, so none overwrites it.
+      let readSaved: () => void = () => {};
+      let saving: Promise<void> = new Promise<void>((resolve) => (readSaved = resolve));
       /** Grows with every local change, so a read that raced one is not applied. */
       let changes = 0;
       const persist = () => {
@@ -174,11 +176,28 @@ export const connectionsPlugin = builtin(
         },
       };
 
-      try {
-        for (const saved of parseSaved(await store.load())) open(saved);
-      } catch (error) {
-        context.log.error("saved nodes unreadable", { error: String(error) });
-      }
+      // The saved nodes, read before the client starts, unless IndexedDB does not
+      // answer in time (some private modes never do): then the client starts
+      // without them, and they join when they come.
+      const loading = store
+        .load()
+        .then((raw) => {
+          for (const saved of parseSaved(raw)) if (!nodes.has(saved.url)) open(saved);
+        })
+        .catch((error: unknown) =>
+          context.log.error("saved nodes unreadable", { error: String(error) }),
+        )
+        .finally(() => {
+          readSaved();
+          changed();
+        });
+      const SAVED_NODES_WAIT_MS = 2000;
+      let waited: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        loading,
+        new Promise<void>((resolve) => (waited = setTimeout(resolve, SAVED_NODES_WAIT_MS))),
+      ]);
+      clearTimeout(waited);
       // The page's own node: met in the background, so a slow node never holds
       // up the client (security.md D421). A credential in the fragment opens its
       // session; without one, a session it opened before still counts.

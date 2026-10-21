@@ -72,7 +72,13 @@ export function createNodeStore(storage: Storage = localStorage): NodeStore {
           const reading = store.get(KEY);
           reading.addEventListener("success", () => {
             const current: unknown = reading.result;
-            store.put([...(Array.isArray(current) ? current : []), ...legacyNodes], KEY);
+            // By URL, the saved one first: two tabs migrating at once add each node once.
+            const merged = new Map<unknown, unknown>();
+            for (const node of [...(Array.isArray(current) ? current : []), ...legacyNodes]) {
+              const url = (node as { url?: unknown } | null)?.url;
+              if (!merged.has(url)) merged.set(url, node);
+            }
+            store.put([...merged.values()], KEY);
           });
           return reading;
         }, "readwrite");

@@ -42,4 +42,22 @@ describe("saved nodes (security.md D423)", () => {
     expect(await createNodeStore().load()).toEqual([]);
     expect(localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull();
   });
+
+  it("adds each legacy node once when two tabs migrate at the same time", async () => {
+    await createNodeStore().save([]);
+    const legacy = [{ url: "ws://twice.example/rpc", token: "t".repeat(43), label: "twice" }];
+    // Both tabs read localStorage before either removes the key.
+    const first = createNodeStore({
+      ...localStorage,
+      getItem: () => JSON.stringify(legacy),
+      removeItem: () => {},
+    } as Storage);
+    const second = createNodeStore({
+      ...localStorage,
+      getItem: () => JSON.stringify(legacy),
+      removeItem: () => {},
+    } as Storage);
+    await Promise.all([first.load(), second.load()]);
+    expect(await first.load()).toEqual(legacy);
+  });
 });
