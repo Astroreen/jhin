@@ -225,3 +225,16 @@ Words about Jhin:
   (**unclaimed**). T3 Code's collaborative browser tab.
 - **Viewer** — a client panel watching a preview tab, named by an id the
   client picks; the one **holding control** sends the page its input.
+- **Intent** — one paragraph on what a project is for. The **intent chain**
+  of a slice is its spec → its mission's outcome → its project's intent
+  (`missions.chain`), what an agent walks back up to ("moonbase").
+- **Mission** — a planned outcome of a project, with its slices in
+  **waves**: the slices of a wave run in parallel, waves one after another,
+  and a slice depends only on slices of earlier waves.
+- **Slice** — one change in a mission: a **spec** (what must work), an
+  assignee (an agent's or the owner's address), a status, the threads working
+  on it, and a **proof** recorded when it is done (commands with output,
+  screenshots, links; small on purpose).
+- **Process** — the steps of a level as data: a slice's (spec → build →
+  test), a mission's between its slices (merge), a project's between missions
+  (release). A slice records its current **step**.

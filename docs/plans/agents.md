@@ -294,6 +294,105 @@ types and the schemas of the `agents.*` commands) is
   merging between slices, release between missions) is data on the mission,
   not code. A6 drives it.
 
+Decisions:
+
+- **D641. One `missions` stream per node, folded.** Every change is an event
+  of the node's `missions` stream, and the state is the fold of that stream
+  (`applyMissionEvent` in `@jhin/missions-api`), on the node and in clients
+  alike. No second copy in `storage.kv`: the plugin keeps the fold in memory,
+  catches up from its head before every command (so another process sharing
+  the storage is seen), and appends with `expectedHead`, retrying on a
+  conflict (`MISSIONS_BUSY` after five tries). A command that changes
+  nothing appends nothing. Records carry their `projectId`; missions are few, so one stream
+  per node is enough and a client follows one stream (`missions.catalog`
+  returns the head, as `threads.catalog` does). Following the stream takes
+  `missions.read`, like the commands, not `events.read` (security.md D415).
+- **D642. Events carry the whole record.** `missions.intent.set`,
+  `missions.mission.created|updated`, `missions.slice.created|updated` and
+  `missions.slice.proved` each carry the record after the change, plus `by`
+  (the caller's id) and `traceId` when the call had them. A reader (A6, A7,
+  a client) needs no history to know a record, and A7 counts ceremony by
+  event type: a `missions.slice.proved` after the slice was done is a proof
+  edit.
+- **D643. The intent lives with the missions, keyed by project.**
+  `missions.intent.set { projectId, intent, process }` keeps one paragraph
+  and the project's process between missions. Projects stay `jhin.threads`'
+  records; a project id is checked against `projects.list` at call time
+  when that command is registered, without depending on the plugin. The
+  check is best-effort: no capability names projects, so a node without
+  `projects.list` takes any project id. Reads by project id
+  (`missions.intent.get`, `missions.markdown`, `missions.list` and
+  `slices.list` with a `projectId`) check it too. The lookup runs
+  as the node, not the caller: it checks an id the caller named and reads the
+  project's name for the Markdown heading. A failing `projects.list` fails
+  the command with its error and nothing is appended; the check runs before
+  the append, not with it, so a project deleted meanwhile keeps its missions
+  (see Deferred).
+- **D644. Waves are the order.** A slice has a `wave` (1 first) and
+  `dependsOn`: slices of the same mission in strictly earlier waves. So the
+  order never loops, and a change that would break it (a dependency in the
+  same or a later wave, a dependant left in front) fails with
+  `SLICE_ORDER_INVALID`, as does newly depending on a dropped slice, which
+  could never start. A dropped dependant holds nothing back. Without a wave, a new slice goes to the wave after its
+  dependencies.
+- **D645. The assignee is an address.** `jhin://<nodeId>/agents/<id>` or
+  `jhin://<nodeId>/owner`, kept as a string: the agent need not exist yet
+  and may live on another node, and nothing here depends on A1's code.
+- **D646. Proof is small and marks the slice done.** `slices.prove` records
+  one to ten items (a command with its output, a screenshot URL, a link),
+  who recorded it and when, and sets the slice done. A slice is done only
+  with a proof (`PROOF_REQUIRED`), and a dropped slice cannot be proved
+  (`SLICE_DROPPED`). A slice leaving done loses its proof, so done again
+  takes a new one. Proving again replaces the proof and is its own event, so a recursive proof loop is visible, not prevented
+  ([bureaucracy](../lore/bureaucracy.md)).
+- **D647. Linked threads are references.** A slice lists `{ threadId,
+  nodeId? }` of the threads working on it (`slices.link`, `slices.unlink`).
+  They are agent generations (D741), shown read-only; the slice does not
+  own them. A dropped slice takes no new thread (`SLICE_DROPPED`); a done
+  one does, since a thread may review or rework it, and unlinking always
+  works; without `nodeId` it removes that thread id on any node, as
+  `slices.list` finds it.
+- **D648. Process per level is data.** A mission has
+  `process: { slice: Step[], mission: Step[] }` (default spec → build →
+  test, and merge), the project's intent has its `process` between missions,
+  and a slice records its current `step`, which must be a step of its
+  mission's slice process (`SLICE_STEP_INVALID`); a mission's new slice
+  process that lacks a step one of its slices is at is refused the same way.
+  Nothing runs it: A6 reads it.
+- **D649. Markdown is rendered, not stored.** `missions.markdown
+  { projectId } | { missionId }` renders intent, missions, waves, slices and
+  proof from the fold, so humans and agents read the same thing and there is
+  no file to drift. User text cannot break the document: titles stay on one
+  line, headings in an intent, outcome or spec are escaped and a fence they
+  open is closed, titles, the project name, assignees and thread ids are
+  escaped, a
+  proof command is fenced with its output, and proof URLs are http(s) only,
+  their parentheses and spaces encoded. Blank lines are collapsed only
+  between the renderer's own lines; a code block keeps its own. Raw HTML
+  in the user's text is kept as text Markdown allows; a reader renders it
+  without raw HTML, as the web client's Markdown does.
+- **D650. The intent chain is one command.** `missions.chain { sliceId }`
+  or `{ threadId, nodeId? }` returns slice spec → mission outcome → project
+  intent. For a thread it takes its open slice changed last; without
+  `nodeId` a thread id matches on any node, as `slices.list { threadId,
+  nodeId? }` does. This is what A6's refocus hands an agent.
+- **D651. Statuses.** A mission is `planned`, `active`, `done` or
+  `dropped`; a slice `planned`, `active`, `blocked`, `done` or `dropped`.
+  Nothing is deleted: a mistake is dropped, and a dropped slice stays
+  dropped (`SLICE_DROPPED`), unchanged by `slices.update`, `slices.link` or
+  `slices.prove`: plan a new one instead. A mission's status is set by
+  whoever runs it, not derived from its slices: a mission may be done or
+  dropped with slices still open (A6 decides when a mission is done), but a
+  done or dropped mission takes no new slices (`MISSION_CLOSED`). Dropping a
+  slice leaves its open dependants waiting until they are re-pointed or
+  dropped too; noticing them is A6's (see Deferred).
+- **D652. Agents reach missions.** `missions.read` and `missions.write` are
+  in a thread agent's permissions (D341), so an agent over MCP reads its
+  intent chain and records its slice's proof. Like D341's other
+  permissions they are node-wide: an agent is not fenced to the slices that
+  link its thread, and `by` on every event and proof says who acted. Fencing
+  agents to their own slices waits for A1's agents and A6's runner.
+
 ### A4. Context library and lore (D661–D680)
 
 What `docs/README.md` does by hand, as a plugin for any project:
@@ -390,6 +489,22 @@ What `docs/README.md` does by hand, as a plugin for any project:
 - An `agent.directory@1` service for plugins that read agents in process;
   the `agents.*` commands serve them for now.
 - Archiving or settling earlier generations automatically on rotate (D606).
+- A3: the mission view in Civilization mode lands in its own PR once A8's
+  slots are on `main` (D741).
+- A3: deleting missions and slices (D651 drops them), and what happens to
+  the missions of a deleted project (they stay in the stream, unseen).
+- A3: editing intent, missions and slices from the client; the view reads,
+  the commands edit.
+- A3: which slice is ready or next (its dependencies done): A6 computes it
+  from `missions.get`.
+- A3: proof stored on the node (screenshot files); a proof item names a URL.
+- A3: a project deleted between the project check and the append of
+  `missions.create` or `missions.intent.set` (D643) still gets its record;
+  closing that needs a projects capability the writer can hold.
+- A3: what to do with the open dependants of a dropped slice (D651): A6
+  re-plans them; `missions.get` shows them.
+- A3: fencing an agent's `missions.write` to the slices that link its own
+  thread (D652); agents are node-wide like the rest of D341 for now.
 
 ## Landing
 

@@ -258,6 +258,9 @@ importers:
       '@jhin/plugin-mesh':
         specifier: workspace:*
         version: link:../../plugins/mesh
+      '@jhin/plugin-missions':
+        specifier: workspace:*
+        version: link:../../plugins/missions
       '@jhin/plugin-orchestration':
         specifier: workspace:*
         version: link:../../plugins/orchestration
@@ -554,6 +557,12 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
+
+  packages/missions-api:
+    dependencies:
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../sdk
 
   packages/node-host:
     dependencies:
@@ -958,6 +967,28 @@ importers:
       '@types/ws':
         specifier: 'catalog:'
         version: 8.18.2
+
+  plugins/missions:
+    dependencies:
+      '@jhin/missions-api':
+        specifier: workspace:*
+        version: link:../../packages/missions-api
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
+    devDependencies:
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
 
   plugins/orchestration:
     dependencies:
