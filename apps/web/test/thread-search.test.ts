@@ -150,7 +150,12 @@ describe("searching thread contents on every node (D228)", () => {
     calls[1]!.fail("PERMISSION_DENIED");
     await until(search, (state) => !state.pending);
     expect(search.get()).toMatchObject({ matches: [], failed: 1 });
-    // Asked again, the same query goes out again since a node failed it.
+    // Asked again at once (a view re-rendering), nothing goes out.
+    search.request("lisbon", [a, b]);
+    vi.advanceTimersByTime(200);
+    expect(calls).toHaveLength(2);
+    // A deadline later the same query goes out again, since a node failed it.
+    vi.advanceTimersByTime(10_000);
     search.request("lisbon", [a, b]);
     vi.advanceTimersByTime(200);
     expect(calls).toHaveLength(4);

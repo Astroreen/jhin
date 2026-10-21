@@ -59,6 +59,8 @@ export function createContentSearch(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let generation = 0;
   let asked = "";
+  /** When the newest request was sent: a node that failed it is asked again only so long after. */
+  let askedAt = 0;
   const listeners = new Set<() => void>();
   const publish = (next: ContentSearchState) => {
     state = next;
@@ -118,8 +120,14 @@ export function createContentSearch(
     request(raw: string, targets: readonly NodeTarget[]) {
       const query = contentQuery(raw);
       const key = `${query}\n${targets.map(targetKey).join("\n")}`;
-      // The same request again asks nothing, unless a node failed it: then it is asked again.
-      if (key === asked && !(state.failed > 0 && !state.pending)) return;
+      // The same request again asks nothing, unless a node failed it and a deadline has
+      // passed since: views asking again on every catalog change never storm a failing node.
+      const retry =
+        state.failed > 0 &&
+        !state.pending &&
+        Date.now() - askedAt >= (options.deadlineMs ?? NODE_DEADLINE_MS);
+      if (key === asked && !retry) return;
+      askedAt = Date.now();
       asked = key;
       generation += 1;
       clearTimeout(timer);
