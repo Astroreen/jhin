@@ -252,8 +252,16 @@ async function main(): Promise<void> {
   );
   handle(DESKTOP_CHANNELS.getWindowFullscreen, none, () => mainWindow?.isFullScreen() ?? false);
   on(DESKTOP_CHANNELS.setMenuContributions, z.array(DesktopMenuContribution).max(200), (items) => {
+    const previous = menuContributions;
     menuContributions = items;
-    setMenu();
+    try {
+      setMenu();
+    } catch (error) {
+      // An accelerator Electron does not accept: keep the menu that worked.
+      menuContributions = previous;
+      setMenu();
+      log("menu items refused", { error: String(error) });
+    }
   });
   on(DESKTOP_CHANNELS.setNotificationBadge, DesktopNotificationBadge, applyBadge);
   const clearBadge = () => applyBadge({ count: 0, image: null });

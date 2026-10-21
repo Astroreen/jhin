@@ -398,7 +398,7 @@ test("a crashed page and a stopped node come back with the node's token", async 
             const connected = () =>
               contents
                 .executeJavaScript(
-                  `new Promise((resolve) => { const check = () => document.querySelector('[aria-label="Go to threads"]') && !document.body.innerText.includes("No node connected.") ? resolve(true) : requestAnimationFrame(check); check(); })`,
+                  `new Promise((resolve) => { const ready = () => document.querySelector('[aria-label="Go to threads"]') !== null && !document.body.innerText.includes("No node connected."); if (ready()) return resolve(true); const observer = new MutationObserver(() => { if (ready()) { observer.disconnect(); resolve(true); } }); observer.observe(document.body, { childList: true, subtree: true, characterData: true }); })`,
                 )
                 .then(resolve);
             void connected();

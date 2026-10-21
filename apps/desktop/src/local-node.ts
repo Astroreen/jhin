@@ -71,6 +71,7 @@ export function startLocalNode(
       // Printed once every plugin is active: `ui: http://127.0.0.1:7777/` then `logs: <file>`.
       const url = /^ui: (http:\/\/\S+)$/m.exec(output)?.[1];
       if (url === undefined || !/^logs: /m.test(output)) return;
+      child.stdout.off("data", onData);
       child.stderr.off("data", onData);
       child.off("exit", onEarlyExit);
       // jhin.auth-token writes its token before the node reports itself ready.
@@ -104,9 +105,11 @@ export function startLocalNode(
       });
     };
     const onEarlyExit = (code: number | null) => {
+      child.stdout.off("data", onData);
       child.stderr.off("data", onData);
       reject(new Error(`The local node exited with ${code ?? "a signal"}:\n${output.trim()}`));
     };
+    child.stdout.on("data", onData);
     child.stderr.on("data", onData);
     child.once("exit", onEarlyExit);
   });
