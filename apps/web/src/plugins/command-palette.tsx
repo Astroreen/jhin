@@ -400,18 +400,22 @@ export const commandPalettePlugin = builtin(
         // The nodes search their threads' messages too (T3's useThreadSearch).
         const content = useExternal(contentSearch, contentSearch.get);
         const searchQuery = submenu === undefined && !query.startsWith(">") ? query : "";
+        // Only nodes behind an open connection can answer, as the sidebar asks them; one
+        // that opens or closes while a query is typed is asked, or left, at once.
+        const connected = useExternal(connections, connections.list);
+        const openKey = connected
+          .filter((node) => node.state === "open")
+          .map((node) => node.id)
+          .join(" ");
         useEffect(() => {
+          const open = new Set(openKey.split(" "));
           contentSearch.request(
             searchQuery,
-            // Only nodes behind an open connection can answer, as the sidebar asks them.
             targets()
-              .filter(
-                ({ target }) =>
-                  connections.list().find((node) => node.id === target.node)?.state === "open",
-              )
+              .filter(({ target }) => open.has(target.node))
               .map(({ target }) => target),
           );
-        }, [searchQuery, revision]);
+        }, [searchQuery, revision, openKey]);
         useEffect(() => () => contentSearch.request("", []), []);
         const base = submenu?.groups ?? rootGroups(query, revision, now, content);
         const groups = filterSearchGroups(base, query);
