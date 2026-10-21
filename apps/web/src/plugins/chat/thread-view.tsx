@@ -40,7 +40,7 @@ import {
   type Selection,
 } from "./composer.tsx";
 import { ChatHeader } from "./header.tsx";
-import { dispatchMode, sendMessage } from "./send.ts";
+import { dispatchMode, resumeThread, sendMessage } from "./send.ts";
 import { useAgents, useChat } from "./services.ts";
 import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
@@ -168,6 +168,7 @@ export function ThreadView(props: {
       sendAlternate: () => handle.current?.sendAlternate(),
       steerNext: () => handle.current?.steerNext() ?? false,
       editLatest: () => handle.current?.editLatest() ?? false,
+      resume: () => handle.current?.resume() ?? false,
     };
     handle.current?.focus();
     return () => {
@@ -218,6 +219,20 @@ export function ThreadView(props: {
       });
     }
     return true;
+  };
+
+  // T3's "Resume thread" (D800): a stopped turn goes on with T3's message,
+  // and a held queue goes on after it.
+  const held = timeline.queue?.held !== undefined && timeline.queue.messages.length > 0;
+  const stopped = lastTurn?.state === "interrupted";
+  const resume = async (): Promise<void> => {
+    setError(undefined);
+    const outcome = await resumeThread(chat.threads, target, threadId, {
+      stopped,
+      held,
+      settings: selection,
+    });
+    if (outcome.kind === "failed") setError(outcome.message);
   };
 
   /** What the queue banner and the composer do to the thread's queue on its node. */
@@ -539,6 +554,7 @@ export function ThreadView(props: {
                     onRespond={respond}
                     onSelectionChange={changeSelection}
                     onSend={send}
+                    {...(!running && (stopped || held) ? { onResume: resume } : {})}
                     {...(planFollowUp === undefined ? {} : { planFollowUp })}
                     onStop={() =>
                       void chat.threads
@@ -615,6 +631,7 @@ export function DraftView(props: {
       sendAlternate: () => handle.current?.sendAlternate(),
       steerNext: () => handle.current?.steerNext() ?? false,
       editLatest: () => handle.current?.editLatest() ?? false,
+      resume: () => handle.current?.resume() ?? false,
     };
     handle.current?.focus();
     return () => {

@@ -524,6 +524,13 @@ export const chatPlugin = builtin(
         "Loads the open thread's last queued message into the composer to change it",
         () => void composer.current?.editLatest(),
       );
+      // T3's "Resume thread" for a stopped turn or a held queue (D800).
+      register(
+        "chat.thread.resume",
+        "Resume thread",
+        "Continues the open thread's stopped turn, then lets its held queue go on",
+        () => void composer.current?.resume(),
+      );
       register(
         "chat.composer.send-alternate",
         "Send the other way",

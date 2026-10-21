@@ -151,6 +151,8 @@ export interface ComposerHandle {
         steerNext(): boolean;
         /** Loads the last queued message into the composer to edit it; false when it cannot. */
         editLatest(): boolean;
+        /** Resumes a stopped turn or a held queue (D800); false when there is none. */
+        resume(): boolean;
       }
     | undefined;
 }

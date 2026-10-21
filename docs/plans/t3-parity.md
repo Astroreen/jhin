@@ -1467,6 +1467,28 @@ staying on it, records older than rollbacks resumed by the thread's id);
 `apps/web/test/timeline.test.ts` (dropped turns leave the timeline, at once
 and as events arrive).
 
+### Steering and history leftovers (W19)
+
+W19 of `t3-roadmap.md` (round 2) takes what W1 and W2 left in Deferred.
+Reference: T3 Code at `eb7b35ac` (D53).
+
+- **D800. "Resume thread" for a stopped turn**, as T3's composer
+  (`ComposerPrimaryActions.tsx`, `ChatView.tsx` `onResume`). When the
+  thread's latest turn was interrupted, or its queue is held with messages
+  waiting (D202), and the composer is empty, the send button becomes "Resume
+  thread" with T3's play icon. Pressing it sends T3's "Continue where you
+  left off." as the next turn (`threads.send` with the composer's agent,
+  model and modes; it shows as the user's message, as in T3), then lets a
+  held queue go on (`threads.queue.resume`), so the queued messages follow
+  the continued turn. With nothing interrupted it only resumes the queue. A
+  failure says which step failed ("Could not resume thread: …", or "The
+  thread resumed, but its queue did not: …") under the timeline. The message
+  goes only to a free thread (`threads.send`, never queued), so pressing
+  again never sends it twice. The
+  client command `chat.thread.resume` ("Resume thread") does the same for
+  the open thread. T3 also resumes a turn that failed on a usage limit; Jhin
+  has no usage-limit failures yet (Deferred).
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -1551,6 +1573,8 @@ and as events arrive).
 - Secret config values. Done in `security.md` (D417): `host.config.get`
   redacts `writeOnly` values and a save keeps them.
 
+- "Resume thread" (D800) for a turn that failed on a usage limit, as T3
+  offers: Jhin has no usage-limit failures to tell apart yet.
 - Steering (W1): moving Claude's foreground subagents to the background
   before a steer (T3 does, so a steer does not cancel them; here the steer's
   `priority: "now"` may stop them), restarting a turn with the new message

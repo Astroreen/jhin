@@ -52,6 +52,9 @@ test("stops a running turn", async ({ page }) => {
 
   await expect(page.getByText("Run interrupted")).toBeVisible();
   await expect(page.getByText(/^You stopped after /)).toBeVisible();
+  // T3's "Resume thread" stands in for the send button of an empty composer (D800).
+  await expect(page.getByRole("button", { name: "Resume thread" })).toBeVisible();
+  await message.fill("next");
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
 });
 
