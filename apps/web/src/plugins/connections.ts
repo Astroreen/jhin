@@ -98,6 +98,8 @@ export const connectionsPlugin = builtin(
       let saving: Promise<void> = new Promise<void>((resolve) => (readSaved = resolve));
       /** Grows with every local change, so a read that raced one is not applied. */
       let changes = 0;
+      /** Set when the plugin goes: late answers then open nothing. */
+      let disposed = false;
       const persist = () => {
         changes++;
         saving = saving
@@ -140,6 +142,7 @@ export const connectionsPlugin = builtin(
         async pair({ url, code, label }) {
           WebSocketUrl.parse(url);
           const { token } = await pairWithCode(url, code, `Browser on ${location.host}`);
+          if (disposed) throw new Error("This client stopped while pairing");
           const kept = keep(Saved.parse({ url, token, label: labelOf(url, label) }));
           refused = undefined;
           return kept;
@@ -182,6 +185,7 @@ export const connectionsPlugin = builtin(
       const loading = store
         .load()
         .then((raw) => {
+          if (disposed) return;
           for (const saved of parseSaved(raw)) if (!nodes.has(saved.url)) open(saved);
         })
         .catch((error: unknown) =>
@@ -189,7 +193,7 @@ export const connectionsPlugin = builtin(
         )
         .finally(() => {
           readSaved();
-          changed();
+          if (!disposed) changed();
         });
       const SAVED_NODES_WAIT_MS = 2000;
       let waited: ReturnType<typeof setTimeout> | undefined;
@@ -203,7 +207,6 @@ export const connectionsPlugin = builtin(
       // session; without one, a session it opened before still counts.
       const own = sameOriginUrl();
       let refused: string | undefined;
-      let disposed = false;
       const credential = takeTokenFromUrl();
       const meetOwnNode = async () => {
         if (credential !== undefined) {
@@ -245,7 +248,7 @@ export const connectionsPlugin = builtin(
           .then((raw) => {
             // A change made here meanwhile is newer than what was read; its own
             // save writes it, so this read is dropped rather than undoing it.
-            if (changes !== before) return;
+            if (changes !== before || disposed) return;
             const stored = new Map(parseSaved(raw).map((saved) => [saved.url, saved]));
             for (const [url, node] of nodes) {
               const saved = stored.get(url);

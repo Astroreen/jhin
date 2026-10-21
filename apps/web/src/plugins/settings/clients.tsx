@@ -172,14 +172,16 @@ function CreateLinkDialog(props: { node: NodeConnection; onClose(): void; onCrea
                       <Label className="flex items-center gap-2 font-normal" key={permission}>
                         <Checkbox
                           checked={chosen.has(permission)}
-                          onCheckedChange={(checked) =>
+                          onCheckedChange={(checked) => {
+                            // A choice made answers "Select at least one permission."
+                            setError(undefined);
                             setChosen((current) => {
                               const next = new Set(current);
                               if (checked) next.add(permission);
                               else next.delete(permission);
                               return next;
-                            })
-                          }
+                            });
+                          }}
                         />
                         <code className="truncate text-xs">{permission}</code>
                       </Label>
