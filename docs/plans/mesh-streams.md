@@ -79,8 +79,9 @@ terminals of threads on mesh members (terminal).
   route would lead back to the neighbor that asked for it fails with
   `RELAY_LOOP`, so routes that briefly disagree do not make two nodes relay
   to each other. A relay closed before it attached fails with
-  `RELAY_CLOSED`; a closing mesh ends its attached relays. Over a link, a
-  member reads a shared stream only within `jhin.mesh.memberPermissions`
+  `RELAY_CLOSED`; a closing mesh ends its attached relays. Over a link, a member
+  reads a shared stream, or relays one through this node (needing `mesh.call`
+  too, as D502), only within `jhin.mesh.memberPermissions`
   (`security.md` D416): it needs what the stream needs there (its served
   permissions, or its guard for the event log), as a call does, and is
   refused with `PERMISSION_DENIED` otherwise.
