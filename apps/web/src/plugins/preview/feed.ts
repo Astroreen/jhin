@@ -40,18 +40,22 @@ export function createTabFeeds(connections: Connections): {
     feed.stop = undefined;
     feed.client = client;
     if (client === undefined) {
-      feed.list = NONE;
+      if (feed.list !== NONE) set(feed, NONE);
       return;
     }
     // The stream keeps the latest list only: a new subscriber gets it at once.
-    feed.stop = client.subscribe(
+    let refused = false;
+    const subscription = client.subscribe(
       previewTabsStream(feed.threadId),
       {
         after: 0,
         // A refused subscription is disposed: the next listener or connection change asks again.
         onError: () => {
-          feed.client = undefined;
-          feed.stop = undefined;
+          refused = true;
+          if (feed.client === client) {
+            feed.client = undefined;
+            feed.stop = undefined;
+          }
           set(feed, NONE);
         },
       },
@@ -61,6 +65,8 @@ export function createTabFeeds(connections: Connections): {
         set(feed, Array.isArray(tabs) && tabs.length > 0 ? tabs : NONE);
       },
     );
+    // An error reported at once leaves nothing to stop.
+    if (!refused) feed.stop = subscription;
   };
   const watching = connections.subscribe(() => {
     for (const feed of feeds.values()) follow(feed);

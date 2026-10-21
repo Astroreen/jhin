@@ -310,7 +310,9 @@ export function BrowserSurface(props: SurfaceProps) {
     if (action === "down") {
       heldKeys.current.set(held, { key: event.key, code: event.code, keyCode: event.keyCode });
     } else heldKeys.current.delete(held);
-    const printable = event.key.length === 1 && !mod;
+    // AltGr reads as Ctrl+Alt on Windows: its characters are still text.
+    const altGraph = event.ctrlKey && event.altKey && !event.metaKey;
+    const printable = event.key.length === 1 && (!mod || altGraph);
     send({
       type: "key",
       action,

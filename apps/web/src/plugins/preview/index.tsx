@@ -96,7 +96,20 @@ export const previewPanelPlugin = builtin(
       const toasts = context.services.tryGet<Toasts>(UI_TOASTS_CAPABILITY);
       const feeds = context.subscriptions.add(createTabFeeds(connections));
       /** This client's name as a viewer of tabs. */
-      const viewer = `viewer-${crypto.randomUUID()}`;
+      // Kept for the browser tab's session, so a reload is the same viewer and may let go of
+      // the control it held (the node releases it too once nobody watches).
+      const viewer = (() => {
+        const key = "jhin:preview-viewer";
+        try {
+          const known = sessionStorage.getItem(key);
+          if (known !== null) return known;
+          const created = `viewer-${crypto.randomUUID()}`;
+          sessionStorage.setItem(key, created);
+          return created;
+        } catch {
+          return `viewer-${crypto.randomUUID()}`;
+        }
+      })();
 
       // The tab shown per thread, and its listeners.
       // Kept in the plugin's state, so a reload of the plugin keeps the tab shown per thread.

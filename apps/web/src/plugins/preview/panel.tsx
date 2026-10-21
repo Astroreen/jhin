@@ -214,7 +214,12 @@ function maxWidth(): number {
 }
 
 function readWidth(): number {
-  const stored = Number(localStorage.getItem(WIDTH_KEY));
+  let stored = Number.NaN;
+  try {
+    stored = Number(localStorage.getItem(WIDTH_KEY));
+  } catch {
+    // Blocked storage: the default width.
+  }
   return Number.isFinite(stored) && stored >= MIN_WIDTH ? stored : DEFAULT_WIDTH;
 }
 
@@ -737,12 +742,7 @@ function DeviceToolbar(props: {
 
 // --- A tab on screen -----------------------------------------------------------------------
 
-function Unreachable(props: {
-  url: string;
-  code: number;
-  description: string;
-  onReload: () => void;
-}) {
+function Unreachable(props: { url: string; description: string; onReload: () => void }) {
   const [details, setDetails] = useState(false);
   let host = props.url;
   try {
@@ -800,7 +800,8 @@ function TabView(props: {
   const youControl = tab.controller === viewer;
   // Unset until the user edits the prompt: its default answers until then.
   const [promptText, setPromptText] = useState<string | undefined>(undefined);
-  const [deviceToolbar, setDeviceToolbar] = useState(tab.viewport.mode !== "fill");
+  // The toolbar shows while the tab has a fixed size, whoever set it.
+  const deviceToolbar = tab.viewport.mode !== "fill";
   const [painted, setPainted] = useState(false);
   const fail = (title: string) => (error: unknown) => services.onError(title, error);
   const tabCall = (method: string, params: Record<string, unknown>, title: string) =>
@@ -854,10 +855,8 @@ function TabView(props: {
         <MenuItem
           onClick={() => {
             if (deviceToolbar) {
-              setDeviceToolbar(false);
               adjust({ viewport: { mode: "fill" } }, "Unable to resize browser viewport");
             } else {
-              setDeviceToolbar(true);
               adjust(
                 { viewport: { mode: "freeform", width: tab.size.width, height: tab.size.height } },
                 "Unable to resize browser viewport",
@@ -947,10 +946,9 @@ function TabView(props: {
           {youControl ? "Release control" : "Take control"}
         </Button>
       </div>
-      {tab.viewport.mode !== "fill" && deviceToolbar ? (
+      {tab.viewport.mode !== "fill" ? (
         <DeviceToolbar
           onChange={(setting) => {
-            if (setting.mode === "fill") setDeviceToolbar(false);
             adjust({ viewport: setting }, "Unable to resize browser viewport");
           }}
           setting={tab.viewport}
@@ -979,7 +977,6 @@ function TabView(props: {
         ) : null}
         {status.state === "failed" ? (
           <Unreachable
-            code={status.code}
             description={status.description}
             onReload={() => navigate({ reload: {} })}
             url={status.url}
