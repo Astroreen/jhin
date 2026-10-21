@@ -32,14 +32,13 @@ import {
 import { FileDiffIcon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
-import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { useExternal } from "../../lib/hooks.ts";
+import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { createBranchToolbar } from "./branch-toolbar.tsx";
-import { createDiffPanel, DIFF_PANEL } from "./diff-panel.tsx";
 import { createRunningActions } from "./running.ts";
 import { createCardIndicators } from "./indicators.tsx";
 import { createLinkActions } from "./links.tsx";
-import { useSourceControl, type SourceControlServices } from "./services.ts";
+import { DIFF_PANEL, useSourceControl, type SourceControlServices } from "./services.ts";
 import { createSourceControlStore } from "./store.ts";
 
 /**
@@ -238,10 +237,24 @@ export const sourceControlPlugin = builtin(
           component: DiffToggle,
         }),
       );
+      // The diff panel is a chunk of its own, loaded when it first opens (D440).
+      const DiffPanel = lazyChunk(
+        () => import("./diff-panel.tsx").then((module) => module.createDiffPanel(services)),
+        {
+          loading: () => null,
+          failed: (_props, retry) => (
+            <ChunkFailed retry={retry}>Couldn't load the diff panel.</ChunkFailed>
+          ),
+        },
+      );
+      function DiffPanelSlot() {
+        const route = useExternal(navigation, navigation.current);
+        return route.panel === DIFF_PANEL ? <DiffPanel /> : null;
+      }
       context.subscriptions.add(
         slots.contribute("app.panel", {
           id: "jhin.source-control.diff-panel",
-          component: createDiffPanel(services),
+          component: DiffPanelSlot,
         }),
       );
     },

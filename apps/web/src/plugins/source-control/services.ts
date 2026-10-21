@@ -14,6 +14,9 @@ import type { RunningActions } from "./running.ts";
 import type { SourceControlStore, SourceControlView } from "./store.ts";
 
 /** What the source control components use, handed over by the plugin. */
+/** The route's panel name of the diff panel. */
+export const DIFF_PANEL = "diff";
+
 export interface SourceControlServices {
   readonly context: PluginContext;
   readonly store: SourceControlStore;

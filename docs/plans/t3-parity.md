@@ -739,7 +739,8 @@ Workstream W14 of `t3-roadmap.md` (D440–D459). The reference is T3 Code
   went from 1,021 kB to 436 kB minified. The shared `@jhin/ui` module
   (519 kB) stays one chunk: user client plugins import all of it by name
   (D16), so it cannot be split by use. Neither can Shiki's C++ grammar (797 kB), which
-  loads only for a C++ code block.
+  loads only for a C++ code block. The diff panel became a chunk too, loaded
+  when it first opens, once the entry chunk had grown back to 500 kB.
 
 The proof of D440: `apps/web/test/lazy-chunk.browser.test.tsx` (the loading
 view until the chunk loads, the failed view and a retry, a later mount
