@@ -248,11 +248,9 @@ export function createRpcClient(options: RpcClientOptions): RpcClient {
         }
         if (!windowed) continue;
         if (handled instanceof Promise) {
-          void handled.then(settle, (error: unknown) => {
-            settle();
-            // Reported as a throwing handler would be.
-            throw error;
-          });
+          // A rejection is the handler's own to report: rethrown here it would
+          // be an unhandled rejection, which ends a Node process.
+          void handled.then(settle, settle);
         } else settle();
       }
       return;

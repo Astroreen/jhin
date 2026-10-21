@@ -205,7 +205,10 @@ export function serveRpc(peer: Peer, options: RpcServerOptions): Disposable {
       for (;;) {
         const page = await log.read(stream, { after: lastSent, limit: BACKLOG_PAGE });
         if (!active() || overflowed) break;
-        for (const event of page) deliver(event);
+        for (const event of page) {
+          deliver(event);
+          if (overflowed) break;
+        }
         if (page.length < BACKLOG_PAGE) break;
       }
     } catch (error) {

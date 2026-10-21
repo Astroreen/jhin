@@ -356,25 +356,26 @@ the same T3 Code nightly `eb7b35ac` unless a decision names another source.
   only when the size in cells changed.
 
 - **D470. Flow control: acknowledged output windows**, T3's
-  `withTerminalOutputWindow`. `rpc.subscribe` takes an optional
-  `window: {events, bytes}`; with it the server has at most that many
-  events, and characters of their JSON as sent, of the subscription
-  unacknowledged (one event larger than the window still goes alone), and
-  the client acknowledges with the notification
-  `rpc.ack {subscription, sequence}` once a handler is done (a handler
-  that returns a promise, such as a terminal writing to xterm, when it
-  settles; one that throws or rejects is done too). Acknowledgements are
-  cumulative, so the client acknowledges only the settled events at the
-  front, in the order they came, and acknowledges an event resent after a
-  reconnect without handling it again. Events beyond the window wait on
-  the server. Waiting events are bounded: past 16 MiB the server ends the
-  subscription with the notification `rpc.subscription.ended
+  `withTerminalOutputWindow`. `rpc.subscribe` takes an optional `window:
+  {events, bytes}`; with it the server has at most that many events, and
+  characters of their JSON as sent, of the subscription unacknowledged
+  (one event larger than the window still goes alone), and the client
+  acknowledges with the notification `rpc.ack {subscription, sequence}`
+  once a handler is done (a handler that returns a promise, such as a
+  terminal writing to xterm, when it settles; one that throws or rejects
+  is done too; a rejection is the handler's to report). Acknowledgements
+  are cumulative, so the client acknowledges only the settled events at
+  the front, in the order they came, and acknowledges an event resent
+  after a reconnect without handling it again. Events beyond the window
+  wait on the server. Waiting events are bounded: past 16 MiB the server
+  ends the subscription with the notification `rpc.subscription.ended
   {subscription, error}` (code `SUBSCRIPTION_OVERFLOW`), and the client
-  reports it to `onError`; a backlog past the bound before the subscription
-  started fails `rpc.subscribe` itself with that code. The terminal client
-  then attaches again from a snapshot, which is bounded by the scrollback;
-  a shell that floods faster than the client shows it re-reads once per
-  16 MiB it could not show, with the screen reset each time (accepted). The terminal client asks for T3's window, 8 events or
+  reports it to `onError`; a backlog past the bound before the
+  subscription started fails `rpc.subscribe` itself with that code. The
+  terminal client then attaches again from a snapshot, which is bounded by
+  the scrollback; a shell that floods faster than the client shows it
+  re-reads once per 16 MiB it could not show, with the screen reset each
+  time (accepted). The terminal client asks for T3's window, 8 events or
   64 KiB. Old clients send no window and get every event as it comes; old
   servers ignore the window and the notifications, so both mix.
 

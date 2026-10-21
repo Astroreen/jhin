@@ -37,7 +37,7 @@ the same PR.
 | `@jhin/sdk`                | the public API plugins import (`definePlugin`, types, permission matching); the host provides it to user plugins                   |
 | `@jhin/node-host`          | runs a node: loads plugins, hot reload, config files, logs, inspector, `host.*` commands                                           |
 | `@jhin/testing`            | test kernel, capability mocks, fake transport, in-memory mesh of N nodes                                                           |
-| `@jhin/rpc`                | JSON-RPC 2.0 over any channel: server sessions, reconnecting client, peers, flow control                                           |
+| `@jhin/rpc`                | JSON-RPC 2.0 over any channel: server sessions, reconnecting client, peers, flow control (`rpc.ack`, `rpc.subscription.ended`)     |
 | `@jhin/mesh-core`          | the mesh without transport: membership, gossip, routing with relay, `jhin://` addresses                                            |
 | `@jhin/mcp-bridge`         | turns a command registry into MCP tools                                                                                            |
 | `@jhin/ui`                 | UI kit for client plugins: T3 Code-derived primitives, theme, slots                                                                |
