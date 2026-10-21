@@ -221,7 +221,7 @@ export function TerminalViewport(props: {
         selection: {
           terminalId,
           terminalLabel: readLabel(),
-          ...terminalSelectionLines(position.start.y, text),
+          ...terminalSelectionLines(position),
           text,
         },
       };
@@ -238,6 +238,8 @@ export function TerminalViewport(props: {
     };
     // The selection menu shows once a drag or a double-click selected something.
     let selecting = false;
+    /** The frame that opens the selection menu, cancelled with the viewport. */
+    let menuFrame: number | undefined;
     const onPointerDown = (event: PointerEvent) => {
       selecting = event.isPrimary && event.button === 0;
       setMenu(undefined);
@@ -246,7 +248,7 @@ export function TerminalViewport(props: {
       if (!selecting || event.button !== 0) return;
       selecting = false;
       const pointer = { x: event.clientX, y: event.clientY };
-      requestAnimationFrame(() => openMenu("selection", pointer));
+      menuFrame = requestAnimationFrame(() => openMenu("selection", pointer));
     };
     const onContextMenu = (event: MouseEvent) => {
       event.preventDefault();
@@ -282,6 +284,7 @@ export function TerminalViewport(props: {
       mount.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("mouseup", onMouseUp);
       mount.removeEventListener("contextmenu", onContextMenu);
+      if (menuFrame !== undefined) cancelAnimationFrame(menuFrame);
       links.dispose();
       attachment.dispose();
       input.dispose();

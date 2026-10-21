@@ -1256,18 +1256,17 @@ export function Composer(props: ComposerProps) {
   };
   const insert = (text: string) => {
     const field = textarea.current;
+    // Read once, before the update: at the cursor when the box has focus, else at the end.
     const focused = field !== null && document.activeElement === field;
-    setPrompt((current) => {
-      const start = focused ? field.selectionStart : current.length;
-      const end = focused ? field.selectionEnd : current.length;
-      const before = current.slice(0, start);
-      const after = current.slice(end);
-      const gap = before.length > 0 && !/\s$/.test(before) ? "\n\n" : "";
-      return `${before}${gap}${text}${after}`;
-    });
+    const start = focused ? field.selectionStart : prompt.length;
+    const end = focused ? field.selectionEnd : prompt.length;
+    const before = prompt.slice(0, start);
+    const gap = before.length > 0 && !/\s$/.test(before) ? "\n\n" : "";
+    const caret = before.length + gap.length + text.length;
+    setPrompt(`${before}${gap}${text}${prompt.slice(end)}`);
     requestAnimationFrame(() => {
       field?.focus();
-      field?.setSelectionRange(field.value.length, field.value.length);
+      field?.setSelectionRange(caret, caret);
     });
   };
   useImperativeHandle(props.handleRef, () => ({

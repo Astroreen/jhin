@@ -35,13 +35,21 @@ describe("links in terminal output (D472)", () => {
 });
 
 describe("Add to chat (D473)", () => {
+  it("counts the selection's rows, wrapped ones included", () => {
+    // One long line wrapped over three rows: no newline in the selected text.
+    expect(terminalSelectionLines({ start: { y: 4 }, end: { y: 6 } })).toEqual({
+      lineStart: 5,
+      lineEnd: 7,
+    });
+  });
+
   it("writes T3's inline label and its terminal_context block", () => {
     const text = "$ ls\nREADME.md\n";
     expect(
       formatTerminalContext({
         terminalId: "term-1",
         terminalLabel: "Terminal 1",
-        ...terminalSelectionLines(2, text),
+        ...terminalSelectionLines({ start: { y: 2 }, end: { y: 3 } }),
         text,
       }),
     ).toBe(

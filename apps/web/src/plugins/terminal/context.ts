@@ -15,14 +15,16 @@ function normalizeTerminalContextText(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/^\n+|\n+$/g, "");
 }
 
-/** The selection's lines as a range: line numbers are where it starts and how many lines it has. */
-export function terminalSelectionLines(
-  startRow: number,
-  text: string,
-): { lineStart: number; lineEnd: number } {
-  const lineStart = startRow + 1;
-  const lineCount = normalizeTerminalContextText(text).split("\n").length;
-  return { lineStart, lineEnd: Math.max(lineStart, lineStart + lineCount - 1) };
+/**
+ * The selection's buffer rows as 1-based lines (T3's terminalSelectionLineRange):
+ * from its start row to its end row, wrapped rows included.
+ */
+export function terminalSelectionLines(position: { start: { y: number }; end: { y: number } }): {
+  lineStart: number;
+  lineEnd: number;
+} {
+  const lineStart = position.start.y + 1;
+  return { lineStart, lineEnd: Math.max(lineStart, position.end.y + 1) };
 }
 
 function indent(value: string): string {

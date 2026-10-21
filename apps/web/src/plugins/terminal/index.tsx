@@ -134,9 +134,14 @@ export const terminalPlugin = builtin(
               toasts?.show({ type: "info", title: "No message box to add the selection to" });
             }
           })
-          .catch((error: unknown) =>
-            context.log.warn("terminal selection not added to chat", { error: String(error) }),
-          );
+          .catch((error: unknown) => {
+            context.log.warn("terminal selection not added to chat", { error: String(error) });
+            toasts?.show({
+              type: "error",
+              title: "Could not add the selection to the chat",
+              description: (error as Error).message,
+            });
+          });
       };
       /** Without the chat plugin there is no composer: the menus leave the item out. */
       const canAddToChat = () =>

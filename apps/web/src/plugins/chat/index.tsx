@@ -450,7 +450,7 @@ export const chatPlugin = builtin(
         name: "chat.composer.insert",
         title: "Insert into the composer",
         description:
-          "Puts text into the open thread's message box at the cursor, as the terminal's Add to chat does",
+          "Puts text into the open thread's message box, at the cursor when it has focus, else at the end, as the terminal's Add to chat does",
         input: z.object({ text: z.string().min(1).max(200_000) }),
         output: z.object({ inserted: z.boolean() }),
         handler: ({ text }) => {
