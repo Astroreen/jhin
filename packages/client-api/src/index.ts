@@ -434,7 +434,9 @@ export interface ChatHeaderActionProps {
 
 /**
  * What the `chat.thread.details` slot gives each section of the thread
- * details panel (T3 Code's ThreadDetailsCard, D802): the open thread.
+ * details panel (T3 Code's ThreadDetailsCard, D802): the open thread. The
+ * `chat.thread.lineage` slot gets the same: rows (`<li>`) other plugins put
+ * into the Lineage section's list (orchestration.md D866).
  */
 export interface ChatThreadDetailsProps {
   readonly target: NodeTarget;
