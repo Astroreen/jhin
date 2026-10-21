@@ -570,7 +570,7 @@ export const chatPlugin = builtin(
         name: "chat.thread.resume",
         title: "Resume thread",
         description:
-          "Continues the open thread's stopped turn, then lets its held queue go on. `resumed` is false when there was nothing to resume (or text is typed)",
+          "Continues the open thread's stopped turn, then lets its held queue go on. `resumed` says a resume started (its failure shows in the thread), false when there was nothing to resume or text is typed",
         input: z.object({}),
         output: z.object({ resumed: z.boolean() }),
         handler: () => ({ resumed: composer.current?.resume() ?? false }),
