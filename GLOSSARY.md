@@ -190,3 +190,7 @@ Words about Jhin:
 - **Checkpoint** — a snapshot of a thread's working directory before its first
   turn and after each turn (a commit under `refs/jhin/checkpoints/`), from
   which a turn's diff is read and to which a thread can be reverted.
+- **Scheduled task** — a prompt a node sends on its own: on an interval, at a
+  time of day on chosen weekdays, or when its **webhook** URL is called. A
+  run goes to the thread the task is bound to, or to a new thread each time
+  (T3 Code's term; `jhin.scheduler`).

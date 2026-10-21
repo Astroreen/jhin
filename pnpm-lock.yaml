@@ -179,6 +179,9 @@ importers:
       '@jhin/plugin-orchestration':
         specifier: workspace:*
         version: link:../../plugins/orchestration
+      '@jhin/plugin-scheduler':
+        specifier: workspace:*
+        version: link:../../plugins/scheduler
       '@jhin/plugin-source-control':
         specifier: workspace:*
         version: link:../../plugins/source-control
@@ -442,6 +445,15 @@ importers:
         specifier: workspace:*
         version: link:../kernel
 
+  packages/scheduler-api:
+    dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../agent-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+
   packages/sdk:
     dependencies:
       zod:
@@ -685,6 +697,43 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.32.1(zod@4.6.7)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+
+  plugins/scheduler:
+    dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../../packages/agent-api
+      '@jhin/http-api':
+        specifier: workspace:*
+        version: link:../../packages/http-api
+      '@jhin/rpc':
+        specifier: workspace:*
+        version: link:../../packages/rpc
+      '@jhin/scheduler-api':
+        specifier: workspace:*
+        version: link:../../packages/scheduler-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
+    devDependencies:
+      '@jhin/plugin-agent-fake':
+        specifier: workspace:*
+        version: link:../agent-fake
+      '@jhin/plugin-http':
+        specifier: workspace:*
+        version: link:../http
+      '@jhin/plugin-threads':
+        specifier: workspace:*
+        version: link:../threads
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2

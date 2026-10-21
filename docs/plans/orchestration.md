@@ -158,7 +158,7 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
   the runtime's own message, else "Agent is unavailable."); the calling
   thread's id, agent, model and modes; and `features`: `appOwnedSubagents`,
   `asyncPolling`, `cancellation`, `workflows`, `threadManagement` are true;
-  `scheduledTasks` is true once a command `schedules.create` (W11) exists;
+  `scheduledTasks` is true once a command `scheduler.tasks.create` (W11) exists;
   `workspaceStrategies` lists what `orchestration.launch` accepts here.
 - **D370. `orchestration.launch`** is T3's `t3_thread_launch`: a top-level
   thread with `title`, in `projectId` (the caller's project when omitted; a
@@ -300,4 +300,114 @@ whole set reachable as MCP tools.
 
 ## W11. Scheduled tasks and webhooks
 
-W11 adds its decisions (D380–D389) here.
+Status: **implemented** (`plugins/scheduler`, `packages/scheduler-api`); the settings page is D389.
+
+### Decisions
+
+The reference is T3 Code's scheduler (`apps/server/src/scheduledTasks`,
+`packages/contracts/src/scheduledTask.ts`) at the nightly tag
+`v0.1.1-nightly.20261020.3411`, the first to have `run_scheduled_task_now`;
+the rest of it is unchanged since D53's tag.
+
+- **D380. A plugin of its own:** `jhin.scheduler` provides
+  `scheduler.tasks@1` and requires `agent.registry@1` (the threads plugin,
+  whose commands its runs use); its contract (schemas, command names, event types and
+  the schedule arithmetic) is the package `@jhin/scheduler-api`. A task is
+  T3's: a title, a prompt, enabled or paused, a schedule, a project, the
+  thread it runs in (or none: a new thread per run), the agent, model and
+  modes of a new thread, and its run state (`nextRunAt`, `lastRunAt`,
+  `lastRunStatus` `never | running | succeeded | failed`, `lastRunError`,
+  `runCount`). Tasks are kept in `storage.kv`; every change appends
+  `scheduler.task.updated` (the task) or `scheduler.task.deleted` (`{ id }`)
+  to the `scheduler` stream, so a client follows the list from
+  `scheduler.tasks.list`'s `head` like the threads index. The stream is
+  guarded with `scheduler.read` (security.md D415).
+- **D381. Three triggers, T3's schema:** `{ type: "interval", everyMs }`
+  (at least 60 000), `{ type: "fixed_time", timeOfDay: "HH:MM", weekdays? }`
+  (0 is Sunday; none means every day) in the node's local time zone, and
+  `{ type: "webhook", signature? }`. An interval counts from the end of the
+  previous run (elapsed time, across daylight saving changes); a fixed time is
+  the next matching minute after now. A fixed-time run missed by more than ten
+  minutes (the node was down or asleep) is skipped and rescheduled, as in T3;
+  a missed interval runs once. Editing a title, prompt or binding keeps the
+  pending run; changing the schedule or enabling the task restarts its clock.
+- **D382. The node's scheduler is one timer:** set for the earliest due run
+  and never more than a minute away, so a clock that jumped or a machine that
+  slept is caught up within a minute (T3 polls every five seconds). Every
+  change re-arms it. A task runs once at a time: no run starts while the
+  previous one still runs, and the next one counts from its end. Runs still marked running when the node starts are recorded as
+  failed ("Run was interrupted by a node restart.") and rescheduled, and
+  webhook deliveries answered 202 whose run never started are marked
+  `dispatch_failed`. Tests
+  move Vitest's fake clock; nothing waits on real time.
+- **D383. Where a run goes:** a task bound to a thread sends its prompt to
+  that thread with the thread's own agent and settings (T3 #18467); an
+  unbound task creates a thread in its project, titled after the task, with
+  the task's agent, model and modes, and sends the prompt there. A bound run
+  goes into the thread's queue (`threads.queue.add`, W1's D201, with the
+  run's own message id), as T3 sends in `queue` mode: it starts at once on a
+  free thread, else after the turns queued before it. A run counts as succeeded
+  once the thread accepted the message, not when the turn ends (as in T3),
+  and reports the thread it went to. Deleting a thread deletes the tasks
+  bound to it (T3 #22070).
+- **D384. Commands mirror T3's tools:** `scheduler.tasks.create`
+  (`schedule_task`), `scheduler.tasks.update` (`update_scheduled_task`: only
+  the fields given change), `scheduler.tasks.delete`,
+  `scheduler.tasks.list` (`list_scheduled_tasks`, optionally one project's)
+  and `scheduler.tasks.run` (`run_scheduled_task_now`: a manual run, refused
+  for webhook tasks and while the task runs), plus
+  `scheduler.webhooks.rotate` (a new URL token) and
+  `scheduler.deliveries.list` / `scheduler.deliveries.get` (the delivery
+  log; one delivery in full, with its body and prompt, takes the same rights
+  as its URL). Reading takes `scheduler.read`; creating, changing, running a
+  task and rotating its URL take `scheduler.write` and `threads.write`, since a
+  task sends messages to threads (deleting takes `scheduler.write`), and only
+  a caller holding both sees a webhook's URL token. A create with a `clientRequestId` is idempotent: the
+  same id returns the task it created.
+- **D385. Webhooks are routes of `http.server@1`:**
+  `GET|POST|PUT|PATCH /api/hooks/<taskId>/<token>`, the token 32 random
+  bytes in hex, compared in constant time before the body is read; a wrong
+  token answers like an unknown task (404). The token is a right to run the
+  task, so `webhook.path` and `url` go only to callers holding
+  `scheduler.write` (null for readers and on the `scheduler` stream). Answers as T3's: 202 with the delivery id, 401 for a bad
+  signature, 409 for a paused task, 413 past 1 MiB, 429 when rate limited. A
+  task's `webhook.url` is the node's own URL plus the path; making it
+  reachable from outside is remote access (W13), not T3 Connect. Without
+  `http.server` webhook tasks can be kept but not called.
+- **D386. Signatures, GitHub-style:** an optional HMAC-SHA256 over the raw
+  body, with the header, `hex` or `base64` encoding and a prefix
+  (`x-hub-signature-256`, `hex`, `sha256=` for GitHub). The secret is
+  write-only: given on create or update, kept in `storage.kv`, never returned
+  (`webhook.hasSecret`), and kept when an update omits it. T3's `secretRef`
+  from `request_secret` waits for W13's secrets.
+- **D387. Request data reaches the prompt only through placeholders**
+  (`{{body.path}}`, `{{headers.name}}`, `{{query.name}}`, `{{body}}`,
+  `{{request}}`), each value framed in `<webhook-data-ID>` tags with a fresh
+  id and a closing note that it is untrusted, with `$`, `@` and `/command`
+  mentions broken and credential-looking headers redacted where the whole set
+  renders: T3's `webhookTemplate.ts`, ported.
+- **D388. Limits and the delivery log, T3's numbers:** a signature is checked
+  before anything else counts the request, so forged requests take no slot
+  (the first of a minute is logged); then 60 accepted requests a
+  minute per task (only the first rejected one of a window is logged), at most
+  20 waiting to run per task (the first refusal while full is logged, as
+  `rate_limited`), and the last 50 deliveries per task kept with
+  their outcome (`accepted`, `dispatch_failed`, `rejected_signature`,
+  `disabled`, `rate_limited`), body (up to 64 KiB), headers, missing
+  placeholders and the rendered prompt.
+- **D389. UI:** T3's Settings → Scheduled tasks page and the thread's
+  automations panel, on these commands and the `scheduler` stream
+  (follow-up PR).
+
+### Deferred
+
+- The settings page and the thread's automations panel (D389).
+- `secretRef` for webhook signing secrets, entered through
+  `request_secret` (W13's secrets).
+- A public webhook URL through a relay, held deliveries while the node is
+  offline and their maximum age (`maxDeliveryAgeMinutes`): T3 does this with
+  T3 Connect; Jhin's remote access is W13.
+- Inheriting the calling thread's project and binding a task to it by
+  default (`bindToCurrentThread`): an MCP call does not say which thread it
+  comes from until the node's MCP server is attached to Claude Code (W9).
+- Metrics of deliveries (T3 counts them per outcome).
