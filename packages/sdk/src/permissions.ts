@@ -83,11 +83,14 @@ export function describePermissions(
   descriptions: Readonly<Record<string, PermissionDescription>>,
 ): Disposable {
   return context.hooks.after<unknown, PermissionEntry[]>(PERMISSIONS_DESCRIBE_HOOK, (entries) =>
-    entries.map((entry) => {
-      const described = descriptions[entry.permission];
-      return entry.title !== undefined || described === undefined
-        ? entry
-        : { ...entry, ...described };
-    }),
+    // A careless hook before this one may have answered something else.
+    !Array.isArray(entries)
+      ? entries
+      : entries.map((entry) => {
+          const described = descriptions[entry.permission];
+          return entry.title !== undefined || described === undefined
+            ? entry
+            : { ...entry, ...described };
+        }),
   );
 }
