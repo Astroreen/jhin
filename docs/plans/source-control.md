@@ -703,6 +703,14 @@ with screenshots).
   action, the branch picker's "Checkout pull request" item and the checkout
   dialog's title show the repository's forge mark instead of a generic one.
 
+- **D905. A changed file of a turn has T3's file context menu**: right-click
+  on a file in the changed files card (D248) opens the diff panel's menu
+  (D922, `FileContextMenuPopup`): "Reveal in …" with the node's file manager
+  and "Open with" each editor found, through `editors.open` with the file's
+  path in the project's folder (D287). A file outside that folder, or a node
+  with no editors, has no menu, as in T3. Like the diff panel's, the path is
+  the project's, not a worktree thread's.
+
 #### Reverting
 
 - **D257. Reverting to a turn** (T3's "Edit from here" on a user message, built on
@@ -1030,8 +1038,8 @@ with the node's token, and without one).
 - Checkpoints, from W3 (D240): T3's fast path that reuses the real index for
   the scratch one, sparse checkouts, nested checkpoint scopes (a subagent's
   own checkpoints), retries on `index.lock` contention and T3's per-path
-  batching of a long turn diff; the changed files card's per-file context
-  menu.
+  batching of a long turn diff (W22 gave the changed files card T3's file
+  icons; its per-file context menu is D905).
 - Reverting, from W3 (D257): T3's "Roll back" of a checkpoint item in the item
   inspector (Jhin has no item inspector yet; it comes with that panel), recreating a missing managed worktree before a rollback, and the
   error strings T3 shows for a disconnected environment or a provider without
