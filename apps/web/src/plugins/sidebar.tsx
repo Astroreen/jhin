@@ -1938,7 +1938,8 @@ export const sidebarPlugin = builtin(
               : target.section === "active"
                 ? target.activeOrder
                 : undefined;
-          // The move says itself what failed (T3's titles).
+          // The move says itself what failed (T3's titles): a drop onto the shelf runs
+          // thread.settle, whose own failure toasts "Failed to settle thread".
           void context.commands
             .execute("sidebar.thread.move", {
               ...entry.node.target,

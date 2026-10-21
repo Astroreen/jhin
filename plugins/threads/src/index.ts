@@ -2214,7 +2214,8 @@ export default definePlugin({
       name: "threads.arrange",
       description:
         "Several arrangement steps (settle, unsettle, pin, unpin, unsnooze, reorder) as one write, as a sidebar drop needs: every step is checked first, and one refused leaves every thread as it was",
-      input: z.object({ steps: z.array(ArrangeStep).min(1).max(500) }),
+      // A drop rewrites at most the keys of the threads a sidebar shows; a node keeps far fewer.
+      input: z.object({ steps: z.array(ArrangeStep).min(1).max(10_000) }),
       output: z.object({ threads: z.array(Thread) }),
       permissions: ["threads.write"],
       handler: ({ steps }) =>
