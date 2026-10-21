@@ -742,3 +742,7 @@ Each workstream lists its PRs here as they merge.
   A8's slots (#105).
 - A4 #91: `jhin.context` (D661–D670), and the lore brief on a generation's
   start in `jhin.agents` (D671).
+- A8 #105: `client.modes@1` and the `jhin.modes`, `jhin.mode-switcher` and
+  `jhin.civilization` client plugins: Threads mode on today's slots, the
+  Civilization shell with empty slots for A1, A2, A3, A5 and A7, and
+  `includeGenerations` on `threads.list` and `threads.catalog` (D742–D750).
