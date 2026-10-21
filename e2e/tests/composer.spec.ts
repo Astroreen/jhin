@@ -392,6 +392,74 @@ test("shows T3's chips with their details: a file's preview and a skill's instru
   await info.attach("skill instructions", { path: dialogShot, contentType: "image/png" });
 });
 
+test("cites a selection of the agent's answer, with a comment, as T3's quote", async ({
+  page,
+}, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.fill("cache the results");
+  await message.press("Enter");
+  const log = page.getByRole("log", { name: "Messages" });
+  const answer = log.getByRole("article", { name: "Agent" });
+  await expect(answer).toHaveText("Echo: cache the results");
+  await expect(answer).toHaveAttribute("aria-busy", "false");
+  // Its markdown, not the plain text shown until the renderer loads, which it then replaces.
+  await expect(answer.locator("p")).toHaveText("Echo: cache the results");
+
+  // A selection in the answer offers "Cite" (D1012).
+  await answer.evaluate((article) => {
+    // The answer's text node, however it is rendered (markdown or its plain text first).
+    const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT);
+    let text: Text | null = null;
+    while (walker.nextNode()) {
+      if (walker.currentNode.textContent?.includes("the results")) {
+        text = walker.currentNode as Text;
+        break;
+      }
+    }
+    const start = text!.data.indexOf("the results");
+    const range = document.createRange();
+    range.setStart(text!, start);
+    range.setEnd(text!, start + "the results".length);
+    document.getSelection()!.removeAllRanges();
+    document.getSelection()!.addRange(range);
+  });
+
+  await page.getByRole("button", { name: "Cite selection in composer", exact: true }).click();
+  const chip = message.getByRole("button", { name: "View cited assistant text: the results" });
+  await expect(chip).toBeVisible();
+
+  // Its comment (D1011): the chip then shows it.
+  await message.getByRole("button", { name: "Add comment to citation" }).click();
+  await page.getByRole("textbox", { name: "Comment on selected text" }).fill("in memory?");
+  await page.getByRole("textbox", { name: "Comment on selected text" }).press("Enter");
+  await expect(
+    message.getByRole("button", { name: "View cited assistant text: in memory?" }),
+  ).toBeVisible();
+  const composerShot = info.outputPath("citation-composer.png");
+  await page.screenshot({ path: composerShot });
+  await info.attach("citation in the composer", { path: composerShot, contentType: "image/png" });
+
+  // The agent reads T3's quote block; the sent message shows the quote, and its source.
+  await message.press("End");
+  await message.pressSequentially("please");
+  await message.press("Enter");
+  await expect(answer.last()).toContainText("[assistant-quote-1]");
+  await expect(answer.last()).toContainText("<assistant_citations>");
+  const sent = log.getByRole("article", { name: "You" }).last();
+  await sent
+    .getByRole("button", { name: "Quoted assistant text: in memory?. Show details" })
+    .click();
+  await expect(page.getByRole("dialog").getByText("the results", { exact: true })).toBeVisible();
+  const sentShot = info.outputPath("citation-sent.png");
+  await page.screenshot({ path: sentShot });
+  await info.attach("citation in the message", { path: sentShot, contentType: "image/png" });
+  await page.getByRole("button", { name: "Go to source" }).click();
+  // The quote's text in the answer, selected as it was (the click selects it at once).
+  expect(await page.evaluate(() => document.getSelection()?.toString())).toBe("the results");
+});
+
 test("switches to plan mode with /plan sent alone, and dismisses a menu with Escape", async ({
   page,
 }) => {

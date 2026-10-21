@@ -28,7 +28,9 @@ icons, the composer and its proposed-plan card: `apps/web/src/lib/proposed-plan.
 `plugins/chat/proposed-plan-card.tsx` and `plan-follow-up.ts`, its tiptap
 prompt editor, menus, attachments and model options, its context chips
 (`packages/ui/src/components/context-chip.tsx`, `plugins/chat/composer-chips.tsx`,
-`plugins/chat/context-chips.tsx`) and a message's context records
+`plugins/chat/context-chips.tsx`), quotes of an agent's message
+(`packages/agent-api/src/citations.ts`, `apps/web/src/lib/assistant-text-selection.ts`,
+`plugins/chat/citation-chips.tsx`, `plugins/chat/cite-selection.tsx`) and a message's context records
 (`packages/agent-api/src/context.ts`, `plugins/threads/src/context.ts`,
 `apps/web/src/lib/composer-context.ts`), editing from a
 message, forks and merging them back, searching thread contents, the

@@ -14,6 +14,12 @@ import {
   type MessageContext,
   type MessageContextRecord,
 } from "./context.ts";
+import {
+  ASSISTANT_CITATION_CONTEXT_LENGTH,
+  ASSISTANT_CITATION_MAX_COMMENT_LENGTH,
+  ASSISTANT_CITATION_MAX_TEXT_LENGTH,
+  type AssistantCitation,
+} from "./citations.ts";
 
 const ContextId = z
   .string()
@@ -125,3 +131,22 @@ export const MessageContextSchema = z
     }
     return { version: 1, records };
   });
+
+/** A quote of an agent's message (t3-parity.md D1010), as `chat.composer.insert-citation` takes it. */
+export const AssistantCitationSchema: z.ZodType<AssistantCitation> = z
+  .object({
+    version: z.literal(1),
+    nodeId: z.string().min(1).max(512),
+    threadId: z.string().min(1).max(512),
+    messageId: z.string().min(1).max(512),
+    text: z
+      .string()
+      .max(ASSISTANT_CITATION_MAX_TEXT_LENGTH)
+      .refine((text) => text.trim() !== ""),
+    comment: z.string().max(ASSISTANT_CITATION_MAX_COMMENT_LENGTH).optional(),
+    start: z.number().int().nonnegative(),
+    end: z.number().int().nonnegative(),
+    prefix: z.string().max(ASSISTANT_CITATION_CONTEXT_LENGTH),
+    suffix: z.string().max(ASSISTANT_CITATION_CONTEXT_LENGTH),
+  })
+  .refine((citation) => citation.end > citation.start);

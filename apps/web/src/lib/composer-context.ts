@@ -6,6 +6,7 @@
 // The composer's context records (docs/plans/t3-parity.md D1006–D1008): what a `#` or `@` pick and
 // "Add to chat" put beside the prompt, named in it by a `jhin-context://` reference.
 import {
+  type AssistantCitation,
   formatContextReference,
   isKnownContextRecord,
   MESSAGE_CONTEXT_MAX_RECORDS,
@@ -230,6 +231,19 @@ export function threadLinks(
       navigate(route);
       return true;
     },
+  };
+}
+
+/** "Go to source" of a quote (D1011): in its message on screen, else its thread is opened. */
+export function citationSource(
+  links: { openThread(href: string): boolean },
+  reveal: (citation: AssistantCitation) => boolean,
+) {
+  return (citation: AssistantCitation): void => {
+    if (reveal(citation)) return;
+    links.openThread(
+      `jhin://${encodeURIComponent(citation.nodeId)}/threads/${encodeURIComponent(citation.threadId)}`,
+    );
   };
 }
 

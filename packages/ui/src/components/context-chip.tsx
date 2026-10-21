@@ -103,6 +103,23 @@ function ContextChipLabel({ className, ...props }: React.ComponentProps<"span">)
   );
 }
 
+/** A small button inside a chip (T3's ContextChipAction): a citation's comment, for one. */
+function ContextChipAction({ className, render, ...props }: useRender.ComponentProps<"button">) {
+  const defaultProps = {
+    className: cn(
+      "ml-[0.17em] inline-flex size-[1.17em] shrink-0 cursor-pointer items-center justify-center rounded-sm text-current transition-colors hover:bg-(--context-chip-accent,var(--color-foreground))/17 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none [&_svg]:size-[0.85em]",
+      className,
+    ),
+    "data-slot": "context-chip-action",
+    type: render ? undefined : ("button" as const),
+  };
+  return useRender({
+    defaultTagName: "button",
+    props: mergeProps<"button">(defaultProps, props),
+    render,
+  });
+}
+
 /** A chip with an icon and a label, and its details in a tooltip when it has any. */
 function ContextChipShell({
   icon,
@@ -169,6 +186,7 @@ function ContextChipPopover(props: {
 
 export {
   ContextChip,
+  ContextChipAction,
   ContextChipLabel,
   ContextChipPopover,
   ContextChipShell,

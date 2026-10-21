@@ -8,6 +8,7 @@
 // pull request with its state and branches, a thread, a terminal excerpt, or "no longer
 // available" for a reference whose record is gone.
 import type {
+  AssistantCitation,
   MessageContextRecord,
   ReviewCommentContextRecord,
   TerminalContextRecord,
@@ -48,6 +49,8 @@ export interface ContextChipActions {
   /** Opens a linked thread; false when its address names no node in reach. */
   readonly openThread?: ((href: string) => boolean) | undefined;
   readonly openUrl?: ((url: string) => void) | undefined;
+  /** Shows a quote's text in its message, selected (T3's "Go to source", D1011). */
+  readonly showCitationSource?: ((citation: AssistantCitation) => void) | undefined;
 }
 
 const PULL_REQUEST_CHIP_KINDS = {
