@@ -581,7 +581,7 @@ the rest of it is unchanged since D53's tag.
   (`x-hub-signature-256`, `hex`, `sha256=` for GitHub). The secret is
   write-only: given on create or update, kept in `storage.kv`, never returned
   (`webhook.hasSecret`), and kept when an update omits it. T3's `secretRef`
-  from `request_secret` waits for W13's secrets.
+  from `request_secret` is D1034.
 - **D387. Request data reaches the prompt only through placeholders**
   (`{{body.path}}`, `{{headers.name}}`, `{{query.name}}`, `{{body}}`,
   `{{request}}`), each value framed in `<webhook-data-ID>` tags with a fresh
@@ -611,6 +611,20 @@ the rest of it is unchanged since D53's tag.
   a new thread each run); the deliveries dialog lists the requests and shows
   one with its headers, body and the prompt it filled in. The page reads
   `scheduler.tasks.list` and follows the `scheduler` stream after its head.
+- **D1034. A signature takes a `secretRef` (W28).** A webhook signature on
+  `scheduler.tasks.create` and `.update` takes `secretRef` beside `secret`
+  (T3's `ScheduledTaskUpsertWebhookSchedule`): a ref the user saved through
+  `secrets.request` (security.md D1028), consumed by the save for the task's
+  project (D1031), so it works once. A ref, when given, is the only source:
+  a `secret` sent with it is ignored. The ref is consumed before the task is
+  written; a save that fails after that has used it, and the agent asks
+  again. Without `secrets.store@1` a ref is refused
+  (`SECRET_STORE_UNAVAILABLE`). The tool's description says what T3's says:
+  first call `secrets_request`, never ask for a secret in chat or invent
+  one, then pass the ref (GitHub: `{type:'webhook', signature:{header:
+  'x-hub-signature-256', encoding:'hex', prefix:'sha256=', secretRef}}`).
+  The settings page's editor keeps T3's write-only Secret field: the person
+  typing it is its owner.
 
 ### Deferred
 
@@ -630,13 +644,9 @@ the rest of it is unchanged since D53's tag.
 - Releasing a run in-process when its completion cannot be recorded (T3's
   `releaseStuckRun`): today a storage failure at that write leaves the task
   marked running until the next start's recovery.
-- `secretRef` for webhook signing secrets, entered through
-  `request_secret`. It needs what W13 left out (`security.md`, secrets
-  Deferred): a secret store apart from the config files, a request the user
-  answers privately in the thread (T3's secret prompt), and single-use
-  references only the node's own plugins can redeem. W20 stops short of it:
-  that store is security work of its own, not a scheduler change. Until
-  then a signing secret is typed into the editor's write-only field.
+- The webhook signing secret a save takes (in clear or from a `secretRef`)
+  is kept in `storage.kv` as before (D386), not in `secrets.store@1`
+  (security.md D1021).
 - A public webhook URL through a relay, held deliveries while the node is
   offline and their maximum age (`maxDeliveryAgeMinutes`): T3 does this with
   T3 Connect; Jhin's remote access is W13.

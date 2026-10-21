@@ -30,6 +30,7 @@
     "@jhin/kernel": "workspace:*",
     "@jhin/rpc": "workspace:*",
     "@jhin/sdk": "workspace:*",
+    "@jhin/secrets-api": "workspace:*",
     "@jhin/storage-api": "workspace:*",
     "jsonc-parser": "catalog:",
     "pino": "catalog:"

@@ -39,6 +39,11 @@ export class HostProcess {
     });
   }
 
+  /** Every message received so far: events and results. */
+  get received(): readonly Message[] {
+    return this.#messages;
+  }
+
   /** Resolves with the first message (already received or future) that matches. */
   waitFor(match: (message: Message) => boolean): Promise<Message> {
     const seen = this.#messages.find(match);

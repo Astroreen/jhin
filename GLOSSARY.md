@@ -180,6 +180,14 @@ Words about Jhin:
 - **Request** — something a running turn asks the user: an **approval** of a
   tool call or **questions**. Answered with `threads.respond`; closed when its
   turn ends.
+- **Secret store** — where a node keeps secrets apart from its config files
+  (`secrets.store@1`): sealed, its key in the OS keychain or a key file. A
+  config file holds a **config secret reference** (`$secret:<id>`) instead,
+  which resolves only at the place it was made.
+- **Secret request** — a turn asking the user for a secret through a private
+  card in the thread (`secrets.request`, T3's `request_secret`); the agent
+  gets a **`secretRef`**, a one-use reference a tool consumes, never the
+  value.
 - **Follow-up** — a message sent while its thread runs a turn: it waits in
   the thread's **queue** on its node and starts the next turn once the
   thread is free, unless the queue is **held** after a stopped or failed

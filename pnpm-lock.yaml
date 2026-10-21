@@ -300,6 +300,9 @@ importers:
       '@jhin/plugin-scheduler':
         specifier: workspace:*
         version: link:../../plugins/scheduler
+      '@jhin/plugin-secrets':
+        specifier: workspace:*
+        version: link:../../plugins/secrets
       '@jhin/plugin-source-control':
         specifier: workspace:*
         version: link:../../plugins/source-control
@@ -614,6 +617,9 @@ importers:
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@jhin/secrets-api':
+        specifier: workspace:*
+        version: link:../secrets-api
       '@jhin/storage-api':
         specifier: workspace:*
         version: link:../storage-api
@@ -661,6 +667,12 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.6.7
+
+  packages/secrets-api:
+    dependencies:
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../sdk
 
   packages/source-control-api:
     dependencies:
@@ -1205,6 +1217,22 @@ importers:
       '@jhin/testing':
         specifier: workspace:*
         version: link:../../packages/testing
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+
+  plugins/secrets:
+    dependencies:
+      '@jhin/host-api':
+        specifier: workspace:*
+        version: link:../../packages/host-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/secrets-api':
+        specifier: workspace:*
+        version: link:../../packages/secrets-api
+    devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2

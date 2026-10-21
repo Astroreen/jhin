@@ -75,7 +75,9 @@ frame), devices (`plugins/devices`: finding the Android SDK, the device tools'
 wording and the Device panel), pairing (`plugins/auth-token`:
 pairing codes, the pairing and session endpoints; the web client's pairing
 links, saved nodes in IndexedDB, Authorized clients settings and QR code
-component) and the desktop app (`apps/desktop`, `plugins/desktop`,
+component), secrets (`packages/secrets-api`, `plugins/secrets`: the secret
+store's shape, secret requests and their card, one-use secretRefs, their
+statuses, lifetime and messages) and the desktop app (`apps/desktop`, `plugins/desktop`,
 `packages/desktop-api`: the window and its chrome, the application and context
 menus, the notification badge, the update flow, its state machine and its
 controls, the nightly release notes, the quit hold and its hint;
