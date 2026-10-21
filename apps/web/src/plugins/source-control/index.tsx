@@ -32,10 +32,11 @@ import {
 import { FileDiffIcon } from "lucide-react";
 
 import { builtin } from "../../lib/builtin.ts";
+import { lazyChunk } from "../../lib/lazy-chunk.tsx";
 import { useExternal } from "../../lib/hooks.ts";
 import { createBranchToolbar } from "./branch-toolbar.tsx";
 import { createDiffPanel, DIFF_PANEL } from "./diff-panel.tsx";
-import { createGitActionsControl, createRunningActions } from "./git-actions.tsx";
+import { createRunningActions } from "./running.ts";
 import { createCardIndicators } from "./indicators.tsx";
 import { createLinkActions } from "./links.tsx";
 import { useSourceControl, type SourceControlServices } from "./services.ts";
@@ -191,12 +192,22 @@ export const sourceControlPlugin = builtin(
         }),
       );
       // Linking pull requests from the thread's menu, before archiving and deleting it.
-      const { LinkPullRequest, UnlinkPullRequests } = createLinkActions(services, dialogs);
+      const { LinkPullRequest, UnlinkPullRequests, WatchPullRequests } = createLinkActions(
+        services,
+        dialogs,
+      );
       context.subscriptions.add(
         slots.contribute<ThreadActionProps>("thread.actions", {
           id: "jhin.source-control.link-pull-request",
           order: 44,
           component: LinkPullRequest,
+        }),
+      );
+      context.subscriptions.add(
+        slots.contribute<ThreadActionProps>("thread.actions", {
+          id: "jhin.source-control.watch-pull-requests",
+          order: 44.5,
+          component: WatchPullRequests,
         }),
       );
       context.subscriptions.add(
@@ -211,7 +222,14 @@ export const sourceControlPlugin = builtin(
         slots.contribute<ChatHeaderActionProps>("chat.header.actions", {
           id: "jhin.source-control.git-actions",
           order: -100,
-          component: createGitActionsControl(services),
+          // Its dialogs load with it, not with the page (D440).
+          component: lazyChunk<ChatHeaderActionProps>(
+            () =>
+              import("./git-actions.tsx").then((module) =>
+                module.createGitActionsControl(services),
+              ),
+            { loading: () => null, failed: () => null },
+          ),
         }),
       );
       context.subscriptions.add(

@@ -4,9 +4,9 @@ Status: **implemented** (status, diffs, branches, pull requests, the card's
 indicators, the branch toolbar and the diff panel); W3 (checkpoints,
 reverting, worktrees, D240–D259) **in progress**: the turn hooks and a
 thread's own working directory (D241, D242) are done; git actions (W4 of
-`t3-roadmap.md`, D260–D266) and linked pull requests (D267–D270)
-**implemented**; watching pull requests and other forges (D271–D279) **in
-progress**. This file records how
+`t3-roadmap.md`, D260–D266), linked pull requests (D267–D270) and watching
+them (D271–D274) **implemented**; other forges (D275–D279) **in progress**.
+This file records how
 Jhin reads the git repositories of a node's projects, how the web client
 shows them as T3 Code does, what was left out and what is deferred.
 
@@ -574,6 +574,65 @@ T3's badge, the dialog's input); Playwright `e2e/tests/git-actions.spec.ts`
 (linking `#43` stacked on the action's pull request makes the card a stack,
 with a screenshot).
 
+### Watching a pull request (W4, D271–D274)
+
+- **D271. A thread watches a linked pull request** (T3 Code's
+  `watch_pull_request`, `apps/server/src/orchestration-v2/pullRequestWatch.ts`
+  and `PullRequestWatchReactor.ts` at D53): `git.pr.watch` (links it first,
+  as `agent`) and `git.pr.unwatch` (`git.write`; MCP tools `git_pr_watch`,
+  `git_pr_unwatch`), refused for an archived thread and a merged pull request
+  ("The pull request is merged, so there is nothing to watch."). A refused
+  watch leaves no link behind; an archived thread is refused before anything
+  is linked. The watch is
+  part of the link (`watch`: what it has told already: the head commit, the
+  failed checks, whether all passed, comments up to when and by id, a
+  conflict, comment-only wakes and failed reads in a row), so it survives
+  restarts and travels with `git.pr.updated`.
+- **D272. Every `watchSweepSeconds` (120; 0 = only on request) the node reads
+  each watched pull request** (`gh pr view <url> --json
+  headRefOid,mergeable,statusCheckRollup,comments,reviews,author,…` and the
+  account `gh api user`); `git.pr.watch.check` reads them now. One sweep runs at a time;
+  a watch is changed only as it is stored then (one unwatched or restarted
+  during a read stays so); a thread archived or gone ends its watches; the
+  account is asked again after ten minutes. As in T3: new
+  failed checks (failure, cancelled, action required), all checks passed
+  (after a push, again), comments and reviews after the watch began by anyone
+  but the account and the pull request's author, and a new conflict with the
+  base are news; a new head commit resets the check state; an empty check
+  list keeps it; "unknown" mergeability keeps the conflict state.
+- **D273. News wakes the thread** with T3's message, "Jhin" for "T3 Code"
+  ("Update on pull request #7 (…), which Jhin is watching for you:", "- Checks
+  failed on abc1234:", "- All 3 checks passed on abc1234.", "- 2 new
+  comments:", "- The branch now conflicts with main.", at most ten items each,
+  and how to go on, naming `git_pr_unwatch`), sent with `threads.send`. While
+  a turn runs (or waits for the user) the news waits in `storage.kv` and goes
+  out, joined, when the turn ends (T3's `queue_after_active`). The news is
+  kept before the watch moves past it, one thread's queue is changed by one
+  task at a time, and a send that fails for another reason than a running
+  turn is reported and dropped. The watch stops
+  without a word when the pull request merges, with "Pull request #8 (…) was
+  closed, so Jhin stopped watching it. Call git_pr_watch if it reopens." when
+  it closes, after ten comment-only wakes in a row, and after eight failed
+  reads in a row (T3's messages).
+- **D274. The thread's menu offers "Watch #N for changes" and "Stop watching
+  #N"** for each open linked pull request
+  (`jhin.source-control.watch-pull-requests`), and the badge's list marks a
+  watched one with T3's eye ("Watching: the agent wakes when checks finish,
+  someone comments, or the branch conflicts"). Not ported: review thread
+  comments on lines (`gh pr view` has none), required checks as the pass gate
+  (all checks are), T3's fingerprints that skip unchanged reads, rate limit
+  pauses, the notification of a wake and the sidebar's "Waiting" for a
+  watched thread (Deferred).
+
+The proof: `plugins/source-control/test/pr-watch.test.ts` (evaluation: failed
+checks once, passing after a push and the message, others' comments only and
+a conflict, ten comment-only wakes; the node with a fake `gh`: a quiet check,
+then failed checks and a comment waking the thread with T3's message,
+unwatching; news held during a turn and sent when it ends; stopping on merge
+quietly, refusing to watch a merged one, and closing with a word);
+Playwright `e2e/tests/git-actions.spec.ts` (watching from the thread's menu
+marks the badge's list, with a screenshot).
+
 ## Deferred
 
 - **Checkpoints and per-turn diffs** (T3's "Latest turn" and "Turn N"
@@ -588,7 +647,11 @@ with a screenshot).
   workspace selector, "Start from origin", worktree cleanup): needs a thread
   to carry a working directory of its own and the agent runtimes to run in
   it (`agent.runtime@1.1` gets the project's directory).
-- Watching a pull request and other forges (W4, D271–D279, in progress).
+- Other forges, GitHub Enterprise hosts and forks (W4, D275–D279, in
+  progress).
+- Watching (D274): review thread comments on lines, required checks as the
+  gate, read fingerprints, rate limit pauses, a notification for a wake and
+  the sidebar's "Waiting" for a watched thread (W14 may take it).
 - T3's right panel of a thread's pull requests, its chat header rows, native
   stacks of a forge (and their "Dismiss from thread") and the instructions
   that tell agents to link what they open.

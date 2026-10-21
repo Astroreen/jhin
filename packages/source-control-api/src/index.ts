@@ -164,6 +164,30 @@ export type ThreadBranch = z.output<typeof ThreadBranch>;
 export const PullRequestLinkSource = z.enum(["manual", "created", "agent"]);
 export type PullRequestLinkSource = z.output<typeof PullRequestLinkSource>;
 
+/**
+ * What a watch has told its thread already, so it tells each change once
+ * (T3 Code's ThreadPullRequestWatch).
+ */
+export const PullRequestWatch = z.object({
+  startedAt: z.string(),
+  /** The head commit the check state below belongs to. */
+  headSha: z.string().nullable(),
+  failedChecks: z.array(z.string()),
+  passed: z.boolean(),
+  /** Comments up to this time were told; those at it, by id. */
+  remarksThrough: z.string(),
+  remarkIds: z.array(z.string()),
+  conflicting: z.boolean(),
+  /** Comment-only wakes in a row; the watch stops at `PULL_REQUEST_WATCH_WAKE_LIMIT`. */
+  wakes: z.number().int().nonnegative(),
+  /** Reads that failed in a row; the watch stops at `PULL_REQUEST_WATCH_FAILURE_LIMIT`. */
+  failures: z.number().int().nonnegative().default(0),
+});
+export type PullRequestWatch = z.output<typeof PullRequestWatch>;
+
+export const PULL_REQUEST_WATCH_WAKE_LIMIT = 10;
+export const PULL_REQUEST_WATCH_FAILURE_LIMIT = 8;
+
 /** A pull request linked to a thread: identified by host, repository and number. */
 export const ThreadPullRequest = z.object({
   /** `host/owner/repo#number`, lowercased: the identity links are compared by. */
@@ -179,6 +203,8 @@ export const ThreadPullRequest = z.object({
   snapshot: PullRequest.nullable(),
   /** When `snapshot` was read. */
   syncedAt: z.string().optional(),
+  /** Set while the thread watches the pull request (D271). */
+  watch: PullRequestWatch.optional(),
 });
 export type ThreadPullRequest = z.output<typeof ThreadPullRequest>;
 

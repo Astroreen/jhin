@@ -10,7 +10,7 @@ import type { ProjectStatus } from "@jhin/source-control-api";
 import type { Toasts } from "@jhin/ui";
 import { useSyncExternalStore } from "react";
 
-import type { RunningActions } from "./git-actions.tsx";
+import type { RunningActions } from "./running.ts";
 import type { SourceControlStore, SourceControlView } from "./store.ts";
 
 /** What the source control components use, handed over by the plugin. */

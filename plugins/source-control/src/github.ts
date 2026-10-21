@@ -5,6 +5,7 @@
 import type { PullRequest, PullRequestChecks } from "@jhin/source-control-api";
 
 import { run, SpawnError } from "./git.ts";
+import type { Remark, WatchRead } from "./pr-watch.ts";
 
 const GH_ENV = {
   GH_PROMPT_DISABLED: "1",
@@ -273,5 +274,122 @@ export async function createPullRequest(
     headBranch: input.head,
     baseBranch: input.base,
     checks: rollupChecks([]),
+  };
+}
+
+interface RawActor {
+  readonly login?: unknown;
+}
+
+interface RawRemark {
+  readonly id?: unknown;
+  readonly author?: RawActor | null;
+  readonly body?: unknown;
+  readonly createdAt?: unknown;
+  readonly submittedAt?: unknown;
+  readonly lastEditedAt?: unknown;
+  readonly state?: unknown;
+  readonly url?: unknown;
+}
+
+const text = (value: unknown) => (typeof value === "string" ? value : undefined);
+const login = (actor: RawActor | null | undefined) => text(actor?.login) ?? null;
+
+/** The host of a pull request's URL. */
+const hostOf = (url: string) =>
+  /^https?:\/\/([^/:]+)/i.exec(url)?.[1]?.toLowerCase() ?? "github.com";
+
+/** How long the node's GitHub account is taken as known: a `gh auth switch` shows within it. */
+const VIEWER_TTL_MS = 10 * 60_000;
+
+/** The plugin's answers of `gh api user`, by `gh`; kept by whoever reads watches. */
+export type Viewers = Map<string, { readonly at: number; readonly login: Promise<string | null> }>;
+
+/** The node's GitHub account (`gh api user`), asked again once its answer is old. */
+function viewerOf(
+  viewers: Viewers,
+  ghPath: string,
+  cwd: string,
+  host: string,
+): Promise<string | null> {
+  // Per host: the node may be signed in to github.com and an Enterprise host as different people.
+  const key = `${ghPath}\u0000${host}`;
+  const known = viewers.get(key);
+  if (known !== undefined && Date.now() - known.at < VIEWER_TTL_MS) return known.login;
+  const asked = ghJson(ghPath, cwd, ["api", "--hostname", host, "user"]).then(
+    (answer) => text((answer as RawActor | null)?.login) ?? null,
+    () => null,
+  );
+  viewers.set(key, { at: Date.now(), login: asked });
+  // A failed answer is asked again next time.
+  void asked.then((value) => {
+    if (value === null && viewers.get(key)?.login === asked) viewers.delete(key);
+  });
+  return asked;
+}
+
+const WATCH_FIELDS =
+  "number,url,state,headRefOid,mergeable,baseRefName,statusCheckRollup,comments,reviews,author";
+
+/** What a watch reads of a pull request (D272): checks, mergeability and remarks. */
+export async function readWatch(
+  ghPath: string,
+  cwd: string,
+  url: string,
+  viewers: Viewers,
+): Promise<WatchRead> {
+  const [answer, viewer] = await Promise.all([
+    ghJson(ghPath, cwd, ["pr", "view", url, "--json", WATCH_FIELDS]),
+    viewerOf(viewers, ghPath, cwd, hostOf(url)),
+  ]);
+  const raw = (answer ?? {}) as Record<string, unknown>;
+  const state = text(raw["state"])?.toLowerCase();
+  const rollup = Array.isArray(raw["statusCheckRollup"])
+    ? (raw["statusCheckRollup"] as (RawCheck & { detailsUrl?: unknown; targetUrl?: unknown })[])
+    : [];
+  const remark = (item: RawRemark, review: boolean): Remark | undefined => {
+    const id = text(item.id);
+    const createdAt = text(item.createdAt) ?? text(item.submittedAt);
+    if (id === undefined || createdAt === undefined) return undefined;
+    const edited = text(item.lastEditedAt);
+    const link = text(item.url);
+    const reviewState = review ? text(item.state) : undefined;
+    return {
+      id,
+      author: login(item.author),
+      body: text(item.body) ?? "",
+      createdAt,
+      ...(edited ? { editedAt: edited } : {}),
+      ...(link ? { url: link } : {}),
+      ...(reviewState ? { reviewState } : {}),
+    };
+  };
+  const list = (key: string) =>
+    Array.isArray(raw[key]) ? (raw[key] as RawRemark[]) : ([] as RawRemark[]);
+  const mergeable = text(raw["mergeable"])?.toUpperCase();
+  return {
+    state: state === "merged" ? "merged" : state === "closed" ? "closed" : "open",
+    headSha: text(raw["headRefOid"]) ?? null,
+    baseBranch: text(raw["baseRefName"]) ?? "",
+    checks: rollup.map((check) => {
+      const link = text(check.detailsUrl) ?? text(check.targetUrl);
+      return {
+        name: check.name ?? check.context ?? "check",
+        status: checkStatus(check),
+        ...(link ? { url: link } : {}),
+      };
+    }),
+    mergeability:
+      mergeable === "MERGEABLE"
+        ? "mergeable"
+        : mergeable === "CONFLICTING"
+          ? "conflicting"
+          : "unknown",
+    author: login(raw["author"] as RawActor | null),
+    viewer,
+    remarks: [
+      ...list("comments").map((item) => remark(item, false)),
+      ...list("reviews").map((item) => remark(item, true)),
+    ].filter((item): item is Remark => item !== undefined),
   };
 }

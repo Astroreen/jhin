@@ -109,7 +109,7 @@ async function shot(page: Page, info: TestInfo, name: string) {
   await info.attach(name, { path, contentType: "image/png" });
 }
 
-test("D260–D269: the chat header's git actions commit, push and open a pull request; linking another makes a stack", async ({
+test("D260–D274: the chat header's git actions commit, push and open a pull request; linking another makes a stack, watched from the menu", async ({
   page,
 }, info) => {
   const node = await startNode({
@@ -179,4 +179,19 @@ test("D260–D269: the chat header's git actions commit, push and open a pull re
   await stack.hover();
   await expect(page.getByText("stack · 2")).toBeVisible();
   await shot(page, info, "linked-pull-requests-stack");
+
+  // Watching the bottom layer from the same menu marks it in the badge's list.
+  await page.mouse.move(0, 0);
+  await page.getByRole("heading", { name: "New thread" }).getByRole("button").click();
+  await expect(page.getByRole("menuitem", { name: "Watch #43 for changes" })).toBeVisible();
+  await shot(page, info, "watch-pull-request-menu");
+  await page.getByRole("menuitem", { name: "Watch #42 for changes" }).click();
+  await stack.hover();
+  await expect(
+    page.getByLabel(
+      "Watching: the agent wakes when checks finish, someone comments, or the branch conflicts",
+    ),
+  ).toBeVisible();
+  await page.getByRole("heading", { name: "New thread" }).getByRole("button").click();
+  await expect(page.getByRole("menuitem", { name: "Stop watching #42" })).toBeVisible();
 });
