@@ -605,7 +605,9 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   or its `additionalSpeedTiers` ("Fast" for `fast`), when it has any. A
   turn's `modelOptions` that apply to its model (D297) become `turn/start`'s
   `effort` and `serviceTier`; the turn's effort wins over the config's
-  `effort`, and a tier nobody chose is not sent, so Codex's default applies.
+  `effort`. A tier goes out as chosen, "Standard" as `default` (as T3 sends
+  it); a turn that names no tier sends none, so Codex applies the model's
+  `defaultServiceTier`.
   A model `model/list` did not name takes no options, only the config's
   effort.
 

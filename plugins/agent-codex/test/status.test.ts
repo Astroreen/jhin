@@ -99,6 +99,11 @@ describe("jhin.agent-codex: status", () => {
               ],
               serviceTiers: [{ id: "fast", name: "Fast", description: "Faster replies" }],
             }),
+            model("gpt-6-luna", {
+              supportedReasoningEfforts: [{ reasoningEffort: 7 }],
+              serviceTiers: null,
+              additionalSpeedTiers: [null],
+            }),
             model("gpt-6-astra", {
               supportedReasoningEfforts: [
                 { reasoningEffort: "medium" },
@@ -135,8 +140,10 @@ describe("jhin.agent-codex: status", () => {
         ],
       },
     ]);
+    // Entries that are not ids are skipped: no options at all.
+    expect(codex.models?.[1]).not.toHaveProperty("options");
     // T3 defaults the gpt-6-astra family to medium, and keeps the catalog's default tier.
-    expect(codex.models?.[1]?.options).toEqual([
+    expect(codex.models?.[2]?.options).toEqual([
       {
         id: "reasoningEffort",
         label: "Reasoning",
@@ -186,7 +193,12 @@ describe("jhin.agent-codex: status", () => {
       model: "custom-slug",
       modelOptions: [{ id: "serviceTier", value: "fast" }],
     });
-    const [first, second, third] = fake.received("turn/start").map((call) => call.params);
+    // "Standard" goes out as T3 sends it: `default`.
+    await run("turn-4", {
+      model: "gpt-6.1-sol",
+      modelOptions: [{ id: "serviceTier", value: "default" }],
+    });
+    const [first, second, third, fourth] = fake.received("turn/start").map((call) => call.params);
     expect(first).toMatchObject({
       effort: "xhigh",
       serviceTier: "fast",
@@ -196,6 +208,7 @@ describe("jhin.agent-codex: status", () => {
     expect(second).not.toHaveProperty("serviceTier");
     expect(third).toMatchObject({ model: "custom-slug", effort: "low" });
     expect(third).not.toHaveProperty("serviceTier");
+    expect(fourth).toMatchObject({ serviceTier: "default" });
     codex.dispose();
   });
 
