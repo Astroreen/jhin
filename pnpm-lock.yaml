@@ -164,6 +164,9 @@ importers:
       '@jhin/plugin-agent-fake':
         specifier: workspace:*
         version: link:../../plugins/agent-fake
+      '@jhin/plugin-agent-opencode':
+        specifier: workspace:*
+        version: link:../../plugins/agent-opencode
       '@jhin/plugin-auth-token':
         specifier: workspace:*
         version: link:../../plugins/auth-token
@@ -592,6 +595,28 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
     devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+
+  plugins/agent-opencode:
+    dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../../packages/agent-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
+    devDependencies:
+      '@jhin/plugin-threads':
+        specifier: workspace:*
+        version: link:../threads
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2

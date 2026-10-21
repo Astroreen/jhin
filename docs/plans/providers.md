@@ -1,4 +1,4 @@
-# Providers plan: Claude Code and Codex
+# Providers plan: Claude Code, Codex and OpenCode
 
 Status: **implemented** (Claude Code; W9's follow-ups D340–D350 too, see
 Deferred for what is left; Codex too, its signed-in manual check pending,
@@ -352,7 +352,6 @@ Done since: steering a running turn (`t3-parity.md` D204–D206).
   `makeSubagentChildThread`), not inside the tool call. Jhin has no child
   threads yet (W10's delegated tasks bring them), nor a way for a runtime to
   write another thread's items through `agent.runtime@1`.
-- The OpenCode runtime (W8); Codex is W7, below.
 - A snapshot frame Claude Code would send twice for one unstreamed block
   (not seen so far) shows twice: since D342 identical texts are not merged.
 - Session files of a deleted thread under an earlier config directory: D345
@@ -663,4 +662,224 @@ plugin, not Codex itself.
   (signed in, plan labels, signed out, not starting, model pages and the
   preferred default) and the `codex.sessions.*` commands.
 - Against a signed-in Codex (manual): a supervised turn asks before a
+  command, runs it once approved and answers.
+
+## OpenCode (W8)
+
+Status: **implemented** (W8 of `t3-roadmap.md`). OpenCode runs behind the same
+`agent.runtime@1.1` as Claude Code, in its own plugin, with T3 Code's
+OpenCode 2 behaviour.
+
+### Decisions
+
+- **D325. OpenCode is the plugin `jhin.agent-opencode`.** It registers one
+  runtime (`agentId` `jhin.agent-opencode`, name "OpenCode") through
+  `agent.registry@1`, keeps its records in `storage.kv` and follows the
+  `threads` stream through `storage.eventlog@1`. The reference is T3 Code
+  `eb7b35ac` (D53): `packages/provider-opencode`, its OpenCode 2 adapter
+  (`server/v2/adapter.ts`), server (`v2/OpenCode2Server.ts`), catalog,
+  version probe, status and tool items. Derived files name their origin and
+  are covered by `THIRD_PARTY_NOTICES.md`. Only OpenCode 2 is spoken (T3
+  picks its 1.x adapter for an older CLI): it is the current OpenCode, and
+  its protocol is what T3 builds on. A later major is tried as T3 does (any
+  major from 2 takes the OpenCode 2 path); a protocol change there shows as
+  failed requests. The plugin talks to OpenCode's HTTP API
+  with `fetch` and reads its event stream itself, without OpenCode's client
+  packages (their protocol package depends on Effect).
+- **D326. One OpenCode server per node.** Unless `serverUrl` names one, the
+  plugin starts `opencode serve --hostname=127.0.0.1 --port=<free port>`
+  with a password it generates (`OPENCODE_PASSWORD`; the inherited
+  `OPENCODE_SERVER_PASSWORD` is dropped, as in T3), reads the URL from the
+  line `server listening on <url>` within 30 s and checks `GET /api/info`.
+  Every request sends `Authorization: Basic` with the user `opencode`. The
+  server is started when something first needs it (a status probe, a turn)
+  and serves every thread and directory (`location[directory]`). It exits
+  after `serverIdleMinutes` (default 10; 0: never) with no turn and no probe
+  using it, once nothing uses it after the runtime is turned off, and when
+  the plugin is deactivated (SIGTERM to its process group, SIGKILL a second
+  later). A changed binary, URL or password, or turning the runtime off,
+  retires the server: turns running on it keep it until they end, new ones
+  get another. A
+  server named by `serverUrl` is never started or stopped, only connected
+  to with `serverPassword`.
+- **D327. One OpenCode session per thread.** The first turn creates it
+  (`POST /api/session` with the project's directory, the model and the
+  rules of D328) and records it under `session/<threadId>` at once, marked fresh until
+  OpenCode took a prompt: a turn stopped or refused before that leaves the
+  next one the same session and the transcript of D102's kind. Later turns
+  use it. The
+  record also keeps the session's grants (D331) and whether it is unsettled
+  (D337), so a reload or restart keeps both. A session OpenCode no longer has (`SessionNotFoundError`) fails the
+  turn with T3's "The OpenCode session no longer exists. Send the message
+  again to continue in a new session." and the record is forgotten. A
+  thread that ran on other agents first hands OpenCode the earlier turns as a
+  transcript in its first message, and one that went to another agent and
+  came back hands it the turns it missed, as D102 does for Claude. A deleted
+  thread's record is forgotten; its OpenCode session stays in OpenCode's
+  database.
+  The record also names the last turn whose prompt OpenCode took; a turn
+  whose history no longer shows it (a rollback dropped it, `t3-parity.md`
+  D220) starts a new session with the thread's transcript, as Claude's does
+  (D222). T3 reverts OpenCode's own session instead (deferred).
+- **D328. Modes are OpenCode rules and agents, as in T3.** `full-access` is
+  `* * allow`; otherwise `shell * ask`, `edit * ask` (`allow` with
+  `auto-accept-edits`) and `external_directory * ask`. The grants
+  accept-for-session added follow, then in plan mode `edit * deny`, then the
+  agent's own `allow` rules for `edit` and `external_directory` on paths
+  other than `*` (the `plan` agent's too in plan mode, so it can write its
+  plan file). Plan mode switches the session to OpenCode's `plan` agent,
+  otherwise `build`. Before each turn the agent, the model and the rules are
+  written only when they changed (`switchAgent`, `switchModel`,
+  `PATCH /api/session/:id`). T3's per-thread MCP server and its rules are not
+  ported (see Deferred).
+- **D329. A turn is one prompt.** `POST /api/session/:id/prompt` with the
+  id `msg_jhin_turn_<sessionId>:<turnId>` (OpenCode answers a repeated id
+  with the message it has) and the text. A bare `/compact` compacts the
+  session; `/<name> rest` runs OpenCode's command of that name when it lists
+  one (not in a message that carries a transcript or images). Images are written to a temporary file and named in the text as T3
+  does (`[Attached image "<name>" is saved at: <path>]`); the files stay while
+  the thread does (its session's history names them) and go when it is
+  deleted. The event stream is
+  subscribed before anything is sent: OpenCode keeps no events for a stream
+  that was not listening.
+- **D330. The turn ends on OpenCode's execution end.** One event stream
+  (`GET /api/event`) per server, routed by `sessionID`.
+  On a session that was unsettled (D337), only once the turn's own
+  `session.execution.started` came: an end before it is a late one of the
+  stopped execution (T3's `awaitingStart`).
+  `session.execution.succeeded` completes the turn, `.interrupted` ends it as
+  interrupted and `.failed` fails it with OpenCode's message. Text and
+  reasoning stream as deltas and complete with OpenCode's final text
+  (`<assistantMessageID>:text|reasoning:<ordinal>`). After an interrupt nothing
+  OpenCode still sends is recorded, as with Claude (D94). A stream that ends or
+  stays silent for 45 s (OpenCode sends a heartbeat every 10–15 s) fails the
+  running turns with "The OpenCode event stream was lost." and is opened
+  again by the next turn.
+- **D331. Approvals are OpenCode's permission requests.** `permission.asked`
+  opens an approval of the tool call it names (or one made of its action and
+  resources), titled as an action ("Run command", "Edit file", "Read file").
+  Accept replies `once`; accept-for-session replies `once` and adds the
+  request's `save` patterns to the session's grants (OpenCode's own `always`
+  would save them for the whole project; a request with no `save` patterns,
+  where T3 offers no session grant, is allowed once and logged); decline first steers T3's note
+  into the session ("The user declined the <action> request (…). Do not retry
+  it; …") and replies `reject` with "The user declined this request."; cancel
+  replies `reject` without a message, OpenCode's stop.
+- **D332. Questions are OpenCode forms.** A `form.created` with only
+  `string` and `multiselect` fields opens a user-input request (field key as
+  question id, title as header, description as question, options by label;
+  a field without options or marked `custom` takes free text). Answers reply
+  to the form, several choices of a single-answer field joined with ", ";
+  no answer cancels it. A form with any other field is cancelled and fails
+  the turn with T3's "OpenCode asked for <what>, which Jhin can't show. The
+  question was declined."
+- **D333. Tool calls are classified as in T3's tool items.** `shell`/`bash`
+  are commands, `edit`/`write`/`patch` file changes, `read` a file read,
+  `glob`/`grep`/`search`/`lsp` searches, `web*`/`codesearch` web, `subagent`
+  an agent call; everything else keeps its own name. Output is the tool's
+  text content, cut at 20 000 characters. `todowrite` is a plan update instead of a tool
+  call, as Claude's `TodoWrite` is (D93); T3 shows it as a tool. `question`
+  is never a tool call (its form is the request).
+- **D334. Usage comes from OpenCode's steps.** Each `session.step.ended`
+  adds its tokens (input with cache reads and writes, output with reasoning,
+  cache reads) and cost; the context is the last step's input and output
+  against the model's window (`limit.input`, else `limit.context`). Usage is
+  reported after each step. OpenCode's cost counts only when above 0 (it
+  writes 0 for unknown or subscription pricing).
+- **D335. Models and status from OpenCode.** `status()` runs
+  `opencode --version` (or reads `/api/info` of a configured server), then
+  lists the server's models (`GET /api/model`, waiting up to 5 s for a fresh
+  server to list any) as `<providerID>/<id>`, named as OpenCode names them,
+  with the provider's name as description. The default model is
+  `defaultModel`, else OpenCode's own (`GET /api/model/default`), else the
+  first listed. Messages are T3's: not installed, too old (1.x), the server
+  rejecting the password, no models listed, "OpenCode <version> lists <n>
+  models." Probes are cached as Claude's are (D95): five minutes when
+  available, ten seconds when not, a stale answer given at once.
+- **D336. OpenCode is off until enabled, as in T3.** The config section
+  `jhin.agent-opencode` has `enabled` (default false), `binaryPath`,
+  `serverUrl`, `serverPassword` (write-only), `defaultModel` and
+  `serverIdleMinutes`. A disabled runtime reports "OpenCode is disabled in
+  Jhin settings." and starts nothing, so a node never starts OpenCode
+  unasked and the default agent (D96) stays Claude Code or the fake one.
+- **D337. Interrupts stop OpenCode's execution.** An interrupt answers every
+  open request with OpenCode's stop (a permission rejected without a message,
+  a form cancelled) and calls `POST /api/session/:id/interrupt`; the turn
+  ends on the execution end that follows. An interrupt while OpenCode has not
+  answered the prompt gives the prompt up, asks OpenCode to stop and ends the
+  turn, with the session marked unsettled (OpenCode may take it after all).
+  When OpenCode says nothing ran or does not answer within 10 s,
+  the turn ends at once and the session is marked unsettled in its record:
+  the next turn first asks `/api/session/active`, and a session still running
+  is interrupted and the turn fails with T3's "OpenCode is still stopping the
+  previous turn. Send the message again in a moment."
+- **D338. Prompt errors are T3's.** A prompt OpenCode does not answer within
+  60 s fails the turn ("OpenCode did not answer the prompt in time.") and
+  marks the session unsettled. A prompt OpenCode refuses fails the turn
+  with its message; unless the refusal is one that means nothing was queued
+  (`InvalidRequestError`, `ConflictError`, `UnauthorizedError`,
+  `CommandNotFoundError`, `SkillNotFoundError`) the session is marked
+  unsettled (D337). A model that is not `provider/model` fails with "OpenCode
+  model '<model>' must use provider/model format".
+- **D339. Tests run a fake OpenCode server.** `test/fake-server.ts` serves the
+  HTTP API and event stream of D326–D338 from scripts, over a real socket,
+  and a stand-in `opencode` executable (a Node script) prints its version or
+  starts it, so the spawn, the password and the URL line are tested too. CI
+  never runs the real CLI.
+
+### Not ported
+
+- OpenCode 1.x (T3's `adapter.ts` over `@opencode-ai/sdk`): a CLI older than
+  2.0 is reported as unsupported.
+- T3's per-thread MCP server inside OpenCode, steering, fork and rollback,
+  subagent child sessions and background wakes, reconnecting and reconciling
+  a lost event stream, OpenCode Go usage limits, text generation, skills and
+  `$skill` mentions, the version advisory and self-update.
+
+### Deferred
+
+- OpenCode 1.x.
+- A lost event stream reconnects and reconciles the running turn from
+  `message.list` (T3 does); today the turn fails.
+- Per-turn model options (OpenCode's variants, T3's "Reasoning" select).
+- Steering a running turn (`delivery: "steer"`), fork and rollback of a
+  session.
+- Subagent transcripts: a `subagent` call shows its result only.
+- Writing the thread's title to its OpenCode session.
+- Deleting a deleted thread's OpenCode session.
+- Choosing what of the node's environment `opencode serve` inherits, as
+  Claude's `inheritEnv` (D346) does: today it gets the whole environment.
+- A size bound on the transcript handed to a new session (D327), as for
+  Claude's (D102): a long thread goes over whole.
+- A rollback through OpenCode's own revert (`session.revert.stage`/`commit`,
+  as T3 does) instead of a new session with the transcript (D327).
+- A time limit on each request a turn makes before its prompt (agents,
+  session, switches): an interrupt takes effect between them, and only the
+  activation retries are bounded (60 s).
+- Attached images under the node's private data directory instead of the
+  shared temporary one (folders are created 0700, but a `jhin-opencode`
+  folder another user made first would be used).
+- Reaping an `opencode serve` left by a node that crashed: it runs detached
+  (its own process group) and is stopped only when the plugin deactivates;
+  T3 keeps a ledger of the servers it started for that.
+
+### Landing
+
+One PR. Public API it adds: the plugin `jhin.agent-opencode`, its config
+section and storage namespace `jhin.agent-opencode`. The distribution gains
+the plugin; it needs no npm dependency.
+
+**Done when:**
+
+- Against the fake server: the server started with its password and URL
+  line, a new session and its reuse, a missed-turns transcript, streamed text
+  and reasoning, tools, todos as plans, usage, approvals (accept,
+  accept-for-session, decline, cancel), questions (answered and
+  unsupported), plan mode's agent and rules, `/compact`, interrupts (and an
+  unsettled session), a failed execution, a lost stream, a missing session,
+  and the status probe (disabled, not installed, 1.x, models listed);
+  through the threads plugin, a thread's two turns on one session.
+- `pnpm verify --affected` passes and `pnpm pack:smoke` runs the packed CLI
+  with the plugin.
+- Against the real OpenCode 2 by hand: a supervised turn asks before a
   command, runs it once approved and answers.
