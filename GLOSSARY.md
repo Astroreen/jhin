@@ -149,6 +149,9 @@ Words about Jhin:
   drawer** under the chat, as tabs and split groups (T3 Code's terms).
 - **Sequence** — the position of an event in its stream; used to catch up
   after a disconnect without gaps or duplicates.
+- **Trim** — forgetting the oldest events of an event log stream while its
+  head and numbering stay (`storage.eventlog@1.2`); a stream followed from a
+  snapshot keeps only its newest events.
 - **Inspector** — the `inspect` command and dev panel showing the live state
   of a node.
 - **Keybinding** — a rule `{ key, command, when }` running a command on a

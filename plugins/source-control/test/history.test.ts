@@ -21,12 +21,17 @@ describe("jhin.source-control: the stream's history (D497)", () => {
     // The first status waits for the trim at start.
     const snapshot = await sc.status();
 
-    expect(snapshot.head).toBeGreaterThanOrEqual(HISTORY + 150);
-    // Trimmed to the newest 1000 at start; what the node appended since follows.
-    const kept = await log.read(SOURCE_CONTROL_STREAM);
-    expect(kept[0]?.sequence).toBe(151);
-    expect(kept.map((event) => event.sequence)).toEqual(
-      Array.from({ length: kept.length }, (_, index) => 151 + index),
-    );
+    // The node may append (a project read) before and after the trim; however it
+    // interleaves, the stream keeps its numbering and was cut to HISTORY at the trim.
+    const head = await log.head(SOURCE_CONTROL_STREAM);
+    const prefilled = HISTORY + 150;
+    expect(snapshot.head).toBeGreaterThanOrEqual(prefilled);
+    expect(snapshot.head).toBeLessThanOrEqual(head);
+    const kept = (await log.read(SOURCE_CONTROL_STREAM)).map((event) => event.sequence);
+    expect(kept).toEqual(Array.from({ length: kept.length }, (_, index) => kept[0]! + index));
+    expect(kept.at(-1)).toBe(head);
+    // At least HISTORY kept, and no more than HISTORY plus what came after the prefill.
+    expect(kept.length).toBeGreaterThanOrEqual(HISTORY);
+    expect(kept.length).toBeLessThanOrEqual(HISTORY + (head - prefilled));
   });
 });
