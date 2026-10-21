@@ -215,6 +215,8 @@ unless a workstream needs it.
 | W24 | Codex and OpenCode parity                               | `providers.md`                                               | D881–D900             |
 | W25 | Preview, devices and the desktop app                    | `preview.md`, `desktop.md`                                   | D941–D960             |
 | W26 | Pairing, sidebar, terminal and config leftovers         | `security.md`, `t3-parity.md`, `terminal.md`, `config-ui.md` | D961–D980             |
+| W27 | Composer context chips and `initialAnswer`              | `t3-parity.md`, `terminal.md`, `providers.md`                | D1001–D1020           |
+| W28 | Secret store and `secretRef`                            | `security.md`, `orchestration.md`                            | D1021–D1040           |
 
 W23 first had D680–D699, which `agents.md` gives to A4 and A5; it took the
 free block D841–D860 instead. W19 first had D600–D619, which `agents.md`
@@ -226,7 +228,7 @@ A3; it took D901–D920. W22, W25 and W26 first had D660–D679, D720–D739 and
 D740–D759, inside `agents.md`'s D600–D760; they take D921–D940, D941–D960
 and D961–D980. W20 took the
 next block, D981–D1000. A workstream that needs more numbers takes the next
-free block of 20 after D1000 and writes it here.
+free block of 20 after D1040 and writes it here.
 
 - **W19:** T3's restart dispatch for agents that cannot steer, steering a turn
   that waits for an approval, foreground subagents moved to the background
@@ -306,3 +308,17 @@ free block of 20 after D1000 and writes it here.
   and font pickers, dragging list items. What is not done stays in the
   Deferred lists of `security.md`, `t3-parity.md`, `terminal.md` and
   `config-ui.md`.
+- **W27:** what W23 left in the composer: T3's citation and context chips
+  with their popovers (file icons, a skill's description, "View
+  instructions") and the context records behind a mentioned pull request or
+  thread; the inline terminal-context chip; captured window context on
+  screenshots. The owner chose to add `initialAnswer` to the agent's
+  questions in `agent.runtime`, so the literal mode can be turned on from
+  the composer (`t3-parity.md` D853). What is not done stays in the Deferred
+  lists of `t3-parity.md` and `terminal.md`.
+- **W28:** a secret store plugin: secrets kept apart from the config files
+  (the OS keychain or an encrypted file, `security.md` D417), a private
+  prompt for a secret in a thread (T3's `request_secret`) and one-use
+  `secretRef`s, so a scheduled task's webhook signature takes a `secretRef`
+  instead of a secret in clear (`orchestration.md` Deferred). What is not
+  done stays in the Deferred lists of `security.md` and `orchestration.md`.
