@@ -8,8 +8,9 @@
 // ProviderSessionManager's release of an idle session; the node's MCP server registered
 // over the control channel (ClaudeAgentSdkQueryRunner.open's setMcpServers); and steering
 // a running turn with a message of priority "now", whose aborted result does not end the
-// turn (steerTurn, isClaudeActiveSteeringAbortResult). T3's continuation turns, wake
-// buffers and background-work guards are not ported.
+// turn (steerTurn, isClaudeActiveSteeringAbortResult), with the turn's foreground subagents
+// moved to the background first (backgroundForegroundSubagents). T3's continuation turns,
+// wake buffers and background-work guards are not ported.
 import { pickEnvironment } from "@jhin/agent-api";
 import type {
   CanUseTool,
@@ -36,6 +37,8 @@ interface ClaudeQuery extends AsyncIterable<SDKMessage> {
     fastMode?: boolean | null;
     ultracode?: boolean | null;
   }): Promise<void>;
+  /** Moves a foreground task to the background (Ctrl+B); false when none matched. */
+  backgroundTasks?(toolUseId?: string): Promise<boolean>;
 }
 
 /** MCP servers a Claude Code gets once started, and how to revoke their credentials. */
@@ -72,6 +75,11 @@ export interface Lease {
    * it streams and goes on with the message. Throws once the turn's messages ended.
    */
   steer(message: SDKUserMessage): void;
+  /**
+   * Moves the turn's subagents still running in the foreground to the background, so a
+   * steer does not cancel them (D805). Settles once Claude Code answered, or after 5 s.
+   */
+  backgroundSubagents(): Promise<void>;
   /**
    * Ends the turn's hold, once. `keep` (the turn reached its result) leaves Claude Code
    * running for the next turn when the setting keeps sessions; anything else ends it.
@@ -279,6 +287,33 @@ const MCP_REGISTRATION_TIMEOUT_MS = 90_000;
 /** The longest delay setTimeout takes (2^31 - 1 ms, about 24.8 days). */
 const MAX_TIMER = 2 ** 31 - 1;
 
+/** The tools that start a subagent: `Agent`, and `Task` in older CLIs. */
+const SUBAGENT_TOOLS = new Set(["Agent", "Task"]);
+/** How long a steer waits for Claude Code to move the turn's subagents (T3's 5 s). */
+const BACKGROUND_MOVE_MS = 5_000;
+
+/**
+ * Follows the main conversation's subagents that run in the foreground, by the tool
+ * call that started each: added when Claude Code calls `Agent` without
+ * `run_in_background`, gone once the call returned (T3's sessionSubagentsByTaskId).
+ */
+function trackForegroundSubagents(message: SDKMessage, running: Set<string>): void {
+  if (message.type !== "assistant" && message.type !== "user") return;
+  if (message.parent_tool_use_id) return;
+  const content: unknown = message.message.content;
+  if (!Array.isArray(content)) return;
+  for (const block of content as { type?: unknown }[]) {
+    if (message.type === "assistant" && block.type === "tool_use") {
+      const call = block as { id: string; name: string; input?: { run_in_background?: unknown } };
+      if (SUBAGENT_TOOLS.has(call.name) && call.input?.run_in_background !== true) {
+        running.add(call.id);
+      }
+    } else if (message.type === "user" && block.type === "tool_result") {
+      running.delete((block as { tool_use_id: string }).tool_use_id);
+    }
+  }
+}
+
 /** The uuids of the messages a frame answers, when Claude Code marked it. */
 function stampOf(message: SDKMessage): readonly string[] | undefined {
   const marked = message as { user_message_uuid?: unknown; user_message_uuids?: unknown };
@@ -340,6 +375,13 @@ function backgroundOf(message: SDKMessage): number | undefined {
   return (frame.tasks ?? []).filter((task) => task.ambient !== true).length;
 }
 
+/** What `Lease.steer` throws once the turn's messages ended. */
+export class LeaseEnded extends Error {
+  constructor() {
+    super("The turn has ended: Claude Code takes no more messages for it.");
+  }
+}
+
 /** Ends a turn that still held its thread's Claude Code when a later turn took it. */
 export class SessionTakenOver extends Error {
   constructor() {
@@ -361,6 +403,8 @@ export function createLiveSessions(options: {
   readonly query: QueryFunction;
   readonly keepAlive: () => KeepAlive;
   readonly log?: (message: string, data?: Record<string, unknown>) => void;
+  /** How long a steer waits for Claude Code to move the subagents (D805); T3's 5 s by default. */
+  readonly backgroundMoveMs?: number;
 }): LiveSessions {
   const sessions = new Map<string, Live>();
   /** The exits of each thread's Claude Codes still running, also those replaced. */
@@ -727,6 +771,14 @@ export function createLiveSessions(options: {
       const steers: string[] = [];
       /** The last result passed over because a steer goes on after it. */
       let passed: SDKMessage | undefined;
+      /** The turn's subagents running in the foreground, by the tool call that started each. */
+      const foreground = new Set<string>();
+      /** Moves to the background asked of Claude Code: once per tool call, later steers wait on it. */
+      const moves = new Map<string, Promise<void>>();
+      /** The moves Claude Code answered. */
+      const answered = new Set<string>();
+      /** Moves still unanswered after a steer's wait: later steers do not wait on them again. */
+      const unanswered = new Set<string>();
       const ours = (stamp: readonly string[]) =>
         (uuid !== undefined && stamp.includes(uuid)) ||
         steers.some((steer) => stamp.includes(steer));
@@ -785,6 +837,7 @@ export function createLiveSessions(options: {
                 continue;
               }
             }
+            trackForegroundSubagents(sent, foreground);
             // A result passed over for a steer, then idle with nothing more: Claude Code
             // has nothing left to say for the turn, which ends with that result.
             if (passed !== undefined && stateOf(sent) === "idle") {
@@ -818,10 +871,49 @@ export function createLiveSessions(options: {
         })(),
         steer: (sent) => {
           if (ended || released || session.closed) {
-            throw new Error("The turn has ended: Claude Code takes no more messages for it.");
+            throw new LeaseEnded();
           }
           if (sent.uuid !== undefined) steers.push(sent.uuid);
           session.input.push({ ...sent, priority: "now" });
+        },
+        backgroundSubagents: async () => {
+          const query = session.query;
+          if (query.backgroundTasks === undefined || ended || foreground.size === 0) return;
+          // A move Claude Code left unanswered past the wait holds no later steer.
+          const asked = [...foreground].filter((toolUseId) => !unanswered.has(toolUseId));
+          const waits = asked.map((toolUseId) => {
+            let move = moves.get(toolUseId);
+            if (move === undefined) {
+              // A throw as well as a rejection is a refusal: the steer goes in regardless.
+              move = Promise.resolve()
+                .then(() => query.backgroundTasks!(toolUseId))
+                .then(
+                  (moved) => {
+                    unanswered.delete(toolUseId);
+                    if (moved) foreground.delete(toolUseId);
+                  },
+                  (error: unknown) =>
+                    options.log?.("claude code did not move a subagent to the background", {
+                      threadId,
+                      toolUseId,
+                      error: String(error),
+                    }),
+                );
+              move = move.finally(() => answered.add(toolUseId));
+              moves.set(toolUseId, move);
+            }
+            return move;
+          });
+          // Claude Code may never answer: the steer goes in after a while regardless.
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          await Promise.race([
+            Promise.all(waits),
+            new Promise<void>((resolve) => {
+              timer = setTimeout(resolve, options.backgroundMoveMs ?? BACKGROUND_MOVE_MS);
+            }),
+          ]);
+          clearTimeout(timer);
+          for (const toolUseId of asked) if (!answered.has(toolUseId)) unanswered.add(toolUseId);
         },
         interrupt: async () => {
           stopping = true;

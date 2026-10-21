@@ -1511,6 +1511,25 @@ Reference: T3 Code at `eb7b35ac` (D53).
   inside a finished turn's folded work is not rendered until it is
   unfolded, so it is not found (T3 opens the fold holding the current
   match; Deferred).
+- **D805. Claude's foreground subagents go to the background before a
+  steer**, as T3's `ClaudeAdapterV2.ts` (`backgroundForegroundSubagents`
+  before `steerTurn`). A steer reaches Claude Code with priority "now",
+  which cancels the running tool calls of the turn; a subagent the turn
+  launched in the foreground (an `Agent` or `Task` tool call of the main
+  conversation without `run_in_background`) is one of them. So the turn
+  keeps the tool calls of its subagents that have not returned, and before
+  it hands Claude Code a steer it asks the SDK to move each to the
+  background (`Query.backgroundTasks(toolUseId)`, Claude Code's Ctrl+B): the
+  subagent keeps running and its result comes later as a background task's
+  notification. Each tool call is asked once; a later steer waits on the
+  same answer. Claude Code may never answer, so the steer goes in after 5 s
+  regardless (T3's timeout), and a move left unanswered then holds no later
+  steer, and a refusal (background tasks disabled) is
+  logged and the steer goes in as before. Background Bash commands are left
+  alone, as in T3. A CLI without the control (`backgroundTasks` missing) gets
+  the steer as before. When the subagent ends after its turn, Claude Code
+  reads its result in the next turn of the live session; T3's wake of an
+  idle thread for it (its continuation turns) stays Deferred.
 
 ### Composer leftovers (W23, `t3-roadmap.md`)
 
@@ -1647,9 +1666,11 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   the turns that changed would keep a long streaming thread cheap. And white
   space counts as one space everywhere but `<pre>`, also in text shown with
   `white-space: pre-wrap` (reading the computed style would match it).
-- Steering (W1): moving Claude's foreground subagents to the background
-  before a steer (T3 does, so a steer does not cancel them; here the steer's
-  `priority: "now"` may stop them), restarting a turn with the new message
+- A steer Claude Code's turn ended before it took, while its subagents were
+  being moved to the background (D805): the threads plugin recorded it as
+  steered, and the runtime only logs it (T3 fails the steer and starts the
+  follow-up turn; `AgentTurn.steer` is synchronous, D204).
+- Steering (W1): restarting a turn with the new message
   for agents that cannot steer (T3's `restart` dispatch), and steering a
   turn that waits for an approval or an answer (the agent gets the message
   once it goes on).

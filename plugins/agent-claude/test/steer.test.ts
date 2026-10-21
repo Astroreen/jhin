@@ -2,13 +2,15 @@ import { ThreadEvents, type AgentItem, type AgentTurn } from "@jhin/agent-api";
 import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, it } from "vite-plus/test";
 
-import { Config, createClaudeRuntime, transcript } from "../src/index.ts";
+import { Config, createClaudeRuntime, createLiveSessions, transcript } from "../src/index.ts";
 import {
   init,
   memorySessions,
   result,
   scriptedQuery,
   streamedBlock,
+  toolResult,
+  toolUse,
   type Script,
 } from "./support.ts";
 
@@ -28,11 +30,26 @@ const aborted = () =>
 
 function start(...scripts: Script[]) {
   const scripted = scriptedQuery(...scripts);
+  const logged: string[] = [];
+  /** What each log line carried, in order. */
+  const details: { message: string; data?: Record<string, unknown> }[] = [];
+  /** Waiters for a message to be logged. */
+  const waiting: { message: string; resolve: () => void }[] = [];
   const claude = createClaudeRuntime({
     query: scripted.query,
     sessions: memorySessions(),
     config: () => Config.parse({}),
+    log: (message, data) => {
+      logged.push(message);
+      details.push({ message, ...(data === undefined ? {} : { data }) });
+      for (const waiter of waiting) if (waiter.message === message) waiter.resolve();
+    },
   });
+  /** Resolves once `message` is logged. */
+  const whenLogged = (message: string) =>
+    logged.includes(message)
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => waiting.push({ message, resolve }));
   const turn = claude.startTurn({
     threadId: THREAD,
     turnId: "t1",
@@ -42,7 +59,7 @@ function start(...scripts: Script[]) {
     model: "claude-haiku-5-5",
     runtimeMode: "full-access",
   });
-  return { claude, turn, ...scripted };
+  return { claude, turn, logged, details, whenLogged, ...scripted };
 }
 
 /** Every item of a turn; `onItem` runs as each one comes. */
@@ -184,5 +201,178 @@ describe("jhin.agent-claude: steering (D206)", () => {
       }
     });
     expect(answers(items)).toEqual(["working"]);
+  });
+
+  describe("moves the turn's foreground subagents to the background first (D805)", () => {
+    /** A turn that runs subagents, then streams; it records what was asked before the steer. */
+    function subagents(seen: { controls?: string[] }): Script {
+      return async function* (player) {
+        const first = player.call.prompt[0]!.uuid;
+        yield marked([first], init());
+        // Running in the foreground: the one to move.
+        yield marked([first], toolUse("a1", "toolu_fg", "Agent", { prompt: "look around" }));
+        // Already in the background, a nested one, and one that returned: left alone.
+        yield marked(
+          [first],
+          toolUse("a2", "toolu_bg", "Agent", { prompt: "watch", run_in_background: true }),
+        );
+        yield marked([first], toolUse("a3", "toolu_nested", "Agent", {}, "toolu_fg"));
+        yield marked([first], toolUse("a4", "toolu_done", "Task", { prompt: "quick" }));
+        yield marked([first], toolResult("toolu_done", "done"));
+        yield* streamedBlock("m1", 0, "text", ["working"]);
+        const steer = await player.nextPrompt();
+        seen.controls = player.call.controls.filter((entry) => entry.startsWith("background:"));
+        yield marked([first], aborted());
+        yield marked([steer!.uuid], init());
+        yield* streamedBlock("m2", 0, "text", ["steered"]);
+        yield marked([steer!.uuid], result());
+        await player.nextPrompt();
+      };
+    }
+
+    it("asks Claude Code to move each one before the steer goes in", async () => {
+      const seen: { controls?: string[] } = {};
+      const { turn } = start(subagents(seen));
+      let sent = false;
+      const items = await drain(turn, (item) => {
+        if (item.kind === "message.completed" && !sent) {
+          sent = true;
+          turn.steer!({ text: "change course" });
+        }
+      });
+      expect(seen.controls).toEqual(["background:toolu_fg"]);
+      expect(answers(items)).toEqual(["working", "steered"]);
+    });
+
+    it("steers as before when Claude Code refuses to move them", async () => {
+      const seen: { controls?: string[] } = {};
+      const { turn, state, logged } = start(subagents(seen));
+      // Thrown at once, as a closed query does, rather than rejected.
+      state.background = () => {
+        throw new Error("background tasks are disabled");
+      };
+      let sent = false;
+      const items = await drain(turn, (item) => {
+        if (item.kind === "message.completed" && !sent) {
+          sent = true;
+          turn.steer!({ text: "change course" });
+        }
+      });
+      expect(seen.controls).toEqual(["background:toolu_fg"]);
+      expect(answers(items)).toEqual(["working", "steered"]);
+      expect(logged).toContain("claude code did not move a subagent to the background");
+    });
+
+    it("steers as before with a CLI that cannot move tasks to the background", async () => {
+      const seen: { controls?: string[] } = {};
+      const { turn, state } = start(subagents(seen));
+      state.noBackground = true;
+      let sent = false;
+      const items = await drain(turn, (item) => {
+        if (item.kind === "message.completed" && !sent) {
+          sent = true;
+          turn.steer!({ text: "change course" });
+        }
+      });
+      expect(seen.controls).toEqual([]);
+      expect(answers(items)).toEqual(["working", "steered"]);
+    });
+
+    it("logs a steer whose turn ended while Claude Code moved the subagents", async () => {
+      let answer!: (moved: boolean) => void;
+      const { turn, state, whenLogged, details } = start(async function* (player) {
+        const first = player.call.prompt[0]!.uuid;
+        yield marked([first], init());
+        yield marked([first], toolUse("a1", "toolu_fg", "Agent", { prompt: "look around" }));
+        yield* streamedBlock("m1", 0, "text", ["working"]);
+        // The turn ends before Claude Code answers the move.
+        yield marked([first], result());
+        await player.nextPrompt();
+      });
+      state.background = () => new Promise<boolean>((resolve) => (answer = resolve));
+      let sent = false;
+      const items = await drain(turn, (item) => {
+        if (item.kind === "message.completed" && !sent) {
+          sent = true;
+          turn.steer!({ text: "too late" });
+        }
+      });
+      expect(answers(items)).toEqual(["working"]);
+      answer(true);
+      await whenLogged("claude code ended the turn before it took a steer");
+      // The turn read its result during the move, not the lease ending under it.
+      expect(details.find((line) => line.message.includes("before it took a steer"))?.data).toEqual(
+        {
+          at: "result",
+        },
+      );
+    });
+
+    it("asks once per tool call: a second steer waits on the same answer", async () => {
+      let controls: string[] = [];
+      const { turn, state } = start(async function* (player) {
+        const first = player.call.prompt[0]!.uuid;
+        yield marked([first], init());
+        yield marked([first], toolUse("a1", "toolu_fg", "Agent", { prompt: "look around" }));
+        yield* streamedBlock("m1", 0, "text", ["working"]);
+        const one = await player.nextPrompt();
+        const two = await player.nextPrompt();
+        controls = player.call.controls.filter((entry) => entry.startsWith("background:"));
+        yield marked([first], aborted());
+        yield marked([one!.uuid, two!.uuid], init());
+        yield* streamedBlock("m2", 0, "text", ["steered"]);
+        yield marked([one!.uuid, two!.uuid], result());
+        await player.nextPrompt();
+      });
+      // Claude Code moves nothing: the subagent stays in the foreground.
+      state.background = () => Promise.resolve(false);
+      let sent = false;
+      const items = await drain(turn, (item) => {
+        if (item.kind === "message.completed" && !sent) {
+          sent = true;
+          turn.steer!({ text: "one" });
+          turn.steer!({ text: "two" });
+        }
+      });
+      expect(controls).toEqual(["background:toolu_fg"]);
+      expect(answers(items)).toEqual(["working", "steered"]);
+    });
+  });
+
+  it("steers once Claude Code leaves a move unanswered past the wait, and waits on it no more (D805)", async () => {
+    let stop!: () => void;
+    const scripted = scriptedQuery(async function* (player) {
+      yield init();
+      yield toolUse("a1", "toolu_fg", "Agent", { prompt: "look around" });
+      yield* streamedBlock("m1", 0, "text", ["working"]);
+      await new Promise<void>((resolve) => (stop = resolve));
+      yield result();
+      await player.nextPrompt();
+    });
+    // Claude Code never answers the move.
+    scripted.state.background = () => new Promise<boolean>(() => {});
+    const live = createLiveSessions({
+      query: scripted.query,
+      keepAlive: () => ({ keepAlive: false, idleMs: 0 }),
+      backgroundMoveMs: 0,
+    });
+    const held = await live.lease({
+      threadId: THREAD,
+      options: { cwd: "/work" },
+      message: { type: "user", message: { role: "user", content: "hi" }, parent_tool_use_id: null },
+    });
+    const messages = held.messages[Symbol.asyncIterator]();
+    // Read on until the turn's text: the subagent's tool call has been seen.
+    for (let next = await messages.next(); !next.done; next = await messages.next()) {
+      if (next.value.type === "stream_event") break;
+    }
+    // The first steer waits for the move and goes on unanswered; the second asks nothing.
+    await held.backgroundSubagents();
+    await held.backgroundSubagents();
+    const asked = scripted.calls[0]!.controls.filter((entry) => entry.startsWith("background:"));
+    expect(asked).toEqual(["background:toolu_fg"]);
+    stop();
+    for (let next = await messages.next(); !next.done; next = await messages.next());
+    held.release(false);
   });
 });
