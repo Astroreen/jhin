@@ -546,9 +546,9 @@ function useLocalServers(services: Pick<PanelServices, "call">): readonly LocalS
     let failures = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const scan = () => {
-      // A hidden page does not scan; it looks again once shown.
+      // A hidden page does not scan; it looks again as soon as it is shown.
       if (document.hidden) {
-        timer = setTimeout(scan, LOCAL_SERVERS_SCAN_MS);
+        document.addEventListener("visibilitychange", scan, { once: true });
         return;
       }
       latest.current.call<{ servers: LocalServer[] }>("preview.servers.list", {}).then(
@@ -574,6 +574,7 @@ function useLocalServers(services: Pick<PanelServices, "call">): readonly LocalS
     return () => {
       live = false;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", scan);
     };
   }, []);
   return servers;

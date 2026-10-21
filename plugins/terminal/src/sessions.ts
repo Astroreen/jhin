@@ -493,6 +493,8 @@ export function createSessions(options: SessionOptions): TerminalSessions & {
     } catch (error) {
       // A partial table would make every terminal look idle: this round is skipped.
       pollFailures += 1;
+      // An old table must not vouch for processes that may be gone (D949).
+      lastTable = undefined;
       // Said once per run of failures: polling backs off, and the indicator and
       // tab labels stop until `ps` answers again (a process table past its buffer).
       if (pollFailures === 1) {
