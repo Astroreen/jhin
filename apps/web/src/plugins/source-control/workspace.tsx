@@ -50,12 +50,12 @@ export interface DraftWorkspaces {
 }
 
 /** `composer.workspace`, `composer.branch` and `composer.previousWorktree`. */
-export type ToolbarControl = "workspace" | "branch" | "previous-worktree";
+type ToolbarControl = "workspace" | "branch" | "previous-worktree";
 
 export function createDraftWorkspaces(): DraftWorkspaces {
   const drafts = new Map<string, DraftWorkspace>();
   const listeners = new Set<() => void>();
-  // The last control shown of each kind is the one run.
+  // The last control shown of each kind that can run is the one run.
   const controls: { control: ToolbarControl; run: () => boolean }[] = [];
   return {
     offer(control, run) {
@@ -67,7 +67,11 @@ export function createDraftWorkspaces(): DraftWorkspaces {
       };
     },
     run(control) {
-      return controls.findLast((entry) => entry.control === control)?.run() ?? false;
+      // Newest first; one that cannot (a toolbar showing nothing) leaves it to the next.
+      for (const entry of controls.toReversed()) {
+        if (entry.control === control && entry.run()) return true;
+      }
+      return false;
     },
     get: (key) => drafts.get(key) ?? LOCAL,
     set(key, workspace) {

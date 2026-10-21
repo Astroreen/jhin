@@ -62,6 +62,11 @@ test("D250–D255: a draft starts its thread in a new worktree; deleting the thr
   await shot(page, info, "workspace-menu-shortcut");
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menuitemradio", { name: "New worktree" })).toBeHidden();
+  // And composer.branch opens the branch picker (D907).
+  await page.keyboard.press("ControlOrMeta+Shift+G");
+  await expect(page.getByRole("combobox", { name: "Search refs" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("combobox", { name: "Search refs" })).toBeHidden();
   await workspace.click();
   await page.getByRole("menuitemradio", { name: "New worktree" }).click();
   await expect(workspace).toHaveText(/New worktree/);

@@ -1902,7 +1902,12 @@ describe("worktrees in the client", () => {
   });
 
   it("opens the branch picker and takes the previous worktree for T3's composer shortcuts (D907)", async () => {
-    const { value, calls } = services(viewWith(status()), { "git.branches": { branches: [] } });
+    const focused: unknown[] = [];
+    const { value, calls } = services(
+      viewWith(status()),
+      { "git.branches": { branches: [] } },
+      deviceConfig({}, { "chat.composer.focus": (input) => focused.push(input) }),
+    );
     // Another thread of the project works in a worktree: the draft's previous one.
     (value.threads.catalog(target).threads as ThreadRecord[]).push({
       ...thread,
@@ -1923,6 +1928,8 @@ describe("worktrees in the client", () => {
       mode: "previous",
       previous: { path: "/w/app/feature" },
     });
+    // The composer gets the focus back, as T3's usePreviousWorktree gives it.
+    expect(focused).toEqual([{}]);
     act(() => {
       drafts.run("branch");
     });

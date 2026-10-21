@@ -61,6 +61,15 @@ function PreviousWorktreeItemContent({ branch }: { branch: string | null }) {
   );
 }
 
+/** "Previous worktree": the draft's thread will work in that worktree (the menu and D907). */
+function choosePrevious(
+  drafts: DraftWorkspaces,
+  key: string,
+  previous: NonNullable<DraftWorkspace["previous"]>,
+) {
+  drafts.set(key, { mode: "previous", startFromOrigin: false, previous });
+}
+
 /**
  * T3's workspace menu in the branch toolbar (D253): where a draft's thread will
  * work. A thread already started shows where it works, fixed.
@@ -104,11 +113,7 @@ export function WorkspaceSelector(props: {
     () =>
       offers && previousPath !== undefined
         ? drafts.offer("previous-worktree", () => {
-            drafts.set(key, {
-              mode: "previous",
-              startFromOrigin: false,
-              previous: { path: previousPath, branch: previousBranch },
-            });
+            choosePrevious(drafts, key, { path: previousPath, branch: previousBranch });
             void props.services.context.commands
               .execute("chat.composer.focus", {})
               .catch(() => undefined);
@@ -156,7 +161,7 @@ export function WorkspaceSelector(props: {
         ...(status.branch === null ? {} : { baseRef: draft.baseRef ?? status.branch }),
       });
     } else if (value === "previous" && previous !== undefined) {
-      drafts.set(key, { mode: "previous", startFromOrigin: false, previous });
+      choosePrevious(drafts, key, previous);
     } else drafts.set(key, LOCAL);
   };
   return (
