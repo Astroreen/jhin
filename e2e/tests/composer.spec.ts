@@ -353,3 +353,23 @@ test("hides skills from the / menu with T3's setting, and still offers them afte
     await expect(page.getByRole("switch", { name: "Show skills in slash menu" })).toBeChecked();
   }
 });
+
+test("shows a heading and a task list in the prompt, and ticks a task", async ({ page }, info) => {
+  await page.goto(`${node.ui}#token=${node.token}`);
+  await page.getByRole("button", { name: "Start a thread" }).click();
+  const message = page.getByRole("textbox", { name: "Message" });
+  await message.click();
+  await message.pressSequentially("# Plan");
+  await message.press("Shift+Enter");
+  await message.pressSequentially("- [ ] read the code");
+  await message.press("Shift+Enter");
+  await message.pressSequentially("test it");
+  await expect(message.getByRole("heading", { name: "Plan" })).toBeVisible();
+  const boxes = message.getByRole("checkbox");
+  await expect(boxes).toHaveCount(2);
+  await boxes.first().click();
+  await expect(boxes.first()).toBeChecked();
+  const shot = info.outputPath("blocks.png");
+  await page.screenshot({ path: shot });
+  await info.attach("heading and task list", { path: shot, contentType: "image/png" });
+});
