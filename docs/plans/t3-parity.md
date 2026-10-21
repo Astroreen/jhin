@@ -1761,7 +1761,6 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   and pull request are `source-control.md`'s D117 and its terminal
   indicator `terminal.md`'s D148, all in the `sidebar.thread.indicators`
   slot.
-
 - "Resume thread" (D800) for a turn that failed on a usage limit, as T3
   offers: Jhin has no usage-limit failures to tell apart yet.
 - The thread details panel (D802): T3's inline presentation, a card beside
