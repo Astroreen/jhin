@@ -79,6 +79,7 @@ log({
   cwd: process.cwd(),
   home: process.env["CODEX_HOME"] ?? null,
   sawSecret: process.env["JHIN_NODE_SECRET"] !== undefined,
+  sawBearer: Object.values(process.env).some((value) => value?.includes("Bearer ") === true),
 });
 
 const send = (message: Record<string, unknown>) =>

@@ -48,7 +48,7 @@ const MAX_ITEMS_PER_CALL = 4096;
 /**
  * Running a script is running code on the node (D375), so it takes a permission
  * of its own. The node's owner token holds it; a thread's agent does not
- * (`AGENT_PERMISSIONS` of jhin.agent-claude), until scoped grants (W13).
+ * (`AGENT_PERMISSIONS` of `@jhin/mcp-api`), until scoped grants (W13).
  */
 export const WORKFLOWS_RUN_PERMISSION = "workflows.run";
 /** How long a workflow body may run before its first `await` (D374). */

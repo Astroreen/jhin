@@ -9,6 +9,12 @@ import {
   type LaunchOptions,
 } from "./rpc.ts";
 
+/** The node's MCP server for one app-server: its config, and its credential's revocation. */
+export interface McpAttachment {
+  readonly servers: Readonly<Record<string, unknown>>;
+  dispose(): void;
+}
+
 /** Starts an app-server; `launchAppServer` unless a test replaces it. */
 export type Launcher = (
   options: LaunchOptions & {
@@ -68,7 +74,12 @@ export interface Sessions {
   /** `key`: what a running app-server cannot change; all of `launch` when absent. */
   lease(
     threadId: string,
-    launch: LaunchOptions & { readonly version: string; readonly key?: string },
+    launch: LaunchOptions & {
+      readonly version: string;
+      readonly key?: string;
+      /** Called once for a new app-server; revoked when it is closed or exits (D889). */
+      readonly mcp?: () => McpAttachment;
+    },
   ): Promise<Lease>;
   /** Ends a thread's app-server unless a turn holds it (or `force`); whether one ended. */
   close(threadId: string, force?: boolean): boolean;
@@ -92,6 +103,8 @@ interface Live extends Session {
   closed: boolean;
   /** A later lease of the thread ended it. */
   takenOver: boolean;
+  /** Revokes the app-server's MCP credential; does nothing the second time. */
+  revoke: () => void;
 }
 
 export function createSessions(options: {
@@ -106,6 +119,7 @@ export function createSessions(options: {
   const close = (live: Live, reason?: Error) => {
     if (live.closed) return;
     live.closed = true;
+    live.revoke();
     clearTimeout(live.timer);
     if (sessions.get(live.threadId) === live) sessions.delete(live.threadId);
     const holder = live.holder;
@@ -132,11 +146,24 @@ export function createSessions(options: {
     wait();
   };
 
-  const open = (threadId: string, key: string, launchOptions: LaunchOptions): Live => {
+  const open = (
+    threadId: string,
+    key: string,
+    launchOptions: LaunchOptions,
+    mcp: (() => McpAttachment) | undefined,
+  ): Live => {
     const connection = launch({
       ...launchOptions,
       ...(options.log === undefined ? {} : { log: options.log }),
     });
+    // The credential belongs to this process: issued with it, revoked when it ends.
+    const attachment = mcp?.();
+    let revoked = false;
+    const revoke = () => {
+      if (revoked) return;
+      revoked = true;
+      attachment?.dispose();
+    };
     const live: Live = {
       threadId,
       key,
@@ -151,6 +178,8 @@ export function createSessions(options: {
       timer: undefined,
       closed: false,
       takenOver: false,
+      revoke,
+      ...(attachment === undefined ? {} : { mcpServers: attachment.servers }),
     };
     connection.onNotification((method, params) => live.holder?.notification(method, params));
     connection.onRequest((method, params) =>
@@ -159,6 +188,7 @@ export function createSessions(options: {
         : live.holder.request(method, params),
     );
     void connection.exited.then((exit) => {
+      revoke();
       if (live.closed) return;
       if (live.holder === undefined) {
         options.log?.("codex exited while idle", { threadId, code: exit.code });
@@ -178,7 +208,7 @@ export function createSessions(options: {
   };
 
   return {
-    async lease(threadId, { version, key: given, ...launchOptions }) {
+    async lease(threadId, { version, key: given, mcp, ...launchOptions }) {
       const key = given ?? JSON.stringify(launchOptions);
       const existing = sessions.get(threadId);
       if (existing !== undefined) {
@@ -191,7 +221,7 @@ export function createSessions(options: {
       let live = sessions.get(threadId);
       const started = live === undefined;
       if (live === undefined) {
-        live = open(threadId, key, launchOptions);
+        live = open(threadId, key, launchOptions, mcp);
         try {
           await initialize(live.connection, version);
         } catch (error) {

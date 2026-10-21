@@ -655,12 +655,15 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   Claude Code and T3 gives Codex its own (`codexThreadRuntimeParams`):
   `jhin.agent-codex` lists `mcp.server@^1` as optional, and each app-server
   it starts for a thread gets a credential of its own (as
-  `jhin.agent-codex:<threadId>`, with D341's permissions), revoked when that
-  app-server ends. The server goes into `thread/start`'s and
+  `jhin.agent-codex:<threadId>`, with D341's permissions), issued with the
+  process and revoked when it is closed or exits, so a later turn on the same
+  app-server reuses it. The server goes into `thread/start`'s and
   `thread/resume`'s config as `mcp_servers.jhin` (`url`, `http_headers` with
   the credential, a 65-minute `tool_timeout_sec`, T3's), so the token is in
   neither Codex's argv nor its commands' environment. The developer
-  instructions say what the tools are for, before the turn's own. The
+  instructions say what the tools are for, before the turn's own; the text is
+  `@jhin/mcp-api`'s `jhinToolsInstructions`, which Claude's appended prompt
+  uses too. The
   config's `mcp` (on by default) turns it off; it is part of the launch key,
   so changing it starts a new app-server. D341's list and the server's name
   move to `@jhin/mcp-api` (`AGENT_PERMISSIONS`, `MCP_SERVER_NAME`, additive;

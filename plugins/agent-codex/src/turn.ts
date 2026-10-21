@@ -16,7 +16,6 @@ import {
 } from "@jhin/agent-api";
 
 import {
-  JHIN_MCP_INSTRUCTIONS,
   THREAD_CONFIG,
   approvalDecision,
   fileChangePrompt,
@@ -37,6 +36,7 @@ import {
   type FileUpdateChange,
   type TurnInput,
 } from "./mapping.ts";
+import { jhinToolsInstructions } from "@jhin/mcp-api";
 import { CodexEnded, CodexRpcError, CodexSpawnError, codexEnvironment } from "./rpc.ts";
 import { SessionTakenOver, type Lease, type Sessions } from "./session.ts";
 
@@ -768,7 +768,7 @@ export function codexTurn(
   /** What Codex is told besides the conversation: the Jhin tools when it has them (D889). */
   const developerInstructions = () => {
     const parts = [
-      ...(lease?.session.mcpServers === undefined ? [] : [JHIN_MCP_INSTRUCTIONS.trim()]),
+      ...(lease?.session.mcpServers === undefined ? [] : [jhinToolsInstructions()]),
       ...(request.instructions === undefined ? [] : [request.instructions]),
     ];
     return parts.length === 0 ? {} : { instructions: parts.join("\n\n") };
@@ -796,6 +796,7 @@ export function codexTurn(
         // Turning the node's MCP server on or off starts a new app-server.
         mcp: deps.mcp !== undefined,
       }),
+      ...(deps.mcp === undefined ? {} : { mcp: () => deps.mcp!(request.threadId) }),
     });
     const current = await untilEnded(leasing).catch((error: unknown) => {
       // Given up while the app-server started: it is ended once it is there.
@@ -812,15 +813,6 @@ export function codexTurn(
       throw error;
     });
     lease = current;
-    if (current.started && deps.mcp !== undefined) {
-      // A credential for this app-server alone, revoked once it ends.
-      const attachment = deps.mcp(request.threadId);
-      current.session.mcpServers = attachment.servers;
-      void current.session.connection.exited.then(
-        () => attachment.dispose(),
-        () => attachment.dispose(),
-      );
-    }
     let keep = false;
     try {
       current.hold({
