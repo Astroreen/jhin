@@ -507,7 +507,8 @@ describe("jhin.missions", () => {
     await client.call("slices.create", {
       missionId: mission.id,
       title: "Next",
-      spec: "",
+      // Fences closed by a longer run, of either character, are closed.
+      spec: "```\ncode\n````\n~~~\nx\n~~~~~",
       dependsOn: [slice.id],
     });
     await expect(
@@ -535,6 +536,8 @@ describe("jhin.missions", () => {
     expect(markdown).toContain("\n````\n$ echo `x`\n```\nx\n````\n");
     expect(markdown).toContain("- [a \\[b\\]](https://x/a_%28b%29%20c)");
     expect(markdown).toContain("- Depends on: S\\_\\*x\\*\n");
+    expect(markdown).toContain("\n```\ncode\n````\n~~~\nx\n~~~~~\n");
+    expect(markdown).not.toContain("~~~~~\n```");
     expect(markdown).toContain("\n```\n$ gap\na\n\n\nb\n```\n");
     expect(markdown.match(/^#{1,4} /gm)).toEqual(["# ", "## ", "### ", "#### ", "### ", "#### "]);
   });
