@@ -62,7 +62,13 @@ export interface Node {
  * server on a free port with `http`.
  */
 export async function node(
-  options: { storage?: MemoryStorage; http?: boolean; threads?: HeldThreads } = {},
+  options: {
+    storage?: MemoryStorage;
+    http?: boolean;
+    threads?: HeldThreads;
+    /** A `secrets.store@1` for the scheduler to consume secretRefs from. */
+    secrets?: unknown;
+  } = {},
 ): Promise<Node> {
   const storage = options.storage ?? createMemoryStorage();
   const streams = createLiveStreams();
@@ -95,6 +101,7 @@ export async function node(
             { manifest: manifest("agent-fake"), definition: agent },
           ]
         : [options.threads.plugin]),
+      ...(options.secrets === undefined ? [] : [mockCapability("secrets.store", options.secrets)]),
       { manifest: manifest("scheduler"), definition: scheduler },
     ],
     config: { node: { "jhin.http": { port: 0 } } },

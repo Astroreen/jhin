@@ -123,6 +123,118 @@ describe("jhin.scheduler: webhooks", () => {
     expect(deliveries).toEqual([]);
   });
 
+  it("takes the signing secret from a one-use secretRef (orchestration.md D1034)", async () => {
+    // The store's refs: one use, for their project (security.md D1031).
+    const refs = new Map([
+      ["secret-ref:" + "a".repeat(32), { projectId: "scratch", value: "from-ref" }],
+      ["secret-ref:" + "b".repeat(32), { projectId: "elsewhere", value: "other" }],
+      ["secret-ref:" + "c".repeat(32), { projectId: "scratch", value: "rotated" }],
+    ]);
+    const secrets = {
+      consumeRef({ ref, projectId }: { ref: string; projectId: string }) {
+        const entry = refs.get(ref);
+        if (entry === undefined || entry.projectId !== projectId) {
+          throw Object.assign(new Error("That secretRef was already used or does not exist."), {
+            code: "SECRET_REF_UNAVAILABLE",
+          });
+        }
+        refs.delete(ref);
+        return entry.value;
+      },
+    };
+    const { client } = await node({ http: true, secrets });
+    const signature = { header: "x-hub-signature-256", encoding: "hex", prefix: "sha256=" };
+    const created = await webhookTask(client, {
+      schedule: {
+        type: "webhook",
+        // A ref, when given, is the only source: the secret beside it is ignored.
+        signature: { ...signature, secret: "typed", secretRef: "secret-ref:" + "a".repeat(32) },
+      },
+    });
+    expect(created.webhook.hasSecret).toBe(true);
+    expect(JSON.stringify(created)).not.toMatch(/from-ref|secret-ref/);
+    const body = JSON.stringify({ release: { tag_name: "v3" } });
+    expect(
+      (
+        await post(created.webhook.url!, body, {
+          "x-hub-signature-256": githubSignature("from-ref", body),
+        })
+      ).status,
+    ).toBe(202);
+    expect(
+      (
+        await post(created.webhook.url!, body, {
+          "x-hub-signature-256": githubSignature("typed", body),
+        })
+      ).status,
+    ).toBe(401);
+
+    // Used once: a second save with it is refused, as is another project's ref.
+    await expect(
+      webhookTask(client, {
+        schedule: {
+          type: "webhook",
+          signature: { ...signature, secretRef: "secret-ref:" + "a".repeat(32) },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "SECRET_REF_UNAVAILABLE" });
+    await expect(
+      webhookTask(client, {
+        schedule: {
+          type: "webhook",
+          signature: { ...signature, secretRef: "secret-ref:" + "b".repeat(32) },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "SECRET_REF_UNAVAILABLE" });
+
+    // Two tries of one create at once: one task, the ref used once.
+    refs.set("secret-ref:" + "d".repeat(32), { projectId: "scratch", value: "retried" });
+    const retry = {
+      clientRequestId: "create-1",
+      schedule: {
+        type: "webhook",
+        signature: { ...signature, secretRef: "secret-ref:" + "d".repeat(32) },
+      },
+    };
+    const [one, two] = await Promise.all([webhookTask(client, retry), webhookTask(client, retry)]);
+    expect(two.id).toBe(one.id);
+    expect(refs.has("secret-ref:" + "d".repeat(32))).toBe(false);
+
+    // An update consumes a ref for the task's project.
+    await client.call("scheduler.tasks.update", {
+      id: created.id,
+      schedule: {
+        type: "webhook",
+        signature: { ...signature, secretRef: "secret-ref:" + "c".repeat(32) },
+      },
+    });
+    expect(
+      (
+        await post(created.webhook.url!, body, {
+          "x-hub-signature-256": githubSignature("rotated", body),
+        })
+      ).status,
+    ).toBe(202);
+    expect(refs.size).toBe(1);
+  });
+
+  it("refuses a secretRef without a secret store", async () => {
+    const { client } = await node({ http: true });
+    await expect(
+      webhookTask(client, {
+        schedule: {
+          type: "webhook",
+          signature: {
+            header: "x-hub-signature-256",
+            encoding: "hex",
+            prefix: "sha256=",
+            secretRef: "secret-ref:" + "a".repeat(32),
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ code: "SECRET_STORE_UNAVAILABLE" });
+  });
+
   it("checks a GitHub-style signature with a secret it never returns", async () => {
     const { client, task } = await node({ http: true });
     const signature = { header: "X-Hub-Signature-256", encoding: "hex", prefix: "sha256=" };

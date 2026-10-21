@@ -4,6 +4,7 @@
 // the next run of a schedule, when a fixed-time run counts as missed and how a schedule reads.
 import { INTERACTION_MODES, RUNTIME_MODES } from "@jhin/agent-api";
 import { z } from "@jhin/sdk";
+import { SecretRef } from "@jhin/secrets-api";
 
 /** `scheduler.tasks@1`: a node's scheduled tasks (docs/plans/orchestration.md, D380). */
 export const SCHEDULER_CAPABILITY = "scheduler.tasks";
@@ -108,6 +109,9 @@ export const ScheduleInput = z
               .min(1)
               .optional()
               .describe("Shared signing secret. Omit to keep the stored secret."),
+            secretRef: SecretRef.optional().describe(
+              "A secret the user entered through secrets_request, used instead of secret. It is consumed by this save.",
+            ),
           })
           .nullable()
           .optional()

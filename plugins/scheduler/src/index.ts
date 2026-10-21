@@ -43,6 +43,7 @@ import {
   type Json,
   type KeyValueStore,
 } from "@jhin/storage-api";
+import { SECRETS_STORE_CAPABILITY, SecretsError, type SecretStore } from "@jhin/secrets-api";
 
 import { constantTimeEquals, verifyWebhookSignature } from "./signature.ts";
 import { redactHeaders, redactQuery, renderWebhookPrompt } from "./template.ts";
@@ -643,6 +644,23 @@ function activateScheduler(context: PluginContext): void {
     return thread.projectId;
   };
 
+  /**
+   * A webhook signature's `secretRef` consumed for `projectId` (D1034): the
+   * value takes the place of `secret`, which a ref, when given, overrides.
+   */
+  const redeem = (schedule: ScheduleInput, projectId: string): ScheduleInput => {
+    if (schedule.type !== "webhook" || schedule.signature?.secretRef === undefined) {
+      return schedule;
+    }
+    const store = context.services.tryGet<SecretStore>(SECRETS_STORE_CAPABILITY);
+    if (store === undefined) throw new SecretsError("SECRET_STORE_UNAVAILABLE");
+    const { secretRef, secret: _secret, ...signature } = schedule.signature;
+    return {
+      ...schedule,
+      signature: { ...signature, secret: store.consumeRef({ ref: secretRef, projectId }) },
+    };
+  };
+
   const create = async (
     raw: z.input<typeof CreateTaskInput>,
     callerId = "",
@@ -677,47 +695,56 @@ function activateScheduler(context: PluginContext): void {
       }
       projectId = owner;
     }
-    const now = Date.now();
-    const schedule = storedSchedule(input.schedule);
-    const task: StoredTask = {
-      id,
-      title: input.title ?? titleFrom(input.prompt),
-      prompt: input.prompt,
-      enabled: input.enabled,
-      schedule,
-      projectId,
-      threadId: input.threadId,
-      ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
-      ...(input.model === undefined ? {} : { model: input.model }),
-      ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
-      ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
-      ...(input.workspaceStrategy === undefined
-        ? {}
-        : { workspaceStrategy: input.workspaceStrategy }),
-      createdAt: iso(now),
-      updatedAt: iso(now),
-      nextRunAt: nextRunAt({ enabled: input.enabled, schedule }, now),
-      lastRunAt: null,
-      lastRunStatus: "never",
-      lastRunError: null,
-      lastRunThreadId: null,
-      runCount: 0,
-      ...webhookCredentials(input.schedule, undefined),
+    const build = (scheduleInput: ScheduleInput): StoredTask => {
+      const now = Date.now();
+      const schedule = storedSchedule(scheduleInput);
+      const task: StoredTask = {
+        id,
+        title: input.title ?? titleFrom(input.prompt),
+        prompt: input.prompt,
+        enabled: input.enabled,
+        schedule,
+        projectId,
+        threadId: input.threadId,
+        ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
+        ...(input.model === undefined ? {} : { model: input.model }),
+        ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
+        ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
+        ...(input.workspaceStrategy === undefined
+          ? {}
+          : { workspaceStrategy: input.workspaceStrategy }),
+        createdAt: iso(now),
+        updatedAt: iso(now),
+        nextRunAt: nextRunAt({ enabled: input.enabled, schedule }, now),
+        lastRunAt: null,
+        lastRunStatus: "never",
+        lastRunError: null,
+        lastRunThreadId: null,
+        runCount: 0,
+        ...webhookCredentials(scheduleInput, undefined),
+      };
+      return task;
     };
     return locked(id, async () => {
-      // Two tries of one request at once create the task once.
+      // Two tries of one request at once create the task once, and use a
+      // secretRef once: it is consumed only by the try that writes (D1034).
       const raced = await load(id);
-      return raced === undefined ? save(task) : toPublic(raced);
+      return raced === undefined ? save(build(redeem(input.schedule, projectId))) : toPublic(raced);
     });
   };
 
   const update = async (raw: z.input<typeof UpdateTaskInput>): Promise<ScheduledTask> => {
-    const input = UpdateTaskInput.parse(raw);
+    const parsed = UpdateTaskInput.parse(raw);
     const projectId =
-      input.threadId === undefined || input.threadId === null
+      parsed.threadId === undefined || parsed.threadId === null
         ? undefined
-        : await threadProject(input.threadId);
-    const updated = await mutate(input.id, (existing) => {
+        : await threadProject(parsed.threadId);
+    const updated = await mutate(parsed.id, (existing) => {
+      // A ref is consumed for the task's project after this update, under its lock (D1034).
+      const input =
+        parsed.schedule === undefined
+          ? parsed
+          : { ...parsed, schedule: redeem(parsed.schedule, projectId ?? existing.projectId) };
       const now = Date.now();
       const enabled = input.enabled ?? existing.enabled;
       // A webhook schedule sent without `signature` keeps the stored check and
@@ -782,7 +809,7 @@ function activateScheduler(context: PluginContext): void {
         ...credentials,
       };
     });
-    if (updated === undefined) throw notFound(input.id);
+    if (updated === undefined) throw notFound(parsed.id);
     return toPublic(updated);
   };
 
@@ -1240,7 +1267,7 @@ function activateScheduler(context: PluginContext): void {
     name: "scheduler.tasks.create",
     title: "Schedule a recurring task",
     description:
-      "Creates persistent work in the node's scheduler that runs even when no turn is active. Pass schedule as a structured object. Timers: {type:'interval', everyMs:3600000} is hourly; {type:'fixed_time', timeOfDay:'09:00', weekdays:[1,2,3,4,5]} is weekday mornings in the node's time zone; report the returned nextRunAt. Webhooks: {type:'webhook'} runs once per request to the returned webhook.url. The run sees the request ONLY through prompt placeholders: {{body.path}} (e.g. {{body.action}}, {{body.release.tag_name}}), {{headers.name}}, {{query.name}}, {{body}}, or {{request}}. Each value arrives framed as untrusted request data; without a signature, anyone with the URL can trigger a run. For a sender that signs requests set signature, e.g. GitHub: {type:'webhook', signature:{header:'x-hub-signature-256', encoding:'hex', prefix:'sha256=', secret}}. With threadId every run posts into that thread; without it each run starts a new thread in the project.",
+      "Creates persistent work in the node's scheduler that runs even when no turn is active. Pass schedule as a structured object. Timers: {type:'interval', everyMs:3600000} is hourly; {type:'fixed_time', timeOfDay:'09:00', weekdays:[1,2,3,4,5]} is weekday mornings in the node's time zone; report the returned nextRunAt. Webhooks: {type:'webhook'} runs once per request to the returned webhook.url. The run sees the request ONLY through prompt placeholders: {{body.path}} (e.g. {{body.action}}, {{body.release.tag_name}}), {{headers.name}}, {{query.name}}, {{body}}, or {{request}}. Each value arrives framed as untrusted request data; without a signature, anyone with the URL can trigger a run. For a sender that signs requests, first call secrets_request so the user enters the secret privately (never ask for it in chat or invent one), then set signature with the returned secretRef, e.g. GitHub: {type:'webhook', signature:{header:'x-hub-signature-256', encoding:'hex', prefix:'sha256=', secretRef}}. With threadId every run posts into that thread; without it each run starts a new thread in the project.",
     input: CreateTaskInput,
     output: ScheduledTask,
     permissions: write,
@@ -1251,7 +1278,7 @@ function activateScheduler(context: PluginContext): void {
     name: "scheduler.tasks.update",
     title: "Update a scheduled task",
     description:
-      "Updates a scheduled task. Only the fields given change. Use enabled=false to pause a task without deleting it; threadId moves it between posting into a thread and starting a new thread per run (null). A webhook signature without a secret keeps the stored one.",
+      "Updates a scheduled task. Only the fields given change. Use enabled=false to pause a task without deleting it; threadId moves it between posting into a thread and starting a new thread per run (null). A webhook signature without a secret or secretRef keeps the stored one; a secretRef from secrets_request is consumed by the update.",
     input: UpdateTaskInput,
     output: ScheduledTask,
     permissions: write,
