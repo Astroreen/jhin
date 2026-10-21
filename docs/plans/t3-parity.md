@@ -1810,7 +1810,8 @@ W26 of `t3-roadmap.md` (round 2) takes what W14 left in Deferred.
   every attachment's record when the thread is deleted (fine for thousands,
   not for millions); T3's captured window context on screenshots; T3's
   right-hand file panel for a message's file (D854 opens a dialog), its table
-  preview of CSV and TSV, and its virtualized preview of text past 1 MiB. A live Claude Code session starts again
+  preview of CSV and TSV, and its virtualized preview of text past 1 MiB; a bound on the page's cache
+  of attachment bytes (a video is read whole to show its first frame, D855). A live Claude Code session starts again
   when a turn's attachments add their folder to `additionalDirectories`.
 - Thread history (W2, D220–D228): Claude Code's native rewind and fork (`resumeSessionAt` and
   `forkSession` instead of a new session with the transcript, D222, D225;

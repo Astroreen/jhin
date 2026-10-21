@@ -185,7 +185,17 @@ const errorText = (cause: unknown, fallback: string) =>
   cause instanceof Error ? cause.message : fallback;
 
 /** The attachment's object URL: its own for a picked file, the node's (kept for the page) otherwise. */
-function useSourceUrl(source: AttachmentPreviewSource, wanted: boolean, revision: number) {
+function useSourceUrl(
+  source: AttachmentPreviewSource,
+  wanted: boolean,
+  revision: number,
+  /**
+   * The type a frame must see, which the stored one may not be (`.pdf` saved as
+   * `application/octet-stream`): the bytes are wrapped again with it, so the frame shows
+   * them rather than downloading them.
+   */
+  type?: string,
+) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { file, stored, loader } = source;
@@ -193,7 +203,7 @@ function useSourceUrl(source: AttachmentPreviewSource, wanted: boolean, revision
     if (!wanted) return;
     setError(null);
     if (file !== undefined) {
-      const local = URL.createObjectURL(file);
+      const local = URL.createObjectURL(type === undefined ? file : new Blob([file], { type }));
       setUrl(local);
       return () => URL.revokeObjectURL(local);
     }
@@ -202,15 +212,25 @@ function useSourceUrl(source: AttachmentPreviewSource, wanted: boolean, revision
       return;
     }
     let current = true;
+    let own: string | undefined;
     setUrl(null);
-    loader.url(stored).then(
-      (loaded) => current && setUrl(loaded),
-      (cause: unknown) => current && setError(errorText(cause, "The attachment is unavailable.")),
-    );
+    loader
+      .url(stored)
+      .then(async (loaded) => {
+        if (type === undefined) return loaded;
+        const bytes = await (await fetch(loaded)).blob();
+        own = URL.createObjectURL(new Blob([bytes], { type }));
+        return own;
+      })
+      .then(
+        (loaded) => current && setUrl(loaded),
+        (cause: unknown) => current && setError(errorText(cause, "The attachment is unavailable.")),
+      );
     return () => {
       current = false;
+      if (own !== undefined) URL.revokeObjectURL(own);
     };
-  }, [file, stored, loader, wanted, revision]);
+  }, [file, stored, loader, wanted, revision, type]);
   return { url: wanted ? url : null, error: wanted ? error : null };
 }
 
@@ -250,7 +270,12 @@ export function AttachmentFilePreview(
   const needsText = kind === "text" || kind === "markdown" || (kind === "html" && !rendered);
   // Text needs only its first MiB, not the whole file.
   const needsUrl = !needsText && kind !== "unsupported";
-  const { url, error } = useSourceUrl(props, needsUrl, revision);
+  const { url, error } = useSourceUrl(
+    props,
+    needsUrl,
+    revision,
+    kind === "pdf" ? "application/pdf" : kind === "html" ? "text/html" : undefined,
+  );
   const wordWrap = useSection(chat.context, DIFF_SECTION, DiffSettings).wordWrap;
 
   useEffect(() => {

@@ -61,9 +61,11 @@ export function useAttachmentUrl(
     )
       return;
     let current = true;
+    // Another attachment's picture never stays on this one; a failed load leaves no picture.
+    setUrl(undefined);
     loader.url(attachment).then(
       (loaded) => current && setUrl(loaded),
-      () => undefined,
+      () => current && setUrl(undefined),
     );
     return () => {
       current = false;

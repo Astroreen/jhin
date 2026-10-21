@@ -149,6 +149,18 @@ describe("the preview of an attachment (T3's AttachmentFilePreview)", () => {
       .toBeVisible();
   });
 
+  it("frames an HTML file stored with a generic type as HTML, in a sandbox", async () => {
+    const file = new File(["<p>hi</p>"], "page.html", { type: "application/octet-stream" });
+    await mount(
+      <AttachmentFilePreview file={file} mimeType={file.type} name={file.name} sizeBytes={9} />,
+    );
+    const frame = page.getByTitle("page.html");
+    await expect.element(frame).toBeVisible();
+    const element = frame.element() as HTMLIFrameElement;
+    expect(element.getAttribute("sandbox")).toContain("allow-scripts");
+    expect((await (await fetch(element.src)).blob()).type).toBe("text/html");
+  });
+
   it("plays a sent video from the node's bytes", async () => {
     const { loader, reads } = nodeLoader("not really a video");
     await mount(
