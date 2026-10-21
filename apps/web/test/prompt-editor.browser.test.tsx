@@ -328,6 +328,16 @@ describe("code blocks in the prompt (D841–D843)", () => {
     expect(tiptap.state.selection.to).toBe(3);
   });
 
+  it("leaves a selection from a code block into the text below to Tab's default", async () => {
+    const editor = mount("```\na\n```\ntext");
+    const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;
+    tiptap.commands.setTextSelection({ from: 1, to: tiptap.state.doc.content.size - 1 });
+    tiptap.commands.focus();
+    await userEvent.keyboard("{Tab}");
+    await userEvent.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(editor.value()).toBe("```\na\n```\ntext");
+  });
+
   it("outdents an empty first line, not the line below it", async () => {
     const editor = mount("```\n\n  x\n```");
     const tiptap = (editor.editable() as HTMLElement & { editor: Editor }).editor;
