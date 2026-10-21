@@ -158,6 +158,9 @@ importers:
       '@jhin/plugin-agent-claude':
         specifier: workspace:*
         version: link:../../plugins/agent-claude
+      '@jhin/plugin-agent-codex':
+        specifier: workspace:*
+        version: link:../../plugins/agent-codex
       '@jhin/plugin-agent-fake':
         specifier: workspace:*
         version: link:../../plugins/agent-fake
@@ -541,6 +544,28 @@ importers:
       '@jhin/mcp-api':
         specifier: workspace:*
         version: link:../../packages/mcp-api
+      '@jhin/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      '@jhin/storage-api':
+        specifier: workspace:*
+        version: link:../../packages/storage-api
+    devDependencies:
+      '@jhin/plugin-threads':
+        specifier: workspace:*
+        version: link:../threads
+      '@jhin/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.19.2
+
+  plugins/agent-codex:
+    dependencies:
+      '@jhin/agent-api':
+        specifier: workspace:*
+        version: link:../../packages/agent-api
       '@jhin/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk

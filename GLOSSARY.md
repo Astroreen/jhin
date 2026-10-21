@@ -107,7 +107,8 @@ Words about Jhin:
   agent's home project, which its generations read on start and keep current.
 - **Agent runtime** — the capability that executes turns: an own agent loop
   or a wrapper over an existing agent. The distribution ships Claude Code
-  (`jhin.agent-claude`) and a fake one for tests and demos.
+  (`jhin.agent-claude`), Codex (`jhin.agent-codex`) and a fake one for tests
+  and demos.
 - **Session** — an agent's own conversation state for a thread (Claude Code
   keeps it in a session named after the thread); a turn resumes it.
 - **Live session** — an agent process kept running between a thread's turns,

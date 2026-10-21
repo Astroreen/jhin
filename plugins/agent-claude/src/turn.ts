@@ -16,7 +16,7 @@ import type {
   TurnAttachment,
   TurnRequest,
 } from "@jhin/agent-api";
-import { DEFAULT_RUNTIME_MODE, ThreadEvents } from "@jhin/agent-api";
+import { DEFAULT_RUNTIME_MODE, ThreadEvents, historyTranscript } from "@jhin/agent-api";
 import type {
   CanUseTool,
   Options,
@@ -194,51 +194,10 @@ function userMessage(
 }
 
 /**
- * The conversation Claude has not seen, as context for the first message it gets: every
- * earlier turn of a thread whose turns ran on another agent before Claude joined (no
- * `since`), or the turns after Claude's last one (`since`: Claude's agent id) of a thread
- * that went to another agent and came back. `undefined` when there is none.
+ * The conversation Claude has not seen, as context for the first message it gets (D102):
+ * `historyTranscript` of `@jhin/agent-api`, shared with the other runtimes.
  */
-export function transcript(history: TurnRequest["history"], since?: string): string | undefined {
-  const turns: { agentId: unknown; lines: string[] }[] = [];
-  const byId = new Map<unknown, { agentId: unknown; lines: string[] }>();
-  for (const event of history) {
-    const payload = event.payload as Record<string, unknown> | null;
-    if (payload === null || typeof payload !== "object") continue;
-    if (event.type === ThreadEvents.turnStarted) {
-      const turn = { agentId: payload["agentId"], lines: [] as string[] };
-      turns.push(turn);
-      byId.set(payload["turnId"], turn);
-      const input = payload["input"] as { text?: unknown } | undefined;
-      if (typeof input?.text === "string") turn.lines.push(`User: ${input.text}`);
-    } else if (event.type === ThreadEvents.turnSteered) {
-      // A message steered into a turn is the user's too.
-      const turn = byId.get(payload["turnId"]) ?? turns.at(-1);
-      const input = payload["input"] as { text?: unknown } | undefined;
-      if (typeof input?.text === "string") turn?.lines.push(`User: ${input.text}`);
-    } else if (event.type === ThreadEvents.itemCompleted && payload["kind"] === "message") {
-      const turn = byId.get(payload["turnId"]) ?? turns.at(-1);
-      if (typeof payload["text"] === "string") turn?.lines.push(`Assistant: ${payload["text"]}`);
-    }
-  }
-  const last = since === undefined ? -1 : turns.findLastIndex((turn) => turn.agentId === since);
-  // A session with no turn of Claude's in the history (its record was written on init, then
-  // the turn failed) already holds what Claude saw: nothing to replay.
-  if (since !== undefined && last === -1) return undefined;
-  const missed = turns.slice(last + 1);
-  const lines = missed.flatMap((turn) => turn.lines);
-  if (lines.length === 0) return undefined;
-  return [
-    since === undefined
-      ? "This thread started before you joined it. The conversation so far:"
-      : "Since your last turn this thread went on with another agent. The conversation since then:",
-    "",
-    ...lines,
-    "",
-    "The user's new message follows.",
-    "",
-  ].join("\n");
-}
+export const transcript = historyTranscript;
 
 /**
  * A queue of items read by one consumer; `end` closes it, with an error to fail it.
