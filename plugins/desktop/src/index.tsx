@@ -3,6 +3,7 @@
 // section of components/settings/SettingsPanels.tsx.
 import { NOTIFICATIONS_CAPABILITY, type ThreadNotifications } from "@jhin/client-api";
 import {
+  DEFAULT_QUIT_CONFIRMATION_MODE,
   DESKTOP_BRIDGE_VERSION,
   DESKTOP_SHELL_CAPABILITY,
   DesktopMenuContribution,
@@ -10,6 +11,7 @@ import {
   DesktopUpdateChannel,
   DesktopUpdateCheckResult,
   DesktopUpdateState,
+  QuitConfirmationMode,
   type DesktopBridge,
   type DesktopShell,
 } from "@jhin/desktop-api";
@@ -53,6 +55,7 @@ import {
   resolveDesktopUpdateButtonAction,
 } from "./update-logic.ts";
 import { pasteAsText } from "./paste-as-text.ts";
+import { QuitHoldOverlay, QuitShortcutRow } from "./quit-shortcut.tsx";
 
 const DOWNLOAD_PROGRESS_RADIUS = 14;
 const DOWNLOAD_PROGRESS_CIRCUMFERENCE = 2 * Math.PI * DOWNLOAD_PROGRESS_RADIUS;
@@ -473,6 +476,45 @@ export default definePlugin({
     context.subscriptions.add(
       slots.contribute("sidebar.footer", { id: "desktop.update", component: UpdateControl }),
     );
+
+    // T3's quit hold (D947): the hint while ⌘/Ctrl+Q is down, and its setting.
+    const setQuitShortcut = bridge.setQuitShortcut?.bind(bridge);
+    if (setQuitShortcut !== undefined) {
+      context.commands.register({
+        name: "desktop.quit-shortcut.set",
+        description:
+          "Chooses what ⌘/Ctrl+Q does in the desktop app: quit at once (direct), quit when held (hold, also on two quick presses) or on a second press (double-click)",
+        input: z.object({ mode: QuitConfirmationMode }),
+        output: z.object({ mode: QuitConfirmationMode }),
+        handler: async ({ mode }) => ({
+          mode: QuitConfirmationMode.parse(await setQuitShortcut(mode)),
+        }),
+      });
+      const setMode = async (mode: QuitConfirmationMode) => {
+        const result = (await context.commands.execute("desktop.quit-shortcut.set", {
+          mode,
+        })) as { mode: QuitConfirmationMode };
+        return result.mode;
+      };
+      context.subscriptions.add(
+        slots.contribute("app.global", {
+          id: "desktop.quit-hold",
+          component: () => <QuitHoldOverlay bridge={bridge} />,
+        }),
+      );
+      context.subscriptions.add(
+        slots.contribute("settings.general.behavior", {
+          id: "desktop.quit-shortcut",
+          component: () => (
+            <QuitShortcutRow
+              bridge={bridge}
+              defaultMode={DEFAULT_QUIT_CONFIRMATION_MODE}
+              set={setMode}
+            />
+          ),
+        }),
+      );
+    }
 
     /** T3's About section: the version with its update button, and the update track. */
     function AboutSection() {

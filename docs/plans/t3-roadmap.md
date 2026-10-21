@@ -283,7 +283,7 @@ block of 20 after D980 and writes it here.
   feed, app icons, release notes in the update control, Paste as Text, the
   quit-hold shortcut, WSL and SSH backends, the CLI shim.
   Landed so far: packaging, signing and the release workflow (D941–D945,
-  #123); Paste as Text (D946, #145). The rest stays in the Deferred lists of
+  #123); Paste as Text (D946, #145); the quit hold (D947). The rest stays in the Deferred lists of
   `desktop.md` and `preview.md`.
 - **W26:** `jhin pair` with a terminal QR code, pairing links for a
   `jhin client` page, device metadata and live updates in the authorized

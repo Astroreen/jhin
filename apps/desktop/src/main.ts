@@ -18,10 +18,12 @@ import {
 } from "electron";
 
 import {
+  DEFAULT_QUIT_CONFIRMATION_MODE,
   DESKTOP_CHANNELS,
   DesktopMenuContribution,
   DesktopNotificationBadge,
   DesktopUpdateChannel,
+  QuitConfirmationMode,
 } from "@jhin/desktop-api";
 import { z } from "@jhin/sdk";
 
@@ -31,6 +33,7 @@ import { createSettingsStore } from "./settings.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updates/channels.ts";
 import { UpdateController } from "./updates/controller.ts";
 import { createElectronUpdater, hasPackagedFeed } from "./updates/electron-updater.ts";
+import { makeQuitShortcutHandler } from "./quit-hold.ts";
 import { createMainWindow, loadNode, syncWindowAppearance, zoomMainWindow } from "./window.ts";
 
 const APP_NAME = "Jhin";
@@ -153,6 +156,7 @@ function applyBadge({ count, image }: DesktopNotificationBadge): void {
 
 async function main(): Promise<void> {
   const settings = createSettingsStore(app.getPath("userData"));
+  const quitShortcutMode = () => settings.get().quitShortcut ?? DEFAULT_QUIT_CONFIRMATION_MODE;
   // The test feed is for builds that are not packaged: a packaged app updates from its own feed only.
   const feedUrl = app.isPackaged ? undefined : process.env["JHIN_DESKTOP_UPDATE_FEED"];
   const environment = {
@@ -267,6 +271,11 @@ async function main(): Promise<void> {
     updates.setChannel(channel),
   );
   handle(DESKTOP_CHANNELS.getWindowFullscreen, none, () => mainWindow?.isFullScreen() ?? false);
+  handle(DESKTOP_CHANNELS.quitShortcutGet, none, () => quitShortcutMode());
+  handle(DESKTOP_CHANNELS.quitShortcutSet, QuitConfirmationMode, (quitShortcut) => {
+    settings.update({ quitShortcut });
+    return quitShortcutMode();
+  });
   // T3's pasteAsText: the page armed its composer first, then asks for the paste (D946).
   handle(DESKTOP_CHANNELS.pasteAsText, none, () => {
     if (mainWindow === undefined || mainWindow.isDestroyed()) return;
@@ -386,6 +395,23 @@ async function main(): Promise<void> {
     mainWindow.on("closed", () => {
       mainWindow = undefined;
     });
+    // T3's quit hold (D947): ⌘/Ctrl+Q quits as the setting says, with T3's hint.
+    const window = mainWindow;
+    const quitShortcut = makeQuitShortcutHandler({
+      platform: process.platform,
+      getMode: () => Promise.resolve(quitShortcutMode()),
+      notify: (hint) => {
+        if (!window.isDestroyed()) window.webContents.send(DESKTOP_CHANNELS.quitShortcut, hint);
+      },
+      // Hidden until the keys are released, so their repeats cannot reach the next app.
+      concealWindow: () => {
+        if (window.isDestroyed()) return;
+        if (window.isFullScreen()) window.setFullScreen(false);
+        window.setOpacity(0);
+      },
+      quit: () => app.quit(),
+    });
+    window.webContents.on("before-input-event", (event, input) => quitShortcut(event, input));
   };
 
   // Quitting stops the node first and waits for it (D522).

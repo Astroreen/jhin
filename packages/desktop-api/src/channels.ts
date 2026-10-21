@@ -19,4 +19,8 @@ export const DESKTOP_CHANNELS = {
   getWindowFullscreen: "jhin-desktop:get-window-fullscreen",
   windowFullscreen: "jhin-desktop:window-fullscreen",
   pasteAsText: "jhin-desktop:paste-as-text",
+  quitShortcutGet: "jhin-desktop:quit-shortcut-get",
+  quitShortcutSet: "jhin-desktop:quit-shortcut-set",
+  /** Main to page: the quit shortcut is pressed or released (T3's QuitHold hint). */
+  quitShortcut: "jhin-desktop:quit-shortcut",
 } as const;

@@ -3,7 +3,7 @@
 import * as Fs from "node:fs";
 import * as Path from "node:path";
 
-import { DesktopUpdateChannel } from "@jhin/desktop-api";
+import { DesktopUpdateChannel, QuitConfirmationMode } from "@jhin/desktop-api";
 import { z } from "@jhin/sdk";
 
 export interface WindowBounds {
@@ -28,6 +28,8 @@ const Bounds = z.object({
 /** What the app keeps in its data folder (D515, D519); a field it cannot read is left out. */
 const AppSettings = z.object({
   updateChannel: DesktopUpdateChannel.optional().catch(undefined),
+  /** T3's `confirmQuit` (D947); unset is T3's default, hold. */
+  quitShortcut: QuitConfirmationMode.optional().catch(undefined),
   mainWindowBounds: Bounds.nullable().catch(null).default(null),
   mainWindowMaximized: z.boolean().catch(false).default(false),
 });

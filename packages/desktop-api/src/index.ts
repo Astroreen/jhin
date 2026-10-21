@@ -86,6 +86,18 @@ export const DesktopNotificationBadge = z.object({
 });
 export type DesktopNotificationBadge = z.output<typeof DesktopNotificationBadge>;
 
+/** T3's quit shortcut behaviour (D947): quit at once, hold ⌘/Ctrl+Q, or press it twice. */
+export const QuitConfirmationMode = z.enum(["direct", "hold", "double-click"]);
+export type QuitConfirmationMode = z.output<typeof QuitConfirmationMode>;
+export const DEFAULT_QUIT_CONFIRMATION_MODE: QuitConfirmationMode = "hold";
+
+/** The hint the app shows while the quit shortcut is down (T3's `QuitShortcutHintEvent`). */
+export const QuitShortcutHintEvent = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("down"), mode: z.enum(["hold", "double-click"]) }),
+  z.object({ state: z.literal("up") }),
+]);
+export type QuitShortcutHintEvent = z.output<typeof QuitShortcutHintEvent>;
+
 type Unsubscribe = () => void;
 
 /** `window.jhinDesktop`, put there by the app's preload (D521). */
@@ -112,6 +124,11 @@ export interface DesktopBridge {
    * Text, D946). Optional: an older app's bridge lacks it.
    */
   pasteAsText?(): Promise<void>;
+  /** The quit shortcut's behaviour, kept in the app's data folder (D947). */
+  getQuitShortcut?(): Promise<QuitConfirmationMode>;
+  setQuitShortcut?(mode: QuitConfirmationMode): Promise<QuitConfirmationMode>;
+  /** The quit shortcut is pressed or released, for T3's hint. */
+  onQuitShortcut?(listener: (hint: QuitShortcutHintEvent) => void): Unsubscribe;
 }
 
 /** `desktop.shell@1`: the app, for client plugins. */
