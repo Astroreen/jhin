@@ -252,12 +252,33 @@ export const sourceControlPlugin = builtin(
           "Opens the workspace menu under the composer of a draft: current checkout, new worktree or previous worktree; `opened` is false when no draft is shown",
         input: z.object({}),
         output: z.object({ opened: z.boolean() }),
-        handler: () => ({ opened: drafts.openMenu() }),
+        handler: () => ({ opened: drafts.run("workspace") }),
+      });
+      // T3's composer.branch and composer.previousWorktree (D907).
+      context.commands.register({
+        name: "composer.branch",
+        title: "Choose branch",
+        description:
+          "Opens the branch picker under the composer of the open thread or draft; `opened` is false when none is shown",
+        input: z.object({}),
+        output: z.object({ opened: z.boolean() }),
+        handler: () => ({ opened: drafts.run("branch") }),
+      });
+      context.commands.register({
+        name: "composer.previousWorktree",
+        title: "Use previous worktree",
+        description:
+          "Has the draft on screen start its thread in the project's previous worktree, as its workspace menu's Previous worktree does; `used` is false when there is no draft or no previous worktree",
+        input: z.object({}),
+        output: z.object({ used: z.boolean() }),
+        handler: () => ({ used: drafts.run("previous-worktree") }),
       });
       if (keybindings !== undefined) {
         context.subscriptions.add(
           keybindings.addDefaults([
             { key: "mod+shift+x", command: "composer.workspace", when: "!terminalFocus" },
+            { key: "mod+shift+g", command: "composer.branch", when: "!terminalFocus" },
+            { key: "mod+shift+l", command: "composer.previousWorktree", when: "!terminalFocus" },
           ]),
         );
       }

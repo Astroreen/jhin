@@ -1884,21 +1884,63 @@ describe("worktrees in the client", () => {
     // A started thread's toolbar alone: its fixed label offers no menu.
     const started = mount(<Toolbar project={project} target={target} thread={thread} />);
     await expect.element(page.getByRole("img", { name: /^Workspace: / })).toBeVisible();
-    expect(drafts.openMenu()).toBe(false);
+    expect(drafts.run("workspace")).toBe(false);
 
     // A draft beside it offers its menu, and takes it back when it goes.
     const draft = mount(<Toolbar project={project} target={target} />);
     await expect.element(page.getByRole("button", { name: "Workspace" })).toBeVisible();
     let opened = false;
     act(() => {
-      opened = drafts.openMenu();
+      opened = drafts.run("workspace");
     });
     expect(opened).toBe(true);
     await expect.element(page.getByRole("menuitemradio", { name: /New worktree/ })).toBeVisible();
     await userEvent.keyboard("{Escape}");
     draft.unmount();
-    expect(drafts.openMenu()).toBe(false);
+    expect(drafts.run("workspace")).toBe(false);
     started.unmount();
+  });
+
+  it("opens the branch picker and takes the previous worktree for T3's composer shortcuts (D907)", async () => {
+    const { value, calls } = services(viewWith(status()), { "git.branches": { branches: [] } });
+    // Another thread of the project works in a worktree: the draft's previous one.
+    (value.threads.catalog(target).threads as ThreadRecord[]).push({
+      ...thread,
+      id: "t2",
+      worktreePath: "/w/app/feature",
+    });
+    const drafts = createDraftWorkspaces();
+    const Toolbar = createBranchToolbar(value, drafts);
+    const project = { id: "app", name: "app", path: "/src/app", scratch: false, createdAt: "" };
+    const draft = mount(<Toolbar project={project} target={target} />);
+    await expect.element(page.getByRole("button", { name: "Workspace" })).toBeVisible();
+    let used = false;
+    act(() => {
+      used = drafts.run("previous-worktree");
+    });
+    expect(used).toBe(true);
+    expect(drafts.get(draftKey(target, "app"))).toMatchObject({
+      mode: "previous",
+      previous: { path: "/w/app/feature" },
+    });
+    act(() => {
+      drafts.run("branch");
+    });
+    await expect.element(page.getByRole("combobox", { name: "Search refs" })).toBeVisible();
+    expect(calls.some((call) => call.method === "git.branches")).toBe(true);
+    await userEvent.keyboard("{Escape}");
+    draft.unmount();
+
+    // A started thread has no previous worktree to take, but its branch picker opens.
+    mount(<Toolbar project={project} target={target} thread={thread} />);
+    await expect.element(page.getByRole("img", { name: /^Workspace: / })).toBeVisible();
+    expect(drafts.run("previous-worktree")).toBe(false);
+    let opened = false;
+    act(() => {
+      opened = drafts.run("branch");
+    });
+    expect(opened).toBe(true);
+    await expect.element(page.getByRole("combobox", { name: "Search refs" })).toBeVisible();
   });
 
   it("never offers to delete a worktree this node did not make", async () => {

@@ -21,7 +21,7 @@ import {
   TooltipTrigger,
 } from "@jhin/ui";
 import { ChevronDownIcon, GitBranchIcon, RefreshCwIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { ComposerControl } from "../../lib/composer-control.tsx";
 import { useCatalog } from "../../lib/hooks.ts";
@@ -79,6 +79,18 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
     const originSwitch = useId();
     const key = draftKey(target, project?.id ?? "");
     const draft = useDraftWorkspace(drafts, key);
+    // T3's composer.branch (D907): the branch picker opens, a draft's or a thread's.
+    // Set once the picker renders below; a toolbar that renders nothing opens nothing.
+    const openPicker = useRef<(() => void) | undefined>(undefined);
+    openPicker.current = undefined;
+    useEffect(
+      () =>
+        drafts.offer("branch", () => {
+          openPicker.current?.();
+          return openPicker.current !== undefined;
+        }),
+      [],
+    );
     if (project === undefined || project.scratch) return null;
     const projectStatus = view.projects.get(project.id);
     const status = statusOfThread(view, project.id, thread) ?? projectStatus;
@@ -98,6 +110,11 @@ export function createBranchToolbar(services: SourceControlServices, drafts: Dra
         })
         .then((answer) => setBranches(answer.branches))
         .catch(() => setBranches([]));
+
+    openPicker.current = () => {
+      setOpen(true);
+      load();
+    };
 
     const select = (item: RefItem) => {
       setOpen(false);

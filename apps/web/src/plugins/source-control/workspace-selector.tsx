@@ -81,7 +81,42 @@ export function WorkspaceSelector(props: {
   const [open, setOpen] = useState(false);
   // A draft's menu answers T3's `composer.workspace` shortcut; a started thread's is fixed.
   const offers = thread === undefined;
-  useEffect(() => (offers ? drafts.offerMenu(() => setOpen(true)) : undefined), [drafts, offers]);
+  useEffect(
+    () =>
+      offers
+        ? drafts.offer("workspace", () => {
+            setOpen(true);
+            return true;
+          })
+        : undefined,
+    [drafts, offers],
+  );
+  const previous = previousWorktree(
+    props.threads,
+    project.id,
+    (threadId) => view.threads.get(threadId)?.branch,
+  );
+  // T3's composer.previousWorktree (D907): the draft takes the previous worktree and the
+  // composer gets the focus back.
+  const previousPath = previous?.path;
+  const previousBranch = previous?.branch ?? null;
+  useEffect(
+    () =>
+      offers && previousPath !== undefined
+        ? drafts.offer("previous-worktree", () => {
+            drafts.set(key, {
+              mode: "previous",
+              startFromOrigin: false,
+              previous: { path: previousPath, branch: previousBranch },
+            });
+            void props.services.context.commands
+              .execute("chat.composer.focus", {})
+              .catch(() => undefined);
+            return true;
+          })
+        : undefined,
+    [drafts, key, offers, previousBranch, previousPath, props.services.context],
+  );
   if (thread !== undefined) {
     const label = lockedWorkspaceLabel(thread.worktreePath);
     return (
@@ -107,11 +142,6 @@ export function WorkspaceSelector(props: {
       </Tooltip>
     );
   }
-  const previous = previousWorktree(
-    props.threads,
-    project.id,
-    (threadId) => view.threads.get(threadId)?.branch,
-  );
   const label =
     draft.mode === "worktree"
       ? "New worktree"
