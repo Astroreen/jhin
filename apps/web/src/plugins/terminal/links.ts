@@ -2,7 +2,7 @@
 // link patterns of nightly eb7b35ac with the xterm.js buffer ranges of the version before acf761b2.
 import { isMacPlatform } from "../../lib/keybindings.ts";
 
-export type TerminalLinkKind = "url" | "path";
+type TerminalLinkKind = "url" | "path";
 
 export interface TerminalLinkMatch {
   kind: TerminalLinkKind;
@@ -11,7 +11,7 @@ export interface TerminalLinkMatch {
   end: number;
 }
 
-export interface TerminalLinkBufferPosition {
+interface TerminalLinkBufferPosition {
   x: number;
   y: number;
 }
@@ -26,7 +26,7 @@ export interface TerminalBufferLineLike {
   translateToString(trimRight?: boolean): string;
 }
 
-export interface WrappedTerminalLinkLineSegment {
+interface WrappedTerminalLinkLineSegment {
   bufferLineNumber: number;
   text: string;
   startIndex: number;
@@ -120,7 +120,7 @@ export function extractTerminalLinks(line: string): TerminalLinkMatch[] {
   return [...urlMatches, ...quotedMatches, ...pathMatches].toSorted((a, b) => a.start - b.start);
 }
 
-export function isTerminalUrl(value: string): boolean {
+function isTerminalUrl(value: string): boolean {
   return /^https?:\/\//iu.test(value);
 }
 

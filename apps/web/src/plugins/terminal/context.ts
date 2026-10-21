@@ -11,7 +11,7 @@ export interface TerminalContextSelection {
   readonly text: string;
 }
 
-export function normalizeTerminalContextText(text: string): string {
+function normalizeTerminalContextText(text: string): string {
   return text.replace(/\r\n/g, "\n").replace(/^\n+|\n+$/g, "");
 }
 
