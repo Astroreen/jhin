@@ -244,9 +244,10 @@ async function checkoutTarget(
   const raw = ((await ghJson(ghPath, cwd, [
     "pr",
     "view",
-    reference,
     "--json",
     `${HEAD_FIELDS},headRepository`,
+    "--",
+    reference,
   ])) ?? {}) as RawPullRequest;
   const pr = toPullRequest(raw);
   if (pr === undefined) throw new GitHubUnavailable("failed", "gh answered no pull request");

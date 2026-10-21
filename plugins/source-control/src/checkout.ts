@@ -6,7 +6,7 @@
 // refreshCheckedOutBranch) and the GitHub provider's checkoutChangeRequest.
 import * as Path from "node:path";
 
-import type { PullRequest } from "@jhin/source-control-api";
+import type { PreparedPullRequest } from "@jhin/source-control-api";
 
 import type { CheckoutTarget } from "./forge.ts";
 import { SourceControlError, type Git } from "./git.ts";
@@ -17,19 +17,15 @@ import {
   worktreePath,
 } from "./worktrees.ts";
 
-/** What checking a pull request out made (T3's `preparePullRequestThread` result). */
-export interface PreparedPullRequest {
-  readonly pullRequest: PullRequest;
-  readonly branch: string;
-  /** The worktree it is checked out in; `null` in the project's own checkout. */
-  readonly worktreePath: string | null;
-  /** False for a reused worktree on a branch of the same name that is not the pull request's. */
-  readonly isOnPullRequestHead: boolean;
-}
-
-/** T3's normalization: trimmed, `#42` as `42`; the forge reads numbers, URLs and branches. */
+/**
+ * T3's normalization: trimmed, `#42` as `42`; the forge reads numbers, URLs
+ * and branches. One that starts with `-` would read as an option: refused.
+ */
 export function normalizeReference(reference: string): string {
   const trimmed = reference.trim();
+  if (trimmed.startsWith("-")) {
+    throw new SourceControlError("PULL_REQUEST_INVALID", `${trimmed} is not a pull request`);
+  }
   return /^#\d+$/.test(trimmed) ? trimmed.slice(1) : trimmed;
 }
 
@@ -139,10 +135,39 @@ const branchExists = async (git: Git, branch: string) =>
   (await git(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], { ok: [0, 1] })).code ===
   0;
 
+/** The head's commit, and the remote-tracking ref it came from (none from `refs/pull`). */
+async function headCommit(
+  git: Git,
+  target: CheckoutTarget,
+): Promise<{ commit: string; ref?: string }> {
+  try {
+    const ref = await fetchHead(git, await headRemote(git, target), target.pr.headBranch);
+    return { commit: (await git(["rev-parse", "--verify", `${ref}^{commit}`])).stdout.trim(), ref };
+  } catch {
+    // A head branch that is gone: the pull request's own ref, without an upstream.
+    return { commit: await fetchPullRequestHead(git, target.pr.number) };
+  }
+}
+
+/** Refuses a branch that has commits the head does not: moving it would lose them. */
+async function assertBehind(git: Git, branch: string, commit: string, number: number) {
+  const behind = await git(["merge-base", "--is-ancestor", `refs/heads/${branch}`, commit], {
+    ok: [0, 1],
+  });
+  if (behind.code !== 0) {
+    throw new SourceControlError(
+      "BRANCH_EXISTS",
+      `Branch '${branch}' has commits that pull request #${number} does not. Push or move them, then check it out again.`,
+      { branch },
+    );
+  }
+}
+
 /**
  * Checks the pull request out in the project's own checkout (T3's "Local"):
  * its head branch (`<owner>/<head>` for a fork whose head is named like its
- * base), created or reset to the head, tracking it.
+ * base), created or fast-forwarded to the head, tracking it. Unlike T3's reset,
+ * it refuses a checkout with changes and a branch with commits of its own.
  */
 export async function checkoutLocal(
   git: Git,
@@ -154,27 +179,27 @@ export async function checkoutLocal(
     target.crossRepository && target.headOwner !== undefined && pr.headBranch === pr.baseBranch
       ? `${target.headOwner}/${pr.headBranch}`
       : pr.headBranch;
+  if ((await git(["status", "--porcelain"])).stdout.trim() !== "") {
+    throw new SourceControlError(
+      "ACTION_UNAVAILABLE",
+      "Commit or stash the changes in the project's checkout before checking a pull request out in it.",
+    );
+  }
   try {
-    let ref: string;
-    let tracking = true;
-    try {
-      ref = await fetchHead(git, await headRemote(git, target), pr.headBranch);
-    } catch {
-      // A head branch that is gone: the pull request's own ref, without an upstream.
-      ref = await fetchPullRequestHead(git, pr.number);
-      tracking = false;
-    }
+    const { commit, ref } = await headCommit(git, target);
     if (await branchExists(git, local)) {
+      await assertBehind(git, local, commit, pr.number);
       await git(["switch", "--quiet", "--", local]);
-      await git(["reset", "--hard", "--quiet", ref]);
+      await git(["merge", "--ff-only", "--quiet", commit]);
     } else {
-      await git(["branch", "--", local, ref]);
+      await git(["branch", "--", local, commit]);
       await git(["switch", "--quiet", "--", local]);
     }
-    if (tracking) {
+    if (ref !== undefined) {
       await git(["branch", `--set-upstream-to=${ref.slice("refs/remotes/".length)}`, "--", local]);
     }
   } catch (error) {
+    if (error instanceof SourceControlError && error.code !== "GIT_FAILED") throw error;
     warn("could not check the pull request out", { error: (error as Error).message });
     throw new SourceControlError(
       "GIT_FAILED",
@@ -193,44 +218,25 @@ function worktreeBranchOf(target: CheckoutTarget): string {
     : target.pr.headBranch;
 }
 
-/** Makes `local` point at the pull request's head (T3's `materializePullRequestHeadBranch`). */
+/**
+ * Makes `local` point at the pull request's head (T3's
+ * `materializePullRequestHeadBranch`): created there, or moved forward when it
+ * is behind; one with commits of its own is refused.
+ */
 async function materialize(git: Git, target: CheckoutTarget, local: string): Promise<void> {
   const { pr } = target;
-  const primary = await primaryRemote(git);
-  const fromPullRef = () =>
-    git([
-      "fetch",
-      "--quiet",
-      "--no-tags",
-      "--",
-      primary,
-      `+refs/pull/${pr.number}/head:refs/heads/${local}`,
-    ]);
+  let commit: string;
   try {
-    if (target.crossRepository) {
-      const ref = await fetchHead(git, await headRemote(git, target), pr.headBranch);
-      await git(["branch", "--force", "--", local, ref]);
-      return;
-    }
-    try {
-      await fromPullRef();
-      return;
-    } catch (error) {
-      if (pr.state !== "open") throw error;
-      await git(["branch", "--force", "--", local, await fetchHead(git, primary, pr.headBranch)]);
-      return;
-    }
+    ({ commit } = await headCommit(git, target));
   } catch {
-    try {
-      await fromPullRef();
-    } catch {
-      throw new SourceControlError(
-        "GIT_FAILED",
-        `Failed to materialize pull request #${pr.number} branch ${pr.headBranch} as ${local}.`,
-        { number: pr.number },
-      );
-    }
+    throw new SourceControlError(
+      "GIT_FAILED",
+      `Failed to materialize pull request #${pr.number} branch ${pr.headBranch} as ${local}.`,
+      { number: pr.number },
+    );
   }
+  if (await branchExists(git, local)) await assertBehind(git, local, commit, pr.number);
+  await git(["branch", "--force", "--", local, commit]);
 }
 
 /**
@@ -268,10 +274,8 @@ export async function checkoutWorktree(
   const local = worktreeBranchOf(target);
   const entries = await listWorktrees(git);
   const same = (a: string, b: string) => Path.resolve(a) === Path.resolve(b);
-  // The jhin branch wherever it is; the bare head branch only in a worktree of its own.
-  const found =
-    entries.find((entry) => entry.branch === local) ??
-    entries.find((entry) => !entry.main && entry.branch === pr.headBranch);
+  // A fork's head named like a branch of this repository is not that branch.
+  const found = entries.find((entry) => entry.branch === local);
   if (found !== undefined && (found.main || same(found.path, options.repository))) {
     throw new SourceControlError(
       "WORKTREE_IN_USE",
@@ -281,20 +285,17 @@ export async function checkoutWorktree(
   }
   if (found !== undefined) {
     const worktreeGit = options.createGit(found.path);
-    let onHead = false;
-    if (found.branch === local) {
-      await configureUpstream(worktreeGit, target, local, options.warn);
-      onHead = await refresh(worktreeGit, pr.number).catch((error: unknown) => {
-        options.warn("could not refresh a reused pull request worktree", {
-          worktreePath: found.path,
-          error: (error as Error).message,
-        });
-        return false;
+    await configureUpstream(worktreeGit, target, local, options.warn);
+    const onHead = await refresh(worktreeGit, pr.number).catch((error: unknown) => {
+      options.warn("could not refresh a reused pull request worktree", {
+        worktreePath: found.path,
+        error: (error as Error).message,
       });
-    }
+      return false;
+    });
     return {
       pullRequest: pr,
-      branch: found.branch ?? local,
+      branch: local,
       worktreePath: found.path,
       isOnPullRequestHead: onHead,
     };

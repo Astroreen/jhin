@@ -148,6 +148,124 @@ describe("checking a pull request out (D902)", () => {
   });
 });
 
+describe("checking a pull request out without losing work (D902)", () => {
+  const worktreeOptions = () => ({
+    root: temp("jhin-sc-worktrees-"),
+    createGit: (cwd: string) => createGit("git", cwd),
+    warn,
+  });
+  const commit = (dir: string, file: string) => {
+    write(dir, file, `${file}\n`);
+    git(dir, "add", file);
+    git(dir, "commit", "--quiet", "-m", `Add ${file}`);
+  };
+
+  it("refuses a project checkout with changes, and a branch with commits of its own", async () => {
+    const { dir } = withPullRequest();
+    const target: CheckoutTarget = { pr: pr(), crossRepository: false };
+    write(dir, "draft.txt", "mine\n");
+    await expect(checkoutLocal(createGit("git", dir), target, warn)).rejects.toThrow(
+      "Commit or stash the changes in the project's checkout before checking a pull request out in it.",
+    );
+    expect(Fs.readFileSync(Path.join(dir, "draft.txt"), "utf8")).toBe("mine\n");
+    Fs.rmSync(Path.join(dir, "draft.txt"));
+
+    git(dir, "switch", "--quiet", "--create", "feature", "main");
+    commit(dir, "local.txt");
+    git(dir, "switch", "--quiet", "main");
+    await expect(checkoutLocal(createGit("git", dir), target, warn)).rejects.toThrow(
+      "Branch 'feature' has commits that pull request #7 does not. Push or move them, then check it out again.",
+    );
+    expect(git(dir, "branch", "--show-current").trim()).toBe("main");
+  });
+
+  it("moves an existing branch that is behind forward", async () => {
+    const { dir, head } = withPullRequest();
+    git(dir, "branch", "feature", "main");
+    await checkoutLocal(createGit("git", dir), { pr: pr(), crossRepository: false }, warn);
+    expect(git(dir, "rev-parse", "HEAD").trim()).toBe(head);
+  });
+
+  it("names a fork's head like its base after its owner, reusing the fork's remote", async () => {
+    const { dir, head } = withPullRequest();
+    const fork = temp("jhin-sc-fork-");
+    git(fork, "clone", "--quiet", "--bare", dir, ".");
+    git(fork, "fetch", "--quiet", Path.join(dir, ".git"), `+${head}:refs/heads/main`);
+    git(dir, "config", `url.${fork}.insteadOf`, "https://github.com/someone/demo");
+    git(dir, "remote", "add", "theirs", "https://github.com/someone/demo");
+    const prepared = await checkoutLocal(
+      createGit("git", dir),
+      {
+        pr: pr({ headBranch: "main" }),
+        crossRepository: true,
+        headOwner: "someone",
+        headRepository: "someone/demo",
+      },
+      warn,
+    );
+    expect(prepared.branch).toBe("someone/main");
+    expect(git(dir, "rev-parse", "HEAD").trim()).toBe(head);
+    expect(git(dir, "rev-parse", "--abbrev-ref", "@{upstream}").trim()).toBe("theirs/main");
+    expect(git(dir, "remote").trim().split("\n").toSorted()).toEqual(["origin", "theirs"]);
+  });
+
+  it("fast-forwards a reused worktree that is behind, and leaves one with changes", async () => {
+    const { dir, origin, head } = withPullRequest();
+    const options = { repository: dir, ...worktreeOptions() };
+    const target: CheckoutTarget = { pr: pr(), crossRepository: false };
+    const first = await checkoutWorktree(createGit("git", dir), target, options);
+    const path = first.worktreePath!;
+
+    // The pull request moves on.
+    const pusher = temp("jhin-sc-pusher-");
+    git(pusher, "clone", "--quiet", "--branch", "feature", origin, ".");
+    commit(pusher, "more.txt");
+    git(pusher, "push", "--quiet", "origin", "feature");
+    const next = git(pusher, "rev-parse", "HEAD").trim();
+    git(origin, "update-ref", "refs/pull/7/head", next);
+
+    const behind = await checkoutWorktree(createGit("git", dir), target, options);
+    expect(behind.isOnPullRequestHead).toBe(true);
+    expect(git(path, "rev-parse", "HEAD").trim()).toBe(next);
+
+    git(path, "reset", "--quiet", "--hard", head);
+    write(path, "wip.txt", "wip\n");
+    const dirty = await checkoutWorktree(createGit("git", dir), target, options);
+    expect(dirty.isOnPullRequestHead).toBe(false);
+    expect(git(path, "rev-parse", "HEAD").trim()).toBe(head);
+  });
+
+  it("keeps a fork away from this repository's same-named branch and its own stale commits", async () => {
+    const { dir, head } = withPullRequest();
+    const fork = temp("jhin-sc-fork-");
+    git(fork, "clone", "--quiet", "--bare", dir, ".");
+    git(fork, "fetch", "--quiet", Path.join(dir, ".git"), `+${head}:refs/heads/feature`);
+    git(dir, "config", `url.${fork}.insteadOf`, "https://github.com/someone/demo.git");
+    // This repository's own `feature`, in a worktree of its own.
+    const mine = Path.join(temp("jhin-sc-mine-"), "feature");
+    git(dir, "worktree", "add", "--quiet", "-b", "feature", mine, "main");
+    const target: CheckoutTarget = {
+      pr: pr(),
+      crossRepository: true,
+      headOwner: "someone",
+      headRepository: "someone/demo",
+    };
+    const prepared = await checkoutWorktree(createGit("git", dir), target, {
+      repository: dir,
+      ...worktreeOptions(),
+    });
+    expect(prepared.branch).toBe("jhin/pr-7/feature");
+    expect(prepared.worktreePath).not.toBe(mine);
+
+    // Its branch got a commit of its own and lost its worktree: it is not moved.
+    commit(prepared.worktreePath!, "own.txt");
+    git(dir, "worktree", "remove", "--force", prepared.worktreePath!);
+    await expect(
+      checkoutWorktree(createGit("git", dir), target, { repository: dir, ...worktreeOptions() }),
+    ).rejects.toThrow("Branch 'jhin/pr-7/feature' has commits that pull request #7 does not.");
+  });
+});
+
 describe("git.pr.resolve and git.pr.checkout", () => {
   it("resolves a pull request through the forge, and refuses a repository without one", async () => {
     const gh = fakeGh();
@@ -161,12 +279,19 @@ describe("git.pr.resolve and git.pr.checkout", () => {
       reference: "#7",
     });
     expect(pullRequest).toMatchObject({ number: 7, headBranch: "feature", baseBranch: "main" });
-    expect(gh.calls().some((call) => call.startsWith("pr view 7 --json"))).toBe(true);
+    expect(gh.calls().some((call) => /^pr view --json \S+ -- 7$/.test(call))).toBe(true);
+
+    // An unknown pull request, and a reference that would read as an option.
+    await expect(
+      sc.client.call("git.pr.checkout", { projectId, reference: "8", mode: "worktree" }),
+    ).rejects.toMatchObject({ code: "PULL_REQUEST_FAILED" });
+    await expect(
+      sc.client.call("git.pr.resolve", { projectId, reference: "-R other/repo" }),
+    ).rejects.toMatchObject({ code: "PULL_REQUEST_INVALID" });
 
     const plain = await sc.project(repository());
     await expect(
       sc.client.call("git.pr.checkout", { projectId: plain, reference: "7", mode: "local" }),
     ).rejects.toThrow("This repository has no remote on a known forge.");
-    expect(Fs.existsSync(dir)).toBe(true);
   });
 });

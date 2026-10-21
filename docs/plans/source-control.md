@@ -577,28 +577,34 @@ with screenshots).
   reference, mode }` (`git.write`) answers `PreparedPullRequest` (`{
   pullRequest, branch, worktreePath, isOnPullRequestHead }`). A reference is a
   number, `#42`, a URL or a head branch, read by the forge's new optional
-  `resolve` (GitHub: `gh pr view <reference>`); a forge without it answers
-  `ACTION_UNAVAILABLE`. `local` checks the head branch out in the project's
-  checkout as T3's GitHub `checkoutChangeRequest` does: fetched from the
-  primary remote (`origin`, else the first) or from the fork's remote (one
-  whose configured URL is the fork's, else a new one named after its owner,
-  `-1`… when taken), created or reset hard to the head, tracking it; a head
-  branch that is gone falls back to `refs/pull/<n>/head` without an upstream;
-  a fork whose head is named like its base becomes `<owner>/<head>`. Any git
-  failure there answers "The pull request could not be checked out with
-  git.". `worktree` uses the head branch, or `jhin/pr-<n>/<head>` for a fork
-  (T3's `t3code/pr-…`): a worktree that has that branch (or the bare head
-  branch, outside the project's checkout) is reused and fast-forwarded to
-  `refs/pull/<n>/head` when clean (`isOnPullRequestHead` says whether it got
-  there); the branch checked out in the project's checkout is refused with
-  T3's "This PR branch is already checked out in the main repo. Use Local, or
-  switch the main repo off that branch before creating a worktree thread.";
-  otherwise the branch is made from `refs/pull/<n>/head` (an open same-repo
-  pull request falls back to its head branch, a fork fetches from its remote)
-  and checked out in a new worktree under the worktrees directory (D250),
-  tracking the head. Checkouts of one project run one at a time, with its
-  worktrees. The thread itself is created by the client with that branch and
-  worktree (D252), as T3 fills its draft.
+  `resolve` (GitHub: `gh pr view --json … -- <reference>`); one starting with
+  `-` is refused (`PULL_REQUEST_INVALID`), a forge without `resolve` answers
+  `ACTION_UNAVAILABLE`. The head is fetched from the primary remote
+  (`origin`, else the first) or from the fork's remote (one whose configured
+  URL is the fork's, else a new one named after its owner, `-1`… when
+  taken); a head branch that is gone falls back to `refs/pull/<n>/head`,
+  without an upstream. `local` checks the head branch out in the project's
+  checkout (a fork whose head is named like its base as `<owner>/<head>`),
+  created or fast-forwarded to the head and tracking it; git failures answer
+  T3's "The pull request could not be checked out with git.". Where T3
+  resets the branch hard, Jhin refuses a checkout with changes ("Commit or
+  stash the changes in the project's checkout before checking a pull request
+  out in it.") and a branch with commits the head does not have ("Branch
+  '<branch>' has commits that pull request #<n> does not. Push or move them,
+  then check it out again."): both would be lost. `worktree` uses the head
+  branch, or `jhin/pr-<n>/<head>` for a fork (T3's `t3code/pr-…`): a
+  worktree on that branch is reused and fast-forwarded to `refs/pull/<n>/head`
+  when clean (`isOnPullRequestHead` says whether it got there); T3's
+  fallback to a worktree on the bare head branch is left out, since for a
+  fork that is this repository's own branch. The branch checked out in the
+  project's checkout is refused with T3's "This PR branch is already checked
+  out in the main repo. Use Local, or switch the main repo off that branch
+  before creating a worktree thread."; otherwise the branch is made at the
+  head (an existing one only when behind, as above) and checked out in a new
+  worktree under the worktrees directory (D250), tracking the head.
+  Checkouts of one project run one at a time, with its worktrees. The
+  thread itself is created by the client with that branch and worktree
+  (D252), as T3 fills its draft.
 
 #### Reverting
 
