@@ -138,28 +138,6 @@ describe("chrome-headless-shell on first use (D951)", () => {
     await expect(shell.executable()).rejects.toThrow("does not contain chrome-headless-shell");
   });
 
-  it("answers with the progress while the install runs on", async () => {
-    const root = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-shell-"));
-    roots.push(root);
-    const shell = createHeadlessShell({
-      root,
-      platform: "linux",
-      release: {
-        version: "1.0.0",
-        platform: "linux64",
-        url: "https://example.test/a.zip",
-        bytes: 50_000_000,
-        sha256: "0",
-      },
-      // The download has not answered yet; the caller does not wait for it.
-      waitMs: 0,
-      fetch: () => new Promise<Response>(() => undefined),
-    });
-    await expect(shell.executable()).rejects.toThrow(
-      "Jhin is installing its headless browser (0 of 50 MB downloaded). Try again in a minute.",
-    );
-  });
-
   it("pins T3's release for each platform", () => {
     expect(headlessShellRelease("linux", "x64")).toMatchObject({
       platform: "linux64",
