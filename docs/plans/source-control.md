@@ -463,7 +463,7 @@ with screenshots).
   so a secret file that is neither ignored nor excluded from the commit
   reaches the agent too.
 - **D263. Progress is a live stream**, `source-control/actions`
-  (`rpc.streams@1`, `git.read`): T3's `GitActionProgressEvent` as
+  (`rpc.streams@1`, `git.write`: a hook's output may hold secrets): T3's `GitActionProgressEvent` as
   `source-control.action.progress` events (`action_started` with its phases,
   `phase_started` with T3's labels "Preparing feature branch...",
   "Generating commit message...", "Committing...", "Pushing...",

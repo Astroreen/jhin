@@ -384,6 +384,10 @@ export async function runStackedAction(run: ActionRun): Promise<Omit<GitActionRe
       phase = "commit";
       const changes = await readChanges(git, run.gitDir, run.filePaths);
       if (changes === undefined) {
+        // The changes went while the feature branch was made: it is undone rather than left empty.
+        if (createdFrom !== undefined) {
+          fail("Cannot create a feature branch because there are no changes to commit.");
+        }
         result.commit = { status: "skipped_no_changes" };
       } else {
         if (suggestion === undefined) {

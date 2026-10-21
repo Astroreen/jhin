@@ -214,7 +214,8 @@ export function activateSourceControl(context: PluginContext): SourceControl {
   const progressStreams = createMemoryStreams({ log: context.log });
   if (live !== undefined) {
     context.subscriptions.add(
-      live.serve(SOURCE_CONTROL_ACTIONS_STREAM, progressStreams, { permissions: ["git.read"] }),
+      // A commit hook's output may hold secrets: following it takes what running an action takes.
+      live.serve(SOURCE_CONTROL_ACTIONS_STREAM, progressStreams, { permissions: ["git.write"] }),
     );
   }
   /** How many progress events the stream keeps for clients that subscribe late. */
