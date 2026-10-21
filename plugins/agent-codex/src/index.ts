@@ -25,6 +25,7 @@ import {
 
 import {
   BUNDLED_MODELS,
+  COMPACT_COMMAND,
   accountStatus,
   listedModels,
   preferredDefault,
@@ -289,6 +290,8 @@ export function createCodexRuntime(options: {
     runtimeModes: ["approval-required", "auto-accept-edits", "full-access"],
     interactionModes: ["default", "plan"],
     steering: true,
+    // T3 lists /compact for Codex (D884); Codex's skills are not listed yet.
+    commands: async () => ({ commands: [COMPACT_COMMAND], skills: [] }),
     status,
     startTurn(request) {
       const config = options.config();

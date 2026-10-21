@@ -611,11 +611,22 @@ Code nightly `eb7b35ac` (D53): `CodexAdapterV2.ts`, `CodexProvider.ts`,
   A model `model/list` did not name takes no options, only the config's
   effort.
 
+- **D884. `/compact` compacts the Codex thread (W24).** The runtime's
+  `commands()` lists T3's `/compact` ("Summarize the conversation and reduce
+  context usage"). A turn whose input is `/compact` alone (no attachments)
+  calls `thread/compact/start` instead of `turn/start`, as T3's
+  `compactThread` does; Codex runs the compaction as a turn of its own and
+  names it in `turn/started`, which the turn takes as its id. Codex's
+  `contextCompaction` item, in this turn or an automatic compaction in any
+  other, is the tool item "Compacting context" (as OpenCode's is). A
+  compaction hands Codex no message, so a thread Codex has not seen yet
+  still gets its transcript with the next turn.
+
 ### Deferred
 
-- Goals (`/goal`), `/compact`, `/feedback` and skills (`skills/list`, `$skill`
-  mentions) in the composer; reverting, forking and rolling back a Codex
-  thread (W2, W3).
+- Goals (`/goal`), `/feedback` and skills (`skills/list`, `$skill` mentions)
+  in the composer; reverting, forking and rolling back a Codex thread (W2,
+  W3).
 - Asynchronous questions (`agentMessage` with `delivery: "async"`) that
   Codex asks while it goes on working: shown as the message's text today.
 - Subagent threads (`collabAgentToolCall`, `subAgentActivity`) and their

@@ -209,6 +209,13 @@ describe("jhin.agent-codex: status", () => {
     expect(third).toMatchObject({ model: "custom-slug", effort: "low" });
     expect(third).not.toHaveProperty("serviceTier");
     expect(fourth).toMatchObject({ serviceTier: "default" });
+    // T3 lists /compact for Codex.
+    expect(await codex.commands!({ cwd: process.cwd() })).toEqual({
+      commands: [
+        { name: "compact", description: "Summarize the conversation and reduce context usage" },
+      ],
+      skills: [],
+    });
     codex.dispose();
   });
 

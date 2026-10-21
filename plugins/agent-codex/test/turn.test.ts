@@ -153,6 +153,42 @@ describe("jhin.agent-codex: a turn", () => {
     });
   });
 
+  it("compacts the Codex thread on /compact, as a turn Codex names itself", async () => {
+    const fake = fakeCodex({
+      turns: [
+        [message("m1", "Hi."), { complete: "completed" }],
+        [
+          { notify: "turn/started", params: { threadId: "$thread", turn: { id: "$turn" } } },
+          item("item/started", { type: "contextCompaction", id: "k1" }),
+          item("item/completed", { type: "contextCompaction", id: "k1" }),
+          { complete: "completed" },
+        ],
+      ],
+    });
+    const { client } = await node(fake);
+    const thread = await client.call<{ id: string }>("threads.create", { agentId: CODEX_AGENT_ID });
+    let completed = until(client, thread.id, "agent.turn.completed");
+    await client.call("threads.send", { threadId: thread.id, text: "hi" });
+    await completed;
+    completed = until(client, thread.id, "agent.turn.completed", 2);
+    await client.call("threads.send", { threadId: thread.id, text: " /compact " });
+    const events = await completed;
+
+    expect(fake.received("turn/start")).toHaveLength(1);
+    expect(fake.received("thread/compact/start").map((call) => call.params)).toEqual([
+      { threadId: "codex-thread-1" },
+    ]);
+    expect(payloads(events, "agent.item.started").at(-1)).toMatchObject({
+      itemId: "k1",
+      tool: { name: "compaction", kind: "other", title: "Compacting context" },
+    });
+    expect(payloads(events, "agent.item.completed").at(-1)).toMatchObject({
+      itemId: "k1",
+      kind: "tool",
+      status: "completed",
+    });
+  });
+
   it("fails the turn with Codex's error", async () => {
     const fake = fakeCodex({
       turns: [

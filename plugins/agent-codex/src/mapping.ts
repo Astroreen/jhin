@@ -5,10 +5,12 @@
 // apps/server/src/provider/CodexProvider.ts (codexPlanLabel, the account labels,
 // mapCodexModelCapabilities), apps/server/src/codexModelOptions.ts and
 // packages/shared/src/model.ts (formatCodexModelName), packages/contracts/src/model.ts
-// (PREFERRED_DEFAULT_CODEX_MODELS).
+// (PREFERRED_DEFAULT_CODEX_MODELS), packages/provider-core/src/server/snapshotProbe.ts
+// (COMPACT_SLASH_COMMAND).
 import {
   applicableModelOptions,
   type AgentModel,
+  type AgentSlashCommand,
   type ApprovalDecision,
   type InteractionMode,
   type ModelOptionChoice,
@@ -18,6 +20,7 @@ import {
   type RuntimeMode,
   type TokenUsage,
   type ToolCall,
+  type TurnRequest,
   type UserQuestion,
 } from "@jhin/agent-api";
 
@@ -299,6 +302,16 @@ export type TurnInput =
   /** An image the node keeps as a file (an upload, t3-parity.md D294). */
   | { readonly type: "localImage"; readonly path: string };
 
+/** T3's COMPACT_SLASH_COMMAND, which Codex runs as `thread/compact/start` (D884). */
+export const COMPACT_COMMAND: AgentSlashCommand = {
+  name: "compact",
+  description: "Summarize the conversation and reduce context usage",
+};
+
+/** Whether a turn's input is `/compact` alone: no text after it, no attachments. */
+export const isCompact = (input: TurnRequest["input"]) =>
+  input.text.trim() === "/compact" && (input.attachments ?? []).length === 0;
+
 /** The `turn/start` params of a turn (T3's buildCodexTurnStartParams, without its MCP context). */
 export function turnStartParams(input: {
   readonly threadId: string;
@@ -441,6 +454,8 @@ export function toolCall(item: CodexItem): ToolCall | undefined {
         ...(args === undefined ? {} : { input: args }),
       };
     }
+    case "contextCompaction":
+      return { name: "compaction", kind: "other", title: "Compacting context" };
     case "webSearch": {
       const patterns = webSearchPatterns(item);
       return {
