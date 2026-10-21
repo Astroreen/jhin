@@ -89,21 +89,18 @@ export default definePlugin({
     const log = context.services.tryGet<EventLog>(EVENTLOG_CAPABILITY);
     const paths = context.services.tryGet<HostPaths>(HOST_PATHS_CAPABILITY);
     const streams = createMemoryStreams({ log: context.log });
+    // Output kept across node restarts (D464), where the node has a data folder.
+    const history =
+      paths === undefined || !context.config.get<Config>(CONFIG_SECTION).history
+        ? undefined
+        : createHistoryFiles(Path.join(paths.dataDir(context.plugin.id), "history"), context.log);
     const sessions = createSessions({
       streams,
       pty: loadNodePty,
       processTable: createProcessTableReader(),
       config: () => context.config.get<Config>(CONFIG_SECTION),
       log: context.log,
-      // Output kept across node restarts (D464), where the node has a data folder.
-      ...(paths === undefined || !context.config.get<Config>(CONFIG_SECTION).history
-        ? {}
-        : {
-            history: createHistoryFiles(
-              Path.join(paths.dataDir(context.plugin.id), "history"),
-              context.log,
-            ),
-          }),
+      ...(history === undefined ? {} : { history }),
     });
     context.services.provide(TERMINAL_SESSIONS_CAPABILITY, sessions);
     // Sessions end with the plugin: their processes are stopped before it is gone.
@@ -122,22 +119,34 @@ export default definePlugin({
 
     // A deleted or archived thread takes its terminals with it (D143, D466).
     if (log !== undefined) {
+      /** Threads seen archived: their later updates (a title) leave terminals alone. */
+      const archived = new Set<string>();
       context.subscriptions.add(
         log.subscribe(THREADS_STREAM, (event) => {
           const record = event.payload as { id?: unknown; archivedAt?: unknown } | null;
-          const gone =
-            event.type === ThreadEvents.threadDeleted ||
-            (event.type === ThreadEvents.threadUpdated && typeof record?.archivedAt === "string");
           const threadId = record?.id;
-          if (!gone || typeof threadId !== "string") return;
-          // An archived thread's later updates (a title) find nothing left to close.
-          if (sessions.list(threadId).length === 0) return;
-          void sessions.close({ threadId }).catch((error: unknown) =>
-            context.log.warn("terminals of a thread not closed", {
-              threadId,
-              error: String(error),
-            }),
-          );
+          if (typeof threadId !== "string") return;
+          if (event.type === ThreadEvents.threadUpdated) {
+            if (typeof record?.archivedAt !== "string") {
+              archived.delete(threadId);
+              return;
+            }
+            // Closed on the change to archived only.
+            if (archived.has(threadId)) return;
+            archived.add(threadId);
+          } else if (event.type === ThreadEvents.threadDeleted) {
+            archived.delete(threadId);
+          } else return;
+          void sessions
+            .close({ threadId })
+            // Files of terminals not open since the node started go too.
+            .then(() => history?.deleteThread(threadId))
+            .catch((error: unknown) =>
+              context.log.warn("terminals of a thread not closed", {
+                threadId,
+                error: String(error),
+              }),
+            );
         }),
       );
     }

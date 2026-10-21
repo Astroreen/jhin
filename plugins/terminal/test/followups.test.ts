@@ -305,6 +305,15 @@ describe("the shell's environment (D461, D462)", () => {
     });
   });
 
+  it("scrubs an AppImage's mount also when the owner keeps only PATH", () => {
+    const env = shellEnv({
+      base: { APPDIR: "/tmp/.mount_x", PATH: "/tmp/.mount_x/usr/bin:/usr/bin" },
+      platform: "linux",
+      filter: { keep: ["PATH"] },
+    });
+    expect(env["PATH"]).toBe("/usr/bin");
+  });
+
   it("scrubs an AppImage's mount from the environment", () => {
     const env = shellEnv({
       base: {
@@ -457,6 +466,18 @@ describe("history files (D464)", () => {
     expect(Fs.readdirSync(Path.join(dir, "t"))).toEqual(["term-1.log"]);
   });
 
+  it("deletes every history file of a thread, open since the node started or not", async () => {
+    const dir = tempDir();
+    const history = createHistoryFiles(dir, quiet);
+    history.write("t", "term-1", () => "one");
+    history.write("t", "term-2", () => "two");
+    history.write("u", "term-1", () => "other thread");
+    await history.flush();
+    await history.deleteThread("t");
+    expect(Fs.existsSync(Path.join(dir, "t"))).toBe(false);
+    expect(Fs.readFileSync(Path.join(dir, "u", "term-1.log"), "utf8")).toBe("other thread");
+  });
+
   it("leaves a session's history alone when the plugin stops while the session starts", async () => {
     const dir = tempDir();
     const cwd = tempDir();
@@ -551,19 +572,26 @@ describe("exited sessions kept (D465)", () => {
 });
 
 describe("the process table (D467, D468)", () => {
-  it("grows its buffer when ps output is cut short, up to 16 MiB", async () => {
+  it("reads again at once with a larger buffer when ps output is cut short, up to 16 MiB", async () => {
     const buffers: number[] = [];
+    let needs = 2048 * 1024;
     const run: RunProgram = async (_command, _args, options) => {
       buffers.push(options.maxBuffer);
+      if (options.maxBuffer >= needs) return "1 0 sh\n";
       throw Object.assign(new Error("stdout maxBuffer length exceeded"), {
         code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
       });
     };
     const read = createProcessTableReader({ platform: "linux", run });
-    for (let attempt = 0; attempt < 7; attempt += 1) await expect(read()).rejects.toThrow();
-    expect(buffers.map((bytes) => bytes / 1024)).toEqual([
-      512, 1024, 2048, 4096, 8192, 16384, 16384,
-    ]);
+    // One read: cut short twice, then whole with 2 MiB, which the next read keeps.
+    await read();
+    await read();
+    expect(buffers.map((bytes) => bytes / 1024)).toEqual([512, 1024, 2048, 2048]);
+    // Past 16 MiB the read fails.
+    needs = Number.POSITIVE_INFINITY;
+    buffers.length = 0;
+    await expect(read()).rejects.toThrow("maxBuffer");
+    expect(buffers.map((bytes) => bytes / 1024)).toEqual([2048, 4096, 8192, 16384]);
   });
 
   it("reads PowerShell's process table on Windows, names without .exe", async () => {

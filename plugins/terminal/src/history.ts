@@ -25,6 +25,8 @@ export interface HistoryStore {
   write(threadId: string, terminalId: string, content: () => string | undefined): void;
   /** Deletes the session's file, after any write still pending for it. */
   delete(threadId: string, terminalId: string): Promise<void>;
+  /** Deletes every history file of a thread, kept or not by a live session. */
+  deleteThread(threadId: string): Promise<void>;
   /** Runs every pending write now; resolves when they are done. */
   flush(): Promise<void>;
 }
@@ -108,7 +110,7 @@ export function createHistoryFiles(
     return write;
   };
 
-  return {
+  const store: HistoryStore = {
     async read(threadId, terminalId, limits) {
       // A terminal closed and opened again under the same ids must not read
       // the history its close is deleting.
@@ -207,6 +209,17 @@ export function createHistoryFiles(
       });
       return deleted;
     },
+    async deleteThread(threadId) {
+      // The thread's live sessions first, so their pending writes stop.
+      const ids = [...pending.keys()].filter((id) => id.startsWith(`${threadId}\u0000`));
+      await Promise.all(ids.map((id) => store.delete(threadId, id.slice(threadId.length + 1))));
+      const folder = Path.join(dir, historyName(threadId));
+      await Fs.promises
+        .rm(folder, { recursive: true, force: true })
+        .catch((error: unknown) =>
+          log.warn("terminal history not deleted", { folder, error: String(error) }),
+        );
+    },
     async flush() {
       const writes: Promise<void>[] = [];
       for (const [id, entry] of pending) {
@@ -219,4 +232,5 @@ export function createHistoryFiles(
       await Promise.all(writes);
     },
   };
+  return store;
 }

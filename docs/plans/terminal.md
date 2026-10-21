@@ -329,12 +329,15 @@ the same T3 Code nightly `eb7b35ac` unless a decision names another source.
 - **D466. An archived thread closes its terminals**, as a deleted one does
   (D143) and as T3's `ResourceCleanupService` does on archive: the plugin
   follows `threads.thread.updated` in the `threads` index and closes the
-  terminals of a thread whose record has `archivedAt`. Unarchiving does not
+  terminals of a thread whose record gets `archivedAt` (on that change
+  only: a later update of the archived thread leaves terminals opened since
+  alone), and deletes the thread's history files, also those of terminals
+  not opened since the node started (so does a deleted thread). Unarchiving does not
   bring them back; the drawer opens a new shell when shown.
 
 - **D467. `ps` output grows its buffer instead of failing for good.** The
-  read starts with T3's 512 KiB; output cut short at that size doubles the
-  limit for the next read, up to 16 MiB, and the plugin keeps the larger
+  read starts with T3's 512 KiB; output cut short at that size is read
+  again at once with twice the limit, up to 16 MiB, and the plugin keeps the larger
   limit for the rest of its run. The warning stays once per run of
   failures (D144).
 

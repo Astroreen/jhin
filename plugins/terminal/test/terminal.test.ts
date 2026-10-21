@@ -380,6 +380,18 @@ describe("jhin.terminal", () => {
     await stream.untilType(TerminalEvents.closed);
     const { terminals } = await client.call<{ terminals: TerminalSummary[] }>("terminals.list", {});
     expect(terminals.map((item) => item.threadId)).toEqual(["kept"]);
+
+    // Opened again while archived: a later update of the archived thread (a
+    // new title) leaves it running; only the change to archived closes.
+    await client.call("terminals.open", { threadId: "archived", terminalId: "term-1", cwd });
+    await storage.storage.log.append(THREADS_STREAM, [
+      {
+        type: ThreadEvents.threadUpdated,
+        payload: { id: "archived", title: "Renamed", archivedAt: "2026-10-20T00:00:00.000Z" },
+      },
+    ]);
+    const after = await client.call<{ terminals: TerminalSummary[] }>("terminals.list", {});
+    expect(after.terminals.map((item) => item.threadId).sort()).toEqual(["archived", "kept"]);
   });
 
   it("runs without live streams; output is then read with terminals.get", async () => {

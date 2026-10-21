@@ -138,15 +138,17 @@ export function createProcessTableReader(
   let maxBuffer = windows ? 256 * 1024 : 512 * 1024;
   const timeout = windows ? 1500 : 1000;
   return async () => {
-    let stdout: string;
-    try {
-      stdout = await run(command, args, { timeout, maxBuffer });
-    } catch (error) {
-      if (cutShort(error) && maxBuffer < MAX_TABLE_BYTES) {
+    for (;;) {
+      let stdout: string;
+      try {
+        stdout = await run(command, args, { timeout, maxBuffer });
+      } catch (error) {
+        if (!cutShort(error) || maxBuffer >= MAX_TABLE_BYTES) throw error;
+        // Read again at once with twice the room, kept for the next reads.
         maxBuffer = Math.min(maxBuffer * 2, MAX_TABLE_BYTES);
+        continue;
       }
-      throw error;
+      return windows ? parseWindowsProcessTable(stdout) : parseProcessTable(stdout);
     }
-    return windows ? parseWindowsProcessTable(stdout) : parseProcessTable(stdout);
   };
 }

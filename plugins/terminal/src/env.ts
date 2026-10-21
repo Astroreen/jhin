@@ -83,13 +83,16 @@ export function shellEnv(options: {
   const stripped = matcher(options.filter?.strip ?? [], windows);
   const kept =
     options.filter?.keep === undefined ? undefined : matcher(options.filter.keep, windows);
-  let env: Record<string, string> = {};
-  for (const [name, value] of Object.entries(options.base)) {
+  // The AppImage's mount goes first: `keep` may drop the APPDIR that finds it.
+  const base: Record<string, string> = {};
+  for (const [name, value] of Object.entries(options.base))
+    if (value !== undefined) base[name] = value;
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(stripAppImage(base))) {
     if (value === undefined || blocked(name) || stripped(name)) continue;
     if (kept !== undefined && !kept(name)) continue;
     env[name] = value;
   }
-  env = stripAppImage(env);
   for (const [name, value] of Object.entries(options.extra ?? {})) {
     // Windows variables are case-insensitive: replace `Path` when `PATH` is given.
     const existing = windows
