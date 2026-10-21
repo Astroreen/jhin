@@ -1489,6 +1489,35 @@ Reference: T3 Code at `eb7b35ac` (D53).
   the open thread. T3 also resumes a turn that failed on a usage limit; Jhin
   has no usage-limit failures yet (Deferred).
 
+### Composer leftovers (W23, `t3-roadmap.md`)
+
+The parts of T3's composer that W6 left in Deferred (D303, D291–D296), at
+T3 Code `eb7b35ac` as D290 says.
+
+- **D841. Code blocks in the prompt are highlighted with Shiki,** as T3's
+  `composerCodeBlockHighlight.ts`: inline decorations over the block's text,
+  tokenized in both themes at once (`--shiki-light` / `--shiki-dark`, the way
+  the messages' blocks are), so a theme change repaints without tokenizing
+  again. A block is tokenized again only when its language or text changes; a
+  block past 20 000 characters stays plain, as in T3, because each keystroke
+  tokenizes the whole block. The grammars are the messages' own
+  (`lib/highlight.ts`), so the composer loads no grammar the thread would
+  not. While an edited block is tokenized again it keeps its previous
+  colours, mapped through the edit, so typing does not flash it plain.
+- **D842. T3's language picker** in a code block's header: a combobox named
+  "Code language: <label>" with "Search languages" and "No matching
+  languages.", the list and aliases of T3's `composer-code-languages.ts`
+  ("Plain text" first; here `apps/web/src/lib/code-languages.ts`), a language the list lacks shown first under its own name.
+  The pick rewrites only the first word of the fence's info string, so
+  `ts title=x` keeps `title=x`; plain text clears it, or writes `text` when
+  something follows. The caret returns to the block's end. The prompt's
+  markdown is the only state, so drafts and the queue keep the language.
+- **D843. Tab indents in a code block,** as T3's `indentCodeBlock`: with no
+  selection Tab inserts two spaces; with one it indents every line the
+  selection touches, and Shift+Tab takes back two spaces, a tab or a space
+  from each. Outside code blocks Tab keeps its list nesting (D303) and
+  otherwise leaves the editor.
+
 ## Not ported (out of scope)
 
 - T3 accounts, sign-in, billing, hosted environments, and pairing and
@@ -1509,8 +1538,8 @@ Reference: T3 Code at `eb7b35ac` (D53).
   are deferred there.
 - Applying Fast Mode and Ultracode to a live Claude Code session through
   `applyFlagSettings` (T3 does): a change of them starts it again (D298).
-- The editor's parts T3 has and this port left out (D303): Shiki highlighting
-  and the language picker in code blocks, Tab indents in them, headings,
+- The editor's parts T3 has and this port left out (D303): the file icons
+  of the code-block language picker (D842; with the chips' file icons), headings,
   horizontal rules and task lists (kept as text), visible marks at the caret,
   citation and context-reference chips, chip popovers (file icons, a skill's
   description and "View instructions"), `#` pull-request mentions and other
