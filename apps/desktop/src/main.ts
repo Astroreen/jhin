@@ -24,7 +24,7 @@ import {
 } from "@jhin/desktop-api";
 import { z } from "@jhin/sdk";
 
-import { startLocalNode, type RunningLocalNode } from "./local-node.ts";
+import { cliEntry, startLocalNode, type RunningLocalNode } from "./local-node.ts";
 import { buildApplicationMenu, type ContentsCommand, type ZoomDirection } from "./menu.ts";
 import { createSettingsStore } from "./settings.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updates/channels.ts";
@@ -47,12 +47,8 @@ if (userDataOverride !== undefined) app.setPath("userData", userDataOverride);
 app.setName(APP_NAME);
 
 /** The CLI and the client plugin the app's node runs with (D512, D514). */
-const cliManifest = require.resolve("jhin-ai/package.json");
-// The manifest's `jhin` bin: `bin/jhin.js` in the workspace, `dist/main.js` packed (D942).
-const cliBin = (require(cliManifest) as { bin?: { jhin?: unknown } }).bin?.jhin;
-if (typeof cliBin !== "string") throw new Error(`${cliManifest} names no "jhin" bin`);
 const nodePaths = {
-  cli: Path.join(Path.dirname(cliManifest), cliBin),
+  cli: cliEntry(require.resolve("jhin-ai/package.json")),
   plugin: Path.dirname(require.resolve("@jhin/plugin-desktop/package.json")),
 };
 
