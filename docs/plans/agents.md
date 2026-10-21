@@ -487,6 +487,35 @@ Decisions:
   permissions they are node-wide: an agent is not fenced to the slices that
   link its thread, and `by` on every event and proof says who acted. Fencing
   agents to their own slices waits for A1's agents and A6's runner.
+- **D653. The mission view owns two route panels.** The client plugin
+  `jhin.missions-view` contributes `jhin.missions.view` to
+  `civilization.views` and renders only for `p=mission` (the mission id as
+  section) and `p=slice` (`<sliceId>`, or `<sliceId>/<threadId>[@<nodeId>]`
+  for a thread working on the slice); any other panel is another view's and
+  it renders nothing. It never sets the route's `thread`, so a thread's
+  terminal, browser or keybindings of Threads mode do not follow a generation
+  opened here.
+- **D654. The Missions section lists the route's node.** `jhin.missions.sidebar`
+  fills `civilization.sidebar.missions` with the missions of the route's
+  connection (the first open one without a route node), grouped by project
+  (named from the threads catalog), open ones first (active, planned, then
+  done and dropped). A node without `missions.catalog`, or a token without
+  `missions.read`, says it has no missions instead of failing.
+- **D655. The client folds the stream as the node does.** A store per
+  connection reads `missions.catalog`, then follows the `missions` stream
+  after its `head` and applies each event with `applyMissionEvent` (D641):
+  one subscription however many components look. It starts over when its
+  connection opens again, and after a failure at once, then backing off up
+  to 30 s. The view and its store are a chunk of their own (D440), loaded once
+  the Missions section shows.
+- **D656. Mission → slice → thread, read only.** A mission shows the
+  project's intent, its outcome and process, and its waves of slices
+  (status, step, assignee, proof, thread count); a slice its facts, spec,
+  dependencies, proof (commands with their output, http(s) links) and linked
+  threads; a thread its transcript through the `thread.transcript` slot
+  (A1's seam, D614), with no composer (D741). A breadcrumb leads back up. A
+  thread on another node of the mesh (`nodeId`) is read through it. Nothing
+  edits; the commands do (Deferred).
 
 ### A4. Context library and lore (D661–D680)
 
@@ -768,12 +797,20 @@ D672–D680 stay reserved for A4's follow-ups (the Deferred items below).
   of the message names the sender and the trace.
 - A2: a count of open inbox items on the mode switcher or the page title
   (D630 notifies once per item).
-- A3: the mission view in Civilization mode lands in its own PR once A8's
-  slots are on `main` (D741).
+- A3: the Projects section (`civilization.sidebar.projects`) with a
+  project's intent of its own; the Missions section groups by project and a
+  mission shows its project's intent (D654, D656).
+- A3: missions of a mesh member (`route.remote`): the view reads the route's
+  connection's node only (D654); a slice's thread on a member is read through
+  the mesh (D656).
+- A3: proof screenshots shown inline: a screenshot item is a link (D646 keeps
+  URLs only) until proof files live on the node.
+- A3: an agent's title for an assignee (`agents.catalog`); the view shows
+  the agent id from the address (D645).
 - A3: deleting missions and slices (D651 drops them), and what happens to
   the missions of a deleted project (they stay in the stream, unseen).
-- A3: editing intent, missions and slices from the client; the view reads,
-  the commands edit.
+- A3: editing intent, missions and slices from the client; the view reads
+  (D656), the commands edit.
 - A3: which slice is ready or next (its dependencies done): A6 computes it
   from `missions.get`.
 - A3: proof stored on the node (screenshot files); a proof item names a URL.
