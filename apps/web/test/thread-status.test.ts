@@ -90,16 +90,18 @@ describe("visits shared through the thread's node (D485)", () => {
   it("tries again after the node could not take a visit", async () => {
     let fail = true;
     const sent: unknown[] = [];
+    let last: Promise<unknown> = Promise.resolve();
     const visits = createVisits(memoryStorage(), {
       record: () => thread(),
-      call: async (_target, method, params) => {
+      call: (_target, _method, params) => {
         sent.push(params);
-        if (fail) throw new Error("unreachable");
+        last = fail ? Promise.reject(new Error("unreachable")) : Promise.resolve();
+        return last;
       },
     });
     visits.visit({ node: "a" }, "t1", LATER);
-    await Promise.resolve();
-    await Promise.resolve();
+    // Settled: the visit's own failure handler, attached first, has run by now.
+    await last.catch(() => undefined);
     fail = false;
     visits.visit({ node: "a" }, "t1", LATER);
     expect(sent).toHaveLength(2);

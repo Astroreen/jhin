@@ -232,8 +232,11 @@ rules of the form below), the decision says so.
   thread record gets `lastVisitedAt` (additive): `threads.visit` (`{
   threadId, at }`) moves it forward only and changes nothing else (no
   `updatedAt`, as T3's comment says: a read receipt is not activity), and
-  `threads.mark-unread` sets it to 1 ms before the latest turn's end (T3's
-  `thread.mark-unread`; a thread without an ended turn is refused). Both go
+  `threads.mark-unread` sets it to 1 ms before the latest turn's end, when
+  that turn completed (T3's `thread.mark-unread`; the record keeps only its
+  latest turn, so a thread whose latest turn did not complete is refused). A
+  visit from a clock ahead of the node's counts as the node's now, unless it
+  is the thread's own snooze wake time (dismissing "Woke"). Both go
   out through the `threads` index, so every client and device of the node
   sees them. `client.visits@1` reads the record's value where the node keeps
   one and the device's own visit otherwise (an older node, a thread never
