@@ -34,6 +34,7 @@ function latch<T>(): { wait(): Promise<T>; open(value: T): void } {
  * - "/attachments" answers with each attachment's name, size and, for text, its content;
  * - in plan mode, anything else is answered with a proposed plan titled after it;
  * - "/write <file> <text>" writes the text to a file of its working directory;
+ * - "/subagent <task>" runs a subagent titled after the task that answers "Echo: <task>" (D876);
  * - anything else is answered "Echo: <text>", one word per delta.
  * A message steered into a turn (D204) is answered "Echo: <text>" before the
  * turn ends; it ends a "/hold" turn.
@@ -87,6 +88,19 @@ export function fakeTurn(request: TurnRequest): AgentTurn {
 
   async function* items$(): AsyncGenerator<AgentItem> {
     if (text.startsWith("/fail")) throw new Error("fake agent: asked to fail");
+    if (/^\/subagent(\s|$)/.test(text)) {
+      const task = text.slice("/subagent".length).trim() || "something";
+      const subagentId = nextId();
+      yield { kind: "subagent.started", subagentId, title: task, prompt: task };
+      yield {
+        kind: "subagent.item",
+        subagentId,
+        item: { kind: "message.completed", itemId: nextId(), text: `Echo: ${task}` },
+      };
+      yield { kind: "subagent.ended", subagentId, status: "completed" };
+      yield* say(`Ran a subagent for ${task}`);
+      return;
+    }
     if (text.startsWith("/hold")) {
       yield { kind: "message.delta", itemId: nextId(), text: "Holding" };
       // Until it is interrupted or steered (a steer that came first counts).

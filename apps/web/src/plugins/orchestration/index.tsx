@@ -1,4 +1,4 @@
-import { OrchestrationThreadEvents } from "@jhin/agent-api";
+import { OrchestrationThreadEvents, ThreadEvents } from "@jhin/agent-api";
 import {
   CONNECTIONS_CAPABILITY,
   NAVIGATION_CAPABILITY,
@@ -104,6 +104,7 @@ export const orchestrationViewPlugin = builtin(
         ["jhin.orchestration.subagent", OrchestrationThreadEvents.taskDelegated],
         ["jhin.orchestration.workflow", OrchestrationThreadEvents.workflowStarted],
         ["jhin.orchestration.launched", OrchestrationThreadEvents.threadLaunched],
+        ["jhin.orchestration.provider-subagent", ThreadEvents.subagentStarted],
       ] as const) {
         context.subscriptions.add(
           slots.contribute<ChatTurnItemProps>("chat.turn.item", {

@@ -33,7 +33,7 @@ import { wokeAt } from "../../lib/sidebar-order.ts";
 import { startThread, threadMayExist } from "../../lib/thread-actions.ts";
 import { proposedPlanTitle } from "../../lib/proposed-plan.ts";
 import { actionablePlan, openRequests } from "../../lib/timeline.ts";
-import { lazyChunk } from "../../lib/lazy-chunk.tsx";
+import { ChunkFailed, lazyChunk } from "../../lib/lazy-chunk.tsx";
 import {
   Composer,
   type ComposerHandleApi,
@@ -48,6 +48,15 @@ import { useThreadTimeline } from "./thread-timeline.ts";
 import { useUnconfirmed } from "./unconfirmed.ts";
 import { AttachmentLoaderContext, TimelineView } from "./timeline.tsx";
 
+/** T3's ProviderSubagentBar, a chunk of its own: few threads show it (D440, D880). */
+const SubagentBar = lazyChunk(
+  () => import("./subagent-bar.tsx").then((module) => module.SubagentBar),
+  {
+    loading: () => null,
+    // Never a thread without a way on: the bar can be loaded again.
+    failed: (_props, retry) => <ChunkFailed retry={retry}>Couldn't load this bar.</ChunkFailed>,
+  },
+);
 /** T3's find bar, a chunk of its own (D440): the find itself stays with the view. */
 const ThreadFindBar = lazyChunk(
   () => import("./thread-find-bar.tsx").then((module) => module.ThreadFindBar),
@@ -560,6 +569,20 @@ export function ThreadView(props: {
                       void chat.context.commands
                         .execute("thread.unarchive", { ...target, threadId })
                         .catch((failure: unknown) => setError((failure as Error).message))
+                    }
+                  />
+                ) : thread?.subagentOrigin === "provider" ? (
+                  // T3's ProviderSubagentBar: its parent's agent runs it (D880).
+                  <SubagentBar
+                    thread={thread}
+                    onOpenParent={
+                      thread.parentThreadId === undefined
+                        ? undefined
+                        : () =>
+                            chat.navigation.navigate({
+                              ...target,
+                              thread: thread.parentThreadId as string,
+                            })
                     }
                   />
                 ) : (

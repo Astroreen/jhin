@@ -86,7 +86,9 @@ export interface ExtensionItem {
 
 /** Event types of other plugins: neither the threads plugin's nor the agent's. */
 const isExtensionEvent = (type: string) =>
-  !type.startsWith("agent.") && !type.startsWith("threads.");
+  (!type.startsWith("agent.") && !type.startsWith("threads.")) ||
+  // A subagent of the turn is shown by whoever shows subagents (D879).
+  type === ThreadEvents.subagentStarted;
 
 type TimelineItem =
   | ExtensionItem

@@ -76,17 +76,34 @@ function Elapsed(props: { status: RowStatus; startedAt?: string; endedAt?: strin
 const ROW_CLASS =
   "group/subagent flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left";
 
+/** What a row tells of an agent's run besides its status: its times and its result. */
+export interface RowRun {
+  readonly startedAt?: string;
+  readonly endedAt?: string;
+  readonly summary?: string;
+}
+
+/** A delegated task's run, as its row shows it. */
+export const runOfTask = (task: TaskRecord | undefined): RowRun | undefined =>
+  task === undefined
+    ? undefined
+    : {
+        startedAt: task.createdAt,
+        ...(task.endedAt === undefined ? {} : { endedAt: task.endedAt }),
+        ...(task.summary === undefined ? {} : { summary: task.summary }),
+      };
+
 /** One delegated agent: T3's subagent row, opening its thread. */
 export function SubagentRow(props: {
   readonly title: string;
   readonly status: RowStatus;
-  readonly task: TaskRecord | undefined;
+  readonly run: RowRun | undefined;
   readonly onOpen: (() => void) | undefined;
 }) {
-  const { status, task } = props;
+  const { status, run } = props;
   const visual = STATUS_VISUALS[status];
   const settled = !isLive(status);
-  const raw = settled ? task?.summary?.trim() : undefined;
+  const raw = settled ? run?.summary?.trim() : undefined;
   const detail = raw && !GENERIC_CHILD_END.test(raw) ? plainDetail(raw) || null : null;
   const failed = status === "failed";
   const content = (
@@ -120,8 +137,8 @@ export function SubagentRow(props: {
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
         <Elapsed
           status={status}
-          {...(task === undefined ? {} : { startedAt: task.createdAt })}
-          {...(task?.endedAt === undefined ? {} : { endedAt: task.endedAt })}
+          {...(run?.startedAt === undefined ? {} : { startedAt: run.startedAt })}
+          {...(run?.endedAt === undefined ? {} : { endedAt: run.endedAt })}
         />
       </span>
       {props.onOpen === undefined ? null : (
@@ -265,7 +282,7 @@ export function WorkflowBlock(props: {
         <SubagentRow
           title={member.label ?? `Agent ${member.index + 1}`}
           status={member.status}
-          task={member.taskId === undefined ? undefined : props.tasks.get(member.taskId)}
+          run={runOfTask(member.taskId === undefined ? undefined : props.tasks.get(member.taskId))}
           onOpen={threadId === undefined ? undefined : () => props.onOpen(threadId)}
         />
       </li>

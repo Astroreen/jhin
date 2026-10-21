@@ -249,9 +249,8 @@ Status: **implemented** (`plugins/orchestration`); the UI is deferred.
 - A Claude subagent run in the background (`run_in_background`) ends its
   thread with the call's result, which comes at its start; its later work
   is not shown. A subagent's text is shown whole, not streamed.
-- The web side of provider subagents: the "Open subagent" link of the
-  `Agent` call, the bar that replaces the composer in their thread ("Runs on
-  its own", "Open parent") and their Lineage rows.
+- Stopping a provider subagent from the panel, and the model label from its
+  alias (`sonnet`) rather than the alias itself.
 - Delegating to an agent on another mesh node (`target.node`): today a task
   runs on the parent's node.
 - Pruning old task and workflow records: they stay in `storage.kv` (and in
@@ -436,6 +435,17 @@ user sees, which their Deferred lists left out.
   messages with its `parent_tool_use_id` become its items (whole text and
   reasoning blocks, tool calls and their results); the call's result ends
   it (a failed result fails it). The call itself stays in the parent's turn.
+
+- **D879. A provider subagent in its parent's turn** is T3's subagent row:
+  the chat passes `threads.subagent.started` to `chat.turn.item`, and
+  `jhin.orchestration.provider-subagent` shows the child's title, its turn's
+  status ("Completed", …) and elapsed time, opening its thread. The parent's
+  Lineage section lists such children as subagent rows (no Stop: T3 stops a
+  Claude subagent only through its live session).
+- **D880. A provider subagent's thread runs on its own:** the composer is
+  T3's `ProviderSubagentBar`: the agent's icon, the model ("Subagent"
+  without one), the status ("Working 12s", "Completed in 1m 3s"), "Runs on
+  its own" and "Open parent". The fake agent's `/subagent <task>` runs one.
 
 ### Deferred
 
