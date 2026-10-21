@@ -1917,6 +1917,17 @@ describe("worktrees in the client", () => {
     const drafts = createDraftWorkspaces();
     const Toolbar = createBranchToolbar(value, drafts);
     const project = { id: "app", name: "app", path: "/src/app", scratch: false, createdAt: "" };
+    // Another project's draft: no thread of its own works in a worktree, nothing to take.
+    const other = { ...project, id: "other" };
+    (value.store.view(target).projects as Map<string, ProjectStatus>).set(
+      "other",
+      status({ projectId: "other" }),
+    );
+    const lone = mount(<Toolbar project={other} target={target} />);
+    await expect.element(page.getByRole("button", { name: "Workspace" })).toBeVisible();
+    expect(drafts.run("previous-worktree")).toBe(false);
+    lone.unmount();
+
     const draft = mount(<Toolbar project={project} target={target} />);
     await expect.element(page.getByRole("button", { name: "Workspace" })).toBeVisible();
     let used = false;

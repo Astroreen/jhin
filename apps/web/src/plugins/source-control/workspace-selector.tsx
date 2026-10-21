@@ -116,7 +116,11 @@ export function WorkspaceSelector(props: {
             choosePrevious(drafts, key, { path: previousPath, branch: previousBranch });
             void props.services.context.commands
               .execute("chat.composer.focus", {})
-              .catch(() => undefined);
+              .catch((error: unknown) =>
+                props.services.context.log.warn("could not focus the composer", {
+                  error: String(error),
+                }),
+              );
             return true;
           })
         : undefined,
