@@ -1956,8 +1956,9 @@ export function activateSourceControl(context: PluginContext): SourceControl {
           reference: normalized,
         });
       }
-      // A URL may name another repository's pull request: its refs are not this one's.
-      if (!isPullRequestOf(forgeUrl, found.pr.url)) {
+      // A URL may name another repository's pull request: its refs are not this one's. A
+      // number or branch is looked up in this repository (a renamed one answers its new URL).
+      if (/^https?:\/\//i.test(normalized) && !isPullRequestOf(forgeUrl, found.pr.url)) {
         throw new SourceControlError(
           "PULL_REQUEST_INVALID",
           `${found.pr.url} is not a pull request of this project's repository.`,

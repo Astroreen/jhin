@@ -56,6 +56,12 @@ describe("checking a pull request out (D902)", () => {
     expect(isPullRequestOf("git@github.com:Acme/demo.git", url)).toBe(true);
     expect(isPullRequestOf("ssh://git@github.com/acme/demo", url)).toBe(true);
     expect(isPullRequestOf("https://github.com/acme/other.git", url)).toBe(false);
+    expect(
+      isPullRequestOf(
+        "ssh://git@ghe.example:2222/acme/demo.git",
+        "https://ghe.example/acme/demo/pull/7",
+      ),
+    ).toBe(true);
   });
 
   it("reads a fork's head repository from gh", async () => {

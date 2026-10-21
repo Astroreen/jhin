@@ -580,7 +580,8 @@ with screenshots).
   `resolve` (GitHub: `gh pr view --json … -- <reference>`); one starting with
   `-` is refused (`PULL_REQUEST_INVALID`), and so is a URL of another
   repository's pull request (its refs are not this one's; T3 would check that
-  repository's out). A forge without `resolve` answers
+  repository's out), compared by host, owner and name whatever the remote's
+  protocol, user or port. A forge without `resolve` answers
   `ACTION_UNAVAILABLE`. The head is fetched from the primary remote
   (`origin`, else the first) or from the fork's remote (one whose configured
   URL is the fork's, else a new one named after its owner, `-1`… when
@@ -607,7 +608,8 @@ with screenshots).
   out in the main repo. Use Local, or switch the main repo off that branch
   before creating a worktree thread."; otherwise the branch is made at the
   head (an existing one only when behind, as above) and checked out in a new
-  worktree under the worktrees directory (D250), tracking the head.
+  worktree under the worktrees directory (D250), tracking the head; a branch
+  made for a worktree that then fails to be created is deleted again.
   Checkouts of one project run one at a time, with its worktrees. The
   thread itself is created by the client with that branch and worktree
   (D252), as T3 fills its draft.

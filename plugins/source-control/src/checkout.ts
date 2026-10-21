@@ -44,14 +44,18 @@ async function primaryRemote(git: Git): Promise<string> {
 
 /** `host/owner/name` of a remote URL, lowercased, whichever protocol it uses. */
 function normalizeUrl(url: string): string {
-  return url
-    .trim()
-    .toLowerCase()
-    .replace(/^[a-z+]+:\/\//, "")
-    .replace(/^[^@/]+@/, "")
-    .replace(/^([^/:]+):(?!\d+\/)/, "$1/")
-    .replace(/\.git$/, "")
-    .replace(/\/+$/, "");
+  return (
+    url
+      .trim()
+      .toLowerCase()
+      .replace(/^[a-z+]+:\/\//, "")
+      .replace(/^[^@/]+@/, "")
+      // `host:port/…` (ssh:// with a port) and scp-style `host:owner/…` both as `host/…`.
+      .replace(/^([^/:]+):\d+\//, "$1/")
+      .replace(/^([^/:]+):/, "$1/")
+      .replace(/\.git$/, "")
+      .replace(/\/+$/, "")
+  );
 }
 
 /**
@@ -68,8 +72,10 @@ async function forkUrl(git: Git, target: CheckoutTarget): Promise<string> {
   const host = new URL(target.pr.url).host;
   const primary = await primaryRemote(git);
   const primaryUrl = (await git(["config", "--get", `remote.${primary}.url`])).stdout.trim();
-  const ssh = /^[^/]+@[^/]+:/.test(primaryUrl) || primaryUrl.startsWith("ssh://");
-  return ssh
+  // The same way in as the primary remote: ssh:// (with its user and port), scp-style or https.
+  const sshUrl = /^ssh:\/\/[^/]+\//i.exec(primaryUrl)?.[0];
+  if (sshUrl !== undefined) return `${sshUrl}${target.headRepository}.git`;
+  return /^[^/]+@[^/]+:/.test(primaryUrl)
     ? `git@${host}:${target.headRepository}.git`
     : `https://${host}/${target.headRepository}.git`;
 }
@@ -320,9 +326,16 @@ export async function checkoutWorktree(
       isOnPullRequestHead: onHead,
     };
   }
+  const existed = await branchExists(git, local);
   await materialize(git, target, local, options.warn);
   const path = worktreePath(options.root, options.repository, local);
-  await recreateWorktree(git, path, local);
+  try {
+    await recreateWorktree(git, path, local);
+  } catch (error) {
+    // A branch made only for this worktree goes with it.
+    if (!existed) await git(["branch", "-D", "--", local], { ok: [0, 1] });
+    throw error;
+  }
   await configureUpstream(options.createGit(path), target, local, options.warn);
   return { pullRequest: pr, branch: local, worktreePath: path, isOnPullRequestHead: true };
 }
