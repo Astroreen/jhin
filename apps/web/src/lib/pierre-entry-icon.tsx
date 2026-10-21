@@ -21,6 +21,7 @@ const ICON_COLORS: Record<string, readonly [light: string, dark: string]> = {
   default: ["#84848a", "#adadb1"],
   docker: ["#1a85d4", "#69b1ff"],
   eslint: ["#693acf", "#9d6afb"],
+  // T3's own pair, lighter for the light theme unlike the rest; kept as T3 has it.
   git: ["#ff8c5b", "#d5512f"],
   go: ["#1ca1c7", "#68cdf2"],
   graphql: ["#d32a61", "#ff678d"],
