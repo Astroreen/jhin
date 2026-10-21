@@ -34,6 +34,7 @@ import {
   selectionKey,
 } from "../src/plugins/source-control/diff/scopes.ts";
 import { turnScopeProvider } from "../src/plugins/source-control/diff/turns.ts";
+import { createEditors } from "../src/plugins/source-control/diff/editors.tsx";
 import type { SourceControlServices } from "../src/plugins/source-control/services.ts";
 import { DIFF_SECTION, DiffSettings } from "../src/lib/settings.ts";
 import type { SourceControlStore, SourceControlView } from "../src/plugins/source-control/store.ts";
@@ -107,6 +108,7 @@ function services(
   view: SourceControlView,
   answers: Record<string, unknown> = {},
   config = deviceConfig(),
+  projectPath = "/src/app",
 ) {
   const calls: { method: string; params: unknown }[] = [];
   const shown: { type?: string; title: unknown; description?: unknown; action?: string }[] = [];
@@ -115,7 +117,13 @@ function services(
     subscribe: () => toDisposable(() => undefined),
     refresh: async () => undefined,
   };
-  const catalog: NodeCatalog = { status: "ready", projects: [], threads: [thread] };
+  const catalog: NodeCatalog = {
+    status: "ready",
+    projects: [
+      { id: "app", name: "app", path: projectPath, scratch: false, createdAt: thread.createdAt },
+    ],
+    threads: [thread],
+  };
   const threads: ThreadsCatalog = {
     catalog: () => catalog,
     subscribe: () => toDisposable(() => undefined),
@@ -164,6 +172,7 @@ function services(
       close: () => undefined,
     },
     scopes,
+    editors: createEditors(threads, undefined),
     selections: createDiffSelections({
       getItem: (key: string) => storage.get(key) ?? null,
       setItem: (key: string, item: string) => storage.set(key, item),
@@ -346,7 +355,7 @@ describe("the diff panel", () => {
     const mounted = mount(<Panel />);
     await expect.element(page.getByRole("button", { name: "Expand src/app.ts" })).toBeVisible();
     // T3's default scope is "Changes", whitespace hidden.
-    expect(calls).toEqual([
+    expect(calls.filter((call) => call.method === "git.diff")).toEqual([
       {
         method: "git.diff",
         params: { projectId: "app", scope: "branch", ignoreWhitespace: true },
@@ -508,6 +517,92 @@ describe("the diff panel", () => {
     await expect.element(page.getByText("git is busy")).toBeVisible();
     expect(page.getByRole("button", { name: "Expand src/app.ts" }).element()).toBeTruthy();
     expect(reads).toBe(2);
+  });
+
+  it("opens a file's name in the preferred editor, and others from its context menu", async () => {
+    localStorage.removeItem("jhin.lastEditor");
+    // The project is the repository's `src` folder: its files open relative to it.
+    const { value, calls } = services(
+      viewWith(status()),
+      {
+        "git.diff": diff,
+        "editors.list": {
+          editors: [
+            { id: "vscode", label: "VS Code" },
+            { id: "zed", label: "Zed" },
+            { id: "file-manager", label: "File Manager" },
+          ],
+        },
+        "editors.open": (params: { editor: string; path: string }) => params,
+      },
+      deviceConfig(),
+      "/src/app/src",
+    );
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const title = page.getByText("src/app.ts", { exact: true });
+    await expect.element(title).toBeVisible();
+    await userEvent.click(title);
+    const opens = () => calls.filter((call) => call.method === "editors.open");
+    expect(opens().map((call) => call.params)).toEqual([
+      { projectId: "app", path: "app.ts", editor: "vscode" },
+    ]);
+    // A file outside the project's folder opens nowhere, as in T3.
+    await userEvent.click(page.getByText("docs/notes.md", { exact: true }));
+    expect(opens()).toHaveLength(1);
+
+    await userEvent.click(title, { button: "right" });
+    await expect
+      .element(page.getByRole("menuitem", { name: "Open containing folder" }))
+      .toBeVisible();
+    await userEvent.click(page.getByRole("menuitem", { name: "Open with" }));
+    await userEvent.click(page.getByRole("menuitem", { name: "Zed" }));
+    expect(opens().at(-1)?.params).toEqual({ projectId: "app", path: "app.ts", editor: "zed" });
+    // The editor chosen last is the one a name opens in next.
+    expect(localStorage.getItem("jhin.lastEditor")).toBe("zed");
+    localStorage.removeItem("jhin.lastEditor");
+  });
+
+  it("says why a file did not open, retries a failed editor list, and folds a name that opens nowhere", async () => {
+    localStorage.removeItem("jhin.lastEditor");
+    let lists = 0;
+    const { value, shown, calls } = services(viewWith(status()), {
+      "git.diff": diff,
+      "editors.list": () => {
+        lists++;
+        if (lists === 1) throw new Error("not connected yet");
+        return { editors: [{ id: "zed", label: "Zed" }] };
+      },
+      "editors.open": () => {
+        throw new Error("Could not start zed: spawn EACCES");
+      },
+    });
+    const editors = createEditors(value.threads, value.toasts);
+    const Panel = createDiffPanel({ ...value, editors });
+    const mounted = mount(<Panel />);
+    const title = page.getByText("src/app.ts", { exact: true });
+    await expect.element(title).toBeVisible();
+    // The first list failed: the name folds its file instead of opening it.
+    await userEvent.click(title);
+    await expect.element(page.getByRole("button", { name: "Collapse src/app.ts" })).toBeVisible();
+    expect(calls.filter((call) => call.method === "editors.open")).toHaveLength(0);
+    mounted.unmount();
+
+    // A view that follows the node again reads the list again.
+    mount(<Panel />);
+    await expect.element(page.getByText("src/app.ts", { exact: true })).toBeVisible();
+    expect(lists).toBe(2);
+    await userEvent.click(page.getByText("src/app.ts", { exact: true }));
+    // The refused call settles, then its toast is shown.
+    await act(async () => undefined);
+    await act(async () => undefined);
+    expect(shown[0]).toEqual({
+      type: "error",
+      title: "Could not open in Zed",
+      description: "src/app.ts: Could not start zed: spawn EACCES",
+    });
+    // An editor that failed to open is not remembered as the preferred one.
+    expect(localStorage.getItem("jhin.lastEditor")).toBeNull();
   });
 
   it("says so when the project is no repository or has no changes", async () => {

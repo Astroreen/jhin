@@ -262,20 +262,35 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   card. Contexts live with the composer's draft, so they survive a reload,
   and go once sent.
 - **D286. Opening a file in an editor**: the server plugin `jhin.editors`
-  (`plugins/editors`) provides `host.editors@1` with the commands
+  (`plugins/editors`, in the distribution) provides `host.editors@1`, whose
+  contract (T3's `EDITORS` list, `EditorInfo`, the error codes) is in
+  `@jhin/host-api`, with the commands
   `editors.list` (the editors found on the node: T3's list — Cursor, VS Code,
   VS Code Insiders, VSCodium, Zed, the JetBrains IDEs, … — looked up on `PATH`
   and in the usual install folders, plus the file manager) and `editors.open`
   (`projectId`, a project-relative `path`, optional `line` and `column`, an
   `editor`; paths outside the project are refused with `PATH_OUTSIDE_PROJECT`,
-  an editor not found with `EDITOR_NOT_FOUND`). Each editor is launched with
+  an editor not found with `EDITOR_NOT_FOUND`, a start that fails with
+  `LAUNCH_FAILED`). The project is found with `projects.list`, as source
+  control finds it (D111; a failing projects plugin is reported as it failed);
+  a symbolic link that leads out of the project, dangling or not, is outside
+  it too. On Windows a `.cmd`/`.bat` launcher (VS Code's, Cursor's)
+  starts as one `cmd.exe /d /s /c` line with the launcher and every argument
+  quoted (a launcher under `C:\Program Files` included), and a path holding a
+  character `cmd.exe` reads as syntax (`"`, `%`, `&`, `|`, `^`, `<`, `>`, `!`)
+  is refused with `PATH_UNSAFE`. The file manager opens the file's folder,
+  never the file, so no file of a project runs through its default
+  application. Each editor is launched with
   T3's argument style (`--goto file:line:col`, `file:line:col`, or
   `--line N file`), detached. Reads need `editor.list`, opening `editor.open`.
   In the diff panel, clicking a file's name opens it in the preferred editor
   (the last one chosen on this device, else the first found, as T3's
-  `usePreferredEditor`); its context menu offers "Open" (the file manager)
+  `usePreferredEditor`); its context menu offers "Open containing folder" (the file manager)
   and "Open with" with every editor found. A failure is a toast: "Could not
-  open in VS Code" with the path.
+  open in VS Code" with the path and the node's reason; an editor is
+  remembered as preferred only once it opened. A name that opens nowhere
+  (no editor, a file outside the project) folds its file as the rest of the
+  header does. A failed `editors.list` is not kept: the next view asks again.
 - **D287. Paths of a diff are the repository's**: `git.diff` names files
   from the repository root, which may sit above the project's folder. The
   status's `root` and the project's path resolve them as T3's

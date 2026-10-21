@@ -105,4 +105,80 @@ export const SECRET_REDACTED = "••••••";
 export const isRedactedSecret = (value: unknown): value is string =>
   typeof value === "string" &&
   (value === SECRET_REDACTED || value.startsWith(`${SECRET_REDACTED}#`));
+
+/**
+ * `host.editors@1`, provided by `jhin.editors`: the editors installed on a node
+ * and opening a project's file in one (docs/plans/source-control.md, D286).
+ * Its commands are `editors.list` and `editors.open`.
+ */
+export const HOST_EDITORS_CAPABILITY = "host.editors";
+
+/** How an editor takes a position: `--goto file:line:col`, `file:line:col` as is, or `--line N file`. */
+export type EditorLaunchStyle = "direct-path" | "goto" | "line-column";
+
+export interface EditorDefinition {
+  readonly id: string;
+  readonly label: string;
+  /** The commands it is started with, in order of preference; none for the file manager. */
+  readonly commands: readonly string[] | null;
+  readonly baseArgs?: readonly string[];
+  readonly launchStyle: EditorLaunchStyle;
+}
+
+// T3 Code's editor list (MIT, see THIRD_PARTY_NOTICES.md): packages/contracts/src/editor.ts.
+export const EDITORS: readonly EditorDefinition[] = [
+  {
+    id: "cursor",
+    label: "Cursor",
+    commands: ["cursor"],
+    baseArgs: ["--classic"],
+    launchStyle: "goto",
+  },
+  { id: "trae", label: "Trae", commands: ["trae"], launchStyle: "goto" },
+  { id: "kiro", label: "Kiro", commands: ["kiro"], baseArgs: ["ide"], launchStyle: "goto" },
+  { id: "vscode", label: "VS Code", commands: ["code"], launchStyle: "goto" },
+  {
+    id: "vscode-insiders",
+    label: "VS Code Insiders",
+    commands: ["code-insiders"],
+    launchStyle: "goto",
+  },
+  { id: "vscodium", label: "VSCodium", commands: ["codium"], launchStyle: "goto" },
+  { id: "zed", label: "Zed", commands: ["zed", "zeditor"], launchStyle: "direct-path" },
+  {
+    id: "antigravity",
+    label: "Antigravity",
+    commands: ["antigravity-ide", "agy-ide"],
+    launchStyle: "goto",
+  },
+  { id: "idea", label: "IntelliJ IDEA", commands: ["idea"], launchStyle: "line-column" },
+  { id: "aqua", label: "Aqua", commands: ["aqua"], launchStyle: "line-column" },
+  { id: "clion", label: "CLion", commands: ["clion"], launchStyle: "line-column" },
+  { id: "datagrip", label: "DataGrip", commands: ["datagrip"], launchStyle: "line-column" },
+  { id: "dataspell", label: "DataSpell", commands: ["dataspell"], launchStyle: "line-column" },
+  { id: "goland", label: "GoLand", commands: ["goland"], launchStyle: "line-column" },
+  { id: "phpstorm", label: "PhpStorm", commands: ["phpstorm"], launchStyle: "line-column" },
+  { id: "pycharm", label: "PyCharm", commands: ["pycharm"], launchStyle: "line-column" },
+  { id: "rider", label: "Rider", commands: ["rider"], launchStyle: "line-column" },
+  { id: "rubymine", label: "RubyMine", commands: ["rubymine"], launchStyle: "line-column" },
+  { id: "rustrover", label: "RustRover", commands: ["rustrover"], launchStyle: "line-column" },
+  { id: "webstorm", label: "WebStorm", commands: ["webstorm"], launchStyle: "line-column" },
+  { id: "file-manager", label: "File Manager", commands: null, launchStyle: "direct-path" },
+];
+
+/** An editor found on a node (`editors.list`). */
+export interface EditorInfo {
+  readonly id: string;
+  readonly label: string;
+}
+
+/** Error codes of `editors.open`. */
+export type EditorErrorCode =
+  | "PROJECT_NOT_FOUND"
+  | "PATH_OUTSIDE_PROJECT"
+  | "EDITOR_NOT_FOUND"
+  /** A Windows `.cmd` launcher cannot take the path safely (`"`, `%`, `&`, …). */
+  | "PATH_UNSAFE"
+  | "LAUNCH_FAILED";
+
 export * from "./config-change.ts";

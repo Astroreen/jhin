@@ -13,6 +13,7 @@ import { useSyncExternalStore } from "react";
 
 import type { RunningActions } from "./running.ts";
 import type { TimestampFormat } from "../../lib/format.ts";
+import type { Editors } from "./diff/editors.tsx";
 import type { DiffSelections } from "./diff/scopes.ts";
 import type { SourceControlStore, SourceControlView } from "./store.ts";
 
@@ -32,6 +33,8 @@ export interface SourceControlServices {
   /** The diff panel's scopes (D283) and what each thread has selected. */
   readonly scopes: DiffScopes;
   readonly selections: DiffSelections;
+  /** The editors of each node, to open a diff's file in (D286). */
+  readonly editors: Editors;
   /** This device's settings, where the panel's layout toggle writes. */
   readonly settings: DeviceSettings | undefined;
   /** How the chat shows times (its `timestampFormat` setting). */
