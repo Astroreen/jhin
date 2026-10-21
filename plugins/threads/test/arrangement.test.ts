@@ -448,6 +448,24 @@ describe("jhin.threads: a drop as one write (D449)", () => {
     expect(kept.activeOrderKey).toBeUndefined();
   });
 
+  it("checks each step against the steps before it on the same thread", async () => {
+    const { client, thread } = await withThread();
+    await client.call("threads.pin", { threadId: thread.id, orderKey: "n" });
+    // Unpinned by the first step, the thread cannot take a pinned key in the second.
+    await expect(
+      client.call("threads.arrange", {
+        steps: [
+          { op: "unpin", threadId: thread.id },
+          { op: "reorder", threadId: thread.id, list: "pinned", orderKey: "c" },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "THREAD_NOT_PINNED" });
+    const { thread: kept } = await client.call<{ thread: Thread }>("threads.get", {
+      threadId: thread.id,
+    });
+    expect(kept).toMatchObject({ pinnedAt: expect.any(String), pinOrderKey: "n" });
+  });
+
   it("writes nothing for steps that change nothing", async () => {
     const { client, index, thread } = await withThread();
     const appended = index.events.length;

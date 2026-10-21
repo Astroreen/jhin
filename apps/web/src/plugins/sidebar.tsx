@@ -121,6 +121,7 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -1969,13 +1970,20 @@ export const sidebarPlugin = builtin(
             }).kind !== "none"
           );
         };
-        const collisionDetection =
-          drag === undefined
+        // One detector per drag, so its sticky side survives the renders a drag causes
+        // (T3 builds one per render; a re-render would forget the side).
+        const dragKey = drag?.key;
+        const latestDrag = useRef({ drag, items, changesSomething });
+        latestDrag.current = { drag, items, changesSomething };
+        const collisionDetection = useMemo(() => {
+          const { drag: started, items: shown } = latestDrag.current;
+          return started === undefined || started.key !== dragKey
             ? createSidebarCollisionDetection(() => true)
-            : createSidebarCollisionDetection((id) => changesSomething(drag, id), {
-                items,
-                activationY: drag.activationY,
-              });
+            : createSidebarCollisionDetection(
+                (id) => latestDrag.current.changesSomething(started, id),
+                { items: shown, activationY: started.activationY },
+              );
+        }, [dragKey]);
 
         const row = (entry: Entry) => (
           <SortableThreadRow
