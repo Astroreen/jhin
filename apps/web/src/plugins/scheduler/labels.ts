@@ -8,6 +8,7 @@ import {
   type RunStatus,
   type ScheduledTask,
   type ScheduleInput,
+  type WorkspaceStrategy,
 } from "@jhin/scheduler-api";
 
 export const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
@@ -95,6 +96,48 @@ export interface DraftState {
   readonly signaturePrefix: string;
   /** Write-only: empty keeps the secret already stored on the node. */
   readonly signatureSecret: string;
+  /** Where a run's new thread works (D983). */
+  readonly workspaceMode: WorkspaceMode;
+  readonly baseRef: string;
+  readonly startFromOrigin: boolean;
+  readonly existingWorktreePath: string;
+  /** A strategy's `branch`, kept through an edit (the editor does not show it). */
+  readonly workspaceBranch: string;
+  /** `<agentId>\0<model>`; empty: the node's default agent and model (D984). */
+  readonly modelKey: string;
+}
+
+export type WorkspaceMode = "root" | "worktree" | "existing_worktree";
+
+/** T3's names for the workspace a run works in. */
+export const WORKSPACE_MODE_LABELS: Record<WorkspaceMode, string> = {
+  worktree: "Create a new worktree",
+  root: "Use the project checkout",
+  existing_worktree: "Use a specific checkout",
+};
+
+export const modelKey = (agentId: string, model: string) => `${agentId}\u0000${model}`;
+
+/** The agent and model a draft runs with; none: the node's defaults. */
+export function agentFromDraft(draft: DraftState): { agentId?: string; model?: string } {
+  if (draft.modelKey === "") return {};
+  const [agentId = "", model = ""] = draft.modelKey.split("\u0000");
+  return { agentId, ...(model === "" ? {} : { model }) };
+}
+
+/** T3's workspace strategy of a draft. */
+export function workspaceFromDraft(draft: DraftState): WorkspaceStrategy {
+  const branch = draft.workspaceBranch === "" ? {} : { branch: draft.workspaceBranch };
+  return draft.workspaceMode === "root"
+    ? { type: "root", ...branch }
+    : draft.workspaceMode === "existing_worktree"
+      ? { type: "existing_worktree", worktreePath: draft.existingWorktreePath.trim(), ...branch }
+      : {
+          type: "worktree",
+          baseRef: draft.baseRef.trim() || "main",
+          startFromOrigin: draft.startFromOrigin,
+          ...branch,
+        };
 }
 
 const WEBHOOK_SIGNATURE_DEFAULTS = {
@@ -117,6 +160,13 @@ export const EMPTY_DRAFT: DraftState = {
   signatureEnabled: false,
   ...WEBHOOK_SIGNATURE_DEFAULTS,
   signatureSecret: "",
+  // T3's defaults for a new task.
+  workspaceMode: "worktree",
+  baseRef: "main",
+  startFromOrigin: true,
+  existingWorktreePath: "",
+  workspaceBranch: "",
+  modelKey: "",
 };
 
 export function scheduleFromDraft(draft: DraftState): ScheduleInput {
@@ -147,6 +197,7 @@ export function scheduleFromDraft(draft: DraftState): ScheduleInput {
 
 export function taskToDraft(task: ScheduledTask): DraftState {
   const schedule = task.schedule;
+  const workspace = task.workspaceStrategy;
   return {
     editingId: task.id,
     title: task.title,
@@ -173,6 +224,13 @@ export function taskToDraft(task: ScheduledTask): DraftState {
         }
       : { signatureEnabled: false, ...WEBHOOK_SIGNATURE_DEFAULTS }),
     signatureSecret: "",
+    // A task from before D983 works in the project checkout.
+    workspaceMode: workspace?.type ?? "root",
+    baseRef: workspace?.type === "worktree" ? workspace.baseRef : "main",
+    startFromOrigin: workspace?.type === "worktree" ? (workspace.startFromOrigin ?? false) : true,
+    existingWorktreePath: workspace?.type === "existing_worktree" ? workspace.worktreePath : "",
+    workspaceBranch: workspace?.branch ?? "",
+    modelKey: task.agentId === undefined ? "" : modelKey(task.agentId, task.model ?? ""),
   };
 }
 
@@ -193,6 +251,16 @@ export function draftProblem(
     return {
       title: "Scheduled task is incomplete",
       description: "Add a title, prompt and project.",
+    };
+  }
+  if (
+    draft.threadId === "" &&
+    draft.workspaceMode === "existing_worktree" &&
+    !draft.existingWorktreePath.trim()
+  ) {
+    return {
+      title: "Checkout path is required",
+      description: "Enter the path of the checkout to run in.",
     };
   }
   const schedule = scheduleFromDraft(draft);

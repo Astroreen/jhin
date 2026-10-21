@@ -463,6 +463,21 @@ user sees, which their Deferred lists left out.
   settings page and the automations section share it, in the page's chunk
   (D440); a chunk that failed to load is tried again.
 
+- **D983. A task's workspace** is T3's launch strategy: `workspaceStrategy`
+  of a scheduled task (`@jhin/scheduler-api`'s `WorkspaceStrategy`: the
+  project checkout, a new worktree from `baseRef`, `startFromOrigin`, or a
+  given checkout), stored with it and passed as `workspace` to the thread
+  each run creates; a bound thread keeps its own. A task stored without one
+  uses the project checkout. The editor's "Workspace" select has T3's three
+  choices ("Create a new worktree", the default, "Use the project
+  checkout", "Use a specific checkout"), with "Base branch" (default
+  `main`) and "Start from origin" (on) for a worktree, and "Checkout path"
+  for a checkout (required: "Checkout path is required").
+- **D984. A task's model:** the editor's "Model" select lists "The node's
+  default" and every agent's models ("<agent> · <model>", an unavailable
+  agent's disabled), from `agents.list`, saved as the task's `agentId` and
+  `model`.
+
 ### Deferred
 
 - The running count in the Lineage title ("Lineage · 2 running").
@@ -599,9 +614,11 @@ the rest of it is unchanged since D53's tag.
 
 ### Deferred
 
-- The editor's workspace strategy (a new worktree, the project checkout, a
-  given checkout; W3's worktrees) and its model picker: a new thread runs on
-  the node's default agent and model unless a command gives others.
+- One shared `WorkspaceStrategy` contract: threads, orchestration and
+  `@jhin/scheduler-api` each define T3's three strategies.
+- The task editor's model options (effort and the like), T3's base branch
+  picker in place of a text field, and "Edit" of the thread's automations
+  opening that task's editor (the route has no task yet).
 - Tasks of mesh members on the settings page: it shows the nodes the client
   is connected to.
 - Component tests of the page. Its one end-to-end spec covers create, pause,

@@ -329,10 +329,15 @@ function activateScheduler(context: PluginContext): void {
       ...(task.runtimeMode === undefined ? {} : { runtimeMode: task.runtimeMode }),
       ...(task.interactionMode === undefined ? {} : { interactionMode: task.interactionMode }),
     };
+    // A plain project checkout is the default; anything else is the run's own workspace (D983).
+    const strategy = task.workspaceStrategy;
+    const plainRoot =
+      strategy === undefined || (strategy.type === "root" && strategy.branch === undefined);
     const thread = await execute<{ id: string }>("threads.create", {
       projectId: task.projectId,
       title: task.title,
       ...settings,
+      ...(plainRoot ? {} : { workspace: strategy }),
     });
     onThread(thread.id);
     await execute("threads.send", { threadId: thread.id, text: prompt, ...settings });
@@ -686,6 +691,9 @@ function activateScheduler(context: PluginContext): void {
       ...(input.model === undefined ? {} : { model: input.model }),
       ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
       ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
+      ...(input.workspaceStrategy === undefined
+        ? {}
+        : { workspaceStrategy: input.workspaceStrategy }),
       createdAt: iso(now),
       updatedAt: iso(now),
       nextRunAt: nextRunAt({ enabled: input.enabled, schedule }, now),
@@ -737,14 +745,34 @@ function activateScheduler(context: PluginContext): void {
                 : { webhookSecret: existing.webhookSecret }),
             }
           : webhookCredentials(scheduleInput!, existing);
+      // null clears the agent (and its model) or the model alone (D984).
+      const kept: Partial<typeof rest> = { ...rest };
+      if (input.agentId === null) {
+        delete kept.agentId;
+        delete kept.model;
+      }
+      if (input.model === null) delete kept.model;
+      // Another agent without a model of its own takes none of the old agent's.
+      if (
+        typeof input.agentId === "string" &&
+        input.agentId !== rest.agentId &&
+        input.model === undefined
+      ) {
+        delete kept.model;
+      }
       return {
-        ...rest,
+        ...(kept as typeof rest),
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
-        ...(input.agentId === undefined ? {} : { agentId: input.agentId }),
-        ...(input.model === undefined ? {} : { model: input.model }),
+        ...(input.agentId === undefined || input.agentId === null
+          ? {}
+          : { agentId: input.agentId }),
+        ...(input.model === undefined || input.model === null ? {} : { model: input.model }),
         ...(input.runtimeMode === undefined ? {} : { runtimeMode: input.runtimeMode }),
         ...(input.interactionMode === undefined ? {} : { interactionMode: input.interactionMode }),
+        ...(input.workspaceStrategy === undefined
+          ? {}
+          : { workspaceStrategy: input.workspaceStrategy }),
         ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
         ...(projectId === undefined ? {} : { projectId }),
         enabled,

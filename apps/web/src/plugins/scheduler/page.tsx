@@ -2,7 +2,7 @@
 // apps/web/src/components/settings/ScheduledTasksSettings.tsx at v0.1.1-nightly.20261020.3411:
 // the Scheduled tasks settings page, its rows and actions, the task editor and the webhook
 // deliveries dialog, with T3's wording.
-import type { Connections, NodeConnection, ThreadsCatalog } from "@jhin/client-api";
+import type { AgentInfo, Connections, NodeConnection, ThreadsCatalog } from "@jhin/client-api";
 import type { Delivery, DeliverySummary, ScheduledTask } from "@jhin/scheduler-api";
 import {
   Badge,
@@ -63,6 +63,11 @@ import {
   type DraftState,
   type ScheduleMode,
   draftProblem,
+  agentFromDraft,
+  modelKey,
+  workspaceFromDraft,
+  WORKSPACE_MODE_LABELS,
+  type WorkspaceMode,
 } from "./labels.ts";
 import { TASK_ACTIONS_SLOT, type TaskActionProps } from "./actions.tsx";
 import type { SchedulerStore, SchedulerView } from "./store.ts";
@@ -680,6 +685,35 @@ function EditorForm(props: {
   );
   const selectedThread = projectThreads.find((thread) => thread.id === draft.threadId);
   const hasSecret = liveTask?.schedule.type === "webhook" && liveTask.webhook?.hasSecret === true;
+  // The node's agents and their models, for the model a run uses (D984).
+  const [agents, setAgents] = useState<readonly AgentInfo[] | undefined>(undefined);
+  useEffect(() => {
+    if (!connected) return;
+    let current = true;
+    call<AgentInfo[]>(connection, "agents.list", {})
+      .then((list) => {
+        if (current) setAgents(list);
+      })
+      .catch(() => {
+        if (current) setAgents([]);
+      });
+    return () => {
+      current = false;
+    };
+    // `call` reads the connection anew each time; the list follows the node.
+  }, [connection, connected]);
+  const modelChoices = (agents ?? []).flatMap((agent) =>
+    (agent.models.length > 0 ? agent.models : [{ id: "", name: agent.name }]).map((model) => ({
+      key: modelKey(agent.agentId, model.id),
+      label: agent.models.length > 0 ? `${agent.name} · ${model.name}` : agent.name,
+      available: agent.available,
+    })),
+  );
+  const modelLabel =
+    draft.modelKey === ""
+      ? "The node's default"
+      : (modelChoices.find((choice) => choice.key === draft.modelKey)?.label ??
+        (agents === undefined ? "Loading models…" : "Unavailable model"));
 
   const submit = async () => {
     if (saving || editingTaskMissing || !connected) return;
@@ -698,6 +732,9 @@ function EditorForm(props: {
       enabled: draft.enabled,
       schedule,
       threadId: draft.threadId || null,
+      // Only a run's new thread takes one; a bound thread keeps its own (D983).
+      ...(draft.threadId === "" ? { workspaceStrategy: workspaceFromDraft(draft) } : {}),
+      ...agentFromDraft(draft),
     };
     setSaving(true);
     try {
@@ -707,7 +744,17 @@ function EditorForm(props: {
           projectId: selectedProjectId,
         });
       } else {
-        await call(connection, "scheduler.tasks.update", { id: draft.editingId, ...common });
+        await call(connection, "scheduler.tasks.update", {
+          id: draft.editingId,
+          ...common,
+          // "The node's default" clears a model chosen before, and an agent without models
+          // leaves none behind (D984).
+          ...(draft.modelKey === ""
+            ? { agentId: null, model: null }
+            : agentFromDraft(draft).model === undefined
+              ? { model: null }
+              : {}),
+        });
       }
     } catch (error) {
       setSaving(false);
@@ -833,7 +880,67 @@ function EditorForm(props: {
                 </SelectPopup>
               </Select>
             </Field>
+            {/* A bound thread keeps its own workspace (D983). */}
+            {draft.threadId !== "" ? null : (
+              <Field htmlFor="scheduled-task-workspace" label="Workspace">
+                <Select
+                  onValueChange={(value) =>
+                    setDraft((current) => ({ ...current, workspaceMode: value as WorkspaceMode }))
+                  }
+                  value={draft.workspaceMode}
+                >
+                  <SelectTrigger id="scheduled-task-workspace" size="sm">
+                    <SelectValue>{WORKSPACE_MODE_LABELS[draft.workspaceMode]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup>
+                    {(["worktree", "root", "existing_worktree"] as const).map((mode) => (
+                      <SelectItem key={mode} label={WORKSPACE_MODE_LABELS[mode]} value={mode}>
+                        {WORKSPACE_MODE_LABELS[mode]}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              </Field>
+            )}
           </div>
+
+          {draft.threadId === "" && draft.workspaceMode === "worktree" ? (
+            <Field htmlFor="scheduled-task-base-ref" label="Base branch">
+              <div className="flex items-center gap-3">
+                <Input
+                  className="min-w-0 flex-1"
+                  id="scheduled-task-base-ref"
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, baseRef: event.target.value }))
+                  }
+                  placeholder="main"
+                  value={draft.baseRef}
+                />
+                <Label className="flex shrink-0 items-center gap-2 font-normal">
+                  <Switch
+                    aria-label="Start from origin"
+                    checked={draft.startFromOrigin}
+                    onCheckedChange={(startFromOrigin) =>
+                      setDraft((current) => ({ ...current, startFromOrigin }))
+                    }
+                  />
+                  Start from origin
+                </Label>
+              </div>
+            </Field>
+          ) : null}
+          {draft.threadId === "" && draft.workspaceMode === "existing_worktree" ? (
+            <Field htmlFor="scheduled-task-checkout" label="Checkout path">
+              <Input
+                id="scheduled-task-checkout"
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, existingWorktreePath: event.target.value }))
+                }
+                placeholder="/path/to/checkout"
+                value={draft.existingWorktreePath}
+              />
+            </Field>
+          ) : null}
 
           <Field htmlFor="scheduled-task-prompt" label="Prompt">
             <Textarea
@@ -845,6 +952,42 @@ function EditorForm(props: {
               placeholder="What should the agent do each time this runs?"
               value={draft.prompt}
             />
+          </Field>
+
+          <Field htmlFor="scheduled-task-model" label="Model">
+            <Select
+              onValueChange={(value) =>
+                setDraft((current) => ({ ...current, modelKey: String(value ?? "") }))
+              }
+              value={draft.modelKey}
+            >
+              <SelectTrigger disabled={saving || !connected} id="scheduled-task-model" size="sm">
+                <SelectValue>{modelLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup>
+                <SelectItem label="The node's default" value="">
+                  The node's default
+                </SelectItem>
+                {/* A model the node no longer lists stays a choice, so the value matches. */}
+                {agents !== undefined &&
+                draft.modelKey !== "" &&
+                !modelChoices.some((choice) => choice.key === draft.modelKey) ? (
+                  <SelectItem label="Unavailable model" value={draft.modelKey}>
+                    Unavailable model
+                  </SelectItem>
+                ) : null}
+                {modelChoices.map((choice) => (
+                  <SelectItem
+                    disabled={!choice.available}
+                    key={choice.key}
+                    label={choice.label}
+                    value={choice.key}
+                  >
+                    {choice.label}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
           </Field>
 
           <div className="space-y-3">

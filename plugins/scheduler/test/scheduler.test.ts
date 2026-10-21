@@ -1,6 +1,10 @@
+import * as Fs from "node:fs";
+import * as Os from "node:os";
+import * as Path from "node:path";
+
 import type { ScheduledTask } from "@jhin/scheduler-api";
 import { connectInMemory } from "@jhin/testing";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, onTestFinished, vi } from "vite-plus/test";
 
 import { fakeClock, heldThreads, node, prompts } from "./support.ts";
 
@@ -390,5 +394,57 @@ describe("jhin.scheduler: runs into a thread", () => {
       id: created.id,
     });
     expect(ran).toMatchObject({ lastRunStatus: "succeeded", runCount: 2, lastRunError: null });
+  });
+});
+
+describe("jhin.scheduler: a run's workspace (D983)", () => {
+  it("starts each run's thread in the task's workspace, and keeps it on the task", async () => {
+    const { client } = await node();
+    const checkout = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-checkout-"));
+    onTestFinished(() => Fs.rmSync(checkout, { recursive: true, force: true }));
+    const created = await client.call<ScheduledTask>("scheduler.tasks.create", {
+      prompt: "Look here",
+      schedule: { type: "interval", everyMs: 60 * MINUTE },
+      workspaceStrategy: { type: "existing_worktree", worktreePath: checkout },
+    });
+    expect(created.workspaceStrategy).toEqual({
+      type: "existing_worktree",
+      worktreePath: checkout,
+    });
+    const { threadId } = await client.call<{ threadId: string | null }>("scheduler.tasks.run", {
+      id: created.id,
+    });
+    const { thread } = await client.call<{ thread: { worktreePath?: string } }>("threads.get", {
+      threadId,
+    });
+    expect(thread.worktreePath).toBe(checkout);
+
+    const updated = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: created.id,
+      workspaceStrategy: { type: "root" },
+    });
+    expect(updated.workspaceStrategy).toEqual({ type: "root" });
+
+    // A model is chosen, then cleared back to the node's default (D984).
+    const chosen = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: created.id,
+      agentId: "jhin.agent-fake",
+      model: "plain",
+    });
+    expect(chosen).toMatchObject({ agentId: "jhin.agent-fake", model: "plain" });
+    // Another agent named alone leaves the old agent's model behind.
+    const other = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: created.id,
+      agentId: "jhin.agent-other",
+    });
+    expect(other.agentId).toBe("jhin.agent-other");
+    expect(other.model).toBeUndefined();
+    const cleared = await client.call<ScheduledTask>("scheduler.tasks.update", {
+      id: created.id,
+      agentId: null,
+      model: null,
+    });
+    expect(cleared.agentId).toBeUndefined();
+    expect(cleared.model).toBeUndefined();
   });
 });

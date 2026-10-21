@@ -3,7 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   EMPTY_DRAFT,
+  agentFromDraft,
   draftProblem,
+  workspaceFromDraft,
   relativeLabel,
   scheduleFromDraft,
   scheduleLabel,
@@ -130,5 +132,47 @@ describe("what the editor refuses to save", () => {
     expect(draftProblem(every("1"), context)).toBeNull();
     expect(draftProblem(every("0.5"), context)?.title).toBe("Invalid interval");
     expect(draftProblem(every("soon"), context)?.title).toBe("Invalid interval");
+  });
+});
+
+describe("a task's workspace and model in the editor (D983, D984)", () => {
+  const every = { type: "interval", everyMs: 3_600_000 } as const;
+  it("starts a new task as T3 does, and reads an old one as the project checkout", () => {
+    expect(workspaceFromDraft(EMPTY_DRAFT)).toEqual({
+      type: "worktree",
+      baseRef: "main",
+      startFromOrigin: true,
+    });
+    expect(workspaceFromDraft(taskToDraft(task(every)))).toEqual({ type: "root" });
+    expect(agentFromDraft(EMPTY_DRAFT)).toEqual({});
+  });
+
+  it("keeps a task's workspace and model through the editor", () => {
+    const stored = {
+      ...task(every),
+      agentId: "jhin.agent-claude",
+      model: "claude-opus",
+      workspaceStrategy: { type: "existing_worktree" as const, worktreePath: "/work/x" },
+    };
+    const draft = taskToDraft(stored);
+    expect(workspaceFromDraft(draft)).toEqual(stored.workspaceStrategy);
+    expect(agentFromDraft(draft)).toEqual({ agentId: "jhin.agent-claude", model: "claude-opus" });
+    // A branch given over RPC survives an edit.
+    const branched = taskToDraft({
+      ...stored,
+      workspaceStrategy: { type: "worktree", baseRef: "dev", branch: "feature/x" },
+    });
+    expect(workspaceFromDraft(branched)).toEqual({
+      type: "worktree",
+      baseRef: "dev",
+      startFromOrigin: false,
+      branch: "feature/x",
+    });
+    expect(
+      draftProblem({ ...draft, existingWorktreePath: " " }, { hasProject: true, hasSecret: false }),
+    ).toEqual({
+      title: "Checkout path is required",
+      description: "Enter the path of the checkout to run in.",
+    });
   });
 });

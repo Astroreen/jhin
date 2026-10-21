@@ -46,7 +46,18 @@ test("D389: creates, pauses, runs and deletes a scheduled task from settings", a
   const dialog = page.getByRole("dialog", { name: "New task" });
   await dialog.getByRole("textbox", { name: "Name" }).fill("Check the build");
   await dialog.getByRole("textbox", { name: "Prompt" }).fill("Check the build on main");
+  // T3's default: a new worktree from main, from origin (D983).
+  await expect(dialog.getByRole("combobox", { name: "Workspace" })).toHaveText(
+    "Create a new worktree",
+  );
+  await expect(dialog.getByRole("textbox", { name: "Base branch" })).toHaveValue("main");
   await shoot(dialog, info, "scheduler-editor");
+  // This node's project is no git repository: its runs use the checkout itself.
+  await dialog.getByRole("combobox", { name: "Workspace" }).click();
+  await page.getByRole("option", { name: "Use the project checkout" }).click();
+  await expect(dialog.getByRole("textbox", { name: "Base branch" })).toHaveCount(0);
+  await dialog.getByRole("combobox", { name: "Model" }).click();
+  await page.getByRole("option", { name: "Fake agent · Plain" }).click();
   await dialog.getByRole("button", { name: "Every interval" }).click();
   await dialog.getByRole("spinbutton", { name: "Run every" }).fill("5");
   await dialog.getByRole("button", { name: "Create task" }).click();
@@ -54,6 +65,15 @@ test("D389: creates, pauses, runs and deletes a scheduled task from settings", a
 
   const row = taskRow(section, "Check the build");
   await expect(row).toContainText("Every 5 min · Next run in 5m");
+  // The editor reads both back (D983, D984).
+  await row.getByRole("button", { name: "Actions for Check the build" }).click();
+  await page.getByRole("menuitem", { name: "Edit" }).click();
+  const editor = page.getByRole("dialog", { name: "Edit task" });
+  await expect(editor.getByRole("combobox", { name: "Workspace" })).toHaveText(
+    "Use the project checkout",
+  );
+  await expect(editor.getByRole("combobox", { name: "Model" })).toHaveText("Fake agent · Plain");
+  await editor.getByRole("button", { name: "Cancel" }).click();
 
   // A second task, a webhook, made over RPC: the page follows the node's stream.
   await node.client().call("scheduler.tasks.create", {
