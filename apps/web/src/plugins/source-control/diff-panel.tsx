@@ -51,9 +51,9 @@ import {
   TextWrapIcon,
 } from "lucide-react";
 import { z } from "@jhin/sdk";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { useCatalog, useExternal } from "../../lib/hooks.ts";
+import { useCatalog, useCommands, useExternal } from "../../lib/hooks.ts";
 import { DIFF_SECTION, DiffSettings, useSection } from "../../lib/settings.ts";
 import { DiffStatLabel } from "./checkpoints.tsx";
 import { BaseRefPicker } from "./diff/base-ref-picker.tsx";
@@ -61,6 +61,7 @@ import { DiffCommentAnnotation } from "./diff/comment-annotation.tsx";
 import {
   annotationAnchor,
   buildDiffReviewComment,
+  rangeInDiff,
   serializeReviewComment,
 } from "./diff/review-comment.ts";
 import {
@@ -375,23 +376,6 @@ const COMPOSER_INSERT = "chat.composer.insert";
 const InsertAnswer = z.object({ inserted: z.boolean() });
 
 export function createDiffPanel(services: SourceControlServices) {
-  const { commands, events } = services.context;
-  /** Commands come and go with their plugins: whether one is there, kept current. */
-  const subscribeCommands = (listener: () => void) => {
-    const subscriptions = [
-      "kernel.plugin.activated",
-      "kernel.plugin.deactivated",
-      "kernel.plugin.reloaded",
-    ].map((type) => events.on(type, listener));
-    return () => {
-      for (const subscription of subscriptions) subscription.dispose();
-    };
-  };
-  const useCommandAvailable = (name: string) =>
-    useSyncExternalStore(subscribeCommands, () =>
-      commands.list().some((command) => command.name === name),
-    );
-
   const { store, threads, navigation, scopes, selections } = services;
 
   function Panel(props: {
@@ -462,7 +446,8 @@ export function createDiffPanel(services: SourceControlServices) {
     const drafts = useRef(0);
     const [selectedLines, setSelectedLines] = useState<CodeViewLineSelection | null>(null);
     // Without a composer to put a comment in (no chat plugin), lines take none.
-    const canComment = useCommandAvailable(COMPOSER_INSERT);
+    const commandsNow = useCommands(services.context);
+    const canComment = commandsNow.some((command) => command.name === COMPOSER_INSERT);
     const [reveal, setReveal] = useState<{ path: string; id: number } | null>(null);
     const [version, setVersion] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
@@ -608,27 +593,21 @@ export function createDiffPanel(services: SourceControlServices) {
         ? undefined
         : renderableFileEntries.find((file) => file.fileKey === draft.fileKey)?.fileDiff;
     const draftLost =
-      draft !== null &&
-      draftFile !== undefined &&
-      buildDiffReviewComment({
-        sectionId: draft.sectionId,
-        sectionTitle: draft.sectionTitle,
-        filePath: draft.filePath,
-        fileDiff: draftFile,
-        range: draft.range,
-        text: "",
-      }) === null;
+      draft !== null && draftFile !== undefined && !rangeInDiff(draftFile, draft.range);
     useEffect(() => {
       if (draftStale) closeDraft();
     }, [draftStale]);
-    useEffect(() => {
-      if (!draftLost) return;
+    /** The commented lines left the diff: say so, and let a new comment start. */
+    const dropLostDraft = () => {
       services.toasts?.show({
         type: "info",
         title: "These lines are no longer in the diff",
         description: "Comment on them again where they are now.",
       });
       closeDraft();
+    };
+    useEffect(() => {
+      if (draftLost) dropLostDraft();
     }, [draftLost]);
     /** Opens a comment under the lines chosen in the gutter. */
     const beginComment = (
@@ -680,13 +659,7 @@ export function createDiffPanel(services: SourceControlServices) {
         text,
       });
       if (comment === null) {
-        // The lines left the diff (a refresh changed the file): say so, and let a new comment start.
-        services.toasts?.show({
-          type: "info",
-          title: "These lines are no longer in the diff",
-          description: "Comment on them again where they are now.",
-        });
-        closeDraft();
+        dropLostDraft();
         return;
       }
       const sent = draft.id;

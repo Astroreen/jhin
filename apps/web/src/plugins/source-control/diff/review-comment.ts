@@ -346,6 +346,15 @@ export function serializeReviewComment(comment: ReviewComment): string {
   return `<review_comment ${attributes}>\n${body}\n</review_comment>`;
 }
 
+/** Both ends of a range are rows of the file's diff (a refresh may have dropped them). */
+export function rangeInDiff(fileDiff: FileDiffMetadata, range: SelectedLineRange): boolean {
+  const expanded = !fileDiff.isPartial;
+  return (
+    findDiffReviewLineIndex(fileDiff, range.start, range.side, expanded) >= 0 &&
+    findDiffReviewLineIndex(fileDiff, range.end, range.endSide ?? range.side, expanded) >= 0
+  );
+}
+
 /**
  * Where a draft opens: under the selection's last row, also for a range
  * dragged upwards or across sides. Rows are compared, not line numbers: the
