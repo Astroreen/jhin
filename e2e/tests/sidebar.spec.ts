@@ -518,10 +518,17 @@ test("D963: a card with an unsent draft says so, and its X discards it", async (
   const notice = page.getByRole("status").filter({ hasText: "Discarded" });
   await expect(notice).toHaveText("Discarded 1 draft, Ctrl+Z to undo");
 
-  // Undo: the draft is back on the card and in its composer.
+  // Undo: the draft is back on the card.
   await notice.getByRole("button", { name: "Ctrl+Z to undo" }).click();
   await expect(card.getByRole("img", { name: "Unsent draft" })).toBeVisible();
+
+  // Discarded again, the thread opened, then undone: its open composer takes the text back.
+  await card.hover();
+  await card.getByRole("button", { name: "Discard draft" }).click();
+  await expect(notice).toBeVisible();
   await card.click();
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveText("");
+  await notice.getByRole("button", { name: "Ctrl+Z to undo" }).click();
   await expect(page.getByRole("textbox", { name: "Message" })).toHaveText("not sent yet");
 });
 

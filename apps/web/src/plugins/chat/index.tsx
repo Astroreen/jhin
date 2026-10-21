@@ -471,10 +471,14 @@ export const chatPlugin = builtin(
           };
           // A thread's composer draft (T3's X on its card, t3-parity.md D963).
           const threadId = input.threadId;
+          const { projectId } = input;
           const key =
-            threadId === undefined
-              ? newThreadDraftKey(target, input.projectId ?? "")
-              : threadDraftKey(target, threadId);
+            threadId !== undefined
+              ? threadDraftKey(target, threadId)
+              : projectId !== undefined
+                ? newThreadDraftKey(target, projectId)
+                : undefined;
+          if (key === undefined) throw new Error("Give a projectId or a threadId");
           const draftRoute = {
             ...target,
             ...(input.projectId === undefined ? {} : { project: input.projectId }),
@@ -505,10 +509,15 @@ export const chatPlugin = builtin(
             return true;
           };
           const revert = async () => {
-            if (services.drafts.get(key) !== undefined)
+            const open = composer.current?.draftKey === key ? composer.current : undefined;
+            const current = open === undefined ? services.drafts.get(key) : open.draft();
+            if (current !== undefined && (current.prompt !== "" || current.attachments.length > 0))
               throw new Error("The draft has new content.");
-            if (kept !== undefined) services.drafts.set(key, kept);
-            if (threadId === undefined) navigation.navigate(draftRoute);
+            if (kept === undefined) return;
+            // Opened meanwhile: its composer holds the text, so it takes it back itself.
+            if (open !== undefined) open.restore(kept);
+            else services.drafts.set(key, kept);
+            if (threadId === undefined && open === undefined) navigation.navigate(draftRoute);
           };
           const discarded =
             undo === undefined
