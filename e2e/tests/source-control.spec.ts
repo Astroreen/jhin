@@ -228,7 +228,8 @@ test("D280–D284: the diff panel renders with @pierre/diffs, splits, lists file
   await panel.getByRole("button", { name: "Stacked diff view" }).click();
   await panel.getByRole("button", { name: "Hide file tree" }).click();
   await panel.getByRole("button", { name: "Expand src/greet.ts" }).click();
-  await panel.getByText('export const bye = () => "Bye";').last().hover();
+  // Stacked: the line shows once, so the locator is strict.
+  await panel.getByText('export const bye = () => "Bye";').hover();
   // Pierre shows one "+" in the gutter, the hovered line's.
   const plus = panel.locator("[data-utility-button]").filter({ visible: true });
   await expect(plus).toHaveCount(1);
