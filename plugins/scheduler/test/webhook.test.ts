@@ -100,6 +100,20 @@ describe("jhin.scheduler: webhooks", () => {
     expect((await post(`${url}/api/hooks/nope/${"0".repeat(64)}`, "{}")).status).toBe(404);
     expect((await post(`${url}/api/hooks/${created.id}/${"0".repeat(64)}`, "{}")).status).toBe(404);
     expect((await post(created.webhook.url!, "x".repeat(1024 * 1024 + 1))).status).toBe(413);
+    // A malformed length is a bad request.
+    const malformed = await new Promise<number>((resolve, reject) => {
+      const request = Http.request(created.webhook.url!, {
+        method: "POST",
+        headers: { "content-length": "abc" },
+      });
+      request.on("response", (response) => {
+        response.resume();
+        resolve(response.statusCode ?? 0);
+      });
+      request.on("error", reject);
+      request.end();
+    });
+    expect(malformed).toBe(400);
     // Without a content-length the reader itself stops at the cap.
     expect(await chunkedPost(created.webhook.url!, 2 * 1024 * 1024)).toBe(413);
     const { deliveries } = await client.call<{ deliveries: unknown[] }>(

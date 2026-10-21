@@ -989,7 +989,12 @@ function activateScheduler(context: PluginContext): void {
         pending: true,
       } as KeptDelivery);
     } catch (error) {
+      // Not recorded, so not queued: nothing of it stays behind.
       queue.count -= 1;
+      ownDeliveries.delete(key);
+      if (queue.count === 0 && webhookQueues.get(task.id) === queue) {
+        webhookQueues.delete(task.id);
+      }
       throw error;
     }
     // Deliveries of a task run one after another, each after the run before it.
@@ -1062,8 +1067,14 @@ function activateScheduler(context: PluginContext): void {
         request.resume();
         return;
       }
-      const length = Number(request.headers["content-length"] ?? "0");
-      if (!Number.isFinite(length) || length > WEBHOOK_MAX_BODY_BYTES) {
+      const declared = request.headers["content-length"] ?? "0";
+      // A length that is no whole number is a bad request, not a large one.
+      if (!/^\d+$/.test(declared)) {
+        answer(response, 400, { error: "bad_content_length" });
+        request.resume();
+        return;
+      }
+      if (Number(declared) > WEBHOOK_MAX_BODY_BYTES) {
         answer(response, 413, { error: "body_too_large" });
         request.resume();
         return;
