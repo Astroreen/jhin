@@ -1323,6 +1323,8 @@ export default definePlugin({
       }) => {
         if (entry.ending) return;
         entry.ending = true;
+        /** The restart's message (D803), read once: what the end recorded is what follows it. */
+        let restartMessage: string | undefined;
         try {
           await closeRequests();
           // Before the end is recorded: whoever sees the turn end sees what the hooks did.
@@ -1354,7 +1356,8 @@ export default definePlugin({
           };
           // A stop or a failure holds the queue in the same write, so no queued
           // message starts after it (T3's queueHeld); a restart for a steer does not.
-          const restarted = entry.restartWith !== undefined && ending.status === "interrupted";
+          restartMessage = ending.status === "interrupted" ? entry.restartWith : undefined;
+          const restarted = restartMessage !== undefined;
           if (ending.status === "completed" || restarted || deleted.has(thread.id)) {
             await recordEnd(ending.type, payload);
           } else {
@@ -1384,8 +1387,8 @@ export default definePlugin({
         }
         // The thread is free: its queue goes on, past a hold for a restart's message.
         if (ending.status === "completed") void deliver(thread.id);
-        else if (entry.restartWith !== undefined && ending.status === "interrupted") {
-          void deliver(thread.id, entry.restartWith);
+        else if (restartMessage !== undefined) {
+          void deliver(thread.id, restartMessage);
         }
       };
       const items = turn.items[Symbol.asyncIterator]();
