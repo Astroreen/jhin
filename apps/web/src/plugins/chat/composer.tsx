@@ -1378,6 +1378,8 @@ export function Composer(props: ComposerProps) {
     sendAlternate() {
       const text = editor.current?.value() ?? prompt;
       if (busy || props.unavailable !== undefined || approval !== undefined) return false;
+      // Saving an edited queued message or answering a question is no send.
+      if (editing !== undefined || question !== undefined) return false;
       if (text.trim() === "" && attachments.length === 0) return false;
       void send(true);
       return true;
