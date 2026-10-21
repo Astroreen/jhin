@@ -1542,7 +1542,8 @@ Reference: T3 Code at `eb7b35ac` (D53).
     once, past a hold already on the queue, which stays for the rest. What
     was queued follows the restarted turn.
   - A steer sent while a restart is under way waits right after its message,
-    in the order sent. A Stop pressed meanwhile is a stop like any other: the
+    in the order sent (`threads.steer` answers `queued`, `threads.queue.steer`
+    the running turn's id). A Stop pressed meanwhile is a stop like any other: the
     queue is held, with the message first.
   - A turn that stopped or ended before the restart began, or that fails
     instead of stopping, leaves the message first in the queue, as for a

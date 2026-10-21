@@ -530,15 +530,12 @@ export const chatPlugin = builtin(
         services.threadFind.current?.open(),
       );
       // T3's "Resume thread" for a stopped turn or a held queue (D800).
-      context.commands.register({
-        name: "chat.thread.resume",
-        title: "Resume thread",
-        description:
-          "Continues the open thread's stopped turn, then lets its held queue go on. `resumed` is false when there was nothing to resume (or text is typed)",
-        input: z.object({}),
-        output: z.object({ resumed: z.boolean() }),
-        handler: () => ({ resumed: composer.current?.resume() ?? false }),
-      });
+      register(
+        "chat.thread.resume",
+        "Resume thread",
+        "Continues the open thread's stopped turn, then lets its held queue go on",
+        () => void composer.current?.resume(),
+      );
       register(
         "chat.composer.send-alternate",
         "Send the other way",

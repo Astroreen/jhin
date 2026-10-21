@@ -679,6 +679,29 @@ describe("jhin.threads: steering (D204, D205)", () => {
     expect(count(events, ThreadEvents.turnInterrupted)).toBe(1);
   });
 
+  it("promotes a second queued message during a restart behind the first (D803)", async () => {
+    const { client, thread, events, watched } = await plainHolding();
+    const add = (text: string) =>
+      client.call<{ messageId: string }>("threads.queue.add", { threadId: thread.id, text });
+    const first = await add("first");
+    const second = await add("second");
+    const [one, two] = await Promise.all([
+      client.call<{ turnId: string }>("threads.queue.steer", {
+        threadId: thread.id,
+        messageId: first.messageId,
+      }),
+      client.call<{ turnId: string }>("threads.queue.steer", {
+        threadId: thread.id,
+        messageId: second.messageId,
+      }),
+    ]);
+    expect(one.turnId).toBe(starts(events)[1]?.turnId);
+    // Queued behind the restart: answered with the turn that ran then, not refused.
+    expect(two.turnId).toBe(starts(events)[0]!.turnId);
+    await untilCount(watched, ThreadEvents.turnCompleted, 2);
+    expect(started(events)).toEqual(["/hold", "first", "second"]);
+  });
+
   it("restarts with a queued message promoted to a steer (D803)", async () => {
     const { client, thread, events, watched } = await plainHolding();
     const { messageId } = await client.call<{ messageId: string }>("threads.queue.add", {
