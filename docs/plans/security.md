@@ -281,8 +281,9 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   description } })`, an `after` hook that returns a disposable. One plugin
   describes a permission: the one whose commands own it (`preview.write` is
   `jhin.preview`'s). A permission nobody describes keeps its id as its
-  title. A hook that throws is logged and the list is answered without
-  titles, so one plugin cannot keep a client from granting permissions.
+  title. A hook that throws is logged and the list is answered without any
+  titles (every plugin's, a trade-off kept for a simple pipeline), so one
+  plugin cannot keep a client from granting permissions.
   T3's wording is kept where a permission matches a T3 scope; the rest
   follows it. The pairing dialog shows a title with its description and the
   id, as T3's list. A client's granted scopes stay ids: they may be patterns
