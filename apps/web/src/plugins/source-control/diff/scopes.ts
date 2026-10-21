@@ -182,7 +182,6 @@ export interface DiffSelection {
 
 const SELECTION_STORAGE_KEY = "jhin.diff-panel.v1";
 
-/** The panel's selection per thread or draft, kept on this device (T3's diffPanelStore). */
 /** What is stored; anything else in storage is dropped. */
 const StoredSelection = z.object({
   value: z.string().min(1).optional(),
@@ -191,6 +190,7 @@ const StoredSelection = z.object({
 /** The most recently changed selections kept; older threads fall back to the defaults. */
 const MAX_SELECTIONS = 200;
 
+/** The panel's selection per thread or draft, kept on this device (T3's diffPanelStore). */
 export function createDiffSelections(storage: Storage = localStorage) {
   let selections: Record<string, DiffSelection> = {};
   try {

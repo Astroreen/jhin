@@ -552,7 +552,7 @@ export function createDiffPanel(services: SourceControlServices) {
       return () => {
         current = false;
       };
-    }, [loadKey, isRepo]);
+    }, [loadKey, isRepo, selected?.provider]);
 
     const scopeTitle = selected?.option.label ?? "Changes";
     const reviewSectionId = `${provider?.id ?? ""}:${selected?.option.value ?? ""}`;
