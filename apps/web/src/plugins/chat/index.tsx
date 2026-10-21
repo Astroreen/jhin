@@ -106,6 +106,11 @@ function Connect({ cancellable }: { cancellable: boolean }) {
               );
             // A pairing link names its node; a pairing code pairs with the node above (D424).
             const link = parsePairingUrl(url) ?? parsePairingUrl(token);
+            // A pairing link carries its own code: a typed one beside it is not dropped silently.
+            if (parsePairingUrl(url) !== undefined && token.trim() !== "") {
+              setError("The pairing link has its own code: clear the code or token field.");
+              return;
+            }
             const target =
               link?.url ??
               (URL.canParse(url) && /^https?:$/.test(new URL(url).protocol) ? rpcUrl(url) : url);
