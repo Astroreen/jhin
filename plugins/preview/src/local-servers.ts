@@ -225,9 +225,17 @@ export function createLocalServerScanner(host: ScanHost) {
       const fds = await host.readDir(`/proc/${pidText}/fd`).catch(() => []);
       const walked = fds.slice(0, budget);
       budget -= walked.length;
-      const links = await Promise.all(
-        walked.map((fd) => host.readLink(`/proc/${pidText}/fd/${fd}`).catch(() => "")),
-      );
+      // 16 links at a time, as T3 reads them.
+      const links: string[] = [];
+      for (let start = 0; start < walked.length; start += 16) {
+        links.push(
+          ...(await Promise.all(
+            walked
+              .slice(start, start + 16)
+              .map((fd) => host.readLink(`/proc/${pidText}/fd/${fd}`).catch(() => "")),
+          )),
+        );
+      }
       const held = links.flatMap((link) => /^socket:\[(\d+)\]$/.exec(link)?.[1] ?? []);
       const matched = held.filter((inode) => inodes.has(inode) && !owners.has(inode));
       if (matched.length === 0) continue;
