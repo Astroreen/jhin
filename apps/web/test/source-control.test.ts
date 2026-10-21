@@ -19,6 +19,7 @@ import {
   type TurnCheckpoint,
 } from "@jhin/source-control-api";
 import type { StoredEvent } from "@jhin/storage-api";
+import { parseDiffFromFile, type FileDiffMetadata, type SelectedLineRange } from "@pierre/diffs";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -666,9 +667,78 @@ describe("a comment on lines, as T3 sends it", () => {
       text: "  why?  ",
     });
     expect(comment).toMatchObject({
+      startIndex: 1,
+      endIndex: 2,
       rangeLabel: "2",
       text: "why?",
       diff: "@@ -2,1 +2,1 @@\n-two\n+TWO",
+    });
+  });
+
+  // Rows count across hunks: a partial patch has only its hunks' rows.
+  const twoHunks = () => {
+    const parsed = getRenderablePatch(
+      [
+        "diff --git a/b.ts b/b.ts",
+        "--- a/b.ts",
+        "+++ b/b.ts",
+        "@@ -1,2 +1,2 @@",
+        " one",
+        "-two",
+        "+TWO",
+        "@@ -10,2 +10,2 @@",
+        " ten",
+        "-eleven",
+        "+ELEVEN",
+        "",
+      ].join("\n"),
+      "test",
+    );
+    return parsed?.kind === "files" ? parsed.files[0]! : undefined;
+  };
+  const commentOn = (fileDiff: FileDiffMetadata, range: SelectedLineRange) =>
+    buildDiffReviewComment({
+      sectionId: "s",
+      sectionTitle: "Changes",
+      filePath: "b.ts",
+      fileDiff,
+      range,
+      text: "x",
+    });
+
+  it("spans hunks, takes a range given backwards, and refuses lines outside the diff", () => {
+    const fileDiff = twoHunks()!;
+    const across = commentOn(fileDiff, {
+      start: 2,
+      side: "additions",
+      end: 11,
+      endSide: "additions",
+    });
+    expect(across).toMatchObject({
+      startIndex: 2,
+      endIndex: 5,
+      rangeLabel: "2 to 11",
+      diff: "@@ -10,2 +2,3 @@\n+TWO\n ten\n-eleven\n+ELEVEN",
+    });
+    // The same range from its end to its start.
+    expect(
+      commentOn(fileDiff, { start: 11, side: "additions", end: 2, endSide: "additions" }),
+    ).toMatchObject({ startIndex: 2, endIndex: 5 });
+    // Line 5 lies between the hunks: a partial patch has no row for it.
+    expect(commentOn(fileDiff, { start: 5, side: "additions", end: 5 })).toBeNull();
+  });
+
+  it("counts the unchanged lines of a whole file", () => {
+    const fileDiff = parseDiffFromFile(
+      { name: "c.ts", contents: "one\ntwo\nthree\nfour\nfive\n" },
+      { name: "c.ts", contents: "one\ntwo\nthree\nfour\nFIVE\n" },
+    );
+    expect(fileDiff.isPartial).toBe(false);
+    expect(commentOn(fileDiff, { start: 3, side: "additions", end: 5 })).toMatchObject({
+      startIndex: 2,
+      endIndex: 5,
+      rangeLabel: "3 to 5",
+      diff: "@@ -3,3 +3,3 @@\n three\n four\n-five\n+FIVE",
     });
   });
 });

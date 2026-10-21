@@ -89,10 +89,22 @@ function deviceConfig(
 ) {
   let current: Record<string, unknown> = { ...values };
   const listeners = new Set<() => void>();
+  const eventListeners = new Map<string, Set<() => void>>();
   const context = {
     commands: {
       list: () => Object.keys(commands).map((name) => ({ name })),
       execute: async (name: string, input: unknown) => commands[name]!(input),
+    },
+    events: {
+      on: (type: string, listener: () => void): Disposable => {
+        const set = eventListeners.get(type) ?? new Set();
+        eventListeners.set(type, set);
+        set.add(listener);
+        return toDisposable(() => set.delete(listener));
+      },
+      emit: (type: string) => {
+        for (const listener of eventListeners.get(type) ?? []) listener();
+      },
     },
     config: {
       get: (section: string) => {
@@ -199,6 +211,13 @@ function services(
   };
   scopes.register(turnScopeProvider(value));
   return { value, calls, shown, scopes, config };
+}
+
+/** The gutter's "+" buttons Pierre shows (in its shadow DOM) for the hovered line. */
+function visiblePlusButtons(): HTMLElement[] {
+  return [...document.querySelectorAll("diffs-container")]
+    .flatMap((host) => [...(host.shadowRoot?.querySelectorAll("[data-utility-button]") ?? [])])
+    .filter((button): button is HTMLElement => (button as HTMLElement).offsetParent !== null);
 }
 
 const mounts = new Set<() => void>();
@@ -762,6 +781,39 @@ describe("the diff panel", () => {
         "</review_comment>",
       ].join("\n"),
     ]);
+  });
+
+  it("closes a draft when the scope changes, and offers comments once a chat plugin comes", async () => {
+    const commands: Record<string, (input: unknown) => unknown> = {};
+    const config = deviceConfig({ filesCollapsed: false }, commands);
+    const { value } = services(viewWith(status()), { "git.diff": diff }, config);
+    const Panel = createDiffPanel(value);
+    mount(<Panel />);
+    const line = page.getByText("const two = 3;");
+    await expect.element(line).toBeVisible();
+    await userEvent.hover(line);
+    expect(visiblePlusButtons()).toEqual([]);
+
+    // The chat plugin activates after the panel: its command makes lines take comments.
+    commands["chat.composer.insert"] = () => ({ inserted: true });
+    act(() => config.context.events.emit("kernel.plugin.activated"));
+    await userEvent.hover(page.getByText("const one = 1;"));
+    await userEvent.hover(line);
+    expect(visiblePlusButtons()).toHaveLength(1);
+    await userEvent.click(page.elementLocator(visiblePlusButtons()[0]!));
+    const box = page.getByRole("textbox", { name: "Comment on lines +2" });
+    await expect.element(box).toBeVisible();
+
+    // Another scope: the draft is gone, and so is the block on new comments.
+    const key = selectionKey({ target, projectId: "app", threadId: "t1" });
+    act(() => value.selections.update(key, { value: "uncommitted" }));
+    await expect.element(box).not.toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Diff scope: Uncommitted" }))
+      .toBeVisible();
+    await expect.element(line).toBeVisible();
+    await userEvent.hover(line);
+    expect(visiblePlusButtons()).toHaveLength(1);
   });
 
   it("offers no comments without a composer to put them in", async () => {

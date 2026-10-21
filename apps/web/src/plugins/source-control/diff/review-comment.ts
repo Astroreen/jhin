@@ -1,6 +1,6 @@
 // Derived from T3 Code (MIT, see THIRD_PARTY_NOTICES.md): apps/web/src/reviewCommentContext.ts
 // (a comment on lines of a diff: its rows, range label and patch) and
-// packages/shared/src/composerContextLegacySend.ts (the `<review_comment>` block a provider reads).
+// packages/shared/src/composerContextLegacySend.ts (renderReviewComment: the `<review_comment>` block).
 import type { FileDiffMetadata, SelectedLineRange, SelectionSide } from "@pierre/diffs";
 
 /** A comment on lines of a diff, as T3's ReviewCommentContext keeps it. */

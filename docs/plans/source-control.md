@@ -247,6 +247,9 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   chosen base is kept with the thread's selection and passed to `git.diff`
   as `base`; switching to "Uncommitted" and back keeps it.
 - **D285. Comments on lines go to the chat, as T3's review comments do.**
+  (This wording supersedes the first one, which planned a `chat.composer@1`
+  capability with T3's context chips and a timeline card; those are
+  Deferred.)
   Pierre's gutter "+" (or a line range dragged in the gutter) opens T3's
   `DiffCommentAnnotation` under the range, one at a time: "Add a comment…",
   "⌘/Ctrl Enter to send", "Cancel", "Comment"; Escape cancels. "Comment"
@@ -254,8 +257,9 @@ so a terminal plugin (or any other) puts its own indicator on the same cards.
   `chat.composer.insert`, as T3 serializes a review comment for a provider
   without inline context: `<review_comment sectionId=… sectionTitle=…
   filePath=… rangeLabel=… startIndex=… endIndex=…>` with the comment and
-  the lines as a fenced `diff` (T3's `buildDiffReviewComment` and
-  `serializeLegacyContextMessage`). The section is the scope (`Changes`,
+  the lines as a fenced `diff` (T3's `buildDiffReviewComment` in
+  `reviewCommentContext.ts` and `renderReviewComment` in
+  `composerContextLegacySend.ts`). The section is the scope (`Changes`,
   `Turn 2`, …). Without that command (no chat plugin) lines offer no "+";
   with no message box on screen the panel says "No message box to add the
   comment to".

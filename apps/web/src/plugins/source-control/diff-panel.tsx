@@ -51,7 +51,8 @@ import {
   Rows3Icon,
   TextWrapIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { z } from "@jhin/sdk";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useCatalog, useExternal } from "../../lib/hooks.ts";
 import { DIFF_SECTION, DiffSettings, useSection } from "../../lib/settings.ts";
@@ -370,7 +371,26 @@ function annotationSide(range: SelectedLineRange): AnnotationSide {
   return (range.endSide ?? range.side) === "deletions" ? "deletions" : "additions";
 }
 
+/** The chat's command putting text into the open composer (W15, D473). */
+const COMPOSER_INSERT = "chat.composer.insert";
+const InsertAnswer = z.object({ inserted: z.boolean() });
+
 export function createDiffPanel(services: SourceControlServices) {
+  const { commands, events } = services.context;
+  /** Commands come and go with their plugins: whether one is there, kept current. */
+  const subscribeCommands = (listener: () => void) => {
+    const subscriptions = ["kernel.plugin.activated", "kernel.plugin.deactivated"].map((type) =>
+      events.on(type, listener),
+    );
+    return () => {
+      for (const subscription of subscriptions) subscription.dispose();
+    };
+  };
+  const useCommandAvailable = (name: string) =>
+    useSyncExternalStore(subscribeCommands, () =>
+      commands.list().some((command) => command.name === name),
+    );
+
   const { store, threads, navigation, scopes, selections } = services;
 
   function Panel(props: {
@@ -423,6 +443,10 @@ export function createDiffPanel(services: SourceControlServices) {
     const [codeView, setCodeView] = useState<CodeViewHandle<CommentDraft, undefined> | null>(null);
     // T3's comment on lines (D285): one draft at a time, sent into the composer.
     const [draft, setDraft] = useState<{
+      /** The selection the draft was opened under; another closes it. */
+      what: string;
+      sectionId: string;
+      sectionTitle: string;
       fileKey: string;
       filePath: string;
       fileDiff: FileDiffMetadata;
@@ -433,9 +457,7 @@ export function createDiffPanel(services: SourceControlServices) {
     const [sending, setSending] = useState(false);
     const [selectedLines, setSelectedLines] = useState<CodeViewLineSelection | null>(null);
     // Without a composer to put a comment in (no chat plugin), lines take none.
-    const canComment = services.context.commands
-      .list()
-      .some((command) => command.name === "chat.composer.insert");
+    const canComment = useCommandAvailable(COMPOSER_INSERT);
     const [reveal, setReveal] = useState<{ path: string; id: number } | null>(null);
     const [version, setVersion] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
@@ -562,6 +584,13 @@ export function createDiffPanel(services: SourceControlServices) {
       setDraftText("");
       setSelectedLines(null);
     };
+    // A draft goes with what it was opened on: another scope, base or whitespace setting, or
+    // a refresh that drops its file, closes it (its annotation would be gone, and with it Cancel).
+    const draftStale =
+      draft !== null && (draft.what !== what || !diffFileKeys.includes(draft.fileKey));
+    useEffect(() => {
+      if (draftStale) closeDraft();
+    }, [draftStale]);
     /** Opens a comment under the lines chosen in the gutter. */
     const beginComment = (
       range: SelectedLineRange | null,
@@ -580,6 +609,9 @@ export function createDiffPanel(services: SourceControlServices) {
       if (comment === null) return;
       setDraftText("");
       setDraft({
+        what,
+        sectionId: reviewSectionId,
+        sectionTitle: scopeTitle,
         fileKey: item.id,
         filePath,
         fileDiff: item.fileDiff,
@@ -589,10 +621,10 @@ export function createDiffPanel(services: SourceControlServices) {
     };
     /** Puts the comment into the composer as T3 sends a review comment to a provider. */
     const sendComment = (text: string) => {
-      if (draft === null) return;
+      if (draft === null || draftStale) return;
       const comment = buildDiffReviewComment({
-        sectionId: reviewSectionId,
-        sectionTitle: scopeTitle,
+        sectionId: draft.sectionId,
+        sectionTitle: draft.sectionTitle,
         filePath: draft.filePath,
         fileDiff: draft.fileDiff,
         range: draft.range,
@@ -601,10 +633,10 @@ export function createDiffPanel(services: SourceControlServices) {
       if (comment === null) return;
       setSending(true);
       void services.context.commands
-        .execute("chat.composer.insert", { text: serializeReviewComment(comment) })
+        .execute(COMPOSER_INSERT, { text: serializeReviewComment(comment) })
         .then(
           (answer) => {
-            if ((answer as { inserted?: boolean }).inserted === true) {
+            if (InsertAnswer.safeParse(answer).data?.inserted === true) {
               closeDraft();
               return;
             }
@@ -617,7 +649,7 @@ export function createDiffPanel(services: SourceControlServices) {
             services.toasts?.show({
               type: "error",
               title: "Could not add the comment to the chat",
-              description: (failure as Error).message,
+              description: failure instanceof Error ? failure.message : String(failure),
             }),
         )
         .finally(() => setSending(false));

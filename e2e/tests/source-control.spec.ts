@@ -229,7 +229,10 @@ test("D280–D284: the diff panel renders with @pierre/diffs, splits, lists file
   await panel.getByRole("button", { name: "Hide file tree" }).click();
   await panel.getByRole("button", { name: "Expand src/greet.ts" }).click();
   await panel.getByText('export const bye = () => "Bye";').last().hover();
-  await panel.locator("[data-utility-button]").filter({ visible: true }).first().click();
+  // Pierre shows one "+" in the gutter, the hovered line's.
+  const plus = panel.locator("[data-utility-button]").filter({ visible: true });
+  await expect(plus).toHaveCount(1);
+  await plus.click();
   const box = panel.getByRole("textbox", { name: /^Comment on lines/ });
   await box.fill("Say goodbye politely");
   await shot(page, info, "source-control-diff-comment");
