@@ -168,4 +168,10 @@ export interface TerminalSessions {
   close(input: CloseTerminalInput): Promise<number>;
   list(threadId?: string): readonly TerminalSummary[];
   get(threadId: string, terminalId: string): TerminalSnapshot | undefined;
+  /**
+   * The process ids a terminal runs: its shell and every process below it, as
+   * of the last process table read; empty without a running process. Since 1.3
+   * (D949: the preview's local servers are the ones terminals started).
+   */
+  processIds?(threadId: string, terminalId: string): readonly number[];
 }

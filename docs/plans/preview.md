@@ -320,6 +320,35 @@ CLI, and the web client through RPC.
   because Jhin's right panel holds browser tabs only; a device an agent opens
   for the thread brings the panel up (`jhin.device.reveal`).
 
+### Local servers (W25)
+
+Workstream W25 of `t3-roadmap.md` continues this plan with decisions from
+its range D941–D960 (the desktop app's take D941–D948 in `desktop.md`). The
+reference stays T3 Code `eb7b35ac`: `apps/server/src/preview/PortScanner.ts`
+and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
+
+- **D949. A terminal tells which processes it runs.** `terminal.sessions`
+  1.3 adds the optional `processIds(threadId, terminalId)`: the shell and
+  every process below it, from the process table the terminal plugin
+  already reads for its indicator (`terminal.md`, D467); empty without a
+  running process. It is how T3's terminal manager registers its processes
+  with port discovery.
+
+- **D950. The empty state lists T3's local servers.** The command
+  `preview.servers.list` (node, `preview.read`) scans the machine's TCP
+  listeners as T3's `PortScanner` does (its parsers ported in
+  `plugins/preview/src/local-servers.ts`): `lsof`, else `/proc` on Linux
+  (socket owners by a bounded fd walk, and `lsof` is not tried again once
+  missing), `netstat` and `tasklist` on Windows. It keeps a listener only
+  when a terminal's process owns it, since sending HTTP to another app's
+  binary listener can crash it, and only when it answers HTTP, else HTTPS,
+  with a page or a redirect (probes cached for 15 s). The panel's empty
+  state shows T3's "Local servers" section under "Recently used": the
+  process name (or "Listening") and `host:port`, T3's hint "Select a live
+  local server to open it in this browser tab.", and a click opens the
+  server in the browser tab. It rescans every 3 s while it shows, T3's
+  cadence, from the client.
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -341,8 +370,9 @@ CLI, and the web client through RPC.
   setup hints (sandbox and libraries, close code 4503).
 - A binary channel for frames (T3's WebSocket with per-frame acks); frames
   travel as base64 JSON events.
-- Discovered local servers in the empty state (T3's port scanner) and the
-  configured preview URLs of project scripts.
+- The configured preview URLs of project scripts (T3's `configuredUrls` in
+  the port scan and the empty state), a pushed server list instead of the
+  client's 3 s rescans (T3's subscription), and a favicon per local server.
 - The floating mini player ("Float preview over chat").
 - Touch input and the editable-at-point probe for soft keyboards; human
   uploads through the file chooser (the panel can only cancel it) and saving

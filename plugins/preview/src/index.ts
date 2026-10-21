@@ -5,6 +5,7 @@ import * as Path from "node:path";
 
 import { THREADS_STREAM, ThreadEvents } from "@jhin/agent-api";
 import { HOST_PATHS_CAPABILITY, type HostPaths } from "@jhin/host-api";
+import { TERMINAL_SESSIONS_CAPABILITY, type TerminalSessions } from "@jhin/terminal-api";
 import {
   PREVIEW_BROWSER_CAPABILITY,
   PREVIEW_STREAM_PREFIX,
@@ -57,6 +58,7 @@ import { EVENTLOG_CAPABILITY, type EventLog } from "@jhin/storage-api";
 
 import { Chromium } from "./chromium.ts";
 import { createTabs, sessionKey } from "./tabs.ts";
+import { createLocalServerScanner, DiscoveredLocalServer, nodeScanHost } from "./local-servers.ts";
 
 const CONFIG_SECTION = "jhin.preview";
 
@@ -165,6 +167,27 @@ export default definePlugin({
       "preview.write": {
         title: "Control previews",
         description: "Open browser previews and host browser automation.",
+      },
+    });
+    // T3's discovered local servers (D950): what terminals of this node serve.
+    const scanner = createLocalServerScanner(nodeScanHost);
+    context.commands.register({
+      name: "preview.servers.list",
+      title: "List local servers",
+      description:
+        "Lists the browser-ready servers on this node that its terminals started (a process of a terminal listens on a local port and answers HTTP or HTTPS with a page), by port, with the terminal each runs in",
+      input: z.object({}),
+      output: z.object({ servers: z.array(DiscoveredLocalServer), scannedAt: z.string() }),
+      permissions: read,
+      handler: async () => {
+        const terminals = context.services.tryGet<TerminalSessions>(TERMINAL_SESSIONS_CAPABILITY);
+        const owners = new Map<number, { threadId: string; terminalId: string }>();
+        for (const terminal of terminals?.list() ?? []) {
+          for (const pid of terminals?.processIds?.(terminal.threadId, terminal.terminalId) ?? []) {
+            owners.set(pid, { threadId: terminal.threadId, terminalId: terminal.terminalId });
+          }
+        }
+        return { servers: await scanner.scan(owners), scannedAt: new Date().toISOString() };
       },
     });
     context.commands.register({

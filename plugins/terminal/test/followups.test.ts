@@ -17,6 +17,8 @@ import { envKey, shellEnv } from "../src/env.ts";
 import { createHistoryFiles, historyName } from "../src/history.ts";
 import {
   createProcessTableReader,
+  descendantsOf,
+  parseProcessTable,
   parseWindowsProcessTable,
   subprocessOf,
   type RunProgram,
@@ -608,5 +610,57 @@ describe("the process table (D467, D468)", () => {
       running: false,
       label: "",
     });
+  });
+});
+
+describe("the processes a terminal runs (D949)", () => {
+  it("lists a shell and everything below it", () => {
+    const table = parseProcessTable(
+      "  1   0 init\n 100   1 bash\n 200 100 npm\n 300 200 node\n 400   1 other\n",
+    );
+    expect(descendantsOf(table, 100)).toEqual([100, 200, 300]);
+    expect(descendantsOf(table, 999)).toEqual([999]);
+  });
+
+  it("answers from the last process table read", async () => {
+    const cwd = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-terminal-"));
+    let read!: () => void;
+    const tableRead = new Promise<void>((resolve) => (read = resolve));
+    let reads = 0;
+    const exits = new Set<(exit: { exitCode: number; signal: number | null }) => void>();
+    const pty: PtySpawner = {
+      spawn: () => ({
+        pid: 4242,
+        write: () => undefined,
+        resize: () => undefined,
+        kill: () => {
+          for (const exit of exits) exit({ exitCode: 0, signal: 1 });
+        },
+        onData: () => () => undefined,
+        onExit: (listener) => {
+          exits.add(listener);
+          return () => exits.delete(listener);
+        },
+      }),
+    };
+    const sessions = createSessions({
+      streams: createMemoryStreams(),
+      pty: async () => pty,
+      // The second read starts only after the first was taken in.
+      processTable: async () => {
+        reads += 1;
+        if (reads === 2) read();
+        return parseProcessTable("4242 1 bash\n5000 4242 node\n");
+      },
+      pollIntervalMs: 1,
+      config: () => ({ shell: "/bin/sh", scrollback: 5000 }),
+      log: quiet,
+    });
+    expect(sessions.processIds?.("t", "term-1")).toEqual([]);
+    await sessions.open({ threadId: "t", terminalId: "term-1", cwd });
+    await tableRead;
+    expect(sessions.processIds?.("t", "term-1")).toEqual([4242, 5000]);
+    await sessions.dispose();
+    Fs.rmSync(cwd, { recursive: true, force: true });
   });
 });
