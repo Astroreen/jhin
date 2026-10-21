@@ -1182,7 +1182,7 @@ Each workstream lists its PRs here as they merge.
   `jhin.civilization` client plugins: Threads mode on today's slots, the
   Civilization shell with empty slots for A1, A2, A3, A5 and A7, and
   `includeGenerations` on `threads.list` and `threads.catalog` (D742–D750).
-- A6 #PR: the `jhin.orchestrator` plugin (`missions.next`, `missions.wait`,
+- A6 #181: the `jhin.orchestrator` plugin (`missions.next`, `missions.wait`,
   `missions.orchestrate`, `slices.handoff`, `refocus.brief`,
   `refocus.send`), `missionProgress` in `@jhin/missions-api`, `command()`
   in W10's workflow scripts, and `context.compacted` from Claude Code, Codex
