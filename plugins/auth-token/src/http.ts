@@ -9,7 +9,11 @@ import { DisposableStore, z, type Disposable, type Logger } from "@jhin/sdk";
 // answers are never cached, and the page's own session is an httpOnly cookie.
 
 const MAX_BODY = 16 * 1024;
-/** Codes are 60 bits of randomness; this only keeps guessing and floods cheap to refuse. */
+/**
+ * Failed attempts per client address in one clock minute (a fixed window, so
+ * up to twice this across a minute's edge). Codes are 60 bits of randomness;
+ * this only keeps guessing and floods cheap to refuse.
+ */
 const ATTEMPTS_PER_MINUTE = 20;
 
 const PairRequest = z.object({
@@ -192,7 +196,20 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
         send(response, 400, { code: "INVALID", message: "Expected { code, label? }" }, CORS);
         return;
       }
-      const issued = options.pair(parsed.data.code, parsed.data.label);
+      let issued: IssuedToken | undefined;
+      try {
+        issued = options.pair(parsed.data.code, parsed.data.label);
+      } catch (error) {
+        // A JSON answer with CORS, so a page on another origin can read what went wrong.
+        log.error("pairing failed", { error: String(error) });
+        send(
+          response,
+          500,
+          { code: "PAIRING_FAILED", message: "Pairing failed on the node; try again" },
+          CORS,
+        );
+        return;
+      }
       if (issued === undefined) {
         log.warn("pairing refused: wrong, used or expired code", {
           client: http.clientAddress(request),
@@ -242,7 +259,17 @@ export function serveAuthHttp(options: AuthHttpOptions): Disposable {
         send(response, 400, { code: "INVALID", message: "Expected { credential }" });
         return;
       }
-      const issued = await options.openSession(parsed.data.credential);
+      let issued: IssuedToken | undefined;
+      try {
+        issued = await options.openSession(parsed.data.credential);
+      } catch (error) {
+        log.error("opening a page session failed", { error: String(error) });
+        send(response, 500, {
+          code: "SESSION_FAILED",
+          message: "The node could not open a session; try again",
+        });
+        return;
+      }
       if (issued === undefined) {
         send(response, 401, {
           code: "CREDENTIAL_INVALID",

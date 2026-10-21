@@ -207,7 +207,7 @@ The reference is T3 Code at D53 (`eb7b35ac`): `apps/server/src/auth/*`
   session gives an `issued` token that never outlives it and is revoked with
   it (a rotated owner token ends the sessions it opened). Each endpoint has
   its own rate-limit bucket per client address, counting failed attempts
-  only (behind a proxy, set
+  only, in fixed clock minutes (behind a proxy, set
   `jhin.http.trustProxy` so clients are told apart).
 - **D422. The pairing URL is T3's: `<base>/pair#token=<CODE>`.** The code is
   in the fragment, so it never reaches a server log; the web client accepts
