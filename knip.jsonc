@@ -3,6 +3,8 @@
   "workspaces": {
     ".": {
       "entry": ["scripts/*.ts", "vite.config.ts"],
+      // scripts/package-desktop.ts runs its binary (docs/plans/desktop.md, D942).
+      "ignoreDependencies": ["electron-builder"],
     },
     "packages/*": {
       // Test drivers run in child processes, so nothing imports them.

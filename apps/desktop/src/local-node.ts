@@ -5,7 +5,7 @@ import * as Path from "node:path";
 
 /** Where the app finds the CLI and its own client plugin (resolved from the app's package). */
 export interface LocalNodePaths {
-  /** `bin/jhin.js` of the `jhin-ai` package. */
+  /** The `jhin` bin of the `jhin-ai` package. */
   readonly cli: string;
   /** The `jhin.desktop` client plugin's package directory (D514). */
   readonly plugin: string;
@@ -21,6 +21,17 @@ export interface RunningLocalNode {
   onExit(listener: (output: string) => void): void;
   /** Stops the node and resolves once it exited. */
   stop(): Promise<void>;
+}
+
+/**
+ * The CLI's entry: its manifest's `jhin` bin, `bin/jhin.js` in the workspace and
+ * `dist/main.js` in a packed install (D942).
+ */
+export function cliEntry(manifest: string): string {
+  const bin = (JSON.parse(Fs.readFileSync(manifest, "utf8")) as { bin?: { jhin?: unknown } }).bin
+    ?.jhin;
+  if (typeof bin !== "string") throw new Error(`${manifest} names no "jhin" bin`);
+  return Path.join(Path.dirname(manifest), bin);
 }
 
 /** How long a node may take to stop after SIGTERM before it is killed (T3 waits 5 s). */

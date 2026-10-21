@@ -4,7 +4,7 @@ import * as Path from "node:path";
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { startLocalNode } from "../src/local-node.ts";
+import { cliEntry, startLocalNode } from "../src/local-node.ts";
 
 const CLI = Path.join(import.meta.dirname, "fixtures", "fake-cli.mjs");
 const PATHS = { cli: CLI, plugin: "/nowhere" };
@@ -75,5 +75,29 @@ describe("startLocalNode (D512)", () => {
       .map(Number);
     process.kill(pid!, "SIGKILL");
     expect(await exited).toContain("ui: http://127.0.0.1:7777/");
+  });
+});
+
+describe("cliEntry (D942)", () => {
+  const dirs: string[] = [];
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) Fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const manifest = (content: unknown) => {
+    const dir = Fs.mkdtempSync(Path.join(Os.tmpdir(), "jhin-cli-entry-"));
+    dirs.push(dir);
+    Fs.writeFileSync(Path.join(dir, "package.json"), JSON.stringify(content));
+    return Path.join(dir, "package.json");
+  };
+
+  it("runs the bin the manifest names, in the workspace and packed", () => {
+    const workspace = manifest({ bin: { jhin: "./bin/jhin.js" } });
+    expect(cliEntry(workspace)).toBe(Path.join(Path.dirname(workspace), "bin", "jhin.js"));
+    const packed = manifest({ bin: { jhin: "./dist/main.js" } });
+    expect(cliEntry(packed)).toBe(Path.join(Path.dirname(packed), "dist", "main.js"));
+  });
+
+  it("fails clearly without a jhin bin", () => {
+    expect(() => cliEntry(manifest({ bin: "./x.js" }))).toThrow('names no "jhin" bin');
   });
 });

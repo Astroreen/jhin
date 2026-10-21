@@ -42,7 +42,9 @@ function pack(dir: string, out: string): void {
   try {
     const raw = Path.join(stage, "raw.tgz");
     run("pnpm", ["pack", "--out", raw], dir, { ...process.env, [STAGED]: "1" });
-    run("tar", ["-xzf", raw, "-C", stage], stage);
+    // tar gets paths relative to its working directory: GNU tar (Git Bash's, first
+    // on PATH in a Windows bash) reads `C:\...` as a remote host.
+    run("tar", ["-xzf", "raw.tgz"], stage);
     const file = Path.join(stage, "package", "package.json");
     const manifest = JSON.parse(Fs.readFileSync(file, "utf8")) as PackedManifest;
     Fs.writeFileSync(file, `${JSON.stringify(packedManifest(manifest), null, 2)}\n`);
@@ -53,9 +55,15 @@ function pack(dir: string, out: string): void {
       withFileTypes: true,
     })
       .filter((entry) => entry.isFile())
-      .map((entry) => Path.relative(stage, Path.join(entry.parentPath, entry.name)))
+      // Forward slashes, which every tar reads as separators.
+      .map((entry) =>
+        Path.relative(stage, Path.join(entry.parentPath, entry.name)).split(Path.sep).join("/"),
+      )
       .toSorted();
-    run("tar", ["-czf", out, "-C", stage, ...files], stage);
+    // A list file, not arguments: Windows limits a command line to 32 KiB.
+    Fs.writeFileSync(Path.join(stage, "files.txt"), `${files.join("\n")}\n`);
+    run("tar", ["-czf", "packed.tgz", "-T", "files.txt"], stage);
+    Fs.copyFileSync(Path.join(stage, "packed.tgz"), out);
   } finally {
     Fs.rmSync(stage, { recursive: true, force: true });
   }

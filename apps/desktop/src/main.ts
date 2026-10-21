@@ -24,7 +24,7 @@ import {
 } from "@jhin/desktop-api";
 import { z } from "@jhin/sdk";
 
-import { startLocalNode, type RunningLocalNode } from "./local-node.ts";
+import { cliEntry, startLocalNode, type RunningLocalNode } from "./local-node.ts";
 import { buildApplicationMenu, type ContentsCommand, type ZoomDirection } from "./menu.ts";
 import { createSettingsStore } from "./settings.ts";
 import { resolveDefaultDesktopUpdateChannel } from "./updates/channels.ts";
@@ -48,7 +48,7 @@ app.setName(APP_NAME);
 
 /** The CLI and the client plugin the app's node runs with (D512, D514). */
 const nodePaths = {
-  cli: Path.join(Path.dirname(require.resolve("jhin-ai/package.json")), "bin", "jhin.js"),
+  cli: cliEntry(require.resolve("jhin-ai/package.json")),
   plugin: Path.dirname(require.resolve("@jhin/plugin-desktop/package.json")),
 };
 

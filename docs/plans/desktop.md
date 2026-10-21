@@ -129,9 +129,9 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
 
 - **D519. Auto update is T3's flow on electron-updater against this
   repository's GitHub releases** (`provider: github`, owner `Astroreen`,
-  repo `jhin`), which packaging writes into the app's `app-update.yml`;
-  until packaging lands (Deferred) no build has that feed, so updates show
-  as disabled with T3's "no update feed" reason. The state machine is T3's (`updateMachine.ts`): `disabled`,
+  repo `jhin`), which packaging writes into the app's `app-update.yml`
+  (D943); a build without that feed shows updates as disabled with T3's
+  "no update feed" reason. The state machine is T3's (`updateMachine.ts`): `disabled`,
   `idle`, `checking`, `up-to-date`, `available`, `downloading`,
   `downloaded`, `error` with the available and downloaded versions, progress,
   the error's context and whether it can be retried. Nothing downloads by
@@ -196,6 +196,85 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
   controller, the menu template and the settings file have unit tests
   without Electron.
 
+### Packaging and releases (W25)
+
+Workstream W25 of `t3-roadmap.md` continues this plan with the decision
+range D941–D960 (the range `t3-roadmap.md` first gave it, D720–D739, belongs
+to A6 and A7 in `agents.md`). The reference stays T3 Code `eb7b35ac`:
+`scripts/build-desktop-artifact.ts`, `.github/workflows/release.yml` and
+`release-desktop.yml`.
+
+- **D941. W25's scope and order.** W25 lands as small PRs, one at a time:
+  packaging, signing and the release workflow first (so D519's feed exists),
+  then the app's smaller T3 pieces (release notes in the update control,
+  Paste as Text, the quit-hold shortcut), then the preview's leftovers of
+  `preview.md`. What a PR leaves stays in the Deferred lists below and in
+  `preview.md`.
+
+- **D942. Packaging stages the app from packed tarballs.**
+  `scripts/package-desktop.ts` (`pnpm package:desktop`) builds the main
+  process and the preload, packs `jhin-ai` and `@jhin/plugin-desktop` with
+  every workspace package they need through `scripts/pack.ts` (as
+  `pnpm pack:smoke` does), installs them into a staged app outside the
+  workspace with the third-party versions of `pnpm-lock.yaml` and a flat
+  `node_modules`, and runs electron-builder on it. The app runs the packed
+  CLI's own `jhin` bin (`dist/main.js`, read from its manifest) with
+  Electron's Node (D512), so the files stay outside an asar archive and
+  nothing is rebuilt: node-pty is a Node-API addon and loads in Electron's
+  Node as built. Targets are T3's: AppImage and .deb (with T3's static
+  AppImage runtime and .deb dependencies), dmg and zip, NSIS. The app id is
+  `ai.jhin.desktop`, artifacts are `Jhin-<version>-<arch>.<ext>`, and the
+  icon is `apps/desktop/resources/icon.png`, rendered from `icon.svg` beside
+  it (electron-builder derives the macOS and Windows formats).
+
+- **D943. The feed is this repository's releases, written only when asked.**
+  With `--repository owner/repo` the build gets T3's GitHub `publish` entry:
+  stable builds read `latest*.yml` from releases, nightly builds
+  (`x.y.z-nightly.YYYYMMDD.N`) read `nightly*.yml` from prereleases, so
+  electron-builder writes those files and the app's `app-update.yml`
+  (D519). Without it the build has no feed and the app shows updates as
+  disabled, as an unpackaged build does. electron-builder itself never
+  publishes (`--publish never`): the workflow does.
+
+- **D944. A build signs only when every secret of its system is set.** As
+  in T3: macOS needs `CSC_LINK` (a Developer ID Application certificate,
+  .p12 in base64), `CSC_KEY_PASSWORD`, and an App Store Connect API key
+  (`APPLE_API_KEY`, the .p8's text, `APPLE_API_KEY_ID`,
+  `APPLE_API_ISSUER`) with which electron-builder notarizes; Windows needs
+  Azure Trusted Signing (`AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
+  `AZURE_CLIENT_SECRET`, `AZURE_TRUSTED_SIGNING_ENDPOINT`,
+  `AZURE_TRUSTED_SIGNING_ACCOUNT_NAME`,
+  `AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME`,
+  `AZURE_TRUSTED_SIGNING_PUBLISHER_NAME`), and also signs `.node` and
+  `.dll` files; Linux is not signed. None set builds unsigned (macOS ad hoc,
+  which Apple Silicon needs to start an app, and without keychain
+  discovery); some but not all set fails the build and names what is
+  missing. A stable release requires signing on macOS and Windows (an
+  unsigned macOS app cannot update itself), unless the run asks for
+  `allow_unsigned`. Packaging builds for the machine it runs on only: native
+  addons are installed for it and never rebuilt (D942).
+
+- **D945. The release workflow.** `.github/workflows/release-desktop.yml`
+  builds Linux x64, macOS arm64 and Windows x64 in parallel. A pushed tag
+  `v1.2.3` or a manual "stable" run publishes the stable release of
+  `apps/desktop/package.json`'s version (a tag that names another version
+  fails), only from a commit on `main`; stable versions are plain `x.y.z`,
+  since a suffixed one would be a GitHub prerelease the stable feed never
+  offers. A manual "nightly" publishes the prerelease
+  `v<version>-nightly.<date>.<run>`, also only from `main`. A manual "dry-run" (the default), and
+  every pull request that changes packaging, builds as a release would (feed files included), unsigned, and keeps
+  the installers as workflow artifacts. The last job creates the GitHub
+  release with T3's generated notes and uploads the installers, their
+  blockmaps and the feed files; a re-run uploads into the release that
+  already exists as this run's draft (marked with the run's id, published
+  once every file is up), so "Re-run failed jobs" finishes a run one platform
+  broke, while any other run of an already released version fails instead of
+  replacing its files. A failed run that is not re-run leaves its draft
+  behind (racing runs leave one each): delete the draft on the releases page,
+  then run again. Only publishing runs, which build from `main`, get the
+  signing secrets; a dry run is unsigned, and packaging gives the secrets to
+  electron-builder only, never to the install's scripts.
+
 ## Deferred
 
 - The `desktop.update.*` commands over RPC, CLI and MCP: they are client
@@ -204,22 +283,34 @@ Derived files name their origin and are covered by `THIRD_PARTY_NOTICES.md`.
 - A machine-readable ready signal from `jhin serve` (the app reads the CLI's
   `ui:` and `logs:` lines and the token file the CLI itself reads for
   `--url`).
-- The release pipeline: an electron-builder config with the GitHub
-  `publish` provider and a workflow that publishes signed artifacts and
-  `latest*.yml` / `nightly*.yml` to this repository's releases. Until then
-  D519's feed exists only in tests.
 - A graceful stop of the node on Windows: `SIGTERM` is an immediate kill
   there, so D522's "stops the node first" waits for no shutdown work.
 - Release notes in the update control (T3's popover for nightly builds), the
   Intel-on-Apple-Silicon warning, the record of an install that did not
   apply, and telling a .deb install apart (D519 treats Linux outside an
   AppImage as not updatable).
-- App icons, and checking the macOS chrome (traffic lights, the controls
+- Checking the macOS chrome (traffic lights, the controls
   inset, full screen) and the Windows overlay badge on those systems: CI
   proves Linux only.
-- Packaging (electron-builder: AppImage and .deb, dmg and zip, NSIS), code
-  signing and notarization, and the release workflow that publishes the
-  artifacts and `latest*.yml` to GitHub releases (D519's feed).
+- Release builds beyond D945's three: macOS x64 (T3 merges the two
+  `latest-mac.yml` files), Linux and Windows arm64; T3's scheduled nightly
+  that skips days without changes, its preview channel, and promoting a
+  nightly's commit to stable; T3's DMG background; the AUR package.
+- Proof of the signed and publishing paths: pull request dry runs are
+  unsigned and publish nothing, so the first nightly (and the first run with
+  the signing secrets) is what proves notarization, Azure Trusted Signing,
+  `--require-signing` and the publish job.
+- A test of `scripts/package-desktop.ts`'s orchestration with a fake spawn:
+  its pure parts are unit tested and the pull request dry run runs it whole
+  on all three systems.
+- A protected GitHub environment (required reviewers) for the signing
+  secrets and the publishing job: today they are repository secrets, reachable
+  by anyone who may dispatch a workflow on `main`.
+- Pinning the release workflow's actions to commit SHAs (the repository's
+  workflows use version tags today), and an Intel build for macOS: the feed
+  offers the arm64 build only, which no Intel install exists to update from.
+- Trimming the packaged app (about 400 MB unpacked: every agent SDK's
+  binaries) and an asar archive with the node's files unpacked (D942).
 - Attaching to a node of the same home that already runs (`jhin serve`), and
   choosing another port when 7777 is taken by something else (D513 keeps the
   origin stable, so the choice must be kept).
