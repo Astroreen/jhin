@@ -123,11 +123,14 @@ describe("jhin.agent-codex: the node's MCP server", () => {
   it("lets Codex only read through it unless the thread has full access", async () => {
     const { mcp, run } = setup();
     await run("turn-1", "approval-required");
-    expect(mcp.issued[0]?.permissions).toEqual(
-      AGENT_PERMISSIONS.filter(
-        (permission) => permission.endsWith(".read") || permission === "projects.browse",
-      ),
-    );
+    expect(mcp.issued[0]?.permissions).toEqual([
+      "threads.read",
+      "projects.read",
+      "projects.browse",
+      "git.read",
+      "mesh.read",
+      "missions.read",
+    ]);
     // Full access now: a new app-server, whose credential also writes.
     const revoked = mcp.nextRevoke();
     await run("turn-2", "full-access");
