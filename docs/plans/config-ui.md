@@ -236,7 +236,7 @@ rules of the form below), the decision says so.
   that turn completed (T3's `thread.mark-unread`; the record keeps only its
   latest turn, so a thread whose latest turn did not complete is refused). A
   visit from a clock ahead of the node's counts as the node's now, unless it
-  is the thread's own snooze wake time (dismissing "Woke"). Both go
+  is exactly the thread's own snooze wake time (dismissing "Woke"). Both go
   out through the `threads` index, so every client and device of the node
   sees them. `client.visits@1` reads the record's value where the node keeps
   one and the device's own visit otherwise (an older node, a thread never

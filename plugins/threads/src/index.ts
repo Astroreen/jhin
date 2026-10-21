@@ -2564,15 +2564,12 @@ export default definePlugin({
       handler: ({ threadId, at }) =>
         updateThread(threadId, (thread) => {
           // A visit from a clock ahead of this node's counts as now, or it would
-          // hide every later turn on every device; a snooze's own wake time
-          // (dismissing "Woke", D78) is a time this node set, so it stands.
-          const bound = Math.max(
-            Date.parse(now()),
-            ...[thread.snoozedUntil, thread.lastSnoozeWakeAt]
-              .filter((time) => time !== undefined)
-              .map((time) => Date.parse(time)),
+          // hide every later turn on every device. A snooze's own wake time
+          // (dismissing "Woke", D78) is a time this node set: it stands as is.
+          const wake = [thread.snoozedUntil, thread.lastSnoozeWakeAt].some(
+            (time) => time !== undefined && Date.parse(time) === Date.parse(at),
           );
-          const seen = Math.min(Date.parse(at), bound);
+          const seen = wake ? Date.parse(at) : Math.min(Date.parse(at), Date.parse(now()));
           return thread.lastVisitedAt !== undefined && Date.parse(thread.lastVisitedAt) >= seen
             ? thread
             : { ...thread, lastVisitedAt: new Date(seen).toISOString() };
