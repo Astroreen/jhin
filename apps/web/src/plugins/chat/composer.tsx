@@ -55,6 +55,7 @@ import {
   CornerUpRightIcon,
   GripVerticalIcon,
   PencilIcon,
+  PlayIcon,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -171,6 +172,8 @@ export interface ComposerHandleApi {
   steerNext(): boolean;
   /** Edits the last queued message in the composer; false when it cannot (T3's editLatest). */
   editLatest(): boolean;
+  /** Resumes a stopped turn or a held queue (D800); false when there is nothing to resume. */
+  resume(): boolean;
 }
 
 /** What can be done to the thread's queue on its node (D201–D205); true when it was done. */
@@ -1096,6 +1099,11 @@ export interface ComposerProps {
     alternate?: boolean,
   ): Promise<boolean>;
   onStop(): void;
+  /**
+   * Present when the thread can be resumed (D800): its latest turn was
+   * stopped, or its queue is held. An empty composer offers "Resume thread".
+   */
+  onResume?: (() => Promise<void>) | undefined;
   /** False when the answer was not delivered: what was typed stays. */
   onRespond(requestId: string, response: AgentResponse): Promise<boolean>;
   readonly handleRef?: Ref<ComposerHandleApi>;
@@ -1299,6 +1307,24 @@ export function Composer(props: ComposerProps) {
       props.onSelectionChange({ ...props.selection, interactionMode: item.command });
     }
   };
+  /** T3's "Resume thread" stands in for the send button while nothing is typed (D800). */
+  const canResume = (text = prompt) =>
+    props.onResume !== undefined &&
+    !props.running &&
+    editing === undefined &&
+    question === undefined &&
+    approval === undefined &&
+    text.trim() === "" &&
+    attachments.length === 0;
+  const resume = async () => {
+    if (busy || props.unavailable !== undefined || props.onResume === undefined) return;
+    setBusy(true);
+    try {
+      await props.onResume();
+    } finally {
+      setBusy(false);
+    }
+  };
   useImperativeHandle(props.handleRef, () => ({
     restore(draft) {
       const restored = appendToDraft({ prompt, attachments: draftAttachments(attachments) }, draft);
@@ -1343,6 +1369,12 @@ export function Composer(props: ComposerProps) {
       const caret = editor.current?.cursor() ?? 0;
       if (latest === undefined || editing !== undefined || caret !== 0) return false;
       void startEdit(latest.id);
+      return true;
+    },
+    resume() {
+      // What the editor holds now, as `send` reads it.
+      if (!canResume(editor.current?.value() ?? prompt)) return false;
+      void resume();
       return true;
     },
   }));
@@ -2023,6 +2055,27 @@ export function Composer(props: ComposerProps) {
                               </svg>
                             </TooltipTrigger>
                             <TooltipPopup side="top">Interrupt</TooltipPopup>
+                          </Tooltip>
+                        ) : canResume() ? (
+                          <Tooltip>
+                            <TooltipTrigger render={<span className="inline-flex" />}>
+                              <button
+                                aria-label="Resume thread"
+                                className={SEND_BUTTON}
+                                disabled={busy || props.unavailable !== undefined}
+                                onClick={() => void resume()}
+                                type="button"
+                              >
+                                {busy ? (
+                                  <Spinner size="sm" />
+                                ) : (
+                                  <PlayIcon className="size-4 fill-current" />
+                                )}
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipPopup side="top">
+                              {props.unavailable ?? "Resume thread"}
+                            </TooltipPopup>
                           </Tooltip>
                         ) : (
                           <Tooltip>

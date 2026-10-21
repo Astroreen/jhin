@@ -95,6 +95,9 @@ function useHeight<T extends HTMLElement>() {
   return { ref, height };
 }
 
+/** What "Resume thread" sends into a stopped turn's thread (T3's text, D800). */
+const RESUME_TEXT = "Continue where you left off.";
+
 const selectionOf = (thread: ThreadRecord): Selection => ({
   ...(thread.agentId === undefined ? {} : { agentId: thread.agentId }),
   ...(thread.model === undefined ? {} : { model: thread.model }),
@@ -168,6 +171,7 @@ export function ThreadView(props: {
       sendAlternate: () => handle.current?.sendAlternate(),
       steerNext: () => handle.current?.steerNext() ?? false,
       editLatest: () => handle.current?.editLatest() ?? false,
+      resume: () => handle.current?.resume() ?? false,
     };
     handle.current?.focus();
     return () => {
@@ -218,6 +222,29 @@ export function ThreadView(props: {
       });
     }
     return true;
+  };
+
+  // T3's "Resume thread" (D800): a stopped turn goes on with T3's message,
+  // and a held queue goes on after it.
+  const held = timeline.queue?.held !== undefined && timeline.queue.messages.length > 0;
+  const stopped = lastTurn?.state === "interrupted";
+  const resume = async (): Promise<void> => {
+    setError(undefined);
+    if (stopped) {
+      const message = { text: RESUME_TEXT, attachments: [], settings: selection };
+      const outcome = await sendMessage(chat.threads, target, threadId, message, "start");
+      if (outcome.kind === "failed") {
+        setError(outcome.message || "Could not resume thread.");
+        return;
+      }
+      if (outcome.kind === "busy") return;
+    }
+    if (!held) return;
+    try {
+      await chat.threads.call(target, "threads.queue.resume", { threadId });
+    } catch (failure) {
+      setError((failure as Error).message || "Could not resume thread.");
+    }
   };
 
   /** What the queue banner and the composer do to the thread's queue on its node. */
@@ -539,6 +566,7 @@ export function ThreadView(props: {
                     onRespond={respond}
                     onSelectionChange={changeSelection}
                     onSend={send}
+                    {...(!running && (stopped || held) ? { onResume: resume } : {})}
                     {...(planFollowUp === undefined ? {} : { planFollowUp })}
                     onStop={() =>
                       void chat.threads
@@ -615,6 +643,7 @@ export function DraftView(props: {
       sendAlternate: () => handle.current?.sendAlternate(),
       steerNext: () => handle.current?.steerNext() ?? false,
       editLatest: () => handle.current?.editLatest() ?? false,
+      resume: () => handle.current?.resume() ?? false,
     };
     handle.current?.focus();
     return () => {

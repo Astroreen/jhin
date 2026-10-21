@@ -70,6 +70,7 @@ function setup(options: {
       sendAlternate: () => undefined,
       steerNext: () => false,
       editLatest: () => false,
+      resume: () => false,
     };
   }
   const services = {

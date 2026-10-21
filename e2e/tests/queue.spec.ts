@@ -124,6 +124,39 @@ test("holds the queue after a stop until it is resumed, and steers with the othe
   await expect(queued(page)).toHaveCount(0);
 });
 
+test("resumes a stopped turn with T3's message, then lets the held queue go on (D800)", async ({
+  page,
+}, info) => {
+  const message = await holdingThread(page);
+  await message.fill("after the resume");
+  await message.press("Enter");
+  await page.getByRole("button", { name: "Stop generation" }).click();
+  await expect(queued(page).getByRole("alert")).toHaveText("The turn was stopped: the queue waits");
+
+  // Typed text keeps the send button; an empty composer offers the resume.
+  const resume = page.getByRole("button", { name: "Resume thread" });
+  await message.fill("typed");
+  await expect(resume).toHaveCount(0);
+  await message.fill("");
+  await expect(resume).toBeVisible();
+  const shot = info.outputPath("resume-thread.png");
+  await page.screenshot({ path: shot });
+  await info.attach("resume thread", { path: shot, contentType: "image/png" });
+
+  await resume.click();
+  const log = page.getByRole("log", { name: "Messages" });
+  await expect(log.getByRole("article", { name: "You" })).toHaveText([
+    /\/hold on/,
+    /Continue where you left off\./,
+    /after the resume/,
+  ]);
+  await expect(log.getByRole("article", { name: "Agent" }).last()).toHaveText(
+    "Echo: after the resume",
+  );
+  await expect(queued(page)).toHaveCount(0);
+  await expect(resume).toHaveCount(0);
+});
+
 test("sends typed text the other way with ⌘/Ctrl+Shift+Enter when ⌘/Ctrl+Enter sends, and steers nothing else", async ({
   page,
 }) => {
