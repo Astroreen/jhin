@@ -302,6 +302,7 @@ export function createCodexRuntime(options: {
           request.model ??
           config.defaultModel ??
           (current() === undefined ? waitedDefault() : defaultModel()),
+        modelOptions: (model) => models().find((listed) => listed.id === model)?.options,
         version: VERSION,
         home: expandHome(config.homePath),
         ...(options.log === undefined ? {} : { log: options.log }),

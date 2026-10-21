@@ -11,6 +11,7 @@ import {
   type AgentResponse,
   type AgentTurn,
   type ApprovalDecision,
+  type ModelOptionDescriptor,
   type TurnRequest,
 } from "@jhin/agent-api";
 
@@ -24,6 +25,7 @@ import {
   tokenUsage,
   toolCall,
   toolOutcome,
+  compileModelOptions,
   turnStartParams,
   userInputAnswers,
   userQuestions,
@@ -67,6 +69,8 @@ export interface CodexTurnDependencies {
   readonly settings: CodexSettings;
   /** The turn's model; a promise while it is still being asked for (`status()`). */
   readonly model: string | Promise<string>;
+  /** What a turn can choose for `model`, as `model/list` described it (D881). */
+  readonly modelOptions?: (model: string) => readonly ModelOptionDescriptor[] | undefined;
   /** Sent in `initialize`. */
   readonly version: string;
   /** `homePath` with `~` expanded. */
@@ -752,7 +756,11 @@ export function codexTurn(
             model,
             runtimeMode,
             interactionMode,
-            effort: deps.settings.effort,
+            ...compileModelOptions(
+              deps.modelOptions?.(model),
+              request.modelOptions,
+              deps.settings.effort,
+            ),
             ...(request.instructions === undefined ? {} : { instructions: request.instructions }),
           }),
         ),
