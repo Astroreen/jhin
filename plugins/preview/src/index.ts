@@ -191,7 +191,8 @@ export default definePlugin({
         "Lists the browser-ready servers on this node that its terminals started (a process of a terminal listens on a local port and answers HTTP or HTTPS with a page), by port, with the terminal each runs in",
       input: z.object({}),
       output: z.object({ servers: z.array(DiscoveredLocalServer), scannedAt: z.string() }),
-      permissions: read,
+      // It tells which threads' terminals run what: reading terminals is asked for too.
+      permissions: [...read, "terminals.read"],
       // Every open panel asks every 3 s: one scan serves them all for a while (T3 scans once per tick).
       handler: () => {
         if (lastScan !== undefined && Date.now() - lastScan.startedAt < SCAN_REUSE_MS) {

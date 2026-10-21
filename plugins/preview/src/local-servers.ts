@@ -211,11 +211,14 @@ export function createLocalServerScanner(host: ScanHost) {
   let lsofMissing = false;
   const webProbes = new Map<string, { pid: number | null; isWeb: boolean; expiresAt: number }>();
 
-  async function findSocketOwners(inodes: ReadonlySet<string>) {
+  async function findSocketOwners(inodes: ReadonlySet<string>, first: Iterable<number>) {
     const owners = new Map<string, { pid: number; processName: string | null }>();
-    const pids = (await host.readDir("/proc").catch(() => [])).filter((entry) =>
+    const all = (await host.readDir("/proc").catch(() => [])).filter((entry) =>
       /^\d+$/.test(entry),
     );
+    // The terminals' processes first: the budget then never runs out before them.
+    const preferred = new Set([...first].map(String).filter((pid) => all.includes(pid)));
+    const pids = [...preferred, ...all.filter((pid) => !preferred.has(pid))];
     let budget = PROC_FD_WALK_LIMIT;
     for (const pidText of pids) {
       if (owners.size === inodes.size || budget <= 0) break;
@@ -244,7 +247,10 @@ export function createLocalServerScanner(host: ScanHost) {
     );
     if (tables.every((table) => table === null)) return null;
     const listeners = tables.flatMap((table) => (table === null ? [] : parseProcNetTcp(table)));
-    const owners = await findSocketOwners(new Set(listeners.map((listener) => listener.inode)));
+    const owners = await findSocketOwners(
+      new Set(listeners.map((listener) => listener.inode)),
+      terminals.keys(),
+    );
     const seen = new Map<number, DiscoveredLocalServer>();
     for (const { port, inode } of listeners) {
       const owner = owners.get(inode) ?? null;

@@ -335,10 +335,12 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
   with port discovery.
 
 - **D950. The empty state lists T3's local servers.** The command
-  `preview.servers.list` (node, `preview.read`) scans the machine's TCP
+  `preview.servers.list` (node, `preview.read` and `terminals.read`, since
+  it tells which threads' terminals run what) scans the machine's TCP
   listeners as T3's `PortScanner` does (its parsers ported in
   `plugins/preview/src/local-servers.ts`): `lsof`, else `/proc` on Linux
-  (socket owners by a bounded fd walk, and `lsof` is not tried again once
+  (socket owners by a bounded fd walk that visits the terminals' processes
+  first, and `lsof` is not tried again once
   missing), `netstat` and `tasklist` on Windows. It keeps a listener only
   when a terminal's process owns it, since sending HTTP to another app's
   binary listener can crash it, and only when it answers HTTP, else HTTPS,
