@@ -184,14 +184,10 @@ jobs:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
           if-no-files-found: error
           path: |
-            apps/desktop/release/*.AppImage
-            apps/desktop/release/*.deb
-            apps/desktop/release/*.dmg
-            apps/desktop/release/*.zip
-            apps/desktop/release/*.exe
-            apps/desktop/release/*.blockmap
+            apps/desktop/release/Jhin-${{ needs.meta.outputs.version }}-*
             apps/desktop/release/latest*.yml
             apps/desktop/release/nightly*.yml
+            !apps/desktop/release/builder-*.yml
 
   release:
     name: Publish the release
@@ -216,16 +212,23 @@ jobs:
           # The release is a draft until every file is up, marked with this run's id:
           # a re-run finishes its own draft, and nothing replaces a published release.
           marker="<!-- release-desktop run $GITHUB_RUN_ID -->"
-          existing="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq ".[] | select(.tag_name == \"$TAG\") | [.draft, (.body // \"\" | contains(\"$marker\"))] | @tsv")"
-          if [[ -z "$existing" ]]; then
+          releases() {
+            gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+              --jq ".[] | select(.tag_name == \"$TAG\") | [.draft, (.body // \"\" | contains(\"$marker\"))] | @tsv"
+          }
+          if [[ -z "$(releases)" ]]; then
             flags=(--repo "$GITHUB_REPOSITORY" --title "Jhin $TAG" --generate-notes --notes "$marker")
             flags+=(--target "$GITHUB_SHA" --draft)
             if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease --latest=false); fi
             gh release create "$TAG" "${flags[@]}"
-          # Every release on the tag must be this run's draft (a stray second one fails too).
-          elif grep -qvx $'true\ttrue' <<< "$existing" || [[ "$(wc -l <<< "$existing")" != 1 ]]; then
-            echo "Release $TAG exists and is not this run's draft; bump apps/desktop/package.json." >&2
+          fi
+          # Checked after creating too: the tag must have exactly one release, this
+          # run's draft. Two runs racing for one version both stop here instead of
+          # publishing twice; a published release or another run's draft stops it too.
+          existing="$(releases)"
+          if [[ "$existing" != $'true\ttrue' ]]; then
+            echo "Release $TAG exists and is not only this run's draft:" >&2
+            echo "$existing" >&2
             exit 1
           fi
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber release/*
