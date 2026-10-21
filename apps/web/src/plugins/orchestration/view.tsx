@@ -32,7 +32,7 @@ function Subagent({ target, thread, event, services }: Props) {
   return (
     <SubagentRow
       title={task?.title ?? mark.title}
-      status={task?.status ?? "unknown"}
+      status={task?.status ?? (view.status === "loading" ? "starting" : "unknown")}
       task={task}
       onOpen={() => services.open(target, mark.childThreadId)}
     />
@@ -56,9 +56,17 @@ function Workflow({ target, thread, event, services }: Props) {
 export function DelegatedWork(props: Props) {
   const { type, payload } = props.event;
   if (!isRecord(payload)) return null;
-  if (type === OrchestrationThreadEvents.taskDelegated) return <Subagent {...props} />;
-  if (type === OrchestrationThreadEvents.workflowStarted) return <Workflow {...props} />;
-  if (type === OrchestrationThreadEvents.threadLaunched) {
+  // A mark missing what it names (another version wrote it) is not shown.
+  const text = (...keys: string[]) => keys.every((key) => typeof payload[key] === "string");
+  if (type === OrchestrationThreadEvents.taskDelegated) {
+    return text("taskId", "childThreadId", "title") ? <Subagent {...props} /> : null;
+  }
+  if (type === OrchestrationThreadEvents.workflowStarted) {
+    return text("workflowId", "name", "description", "script") && Array.isArray(payload.phases) ? (
+      <Workflow {...props} />
+    ) : null;
+  }
+  if (type === OrchestrationThreadEvents.threadLaunched && text("threadId", "title")) {
     const { threadId, title } = payload as { threadId: string; title: string };
     return <LaunchedRow title={title} onOpen={() => props.services.open(props.target, threadId)} />;
   }

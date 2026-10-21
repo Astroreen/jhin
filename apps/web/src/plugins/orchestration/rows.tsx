@@ -57,7 +57,8 @@ function Elapsed(props: { status: RowStatus; startedAt?: string; endedAt?: strin
   const text = (nowMs: number) => {
     if (startedAt === undefined) return "";
     const end = endedAt === undefined ? nowMs : Date.parse(endedAt);
-    return formatElapsedSeconds((end - Date.parse(startedAt)) / 1000);
+    const elapsed = end - Date.parse(startedAt);
+    return Number.isFinite(elapsed) ? formatElapsedSeconds(elapsed / 1000) : "";
   };
   useEffect(() => {
     const update = () => {
