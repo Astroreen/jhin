@@ -354,6 +354,23 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
   from one scan. `lsof`'s exit code 1 after a warning still counts, as in
   T3.
 
+### The pinned browser (W25)
+
+- **D951. T3's `chrome-headless-shell` on first use.** When no
+  `jhin.preview.executablePath` is set and Playwright has no browser on the
+  node, the first tab installs T3's pinned Chrome for Testing headless shell
+  (`plugins/preview/src/headless-shell.ts`, T3's version and per-platform
+  sizes and SHA-256 sums) into `<home>/tools/chrome-headless-shell/<platform>/<version>`,
+  shared by the node's plugins. The download must match the pinned size and
+  SHA-256; the zip (read with `yauzl`, as T3 does) is unpacked only from its
+  one folder, with no `..`, links or encrypted entries, into a staging
+  folder renamed into place, and older versions and stale stagings go. A
+  request waits for the install up to 45 s, then gets T3's progress ("Jhin
+  is installing its headless browser (N of M MB downloaded). Try again in a
+  minute.") while the install goes on; a failed install starts again with
+  the next request. A configured path or Playwright's own browser still
+  wins, so nothing changes where one is there.
+
 ### Proof
 
 - **D409. Tests drive a real headless Chromium** (the one CI installs for
@@ -371,8 +388,10 @@ and `apps/web/src/components/preview/PreviewEmptyState.tsx`.
   {environment}'s browser"): with the desktop app (W18).
 - Browser profiles and persistent logins (T3's named profiles, `profileId`,
   "Clear profile"): every tab's cookies live as long as the browser.
-- Downloading a pinned `chrome-headless-shell` on first use, and T3's host
-  setup hints (sandbox and libraries, close code 4503).
+- A test of the pinned browser's progress answer itself: it needs the
+  install a test leaves running to be awaitable once it settles.
+- T3's host setup hints for the pinned browser (the AppArmor profile, the
+  missing libraries and their setup command, close code 4503).
 - A binary channel for frames (T3's WebSocket with per-frame acks); frames
   travel as base64 JSON events.
 - The configured preview URLs of project scripts (T3's `configuredUrls` in

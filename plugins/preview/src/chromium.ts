@@ -12,6 +12,15 @@ const DEFAULT_VIEWPORT = { width: 1280, height: 800 };
 export interface ChromiumOptions {
   /** A Chromium to run instead of the one Playwright installs. */
   readonly executablePath?: (() => string | undefined) | undefined;
+  /**
+   * T3's pinned headless shell, installed on first use when neither a path is
+   * set nor Playwright has a browser here (D951).
+   */
+  readonly headlessShell?: { executable(): Promise<string> } | undefined;
+  /** Playwright's Chromium launcher; tests give their own. */
+  readonly launcher?:
+    | (() => Promise<Pick<typeof import("playwright-core").chromium, "launch">>)
+    | undefined;
 }
 
 const NO_BROWSER_MESSAGE =
@@ -65,6 +74,12 @@ export async function presentAsChrome(cdp: CDPSession): Promise<void> {
 export class Chromium {
   readonly #options: ChromiumOptions;
   #browser: Promise<Browser> | undefined;
+  /**
+   * Playwright had no browser here: later starts go straight to the shell (D951).
+   * Kept for the plugin's run: a browser of Playwright's installed meanwhile is
+   * found on the node's next start.
+   */
+  #playwrightMissing = false;
   #shared: Promise<BrowserContext> | undefined;
 
   constructor(options: ChromiumOptions = {}) {
@@ -73,10 +88,11 @@ export class Chromium {
 
   #launch(): Promise<Browser> {
     this.#browser ??= (async () => {
-      const { chromium } = await import("playwright-core");
-      const executablePath = this.#options.executablePath?.();
-      try {
-        const browser = await chromium.launch({
+      const chromium =
+        (await this.#options.launcher?.()) ?? (await import("playwright-core")).chromium;
+      const configured = this.#options.executablePath?.();
+      const launch = (executablePath: string | undefined) =>
+        chromium.launch({
           ...(executablePath === undefined ? {} : { executablePath }),
           args: [
             "--disable-gpu",
@@ -86,17 +102,64 @@ export class Chromium {
           ignoreDefaultArgs: ["--enable-automation"],
           headless: true,
         });
+      const missing = (message: string) =>
+        /Executable doesn't exist|Failed to launch|ENOENT/i.test(message);
+      try {
+        let browser: Browser;
+        try {
+          if (this.#playwrightMissing && configured === undefined) {
+            throw new Error(
+              "Executable doesn't exist (Playwright's browser, found missing before)",
+            );
+          }
+          browser = await launch(configured);
+        } catch (cause) {
+          const message = cause instanceof Error ? cause.message : String(cause);
+          const shell = this.#options.headlessShell;
+          // No browser of Playwright's here: T3's pinned shell, installed now (D951). A
+          // browser that is there but does not start is reported, not replaced.
+          if (
+            configured !== undefined ||
+            shell === undefined ||
+            !/Executable doesn't exist/i.test(message)
+          ) {
+            throw cause;
+          }
+          this.#playwrightMissing = true;
+          let executable: string;
+          try {
+            executable = await shell.executable();
+          } catch (installing) {
+            throw new PreviewError(
+              "PREVIEW_UNAVAILABLE",
+              installing instanceof Error ? installing.message : String(installing),
+            );
+          }
+          try {
+            browser = await launch(executable);
+          } catch (failed) {
+            // The shell is there but does not start (libraries the host lacks): say so,
+            // not that there is no browser.
+            const reason = failed instanceof Error ? failed.message : String(failed);
+            throw new PreviewError(
+              "PREVIEW_UNAVAILABLE",
+              `The browser did not start: ${reason.split("\n")[0]}`,
+            );
+          }
+        }
         browser.on("disconnected", () => {
           this.#browser = undefined;
           this.#shared = undefined;
         });
         return browser;
       } catch (cause) {
+        if (cause instanceof PreviewError) throw cause;
         const message = cause instanceof Error ? cause.message : String(cause);
-        const missing = /Executable doesn't exist|Failed to launch|ENOENT/i.test(message);
         throw new PreviewError(
           "PREVIEW_UNAVAILABLE",
-          missing ? NO_BROWSER_MESSAGE : `The browser did not start: ${message.split("\n")[0]}`,
+          missing(message)
+            ? NO_BROWSER_MESSAGE
+            : `The browser did not start: ${message.split("\n")[0]}`,
         );
       }
     })();
